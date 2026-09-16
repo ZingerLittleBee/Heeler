@@ -15,7 +15,7 @@ struct WorkspaceTerminalDrawer: View {
     var palette: TerminalThemePalette = .system
     let onSelect: (ConsoleTerminal) -> Void
 
-    static let handleSize = CGSize(width: 30, height: 68)
+    static let handleSize = CGSize(width: TerminalEdgeTabBackground.width, height: 68)
     /// The handle's hit area reaches past its visible edge into the terminal.
     static let handleHitWidth: CGFloat = 44
     static let panelWidth: CGFloat = 248
@@ -24,7 +24,6 @@ struct WorkspaceTerminalDrawer: View {
     static let visibleRowLimit = 6
     private static let rowSpacing: CGFloat = 2
     private static let panelBottomInset: CGFloat = 6
-    private static let cornerRadius: CGFloat = 14
     /// One accessibility nudge moves the handle by its own height.
     private static let nudge: CGFloat = 68
 
@@ -244,18 +243,6 @@ struct WorkspaceTerminalDrawer: View {
 
     /// The floating-control surface, squared off on the edge it is docked to.
     private var surface: some View {
-        let shape = UnevenRoundedRectangle(
-            topLeadingRadius: Self.cornerRadius,
-            bottomLeadingRadius: Self.cornerRadius,
-            bottomTrailingRadius: 0,
-            topTrailingRadius: 0,
-            style: .continuous)
-        return shape
-            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.96))
-            .overlay {
-                shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
-            .allowsHitTesting(false)
+        TerminalEdgeTabBackground(palette: palette)
     }
 }

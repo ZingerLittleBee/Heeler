@@ -46,6 +46,7 @@ struct MessageJumpControlTests {
         let docked = try #require(MessageJumpPlacement.frame(
             terminalSize: terminalSize, chromeSize: chromeSize, edgeFraction: 1))
         #expect(docked == lowest)
+        #expect(lowest.maxX == terminalSize.width, "An edge tab docks flush against the edge")
         let top = try #require(MessageJumpPlacement.frame(
             terminalSize: terminalSize, chromeSize: chromeSize, edgeFraction: 0))
         #expect(top.minY == 0)
@@ -258,7 +259,7 @@ struct MessageJumpControlTests {
             terminalSize: CGSize(width: 40, height: 400),
             chromeSize: CGSize(width: 120, height: 36))
         #expect(narrowFrame?.origin.x == 0)
-        #expect(narrowFrame?.width == 30)
+        #expect(narrowFrame?.width == 40, "Clamped to the full width: an edge tab has no trailing inset")
     }
 
     @MainActor

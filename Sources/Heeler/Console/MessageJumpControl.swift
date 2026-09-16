@@ -127,6 +127,8 @@ struct MessageJumpControlAvailability: Equatable, Sendable {
 /// entirely above the band, production hides it rather than overlapping.
 /// `refs #268`.
 enum MessageJumpPlacement {
+    /// Inset for capsule floating controls (the Attach Links button). The
+    /// jump chrome itself is an edge tab and docks flush against the edge.
     static let trailingPadding: CGFloat = 10
 
     /// Distance from the terminal's bottom edge to the control's bottom edge.
@@ -167,11 +169,12 @@ enum MessageJumpPlacement {
     /// fit entirely above the keyboard band or within the trailing edge.
     /// Callers hide the chrome on `nil` rather than letting it overlap.
     /// `edgeFraction` slides it along the edge: 0 at the top, 1 as low as the
-    /// band allows (``EdgeDockSettings``).
+    /// band allows (``EdgeDockSettings``). `trailingPadding` defaults to
+    /// zero: the chrome is a tab docked flush against the trailing edge.
     static func frame(
         terminalSize: CGSize,
         chromeSize: CGSize,
-        trailingPadding: CGFloat = Self.trailingPadding,
+        trailingPadding: CGFloat = 0,
         minimumBottomInset: CGFloat = 0,
         edgeFraction: CGFloat = 1
     ) -> CGRect? {
@@ -488,8 +491,11 @@ struct MessageJumpControlView: View {
                         action: onNewer)
                 }
             }
-            .background {
-                TerminalFloatingControlBackground(palette: palette)
+            // Docked flush against the trailing edge like the Workspace
+            // drawer handle: the tab is narrower than the 44-point hit area.
+            .background(alignment: .trailing) {
+                TerminalEdgeTabBackground(palette: palette)
+                    .frame(width: TerminalEdgeTabBackground.width)
             }
             .edgeDockLift(isLifted: $isLifted, onMove: onMove, onDrop: onDrop)
             .transition(.scale(scale: 0.85).combined(with: .opacity))
@@ -535,7 +541,7 @@ struct MessageJumpControlView: View {
                 }
             }
         }
-        .buttonStyle(TerminalFloatingButtonStyle(highlight: palette.foreground))
+        .buttonStyle(TerminalEdgeTabButtonStyle(highlight: palette.foreground))
         .disabled(isLifted)
         .hoverEffect(.highlight)
         .accessibilityLabel(label)
@@ -543,10 +549,65 @@ struct MessageJumpControlView: View {
     }
 }
 
-/// Press feedback for a jump button: a brief scale-down with a soft fill
-/// behind the glyph. The whole 44-point square is the hit area; the fill
-/// stays inset so the pill's edge reads as one shape. There is no disabled
-/// look — a button that cannot act is hidden, not greyed.
+/// Press feedback for a jump button on the edge tab: the glyph sits centred
+/// in the tab's visible width while the whole 44-point square, extending
+/// inward over the terminal, takes the hit. There is no disabled look — a
+/// button that cannot act is hidden, not greyed.
+struct TerminalEdgeTabButtonStyle: ButtonStyle {
+    let highlight: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(
+                width: TerminalEdgeTabBackground.width,
+                height: MessageJumpControlView.buttonSize)
+            .background {
+                TerminalEdgeTabBackground.shape
+                    .fill(highlight.opacity(configuration.isPressed ? 0.16 : 0))
+                    .padding(.vertical, 4)
+            }
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .frame(width: MessageJumpControlView.buttonSize, alignment: .trailing)
+            .contentShape(.rect)
+    }
+}
+
+/// Shared translucent terminal-theme surface for controls docked against
+/// the terminal's trailing edge: rounded on the side facing the terminal,
+/// squared off on the edge. Used by the Workspace drawer's handle and panel
+/// and by the message-jump tab.
+struct TerminalEdgeTabBackground: View {
+    /// Visible width of a tab; hit areas extend inward past it.
+    static let width: CGFloat = 30
+    static let cornerRadius: CGFloat = 14
+
+    static var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: cornerRadius,
+            bottomLeadingRadius: cornerRadius,
+            bottomTrailingRadius: 0,
+            topTrailingRadius: 0,
+            style: .continuous)
+    }
+
+    let palette: TerminalThemePalette
+
+    var body: some View {
+        Self.shape
+            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.96))
+            .overlay {
+                Self.shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
+            .allowsHitTesting(false)
+    }
+}
+
+/// Press feedback for a capsule floating button (Attach Links): a brief
+/// scale-down with a soft fill behind the glyph. The whole 44-point square
+/// is the hit area; the fill stays inset so the pill's edge reads as one
+/// shape.
 struct TerminalFloatingButtonStyle: ButtonStyle {
     /// Glyphs on floating controls sit over live terminal output; muting
     /// them keeps the controls findable without competing with the text.
@@ -719,7 +780,7 @@ final class MessageJumpChromeContainer: UIView {
         guard let hostedView else { return }
         hostedView.setNeedsLayout()
         hostedView.layoutIfNeeded()
-        let maxWidth = max(0, bounds.width - MessageJumpPlacement.trailingPadding)
+        let maxWidth = max(0, bounds.width)
         let fitting = hostedView.sizeThatFits(
             CGSize(width: maxWidth > 0 ? maxWidth : CGFloat.greatestFiniteMagnitude,
                    height: CGFloat.greatestFiniteMagnitude))

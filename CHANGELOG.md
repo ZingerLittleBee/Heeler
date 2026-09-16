@@ -21,8 +21,9 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- Long-press the Workspace drawer handle or the message-jump buttons to slide
-  them along the terminal's edge; each rests where it was left. (#333)
+- The message-jump buttons dock flush against the terminal's edge as a tab,
+  matching the Workspace drawer handle. Long-press either to slide it along
+  the edge; each rests where it was left. (#333)
 - The Shell Terminal drops its title bar so output runs up to the status bar.
   Back and Close Terminal moved into the More menu on its input row, which now
   stays visible while the keyboard is down. (#333)
