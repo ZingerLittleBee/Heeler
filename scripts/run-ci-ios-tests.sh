@@ -107,6 +107,7 @@ weak_network_pid=""
 simulator_udid=""
 simulator_destination=""
 simulator_environment_variables=()
+simulator_listing=""
 
 # The privileged password fixture, provisioned only when sudo -n works.
 password_username=""
@@ -138,6 +139,7 @@ run_xcodebuild() {
     local action
     local attempt
     local attempt_log
+    local backoff
     local needs_recovery=0
     local failed_udid="$simulator_udid"
     local working_directory="$repo_root"
@@ -166,10 +168,18 @@ run_xcodebuild() {
     # Keep this function in the calling shell. In particular, an outer tee
     # pipeline or package-directory subshell would discard a replacement UDID
     # and leave later suites and cleanup pointing at the missing device.
-    for attempt in 1 2 3; do
+    for attempt in 1 2 3 4; do
         if [[ "$needs_recovery" == 1 ]]; then
-            echo "==> $label: recovering simulator $failed_udid (attempt $attempt/3)"
-            sleep 2
+            # The observed loss (#327) emptied CoreSimulator's whole visible
+            # set, so a couple of seconds is not a recovery window. Back off
+            # 2s, 10s, 30s: about 42s in total before the retry is exhausted.
+            case "$attempt" in
+                2) backoff=2 ;;
+                3) backoff=10 ;;
+                *) backoff=30 ;;
+            esac
+            echo "==> $label: recovering simulator $failed_udid in ${backoff}s (attempt $attempt/4)"
+            sleep "$backoff"
             if ! recover_simulator_destination; then
                 continue
             fi
@@ -968,14 +978,15 @@ printf 'Claimed fixture port block %s-%s\n' \
 # stay literal rather than becoming an awk regex.
 ci_simulator_name="${HEELER_CI_SIMULATOR_NAME:-iPhone 17}"
 requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
+# Keeps the raw listing in simulator_listing so a recovery attempt can print
+# what CoreSimulator saw at that moment, not only the filtered candidates.
 list_simulator_candidates() {
-    local listing
     local candidate
-    listing=$(xcrun simctl list devices available) || return 1
+    simulator_listing=$(xcrun simctl list devices available) || return 1
     simulator_candidates=()
     while IFS= read -r candidate; do
         [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
-    done < <(printf '%s\n' "$listing" | awk -v name="$ci_simulator_name" \
+    done < <(printf '%s\n' "$simulator_listing" | awk -v name="$ci_simulator_name" \
         -v pinned="$requested_simulator_udid" '
         index($0, name " (") || (pinned != "" && index($0, "(" pinned ")")) {
             candidate = ""
@@ -1035,6 +1046,10 @@ recover_simulator_destination() {
     local current_available=0
 
     list_simulator_candidates || return 1
+    # The next reader needs to know whether the device was gone for seconds or
+    # for the whole window, so every rediscovery records the live listing.
+    printf 'Simulators visible while recovering %s:\n%s\n' \
+        "${simulator_udid:-<released>}" "$simulator_listing" >&2
     # Bash 3.2 treats an empty array expansion as unbound under nounset.
     # Handle it before iterating so recovery can retry and report diagnostics.
     if [[ "${#simulator_candidates[@]}" == 0 ]]; then

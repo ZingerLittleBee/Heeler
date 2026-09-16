@@ -179,10 +179,13 @@ run_case() (
         *)
             [[ "$status" == 70 ]] || fail 'missing destination status lost'
             local expected_calls=1
-            [[ "$SCENARIO" != persistent ]] || expected_calls=3
+            [[ "$SCENARIO" != persistent ]] || expected_calls=4
             [[ "$(cat "$CASE_DIR/calls")" == "$expected_calls" ]] || fail 'retry was not bounded'
             grep -qF "recovery exhausted for UDID $ORIGINAL" "$CASE_DIR/output" || fail 'missing UDID diagnostic'
-            [[ "$(grep -cF 'simctl list devices available' "$CASE_DIR/simctl")" == 3 ]] || fail 'expected two rediscoveries and final live listing'
+            [[ "$(grep -cF 'simctl list devices available' "$CASE_DIR/simctl")" == 4 ]] || fail 'expected three rediscoveries and final live listing'
+            if [[ "$SCENARIO" != list-failure ]]; then
+                grep -qF 'Simulators visible while recovering' "$CASE_DIR/output" || fail 'rediscovery did not record the live listing'
+            fi
             ;;
     esac
     release_resource_lock "$device_lock_dir" simulator
