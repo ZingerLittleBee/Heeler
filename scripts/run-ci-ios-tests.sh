@@ -564,7 +564,7 @@ start_password_sshd() {
     # The invoking shell intentionally owns the diagnostic log redirect.
     # shellcheck disable=SC2024
     sudo -n /usr/sbin/sshd -D -e -f "$password_config" \
-        > "$password_log" 2>&1 &
+        > >(timestamp_lines > "$password_log") 2>&1 &
     password_pid=$!
 
     for ((attempt = 0; attempt < 50; attempt += 1)); do
@@ -728,6 +728,15 @@ EXPECT
     return "$status"
 )
 
+# `sshd -e` writes no timestamps, so a preserved log could not be matched
+# against the wall-clock window of a failing test (#343). Prefix every line
+# with the same UTC format GitHub prints for job log lines. Process
+# substitution keeps `$!` as sshd's own pid for the kill/wait bookkeeping;
+# the filter exits on its own when sshd closes the pipe.
+timestamp_lines() {
+    perl -MPOSIX -pe '$| = 1; $_ = POSIX::strftime("%Y-%m-%dT%H:%M:%SZ ", gmtime) . $_'
+}
+
 # Sets started_sshd_pid rather than printing it: a command substitution would
 # run the append to unprivileged_sshd_pids in a subshell and lose it.
 started_sshd_pid=""
@@ -735,7 +744,7 @@ start_unprivileged_sshd() {
     local config=$1
     local log=$2
 
-    /usr/sbin/sshd -D -e -f "$config" > "$log" 2>&1 &
+    /usr/sbin/sshd -D -e -f "$config" > >(timestamp_lines > "$log") 2>&1 &
     started_sshd_pid=$!
     unprivileged_sshd_pids+=("$started_sshd_pid")
 }
