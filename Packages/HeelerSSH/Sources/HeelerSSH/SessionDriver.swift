@@ -10,6 +10,12 @@ enum HandshakeFailureObservation {
 #endif
 
 actor SessionDriver {
+    /// The operation and step in flight, named for a failure diagnostics line
+    /// (#343). Assigned unconditionally; formatted only when a sink exists.
+    private var diagnosticPhase = ""
+    private var diagnosticStep = ""
+    private var timeoutNoted = false
+
     enum BridgeWriteResult: Equatable {
         case blocked
         case peerClosed
@@ -176,6 +182,7 @@ actor SessionDriver {
     func handshake(endpoint: SSHEndpoint, timeout: Duration) async throws -> SSHHostKey {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("handshake with \(endpoint.host):\(endpoint.port)")
 
         guard valid, !forwarding, session == nil, descriptor < 0 else {
             throw SSHError.connectionInvalidated
@@ -183,7 +190,12 @@ actor SessionDriver {
         let deadline = ContinuousClock.now.advanced(by: timeout)
 
         do {
-            descriptor = try await SocketConnector.connect(to: endpoint, until: deadline)
+            do {
+                descriptor = try await SocketConnector.connect(to: endpoint, until: deadline)
+            } catch {
+                SSHDiagnostics.note("\(diagnosticContext) failed before the TCP connection completed: \(error)")
+                throw error
+            }
             return try await performHandshake(deadline: deadline)
         } catch {
             invalidateResources()
@@ -197,6 +209,7 @@ actor SessionDriver {
     ) async throws -> SSHHostKey {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("handshake over the Jump Host transport")
 
         guard valid, !forwarding, session == nil, descriptor < 0 else {
             throw SSHError.connectionInvalidated
@@ -215,6 +228,7 @@ actor SessionDriver {
     func authenticate(username: String, password: String, timeout: Duration) async throws {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("password authentication")
 
         guard valid, !forwarding, !authenticated, let session else {
             throw SSHError.connectionInvalidated
@@ -255,6 +269,7 @@ actor SessionDriver {
     ) async throws {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("public-key authentication")
 
         guard valid, !forwarding, !authenticated, let session else {
             throw SSHError.connectionInvalidated
@@ -297,6 +312,7 @@ actor SessionDriver {
     func execute(command: String, input: Data, timeout: Duration) async throws -> SSHExecResult {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("exec")
 
         guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
@@ -323,6 +339,7 @@ actor SessionDriver {
                 identity: .oneShot(id),
                 input: input,
                 deadline: deadline)
+            diagnosticStep = "channel free"
             let freeResult = try await repeatUntilCompleteYielding(
                 deadline: deadline,
                 identity: .oneShot(id)
@@ -368,6 +385,7 @@ actor SessionDriver {
     ) async throws -> Data {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("exec (response line)")
 
         guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
@@ -443,6 +461,7 @@ actor SessionDriver {
     ) async throws -> SSHPTYChannel {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("PTY open")
 
         guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
@@ -749,6 +768,7 @@ actor SessionDriver {
     ) async throws -> Data {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("stream-local exchange on \(socketPath)")
 
         guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
@@ -832,6 +852,7 @@ actor SessionDriver {
     ) async throws -> SSHStreamLocalChannel {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("stream-local open on \(socketPath)")
 
         guard valid, !forwarding, authenticated, session != nil else {
             throw SSHError.connectionInvalidated
@@ -2058,6 +2079,7 @@ actor SessionDriver {
     func close(timeout: Duration) async throws {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("close")
 
         guard valid, !forwarding else {
             if forwarding { throw SSHError.channelFailed }
@@ -2323,6 +2345,7 @@ actor SessionDriver {
     ) async throws -> DirectTCPIPByteTransport {
         await acquireOperation()
         defer { releaseOperation() }
+        beginDiagnosticPhase("direct-tcpip open to \(endpoint.host):\(endpoint.port)")
 
         guard
             valid,
@@ -2433,6 +2456,7 @@ actor SessionDriver {
                     throw error
                 }
             } else {
+                noteFailure(error)
                 applyTransportSendOwnerDisposition(disposition)
                 throw openFailure ?? SSHError.channelFailed
             }
@@ -2800,7 +2824,7 @@ actor SessionDriver {
             if cancellable {
                 try checkProgress(deadline: deadline)
             } else if ContinuousClock.now >= deadline {
-                throw SSHError.timedOut
+                throw noteTimedOut()
             }
         }
     }
@@ -2886,7 +2910,7 @@ actor SessionDriver {
             if cancellable {
                 try checkProgress(deadline: deadline)
             } else if ContinuousClock.now >= deadline {
-                throw SSHError.timedOut
+                throw noteTimedOut()
             }
             nextChannelOpenWaiterID &+= 1
             let waiterID = nextChannelOpenWaiterID
@@ -2909,7 +2933,7 @@ actor SessionDriver {
             if cancellable {
                 try checkProgress(deadline: deadline)
             } else if ContinuousClock.now >= deadline {
-                throw SSHError.timedOut
+                throw noteTimedOut()
             }
             guard valid else { throw SSHError.connectionInvalidated }
         }
@@ -3006,7 +3030,7 @@ actor SessionDriver {
         deadline: ContinuousClock.Instant
     ) async throws {
         while ptyChannels[id]?.teardownInProgress == true {
-            guard ContinuousClock.now < deadline else { throw SSHError.timedOut }
+            guard ContinuousClock.now < deadline else { throw noteTimedOut() }
             nextPTYTeardownWaiterID &+= 1
             let waiterID = nextPTYTeardownWaiterID
             do {
@@ -3019,7 +3043,7 @@ actor SessionDriver {
                 throw error
             }
             await acquireOperation()
-            guard ContinuousClock.now < deadline else { throw SSHError.timedOut }
+            guard ContinuousClock.now < deadline else { throw noteTimedOut() }
             guard valid else { throw SSHError.connectionInvalidated }
         }
     }
@@ -3227,6 +3251,7 @@ actor SessionDriver {
             throw ChannelOpenAdmissionError(underlying: normalize(error))
         }
         defer { releaseChannelOpenSlot() }
+        diagnosticStep = "channel open"
         let owner = allocateTransportSendOwner()
         while true {
             try checkProgress(deadline: deadline)
@@ -3262,6 +3287,7 @@ actor SessionDriver {
                 owner: owner,
                 session: session)
             guard error == LIBSSH2_ERROR_EAGAIN else {
+                noteFailure(error)
                 applyTransportSendOwnerDisposition(disposition)
                 throw SSHError.channelFailed
             }
@@ -3326,6 +3352,7 @@ actor SessionDriver {
                     throw error
                 }
             } else {
+                noteFailure(error)
                 applyTransportSendOwnerDisposition(disposition)
                 throw Self.mappedStreamLocalOpenError(error)
             }
@@ -3354,6 +3381,7 @@ actor SessionDriver {
         command: String,
         deadline: ContinuousClock.Instant
     ) async throws {
+        diagnosticStep = "exec request"
         let result = try await repeatUntilCompleteYielding(
             deadline: deadline,
             identity: identity
@@ -3367,7 +3395,10 @@ actor SessionDriver {
                     UInt32(command.utf8.count))
             }
         }
-        guard result == 0 else { throw SSHError.channelFailed }
+        guard result == 0 else {
+            noteFailure(result)
+            throw SSHError.channelFailed
+        }
     }
 
     private func configurePTY(
@@ -3408,6 +3439,7 @@ actor SessionDriver {
         input: Data,
         deadline: ContinuousClock.Instant
     ) async throws -> SSHExecResult {
+        diagnosticStep = "exchange"
         var inputOffset = 0
         var sentEOF = false
         var stdout = Data()
@@ -3884,7 +3916,7 @@ actor SessionDriver {
             if cancellable {
                 try checkProgress(deadline: deadline)
             } else if ContinuousClock.now >= deadline {
-                throw SSHError.timedOut
+                throw noteTimedOut()
             }
             nextSFTPIdleWaiterID &+= 1
             let waiterID = nextSFTPIdleWaiterID
@@ -3901,7 +3933,7 @@ actor SessionDriver {
             if cancellable {
                 try checkProgress(deadline: deadline)
             } else if ContinuousClock.now >= deadline {
-                throw SSHError.timedOut
+                throw noteTimedOut()
             }
             guard valid else { throw SSHError.connectionInvalidated }
         }
@@ -4025,7 +4057,7 @@ actor SessionDriver {
         guard cancelled || timedOut else { return }
         await finishOwnedSendIfNeeded(owner: owner, drive: drive)
         if cancelled { throw SSHError.cancelled }
-        throw SSHError.timedOut
+        throw noteTimedOut()
     }
 
     @discardableResult
@@ -4332,7 +4364,7 @@ actor SessionDriver {
 
     private func checkProgress(deadline: ContinuousClock.Instant) throws {
         if Task.isCancelled { throw SSHError.cancelled }
-        if ContinuousClock.now >= deadline { throw SSHError.timedOut }
+        if ContinuousClock.now >= deadline { throw noteTimedOut() }
     }
 
     private func mapAuthenticationError(_ code: Int32) -> SSHError {
@@ -4341,13 +4373,121 @@ actor SessionDriver {
             LIBSSH2_ERROR_PASSWORD_EXPIRED,
             LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED,
             LIBSSH2_ERROR_KEYFILE_AUTH_FAILED:
+            noteFailure(code)
             return .authenticationFailed
         default:
             return mapSessionError(code)
         }
     }
 
+    // MARK: - Failure diagnostics (#343)
+
+    private func beginDiagnosticPhase(_ phase: String) {
+        diagnosticPhase = phase
+        diagnosticStep = ""
+        timeoutNoted = false
+    }
+
+    private var diagnosticContext: String {
+        diagnosticStep.isEmpty ? diagnosticPhase : "\(diagnosticPhase), \(diagnosticStep)"
+    }
+
+    /// One line per failure: the phase, the raw libssh2 code by name, and the
+    /// message libssh2 attached to it. The coarse `SSHError` the caller gets
+    /// is unchanged; this is the detail it deliberately does not carry.
+    private func noteFailure(_ code: Int32) {
+        guard SSHDiagnostics.isEnabled else { return }
+        var line = "\(diagnosticContext) failed: \(Self.libssh2ErrorName(code)) (\(code))"
+        if let session, let message = Self.lastErrorMessage(session), !message.isEmpty {
+            line += ": \(message)"
+        }
+        SSHDiagnostics.note(line)
+    }
+
+    /// A deadline can expire in a progress check, in a readiness timer, or in
+    /// a waiter that another task resumes, and the same expiry is normalized
+    /// again on the way out of the operation. One line per operation is the
+    /// contract, so the first report wins until the next phase begins.
+    private func noteTimedOut() -> SSHError {
+        noteTimedOutOnce()
+        return .timedOut
+    }
+
+    private func noteTimedOutOnce() {
+        guard !timeoutNoted else { return }
+        timeoutNoted = true
+        SSHDiagnostics.note("\(diagnosticContext) timed out")
+    }
+
+    private static func lastErrorMessage(_ session: OpaquePointer) -> String? {
+        var messagePointer: UnsafeMutablePointer<CChar>?
+        var messageLength: Int32 = 0
+        _ = libssh2_session_last_error(session, &messagePointer, &messageLength, 0)
+        guard let messagePointer, messageLength > 0 else { return nil }
+        return String(
+            decoding: Data(bytes: messagePointer, count: Int(messageLength)),
+            as: UTF8.self)
+    }
+
+    private static func libssh2ErrorName(_ code: Int32) -> String {
+        switch code {
+        case LIBSSH2_ERROR_SOCKET_NONE: "LIBSSH2_ERROR_SOCKET_NONE"
+        case LIBSSH2_ERROR_BANNER_RECV: "LIBSSH2_ERROR_BANNER_RECV"
+        case LIBSSH2_ERROR_BANNER_SEND: "LIBSSH2_ERROR_BANNER_SEND"
+        case LIBSSH2_ERROR_INVALID_MAC: "LIBSSH2_ERROR_INVALID_MAC"
+        case LIBSSH2_ERROR_KEX_FAILURE: "LIBSSH2_ERROR_KEX_FAILURE"
+        case LIBSSH2_ERROR_ALLOC: "LIBSSH2_ERROR_ALLOC"
+        case LIBSSH2_ERROR_SOCKET_SEND: "LIBSSH2_ERROR_SOCKET_SEND"
+        case LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE: "LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE"
+        case LIBSSH2_ERROR_TIMEOUT: "LIBSSH2_ERROR_TIMEOUT"
+        case LIBSSH2_ERROR_HOSTKEY_INIT: "LIBSSH2_ERROR_HOSTKEY_INIT"
+        case LIBSSH2_ERROR_HOSTKEY_SIGN: "LIBSSH2_ERROR_HOSTKEY_SIGN"
+        case LIBSSH2_ERROR_DECRYPT: "LIBSSH2_ERROR_DECRYPT"
+        case LIBSSH2_ERROR_SOCKET_DISCONNECT: "LIBSSH2_ERROR_SOCKET_DISCONNECT"
+        case LIBSSH2_ERROR_PROTO: "LIBSSH2_ERROR_PROTO"
+        case LIBSSH2_ERROR_PASSWORD_EXPIRED: "LIBSSH2_ERROR_PASSWORD_EXPIRED"
+        case LIBSSH2_ERROR_FILE: "LIBSSH2_ERROR_FILE"
+        case LIBSSH2_ERROR_METHOD_NONE: "LIBSSH2_ERROR_METHOD_NONE"
+        case LIBSSH2_ERROR_AUTHENTICATION_FAILED: "LIBSSH2_ERROR_AUTHENTICATION_FAILED"
+        case LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED: "LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED"
+        case LIBSSH2_ERROR_CHANNEL_OUTOFORDER: "LIBSSH2_ERROR_CHANNEL_OUTOFORDER"
+        case LIBSSH2_ERROR_CHANNEL_FAILURE: "LIBSSH2_ERROR_CHANNEL_FAILURE"
+        case LIBSSH2_ERROR_CHANNEL_REQUEST_DENIED: "LIBSSH2_ERROR_CHANNEL_REQUEST_DENIED"
+        case LIBSSH2_ERROR_CHANNEL_UNKNOWN: "LIBSSH2_ERROR_CHANNEL_UNKNOWN"
+        case LIBSSH2_ERROR_CHANNEL_WINDOW_EXCEEDED: "LIBSSH2_ERROR_CHANNEL_WINDOW_EXCEEDED"
+        case LIBSSH2_ERROR_CHANNEL_PACKET_EXCEEDED: "LIBSSH2_ERROR_CHANNEL_PACKET_EXCEEDED"
+        case LIBSSH2_ERROR_CHANNEL_CLOSED: "LIBSSH2_ERROR_CHANNEL_CLOSED"
+        case LIBSSH2_ERROR_CHANNEL_EOF_SENT: "LIBSSH2_ERROR_CHANNEL_EOF_SENT"
+        case LIBSSH2_ERROR_SCP_PROTOCOL: "LIBSSH2_ERROR_SCP_PROTOCOL"
+        case LIBSSH2_ERROR_ZLIB: "LIBSSH2_ERROR_ZLIB"
+        case LIBSSH2_ERROR_SOCKET_TIMEOUT: "LIBSSH2_ERROR_SOCKET_TIMEOUT"
+        case LIBSSH2_ERROR_SFTP_PROTOCOL: "LIBSSH2_ERROR_SFTP_PROTOCOL"
+        case LIBSSH2_ERROR_REQUEST_DENIED: "LIBSSH2_ERROR_REQUEST_DENIED"
+        case LIBSSH2_ERROR_METHOD_NOT_SUPPORTED: "LIBSSH2_ERROR_METHOD_NOT_SUPPORTED"
+        case LIBSSH2_ERROR_INVAL: "LIBSSH2_ERROR_INVAL"
+        case LIBSSH2_ERROR_INVALID_POLL_TYPE: "LIBSSH2_ERROR_INVALID_POLL_TYPE"
+        case LIBSSH2_ERROR_PUBLICKEY_PROTOCOL: "LIBSSH2_ERROR_PUBLICKEY_PROTOCOL"
+        case LIBSSH2_ERROR_EAGAIN: "LIBSSH2_ERROR_EAGAIN"
+        case LIBSSH2_ERROR_BUFFER_TOO_SMALL: "LIBSSH2_ERROR_BUFFER_TOO_SMALL"
+        case LIBSSH2_ERROR_BAD_USE: "LIBSSH2_ERROR_BAD_USE"
+        case LIBSSH2_ERROR_COMPRESS: "LIBSSH2_ERROR_COMPRESS"
+        case LIBSSH2_ERROR_OUT_OF_BOUNDARY: "LIBSSH2_ERROR_OUT_OF_BOUNDARY"
+        case LIBSSH2_ERROR_AGENT_PROTOCOL: "LIBSSH2_ERROR_AGENT_PROTOCOL"
+        case LIBSSH2_ERROR_SOCKET_RECV: "LIBSSH2_ERROR_SOCKET_RECV"
+        case LIBSSH2_ERROR_ENCRYPT: "LIBSSH2_ERROR_ENCRYPT"
+        case LIBSSH2_ERROR_BAD_SOCKET: "LIBSSH2_ERROR_BAD_SOCKET"
+        case LIBSSH2_ERROR_KNOWN_HOSTS: "LIBSSH2_ERROR_KNOWN_HOSTS"
+        case LIBSSH2_ERROR_CHANNEL_WINDOW_FULL: "LIBSSH2_ERROR_CHANNEL_WINDOW_FULL"
+        case LIBSSH2_ERROR_KEYFILE_AUTH_FAILED: "LIBSSH2_ERROR_KEYFILE_AUTH_FAILED"
+        case LIBSSH2_ERROR_RANDGEN: "LIBSSH2_ERROR_RANDGEN"
+        case LIBSSH2_ERROR_MISSING_USERAUTH_BANNER: "LIBSSH2_ERROR_MISSING_USERAUTH_BANNER"
+        case LIBSSH2_ERROR_ALGO_UNSUPPORTED: "LIBSSH2_ERROR_ALGO_UNSUPPORTED"
+        default: "libssh2 error"
+        }
+    }
+
     private func mapSessionError(_ code: Int32) -> SSHError {
+        noteFailure(code)
         switch code {
         case LIBSSH2_ERROR_KEX_FAILURE,
             LIBSSH2_ERROR_METHOD_NONE,
@@ -4429,9 +4569,16 @@ actor SessionDriver {
     }
 
     private func normalize(_ error: any Error) -> SSHError {
-        if let error = error as? ChannelOpenAdmissionError { return error.underlying }
-        if let error = error as? SSHError { return error }
-        return .connectionFailed
+        let normalized: SSHError
+        if let error = error as? ChannelOpenAdmissionError {
+            normalized = error.underlying
+        } else if let error = error as? SSHError {
+            normalized = error
+        } else {
+            normalized = .connectionFailed
+        }
+        if normalized == .timedOut { noteTimedOutOnce() }
+        return normalized
     }
 
     /// The single verdict every `close*` teardown path takes on its own failure:

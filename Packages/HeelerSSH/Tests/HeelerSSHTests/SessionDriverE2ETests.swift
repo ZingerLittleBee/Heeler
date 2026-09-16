@@ -2716,7 +2716,12 @@ private struct SessionDriverTestEnvironment: Sendable {
     static let streamLocalSocketPath: String? =
         ProcessInfo.processInfo.environment["HEELER_SSH_E2E_STREAMLOCAL_SOCKET"]
 
+    /// Installed once per test process so a fixture-backed failure prints its
+    /// phase and libssh2 code into the xcodebuild log beside the test (#343).
+    private static let diagnosticsSink = SSHDiagnostics.addSink(SSHDiagnostics.printingSink())
+
     static let current: SessionDriverTestEnvironment? = {
+        _ = diagnosticsSink
         let environment = ProcessInfo.processInfo.environment
         guard
             let host = environment["HEELER_SSH_E2E_HOST"],
