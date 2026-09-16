@@ -785,29 +785,6 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func theInputRowNewLineInsertsWithoutSubmitting() async throws {
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
-        let window = try await Self.host(terminal)
-        defer { window.isHidden = true }
-        let control = TerminalKeyboardControl()
-        control.terminal = terminal
-
-        control.sendNewLine()
-        await Self.expectOutput(Data([0x0A]), received: { sent })
-
-        sent.removeAll()
-        terminal.setKeyboardMode(.controls)
-        control.sendNewLine()
-        await Self.expectOutput(Data([0x0A]), received: { sent })
-
-        terminal.setLocalInputEnabled(false)
-        control.sendNewLine()
-        await Self.expectOutput(Data([0x0A]), received: { sent })
-    }
-
-    @MainActor
     @Test func pasteControlAndHardwarePasteUseTheReviewedPasteCallback() {
         var pastes: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
@@ -931,7 +908,6 @@ struct TerminalAttachTests {
         let window = try await Self.host(terminal)
         defer { window.isHidden = true }
         terminal.setLocalInputEnabled(false)
-        terminal.sendNewLine()
         terminal.insertText("\n")
         terminal.terminalSession.waitForPendingOutput()
         await Task.yield()

@@ -122,7 +122,8 @@ struct ShellTerminalStoreTests {
         // which is present while the keyboard is down.
         let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
         #expect(labels.contains("More"))
-        #expect(labels.contains("Insert New Line"))
+        #expect(labels.contains("Paste"))
+        #expect(!labels.contains("Insert New Line"), "Shift+Enter lives on the Keys keyboard")
         // No Snippets or Skills on a shell terminal: its Keys dock offers the
         // full keyboard and Appearance alone.
         #expect(ShellTerminalKeysDock.tabs == [.controls, .appearance])

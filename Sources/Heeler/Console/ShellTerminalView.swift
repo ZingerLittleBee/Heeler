@@ -160,10 +160,6 @@ struct ShellTerminalView: View {
                         get: { keyboardMode },
                         set: { setKeyboardMode($0) }),
                     paste: { keyboardControl.paste($0) },
-                    insertNewLine: {
-                        UIDevice.current.playInputClick()
-                        keyboardControl.sendNewLine()
-                    },
                     more: ShellTerminalMoreMenu(
                         title: title,
                         backTitle: backTitle,
@@ -422,7 +418,6 @@ struct ShellTerminalMoreMenu: View {
 struct ShellTerminalInputRow: View {
     @Binding var mode: TerminalKeyboardMode
     let paste: (String) -> Void
-    let insertNewLine: () -> Void
     let more: ShellTerminalMoreMenu
     /// Matches the Composer chrome's small glyphs, or the row's icons read as
     /// borrowed from a different set.
@@ -461,17 +456,8 @@ struct ShellTerminalInputRow: View {
 
             Spacer(minLength: 4)
 
-            Button(action: insertNewLine) {
-                Image(systemName: "text.append")
-                    .font(.system(size: Self.glyphPointSize))
-                    .foregroundStyle(Color(uiColor: .label))
-                    .frame(
-                        width: InputChromeLayout.shellAccessoryButtonWidth,
-                        height: InputChromeLayout.shortcutRowHeight)
-            }
-            .accessibilityLabel("Insert New Line")
-            .accessibilityHint("Adds a line break without submitting")
-
+            // A line break without submitting (Shift+Enter) lives on the Keys
+            // keyboard; the row keeps only what Text mode cannot do itself.
             more
         }
         .padding(.horizontal, 8)

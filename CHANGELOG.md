@@ -27,7 +27,8 @@ Entries reference the issue that motivated them.
   the edge; each rests where it was left. (#333)
 - The Shell Terminal drops its title bar so output runs up to the status bar.
   Back and Close Terminal moved into the More menu on its input row, which now
-  stays visible while the keyboard is down. (#333)
+  stays visible while the keyboard is down. The row's Insert New Line button
+  is gone; Shift+Enter on the Keys keyboard sends the same line break. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 

@@ -198,11 +198,6 @@ extension HeelerTerminalView {
         return sendKey(press)
     }
 
-    func sendNewLine() {
-        guard isLocalInputEnabled else { return }
-        sendQuickKey(.shiftEnter)
-    }
-
     private static func keyPress(
         _ key: AgentQuickKey, modifiers: TerminalKeyModifiers
     ) -> TerminalKeyPress? {

@@ -135,10 +135,6 @@ final class TerminalKeyboardControl {
         terminal?.setKeyboardMode(mode)
     }
 
-    func sendNewLine() {
-        terminal?.sendNewLine()
-    }
-
     func paste(_ text: String) {
         terminal?.requestPaste(text)
     }
