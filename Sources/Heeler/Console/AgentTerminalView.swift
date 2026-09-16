@@ -1483,6 +1483,7 @@ struct AgentTerminalView: View {
             } label: {
                 Image(systemName: "link")
                     .font(.system(size: 15, weight: .semibold))
+                    .opacity(TerminalFloatingButtonStyle.iconOpacity)
             }
             .buttonStyle(TerminalFloatingButtonStyle(highlight: themePalette.foreground))
             .background {

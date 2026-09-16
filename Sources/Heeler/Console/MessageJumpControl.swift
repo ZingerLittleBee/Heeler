@@ -531,6 +531,7 @@ struct MessageJumpControlView: View {
                 } else {
                     Image(systemName: systemImage)
                         .font(.system(size: 15, weight: .semibold))
+                        .opacity(TerminalFloatingButtonStyle.iconOpacity)
                 }
             }
         }
@@ -547,6 +548,10 @@ struct MessageJumpControlView: View {
 /// stays inset so the pill's edge reads as one shape. There is no disabled
 /// look — a button that cannot act is hidden, not greyed.
 struct TerminalFloatingButtonStyle: ButtonStyle {
+    /// Glyphs on floating controls sit over live terminal output; muting
+    /// them keeps the controls findable without competing with the text.
+    static let iconOpacity: Double = 0.7
+
     let highlight: Color
 
     func makeBody(configuration: Configuration) -> some View {

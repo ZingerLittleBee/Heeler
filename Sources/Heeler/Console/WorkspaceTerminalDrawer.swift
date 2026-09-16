@@ -131,6 +131,7 @@ struct WorkspaceTerminalDrawer: View {
     private func handle(top: CGFloat, height: CGFloat) -> some View {
         Image(systemName: "chevron.left")
             .font(.system(size: 13, weight: .semibold))
+            .opacity(TerminalFloatingButtonStyle.iconOpacity)
             .frame(width: Self.handleSize.width, height: Self.handleSize.height)
             .background { surface }
             .frame(width: Self.handleHitWidth, alignment: .trailing)
