@@ -14,6 +14,11 @@ struct WorkspaceTerminalDrawer: View {
     let edgeDock: EdgeDockSettings
     var palette: TerminalThemePalette = .system
     let onSelect: (ConsoleTerminal) -> Void
+    /// Opens a fresh shell tab in the Workspace; nil hides the New Terminal
+    /// button (no launch directory to open it in).
+    var onNewTerminal: (() -> Void)? = nil
+    /// A creation in flight: the button shows progress and takes no hit.
+    var isCreatingTerminal = false
 
     static let handleSize = CGSize(width: TerminalEdgeTabBackground.width, height: 68)
     /// The handle's hit area reaches past its visible edge into the terminal.
@@ -21,6 +26,7 @@ struct WorkspaceTerminalDrawer: View {
     static let panelWidth: CGFloat = 248
     static let rowHeight: CGFloat = 44
     static let headerHeight: CGFloat = 36
+    static let footerHeight: CGFloat = 44
     static let visibleRowLimit = 6
     private static let rowSpacing: CGFloat = 2
     private static let panelBottomInset: CGFloat = 6
@@ -45,12 +51,14 @@ struct WorkspaceTerminalDrawer: View {
         }
     }
 
-    /// The panel's height for `count` terminals: header, up to six rows, and
-    /// the bottom inset. Pure so placement and the rendered frame agree.
-    static func panelHeight(count: Int) -> CGFloat {
+    /// The panel's height for `count` terminals: header, up to six rows, the
+    /// bottom inset, and the New Terminal footer when one is offered. Pure so
+    /// placement and the rendered frame agree.
+    static func panelHeight(count: Int, hasFooter: Bool = false) -> CGFloat {
         let rows = min(max(count, 1), visibleRowLimit)
         return headerHeight + CGFloat(rows) * rowHeight
             + CGFloat(rows - 1) * rowSpacing + panelBottomInset
+            + (hasFooter ? footerHeight : 0)
     }
 
     /// Where the handle's top edge rests inside `height`, from the remembered
@@ -97,7 +105,8 @@ struct WorkspaceTerminalDrawer: View {
                         .contentShape(.rect)
                         .onTapGesture { setExpanded(false) }
                         .accessibilityHidden(true)
-                    let panelHeight = Self.panelHeight(count: terminals.count)
+                    let panelHeight = Self.panelHeight(
+                        count: terminals.count, hasFooter: onNewTerminal != nil)
                     panel(height: panelHeight)
                         .offset(y: Self.panelTop(
                             handleTop: handleTop, panelHeight: panelHeight, height: height))
@@ -193,6 +202,9 @@ struct WorkspaceTerminalDrawer: View {
                 .padding(.bottom, Self.panelBottomInset)
             }
             .scrollBounceBehavior(.basedOnSize)
+            if let onNewTerminal {
+                newTerminalFooter(onNewTerminal)
+            }
         }
         .frame(width: Self.panelWidth, height: height)
         .background { surface }
@@ -239,6 +251,53 @@ struct WorkspaceTerminalDrawer: View {
         .accessibilityValue(item.displayTabTitle)
         .accessibilityHint(selected ? "" : item.displayCwd)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    /// Pinned below the scrolling rows so it is reachable however many
+    /// terminals the Workspace holds.
+    private func newTerminalFooter(_ onNewTerminal: @escaping () -> Void) -> some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(palette.foreground.opacity(0.14))
+                .frame(height: 1)
+                .padding(.horizontal, 10)
+            Button {
+                setExpanded(false)
+                onNewTerminal()
+            } label: {
+                HStack(spacing: 10) {
+                    Group {
+                        if isCreatingTerminal {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(palette.foreground)
+                        } else {
+                            Image(systemName: "plus")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                    }
+                    .frame(width: 18)
+                    .accessibilityHidden(true)
+                    Text("New Terminal")
+                        .font(.subheadline)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(.rect(cornerRadius: 9))
+            }
+            .buttonStyle(.plain)
+            .hoverEffect(.highlight)
+            .disabled(isCreatingTerminal)
+            .padding(.horizontal, 6)
+            .accessibilityLabel("New Terminal")
+            .accessibilityHint("Opens a new shell tab in this Workspace")
+        }
+        .frame(height: Self.footerHeight)
+        .padding(.bottom, Self.panelBottomInset)
+        // The footer sits inside the panel height; give back the inset the
+        // rows already paid for so the total still matches `panelHeight`.
+        .padding(.top, -Self.panelBottomInset)
     }
 
     /// The floating-control surface, squared off on the edge it is docked to.

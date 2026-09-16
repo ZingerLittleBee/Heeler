@@ -16,6 +16,8 @@ struct WorkspaceTerminalDetailView: View {
     @State private var failure: String?
     @State private var isClosing = false
     @State private var closeFailure: String?
+    @State private var isCreatingTerminal = false
+    @State private var createFailure: String?
     @State private var retryID = 0
 
     private var identity: ShellTerminalIdentity {
@@ -93,6 +95,13 @@ struct WorkspaceTerminalDetailView: View {
         } message: {
             Text(closeFailure ?? "")
         }
+        .alert("Couldn't Open Terminal", isPresented: Binding(
+            get: { createFailure != nil }, set: { if !$0 { createFailure = nil } })
+        ) {
+            Button("OK", role: .cancel) { createFailure = nil }
+        } message: {
+            Text(createFailure ?? "")
+        }
     }
 
     private var workspaceDrawer: WorkspaceTerminalDrawer? {
@@ -105,7 +114,38 @@ struct WorkspaceTerminalDetailView: View {
             onSelect: { target in
                 if let agentID = target.agentID { onSelectAgent(agentID) }
                 else if target.id != terminal.id { onSelectTerminal(target) }
-            })
+            },
+            onNewTerminal: creationRequest == nil ? nil : { createTerminal() },
+            isCreatingTerminal: isCreatingTerminal)
+    }
+
+    /// A new tab opens beside this one, in its directory. Like Agent
+    /// detail's Open Terminal, a pane without a usable directory offers no
+    /// New Terminal rather than letting herdr pick some other Pane's cwd.
+    private var creationRequest: ShellTerminalCreationRequest? {
+        let cwd = terminal.cwd
+        guard cwd.hasPrefix("/") else { return nil }
+        return ShellTerminalCreationRequest(workspaceID: terminal.workspaceID, cwd: cwd)
+    }
+
+    private func createTerminal() {
+        guard !isCreatingTerminal, let creationRequest else { return }
+        isCreatingTerminal = true
+        Task { @MainActor in
+            defer { isCreatingTerminal = false }
+            do {
+                let created = try await console.createShellTerminal(creationRequest, on: terminal.hostID)
+                guard let target = console.terminals.first(where: {
+                    $0.hostID == terminal.hostID && $0.terminalID == created.terminalID
+                }) else {
+                    createFailure = "The terminal was created, but its Workspace hasn't refreshed yet."
+                    return
+                }
+                onSelectTerminal(target)
+            } catch {
+                createFailure = AgentOpenTerminalStore.presentation(for: error).message
+            }
+        }
     }
 
     private struct LoadIdentity: Equatable {

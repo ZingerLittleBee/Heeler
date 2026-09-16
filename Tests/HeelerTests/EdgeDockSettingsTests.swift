@@ -70,6 +70,8 @@ struct EdgeDockSettingsTests {
         #expect(panel == expected)
         #expect(WorkspaceTerminalDrawer.panelHeight(count: 12)
                 == WorkspaceTerminalDrawer.panelHeight(count: 6), "Six rows show; the rest scroll")
+        #expect(WorkspaceTerminalDrawer.panelHeight(count: 3, hasFooter: true)
+                == panel + WorkspaceTerminalDrawer.footerHeight, "New Terminal adds one footer row")
         let height: CGFloat = 600
         let handleTop: CGFloat = 300
         let centred = WorkspaceTerminalDrawer.panelTop(

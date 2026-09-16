@@ -348,7 +348,10 @@ struct AgentDetailView: View {
                 } else {
                     onSelectTerminal(target)
                 }
-            })
+            },
+            onNewTerminal: agent.shellTerminalCreationRequest == nil
+                ? nil : { createWorkspaceTerminal(fresh: true) },
+            isCreatingTerminal: isResolvingTerminal)
     }
 
     private var workspaceShells: [ConsoleTerminal] {
@@ -366,8 +369,17 @@ struct AgentDetailView: View {
         }
     }
 
-    private func createWorkspaceTerminal() {
+    /// Open Terminal routes back to the tab this detail already created;
+    /// `fresh` (the drawer's New Terminal) asks for another one, unless the
+    /// last creation has not reached the inventory yet, in which case it is
+    /// still the retry path and must not create a duplicate.
+    private func createWorkspaceTerminal(fresh: Bool = false) {
         guard !isResolvingTerminal, let request = agent.shellTerminalCreationRequest else { return }
+        if fresh, let created = createdTerminal, console.terminals.contains(where: {
+            $0.hostID == agent.hostID && $0.terminalID == created.terminalID
+        }) {
+            createdTerminal = nil
+        }
         isResolvingTerminal = true
         Task { @MainActor in
             defer { isResolvingTerminal = false }

@@ -13,7 +13,8 @@ Entries reference the issue that motivated them.
   Console's Agents / Terminals switch. The terminal list groups by Host and
   Workspace and shows Tab titles, paths, and Agent markers. Loaded terminals
   retain their connections and screen state for five idle minutes, with a
-  shared limit of three per Host and least-recently-viewed idle eviction. (#333)
+  shared limit of three per Host and least-recently-viewed idle eviction. The
+  drawer's New Terminal button opens a fresh shell tab in the Workspace. (#333)
 
 - Choose an existing Workspace or New Workspace from the same dropdown in
   New Agent. New Workspace opens a remote directory browser. The latest directory stays at the

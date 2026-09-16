@@ -44,12 +44,14 @@ struct WorkspaceTerminalPresentationTests {
         // materialize SwiftUI AX elements without an assistive client.
         guard #available(iOS 27, *) else { return }
         var selected: [ConsoleTerminal.ID] = []
+        var newTerminalRequests = 0
         let terminals = Self.terminals()
         let controller = UIHostingController(rootView:
             WorkspaceTerminalDrawer(
                 terminals: terminals, selectedPaneID: "agent",
                 edgeDock: EdgeDockSettings(defaults: try #require(UserDefaults(suiteName: "WorkspaceTerminalPresentationTests.routing"))),
-                onSelect: { selected.append($0.id) }))
+                onSelect: { selected.append($0.id) },
+                onNewTerminal: { newTerminalRequests += 1 }))
         controller.safeAreaRegions = []
         let width: CGFloat = 320
         let window = try await makeTestWindow(
@@ -93,9 +95,21 @@ struct WorkspaceTerminalPresentationTests {
         }
         #expect(frames[0].minY < frames[1].minY)
         #expect(frames[1].minY < frames[2].minY, "Rows run top to bottom in Tab order")
+        // New Terminal is pinned below the rows.
+        let newTerminal = try await accessible("New Terminal", in: controller.view)
+        #expect(Self.frame(of: newTerminal, in: controller.view).minY >= frames[2].maxY)
 
         #expect(otherTab.accessibilityActivate())
         #expect(selected == [terminals[0].id])
+        #expect(newTerminalRequests == 0)
+
+        // Re-open and ask for a fresh tab: the panel collapses and the caller
+        // gets exactly one request.
+        #expect(handle.accessibilityActivate())
+        let reopened = try await accessible("New Terminal", in: controller.view)
+        #expect(reopened.accessibilityActivate())
+        #expect(newTerminalRequests == 1)
+        #expect(selected == [terminals[0].id], "New Terminal is not a selection")
     }
 
     @Test(arguments: [320.0, 402.0])
