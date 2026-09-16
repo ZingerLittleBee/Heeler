@@ -174,7 +174,9 @@ terminal pane view
 **Workspace Terminal**:
 A Pane listed with its Host, Workspace, Tab title and current directory.
 Includes Agent panes, which open Agent detail, and ordinary panes, which open
-Shell Terminal. The detail drawer includes every Tab in the current Workspace;
+Shell Terminal. The detail drawer includes every Tab in the current Workspace,
+and its handle, like the message-jump buttons, is long-pressed to slide it
+along the terminal's edge and rests where it was left;
 the Console's Terminals view groups the same inventory by Host and Workspace.
 Discovery is independent of loading: only selecting a terminal opens its PTY.
 _Avoid_: SSH session, tab (a Tab can contain several Workspace Terminals)

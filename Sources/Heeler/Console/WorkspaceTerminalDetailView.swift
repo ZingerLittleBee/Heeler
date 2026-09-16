@@ -101,6 +101,7 @@ struct WorkspaceTerminalDetailView: View {
         return WorkspaceTerminalDrawer(
             terminals: terminals,
             selectedPaneID: terminal.paneID,
+            edgeDock: settings.edgeDock,
             onSelect: { target in
                 if let agentID = target.agentID { onSelectAgent(agentID) }
                 else if target.id != terminal.id { onSelectTerminal(target) }

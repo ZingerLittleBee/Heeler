@@ -5,9 +5,13 @@ import SwiftUI
 /// a panel listing the Workspace's terminals. The rail and strip it replaced
 /// both took space from the output the user came to read; a system menu hid
 /// the list behind a popup that never felt attached to the edge.
+///
+/// The handle rests where the user last left it: a long press lifts it and
+/// the drag that follows slides it along the edge (``EdgeDockLift``).
 struct WorkspaceTerminalDrawer: View {
     let terminals: [ConsoleTerminal]
     let selectedPaneID: String
+    let edgeDock: EdgeDockSettings
     var palette: TerminalThemePalette = .system
     let onSelect: (ConsoleTerminal) -> Void
 
@@ -16,9 +20,17 @@ struct WorkspaceTerminalDrawer: View {
     static let handleHitWidth: CGFloat = 44
     static let panelWidth: CGFloat = 248
     static let rowHeight: CGFloat = 44
+    static let headerHeight: CGFloat = 36
+    static let visibleRowLimit = 6
+    private static let rowSpacing: CGFloat = 2
+    private static let panelBottomInset: CGFloat = 6
     private static let cornerRadius: CGFloat = 14
+    /// One accessibility nudge moves the handle by its own height.
+    private static let nudge: CGFloat = 68
 
     @State private var isExpanded = false
+    @State private var isLifted = false
+    @State private var liftTravel: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Tab order, then Pane order within the Tab: the same order the Console's
@@ -34,6 +46,37 @@ struct WorkspaceTerminalDrawer: View {
         }
     }
 
+    /// The panel's height for `count` terminals: header, up to six rows, and
+    /// the bottom inset. Pure so placement and the rendered frame agree.
+    static func panelHeight(count: Int) -> CGFloat {
+        let rows = min(max(count, 1), visibleRowLimit)
+        return headerHeight + CGFloat(rows) * rowHeight
+            + CGFloat(rows - 1) * rowSpacing + panelBottomInset
+    }
+
+    /// Where the handle's top edge rests inside `height`, from the remembered
+    /// fraction plus any lift in progress, clamped to the edge.
+    static func handleTop(
+        fraction: CGFloat, liftTravel: CGFloat, height: CGFloat
+    ) -> CGFloat {
+        let travel = max(0, height - handleSize.height)
+        return min(max(fraction * travel + liftTravel, 0), travel)
+    }
+
+    /// The fraction a handle dropped at `top` should remember.
+    static func fraction(handleTop top: CGFloat, height: CGFloat) -> CGFloat {
+        let travel = max(0, height - handleSize.height)
+        guard travel > 0 else { return 0 }
+        return top / travel
+    }
+
+    /// The open panel centres on the handle it grew from, held inside the
+    /// terminal so no row lands off screen.
+    static func panelTop(handleTop: CGFloat, panelHeight: CGFloat, height: CGFloat) -> CGFloat {
+        let centred = handleTop + handleSize.height / 2 - panelHeight / 2
+        return min(max(centred, 0), max(0, height - panelHeight))
+    }
+
     /// The surface's own theme colours, like every other floating control.
     func palette(_ palette: TerminalThemePalette) -> Self {
         var copy = self
@@ -42,22 +85,32 @@ struct WorkspaceTerminalDrawer: View {
     }
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            if isExpanded {
-                // A tap anywhere else closes the panel instead of reaching
-                // the terminal underneath it.
-                Color.clear
-                    .contentShape(.rect)
-                    .onTapGesture { setExpanded(false) }
-                    .accessibilityHidden(true)
-                panel
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            } else {
-                handle
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+        GeometryReader { geometry in
+            let height = geometry.size.height
+            let handleTop = Self.handleTop(
+                fraction: edgeDock.fraction(for: .workspaceDrawer),
+                liftTravel: liftTravel, height: height)
+            ZStack(alignment: .topTrailing) {
+                if isExpanded {
+                    // A tap anywhere else closes the panel instead of reaching
+                    // the terminal underneath it.
+                    Color.clear
+                        .contentShape(.rect)
+                        .onTapGesture { setExpanded(false) }
+                        .accessibilityHidden(true)
+                    let panelHeight = Self.panelHeight(count: terminals.count)
+                    panel(height: panelHeight)
+                        .offset(y: Self.panelTop(
+                            handleTop: handleTop, panelHeight: panelHeight, height: height))
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                } else {
+                    handle(top: handleTop, height: height)
+                        .offset(y: handleTop)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         .foregroundStyle(palette.foreground)
         .onChange(of: selectedPaneID) { _, _ in
             if isExpanded { setExpanded(false) }
@@ -70,25 +123,46 @@ struct WorkspaceTerminalDrawer: View {
         }
     }
 
-    private var handle: some View {
-        Button {
-            setExpanded(true)
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: Self.handleSize.width, height: Self.handleSize.height)
-                .background { surface }
-                .frame(width: Self.handleHitWidth, alignment: .trailing)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        .accessibilityLabel("Workspace terminals")
-        .accessibilityValue("\(terminals.count) terminals")
-        .accessibilityHint("Shows the terminals in this Workspace")
+    private func dock(handleTop top: CGFloat, height: CGFloat) {
+        edgeDock.setFraction(Self.fraction(handleTop: top, height: height), for: .workspaceDrawer)
+        liftTravel = 0
     }
 
-    private var panel: some View {
+    private func handle(top: CGFloat, height: CGFloat) -> some View {
+        Image(systemName: "chevron.left")
+            .font(.system(size: 13, weight: .semibold))
+            .frame(width: Self.handleSize.width, height: Self.handleSize.height)
+            .background { surface }
+            .frame(width: Self.handleHitWidth, alignment: .trailing)
+            .contentShape(.rect)
+            .onTapGesture {
+                guard !isLifted else { return }
+                setExpanded(true)
+            }
+            .edgeDockLift(
+                isLifted: $isLifted,
+                onMove: { liftTravel = $0 },
+                onDrop: { travel in
+                    dock(handleTop: Self.handleTop(
+                        fraction: edgeDock.fraction(for: .workspaceDrawer),
+                        liftTravel: travel, height: height), height: height)
+                })
+            .hoverEffect(.highlight)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("Workspace terminals")
+            .accessibilityValue("\(terminals.count) terminals")
+            .accessibilityHint("Shows the terminals in this Workspace")
+            .accessibilityAction { setExpanded(true) }
+            .accessibilityAction(named: "Move up") {
+                dock(handleTop: top - Self.nudge, height: height)
+            }
+            .accessibilityAction(named: "Move down") {
+                dock(handleTop: top + Self.nudge, height: height)
+            }
+    }
+
+    private func panel(height: CGFloat) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Text("Workspace")
@@ -108,21 +182,19 @@ struct WorkspaceTerminalDrawer: View {
             }
             .padding(.leading, 14)
             .padding(.trailing, 4)
-            .frame(height: 36)
+            .frame(height: Self.headerHeight)
             ScrollView(.vertical) {
-                VStack(spacing: 2) {
+                VStack(spacing: Self.rowSpacing) {
                     ForEach(orderedTerminals) { item in
                         row(item)
                     }
                 }
                 .padding(.horizontal, 6)
-                .padding(.bottom, 6)
+                .padding(.bottom, Self.panelBottomInset)
             }
             .scrollBounceBehavior(.basedOnSize)
-            .frame(maxHeight: Self.rowHeight * 6 + 6)
         }
-        .frame(width: Self.panelWidth)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: Self.panelWidth, height: height)
         .background { surface }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workspace terminals")

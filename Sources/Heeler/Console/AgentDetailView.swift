@@ -338,6 +338,7 @@ struct AgentDetailView: View {
         return WorkspaceTerminalDrawer(
             terminals: terminals,
             selectedPaneID: openTerminal.shell?.identity.paneID ?? agent.agent.paneID,
+            edgeDock: terminal.edgeDock,
             onSelect: { target in
                 if let agentID = target.agentID {
                     if agentID != agent.id { onSwitch(agentID) }

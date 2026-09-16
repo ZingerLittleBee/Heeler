@@ -1506,8 +1506,10 @@ struct AgentTerminalView: View {
             palette: themePalette,
             minimumBottomInset: isDirectInput && !attach.attachLinks.isEmpty
                 ? MessageJumpControlView.buttonSize + 16 : 0,
+            edgeFraction: terminal.edgeDock.fraction(for: .messageJump),
             onOlder: { jumpToOlderMessage() },
-            onNewer: { jumpToNewerMessageOrLive() })
+            onNewer: { jumpToNewerMessageOrLive() },
+            onDock: { terminal.edgeDock.setFraction($0, for: .messageJump) })
         // Hit-test only while enabled. The in-flight spinner must not eat
         // terminal drags. Placement and pass-through live in
         // MessageJumpChromeContainer.

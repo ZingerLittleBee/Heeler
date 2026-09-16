@@ -29,6 +29,7 @@ final class HeelerAppModel {
     let terminalThemes: TerminalThemeSettings
     let terminalZoom: TerminalZoomSettings
     let terminalFonts: TerminalFontSettings
+    let terminalEdgeDock: EdgeDockSettings
     let snippets: SnippetStore
     let appearance: AppAppearanceSettings
     let inputMode: AgentInputModeSettings
@@ -61,6 +62,7 @@ final class HeelerAppModel {
         terminalThemes = TerminalThemeSettings()
         terminalZoom = TerminalZoomSettings()
         terminalFonts = TerminalFontSettings()
+        terminalEdgeDock = EdgeDockSettings()
         snippets = SnippetStore()
         appearance = AppAppearanceSettings()
         inputMode = AgentInputModeSettings()
@@ -111,7 +113,7 @@ final class HeelerAppModel {
     var terminal: TerminalSettings {
         TerminalSettings(
             themes: terminalThemes, zoom: terminalZoom, fonts: terminalFonts,
-            snippets: snippets)
+            snippets: snippets, edgeDock: terminalEdgeDock)
     }
 
     /// Starts the app-wide work exactly once, however many windows ask. Every

@@ -36,6 +36,47 @@ struct MessageJumpControlTests {
             minimumBottomInset: MessageJumpControlView.buttonSize + 16) == nil)
     }
 
+    /// The user can slide the chrome along the edge; 1 is the position it
+    /// always had, 0 the terminal's top, and the band still bounds it.
+    @Test func placementFrameSlidesAlongTheEdge() throws {
+        let terminalSize = CGSize(width: 390, height: 400)
+        let chromeSize = CGSize(width: 44, height: 89)
+        let lowest = try #require(MessageJumpPlacement.frame(
+            terminalSize: terminalSize, chromeSize: chromeSize))
+        let docked = try #require(MessageJumpPlacement.frame(
+            terminalSize: terminalSize, chromeSize: chromeSize, edgeFraction: 1))
+        #expect(docked == lowest)
+        let top = try #require(MessageJumpPlacement.frame(
+            terminalSize: terminalSize, chromeSize: chromeSize, edgeFraction: 0))
+        #expect(top.minY == 0)
+        #expect(top.minX == lowest.minX)
+        let halfway = try #require(MessageJumpPlacement.frame(
+            terminalSize: terminalSize, chromeSize: chromeSize, edgeFraction: 0.5))
+        #expect(halfway.minY == lowest.minY / 2)
+        #expect(MessageJumpPlacement.edgeTravel(
+            terminalHeight: terminalSize.height, chromeHeight: chromeSize.height) == lowest.minY)
+        let overshoot = try #require(MessageJumpPlacement.frame(
+            terminalSize: terminalSize, chromeSize: chromeSize, edgeFraction: 3))
+        #expect(overshoot == lowest, "A fraction past the band is the band")
+    }
+
+    @MainActor
+    @Test func containerLaysOutAtItsEdgeFraction() throws {
+        let container = MessageJumpChromeContainer(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 400))
+        let host = MessageJumpSizedHost()
+        host.fixedSize = CGSize(width: 44, height: 72)
+        container.embed(host)
+        container.layoutIfNeeded()
+        let lowest = try #require(container.hostedFrame)
+        #expect(container.edgeTravel == lowest.minY)
+        container.edgeFraction = 0
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(container.hostedFrame?.minY == 0)
+        #expect(container.hostedFrame?.minX == lowest.minX)
+    }
+
     @Test func availabilityRequiresAlternateScreen() {
         #expect(
             MessageJumpControlAvailability.evaluate(

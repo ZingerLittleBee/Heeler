@@ -21,6 +21,8 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Long-press the Workspace drawer handle or the message-jump buttons to slide
+  them along the terminal's edge; each rests where it was left. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 

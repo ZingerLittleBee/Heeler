@@ -13,6 +13,32 @@ struct WorkspaceTerminalPresentationTests {
                 "Tab order, then Pane order, whatever the snapshot order")
     }
 
+    @Test(arguments: [0.0, 1.0])
+    func drawerHandleRestsWhereItWasLastDocked(fraction: Double) async throws {
+        guard #available(iOS 27, *) else { return }
+        let suite = "WorkspaceTerminalPresentationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let edgeDock = EdgeDockSettings(defaults: defaults)
+        edgeDock.setFraction(fraction, for: .workspaceDrawer)
+        let height: CGFloat = 640
+        let controller = UIHostingController(rootView:
+            WorkspaceTerminalDrawer(
+                terminals: Self.terminals(), selectedPaneID: "agent",
+                edgeDock: edgeDock, onSelect: { _ in }))
+        controller.safeAreaRegions = []
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 320, height: height), rootViewController: controller)
+        defer { window.isHidden = true }
+        let handle = try await accessible("Workspace terminals", in: controller.view)
+        let frame = Self.frame(of: handle, in: controller.view)
+        if fraction == 0 {
+            #expect(frame.minY == 0, "Docked at the top: \(frame)")
+        } else {
+            #expect(frame.maxY == height, "Docked at the bottom: \(frame)")
+        }
+    }
+
     @Test func drawerRestsAsOneEdgeHandleAndExpandsToRouteTerminals() async throws {
         // Existing hosting tests use this boundary: older runtimes do not
         // materialize SwiftUI AX elements without an assistive client.
@@ -22,6 +48,7 @@ struct WorkspaceTerminalPresentationTests {
         let controller = UIHostingController(rootView:
             WorkspaceTerminalDrawer(
                 terminals: terminals, selectedPaneID: "agent",
+                edgeDock: EdgeDockSettings(defaults: try #require(UserDefaults(suiteName: "WorkspaceTerminalPresentationTests.routing"))),
                 onSelect: { selected.append($0.id) }))
         controller.safeAreaRegions = []
         let width: CGFloat = 320
