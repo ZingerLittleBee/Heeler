@@ -191,6 +191,9 @@ struct AgentTerminalView: View {
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
     private let retainedSurface: TerminalSurfaceRetention?
     private let onRetainDeparture: (() -> Void)?
+    /// Floating Workspace navigation; nil where the detail cannot route to
+    /// other terminals.
+    private let workspaceMenu: WorkspaceTerminalMenu?
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
@@ -281,6 +284,7 @@ struct AgentTerminalView: View {
         attachStore: AgentAttachStore? = nil,
         retainedSurface: TerminalSurfaceRetention? = nil,
         onRetainDeparture: (() -> Void)? = nil,
+        workspaceMenu: WorkspaceTerminalMenu? = nil,
         interactionProbe: AgentTerminalInteractionProbe? = nil
     ) {
         self.agent = agent
@@ -304,6 +308,7 @@ struct AgentTerminalView: View {
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
         self.retainedSurface = retainedSurface
         self.onRetainDeparture = onRetainDeparture
+        self.workspaceMenu = workspaceMenu
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -899,7 +904,7 @@ struct AgentTerminalView: View {
             messageJumpChrome
         }
         .overlay(alignment: .bottomTrailing) {
-            attachLinksChrome
+            floatingActions
         }
         .overlay { statusOverlay }
         // Keep the edge gesture below the input chrome and tools dock so
@@ -1463,6 +1468,34 @@ struct AgentTerminalView: View {
     }
 
     @ViewBuilder
+    private var showsAttachLinksButton: Bool {
+        isDirectInput && AgentComposerLinkPresentation(count: attach.attachLinks.count) != nil
+    }
+
+    /// Floating buttons stacked at the terminal's trailing bottom corner:
+    /// Workspace navigation nearest the edge, Attach Links above it.
+    private var floatingActionCount: Int {
+        (showsAttachLinksButton ? 1 : 0) + (workspaceMenu == nil ? 0 : 1)
+    }
+
+    /// Height the jump chrome keeps clear of the stacked floating buttons.
+    static func floatingActionsInset(count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return CGFloat(count) * (MessageJumpControlView.buttonSize + 8) + 8
+    }
+
+    private var floatingActions: some View {
+        VStack(spacing: 8) {
+            attachLinksChrome
+            if let workspaceMenu {
+                workspaceMenu.palette(themePalette)
+            }
+        }
+        .padding(.trailing, MessageJumpPlacement.trailingPadding)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
     private var attachLinksChrome: some View {
         if isDirectInput,
            let links = AgentComposerLinkPresentation(count: attach.attachLinks.count)
@@ -1482,8 +1515,6 @@ struct AgentTerminalView: View {
             .accessibilityLabel("Attach Links")
             .accessibilityValue(links.accessibilityValue)
             .modifier(attachLinksPopover(from: .floatingButton))
-            .padding(.trailing, MessageJumpPlacement.trailingPadding)
-            .padding(.bottom, 8)
         }
     }
 
@@ -1493,8 +1524,7 @@ struct AgentTerminalView: View {
             availability: messageJumpAvailability,
             runningDirection: messageJump.runningDirection,
             palette: themePalette,
-            minimumBottomInset: isDirectInput && !attach.attachLinks.isEmpty
-                ? MessageJumpControlView.buttonSize + 16 : 0,
+            minimumBottomInset: Self.floatingActionsInset(count: floatingActionCount),
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() })
         // Hit-test only while enabled. The in-flight spinner must not eat

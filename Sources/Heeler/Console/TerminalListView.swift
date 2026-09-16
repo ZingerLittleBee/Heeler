@@ -146,7 +146,7 @@ struct TerminalListView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Label(tabTitle(terminal), systemImage: "rectangle.topthird.inset.filled")
+            Label(terminal.displayTabTitle, systemImage: "rectangle.topthird.inset.filled")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -158,12 +158,6 @@ struct TerminalListView: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-    }
-
-    private func tabTitle(_ terminal: ConsoleTerminal) -> String {
-        let label = terminal.tabLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let label, !label.isEmpty { return label }
-        return terminal.tabPosition.map { "Tab \($0)" } ?? "Tab \(terminal.tabID)"
     }
 
     @ViewBuilder

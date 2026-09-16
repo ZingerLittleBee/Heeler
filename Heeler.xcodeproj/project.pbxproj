@@ -47,6 +47,7 @@
 		172661D829E18F72C75B4F13 /* NotificationKeyMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */; };
 		179292D9C3E605BC46282FE0 /* ComposerAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4616CECA2722086A6B8B490 /* ComposerAttachmentTests.swift */; };
 		17F313D8AE9647F8F5D4DBFD /* AgentAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F8ED10B8A8A33D307789E6 /* AgentAttachStore.swift */; };
+		180EDD3FC1D75A77E9DCC951 /* WorkspaceTerminalMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = E568CBF82933DEB69DCF13AF /* WorkspaceTerminalMenu.swift */; };
 		18266687C19C47984496DD47 /* HostLiveActivityCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A7DD50C003CDD7220D86CE /* HostLiveActivityCoordinatorTests.swift */; };
 		1A160820CAA7EC1D8F987602 /* AgentWindowDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996FEB63446D29BFF498378F /* AgentWindowDrag.swift */; };
 		1AD6824BFB55CB50607AD702 /* FakeTransportConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 696C6905D9D6EEFF77A64E2E /* FakeTransportConnector.swift */; };
@@ -219,7 +220,6 @@
 		8021380654A6B6A28447C108 /* TerminalTouchScroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 578B695DF80C644E2D62060C /* TerminalTouchScroll.swift */; };
 		804C5B2318FD3F57703BA226 /* AgentStatusPaletteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B853441AF972F5F05ADA67 /* AgentStatusPaletteTests.swift */; };
 		80E28FB88E27A5A8FA516BAA /* IBMPlexMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 48F025CF6E2C3068BF911290 /* IBMPlexMono-Regular.ttf */; };
-		81BC0AD09A24721C8C56E801 /* WorkspaceTerminalRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFC8C18DBD3A4055C3EDAA03 /* WorkspaceTerminalRail.swift */; };
 		81C8DD4AB0B96F366DDDA096 /* ConsoleTerminalInventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67C65FCE91D863F4028B886 /* ConsoleTerminalInventoryTests.swift */; };
 		81E0207D8AA28513FEA755B0 /* SkillsPaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9156B9BB51E7A5AD1792D9 /* SkillsPaneStore.swift */; };
 		81F92E9FF8783F2B473DAE5A /* HostTelemetryPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2FDB99BA76C2379B0590B3B /* HostTelemetryPresentationTests.swift */; };
@@ -762,7 +762,6 @@
 		BEE35062339F9D6B0A9E684B /* PushRegistrationStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationStoreTests.swift; sourceTree = "<group>"; };
 		BEFE51A74497E9691DBD8D7D /* DemoScreenshotModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoScreenshotModeTests.swift; sourceTree = "<group>"; };
 		BFB68C31A4C8A5EE1BAE32EC /* SkillContentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillContentSheet.swift; sourceTree = "<group>"; };
-		BFC8C18DBD3A4055C3EDAA03 /* WorkspaceTerminalRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceTerminalRail.swift; sourceTree = "<group>"; };
 		BFF345ABEDF3CCB4D5748354 /* ConsoleSplitPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleSplitPresentationTests.swift; sourceTree = "<group>"; };
 		C0EAAEDF57252FEA74A93C6A /* TerminalListPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalListPresentationTests.swift; sourceTree = "<group>"; };
 		C14F97CFBEFA6F0C866CACEF /* TerminalRetentionBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalRetentionBudgetTests.swift; sourceTree = "<group>"; };
@@ -825,6 +824,7 @@
 		E24C0B60FDE0AD3D3ABD13E4 /* AgentListFieldsAddFieldSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListFieldsAddFieldSheet.swift; sourceTree = "<group>"; };
 		E48CA996470393ED037D0364 /* AgentRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRoute.swift; sourceTree = "<group>"; };
 		E4F4EF125BAB77F0DE121AAB /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
+		E568CBF82933DEB69DCF13AF /* WorkspaceTerminalMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceTerminalMenu.swift; sourceTree = "<group>"; };
 		E70C49925D454207F859F897 /* HeelerSSHHostKeyPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHHostKeyPolicyTests.swift; sourceTree = "<group>"; };
 		E75D3D1E1411C63AE7360D30 /* SidebarConsoleIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarConsoleIntegrationTests.swift; sourceTree = "<group>"; };
 		E7F93F9925E94FF2C2B0254B /* AgentDirectInputChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDirectInputChrome.swift; sourceTree = "<group>"; };
@@ -1263,7 +1263,7 @@
 				8ED55B6D7C29BC534BC116FE /* TerminalRetentionBudget.swift */,
 				0DAC3DCDEF81B14A2019DDBE /* TerminalStatusDialog.swift */,
 				39AB9600ADA84D3C0E461B8C /* WorkspaceTerminalDetailView.swift */,
-				BFC8C18DBD3A4055C3EDAA03 /* WorkspaceTerminalRail.swift */,
+				E568CBF82933DEB69DCF13AF /* WorkspaceTerminalMenu.swift */,
 				0123607D5AA9F2DD3E26902A /* WorktreeDetailStore.swift */,
 				669A53C020B39F9DFAFE005E /* WorktreeDetailView.swift */,
 				D71AF3340B0AA8C5F33EF4B7 /* WorktreeRemoval.swift */,
@@ -1673,8 +1673,8 @@
 			targets = (
 				081A3B29EFF2C7B2FCAA3248 /* Heeler */,
 				DFFB82C74B73FA5CBCE6D5D2 /* HeelerNotificationService */,
-				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
 				9806EA6C63028F1217417282 /* HeelerTests */,
+				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -1935,7 +1935,7 @@
 				C3E13DBE94672B9C0C3E0DF1 /* WindowInteractionRecognizer.swift in Sources */,
 				FCD98A152DD66F79CA9E1D91 /* WindowReader.swift in Sources */,
 				4B96E8FA101EACD53D343F25 /* WorkspaceTerminalDetailView.swift in Sources */,
-				81BC0AD09A24721C8C56E801 /* WorkspaceTerminalRail.swift in Sources */,
+				180EDD3FC1D75A77E9DCC951 /* WorkspaceTerminalMenu.swift in Sources */,
 				6DF161C3190C2D5DD0204839 /* WorktreeDetailStore.swift in Sources */,
 				9AA26D72B34CCF2E34C8C675 /* WorktreeDetailView.swift in Sources */,
 				459B7EF40BBAF37071D7539C /* WorktreeRemoval.swift in Sources */,

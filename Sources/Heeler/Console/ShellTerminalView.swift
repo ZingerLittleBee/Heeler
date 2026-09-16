@@ -24,6 +24,8 @@ struct ShellTerminalView: View {
     var surfaceRetention: TerminalSurfaceRetention?
     var title = "Terminal"
     var backTitle = "Back to Agent"
+    /// Floating Workspace navigation; nil on surfaces with nowhere to route.
+    var workspaceMenu: WorkspaceTerminalMenu?
     let onBack: @MainActor () async -> Void
 
     @State private var keyboardControl = TerminalKeyboardControl()
@@ -127,6 +129,13 @@ struct ShellTerminalView: View {
     var body: some View {
         terminalScreen
             .id(store.terminalID)
+            .overlay(alignment: .bottomTrailing) {
+                if let workspaceMenu {
+                    workspaceMenu.palette(themePalette)
+                        .padding(.trailing, MessageJumpPlacement.trailingPadding)
+                        .padding(.bottom, 8)
+                }
+            }
             .overlay { statusOverlay }
             // The input row and controls dock must stay above the edge
             // gesture's hit region, including their leftmost buttons.

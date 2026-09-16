@@ -9,7 +9,7 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Browse all Workspace terminals from Agent detail's right-side labels or the
+- Browse all Workspace terminals from Agent detail's floating Workspace menu or the
   Console's Agents / Terminals switch. The terminal list groups by Host and
   Workspace and shows Tab titles, paths, and Agent markers. Loaded terminals
   retain their connections and screen state for five idle minutes, with a

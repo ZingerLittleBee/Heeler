@@ -213,7 +213,8 @@ struct AgentDetailView: View {
                     activity: activity,
                     isReturning: openTerminal.isReturning,
                     isClosingTerminal: openTerminal.isClosingTerminal,
-                    onCloseTerminal: { openTerminal.closeTerminal() }
+                    onCloseTerminal: { openTerminal.closeTerminal() },
+                    workspaceMenu: workspaceMenu
                 ) {
                     await openTerminal.returnToAgent()
                 }
@@ -246,26 +247,9 @@ struct AgentDetailView: View {
                     retainedSurface: retainedAgent?.surfaceRetention,
                     onRetainDeparture: retainedAgent.map { entry in
                         { console.agentTerminals.release(entry, ownerID: retentionOwnerID) }
-                    })
+                    },
+                    workspaceMenu: workspaceMenu)
                 .id(ObjectIdentifier(attach))
-            }
-        }
-        .safeAreaInset(edge: .trailing, spacing: 0) {
-            if let onSelectTerminal {
-                WorkspaceTerminalRail(
-                    terminals: console.terminals(on: agent.hostID, workspaceID: agent.agent.workspaceID),
-                    selectedPaneID: openTerminal.shell?.identity.paneID ?? agent.agent.paneID,
-                    currentTabID: openTerminal.shell?.identity.tabID ?? agent.agent.tabID,
-                    onSelect: { target in
-                        if let agentID = target.agentID {
-                            if agentID != agent.id { onSwitch(agentID) }
-                            else if openTerminal.shell != nil {
-                                Task { await openTerminal.returnToAgent() }
-                            }
-                        } else {
-                            onSelectTerminal(target)
-                        }
-                    })
             }
         }
         .onAppear {
@@ -343,6 +327,27 @@ struct AgentDetailView: View {
             agentID: agent.id,
             isPresenting: openTerminal.failure != nil || openTerminal.closeFailureMessage != nil
                 || terminalOpenFailure != nil || isChoosingTerminal))
+    }
+
+    /// Nil outside a Console that can select terminals (a scene root), and
+    /// while the Workspace has nothing to switch to.
+    private var workspaceMenu: WorkspaceTerminalMenu? {
+        guard let onSelectTerminal else { return nil }
+        let terminals = console.terminals(on: agent.hostID, workspaceID: agent.agent.workspaceID)
+        guard !terminals.isEmpty else { return nil }
+        return WorkspaceTerminalMenu(
+            terminals: terminals,
+            selectedPaneID: openTerminal.shell?.identity.paneID ?? agent.agent.paneID,
+            onSelect: { target in
+                if let agentID = target.agentID {
+                    if agentID != agent.id { onSwitch(agentID) }
+                    else if openTerminal.shell != nil {
+                        Task { await openTerminal.returnToAgent() }
+                    }
+                } else {
+                    onSelectTerminal(target)
+                }
+            })
     }
 
     private var workspaceShells: [ConsoleTerminal] {

@@ -8,56 +8,39 @@ import UIKit
 @MainActor
 @Suite("Workspace terminal presentation", .serialized, .timeLimit(.minutes(1)))
 struct WorkspaceTerminalPresentationTests {
-    @Test(arguments: [false, true])
-    func railFitsBesideTerminalWithoutClaimingTheViewport(regular: Bool) async throws {
-        let width: CGFloat = regular ? 768 : 320
-        let railWidth: CGFloat = regular ? 112 : 76
-        let rail = WorkspaceTerminalRail(
-            terminals: Self.terminals(), selectedPaneID: "agent", currentTabID: "tab-one",
-            onSelect: { _ in })
-            .environment(\.horizontalSizeClass, regular ? .regular : .compact)
-        let controller = UIHostingController(rootView: rail)
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: width, height: 640), rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        let measured = controller.sizeThatFits(in: CGSize(width: width, height: 640))
-        #expect(measured.width == railWidth)
-        #expect(width - measured.width >= 244)
-        #expect(measured.height <= 640)
+    @Test func menuListsTabOrderAndRoutesOnlyToAnotherPane() {
+        let terminals = Self.terminals()
+        #expect(WorkspaceTerminalMenu.ordered(terminals).map(\.paneID) == ["agent", "server", "tests"],
+                "Tab order, then Pane order, whatever the snapshot order")
+        #expect(WorkspaceTerminalMenu.destination(
+            forPaneID: "agent", in: terminals, selectedPaneID: "agent") == nil,
+            "Picking the open terminal is not a switch")
+        #expect(WorkspaceTerminalMenu.destination(
+            forPaneID: "tests", in: terminals, selectedPaneID: "agent")?.paneID == "tests")
+        #expect(WorkspaceTerminalMenu.destination(
+            forPaneID: "gone", in: terminals, selectedPaneID: "agent") == nil)
     }
 
-    @Test func railMarksSelectionAndRoutesAgentAndShellButtons() async throws {
+    @Test func menuIsOneFloatingButtonOverTheTerminal() async throws {
         // Existing hosting tests use this boundary: older runtimes do not
         // materialize SwiftUI AX elements without an assistive client.
         guard #available(iOS 27, *) else { return }
-        var selected: [ConsoleTerminal.ID] = []
-        let terminals = Self.terminals()
         let controller = UIHostingController(rootView:
-            WorkspaceTerminalRail(
-                terminals: terminals, selectedPaneID: "agent", currentTabID: "tab-one",
-                onSelect: { selected.append($0.id) })
-                .environment(\.horizontalSizeClass, .compact))
+            WorkspaceTerminalMenu(
+                terminals: Self.terminals(), selectedPaneID: "agent", onSelect: { _ in }))
+        controller.safeAreaRegions = []
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 320, height: 640), rootViewController: controller)
         defer { window.isHidden = true }
-        let agent = try await accessible("Agent, Code review", in: controller.view)
-        let sameTab = try await accessible("Terminal, Dev server", in: controller.view)
-        let otherTab = try await accessible("Terminal, Tests", in: controller.view)
-        #expect(agent.accessibilityTraits.contains(.selected))
-        #expect(!sameTab.accessibilityTraits.contains(.selected))
-        #expect(!otherTab.accessibilityTraits.contains(.selected))
-        let frames = [agent, sameTab, otherTab].map { Self.frame(of: $0, in: controller.view) }
-        for frame in frames {
-            #expect(frame.width >= 44)
-            #expect(frame.height >= 44)
-            #expect(controller.view.bounds.contains(frame))
-        }
-        #expect(frames[0].minY < frames[1].minY)
-        #expect(frames[1].minY < frames[2].minY, "Current-tab panes precede other tabs")
-        #expect(otherTab.accessibilityActivate())
-        #expect(agent.accessibilityActivate())
-        #expect(selected == [terminals[0].id, terminals[1].id])
+        let button = try await accessible("Workspace terminals", in: controller.view)
+        #expect(button.accessibilityValue == "3 terminals")
+        #expect(button.accessibilityTraits.contains(.button))
+        let frame = Self.frame(of: button, in: controller.view)
+        #expect(frame.width >= 44)
+        #expect(frame.height >= 44)
+        let measured = controller.sizeThatFits(in: CGSize(width: 320, height: 640))
+        #expect(measured.width <= 64, "A single control, not a bar: \(measured)")
+        #expect(measured.height <= 64, "A single control, not a bar: \(measured)")
     }
 
     @Test(arguments: [320.0, 402.0])
@@ -160,7 +143,9 @@ struct WorkspaceTerminalPresentationTests {
 
     private static func terminals() -> [ConsoleTerminal] {
         let host = Host.fixture()
-        func terminal(_ id: String, tab: String, label: String, agent: String? = nil) -> ConsoleTerminal {
+        func terminal(
+            _ id: String, tab: String, label: String, order: Int, agent: String? = nil
+        ) -> ConsoleTerminal {
             ConsoleTerminal(
                 hostID: host.id, hostName: host.displayName, hostUsername: host.username,
                 pane: PaneInfo(
@@ -169,12 +154,13 @@ struct WorkspaceTerminalPresentationTests {
                     agent: agent, cwd: "/project", label: label),
                 workspaceLabel: "Project", tabLabel: tab == "tab-one" ? "Development" : "Checks",
                 workspaceOrder: 0, tabPosition: tab == "tab-one" ? 1 : 2,
-                snapshotOrder: 0, snapshotAgentKind: agent)
+                snapshotOrder: order, snapshotAgentKind: agent)
         }
+        // Snapshot order deliberately disagrees with Tab order.
         return [
-            terminal("tests", tab: "tab-two", label: "Tests"),
-            terminal("agent", tab: "tab-one", label: "Code review", agent: "claude"),
-            terminal("server", tab: "tab-one", label: "Dev server"),
+            terminal("tests", tab: "tab-two", label: "Tests", order: 0),
+            terminal("agent", tab: "tab-one", label: "Code review", order: 1, agent: "claude"),
+            terminal("server", tab: "tab-one", label: "Dev server", order: 2),
         ]
     }
 }

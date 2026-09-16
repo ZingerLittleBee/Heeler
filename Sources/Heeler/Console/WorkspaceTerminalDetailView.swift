@@ -50,6 +50,7 @@ struct WorkspaceTerminalDetailView: View {
                     surfaceRetention: entry.surfaceRetention,
                     title: terminal.displayTitle,
                     backTitle: "Back to Console",
+                    workspaceMenu: workspaceMenu,
                     onBack: { onBack() })
             } else if let failure {
                 ContentUnavailableView {
@@ -62,16 +63,6 @@ struct WorkspaceTerminalDetailView: View {
             } else {
                 ProgressView("Opening Terminal…")
             }
-        }
-        .safeAreaInset(edge: .trailing, spacing: 0) {
-            WorkspaceTerminalRail(
-                terminals: console.terminals(on: terminal.hostID, workspaceID: terminal.workspaceID),
-                selectedPaneID: terminal.paneID,
-                currentTabID: terminal.tabID,
-                onSelect: { target in
-                    if let agentID = target.agentID { onSelectAgent(agentID) }
-                    else if target.id != terminal.id { onSelectTerminal(target) }
-                })
         }
         .task(id: LoadIdentity(
             identity: identity,
@@ -102,6 +93,18 @@ struct WorkspaceTerminalDetailView: View {
         } message: {
             Text(closeFailure ?? "")
         }
+    }
+
+    private var workspaceMenu: WorkspaceTerminalMenu? {
+        let terminals = console.terminals(on: terminal.hostID, workspaceID: terminal.workspaceID)
+        guard !terminals.isEmpty else { return nil }
+        return WorkspaceTerminalMenu(
+            terminals: terminals,
+            selectedPaneID: terminal.paneID,
+            onSelect: { target in
+                if let agentID = target.agentID { onSelectAgent(agentID) }
+                else if target.id != terminal.id { onSelectTerminal(target) }
+            })
     }
 
     private struct LoadIdentity: Equatable {

@@ -36,6 +36,13 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
     var displayTitle: String {
         nonempty(paneLabel) ?? title ?? nonempty(tabLabel) ?? "Terminal"
     }
+    /// The Tab as the user labelled it, else its position, else its id.
+    var displayTabTitle: String {
+        if let label = nonempty(tabLabel?.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return label
+        }
+        return tabPosition.map { "Tab \($0)" } ?? "Tab \(tabID)"
+    }
     /// Foreground cwd follows `cd`; launch cwd remains the fallback.
     var cwd: String { nonempty(pane.foregroundCwd) ?? nonempty(pane.cwd) ?? "" }
     var displayCwd: String {
