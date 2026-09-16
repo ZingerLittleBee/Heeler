@@ -156,17 +156,28 @@ _Avoid_: recent link, visible link, link history
 
 **Shell Terminal**:
 The full interactive terminal on an ordinary shell Pane, opened by Agent
-detail's Open Terminal action. Heeler creates a fresh herdr tab in the Agent's
-launch directory and attaches the returned terminal id through herdr's direct
-terminal attach with takeover. libghostty renders it, and direct keyboard
+detail's Workspace terminal rail, the Console's Terminals list, or Open
+Terminal. Open Terminal prefers an existing shell in the Workspace and creates
+a tab in the Agent's launch directory only as a fallback or explicit choice.
+Existing shells use direct terminal attach without takeover; Take Over is an
+explicit action when another client owns the terminal. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
-Agent semantics, no notification routing. It replaces Agent detail while open
-so the Host's single terminal lifetime hands off cleanly; Back detaches and
-leaves the remote tab alive for desktop handoff. Its Keys mode reuses the
+Agent semantics, no notification routing. It replaces Agent detail while open.
+Loaded terminals share a limit of three connections per Host, retained for five
+minutes after leaving the view. The least recently viewed idle terminal is
+detached when another needs its slot; remote panes stay alive. Its Keys mode reuses the
 full Terminal keyboard from Agent tools, including characters, modifiers,
 symbols, and function keys, inside the measured iOS keyboard footprint.
 _Avoid_: Attach (that's the Agent-specific display surface), shell console,
 terminal pane view
+
+**Workspace Terminal**:
+A Pane listed with its Host, Workspace, Tab title and current directory.
+Includes Agent panes, which open Agent detail, and ordinary panes, which open
+Shell Terminal. The detail rail includes every Tab in the current Workspace;
+the Console's Terminals view groups the same inventory by Host and Workspace.
+Discovery is independent of loading: only selecting a terminal opens its PTY.
+_Avoid_: SSH session, tab (a Tab can contain several Workspace Terminals)
 
 **Direct Input**:
 The opt-in Agent-detail mode that hides the Composer card and routes the

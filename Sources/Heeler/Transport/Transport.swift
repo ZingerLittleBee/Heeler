@@ -150,11 +150,9 @@ protocol Transport: Sendable {
     /// a recovery guarantee. Use snapshots for authoritative convergence.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
-    /// Opens this Host's dedicated terminal channel as a full interactive
-    /// Attach: a PTY running `herdr agent attach`, raw bytes both ways until
-    /// `end()` closes the channel explicitly. One terminal channel is allowed
-    /// per Host, so a second call while one is live throws
-    /// `.terminalChannelAlreadyOpen`.
+    /// Opens an interactive PTY Attach. Each target permits one live channel;
+    /// a duplicate target throws `.terminalChannelAlreadyOpen`. Distinct
+    /// targets share the bounded Host channel admission budget.
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
     /// Stages one normalized app-owned image in private Host temporary

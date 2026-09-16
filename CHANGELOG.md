@@ -9,6 +9,12 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Browse all Workspace terminals from Agent detail's right-side labels or the
+  Console's Agents / Terminals switch. The terminal list groups by Host and
+  Workspace and shows Tab titles, paths, and Agent markers. Loaded terminals
+  retain their connections and screen state for five idle minutes, with a
+  shared limit of three per Host and least-recently-viewed idle eviction. (#333)
+
 - Choose an existing Workspace or New Workspace from the same dropdown in
   New Agent. New Workspace opens a remote directory browser. The latest directory stays at the
   bottom of the dropdown, with its name and full path shown when selected. (PR #305)

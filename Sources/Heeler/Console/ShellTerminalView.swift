@@ -20,6 +20,10 @@ struct ShellTerminalView: View {
     /// Nil hides the Close Terminal action entirely (previews, tests).
     var isClosingTerminal: Bool = false
     var onCloseTerminal: (@MainActor () -> Void)? = nil
+    var managesLifecycle = true
+    var surfaceRetention: TerminalSurfaceRetention?
+    var title = "Terminal"
+    var backTitle = "Back to Agent"
     let onBack: @MainActor () async -> Void
 
     @State private var keyboardControl = TerminalKeyboardControl()
@@ -30,6 +34,7 @@ struct ShellTerminalView: View {
 
     private var terminalScreen: TerminalScreenView {
         var screen = TerminalScreenView(feed: store.terminalFeed)
+        screen.retention = surfaceRetention
         screen.onSizeChanged = { cols, rows in
             store.viewDidResize(cols: cols, rows: rows)
         }
@@ -172,14 +177,14 @@ struct ShellTerminalView: View {
                 for: .navigationBar
             )
             .navigationBarBackButtonHidden(true)
-            .navigationTitle("Terminal")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
                         Task { await onBack() }
                     } label: {
-                        Label("Back to Agent", systemImage: "chevron.left")
+                        Label(backTitle, systemImage: "chevron.left")
                     }
                     .disabled(isReturning)
                 }
@@ -203,7 +208,7 @@ struct ShellTerminalView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(
-                    "This closes the tab on the Host, ending anything running in it. "
+                    "This closes the pane on the Host, ending anything running in it. "
                         + "Going Back instead leaves it for desktop handoff.")
             }
             .sheet(
@@ -244,8 +249,11 @@ struct ShellTerminalView: View {
                 else { return }
                 setKeyboardMode(.text)
             }
-            .onAppear { store.rejoin() }
-            .onDisappear { store.leave() }
+            .onAppear { if managesLifecycle { store.rejoin() } }
+            .onDisappear {
+                keyboardControl.dismissKeyboard()
+                if managesLifecycle { store.leave() }
+            }
     }
 
     /// `restoresSystemKeyboard` is false when Text follows a fresh surface
@@ -298,6 +306,11 @@ struct ShellTerminalView: View {
                 ) {
                     Button("Reattach") { store.retryTerminal() }
                         .buttonStyle(.borderedProminent)
+                    if !managesLifecycle {
+                        Button("Take Over") { store.takeOverTerminal() }
+                            .buttonStyle(.bordered)
+                            .accessibilityHint("Disconnects another client's attachment to this terminal")
+                    }
                 }
             }
         }

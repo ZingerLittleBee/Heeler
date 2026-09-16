@@ -24,6 +24,63 @@ struct EventsSessionSubscriptionsTests {
             keepalive: nil)
     }
 
+    @Test func distinctTerminalsRunTogetherAndFourthWaitsForTeardown() async throws {
+        let transport = ScriptedTransport()
+        let session = makeSession(transport: transport)
+        let gate = ScriptedTransportCallGate()
+        let fourthGate = ScriptedTransportCallGate()
+        await session.resume()
+        let tasks = (1...3).map { index in
+            Task {
+                try await session.withTerminalTransport(target: .terminal("terminal-\(index)")) { _, _ in
+                    await gate.waitUntilOpen()
+                }
+            }
+        }
+        try await waitUntil("three distinct terminals should hold permits concurrently") {
+            await gate.entryCount == 3
+        }
+        let fourth = Task {
+            try await session.withTerminalTransport(target: .terminal("fourth")) { _, _ in
+                await fourthGate.waitUntilOpen()
+            }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(await fourthGate.entryCount == 0)
+        await gate.open()
+        await fourthGate.waitForEntry()
+        await fourthGate.open()
+        for task in tasks { try await task.value }
+        try await fourth.value
+        await session.end()
+    }
+
+    @Test func duplicateTargetWaitsAndCancellationDoesNotConsumeItsPermit() async throws {
+        let transport = ScriptedTransport()
+        let session = makeSession(transport: transport)
+        let gate = ScriptedTransportCallGate()
+        let target = TerminalAttachTarget.terminal("same")
+        await session.resume()
+        let first = Task {
+            try await session.withTerminalTransport(target: target) { _, _ in
+                await gate.waitUntilOpen()
+            }
+        }
+        await gate.waitForEntry()
+        let duplicate = Task {
+            try await session.withTerminalTransport(target: target) { _, _ in
+                Issue.record("duplicate target entered before its owner ended")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        duplicate.cancel()
+        await #expect(throws: CancellationError.self) { try await duplicate.value }
+        await gate.open()
+        try await first.value
+        try await session.withTerminalTransport(target: target) { _, _ in }
+        await session.end()
+    }
+
     @Test func liveUpdateResubscribesOnTheSameConnectionWithoutReconnecting() async throws {
         let transport = ScriptedTransport()
         let session = makeSession(transport: transport)

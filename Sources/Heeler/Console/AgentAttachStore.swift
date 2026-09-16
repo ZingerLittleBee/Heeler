@@ -588,6 +588,19 @@ final class AgentAttachStore {
         finishTerminalRecovery(ownedBy: owner)
     }
 
+    /// Cancels view-owned interaction while a retained PTY continues receiving
+    /// output. Returning to this terminal keeps its feed and emulator intact.
+    @discardableResult
+    func leaveInteractionsForRetention() -> Task<Void, Never> {
+        invalidateAttachLinkOpen()
+        attachLinkOpenFailure = nil
+        input.cancelPaste()
+        return enqueueLifecycleTransition { [self] in
+            composer.abandonDroppedImagesForTeardown()
+            await staging.leave()
+        }
+    }
+
     /// Leaves the screen: records the departure and enqueues the teardown,
     /// then returns the teardown for callers that must wait for it.
     ///

@@ -163,8 +163,43 @@ enum TerminalKeyboardHandoffOutcome: Equatable {
     case cancelled
 }
 
+/// Keeps the emulator, including offscreen output and scrollback, with a
+/// retained connection. A new feed always gets a new surface.
+@MainActor
+final class TerminalSurfaceRetention {
+    private var feed: TerminalByteFeed?
+    private var surface: HeelerTerminalView?
+
+    func surface(for feed: TerminalByteFeed, make: () -> HeelerTerminalView) -> HeelerTerminalView {
+        if self.feed === feed, let surface { return surface }
+        clear()
+        let surface = make()
+        self.feed = feed
+        self.surface = surface
+        return surface
+    }
+
+    func clear() {
+        detachCallbacks()
+        surface = nil
+        feed = nil
+    }
+
+    func detachCallbacks() {
+        surface?.dismissKeyboard()
+        surface?.updateCallbacks(
+            onSizeChanged: nil, onViewportTextChanged: nil,
+            onSend: nil, onScroll: nil, onPaste: nil)
+        surface?.onOpenLink = nil
+        surface?.onFontSizeChanged = nil
+        surface?.onKeyboardHandoffEnded = nil
+        surface?.setLocalInputEnabled(false)
+    }
+}
+
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
+    var retention: TerminalSurfaceRetention?
     #if DEBUG
     /// Reports creation and feed attachment of the concrete UIKit surface.
     /// It does not claim that Ghostty presented a frame.
@@ -208,7 +243,9 @@ struct TerminalScreenView: UIViewRepresentable {
     @Environment(\.openURL) private var openURL
 
     func makeUIView(context: Context) -> HeelerTerminalView {
-        let view = Self.makeConfiguredTerminal(
+        let openURL = openURL
+        let onKeyboardHandoffEnded = onKeyboardHandoffEnded
+        let make = { Self.makeConfiguredTerminal(
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
@@ -216,7 +253,14 @@ struct TerminalScreenView: UIViewRepresentable {
             onPaste: onPaste,
             theme: theme,
             fontSize: fontSize,
-            fontFamily: fontFamily)
+            fontFamily: fontFamily) }
+        let view = retention?.surface(for: feed, make: make) ?? make()
+        view.updateCallbacks(
+            onSizeChanged: onSizeChanged, onViewportTextChanged: onViewportTextChanged,
+            onSend: onSend, onScroll: onScroll, onPaste: onPaste)
+        view.applyTheme(theme)
+        view.applyFontSize(fontSize)
+        view.applyFontFamily(fontFamily)
         view.onOpenLink = { url in openURL(url) }
         // Only here, never in updateUIView: the intent belongs to this
         // terminal's first appearance, not to every state change after it.
@@ -272,6 +316,8 @@ struct TerminalScreenView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: HeelerTerminalView, context: Context) {
+        let openURL = openURL
+        let onKeyboardHandoffEnded = onKeyboardHandoffEnded
         view.updateCallbacks(
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,

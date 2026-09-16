@@ -189,6 +189,8 @@ struct AgentTerminalView: View {
     private let openTerminal: () -> Void
     private let composer: AgentComposerStore
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
+    private let retainedSurface: TerminalSurfaceRetention?
+    private let onRetainDeparture: (() -> Void)?
     @State private var attach: AgentAttachStore
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
@@ -277,6 +279,8 @@ struct AgentTerminalView: View {
         openTerminal: @escaping () -> Void = {},
         composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil,
+        retainedSurface: TerminalSurfaceRetention? = nil,
+        onRetainDeparture: (() -> Void)? = nil,
         interactionProbe: AgentTerminalInteractionProbe? = nil
     ) {
         self.agent = agent
@@ -298,6 +302,8 @@ struct AgentTerminalView: View {
         self.openTerminal = openTerminal
         self.composer = composer
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
+        self.retainedSurface = retainedSurface
+        self.onRetainDeparture = onRetainDeparture
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -340,6 +346,7 @@ struct AgentTerminalView: View {
 
     private var terminalScreen: TerminalScreenView {
         var screen = TerminalScreenView(feed: attach.terminalFeed)
+        screen.retention = retainedSurface
         #if DEBUG
         screen.onSurfaceAttached = {
             attach.terminalSurfaceDidAttach()
@@ -682,7 +689,19 @@ struct AgentTerminalView: View {
         .onDisappear {
             interactionProbe?.value?.disconnect()
             messageJump.resetSession()
-            attach.leave()
+            if let onRetainDeparture {
+                if !isOnStage() {
+                    onRetainDeparture()
+                } else {
+                    Task { @MainActor in
+                        await Task.yield()
+                        guard !isOnStage() else { return }
+                        onRetainDeparture()
+                    }
+                }
+            } else {
+                attach.leave()
+            }
             Task { @MainActor in
                 await Task.yield()
                 guard !isOnStage() else { return }

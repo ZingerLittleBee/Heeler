@@ -289,8 +289,8 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await exerciseCleanAttachExit(settings: environment.jumpSettings())
     }
 
-    @Test("one Host admits exactly one live Attach")
-    func attachIsExclusive() async throws {
+    @Test("distinct targets attach concurrently while each target has one owner")
+    func attachIsExclusivePerTarget() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
         defer { Task { try? await transport.close() } }
@@ -302,8 +302,14 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await expectAttachOutput(&iterator, accumulated: &output, contains: "TTY-OK")
         await #expect(throws: TransportError.terminalChannelAlreadyOpen) {
             _ = try await transport.attachTerminal(
-                TerminalAttachRequest(target: "fixture:second", cols: 80, rows: 24))
+                TerminalAttachRequest(target: "fixture:pane", cols: 80, rows: 24))
         }
+        let second = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:second", cols: 80, rows: 24))
+        var secondIterator = second.output.makeAsyncIterator()
+        var secondOutput = ""
+        try await expectAttachOutput(&secondIterator, accumulated: &secondOutput, contains: "TTY-OK")
+        await second.end()
 
         await first.end()
         let replacement = try await transport.attachTerminal(

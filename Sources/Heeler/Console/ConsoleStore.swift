@@ -13,6 +13,7 @@ final class ConsoleStore {
     }
 
     private(set) var agents: [ConsoleAgent] = []
+    private(set) var terminals: [ConsoleTerminal] = []
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
     private(set) var hostStandingFailures: [Host.ID: TransportError] = [:]
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
@@ -78,6 +79,10 @@ final class ConsoleStore {
     let pins: PinnedAgentsStore
     let rowLayouts: AgentRowLayoutStore
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
+    let terminalConnections: TerminalConnectionPool
+    let agentTerminals: AgentTerminalCache
+    @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
+    @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
 
     init(
         snapshotRetryDelay: Duration = .seconds(2),
@@ -86,6 +91,9 @@ final class ConsoleStore {
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory()
     ) {
+        let terminalBudget = TerminalRetentionBudget()
+        terminalConnections = TerminalConnectionPool(budget: terminalBudget)
+        agentTerminals = AgentTerminalCache(budget: terminalBudget)
         self.snapshotRetryDelay = snapshotRetryDelay
         self.pins = pins
         self.rowLayouts = rowLayouts
@@ -106,6 +114,12 @@ final class ConsoleStore {
         composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
         for (id, projection) in projections where incoming[id] != projection.host {
             sidebarSnapshots.invalidate(id)
+            terminalSnapshotRevisions[id] = nil
+            terminalTransportGenerations[id] = nil
+            Task {
+                await terminalConnections.removeHost(id)
+                await agentTerminals.removeHost(id)
+            }
             projection.end()
             projections[id] = nil
         }
@@ -166,6 +180,8 @@ final class ConsoleStore {
     func suspend() async {
         await enqueueLifecycleTransition { [self] in
             isActive = false
+            await terminalConnections.suspend()
+            await agentTerminals.suspend()
             sidebarSnapshots.invalidateAll()
             rebuild()
             for projection in projections.values {
@@ -385,6 +401,10 @@ final class ConsoleStore {
         try await projection(for: hostID).startAgent(request)
     }
 
+    func refreshTerminalInventory(on hostID: Host.ID) async {
+        await projections[hostID]?.refreshTerminalInventory()
+    }
+
     func createShellTerminal(
         _ request: ShellTerminalCreationRequest,
         on hostID: Host.ID
@@ -502,6 +522,7 @@ final class ConsoleStore {
 
     private func rebuild() {
         let current = Array(projections.values)
+        reconcileTerminalConnections(current)
         hostStatuses = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.status.map { (projection.host.id, $0) }
@@ -548,8 +569,74 @@ final class ConsoleStore {
         sidebarSnapshots.reconcile(sidebarConnections, transports: self) { [weak self] in
             self?.rebuildAgentOrder()
         }
+        let nextTerminals = current.flatMap { $0.terminalsByPane.values }.sorted { lhs, rhs in
+            if lhs.hostName != rhs.hostName { return lhs.hostName < rhs.hostName }
+            if lhs.hostID != rhs.hostID { return lhs.hostID.uuidString < rhs.hostID.uuidString }
+            if lhs.workspaceOrder != rhs.workspaceOrder {
+                return lhs.workspaceOrder < rhs.workspaceOrder
+            }
+            if lhs.tabPosition != rhs.tabPosition {
+                return (lhs.tabPosition ?? Int.max) < (rhs.tabPosition ?? Int.max)
+            }
+            if lhs.snapshotOrder != rhs.snapshotOrder {
+                return lhs.snapshotOrder < rhs.snapshotOrder
+            }
+            return lhs.paneID < rhs.paneID
+        }
+        if terminals != nextTerminals { terminals = nextTerminals }
         rebuildAgentOrder()
         publishAgentStatuses()
+    }
+
+    private func reconcileTerminalConnections(_ current: [HostConsoleProjection]) {
+        for projection in current {
+            let hostID = projection.host.id
+            let generation = projection.transportGeneration
+            if terminalTransportGenerations[hostID] != generation {
+                terminalTransportGenerations[hostID] = generation
+                Task { [weak self, weak projection] in
+                    guard let self, let projection, projections[hostID] === projection,
+                        projection.transportGeneration == generation
+                    else { return }
+                    let isCurrent: @MainActor () -> Bool = { [weak self, weak projection] in
+                        guard let self, let projection else { return false }
+                        return projections[hostID] === projection
+                            && projection.transportGeneration == generation
+                    }
+                    await terminalConnections.transportGenerationDidChange(
+                        generation, for: hostID, isCurrent: isCurrent)
+                    await agentTerminals.transportGenerationDidChange(
+                        generation, for: hostID, isCurrent: isCurrent)
+                }
+            }
+            guard !projection.isAwaitingSnapshot,
+                projection.status == .connected,
+                terminalSnapshotRevisions[hostID] != projection.sidebarRevision
+            else { continue }
+            terminalSnapshotRevisions[hostID] = projection.sidebarRevision
+            let identities = Set(
+                projection.terminalsByPane.values.filter { !$0.isAgent }.map {
+                    ShellTerminalIdentity(
+                        paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
+                })
+            let revision = projection.sidebarRevision
+            let agents = Array(projection.agentsByPane.values)
+            let isCurrent: @MainActor () -> Bool = { [weak self, weak projection] in
+                guard let self, let projection else { return false }
+                return projections[hostID] === projection && !projection.isAwaitingSnapshot
+                    && projection.status == .connected && projection.sidebarRevision == revision
+            }
+            Task {
+                await terminalConnections.reconcile(
+                    hostID: hostID, identities: identities, isCurrent: isCurrent)
+                await agentTerminals.reconcile(hostID: hostID, agents: agents, isCurrent: isCurrent)
+            }
+        }
+    }
+
+    /// All current terminal Panes, including Agents, across the Workspace's Tabs.
+    func terminals(on hostID: Host.ID, workspaceID: String) -> [ConsoleTerminal] {
+        terminals.filter { $0.hostID == hostID && $0.workspaceID == workspaceID }
     }
 
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
