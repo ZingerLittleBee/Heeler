@@ -54,6 +54,48 @@ struct SSHDiagnosticsTests {
             lines.first?.hasPrefix("handshake with 127.0.0.1:\(listener.port) timed out [") == true,
             Comment(rawValue: "recorded: \(lines)"))
         #expect(lines.first?.contains("last_wait=socket read") == true)
+
+        // Exercise the readiness timer itself, then let its caller overwrite
+        // the context as a cleanup/drain would. The failure must already have
+        // been recorded before that caller resumes.
+        let quietListener = try SilentListener.start()
+        defer { quietListener.stop() }
+        let budget = Duration.milliseconds(50)
+        let context = SSHDiagnosticOperation(
+            phase: "readiness on 127.0.0.1:\(quietListener.port)",
+            budget: budget)
+        await SSHDiagnosticOperation.$current.withValue(context) {
+            context.recordWait("socket read")
+            // Pump idle polls and candidate retries consume their deadline;
+            // they must neither log an operation failure nor consume dedup.
+            await #expect(throws: SSHError.timedOut) {
+                try await SocketReadiness.wait(
+                    descriptor: quietListener.descriptor,
+                    directions: .read,
+                    until: ContinuousClock.now.advanced(by: budget))
+            }
+            #expect(recorder.lines(mentioning: quietListener.port).isEmpty)
+            await #expect(throws: SSHError.timedOut) {
+                do {
+                    try await SocketReadiness.wait(
+                        descriptor: quietListener.descriptor,
+                        directions: .read,
+                        until: ContinuousClock.now.advanced(by: budget),
+                        onTimeout: context.noteTimeout)
+                } catch {
+                    #expect(recorder.lines(mentioning: quietListener.port).count == 1)
+                    context.step = "cleanup"
+                    context.recordResult(0)
+                    context.recordWait("cleanup wait")
+                    context.noteTimeout()
+                    throw error
+                }
+            }
+        }
+        let readinessLines = recorder.lines(mentioning: quietListener.port)
+        #expect(readinessLines.count == 1)
+        #expect(readinessLines.first?.contains("last_wait=socket read") == true)
+        #expect(readinessLines.first?.contains("cleanup") == false)
     }
 
     @Test("a removed sink receives nothing and no line is formatted without one")
@@ -115,7 +157,7 @@ private final class FormatCounter: @unchecked Sendable {
 /// server banner runs until the caller's deadline.
 private struct SilentListener {
     let port: UInt16
-    private let descriptor: Int32
+    let descriptor: Int32
 
     static func start() throws -> SilentListener {
         let listener = socket(AF_INET, SOCK_STREAM, 0)

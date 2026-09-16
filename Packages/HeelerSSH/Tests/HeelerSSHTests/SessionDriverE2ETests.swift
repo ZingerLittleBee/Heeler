@@ -1803,6 +1803,9 @@ struct SessionDriverE2ETests {
     ) async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let proxy = try #require(WeakNetworkProxyFixture.current)
+        let recorder = DiagnosticsRecorder()
+        let diagnosticToken = SSHDiagnostics.addSink(recorder.record)
+        defer { SSHDiagnostics.removeSink(diagnosticToken) }
         try await withDegradedLink(proxy) {
             let connection = try await connectThroughProxy(
                 environment: environment,
@@ -1828,10 +1831,13 @@ struct SessionDriverE2ETests {
                 await gates.loopTop.waitUntilReleased()
                 if let loopTopThrows { throw loopTopThrows }
             }
-            if drainThrows {
-                await connection.holdNextOwnedDrainForTesting {
-                    throw expectedError
+            await connection.holdNextOwnedDrainForTesting {
+                if expectedError == .timedOut {
+                    #expect(
+                        recorder.lines(startingWith: "PTY write channel ").count == 1,
+                        "The timeout must be recorded before owned-send cleanup starts")
                 }
+                if drainThrows { throw expectedError }
             }
             let write = Task {
                 try await pty.write(

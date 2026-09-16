@@ -561,11 +561,12 @@ actor SessionDriver {
                     )
                     releaseOperation()
                 } catch {
+                    let normalized = normalize(error)
                     await finishOwnedSendIfNeeded(owner: owner) {
                         writeChannelOnce(identity: .pty(id), data: data, offset: offset)
                     }
                     releaseOperation()
-                    throw normalize(error)
+                    throw normalized
                 }
 
                 if progress.written > 0 {
@@ -961,11 +962,12 @@ actor SessionDriver {
                     )
                     releaseOperation()
                 } catch {
+                    let normalized = normalize(error)
                     await finishOwnedSendIfNeeded(owner: owner) {
                         writeChannelOnce(identity: .streamLocal(id), data: data, offset: offset)
                     }
                     releaseOperation()
-                    throw normalize(error)
+                    throw normalized
                 }
 
                 if progress.written > 0 {
@@ -2139,7 +2141,8 @@ actor SessionDriver {
     }
 
     func close(timeout: Duration) async throws {
-        try await withDiagnosticPhase("close") {
+        try await withDiagnosticPhase("close", budget: timeout) {
+            diagnosticStep = "operation admission"
             await acquireOperation()
             defer { releaseOperation() }
 
@@ -2780,7 +2783,12 @@ actor SessionDriver {
 #if DEBUG
         if let hold = nextSessionWaitHoldForTesting {
             nextSessionWaitHoldForTesting = nil
-            try await hold()
+            do {
+                try await hold()
+            } catch {
+                if error as? SSHError == .timedOut { noteTimedOutOnce() }
+                throw error
+            }
         }
 #endif
         try await SocketReadiness.wait(
@@ -2788,7 +2796,8 @@ actor SessionDriver {
             directions: plan.directions,
             until: deadline,
             cancellable: cancellable,
-            watching: plan.watch)
+            watching: plan.watch,
+            onTimeout: SSHDiagnosticOperation.current?.noteTimeout)
     }
 
     private func sessionDirections(_ session: OpaquePointer) -> SocketDirections {
@@ -2991,12 +3000,14 @@ actor SessionDriver {
             }
             nextChannelOpenWaiterID &+= 1
             let waiterID = nextChannelOpenWaiterID
+            SSHDiagnosticOperation.current?.recordWait("channel open admission")
             do {
                 try await waitForChannelOpenSlot(
                     id: waiterID,
                     deadline: deadline,
                     cancellable: cancellable)
             } catch {
+                if error as? SSHError == .timedOut { noteTimedOutOnce() }
                 await acquireOperation()
                 throw error
             }
@@ -3117,6 +3128,7 @@ actor SessionDriver {
                     ptyID: id,
                     deadline: deadline)
             } catch {
+                if error as? SSHError == .timedOut { noteTimedOutOnce() }
                 await acquireOperation()
                 throw error
             }
@@ -4014,6 +4026,7 @@ actor SessionDriver {
                     deadline: deadline,
                     cancellable: cancellable)
             } catch {
+                if error as? SSHError == .timedOut { noteTimedOutOnce() }
                 await acquireOperation()
                 throw error
             }
@@ -4137,12 +4150,14 @@ actor SessionDriver {
         do {
             try await holdOwnedLoopTopForTestingIfNeeded(owner: owner)
         } catch {
+            let normalized = normalize(error)
             await finishOwnedSendIfNeeded(owner: owner, drive: drive)
-            throw normalize(error)
+            throw normalized
         }
         let cancelled = cancellable && Task.isCancelled
         let timedOut = ContinuousClock.now >= deadline
         guard cancelled || timedOut else { return }
+        if timedOut && !cancelled { noteTimedOutOnce() }
         await finishOwnedSendIfNeeded(owner: owner, drive: drive)
         if cancelled { throw SSHError.cancelled }
         throw noteTimedOut()
