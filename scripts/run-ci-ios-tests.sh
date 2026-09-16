@@ -1035,6 +1035,12 @@ recover_simulator_destination() {
     local current_available=0
 
     list_simulator_candidates || return 1
+    # Bash 3.2 treats an empty array expansion as unbound under nounset.
+    # Handle it before iterating so recovery can retry and report diagnostics.
+    if [[ "${#simulator_candidates[@]}" == 0 ]]; then
+        echo "No available $ci_simulator_name Simulator during destination recovery." >&2
+        return 1
+    fi
     for candidate in "${simulator_candidates[@]}"; do
         if [[ "$candidate" == "$simulator_udid" ]]; then
             current_available=1
@@ -1043,10 +1049,6 @@ recover_simulator_destination() {
     if [[ "$current_available" == 0 ]]; then
         if [[ -n "$requested_simulator_udid" ]]; then
             echo "Explicitly pinned simulator $requested_simulator_udid is still unavailable." >&2
-            return 1
-        fi
-        if [[ "${#simulator_candidates[@]}" == 0 ]]; then
-            echo "No available $ci_simulator_name Simulator during destination recovery." >&2
             return 1
         fi
         # Clear the old device while still owning it, but preserve shell values

@@ -1,6 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Exercise the shipped recovery functions with fake CoreSimulator/xcodebuild
 # boundaries, real device locks, and the real command watchdog.
+# Use the gate's system Bash, including macOS Bash 3.2 empty-array behavior.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -69,6 +70,16 @@ run_case() (
     export SCENARIO=$1
     export CASE_DIR="$work/$SCENARIO"
     mkdir -p "$CASE_DIR/locks" "$CASE_DIR/fixture"
+    # A nounset exit can run the trap before a command's redirects unwind.
+    # Keep diagnostics off that command's capture file.
+    exec 3>&2
+    local case_completed=0
+    local case_status=0
+    trap 'case_status=$?; if [[ "$case_status" != 0 || "$case_completed" != 1 ]]; then
+        echo "FAIL $SCENARIO: assertions did not complete (exit $case_status)" >&3
+        cat "$CASE_DIR/output" >&3 2>/dev/null || true
+        exit 1
+    fi' EXIT
     # These variables are consumed by extracted functions, not by eval here.
     # shellcheck disable=SC2034
     {
@@ -176,6 +187,7 @@ run_case() (
     esac
     release_resource_lock "$device_lock_dir" simulator
     printf 'PASS %s\n' "$SCENARIO"
+    case_completed=1
 )
 
 for scenario in same pinned-other-name replacement occupied package suite no-devices persistent \
