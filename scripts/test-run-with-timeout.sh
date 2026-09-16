@@ -287,3 +287,5 @@ if kill -0 "$cancelled_pid" 2>/dev/null; then
 fi
 
 echo "run-with-timeout behavior passed"
+
+"$repo_root/scripts/test-ci-simulator-recovery.sh"
