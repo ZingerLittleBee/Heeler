@@ -20,6 +20,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- The pairing popup surfaces startup failures (a malformed SSH host public
+  key, an unreadable `~/.ssh`, a stuck `authorized_keys` lock) on the held
+  fatal screen instead of exiting silently, and the lock wait stops
+  retrying a persistent failure forever. (refs #319)
 - Show the directory browser on the first New Workspace tap. (PR #305)
 - Viewing a Done Agent marks it seen on its Host and refreshes Console and
   Live Activity status, including other Agents in the same Tab. (#314)

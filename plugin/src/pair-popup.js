@@ -494,4 +494,12 @@ async function main() {
   });
 }
 
-await main();
+try {
+  await main();
+} catch (error) {
+  // herdr closes the popup the moment this process exits, so an uncaught
+  // startup failure (a malformed host .pub, an unreadable ~/.ssh, a stuck
+  // authorized_keys lock) reads as "nothing happened". Hold a fatal screen
+  // like the checks in main() instead.
+  await holdFatal(pairingStartFailed(error.message));
+}

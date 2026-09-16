@@ -82,7 +82,9 @@ async function acquireLock(lockPath) {
           continue;
         }
       } catch {
-        continue; // lock vanished between open and stat; retry immediately
+        // The lock vanished between open and stat, or stat/unlink failed —
+        // fall through to the deadline so a persistent failure can't spin
+        // forever.
       }
       if (Date.now() > deadline) {
         throw new Error(`timed out waiting for authorized_keys lock ${lockPath}`);
