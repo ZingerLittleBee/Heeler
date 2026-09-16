@@ -33,6 +33,16 @@ struct ShellTerminalView: View {
     @State private var keyboardInset = TerminalKeyboardInset()
     @State private var isConfirmingClose = false
     @Environment(\.colorScheme) private var colorScheme
+    /// The scene root's window, known before this screen first renders.
+    @Environment(\.sceneWindow) private var sceneWindow
+    /// This view's own window, for hosts without a scene root.
+    @State private var mountedWindow = WindowReference()
+
+    /// The status bar height of the window this terminal is in; see
+    /// `AgentTerminalView.statusBarInset`.
+    private var statusBarInset: CGFloat {
+        (sceneWindow?.window ?? mountedWindow.window)?.safeAreaInsets.top ?? 0
+    }
 
     private var terminalScreen: TerminalScreenView {
         var screen = TerminalScreenView(feed: store.terminalFeed)
@@ -142,18 +152,26 @@ struct ShellTerminalView: View {
                     await onBack()
                 }
             }
+            // Always present, keyboard up or down: with no title bar, its
+            // More menu is the only visible way back or to Close Terminal.
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if keyboardPresentation != .hidden {
-                    ShellTerminalInputRow(
-                        mode: Binding(
-                            get: { keyboardMode },
-                            set: { setKeyboardMode($0) }),
-                        paste: { keyboardControl.paste($0) },
-                        insertNewLine: {
-                            UIDevice.current.playInputClick()
-                            keyboardControl.sendNewLine()
-                        })
-                }
+                ShellTerminalInputRow(
+                    mode: Binding(
+                        get: { keyboardMode },
+                        set: { setKeyboardMode($0) }),
+                    paste: { keyboardControl.paste($0) },
+                    insertNewLine: {
+                        UIDevice.current.playInputClick()
+                        keyboardControl.sendNewLine()
+                    },
+                    more: ShellTerminalMoreMenu(
+                        title: title,
+                        backTitle: backTitle,
+                        isReturning: isReturning,
+                        isClosingTerminal: isClosingTerminal,
+                        onBack: { Task { await onBack() } },
+                        onCloseTerminal: onCloseTerminal == nil
+                            ? nil : { isConfirmingClose = true }))
             }
             .padding(.bottom, keyboardLayout.contentInset)
             // This dock is always present at the system keyboard's last
@@ -173,39 +191,39 @@ struct ShellTerminalView: View {
             // Keyboard avoidance is owned by `TerminalKeyboardInset`; UIKit's
             // keyboard safe area would resize Ghostty a second time.
             .ignoresSafeArea(.keyboard, edges: .bottom)
-            .terminalKeyboardInsetWindow(keyboardInset)
+            // No title bar, as on Agent detail: the navigation bar stays
+            // only as the owner of the status bar appearance, and this inset
+            // keeps terminal output below the system clock.
+            .padding(.top, statusBarInset)
+            .background {
+                // Keyboard geometry and the status bar inset follow this
+                // view's own window, not whichever window of the app is key.
+                WindowReader { window in
+                    keyboardInset.attach(to: window)
+                    mountedWindow.attach(window)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             .background(
                 terminal.themes.selection(for: colorScheme)
                     .surfaceBackground(for: colorScheme)
             )
+            .ignoresSafeArea(.container, edges: .top)
             .toolbarColorScheme(
                 terminal.themes.selection(for: colorScheme)
                     .chromeColorScheme(for: colorScheme),
                 for: .navigationBar
             )
             .navigationBarBackButtonHidden(true)
-            .navigationTitle(title)
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        Task { await onBack() }
-                    } label: {
-                        Label(backTitle, systemImage: "chevron.left")
-                    }
-                    .disabled(isReturning)
-                }
-                if onCloseTerminal != nil {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(role: .destructive) {
-                            isConfirmingClose = true
-                        } label: {
-                            Label("Close Terminal", systemImage: "trash")
-                        }
-                        .disabled(isClosingTerminal || isReturning)
-                    }
-                }
-            }
+            // `toolbarColorScheme` takes effect only while the bar background
+            // is visible. A clear visible background keeps the bar visually
+            // absent while still applying status-bar contrast.
+            .toolbarBackground(Color.clear, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar(.visible, for: .navigationBar)
             .confirmationDialog(
                 "Close Terminal?", isPresented: $isConfirmingClose, titleVisibility: .visible
             ) {
@@ -361,13 +379,54 @@ struct ShellTerminalView: View {
 /// The input row above the keyboard: paste, the Text/Keys mode control, and
 /// new line. App content rather than a keyboard accessory, so a mode switch
 /// never tears it down and UIKit's candidate-row teardown never moves it.
+/// The shell terminal's navigation, folded into the input row's More button
+/// now that the surface has no title bar. The terminal's title heads the menu
+/// so the path is still readable.
+struct ShellTerminalMoreMenu: View {
+    let title: String
+    let backTitle: String
+    let isReturning: Bool
+    let isClosingTerminal: Bool
+    let onBack: () -> Void
+    /// Nil hides Close Terminal entirely (previews, tests).
+    let onCloseTerminal: (() -> Void)?
+
+    var body: some View {
+        Menu {
+            Section(title) {
+                Button(action: onBack) {
+                    Label(backTitle, systemImage: "chevron.left")
+                }
+                .disabled(isReturning)
+                if let onCloseTerminal {
+                    Button(role: .destructive, action: onCloseTerminal) {
+                        Label("Close Terminal", systemImage: "trash")
+                    }
+                    .disabled(isClosingTerminal || isReturning)
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: ShellTerminalInputRow.glyphPointSize))
+                .foregroundStyle(Color(uiColor: .label))
+                .frame(
+                    width: InputChromeLayout.shellAccessoryButtonWidth,
+                    height: InputChromeLayout.shortcutRowHeight)
+                .contentShape(.rect)
+        }
+        .accessibilityLabel("More")
+        .accessibilityHint("Opens terminal actions")
+    }
+}
+
 struct ShellTerminalInputRow: View {
     @Binding var mode: TerminalKeyboardMode
     let paste: (String) -> Void
     let insertNewLine: () -> Void
+    let more: ShellTerminalMoreMenu
     /// Matches the Composer chrome's small glyphs, or the row's icons read as
     /// borrowed from a different set.
-    private static let glyphPointSize: CGFloat = 12
+    static let glyphPointSize: CGFloat = 12
     @Environment(\.displayScale) private var displayScale
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -412,6 +471,8 @@ struct ShellTerminalInputRow: View {
             }
             .accessibilityLabel("Insert New Line")
             .accessibilityHint("Adds a line break without submitting")
+
+            more
         }
         .padding(.horizontal, 8)
         .frame(height: 48)

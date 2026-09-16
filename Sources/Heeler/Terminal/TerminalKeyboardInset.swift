@@ -117,8 +117,8 @@ final class TerminalKeyboardInset {
     }
 
     /// Measures against the window the terminal is mounted in, which its view
-    /// reports through ``View/terminalKeyboardInsetWindow(_:)``. Idempotent;
-    /// the inset keeps the last window it was given.
+    /// reports from a `WindowReader` in its background. Idempotent; the inset
+    /// keeps the last window it was given.
     func attach(to window: UIWindow) {
         guard self.window !== window else { return }
         self.window = window
@@ -501,15 +501,5 @@ extension View {
     func terminalKeyboardInset(_ inset: TerminalKeyboardInset) -> some View {
         padding(.bottom, inset.height)
             .ignoresSafeArea(.keyboard)
-    }
-
-    /// Hands `inset` the window this view is mounted in, so it measures the
-    /// keyboard against that window rather than whichever one is key.
-    func terminalKeyboardInsetWindow(_ inset: TerminalKeyboardInset) -> some View {
-        background {
-            WindowReader { inset.attach(to: $0) }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
     }
 }

@@ -23,6 +23,9 @@ Entries reference the issue that motivated them.
 
 - Long-press the Workspace drawer handle or the message-jump buttons to slide
   them along the terminal's edge; each rests where it was left. (#333)
+- The Shell Terminal drops its title bar so output runs up to the status bar.
+  Back and Close Terminal moved into the More menu on its input row, which now
+  stays visible while the keyboard is down. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 

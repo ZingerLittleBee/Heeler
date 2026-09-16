@@ -163,6 +163,9 @@ Existing shells use direct terminal attach without takeover; Take Over is an
 explicit action when another client owns the terminal. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. It replaces Agent detail while open.
+Like Agent detail it has no title bar: the terminal runs up to the status bar,
+and Back and Close Terminal sit behind the More button on its always-present
+input row, headed by the terminal's title.
 Loaded terminals share a limit of three connections per Host, retained for five
 minutes after leaving the view. The least recently viewed idle terminal is
 detached when another needs its slot; remote panes stay alive. Its Keys mode reuses the
