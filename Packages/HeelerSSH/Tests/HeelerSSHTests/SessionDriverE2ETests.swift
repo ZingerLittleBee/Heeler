@@ -404,6 +404,9 @@ struct SessionDriverE2ETests {
         let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
         let connection = try await environment.connect()
         let home = try await remoteHome(of: connection)
+        let recorder = DiagnosticsRecorder()
+        let diagnosticToken = SSHDiagnostics.addSink(recorder.record)
+        defer { SSHDiagnostics.removeSink(diagnosticToken) }
 
         for site in TeardownSite.allCases {
             let close = try await site.open(
@@ -415,6 +418,12 @@ struct SessionDriverE2ETests {
                 "\(site.rawValue) did not report the expired budget"
             ) {
                 try await close(.zero)
+            }
+            if site == .pty {
+                let lines = recorder.lines(startingWith: "PTY close channel ")
+                #expect(lines.count == 1)
+                #expect(lines.first?.contains("send EOF timed out") == true)
+                #expect(lines.first?.contains("elapsed=") == true)
             }
             #expect(await connection.isConnected, "\(site.rawValue) invalidated the session")
             let echo = try await connection.execute("printf survived", timeout: .seconds(5))
@@ -1242,6 +1251,9 @@ struct SessionDriverE2ETests {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
         let connection = try await environment.connect()
+        let recorder = DiagnosticsRecorder()
+        let diagnosticToken = SSHDiagnostics.addSink(recorder.record)
+        defer { SSHDiagnostics.removeSink(diagnosticToken) }
 
         let pty = try await connection.openPTY(
             command: "cat",
@@ -1312,11 +1324,24 @@ struct SessionDriverE2ETests {
         try await waitUntilTrue("the failing exit status should suspend") {
             await failedExitStatusTeardown.hasEntered
         }
+        // Another operation on the same driver must not overwrite the suspended
+        // exit-status task's phase or its timeout-deduplication state.
+        let interleaved = try await connection.execute("printf diagnostic-scope", timeout: .seconds(5))
+        #expect(interleaved.stdout == Data("diagnostic-scope".utf8))
+        await #expect(throws: SSHError.timedOut) {
+            _ = try await retryablePTY.read(timeout: .zero)
+        }
+        #expect(recorder.lines(startingWith: "PTY read channel ").count == 1)
         try await Task.sleep(for: .milliseconds(75))
         await failedExitStatusTeardown.release()
         await #expect(throws: SSHError.timedOut) {
             _ = try await failedExitStatus.value
         }
+        let timeoutLines = recorder.lines(startingWith: "PTY exit status channel ")
+        #expect(timeoutLines.count == 1)
+        #expect(timeoutLines.first?.contains("channel close timed out") == true)
+        #expect(timeoutLines.first?.contains("teardown test hold=") == true)
+        #expect(recorder.lines(startingWith: "PTY open").isEmpty)
         #expect(await retryablePTY.acceptsIOForTesting())
         try await retryablePTY.close(timeout: .seconds(5))
 

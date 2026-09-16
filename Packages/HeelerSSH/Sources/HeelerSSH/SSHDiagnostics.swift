@@ -64,8 +64,108 @@ public enum SSHDiagnostics {
 
     private static func timestamp() -> String {
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         formatter.timeZone = TimeZone(identifier: "UTC")
         return formatter.string(from: Date())
+    }
+}
+
+/// One async operation owns its phase, timeout deduplication, and timings.
+/// A session's actor can admit another operation while this one is waiting;
+/// storing these values on that actor attributes failures to the wrong caller.
+/// The task-local scope ends with the operation, including successful calls.
+final class SSHDiagnosticOperation: Sendable {
+    @TaskLocal static var current: SSHDiagnosticOperation?
+
+    private struct State {
+        var step = ""
+        var stepStarted = ContinuousClock.now
+        var timings: [(name: String, elapsed: Duration)] = []
+        var timeoutNoted = false
+        var lastResult: Int32?
+        var waitCount = 0
+        var lastWait = "none"
+    }
+
+    private let phase: String
+    private let budget: Duration?
+    private let started = ContinuousClock.now
+    private let state = Mutex(State())
+
+    init(phase: String, budget: Duration?) {
+        self.phase = phase
+        self.budget = budget
+    }
+
+    var step: String {
+        get { state.withLock { $0.step } }
+        set {
+            state.withLock { state in
+                guard state.step != newValue else { return }
+                let now = ContinuousClock.now
+                if !state.step.isEmpty {
+                    let elapsed = state.stepStarted.duration(to: now)
+                    if let index = state.timings.firstIndex(where: { $0.name == state.step }) {
+                        state.timings[index].elapsed += elapsed
+                    } else {
+                        state.timings.append((state.step, elapsed))
+                    }
+                }
+                state.step = newValue
+                state.stepStarted = now
+                state.lastResult = nil
+                state.lastWait = "none"
+            }
+        }
+    }
+
+    var context: String {
+        state.withLock { $0.step.isEmpty ? phase : "\(phase), \($0.step)" }
+    }
+
+    func recordResult(_ result: Int32) {
+        state.withLock { $0.lastResult = result }
+    }
+
+    func recordWait(_ wait: String) {
+        state.withLock {
+            $0.waitCount += 1
+            $0.lastWait = wait
+        }
+    }
+
+    func noteTimeout() {
+        let shouldNote = state.withLock { state in
+            guard !state.timeoutNoted else { return false }
+            state.timeoutNoted = true
+            return true
+        }
+        if shouldNote {
+            SSHDiagnostics.note("\(context) timed out \(timingDetails)")
+        }
+    }
+
+    var timingDetails: String {
+        state.withLock { state in
+            let now = ContinuousClock.now
+            var fields = ["elapsed=\(Self.seconds(started.duration(to: now)))s"]
+            if let budget { fields.append("budget=\(Self.seconds(budget))s") }
+            for timing in state.timings {
+                fields.append("\(timing.name)=\(Self.seconds(timing.elapsed))s")
+            }
+            if !state.step.isEmpty {
+                fields.append("\(state.step)=\(Self.seconds(state.stepStarted.duration(to: now)))s")
+            }
+            if let result = state.lastResult { fields.append("last_result=\(result)") }
+            fields.append("waits=\(state.waitCount)")
+            fields.append("last_wait=\(state.lastWait)")
+            return "[\(fields.joined(separator: "; "))]"
+        }
+    }
+
+    private static func seconds(_ duration: Duration) -> String {
+        let components = duration.components
+        let value = Double(components.seconds) + Double(components.attoseconds) / 1e18
+        return String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 }

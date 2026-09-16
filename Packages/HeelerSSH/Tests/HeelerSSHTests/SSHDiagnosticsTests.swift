@@ -49,9 +49,11 @@ struct SSHDiagnosticsTests {
         }
 
         let lines = recorder.lines(mentioning: listener.port)
+        #expect(lines.count == 1)
         #expect(
-            lines == ["handshake with 127.0.0.1:\(listener.port) timed out"],
+            lines.first?.hasPrefix("handshake with 127.0.0.1:\(listener.port) timed out [") == true,
             Comment(rawValue: "recorded: \(lines)"))
+        #expect(lines.first?.contains("last_wait=socket read") == true)
     }
 
     @Test("a removed sink receives nothing and no line is formatted without one")
@@ -77,7 +79,7 @@ struct SSHDiagnosticsTests {
     }
 }
 
-private final class DiagnosticsRecorder: @unchecked Sendable {
+final class DiagnosticsRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [String] = []
 
@@ -89,6 +91,10 @@ private final class DiagnosticsRecorder: @unchecked Sendable {
     /// too. Only lines naming this test's own port count.
     func lines(mentioning port: UInt16) -> [String] {
         lock.withLock { stored.filter { $0.contains("127.0.0.1:\(port)") } }
+    }
+
+    func lines(startingWith prefix: String) -> [String] {
+        lock.withLock { stored.filter { $0.hasPrefix(prefix) } }
     }
 }
 
