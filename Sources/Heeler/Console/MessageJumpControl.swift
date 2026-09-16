@@ -550,7 +550,7 @@ struct MessageJumpControlView: View {
 struct TerminalFloatingButtonStyle: ButtonStyle {
     /// Glyphs on floating controls sit over live terminal output; muting
     /// them keeps the controls findable without competing with the text.
-    static let iconOpacity: Double = 0.7
+    static let iconOpacity: Double = 0.5
 
     let highlight: Color
 
