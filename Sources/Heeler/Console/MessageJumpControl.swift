@@ -477,9 +477,12 @@ struct MessageJumpControlView: View {
                         action: onOlder)
                 }
                 if availability.showsOlder, availability.showsNewer {
+                    // Centred within the visible tab, not the wider hit area.
                     Rectangle()
                         .fill(palette.foreground.opacity(0.14))
-                        .frame(width: 18, height: 1)
+                        .frame(width: 14, height: 1)
+                        .frame(width: TerminalEdgeTabBackground.width)
+                        .frame(width: Self.buttonSize, alignment: .trailing)
                         .allowsHitTesting(false)
                 }
                 if availability.showsNewer {
