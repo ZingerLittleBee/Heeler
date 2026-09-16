@@ -23,8 +23,8 @@ suite("fatalLines", () => {
 });
 
 suite("startup copy", () => {
-  test("missing host key tells the user how to generate one", () => {
-    assert.match(MISSING_HOST_KEY, /\/etc\/ssh/);
+  test("missing host key names the override and the conventional fixes", () => {
+    assert.match(MISSING_HOST_KEY, /HEELER_SSH_HOST_KEY/);
     assert.match(MISSING_HOST_KEY, /Remote Login/);
     assert.match(MISSING_HOST_KEY, /sudo ssh-keygen -A/);
   });
