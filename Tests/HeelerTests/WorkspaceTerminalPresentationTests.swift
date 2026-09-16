@@ -8,39 +8,67 @@ import UIKit
 @MainActor
 @Suite("Workspace terminal presentation", .serialized, .timeLimit(.minutes(1)))
 struct WorkspaceTerminalPresentationTests {
-    @Test func menuListsTabOrderAndRoutesOnlyToAnotherPane() {
-        let terminals = Self.terminals()
-        #expect(WorkspaceTerminalMenu.ordered(terminals).map(\.paneID) == ["agent", "server", "tests"],
+    @Test func drawerListsTerminalsInTabOrder() {
+        #expect(WorkspaceTerminalDrawer.ordered(Self.terminals()).map(\.paneID) == ["agent", "server", "tests"],
                 "Tab order, then Pane order, whatever the snapshot order")
-        #expect(WorkspaceTerminalMenu.destination(
-            forPaneID: "agent", in: terminals, selectedPaneID: "agent") == nil,
-            "Picking the open terminal is not a switch")
-        #expect(WorkspaceTerminalMenu.destination(
-            forPaneID: "tests", in: terminals, selectedPaneID: "agent")?.paneID == "tests")
-        #expect(WorkspaceTerminalMenu.destination(
-            forPaneID: "gone", in: terminals, selectedPaneID: "agent") == nil)
     }
 
-    @Test func menuIsOneFloatingButtonOverTheTerminal() async throws {
+    @Test func drawerRestsAsOneEdgeHandleAndExpandsToRouteTerminals() async throws {
         // Existing hosting tests use this boundary: older runtimes do not
         // materialize SwiftUI AX elements without an assistive client.
         guard #available(iOS 27, *) else { return }
+        var selected: [ConsoleTerminal.ID] = []
+        let terminals = Self.terminals()
         let controller = UIHostingController(rootView:
-            WorkspaceTerminalMenu(
-                terminals: Self.terminals(), selectedPaneID: "agent", onSelect: { _ in }))
+            WorkspaceTerminalDrawer(
+                terminals: terminals, selectedPaneID: "agent",
+                onSelect: { selected.append($0.id) }))
         controller.safeAreaRegions = []
+        let width: CGFloat = 320
         let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 320, height: 640), rootViewController: controller)
+            frame: CGRect(x: 0, y: 0, width: width, height: 640), rootViewController: controller)
         defer { window.isHidden = true }
-        let button = try await accessible("Workspace terminals", in: controller.view)
-        #expect(button.accessibilityValue == "3 terminals")
-        #expect(button.accessibilityTraits.contains(.button))
-        let frame = Self.frame(of: button, in: controller.view)
-        #expect(frame.width >= 44)
-        #expect(frame.height >= 44)
-        let measured = controller.sizeThatFits(in: CGSize(width: 320, height: 640))
-        #expect(measured.width <= 64, "A single control, not a bar: \(measured)")
-        #expect(measured.height <= 64, "A single control, not a bar: \(measured)")
+
+        // Collapsed: only the handle, docked to the trailing edge.
+        let handle = try await accessible("Workspace terminals", in: controller.view)
+        #expect(handle.accessibilityValue == "3 terminals")
+        let handleFrame = Self.frame(of: handle, in: controller.view)
+        #expect(handleFrame.maxX == width, "Docked to the trailing edge: \(handleFrame)")
+        #expect(handleFrame.width >= 44)
+        #expect(handleFrame.height >= 44)
+        #expect(handleFrame.width <= WorkspaceTerminalDrawer.handleHitWidth)
+        #expect(Self.elements(in: controller.view)
+            .contains { $0.accessibilityLabel == "Terminal, Dev server" } == false,
+            "Rows stay hidden until the handle is tapped")
+
+        // Expanded: every Workspace terminal, in Tab order, current one marked.
+        #expect(handle.accessibilityActivate())
+        let agent = try await accessible("Agent, Code review", in: controller.view)
+        let sameTab = try await accessible("Terminal, Dev server", in: controller.view)
+        let otherTab = try await accessible("Terminal, Tests", in: controller.view)
+        #expect(agent.accessibilityTraits.contains(.selected))
+        #expect(!sameTab.accessibilityTraits.contains(.selected))
+        #expect(!otherTab.accessibilityTraits.contains(.selected))
+        #expect(agent.accessibilityValue == "Development")
+        #expect(otherTab.accessibilityValue == "Checks")
+        // The panel slides in; read the rows once it has settled on screen.
+        var frames: [CGRect] = []
+        for _ in 0..<40 {
+            controller.view.layoutIfNeeded()
+            frames = [agent, sameTab, otherTab].map { Self.frame(of: $0, in: controller.view) }
+            if frames.allSatisfy({ $0.maxX <= width }) { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        for frame in frames {
+            #expect(frame.height >= WorkspaceTerminalDrawer.rowHeight)
+            #expect(frame.maxX <= width, "Panel settled inside the window: \(frame)")
+            #expect(frame.minX >= width - WorkspaceTerminalDrawer.panelWidth)
+        }
+        #expect(frames[0].minY < frames[1].minY)
+        #expect(frames[1].minY < frames[2].minY, "Rows run top to bottom in Tab order")
+
+        #expect(otherTab.accessibilityActivate())
+        #expect(selected == [terminals[0].id])
     }
 
     @Test(arguments: [320.0, 402.0])

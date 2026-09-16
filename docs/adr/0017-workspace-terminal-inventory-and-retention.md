@@ -5,8 +5,9 @@ status: accepted
 # Workspace terminals share a bounded attach lifetime
 
 Issue #333 makes every Pane discoverable as a Workspace Terminal, including
-panes running Agents. Agent detail has a floating Workspace menu over the
-terminal, so navigation costs the output neither width nor height.
+panes running Agents. Agent detail has a Workspace drawer docked to the
+terminal's trailing edge: a handle that expands in place, so navigation
+costs the output neither width nor height.
 The Console's Agents / Terminals control switches between the existing Agent
 list and a Host, then Workspace, grouped terminal inventory. Agent panes route
 to Agent detail, preserving Composer, notification and Agent actions; ordinary
@@ -63,5 +64,5 @@ siblings in the same tab.
 
 Behavior tests cover inventory convergence, lazy admission, mixed Agent/shell
 LRU eviction, cancellation, idle expiry and renderer reuse. UI hosting tests
-cover the menu and list controls. Real SSH and physical-device behavior require
+cover the drawer and list controls. Real SSH and physical-device behavior require
 their own runs; these tests do not constitute live herdr or device evidence.

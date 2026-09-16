@@ -214,7 +214,7 @@ struct AgentDetailView: View {
                     isReturning: openTerminal.isReturning,
                     isClosingTerminal: openTerminal.isClosingTerminal,
                     onCloseTerminal: { openTerminal.closeTerminal() },
-                    workspaceMenu: workspaceMenu
+                    workspaceDrawer: workspaceDrawer
                 ) {
                     await openTerminal.returnToAgent()
                 }
@@ -248,7 +248,7 @@ struct AgentDetailView: View {
                     onRetainDeparture: retainedAgent.map { entry in
                         { console.agentTerminals.release(entry, ownerID: retentionOwnerID) }
                     },
-                    workspaceMenu: workspaceMenu)
+                    workspaceDrawer: workspaceDrawer)
                 .id(ObjectIdentifier(attach))
             }
         }
@@ -331,11 +331,11 @@ struct AgentDetailView: View {
 
     /// Nil outside a Console that can select terminals (a scene root), and
     /// while the Workspace has nothing to switch to.
-    private var workspaceMenu: WorkspaceTerminalMenu? {
+    private var workspaceDrawer: WorkspaceTerminalDrawer? {
         guard let onSelectTerminal else { return nil }
         let terminals = console.terminals(on: agent.hostID, workspaceID: agent.agent.workspaceID)
         guard !terminals.isEmpty else { return nil }
-        return WorkspaceTerminalMenu(
+        return WorkspaceTerminalDrawer(
             terminals: terminals,
             selectedPaneID: openTerminal.shell?.identity.paneID ?? agent.agent.paneID,
             onSelect: { target in

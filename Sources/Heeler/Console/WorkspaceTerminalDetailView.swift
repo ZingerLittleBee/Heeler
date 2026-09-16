@@ -50,7 +50,7 @@ struct WorkspaceTerminalDetailView: View {
                     surfaceRetention: entry.surfaceRetention,
                     title: terminal.displayTitle,
                     backTitle: "Back to Console",
-                    workspaceMenu: workspaceMenu,
+                    workspaceDrawer: workspaceDrawer,
                     onBack: { onBack() })
             } else if let failure {
                 ContentUnavailableView {
@@ -95,10 +95,10 @@ struct WorkspaceTerminalDetailView: View {
         }
     }
 
-    private var workspaceMenu: WorkspaceTerminalMenu? {
+    private var workspaceDrawer: WorkspaceTerminalDrawer? {
         let terminals = console.terminals(on: terminal.hostID, workspaceID: terminal.workspaceID)
         guard !terminals.isEmpty else { return nil }
-        return WorkspaceTerminalMenu(
+        return WorkspaceTerminalDrawer(
             terminals: terminals,
             selectedPaneID: terminal.paneID,
             onSelect: { target in

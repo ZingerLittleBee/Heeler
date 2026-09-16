@@ -156,7 +156,7 @@ _Avoid_: recent link, visible link, link history
 
 **Shell Terminal**:
 The full interactive terminal on an ordinary shell Pane, opened by Agent
-detail's floating Workspace menu, the Console's Terminals list, or Open
+detail's edge-docked Workspace drawer, the Console's Terminals list, or Open
 Terminal. Open Terminal prefers an existing shell in the Workspace and creates
 a tab in the Agent's launch directory only as a fallback or explicit choice.
 Existing shells use direct terminal attach without takeover; Take Over is an
@@ -174,7 +174,7 @@ terminal pane view
 **Workspace Terminal**:
 A Pane listed with its Host, Workspace, Tab title and current directory.
 Includes Agent panes, which open Agent detail, and ordinary panes, which open
-Shell Terminal. The detail menu includes every Tab in the current Workspace;
+Shell Terminal. The detail drawer includes every Tab in the current Workspace;
 the Console's Terminals view groups the same inventory by Host and Workspace.
 Discovery is independent of loading: only selecting a terminal opens its PTY.
 _Avoid_: SSH session, tab (a Tab can contain several Workspace Terminals)
