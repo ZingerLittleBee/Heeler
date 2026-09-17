@@ -104,36 +104,27 @@ struct ConsoleView: View {
                                             Text(mode.title).tag(mode)
                                         }
                                     }
-                                } label: {
-                                    Label(
-                                        "Presentation",
-                                        systemImage: listPresentation.mode == .grouped
-                                            ? "list.bullet.rectangle"
-                                            : "list.bullet")
-                                }
-                                .hoverEffect(.highlight)
-                                .accessibilityLabel("Agent list presentation")
-                                .accessibilityValue(listPresentation.mode.title)
-                            }
-                        }
-                        // A filter is meaningless with a single Host. Keeping
-                        // it last makes it the trailing-most top bar action.
-                        if hosts.hosts.count > 1 {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Menu(
-                                    "Filter by Host",
-                                    systemImage: hostFilter == nil
-                                        ? "line.3.horizontal.decrease.circle"
-                                        : "line.3.horizontal.decrease.circle.fill"
-                                ) {
-                                    Picker("Host", selection: $hostFilter) {
-                                        Text("All Hosts").tag(Host.ID?.none)
-                                        ForEach(hosts.hosts) { host in
-                                            Text(host.displayName).tag(Host.ID?.some(host.id))
+
+                                    // A Host filter is meaningless with a
+                                    // single Host.
+                                    if hosts.hosts.count > 1 {
+                                        Divider()
+                                        Picker("Host", selection: $hostFilter) {
+                                            Text("All Hosts").tag(Host.ID?.none)
+                                            ForEach(hosts.hosts) { host in
+                                                Text(host.displayName).tag(Host.ID?.some(host.id))
+                                            }
                                         }
                                     }
+                                } label: {
+                                    Label(
+                                        "View Options",
+                                        systemImage: hostFilter == nil
+                                            ? "line.3.horizontal.decrease.circle"
+                                            : "line.3.horizontal.decrease.circle.fill")
                                 }
                                 .hoverEffect(.highlight)
+                                .accessibilityValue(listPresentation.mode.title)
                             }
                         }
 
