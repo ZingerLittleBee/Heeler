@@ -119,9 +119,9 @@ struct ShellTerminalStoreTests {
 
         #expect(terminal.isLocalInputEnabled)
         // No title bar: navigation lives behind the input row's More button,
-        // which is present while the keyboard is down. SwiftUI publishes the
-        // row's accessibility elements a run-loop turn or two after layout,
-        // so poll rather than read once.
+        // which is present while the keyboard is down. The app test runner
+        // enables simulator accessibility before launching the host; polling
+        // here only waits for layout to publish the row's elements.
         var labels = Set<String>()
         _ = await eventually {
             controller.view.layoutIfNeeded()

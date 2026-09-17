@@ -134,6 +134,7 @@ run_xcodebuild() {
     local status
     local started_at=$SECONDS
     local action
+    local runner=(xcodebuild)
     shift 2
 
     safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
@@ -153,6 +154,9 @@ run_xcodebuild() {
     if [[ "$ci_lane" == "app" ]]; then
         mkdir -p "$source_packages_dir"
         set -- "$@" -clonedSourcePackagesDirPath "$source_packages_dir"
+        if [[ "${1:-}" == "test-without-building" ]]; then
+            runner=(python3 "$repo_root/scripts/run-app-simulator-tests.py")
+        fi
     fi
     if "$repo_root/scripts/run-with-timeout.py" \
         --timeout-seconds "$timeout_seconds" \
@@ -161,7 +165,7 @@ run_xcodebuild() {
         --artifact-path "$app_derived_data_path/Logs/Test" \
         --artifact-path "$package_derived_data_path/Logs/Test" \
         --artifact-glob "$fixture_dir/*.log" \
-        -- xcodebuild "$@"; then
+        -- "${runner[@]}" "$@"; then
         status=0
     else
         status=$?
