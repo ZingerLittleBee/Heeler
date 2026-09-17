@@ -74,73 +74,7 @@ struct ConsoleView: View {
                 get: { splitVisibility.visibility },
                 set: { splitVisibility.systemDidChangeVisibility($0, presentation: presentation) })
             ) {
-                content
-                    .navigationTitle("Agents")
-                    .searchable(
-                        text: $searchText, isPresented: $isSearchPresented, prompt: "Search Agents")
-                    .searchFocused($isSearchFocused)
-                    .navigationSplitViewColumnWidth(
-                        min: presentation.sidebarWidth.minimum,
-                        ideal: presentation.sidebarWidth.ideal,
-                        max: presentation.sidebarWidth.maximum)
-                    .toolbar {
-                        ToolbarItemGroup(placement: .topBarLeading) {
-                            Button("Settings", systemImage: "gearshape") {
-                                isShowingSettings = true
-                            }
-                            .hoverEffect(.highlight)
-
-                            Button("Hosts", systemImage: "server.rack") {
-                                presentHosts()
-                            }
-                            .hoverEffect(.highlight)
-                        }
-
-                        if !hosts.hosts.isEmpty {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Menu {
-                                    Picker("Presentation", selection: presentationModeBinding) {
-                                        ForEach(ConsoleListPresentationMode.allCases) { mode in
-                                            Text(mode.title).tag(mode)
-                                        }
-                                    }
-
-                                    // A Host filter is meaningless with a
-                                    // single Host.
-                                    if hosts.hosts.count > 1 {
-                                        Divider()
-                                        Picker("Host", selection: $hostFilter) {
-                                            Text("All Hosts").tag(Host.ID?.none)
-                                            ForEach(hosts.hosts) { host in
-                                                Text(host.displayName).tag(Host.ID?.some(host.id))
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    Label(
-                                        "View Options",
-                                        systemImage: hostFilter == nil
-                                            ? "line.3.horizontal.decrease.circle"
-                                            : "line.3.horizontal.decrease.circle.fill")
-                                }
-                                .hoverEffect(.highlight)
-                                .accessibilityValue(listPresentation.mode.title)
-                            }
-                        }
-
-                        if #available(iOS 26.0, *), !hosts.hosts.isEmpty {
-                            DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                            ToolbarSpacer(.fixed, placement: .bottomBar)
-                            ToolbarItem(placement: .bottomBar) {
-                                newAgentButton
-                            }
-                        } else if !hosts.hosts.isEmpty {
-                            ToolbarItemGroup(placement: .bottomBar) {
-                                Spacer()
-                                newAgentButton
-                            }
-                        }
-                    }
+                sidebar(presentation: presentation)
             } detail: {
                 detail
             }
@@ -228,6 +162,100 @@ struct ConsoleView: View {
         .focusedSceneValue(\.consoleCommandTarget, commandTarget)
     }
 
+    @ViewBuilder
+    private func sidebar(presentation: ConsoleSplitPresentation) -> some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                content
+            } else {
+                content
+                    .searchable(
+                        text: $searchText,
+                        isPresented: $isSearchPresented,
+                        prompt: "Search Agents")
+                    .searchFocused($isSearchFocused)
+            }
+        }
+        .navigationTitle("Agents")
+        .navigationSplitViewColumnWidth(
+            min: presentation.sidebarWidth.minimum,
+            ideal: presentation.sidebarWidth.ideal,
+            max: presentation.sidebarWidth.maximum)
+        .toolbar {
+            sidebarTopToolbar
+            sidebarSearchToolbar
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var sidebarTopToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarLeading) {
+            Button("Settings", systemImage: "gearshape") {
+                isShowingSettings = true
+            }
+            .hoverEffect(.highlight)
+
+            Button("Hosts", systemImage: "server.rack") {
+                presentHosts()
+            }
+            .hoverEffect(.highlight)
+        }
+
+        if !hosts.hosts.isEmpty {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Presentation", selection: presentationModeBinding) {
+                        ForEach(ConsoleListPresentationMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+
+                    // A Host filter is meaningless with a single Host.
+                    if hosts.hosts.count > 1 {
+                        Divider()
+                        Picker("Host", selection: $hostFilter) {
+                            Text("All Hosts").tag(Host.ID?.none)
+                            ForEach(hosts.hosts) { host in
+                                Text(host.displayName).tag(Host.ID?.some(host.id))
+                            }
+                        }
+                    }
+                } label: {
+                    Label(
+                        "View Options",
+                        systemImage: hostFilter == nil
+                            ? "line.3.horizontal.decrease.circle"
+                            : "line.3.horizontal.decrease.circle.fill")
+                }
+                .hoverEffect(.highlight)
+                .accessibilityValue(listPresentation.mode.title)
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var sidebarSearchToolbar: some ToolbarContent {
+        if horizontalSizeClass == .regular {
+            ToolbarItemGroup(placement: .bottomBar) {
+                iPadSearchField
+                if !hosts.hosts.isEmpty {
+                    newAgentButton
+                }
+            }
+        } else if #available(iOS 26.0, *), !hosts.hosts.isEmpty {
+            DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            ToolbarSpacer(.fixed, placement: .bottomBar)
+            ToolbarItem(placement: .bottomBar) {
+                newAgentButton
+            }
+        } else if !hosts.hosts.isEmpty {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Spacer()
+                newAgentButton
+            }
+        }
+    }
+
     private var commandTarget: ConsoleCommandTarget {
         ConsoleCommandTarget(
             registry: commandRegistry,
@@ -280,6 +308,17 @@ struct ConsoleView: View {
         guard showsTerminalSurface || showsTerminalSyncSurface else { return nil }
         return terminal.themes.selection(for: colorScheme)
             .chromeColorScheme(for: colorScheme)
+    }
+
+    private var iPadSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+            TextField("Search Agents", text: $searchText)
+                .focused($isSearchFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+        .frame(width: 180)
     }
 
     private var newAgentButton: some View {
