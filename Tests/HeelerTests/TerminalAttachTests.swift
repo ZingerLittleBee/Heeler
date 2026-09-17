@@ -1181,7 +1181,10 @@ struct TerminalAttachTests {
         defer { window.isHidden = true }
 
         // A TUI on the alternate screen with its prompt parked on row 20.
+        // `receive` only enqueues; the caret the region is anchored on moves
+        // once Ghostty has parsed the cursor move, so wait for that.
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[20;3H> ".utf8))
+        terminal.terminalSession.waitForPendingOutput()
         terminal.layoutIfNeeded()
         await Task.yield()
 

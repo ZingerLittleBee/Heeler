@@ -119,8 +119,15 @@ struct ShellTerminalStoreTests {
 
         #expect(terminal.isLocalInputEnabled)
         // No title bar: navigation lives behind the input row's More button,
-        // which is present while the keyboard is down.
-        let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+        // which is present while the keyboard is down. SwiftUI publishes the
+        // row's accessibility elements a run-loop turn or two after layout,
+        // so poll rather than read once.
+        var labels = Set<String>()
+        _ = await eventually {
+            controller.view.layoutIfNeeded()
+            labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+            return labels.contains("More") && labels.contains("Paste")
+        }
         #expect(labels.contains("More"))
         #expect(labels.contains("Paste"))
         #expect(!labels.contains("Insert New Line"), "Shift+Enter lives on the Keys keyboard")
