@@ -69,6 +69,10 @@ struct PreflightReport: Equatable, Sendable {
                 hint =
                     "The Host rejected the device key. Copy this Host's key line "
                     + "into ~/.ssh/authorized_keys on the Host, then run the checks again."
+            case .rsaKey:
+                hint =
+                    "The Host rejected the RSA Key. Copy its public key from Edit Host and "
+                    + "register it wherever that Host accepts SSH identities."
             case .password:
                 hint = "The Host rejected the login. Check the username and password."
             }
@@ -77,6 +81,11 @@ struct PreflightReport: Equatable, Sendable {
             hint =
                 "The Device Key is corrupted. Edit this Host and choose Replace Device Key, "
                 + "then add the new public key to ~/.ssh/authorized_keys on every Device Key Host."
+        case .rsaKeyCorrupt:
+            check = .connection
+            hint =
+                "The RSA Key is corrupted. Edit this Host and choose Replace RSA Key, then "
+                + "register the new public key on every Host that uses it."
         case .hostKeyRejected:
             check = .connection
             hint = "The host key was not confirmed. Run the checks again and confirm the fingerprint."
@@ -165,6 +174,9 @@ struct PreflightReport: Equatable, Sendable {
             case .deviceKey:
                 "The Jump Host rejected the Device Key. Add this Host's key line to "
                     + "~/.ssh/authorized_keys there, then run the checks again."
+            case .rsaKey:
+                "The Jump Host rejected the RSA Key. Register its public key on the Jump Host, "
+                    + "then run the checks again."
             case .password:
                 "The Jump Host rejected the login. It must accept the same password configured "
                     + "for this Host; separate passwords are not supported."
@@ -179,6 +191,9 @@ struct PreflightReport: Equatable, Sendable {
         case .deviceKeyCorrupt:
             "The Device Key is corrupted, so the Jump Host could not be reached. Edit "
                 + "this Host and choose Replace Device Key."
+        case .rsaKeyCorrupt:
+            "The RSA Key is corrupted, so the Jump Host could not be reached. Edit this Host "
+                + "and choose Replace RSA Key."
         case .timedOut:
             "The Jump Host did not answer in time. Check the connection and try again."
         case .cancelled:

@@ -38,6 +38,10 @@ actor SessionDriver {
 
     private static let hostKeyPreference = hostKeyAlgorithms.joined(separator: ",")
 
+    static let signatureAlgorithms = ["rsa-sha2-512"]
+
+    private static let signaturePreference = signatureAlgorithms.joined(separator: ",")
+
     private static let keyExchangePreference = [
         "mlkem768x25519-sha256",
         "curve25519-sha256",
@@ -2277,6 +2281,7 @@ actor SessionDriver {
     private func configureAlgorithms(_ session: OpaquePointer) throws {
         let preferences: [(Int32, String)] = [
             (LIBSSH2_METHOD_HOSTKEY, Self.hostKeyPreference),
+            (LIBSSH2_METHOD_SIGN_ALGO, Self.signaturePreference),
             (LIBSSH2_METHOD_KEX, Self.keyExchangePreference),
             (LIBSSH2_METHOD_CRYPT_CS, Self.cipherPreference),
             (LIBSSH2_METHOD_CRYPT_SC, Self.cipherPreference),

@@ -54,6 +54,12 @@ extension TransportError {
                 summary: "The Device Key is corrupted",
                 detail: nil,
                 recoverySuggestion: "Replace it and install the new public key on the Host.")
+        case .rsaKeyCorrupt:
+            TransportErrorPresentation(
+                summary: "The RSA Key is corrupted",
+                detail: nil,
+                recoverySuggestion:
+                    "Replace it and register the new public key on every Host that uses it.")
         case .hostKeyRejected:
             TransportErrorPresentation(
                 summary: "The host key is not trusted",
@@ -188,7 +194,7 @@ extension TransportError {
                 summary: "The Jump Host connection dropped",
                 detail: detail,
                 recoverySuggestion: nil)
-        case .deviceKeyCorrupt:
+        case .deviceKeyCorrupt, .rsaKeyCorrupt:
             underlying.presentation
         default:
             TransportErrorPresentation(

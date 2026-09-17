@@ -718,6 +718,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The device's stored Ed25519 private key cannot be decoded. Reconnecting
     /// cannot repair it; the user must explicitly replace the Device Key.
     case deviceKeyCorrupt
+    /// The stored RSA identity cannot be decoded. It must be replaced
+    /// explicitly and the replacement public key registered with every Host.
+    case rsaKeyCorrupt
     /// First connect to an unknown Host and the user declined its key
     /// fingerprint; nothing was stored.
     case hostKeyRejected(presented: HostKeyFingerprint)
@@ -783,7 +786,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .apiRejected:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
-            .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
+            .deviceKeyCorrupt, .rsaKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
             .streamLocalOpenFailed,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,

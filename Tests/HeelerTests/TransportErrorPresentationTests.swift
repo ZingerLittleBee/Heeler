@@ -30,6 +30,13 @@ struct TransportErrorPresentationTests {
                 == "If it is running, check SSH stream-local forwarding.")
     }
 
+    @Test func corruptRSAKeyNamesEveryAffectedHost() {
+        let presentation = TransportError.rsaKeyCorrupt.presentation
+        #expect(presentation.summary == "The RSA Key is corrupted")
+        #expect(presentation.detail == nil)
+        #expect(presentation.recoverySuggestion?.contains("every Host") == true)
+    }
+
     @Test func theEightUnchangedMessagesRecomposeByteForByte() {
         let cases: [(TransportError, String)] = [
             (
@@ -187,6 +194,12 @@ struct TransportErrorPresentationTests {
                 "The Device Key is corrupted",
                 nil,
                 "Replace it and install the new public key on the Host."
+            ),
+            (
+                .jumpHostFailed(.rsaKeyCorrupt),
+                "The RSA Key is corrupted",
+                nil,
+                "Replace it and register the new public key on every Host that uses it."
             ),
         ]
         for (error, summary, detail, suggestion) in cases {

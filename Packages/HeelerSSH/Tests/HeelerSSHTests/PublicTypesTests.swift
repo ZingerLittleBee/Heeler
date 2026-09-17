@@ -37,3 +37,8 @@ func hostKeyAlgorithmsPreserveMigratedOrder() {
         "rsa-sha2-256",
     ])
 }
+
+@Test("Client RSA signatures are pinned to RSA-SHA2-512")
+func clientRSASignaturesUseSHA512Only() {
+    #expect(SessionDriver.signatureAlgorithms == ["rsa-sha2-512"])
+}

@@ -491,6 +491,12 @@ actor HeelerSSHTransport: Transport {
                 publicKey: deviceKey.publicKeyBlob,
                 signer: { data in try deviceKey.privateKey.signature(for: data) },
                 timeout: timeout)
+        case .rsaSHA512(let rsaKey):
+            try await connection.authenticate(
+                username: username,
+                publicKey: rsaKey.publicKeyBlob,
+                signer: { data in try rsaKey.signature(for: data) },
+                timeout: timeout)
         }
     }
 
