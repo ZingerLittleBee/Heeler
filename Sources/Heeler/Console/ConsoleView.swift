@@ -84,27 +84,20 @@ struct ConsoleView: View {
                         ideal: presentation.sidebarWidth.ideal,
                         max: presentation.sidebarWidth.maximum)
                     .toolbar {
-                        // A filter is meaningless with a single Host.
-                        if hosts.hosts.count > 1 {
-                            ToolbarItem(placement: .primaryAction) {
-                                Menu(
-                                    "Filter by Host",
-                                    systemImage: hostFilter == nil
-                                        ? "line.3.horizontal.decrease.circle"
-                                        : "line.3.horizontal.decrease.circle.fill"
-                                ) {
-                                    Picker("Host", selection: $hostFilter) {
-                                        Text("All Hosts").tag(Host.ID?.none)
-                                        ForEach(hosts.hosts) { host in
-                                            Text(host.displayName).tag(Host.ID?.some(host.id))
-                                        }
-                                    }
-                                }
-                                .hoverEffect(.highlight)
+                        ToolbarItemGroup(placement: .topBarLeading) {
+                            Button("Settings", systemImage: "gearshape") {
+                                isShowingSettings = true
                             }
+                            .hoverEffect(.highlight)
+
+                            Button("Hosts", systemImage: "server.rack") {
+                                presentHosts()
+                            }
+                            .hoverEffect(.highlight)
                         }
+
                         if !hosts.hosts.isEmpty {
-                            ToolbarItem(placement: .primaryAction) {
+                            ToolbarItem(placement: .topBarTrailing) {
                                 Menu {
                                     Picker("Presentation", selection: presentationModeBinding) {
                                         ForEach(ConsoleListPresentationMode.allCases) { mode in
@@ -123,24 +116,37 @@ struct ConsoleView: View {
                                 .accessibilityValue(listPresentation.mode.title)
                             }
                         }
-                        ToolbarItem(placement: .primaryAction) {
-                            Button("Hosts", systemImage: "server.rack") {
-                                presentHosts()
-                            }
-                            .hoverEffect(.highlight)
-                        }
-                        ToolbarItem(placement: .primaryAction) {
-                            Button("Settings", systemImage: "gearshape") {
-                                isShowingSettings = true
-                            }
-                            .hoverEffect(.highlight)
-                        }
-                        if !hosts.hosts.isEmpty {
-                            ToolbarItem(placement: .primaryAction) {
-                                Button("New Agent", systemImage: "plus") {
-                                    isStartingAgent = true
+                        // A filter is meaningless with a single Host. Keeping
+                        // it last makes it the trailing-most top bar action.
+                        if hosts.hosts.count > 1 {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Menu(
+                                    "Filter by Host",
+                                    systemImage: hostFilter == nil
+                                        ? "line.3.horizontal.decrease.circle"
+                                        : "line.3.horizontal.decrease.circle.fill"
+                                ) {
+                                    Picker("Host", selection: $hostFilter) {
+                                        Text("All Hosts").tag(Host.ID?.none)
+                                        ForEach(hosts.hosts) { host in
+                                            Text(host.displayName).tag(Host.ID?.some(host.id))
+                                        }
+                                    }
                                 }
                                 .hoverEffect(.highlight)
+                            }
+                        }
+
+                        if #available(iOS 26.0, *), !hosts.hosts.isEmpty {
+                            DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                            ToolbarSpacer(.fixed, placement: .bottomBar)
+                            ToolbarItem(placement: .bottomBar) {
+                                newAgentButton
+                            }
+                        } else if !hosts.hosts.isEmpty {
+                            ToolbarItemGroup(placement: .bottomBar) {
+                                Spacer()
+                                newAgentButton
                             }
                         }
                     }
@@ -283,6 +289,13 @@ struct ConsoleView: View {
         guard showsTerminalSurface || showsTerminalSyncSurface else { return nil }
         return terminal.themes.selection(for: colorScheme)
             .chromeColorScheme(for: colorScheme)
+    }
+
+    private var newAgentButton: some View {
+        Button("New Agent", systemImage: "plus") {
+            isStartingAgent = true
+        }
+        .hoverEffect(.highlight)
     }
 
     /// The detail column. Not keyed off the live Agent list alone: the
