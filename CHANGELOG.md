@@ -15,6 +15,8 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- Arrange the Agents screen toolbar with Settings and Hosts on the leading side,
+  list controls on the trailing side, and New Agent beside Search. (PR #346)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 
