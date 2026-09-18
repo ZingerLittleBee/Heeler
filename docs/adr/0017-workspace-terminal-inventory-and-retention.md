@@ -8,10 +8,12 @@ Issue #333 makes every Pane discoverable as a Workspace Terminal, including
 panes running Agents. Agent detail has a Workspace drawer docked to the
 terminal's trailing edge: a handle that expands in place, so navigation
 costs the output neither width nor height.
-The Console's Agents / Terminals control switches between the existing Agent
-list and a Host, then Workspace, grouped terminal inventory. Agent panes route
-to Agent detail, preserving Composer, notification and Agent actions; ordinary
-panes route to the interactive Shell Terminal. Listing never opens a PTY.
+The drawer lists the inventory grouped by Host, then Workspace. The Console
+home keeps its Agent list only: a Terminals switch there was built and then
+removed, because the Console is the Agent overview and the inventory belongs
+next to the terminal being read. Agent panes route to Agent detail, preserving
+Composer, notification and Agent actions; ordinary panes route to the
+interactive Shell Terminal. Listing never opens a PTY.
 
 The authoritative inventory comes from `session.snapshot.panes`, joined with
 its tabs and workspaces. Membership events refresh it; `pane.updated` applies

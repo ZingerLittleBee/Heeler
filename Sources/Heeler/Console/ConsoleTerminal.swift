@@ -55,13 +55,6 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
         return cwd == home ? "~" : "~\(cwd.dropFirst(home.count))"
     }
 
-    func matchesSearch(_ query: String) -> Bool {
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return true }
-        return [hostName, workspaceLabel, tabLabel, paneLabel, title, cwd, agentKind]
-            .contains { $0?.range(of: needle, options: .caseInsensitive) != nil }
-    }
-
     private func nonempty(_ value: String?) -> String? {
         value.flatMap { $0.isEmpty ? nil : $0 }
     }

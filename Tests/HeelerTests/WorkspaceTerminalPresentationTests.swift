@@ -112,60 +112,6 @@ struct WorkspaceTerminalPresentationTests {
         #expect(selected == [terminals[0].id], "New Terminal is not a selection")
     }
 
-    @Test(arguments: [320.0, 402.0])
-    func consoleTitleOffersBothModesAtCompactWidths(width: Double) async throws {
-        let composition = DemoScreenshotComposition.make()
-        // Leave Console suspended. Merely displaying navigation must not
-        // connect a Host or create an attach channel.
-        let controller = UIHostingController(rootView: ConsoleView(
-            hosts: composition.hosts, console: composition.console,
-            terminal: TerminalSettings(
-                themes: composition.terminalThemes, zoom: composition.terminalZoom,
-                fonts: composition.terminalFonts, snippets: composition.snippets),
-            inputMode: composition.inputMode, appearance: composition.appearance,
-            pushRegistration: composition.pushRegistration,
-            notificationPreferences: composition.notificationPreferences,
-            relaySettings: composition.relaySettings,
-            notificationRouter: composition.notificationRouter,
-            bannerStore: composition.bannerStore, liveActivities: composition.liveActivities,
-            activity: composition.activity))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: width, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        var picker: UISegmentedControl?
-        for _ in 0..<40 {
-            controller.view.layoutIfNeeded()
-            picker = Self.segmentedControl(in: controller.view)
-            if picker != nil { break }
-            try await Task.sleep(for: .milliseconds(25))
-        }
-        let control = try #require(picker)
-        #expect(control.numberOfSegments == 2)
-        #expect(control.titleForSegment(at: 0) == "Agents")
-        #expect(control.titleForSegment(at: 1) == "Terminals")
-        let frame = control.convert(control.bounds, to: controller.view)
-        #expect(frame.width >= 150, "Both mode names need room: \(frame)")
-        #expect(controller.view.bounds.contains(frame), "Mode picker must remain visible: \(frame)")
-        if #available(iOS 27, *) {
-            for label in ["Console options", "New Agent"] {
-                if let action = Self.elements(in: controller.view).first(where: {
-                    $0.accessibilityLabel == label && !$0.accessibilityElementsHidden
-                }) {
-                    let actionFrame = Self.frame(of: action, in: controller.view)
-                    if actionFrame.width > 0, actionFrame.height > 0 {
-                        #expect(!frame.intersects(actionFrame),
-                                "Mode picker overlaps \(label): \(frame), \(actionFrame)")
-                    }
-                }
-            }
-        }
-        control.selectedSegmentIndex = 1
-        control.sendActions(for: .valueChanged)
-        controller.view.layoutIfNeeded()
-        #expect(composition.notificationRouter.path.isEmpty)
-        #expect(composition.console.terminalConnections.entries.isEmpty)
-    }
-
     private func accessible(_ label: String, in root: UIView) async throws -> NSObject {
         for _ in 0..<40 {
             root.layoutIfNeeded()
@@ -202,12 +148,6 @@ struct WorkspaceTerminalPresentationTests {
     private static func frame(of element: NSObject, in root: UIView) -> CGRect {
         if let view = element as? UIView { return view.convert(view.bounds, to: root) }
         return root.convert(element.accessibilityFrame, from: nil)
-    }
-
-    private static func segmentedControl(in view: UIView) -> UISegmentedControl? {
-        if let control = view as? UISegmentedControl,
-           control.titleForSegment(at: 0) == "Agents" { return control }
-        return view.subviews.lazy.compactMap { segmentedControl(in: $0) }.first
     }
 
     private static func terminals() -> [ConsoleTerminal] {
