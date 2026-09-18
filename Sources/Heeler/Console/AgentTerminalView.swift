@@ -166,6 +166,9 @@ struct AgentTerminalView: View {
     /// Keeps the keyboard up across the terminal rebuild an Agent switch
     /// forces; owned by the Console so it survives that rebuild.
     private let keyboardHandoff: TerminalKeyboardHandoff
+    /// False for the placeholder Agent detail builds before its retained
+    /// terminal is prepared; see `AgentComposerView.inheritsKeyboardHandoff`.
+    private let inheritsKeyboardHandoff: Bool
     /// How much of the bottom edge the keyboard covers. Console-owned for the
     /// same reason as the handoff: a switch that inherits a raised keyboard
     /// must lay the terminal out at the right height on its first frame.
@@ -285,6 +288,7 @@ struct AgentTerminalView: View {
         retainedSurface: TerminalSurfaceRetention? = nil,
         onRetainDeparture: (() -> Void)? = nil,
         workspaceDrawer: WorkspaceTerminalDrawer? = nil,
+        inheritsKeyboardHandoff: Bool = true,
         interactionProbe: AgentTerminalInteractionProbe? = nil
     ) {
         self.agent = agent
@@ -294,6 +298,7 @@ struct AgentTerminalView: View {
         self.hosts = hosts
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
+        self.inheritsKeyboardHandoff = inheritsKeyboardHandoff
         self.keyboardInset = keyboardInset
         _usesDirectToolsKeyboard = State(
             initialValue: inputMode.isDirect && keyboardHandoff.mode(for: agent.id) == .controls)
@@ -387,6 +392,7 @@ struct AgentTerminalView: View {
         screen.claimsKeyboard = {
             [
                 keyboardHandoff,
+                inheritsKeyboardHandoff,
                 agent,
                 inputMode,
                 directKeyboardIntent,
@@ -405,6 +411,8 @@ struct AgentTerminalView: View {
             } else {
                 keyboardInset.resumeHeightCapture()
             }
+            // A placeholder build leaves the one-shot for the real screen.
+            guard inheritsKeyboardHandoff else { return directKeyboardIntent.wantsKeyboard }
             // An iPad tools dock stands without a responder; the token is
             // still consumed so it cannot raise a later surface.
             if usesDirectToolsKeyboard, TerminalKeyboardMode.controlsReleaseFirstResponder {
@@ -1072,6 +1080,7 @@ struct AgentTerminalView: View {
                 .chromeColorScheme(for: colorScheme),
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
+            inheritsKeyboardHandoff: inheritsKeyboardHandoff,
             keyboardHeight: composerKeyboardLayout.availableToolsHeight,
             actions: composerActions,
             attachLinksPopover: attachLinksPopover(from: .composerChip),

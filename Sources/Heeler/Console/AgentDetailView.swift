@@ -249,7 +249,11 @@ struct AgentDetailView: View {
                     onRetainDeparture: retainedAgent.map { entry in
                         { console.agentTerminals.release(entry, ownerID: retentionOwnerID) }
                     },
-                    workspaceDrawer: workspaceDrawer)
+                    workspaceDrawer: workspaceDrawer,
+                    // Retention swaps `attach` on appear and rebuilds this
+                    // view; the build before that swap is a placeholder and
+                    // must not spend the keyboard handoff meant for the real one.
+                    inheritsKeyboardHandoff: !permitsRetention || retainedAgent != nil)
                 .id(ObjectIdentifier(attach))
             }
         }

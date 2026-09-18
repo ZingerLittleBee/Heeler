@@ -107,6 +107,11 @@ struct AgentComposerView: View {
     let chromeColorScheme: ColorScheme
     let switcher: TerminalAgentSwitcher
     let keyboardHandoff: TerminalKeyboardHandoff
+    /// False for the placeholder Agent detail builds before its retained
+    /// terminal is prepared: that instance is torn down a moment later, and
+    /// spending the one-shot handoff there would leave the real screen
+    /// without it. See `AgentDetailView.prepareRetainedAgent`.
+    var inheritsKeyboardHandoff = true
     let keyboardHeight: CGFloat
     let actions: AgentComposerActions
     /// Anchors the Attach Links list to the link chip that opens it.
@@ -313,7 +318,8 @@ struct AgentComposerView: View {
             hasDraft: { store.canSend },
             send: { await deliverDraft { await store.send() } }))
         .onAppear {
-            guard let selectedID = switcher.selectedID,
+            guard inheritsKeyboardHandoff,
+                  let selectedID = switcher.selectedID,
                   keyboardHandoff.consume(selectedID)
             else { return }
             setKeyboardPresentation(.system)
