@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import HeelerSSH
 
 /// Shared policy for the disposable real-sshd fixtures.
 ///
@@ -44,7 +45,15 @@ enum RealSSHFixture {
     /// Enables the suite when its fixture is configured, and also when the
     /// fixture is required but absent, so the per-test `#require` reports the
     /// missing fixture as a failure instead of a skip.
-    static func gate(_ isConfigured: Bool) -> Bool { isConfigured || isRequired }
+    static func gate(_ isConfigured: Bool) -> Bool {
+        _ = diagnosticsSink
+        return isConfigured || isRequired
+    }
+
+    /// Installed once per test process, from the gate every fixture-backed
+    /// suite passes through, so a fixture failure prints its SSH phase and
+    /// libssh2 code into the xcodebuild log beside the test (#343).
+    private static let diagnosticsSink = SSHDiagnostics.addSink(SSHDiagnostics.printingSink())
 
     /// The Ed25519 Device Key the fixture authorizes.
     ///

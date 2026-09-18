@@ -106,6 +106,8 @@ fake_herdr_pid=""
 weak_network_pid=""
 simulator_udid=""
 simulator_destination=""
+simulator_environment_variables=()
+simulator_listing=""
 
 # The privileged password fixture, provisioned only when sudo -n works.
 password_username=""
@@ -130,11 +132,20 @@ unprivileged_sshd_pids=()
 run_xcodebuild() {
     local label=$1
     local timeout_seconds=$2
+    local output_log=$3
     local safe_label
-    local status
+    local status=70
     local started_at=$SECONDS
     local action
-    shift 2
+    local attempt
+    local attempt_log
+    local backoff
+    local needs_recovery=0
+    local failed_udid="$simulator_udid"
+    local working_directory="$repo_root"
+    local index
+    local -a arguments=()
+    shift 3
 
     safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
     echo "::group::$label"
@@ -147,24 +158,69 @@ run_xcodebuild() {
         set -- "$action" -disableAutomaticPackageResolution "$@"
         echo "==> $label: skipping automatic package resolution"
     fi
-    # Keep remote checkouts outside the disposable DerivedData path so a
-    # restored CI cache survives fixture cleanup. Local path packages such as
-    # HeelerSSH are unaffected.
     if [[ "$ci_lane" == "app" ]]; then
         mkdir -p "$source_packages_dir"
         set -- "$@" -clonedSourcePackagesDirPath "$source_packages_dir"
-    fi
-    if "$repo_root/scripts/run-with-timeout.py" \
-        --timeout-seconds "$timeout_seconds" \
-        --label "$label" \
-        --diagnostics-dir "$diagnostic_root/$safe_label" \
-        --artifact-path "$app_derived_data_path/Logs/Test" \
-        --artifact-path "$package_derived_data_path/Logs/Test" \
-        --artifact-glob "$fixture_dir/*.log" \
-        -- xcodebuild "$@"; then
-        status=0
     else
-        status=$?
+        working_directory="$repo_root/Packages/HeelerSSH"
+    fi
+    arguments=("$@")
+    # Keep this function in the calling shell. In particular, an outer tee
+    # pipeline or package-directory subshell would discard a replacement UDID
+    # and leave later suites and cleanup pointing at the missing device.
+    for attempt in 1 2 3 4; do
+        if [[ "$needs_recovery" == 1 ]]; then
+            # The observed loss (#327) emptied CoreSimulator's whole visible
+            # set, so a couple of seconds is not a recovery window. Back off
+            # 2s, 10s, 30s: about 42s in total before the retry is exhausted.
+            case "$attempt" in
+                2) backoff=2 ;;
+                3) backoff=10 ;;
+                *) backoff=30 ;;
+            esac
+            echo "==> $label: recovering simulator $failed_udid in ${backoff}s (attempt $attempt/4)"
+            sleep "$backoff"
+            if ! recover_simulator_destination; then
+                continue
+            fi
+        fi
+        for ((index = 0; index < ${#arguments[@]} - 1; index += 1)); do
+            if [[ "${arguments[$index]}" == "-destination" ]]; then
+                arguments[index + 1]="$simulator_destination"
+            fi
+        done
+        attempt_log="$fixture_dir/$safe_label-attempt-$attempt.log"
+        if (
+            cd "$working_directory" || exit 1
+            "$repo_root/scripts/run-with-timeout.py" \
+                --timeout-seconds "$timeout_seconds" \
+                --label "$label" \
+                --diagnostics-dir "$diagnostic_root/$safe_label/attempt-$attempt" \
+                --artifact-path "$app_derived_data_path/Logs/Test" \
+                --artifact-path "$package_derived_data_path/Logs/Test" \
+                --artifact-glob "$fixture_dir/*.log" \
+                -- xcodebuild "${arguments[@]}"
+        ) 2>&1 | tee "$attempt_log" "$output_log"; then
+            status=0
+            break
+        else
+            status=$?
+        fi
+        # Exit 70 alone is not enough: only a missing destination is retryable.
+        # Compilation, test failures, watchdog expiry and lock contention keep
+        # their original failure behavior.
+        if [[ "$status" != 70 ]] || ! grep -qF \
+            'Unable to find a device matching the provided destination specifier' \
+            "$attempt_log"; then
+            needs_recovery=0
+            break
+        fi
+        needs_recovery=1
+        failed_udid="$simulator_udid"
+    done
+    if [[ "$status" != 0 && "$needs_recovery" == 1 ]]; then
+        echo "Simulator destination recovery exhausted for UDID $failed_udid ($ci_simulator_name)." >&2
+        xcrun simctl list devices available >&2 || true
     fi
     echo "::endgroup::"
     echo "==> $label: $((SECONDS - started_at))s (status $status)"
@@ -445,6 +501,7 @@ trap cleanup EXIT INT TERM
 # the launchd values leaves HEELER_SSH_E2E_REQUIRED visible and the
 # fixture-backed suites fail instead of skipping once the fixture is gone.
 clear_simulator_environment() {
+    simulator_environment_variables=()
     local variable
     local pid
     local unsetenv_pids=()
@@ -483,11 +540,13 @@ clear_simulator_environment() {
 # The setenv half of the same trade: a dozen serial `simctl spawn` round trips
 # put most of a minute on the critical path. Values are read through variable
 # indirection, so callers assign first and pass names. Every push is still
-# checked -- under `set -e` a failed wait aborts the gate, exactly as the
-# serial calls did.
+# checked explicitly, including when recovery calls this from a conditional
+# where Bash disables errexit.
 push_simulator_environment() {
+    simulator_environment_variables=("$@")
     local variable
     local pid
+    local status=0
     local setenv_pids=()
     for variable in "$@"; do
         xcrun simctl spawn "$simulator_udid" launchctl setenv \
@@ -495,8 +554,9 @@ push_simulator_environment() {
         setenv_pids+=("$!")
     done
     for pid in "${setenv_pids[@]}"; do
-        wait "$pid"
+        wait "$pid" || status=1
     done
+    return "$status"
 }
 
 stop_privileged_sshd() {
@@ -564,7 +624,7 @@ start_password_sshd() {
     # The invoking shell intentionally owns the diagnostic log redirect.
     # shellcheck disable=SC2024
     sudo -n /usr/sbin/sshd -D -e -f "$password_config" \
-        > "$password_log" 2>&1 &
+        > >(timestamp_lines > "$password_log") 2>&1 &
     password_pid=$!
 
     for ((attempt = 0; attempt < 50; attempt += 1)); do
@@ -728,6 +788,15 @@ EXPECT
     return "$status"
 )
 
+# `sshd -e` writes no timestamps, so a preserved log could not be matched
+# against the wall-clock window of a failing test (#343). Prefix every line
+# with the same UTC format GitHub prints for job log lines. Process
+# substitution keeps `$!` as sshd's own pid for the kill/wait bookkeeping;
+# the filter exits on its own when sshd closes the pipe.
+timestamp_lines() {
+    perl -MPOSIX -pe '$| = 1; $_ = POSIX::strftime("%Y-%m-%dT%H:%M:%SZ ", gmtime) . $_'
+}
+
 # Sets started_sshd_pid rather than printing it: a command substitution would
 # run the append to unprivileged_sshd_pids in a subshell and lose it.
 started_sshd_pid=""
@@ -735,7 +804,7 @@ start_unprivileged_sshd() {
     local config=$1
     local log=$2
 
-    /usr/sbin/sshd -D -e -f "$config" > "$log" 2>&1 &
+    /usr/sbin/sshd -D -e -f "$config" > >(timestamp_lines > "$log") 2>&1 &
     started_sshd_pid=$!
     unprivileged_sshd_pids+=("$started_sshd_pid")
 }
@@ -917,25 +986,35 @@ printf 'Claimed fixture port block %s-%s\n' \
 # claim "iPhone 17 Pro", and names with parentheses (iPad Pro 13-inch (M5))
 # stay literal rather than becoming an awk regex.
 ci_simulator_name="${HEELER_CI_SIMULATOR_NAME:-iPhone 17}"
-simulator_candidates=()
-while IFS= read -r candidate; do
-    [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
-done < <(xcrun simctl list devices available | awk -v name="$ci_simulator_name" '
-    index($0, name " (") {
-        candidate = ""
-        for (field = 1; field <= NF; field += 1) {
-            value = $field
-            gsub(/[()]/, "", value)
-            if (value ~ /^[0-9A-F-]{36}$/) {
-                candidate = value
+requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
+# Keeps the raw listing in simulator_listing so a recovery attempt can print
+# what CoreSimulator saw at that moment, not only the filtered candidates.
+list_simulator_candidates() {
+    local candidate
+    simulator_listing=$(xcrun simctl list devices available) || return 1
+    simulator_candidates=()
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
+    done < <(printf '%s\n' "$simulator_listing" | awk -v name="$ci_simulator_name" \
+        -v pinned="$requested_simulator_udid" '
+        index($0, name " (") || (pinned != "" && index($0, "(" pinned ")")) {
+            candidate = ""
+            for (field = 1; field <= NF; field += 1) {
+                value = $field
+                gsub(/[()]/, "", value)
+                if (value ~ /^[0-9A-F-]{36}$/) {
+                    candidate = value
+                }
+            }
+            if (candidate != "") {
+                list[++count] = candidate
             }
         }
-        if (candidate != "") {
-            list[++count] = candidate
-        }
-    }
-    END { for (index_ = count; index_ >= 1; index_ -= 1) print list[index_] }
-')
+        END { for (index_ = count; index_ >= 1; index_ -= 1) print list[index_] }
+    ')
+}
+
+list_simulator_candidates
 if [[ "${#simulator_candidates[@]}" -eq 0 ]]; then
     echo "No available ${ci_simulator_name} Simulator was found" >&2
     exit 1
@@ -968,7 +1047,61 @@ claim_simulator() {
     return 1
 }
 
-requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
+# Called only after xcodebuild explicitly reports a missing destination. Keep
+# an explicit caller pin; otherwise use another unclaimed device of the same
+# name. Never reset CoreSimulator or disturb another run's device lock.
+recover_simulator_destination() {
+    local candidate
+    local current_available=0
+
+    list_simulator_candidates || return 1
+    # The next reader needs to know whether the device was gone for seconds or
+    # for the whole window, so every rediscovery records the live listing.
+    printf 'Simulators visible while recovering %s:\n%s\n' \
+        "${simulator_udid:-<released>}" "$simulator_listing" >&2
+    # Bash 3.2 treats an empty array expansion as unbound under nounset.
+    # Handle it before iterating so recovery can retry and report diagnostics.
+    if [[ "${#simulator_candidates[@]}" == 0 ]]; then
+        echo "No available $ci_simulator_name Simulator during destination recovery." >&2
+        return 1
+    fi
+    for candidate in "${simulator_candidates[@]}"; do
+        if [[ "$candidate" == "$simulator_udid" ]]; then
+            current_available=1
+        fi
+    done
+    if [[ "$current_available" == 0 ]]; then
+        if [[ -n "$requested_simulator_udid" ]]; then
+            echo "Explicitly pinned simulator $requested_simulator_udid is still unavailable." >&2
+            return 1
+        fi
+        # Clear the old device while still owning it, but preserve shell values
+        # for the replacement. Release before claiming so cleanup owns one lock.
+        (clear_simulator_environment) || true
+        release_resource_lock "$device_lock_dir" "simulator" || return 1
+        device_lock_dir=""
+        simulator_udid=""
+        simulator_destination=""
+        for candidate in "${simulator_candidates[@]}"; do
+            if claim_simulator "$candidate"; then
+                simulator_udid="$candidate"
+                simulator_destination="platform=iOS Simulator,id=$candidate"
+                break
+            fi
+        done
+        if [[ -z "$simulator_udid" ]]; then
+            echo "Every replacement $ci_simulator_name Simulator is claimed by a live run." >&2
+            return 1
+        fi
+    fi
+    printf 'Recovering simulator %s\n' "$simulator_udid" >&2
+    xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
+    xcrun simctl bootstatus "$simulator_udid" -b || return 1
+    if [[ "${#simulator_environment_variables[@]}" -gt 0 ]]; then
+        push_simulator_environment "${simulator_environment_variables[@]}" || return 1
+    fi
+}
+
 simulator_udid=""
 if [[ -n "$requested_simulator_udid" ]]; then
     if claim_simulator "$requested_simulator_udid"; then
@@ -1578,7 +1711,7 @@ run_suite() {
     if [[ "$expected_suites" != "1" ]]; then
         noun="suites"
     fi
-    run_xcodebuild "$lane" "$xcodebuild_test_timeout_seconds" \
+    run_xcodebuild "$lane" "$xcodebuild_test_timeout_seconds" "$log" \
         test-without-building \
         -project Heeler.xcodeproj \
         -scheme Heeler \
@@ -1586,8 +1719,7 @@ run_suite() {
         -destination "$simulator_destination" \
         -collect-test-diagnostics never \
         -parallel-testing-enabled NO \
-        "${selectors[@]}" \
-        2>&1 | tee "$log"
+        "${selectors[@]}"
 
     skips=$(grep -cE '(Test|Suite) .* skipped' "$log" || true)
     if [[ "$skips" != "$expected_skips" ]]; then
@@ -1708,6 +1840,7 @@ echo "==> Fixture provisioning finished at t+${SECONDS}s"
 # paying a package-resolution and incremental-build check per session --
 # measured at roughly half a minute per xcodebuild invocation on CI.
 run_xcodebuild "Build for testing" "$xcodebuild_build_timeout_seconds" \
+    "$fixture_dir/build-for-testing.log" \
     build-for-testing \
     -project Heeler.xcodeproj \
     -scheme Heeler \
@@ -1890,15 +2023,13 @@ fi
 if [[ "$ci_lane" == "package" ]]; then
 # Same overlap as the app lane: compilation needs the destination to exist,
 # not to be booted, so remaining simulator boot runs under the build.
-(
-    cd Packages/HeelerSSH
-    run_xcodebuild "HeelerSSH package build" "$xcodebuild_build_timeout_seconds" \
-        build-for-testing \
-        -scheme HeelerSSH \
-        -derivedDataPath "$package_derived_data_path" \
-        -destination "$simulator_destination" \
-        -collect-test-diagnostics never
-)
+run_xcodebuild "HeelerSSH package build" "$xcodebuild_build_timeout_seconds" \
+    "$fixture_dir/package-build.log" \
+    build-for-testing \
+    -scheme HeelerSSH \
+    -derivedDataPath "$package_derived_data_path" \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never
 boot_wait_started=$SECONDS
 xcrun simctl bootstatus "$simulator_udid" -b
 echo "==> Simulator boot wait after the build overlap: $((SECONDS - boot_wait_started))s"
@@ -1916,20 +2047,18 @@ push_simulator_environment \
     HEELER_SSH_E2E_STREAMLOCAL_SOCKET
 
 package_e2e_log="$fixture_dir/package-e2e.log"
-(
-    cd Packages/HeelerSSH
-    run_xcodebuild "HeelerSSH package E2E" "$xcodebuild_test_timeout_seconds" \
-        test-without-building \
-        -scheme HeelerSSH \
-        -derivedDataPath "$package_derived_data_path" \
-        -destination "$simulator_destination" \
-        -collect-test-diagnostics never
-) 2>&1 | tee "$package_e2e_log"
+run_xcodebuild "HeelerSSH package E2E" "$xcodebuild_test_timeout_seconds" \
+    "$package_e2e_log" \
+    test-without-building \
+    -scheme HeelerSSH \
+    -derivedDataPath "$package_derived_data_path" \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never
 clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 53 tests in 3 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 56 tests in 4 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "post-negotiation transport loss is not an algorithm mismatch" passed' \
         "$package_e2e_log" \
@@ -2037,17 +2166,17 @@ fi
 # and rewrite their real authorized_keys) refuse it and skip; see
 # RealSSHFixture.isUnderMergeGate. cleanup() unsets it again on exit.
 export HEELER_SSH_E2E_REQUIRED=0
-xcrun simctl spawn "$simulator_udid" launchctl setenv HEELER_SSH_E2E_REQUIRED 0
+push_simulator_environment HEELER_SSH_E2E_REQUIRED
 
 full_lane_log="$fixture_dir/full-lane.log"
 run_xcodebuild "Full app test lane" "$xcodebuild_test_timeout_seconds" \
+    "$full_lane_log" \
     test-without-building \
     -project Heeler.xcodeproj \
     -scheme Heeler \
     -derivedDataPath "$app_derived_data_path" \
     -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    2>&1 | tee "$full_lane_log"
+    -collect-test-diagnostics never
 
 # 769 is a floor, not the current count: it is what the lane executed the day it
 # was written, deliberately left below what the lane reaches now so that adding
