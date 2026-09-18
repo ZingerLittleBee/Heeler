@@ -50,7 +50,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=39
+expected_cases=47
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -99,6 +99,8 @@ extract_shipped_function cleanup
 extract_shipped_function clear_simulator_environment
 extract_shipped_function stop_privileged_sshd
 extract_shipped_function release_resource_lock
+extract_shipped_function provisioning_step
+extract_shipped_function redact_secret_in_file
 
 # The optimized gate has exactly three app fixture invocations. The package
 # suite runs in its own workflow job, so putting it back into the app lane or
@@ -121,6 +123,20 @@ grep -qF '"KexAlgorithms curve25519-sha256" >> "$modern_config"' "$gate_script" 
 grep -qF '"KexAlgorithms mlkem768x25519-sha256" >> "$post_quantum_config"' \
     "$gate_script" \
     || die "post-quantum coverage does not use a dedicated fixture"
+# The password fixture block used to fail under set -e with nothing printed
+# (#348). Each of its silent steps must stay routed through provisioning_step,
+# and the sysadminctl transcript must be a fixture_dir .log so that
+# preserve_failure_diagnostics copies it with the sshd logs.
+# shellcheck disable=SC2016
+grep -qF 'provisioning_step create_password_user create_password_user || exit 1' \
+    "$gate_script" \
+    || die "create_password_user is not routed through provisioning_step"
+provisioning_step_calls=$(grep -cE '^[[:space:]]*provisioning_step ' "$gate_script")
+[[ "$provisioning_step_calls" == 4 ]] \
+    || die "gate routes $provisioning_step_calls password fixture steps through provisioning_step, expected 4"
+# shellcheck disable=SC2016
+grep -qF 'sysadminctl_log="$fixture_dir/sysadminctl.log"' "$gate_script" \
+    || die "sysadminctl transcript is not a fixture_dir .log that preserve_failure_diagnostics copies"
 awk '
     /if \[\[ "\$ci_lane" == "app" \]\]; then/ { in_app_lane = 1; next }
     in_app_lane && /clear_simulator_environment/ { cleared = 1 }
@@ -1072,6 +1088,188 @@ else
     failed=$((failed + 1))
     printf '%s\n' "$cleanup_output" | sed 's/^/        | /'
 fi
+
+echo
+echo "== password fixture provisioning names its failing step (#348) =="
+# Five CI runs exited 1 between "Claimed simulator" and the first xcodebuild
+# with nothing printed: every command in the password fixture block was silent
+# under set -e. These cases hold the wrapper, the transcript scrub, and the
+# expect script's exit paths to the contract that the job log names the step,
+# the reason, and never the account password.
+record_case() {
+    local label=$1 reason=$2 status=$3
+    case_labels+=("$label")
+    ran=$((ran + 1))
+    if [[ -z "$reason" ]]; then
+        printf 'ok    expected-pass  exit=%-3s  %s\n' "$status" "$label"
+        passed=$((passed + 1))
+    else
+        printf 'FAIL  exit=%-3s  %s\n          (%s)\n' "$status" "$label" "$reason"
+        failed=$((failed + 1))
+    fi
+}
+provisioning_fail_3() {
+    return 3
+}
+step_output=$(
+    set +e
+    provisioning_step "fake step" provisioning_fail_3 2>&1
+    printf 'STATUS=%s\n' "$?"
+)
+step_status=$(printf '%s\n' "$step_output" | sed -n 's/^STATUS=//p')
+reason=""
+if [[ "$step_status" != 3 ]]; then
+    reason="status $step_status, expected the step's own 3"
+elif ! printf '%s\n' "$step_output" \
+    | grep -qF 'Password fixture provisioning failed at fake step (status 3).'; then
+    reason="failure did not name the step and status"
+fi
+record_case "a failing provisioning step names itself and keeps its status" \
+    "$reason" "$step_status"
+
+step_output=$(
+    set +e
+    provisioning_step "fake step" true 2>&1
+    printf 'STATUS=%s\n' "$?"
+)
+reason=""
+[[ "$step_output" == "STATUS=0" ]] \
+    || reason="a passing step returned or printed something: $step_output"
+record_case "a passing provisioning step is silent" "$reason" \
+    "$(printf '%s\n' "$step_output" | sed -n 's/^STATUS=//p')"
+
+fake_secret="secret-$RANDOM-$RANDOM"
+transcript="$work/redact-transcript.log"
+printf 'User password: %s\r\nagain %s and %s\n' \
+    "$fake_secret" "$fake_secret" "$fake_secret" > "$transcript"
+redact_secret_in_file "$transcript" "$fake_secret"
+reason=""
+if grep -qF "$fake_secret" "$transcript"; then
+    reason="the secret survived redaction"
+elif [[ "$(grep -o '\[redacted\]' "$transcript" | wc -l | tr -d ' ')" != 3 ]]; then
+    reason="expected three redactions, transcript reads: $(cat "$transcript")"
+elif ! grep -qF 'User password:' "$transcript"; then
+    reason="redaction removed more than the secret"
+fi
+record_case "the sysadminctl transcript is scrubbed of the account password" \
+    "$reason" 0
+
+printf 'User password:\nnothing secret here\n' > "$transcript"
+before=$(cat "$transcript")
+redact_secret_in_file "$transcript" ""
+reason=""
+[[ "$(cat "$transcript")" == "$before" ]] \
+    || reason="an empty secret rewrote the transcript: $(cat "$transcript")"
+record_case "an empty secret leaves the transcript untouched" "$reason" 0
+
+# The expect script is lifted out of create_password_user as shipped, then only
+# its spawn target and deadline are redirected: the stand-in sysadminctl is a
+# shell script, and the 30s deadline becomes 5s so the timeout path is cheap
+# while a loaded machine still starts a stand-in well inside the deadline.
+sysadminctl_expect="$work/sysadminctl.exp"
+awk '/^create_password_user\(\) \($/ { in_function = 1 }
+     in_function && /<<'"'"'EXPECT'"'"'$/ { inside = 1; next }
+     inside && /^EXPECT$/ { exit }
+     inside { print }' "$gate_script" > "$sysadminctl_expect"
+[[ -s "$sysadminctl_expect" ]] \
+    || die "no sysadminctl expect script inside create_password_user"
+perl -0pi -e 's/spawn \/usr\/bin\/sudo -n \/usr\/sbin\/sysadminctl \\\n(?:    [^\n]*\\\n)*    -password -\n/spawn \$env(HEELER_FAKE_SYSADMINCTL)\n/; s/^set timeout 30$/set timeout 5/m' \
+    "$sysadminctl_expect"
+# shellcheck disable=SC2016
+grep -qF 'spawn $env(HEELER_FAKE_SYSADMINCTL)' "$sysadminctl_expect" \
+    || die "could not redirect the sysadminctl spawn in the lifted expect script"
+grep -qF 'set timeout 5' "$sysadminctl_expect" \
+    || die "could not shorten the sysadminctl deadline in the lifted expect script"
+sysadminctl_transcript="$work/sysadminctl.log"
+# Runs the lifted script against one stand-in; prints its output then STATUS=.
+run_sysadminctl_expect() {
+    set +e
+    HEELER_FAKE_SYSADMINCTL="$1" \
+    HEELER_SYSADMINCTL_LOG="$sysadminctl_transcript" \
+    HEELER_SYSADMINCTL_PASSWORD="$fake_secret" \
+    HEELER_SYSADMINCTL_USERNAME=heelerssh0 \
+    HEELER_SYSADMINCTL_UID=600 \
+    HEELER_SYSADMINCTL_HOME="$work/password-home" \
+        /usr/bin/expect "$sysadminctl_expect" 2>&1
+    printf 'STATUS=%s\n' "$?"
+}
+write_stand_in() {
+    printf '#!/bin/bash\n%s\n' "$2" > "$1"
+    chmod +x "$1"
+}
+# The real prompt is "User password:". The stand-ins read with echo left on,
+# so a transcript that records the pty would record the password unless the
+# script turns echo off first.
+write_stand_in "$work/sysadminctl-exit7.sh" \
+    'printf "User password:"; read -r pw; echo; echo "boom" >&2; exit 7'
+write_stand_in "$work/sysadminctl-noprompt.sh" \
+    'echo "Password is required!"; exit 3'
+write_stand_in "$work/sysadminctl-hang.sh" \
+    'echo "thinking"; sleep 30'
+# shellcheck disable=SC2016
+write_stand_in "$work/sysadminctl-ok.sh" \
+    'printf "User password:"; read -r pw; printf "\nread %s bytes\n" "${#pw}"; exit 0'
+
+rm -f "$sysadminctl_transcript"
+expect_output=$(run_sysadminctl_expect "$work/sysadminctl-exit7.sh")
+expect_status=$(printf '%s\n' "$expect_output" | sed -n 's/^STATUS=//p')
+reason=""
+if [[ "$expect_status" != 7 ]]; then
+    reason="status $expect_status, expected sysadminctl's own 7"
+elif ! printf '%s\n' "$expect_output" | grep -qF 'sysadminctl exited with status 7'; then
+    reason="the exit status was not reported: $expect_output"
+fi
+record_case "a sysadminctl failure reports its exit status" "$reason" "$expect_status"
+
+rm -f "$sysadminctl_transcript"
+expect_output=$(run_sysadminctl_expect "$work/sysadminctl-noprompt.sh")
+expect_status=$(printf '%s\n' "$expect_output" | sed -n 's/^STATUS=//p')
+reason=""
+if [[ "$expect_status" != 1 ]]; then
+    reason="status $expect_status, expected 1"
+elif ! printf '%s\n' "$expect_output" \
+    | grep -qF 'sysadminctl exited without prompting for a password'; then
+    reason="the missing prompt was not reported: $expect_output"
+elif ! grep -qF 'Password is required!' "$sysadminctl_transcript"; then
+    reason="the transcript did not record what sysadminctl printed"
+fi
+record_case "a sysadminctl that never prompts is reported with its transcript" \
+    "$reason" "$expect_status"
+
+rm -f "$sysadminctl_transcript"
+expect_output=$(run_sysadminctl_expect "$work/sysadminctl-hang.sh")
+expect_status=$(printf '%s\n' "$expect_output" | sed -n 's/^STATUS=//p')
+reason=""
+if [[ "$expect_status" != 1 ]]; then
+    reason="status $expect_status, expected 1"
+elif ! printf '%s\n' "$expect_output" \
+    | grep -qF 'sysadminctl timed out after 5s (password sent: 0)'; then
+    reason="the deadline was not reported: $expect_output"
+fi
+record_case "a sysadminctl that hangs is reported as timed out" \
+    "$reason" "$expect_status"
+
+rm -f "$sysadminctl_transcript"
+expect_output=$(run_sysadminctl_expect "$work/sysadminctl-ok.sh")
+expect_status=$(printf '%s\n' "$expect_output" | sed -n 's/^STATUS=//p')
+reason=""
+if [[ "$expect_status" != 0 ]]; then
+    reason="status $expect_status: $expect_output"
+elif [[ "$expect_output" != "STATUS=0" ]]; then
+    reason="a successful sysadminctl printed something: $expect_output"
+elif grep -qF "$fake_secret" "$sysadminctl_transcript"; then
+    # The stand-in reads with echo on, so only the script's own stty -echo
+    # keeps the password out of the transcript before any scrub runs.
+    reason="the transcript recorded the password before redaction"
+elif ! grep -qF 'User password:' "$sysadminctl_transcript"; then
+    reason="the transcript did not record the prompt"
+else
+    redact_secret_in_file "$sysadminctl_transcript" "$fake_secret"
+    grep -qF 'User password:' "$sysadminctl_transcript" \
+        || reason="redaction removed the prompt as well"
+fi
+record_case "a successful sysadminctl never records the password" \
+    "$reason" "$expect_status"
 
 echo
 # The point of the count: a harness that silently stops running cases would
