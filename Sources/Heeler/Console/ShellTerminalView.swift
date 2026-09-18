@@ -6,6 +6,9 @@ import UIKit
 /// intentionally no Composer, Agent switcher, staging, notification, or Agent
 /// operation on this surface.
 ///
+/// The keyboard comes up as the terminal opens, in Text mode, so the shell is
+/// ready to type into without a tap on its prompt row.
+///
 /// The keyboard chrome is app-owned, the Composer's arrangement: the input row
 /// sits above the keyboard as ordinary content, and Keys mode suppresses the
 /// system keyboard behind an app-side dock at the measured keyboard footprint.
@@ -59,6 +62,22 @@ struct ShellTerminalView: View {
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = true
+        // Every fresh surface raises the keyboard as it reaches its window:
+        // the user opened a terminal to type into it, and a body tap only
+        // answers near the prompt row. This covers the first open, a return
+        // to a retained Workspace terminal, and a recovered pipeline alike.
+        // The inset must already know the window and expect the keyboard
+        // when UIKit posts the first will-show, or that frame is dropped and
+        // Ghostty keeps rendering under the keyboard: `WindowReader` reports
+        // the window from a sibling, whose order against the surface's own
+        // `didMoveToWindow` is not guaranteed.
+        screen.claimsKeyboard = { [keyboardInset, sceneWindow] in
+            if let window = sceneWindow?.window {
+                keyboardInset.attach(to: window)
+            }
+            Self.prepareKeyboardMode(.text, inset: keyboardInset)
+            return true
+        }
         screen.theme = terminal.themes.theme
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
@@ -257,8 +276,9 @@ struct ShellTerminalView: View {
                 store.didBecomeActive(
                     afterPossibleSuspension: activity.lastAbsenceMayHaveSuspended)
             }
-            // A recovered terminal is a fresh surface with no keyboard raised;
-            // app-side mode state has to follow it back to Text.
+            // A recovered terminal is a fresh surface that starts in Text and
+            // raises the keyboard itself (see `claimsKeyboard`); app-side
+            // mode state has to follow it back to Text without a second raise.
             .onChange(of: store.terminalID) { _, _ in
                 setKeyboardMode(.text, restoresSystemKeyboard: false)
             }

@@ -29,6 +29,8 @@ Entries reference the issue that motivated them.
   Back and Close Terminal moved into the More menu on its input row, which now
   stays visible while the keyboard is down. The row's Insert New Line button
   is gone; Shift+Enter on the Keys keyboard sends the same line break. (#333)
+- Opening a Shell Terminal raises the keyboard right away instead of waiting
+  for a tap on its prompt row. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 

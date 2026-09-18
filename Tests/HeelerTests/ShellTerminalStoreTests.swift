@@ -118,6 +118,10 @@ struct ShellTerminalStoreTests {
             AgentSurfaceReplacementTests.terminals(in: controller.view).first)
 
         #expect(terminal.isLocalInputEnabled)
+        // The keyboard comes up with the terminal: the surface claims first
+        // responder as it reaches the window, so no prompt-row tap is needed.
+        #expect(terminal.isFirstResponder)
+        #expect(terminal.keyboardMode == .text)
         // No title bar: navigation lives behind the input row's More button,
         // which is present while the keyboard is down. The app test runner
         // enables simulator accessibility before launching the host; polling
