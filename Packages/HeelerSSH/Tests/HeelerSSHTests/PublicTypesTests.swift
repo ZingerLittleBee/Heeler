@@ -42,3 +42,65 @@ func hostKeyAlgorithmsPreserveMigratedOrder() {
 func clientRSASignaturesUseSHA512Only() {
     #expect(SessionDriver.signatureAlgorithms == ["rsa-sha2-512"])
 }
+
+@Test("An RSA key is signed only for RSA-SHA2-512 user-auth requests")
+func rsaKeySignsOnlyForRSASHA512() {
+    let publicKey = sshString("ssh-rsa")
+        + sshString(Data([1, 0, 1]))
+        + sshString(Data([0, 0xC3]))
+
+    #expect(PublicKeySignaturePolicy.permits(
+        publicKey: publicKey,
+        signedData: userAuthSignedData(algorithm: "rsa-sha2-512", publicKey: publicKey)))
+    // libssh2 keeps the default `ssh-rsa` name when the server sent no
+    // `server-sig-algs`; signing then would label SHA-512 bytes as SHA-1.
+    #expect(!PublicKeySignaturePolicy.permits(
+        publicKey: publicKey,
+        signedData: userAuthSignedData(algorithm: "ssh-rsa", publicKey: publicKey)))
+    #expect(!PublicKeySignaturePolicy.permits(
+        publicKey: publicKey,
+        signedData: userAuthSignedData(algorithm: "rsa-sha2-256", publicKey: publicKey)))
+    #expect(!PublicKeySignaturePolicy.permits(
+        publicKey: publicKey,
+        signedData: Data("not a user-auth request".utf8)))
+}
+
+@Test("A non-RSA key is not constrained by the RSA signature pin")
+func nonRSAKeysAreNotConstrained() {
+    let publicKey = sshString("ssh-ed25519") + sshString(Data(repeating: 7, count: 32))
+
+    #expect(PublicKeySignaturePolicy.permits(
+        publicKey: publicKey,
+        signedData: userAuthSignedData(algorithm: "ssh-ed25519", publicKey: publicKey)))
+}
+
+@Test("The requested algorithm is read from the RFC 4252 signed data")
+func requestedAlgorithmIsReadFromSignedData() {
+    let signedData = userAuthSignedData(
+        algorithm: "rsa-sha2-512",
+        publicKey: sshString("ssh-rsa"))
+
+    #expect(PublicKeySignaturePolicy.requestedAlgorithm(in: signedData) == "rsa-sha2-512")
+    // Cut inside the user name: a truncated request names no algorithm.
+    #expect(PublicKeySignaturePolicy.requestedAlgorithm(in: signedData.prefix(40)) == nil)
+}
+
+private func userAuthSignedData(algorithm: String, publicKey: Data) -> Data {
+    sshString(Data(repeating: 0xAB, count: 32))
+        + Data([50])
+        + sshString("heeler")
+        + sshString("ssh-connection")
+        + sshString("publickey")
+        + Data([1])
+        + sshString(algorithm)
+        + sshString(publicKey)
+}
+
+private func sshString(_ value: String) -> Data {
+    sshString(Data(value.utf8))
+}
+
+private func sshString(_ value: Data) -> Data {
+    var length = UInt32(value.count).bigEndian
+    return Data(bytes: &length, count: 4) + value
+}

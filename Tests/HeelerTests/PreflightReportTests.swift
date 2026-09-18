@@ -59,6 +59,7 @@ struct PreflightReportTests {
         (.authenticationFailed, .connection),
         (.deviceKeyCorrupt, .connection),
         (.rsaKeyCorrupt, .connection),
+        (.rsaSignatureUnsupported, .connection),
         (.hostKeyRejected(
             presented: HostKeyFingerprint(publicKeyBlob: Data("blob-a".utf8))), .connection),
         (.timedOut, .connection),
@@ -111,6 +112,22 @@ struct PreflightReportTests {
         #expect(rsaHint.contains("RSA Key"))
         #expect(rsaHint.contains("SSH identities"))
         #expect(passwordHint.contains("password"))
+    }
+
+    @Test func unsupportedRSASignatureIsNotReportedAsARejectedKey() {
+        let direct = PreflightReport.failure(.rsaSignatureUnsupported, authMethod: .rsaKey)
+        let jump = PreflightReport.failure(
+            .jumpHostFailed(.rsaSignatureUnsupported), authMethod: .rsaKey)
+        guard case .failed(let directHint) = direct[.connection],
+            case .failed(let jumpHint) = jump[.connection]
+        else {
+            Issue.record("connection check should fail")
+            return
+        }
+        #expect(directHint.contains("rsa-sha2-512"))
+        #expect(!directHint.contains("rejected"))
+        #expect(jumpHint.contains("Jump Host"))
+        #expect(jumpHint.contains("rsa-sha2-512"))
     }
 
     @Test func jumpHostFailureHintNamesTheFirstHop() {

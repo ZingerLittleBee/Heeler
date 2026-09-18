@@ -60,6 +60,13 @@ extension TransportError {
                 detail: nil,
                 recoverySuggestion:
                     "Replace it and register the new public key on every Host that uses it.")
+        case .rsaSignatureUnsupported:
+            TransportErrorPresentation(
+                summary: "The Host does not accept RSA-SHA2-512",
+                detail: nil,
+                recoverySuggestion:
+                    "Enable rsa-sha2-512 signatures on the Host, or choose another "
+                    + "authentication method.")
         case .hostKeyRejected:
             TransportErrorPresentation(
                 summary: "The host key is not trusted",
@@ -196,6 +203,13 @@ extension TransportError {
                 recoverySuggestion: nil)
         case .deviceKeyCorrupt, .rsaKeyCorrupt:
             underlying.presentation
+        case .rsaSignatureUnsupported:
+            TransportErrorPresentation(
+                summary: "The Jump Host does not accept RSA-SHA2-512",
+                detail: nil,
+                recoverySuggestion:
+                    "Enable rsa-sha2-512 signatures on the Jump Host, or choose another "
+                    + "authentication method.")
         default:
             TransportErrorPresentation(
                 summary: "Jump Host: \(underlying.presentation.summary)",

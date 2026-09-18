@@ -86,6 +86,12 @@ struct PreflightReport: Equatable, Sendable {
             hint =
                 "The RSA Key is corrupted. Edit this Host and choose Replace RSA Key, then "
                 + "register the new public key on every Host that uses it."
+        case .rsaSignatureUnsupported:
+            check = .connection
+            hint =
+                "The Host does not offer RSA-SHA2-512 signatures, which RSA Key requires. "
+                + "Registering the key again will not help; enable rsa-sha2-512 on the Host "
+                + "or choose another authentication method."
         case .hostKeyRejected:
             check = .connection
             hint = "The host key was not confirmed. Run the checks again and confirm the fingerprint."
@@ -194,6 +200,9 @@ struct PreflightReport: Equatable, Sendable {
         case .rsaKeyCorrupt:
             "The RSA Key is corrupted, so the Jump Host could not be reached. Edit this Host "
                 + "and choose Replace RSA Key."
+        case .rsaSignatureUnsupported:
+            "The Jump Host does not offer RSA-SHA2-512 signatures, which RSA Key requires on "
+                + "both hops. Enable rsa-sha2-512 there or choose another authentication method."
         case .timedOut:
             "The Jump Host did not answer in time. Check the connection and try again."
         case .cancelled:

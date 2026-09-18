@@ -49,6 +49,12 @@ Keychain and product-specific authentication modes.
   user-auth signature algorithm is `rsa-sha2-512` from RFC 8332.
 - HeelerSSH pins `LIBSSH2_METHOD_SIGN_ALGO` to `rsa-sha2-512` instead of
   relying on libssh2's automatic RSA signature selection.
+- libssh2 applies that preference only when the server advertises
+  `server-sig-algs`; otherwise it keeps the `ssh-rsa` algorithm name. HeelerSSH
+  therefore reads the algorithm from the data it is asked to sign and refuses to
+  sign anything but `rsa-sha2-512`. A Host that offers no RSA-SHA2-512
+  signature fails as an unsupported signature, not as a rejected key, so the
+  user is not told to register a key the Host would never verify.
 - Rotating the single RSA Key invalidates every RSA Key Host until its new
   public line is registered. The recovery UI states that blast radius before
   replacement.
