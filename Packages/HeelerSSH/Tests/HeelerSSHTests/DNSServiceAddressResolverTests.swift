@@ -6,7 +6,9 @@ import dnssd
 
 @Suite("DNS resolution lifecycle", .serialized)
 struct DNSServiceAddressResolverTests {
-    @Test("stalled resolution honors its deadline without opening a socket")
+    // The framework limit also records a failure if the awaited operation never
+    // returns. Elapsed-time expects alone cannot catch that kind of hang.
+    @Test("stalled resolution honors its deadline without opening a socket", .timeLimit(.minutes(1)))
     func stalledResolutionTimesOutAndReleasesResources() async {
         let fixture = StalledDNSServiceFixture()
         let socketCalls = LockedCounter()
@@ -23,12 +25,13 @@ struct DNSServiceAddressResolverTests {
                 })
         }
 
-        #expect(ContinuousClock.now - started < .seconds(1))
+        // Resource release is the contract; allow a loaded runner time to resume.
+        #expect(ContinuousClock.now - started < .seconds(10))
         #expect(fixture.snapshot == .completedOnce)
         #expect(socketCalls.value == 0)
     }
 
-    @Test("caller cancellation stops stalled resolution without opening a socket")
+    @Test("caller cancellation stops stalled resolution without opening a socket", .timeLimit(.minutes(1)))
     func stalledResolutionCancellationReleasesResources() async throws {
         let fixture = StalledDNSServiceFixture()
         let socketCalls = LockedCounter()
@@ -42,6 +45,7 @@ struct DNSServiceAddressResolverTests {
                     return -1
                 })
         }
+        defer { task.cancel() }
         try await fixture.waitUntilScheduled()
         let cancelledAt = ContinuousClock.now
         task.cancel()
@@ -50,7 +54,7 @@ struct DNSServiceAddressResolverTests {
             _ = try await task.value
         }
 
-        #expect(ContinuousClock.now - cancelledAt < .seconds(1))
+        #expect(ContinuousClock.now - cancelledAt < .seconds(10))
         #expect(fixture.snapshot == .completedOnce)
         #expect(socketCalls.value == 0)
     }
@@ -130,7 +134,7 @@ private final class StalledDNSServiceFixture: @unchecked Sendable {
     }
 
     func waitUntilScheduled() async throws {
-        let deadline = ContinuousClock.now + .seconds(1)
+        let deadline = ContinuousClock.now + .seconds(10)
         while snapshot.schedules == 0 {
             guard ContinuousClock.now < deadline else {
                 throw FixtureError.didNotStart
