@@ -1753,19 +1753,26 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func runHostCommand(_ command: String) async throws -> Data {
-        try await withRequestDeadline {
-            let result = try await self.runExec(
-                Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
-            if let missing = HerdrHostPath.missingBinaryError(
-                exitStatus: result.exitStatus, command: command)
-            {
-                throw missing
+        do {
+            return try await withRequestDeadline {
+                let result = try await self.runExec(
+                    Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
+                if let missing = HerdrHostPath.missingBinaryError(
+                    exitStatus: result.exitStatus, command: command)
+                {
+                    throw missing
+                }
+                guard result.reachedEOF else {
+                    throw TransportError.channelFailed(
+                        detail: "Host command closed before EOF")
+                }
+                return result.stdout
             }
-            guard result.reachedEOF else {
-                throw TransportError.channelFailed(
-                    detail: "Host command closed before EOF")
-            }
-            return result.stdout
+        } catch TransportError.timedOut {
+            // The SSH layer already named the phase; this names the command
+            // whose request budget it was spent on (#343).
+            SSHDiagnostics.note("Host command budget \(requestTimeout) expired: \(command)")
+            throw TransportError.timedOut
         }
     }
 

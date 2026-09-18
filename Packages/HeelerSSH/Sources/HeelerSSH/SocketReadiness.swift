@@ -20,13 +20,15 @@ enum SocketReadiness {
         directions: SocketDirections,
         until deadline: ContinuousClock.Instant,
         cancellable: Bool = true,
-        watching watch: SessionActivityWatch? = nil
+        watching watch: SessionActivityWatch? = nil,
+        onTimeout: (@Sendable () -> Void)? = nil
     ) async throws {
         try await wait(
             for: [Interest(descriptor: descriptor, directions: directions)],
             until: deadline,
             cancellable: cancellable,
-            watching: watch)
+            watching: watch,
+            onTimeout: onTimeout)
     }
 
     /// Waits until one of `interests` is ready, the deadline passes, or the
@@ -37,11 +39,14 @@ enum SocketReadiness {
     /// bytes this one is waiting for before its source is even armed. The
     /// watch carries the receive count observed before the caller released the
     /// session, so an arming that already missed its bytes returns at once.
+    /// `onTimeout` observes a deadline failure before caller-side cleanup.
+    /// Polling callers that consume expiry as a retry leave it unset.
     static func wait(
         for interests: [Interest],
         until deadline: ContinuousClock.Instant,
         cancellable: Bool = true,
-        watching watch: SessionActivityWatch? = nil
+        watching watch: SessionActivityWatch? = nil,
+        onTimeout: (@Sendable () -> Void)? = nil
     ) async throws {
         let activeInterests = interests.filter { !$0.directions.isEmpty }
         guard !activeInterests.isEmpty else {
@@ -83,14 +88,23 @@ enum SocketReadiness {
             waiter.finish(.success(()))
         }
 
-        if cancellable {
-            try await withTaskCancellationHandler {
+        do {
+            if cancellable {
+                try await withTaskCancellationHandler {
+                    try await waiter.value()
+                } onCancel: {
+                    waiter.finish(.failure(SSHError.cancelled))
+                }
+            } else {
                 try await waiter.value()
-            } onCancel: {
-                waiter.finish(.failure(SSHError.cancelled))
             }
-        } else {
-            try await waiter.value()
+        } catch {
+            // Capture the wait that expired before the caller reacquires its
+            // operation permit or drains a pending send with a fresh budget.
+            if error as? SSHError == .timedOut {
+                onTimeout?()
+            }
+            throw error
         }
     }
 
