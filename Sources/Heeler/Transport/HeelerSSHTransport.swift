@@ -491,6 +491,18 @@ actor HeelerSSHTransport: Transport {
                 publicKey: deviceKey.publicKeyBlob,
                 signer: { data in try deviceKey.privateKey.signature(for: data) },
                 timeout: timeout)
+        case .rsaSHA512(let rsaKey):
+            do {
+                try await connection.authenticate(
+                    username: username,
+                    publicKey: rsaKey.publicKeyBlob,
+                    signer: { data in try rsaKey.signature(for: data) },
+                    timeout: timeout)
+            } catch SSHError.algorithmNegotiationFailed {
+                // The handshake already succeeded, so during authentication
+                // this can only mean no RSA-SHA2-512 signature was possible.
+                throw TransportError.rsaSignatureUnsupported
+            }
         }
     }
 

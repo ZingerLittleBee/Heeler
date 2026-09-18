@@ -2,6 +2,7 @@ import CLibSSH2
 import CHeelerSSHSupport
 import Darwin
 import Foundation
+import Synchronization
 
 #if DEBUG
 enum HandshakeFailureObservation {
@@ -42,6 +43,10 @@ actor SessionDriver {
     ]
 
     private static let hostKeyPreference = hostKeyAlgorithms.joined(separator: ",")
+
+    static let signatureAlgorithms = ["rsa-sha2-512"]
+
+    private static let signaturePreference = signatureAlgorithms.joined(separator: ",")
 
     private static let keyExchangePreference = [
         "mlkem768x25519-sha256",
@@ -281,7 +286,8 @@ actor SessionDriver {
                 throw SSHError.authenticationFailed
             }
             let deadline = ContinuousClock.now.advanced(by: timeout)
-            let retainedContext = Unmanaged.passRetained(SigningContext(signer: signer))
+            let context = SigningContext(publicKey: publicKey, signer: signer)
+            let retainedContext = Unmanaged.passRetained(context)
             defer { retainedContext.release() }
             var abstract: UnsafeMutableRawPointer? = retainedContext.toOpaque()
 
@@ -301,7 +307,16 @@ actor SessionDriver {
                         }
                     }
                 }
-                guard result == 0 else { throw mapAuthenticationError(result) }
+                guard result == 0 else {
+                    // The server never saw a signature, so this is not its
+                    // verdict on the key: no pinned signature algorithm could
+                    // be used for this request.
+                    if context.refusedSignatureAlgorithm {
+                        noteFailure(result)
+                        throw SSHError.algorithmNegotiationFailed
+                    }
+                    throw mapAuthenticationError(result)
+                }
                 authenticated = true
             } catch {
                 let normalized = normalize(error)
@@ -2366,6 +2381,7 @@ actor SessionDriver {
     private func configureAlgorithms(_ session: OpaquePointer) throws {
         let preferences: [(Int32, String)] = [
             (LIBSSH2_METHOD_HOSTKEY, Self.hostKeyPreference),
+            (LIBSSH2_METHOD_SIGN_ALGO, Self.signaturePreference),
             (LIBSSH2_METHOD_KEX, Self.keyExchangePreference),
             (LIBSSH2_METHOD_CRYPT_CS, Self.cipherPreference),
             (LIBSSH2_METHOD_CRYPT_SC, Self.cipherPreference),
@@ -4772,10 +4788,21 @@ actor SessionDriver {
 }
 
 private final class SigningContext: Sendable {
+    let publicKey: Data
     let signer: SSHSigningClosure
+    private let refusal = Mutex(false)
 
-    init(signer: @escaping SSHSigningClosure) {
+    init(publicKey: Data, signer: @escaping SSHSigningClosure) {
+        self.publicKey = publicKey
         self.signer = signer
+    }
+
+    var refusedSignatureAlgorithm: Bool {
+        refusal.withLock { $0 }
+    }
+
+    func noteRefusedSignatureAlgorithm() {
+        refusal.withLock { $0 = true }
     }
 }
 
@@ -4804,8 +4831,17 @@ private func signPublicKey(
         .fromOpaque(contextPointer)
         .takeUnretainedValue()
 
+    let signedData = Data(bytes: dataPointer, count: dataLength)
+    guard PublicKeySignaturePolicy.permits(publicKey: context.publicKey, signedData: signedData)
+    else {
+        context.noteRefusedSignatureAlgorithm()
+        // Not LIBSSH2_ERROR_ALGO_UNSUPPORTED: libssh2 answers that code by
+        // retrying with the key's default algorithm, which is `ssh-rsa`.
+        return LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED
+    }
+
     do {
-        let signature = try context.signer(Data(bytes: dataPointer, count: dataLength))
+        let signature = try context.signer(signedData)
         // SessionDriver initializes libssh2 with its default malloc/free
         // allocator. libssh2 takes ownership here and frees this buffer after
         // copying it into the authentication packet.

@@ -10,11 +10,15 @@ struct HostFormView: View {
 
     @State private var draft: HostDraft
     @State private var authorizedKeysLine: String?
+    @State private var rsaPublicKeyLine: String?
     @State private var didCopyKeyLine = false
     @State private var saveFailed = false
     @State private var deviceKeyIsCorrupt = false
+    @State private var rsaKeyIsCorrupt = false
     @State private var isConfirmingDeviceKeyReplacement = false
+    @State private var isConfirmingRSAKeyReplacement = false
     @State private var deviceKeyReplacementError: String?
+    @State private var rsaKeyReplacementError: String?
     @Environment(\.dismiss) private var dismiss
 
     private let credentials = HostCredentialsProvider()
@@ -46,12 +50,23 @@ struct HostFormView: View {
                 Section {
                     Picker("Method", selection: $draft.authMethod) {
                         Text("Device Key").tag(Host.AuthMethod.deviceKey)
+                        Text("RSA Key").tag(Host.AuthMethod.rsaKey)
                         Text("Password").tag(Host.AuthMethod.password)
                     }
-                    .pickerStyle(.segmented)
+                    .onChange(of: draft.authMethod) {
+                        didCopyKeyLine = false
+                        if draft.authMethod == .rsaKey,
+                           rsaPublicKeyLine == nil,
+                           !rsaKeyIsCorrupt
+                        {
+                            loadRSAKey()
+                        }
+                    }
                     switch draft.authMethod {
                     case .deviceKey:
                         deviceKeySection
+                    case .rsaKey:
+                        rsaKeySection
                     case .password:
                         SecureField(
                             editing == nil ? "Password" : "Password (blank keeps current)",
@@ -60,10 +75,17 @@ struct HostFormView: View {
                 } header: {
                     Text("Authentication")
                 } footer: {
-                    if draft.authMethod == .deviceKey {
+                    switch draft.authMethod {
+                    case .deviceKey:
                         Text(
                             "Add this line to ~/.ssh/authorized_keys on the Host. "
                                 + "The private key never leaves this device.")
+                    case .rsaKey:
+                        Text(
+                            "Register this public key wherever the Host accepts SSH identities. "
+                                + "The private key never leaves this device.")
+                    case .password:
+                        EmptyView()
                     }
                 }
 
@@ -124,6 +146,16 @@ struct HostFormView: View {
             } message: {
                 Text(deviceKeyReplacementError ?? "")
             }
+            .alert(
+                "Could not replace the RSA Key",
+                isPresented: Binding(
+                    get: { rsaKeyReplacementError != nil },
+                    set: { if !$0 { rsaKeyReplacementError = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(rsaKeyReplacementError ?? "")
+            }
             .confirmationDialog(
                 "Replace the Device Key?",
                 isPresented: $isConfirmingDeviceKeyReplacement,
@@ -136,8 +168,23 @@ struct HostFormView: View {
                     "Every Host using Device Key authentication will reject the replacement "
                         + "until you add its new public key to ~/.ssh/authorized_keys.")
             }
+            .confirmationDialog(
+                "Replace the RSA Key?",
+                isPresented: $isConfirmingRSAKeyReplacement,
+                titleVisibility: .visible
+            ) {
+                Button("Replace RSA Key", role: .destructive) { replaceRSAKey() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "Every Host using RSA Key authentication will reject the replacement "
+                        + "until you register its new public key on that Host.")
+            }
             .task {
                 loadDeviceKey()
+                if draft.authMethod == .rsaKey {
+                    loadRSAKey()
+                }
             }
         }
     }
@@ -147,6 +194,8 @@ struct HostFormView: View {
             switch draft.authMethod {
             case .deviceKey:
                 "Both machines must authorize the Device Key."
+            case .rsaKey:
+                "Both machines must authorize the RSA Key."
             case .password:
                 "Both machines must accept the same password; separate passwords are not supported."
             }
@@ -186,6 +235,37 @@ struct HostFormView: View {
         }
     }
 
+    @ViewBuilder
+    private var rsaKeySection: some View {
+        if let rsaPublicKeyLine {
+            Text(rsaPublicKeyLine)
+                .font(.caption.monospaced())
+                .lineLimit(3)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            Button {
+                UIPasteboard.general.string = rsaPublicKeyLine
+                didCopyKeyLine = true
+            } label: {
+                Label(
+                    didCopyKeyLine ? "Copied" : "Copy RSA Public Key",
+                    systemImage: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+            }
+        } else {
+            Label(
+                rsaKeyIsCorrupt ? "RSA Key is corrupted" : "RSA Key unavailable",
+                systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+            if !rsaKeyIsCorrupt {
+                Button("Try Again") { loadRSAKey() }
+            } else {
+                Button("Replace RSA Key", role: .destructive) {
+                    isConfirmingRSAKeyReplacement = true
+                }
+            }
+        }
+    }
+
     private func loadDeviceKey() {
         do {
             let key = try credentials.deviceKey()
@@ -200,6 +280,20 @@ struct HostFormView: View {
         }
     }
 
+    private func loadRSAKey() {
+        do {
+            let key = try credentials.rsaKey()
+            rsaPublicKeyLine = key.authorizedKeysLine(comment: "heeler rsa")
+            rsaKeyIsCorrupt = false
+        } catch RSAKeyStoreError.storedKeyCorrupt {
+            rsaPublicKeyLine = nil
+            rsaKeyIsCorrupt = true
+        } catch {
+            rsaPublicKeyLine = nil
+            rsaKeyIsCorrupt = false
+        }
+    }
+
     private func replaceDeviceKey() {
         do {
             let key = try credentials.replaceDeviceKey()
@@ -208,6 +302,17 @@ struct HostFormView: View {
             didCopyKeyLine = false
         } catch {
             deviceKeyReplacementError = "The replacement could not be saved to the Keychain."
+        }
+    }
+
+    private func replaceRSAKey() {
+        do {
+            let key = try credentials.replaceRSAKey()
+            rsaPublicKeyLine = key.authorizedKeysLine(comment: "heeler rsa")
+            rsaKeyIsCorrupt = false
+            didCopyKeyLine = false
+        } catch {
+            rsaKeyReplacementError = "The replacement could not be saved to the Keychain."
         }
     }
 

@@ -6,5 +6,6 @@ import Foundation
 /// not happened yet.
 enum SSHCredentials: Sendable {
     case ed25519(Curve25519.Signing.PrivateKey)
+    case rsaSHA512(RSAKey)
     case password(String)
 }

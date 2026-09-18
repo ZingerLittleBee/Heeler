@@ -1280,6 +1280,22 @@ ssh-keygen -q -t ed25519 -N '' -C heeler-ci-device-key -f "$fixture_dir/device_k
 device_key_seed="$(/usr/bin/python3 \
     scripts/fixtures/openssh-ed25519-seed.py "$fixture_dir/device_key")"
 cp "$fixture_dir/device_key.pub" "$fixture_dir/authorized_keys"
+
+# A separate RSA identity exercises the callback signer used by RSA Key auth.
+# Security.framework consumes PKCS#1 DER, while sshd consumes the matching
+# OpenSSH public line. The app only offers RSA-SHA2-512; it has no SHA-1
+# signing fallback.
+/usr/bin/openssl genrsa -out "$fixture_dir/rsa_key.pem" 3072 >/dev/null 2>&1
+chmod 600 "$fixture_dir/rsa_key.pem"
+/usr/bin/openssl rsa \
+    -in "$fixture_dir/rsa_key.pem" \
+    -outform DER \
+    -out "$fixture_dir/rsa_key.der" \
+    >/dev/null 2>&1
+rsa_public_key="$(ssh-keygen -y -f "$fixture_dir/rsa_key.pem")"
+printf '%s heeler-ci-rsa-key\n' "$rsa_public_key" > "$fixture_dir/rsa_key.pub"
+cat "$fixture_dir/rsa_key.pub" >> "$fixture_dir/authorized_keys"
+rsa_key_der="$(base64 < "$fixture_dir/rsa_key.der" | tr -d '\n')"
 printf 'no-port-forwarding %s\n' "$(<"$fixture_dir/device_key.pub")" \
     > "$fixture_dir/authorized_keys-no-forwarding"
 cp "$fixture_dir/authorized_keys" "$fixture_dir/authorized_keys-jump-target"
@@ -1318,6 +1334,7 @@ write_common_config() {
         "PasswordAuthentication no" \
         "KbdInteractiveAuthentication no" \
         "PubkeyAuthentication yes" \
+        "PubkeyAcceptedAlgorithms ssh-ed25519,rsa-sha2-512" \
         "AuthorizedKeysFile $fixture_dir/authorized_keys" \
         "UsePAM yes" \
         "PermitRootLogin no" \
@@ -1682,7 +1699,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
         "$password_secret")
 fi
 fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
+    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","rsaKeyDER":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
     "$modern_port" \
     "$legacy_port" \
     "$restricted_port" \
@@ -1693,6 +1710,7 @@ fixture_configuration=$(printf \
     "$weak_network_control_port" \
     "$fixture_username" \
     "$device_key_seed" \
+    "$rsa_key_der" \
     "$password_fixture_json" \
     "$streamlocal_socket" \
     "$streamlocal_socket" \
@@ -1938,7 +1956,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 95 6 0 \
+run_suite SharedFixtureE2ETests 97 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -1964,6 +1982,10 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 assert_behavior "Device Key" HeelerSSHSessionE2ETests \
     '"authorized Device Key authenticates and executes through real sshd"'
+assert_behavior "RSA-SHA2-512" HeelerSSHTransportBehaviorE2ETests \
+    '"RSA credentials authenticate when the Host accepts only RSA-SHA2-512"'
+assert_behavior "Jump Host RSA-SHA2-512" HeelerSSHTransportBehaviorE2ETests \
+    '"RSA authenticates both hops when each Host accepts only RSA-SHA2-512"'
 assert_behavior "Bootstrap Key" PairingCeremonyE2ETests \
     'fullCeremonyEnrollsTheDeviceKeyAndVerifies()'
 assert_behavior "two-hop trust" HeelerSSHJumpHostGateE2ETests \
@@ -2118,7 +2140,7 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 56 tests in 4 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 60 tests in 4 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "post-negotiation transport loss is not an algorithm mismatch" passed' \
         "$package_e2e_log" \
@@ -2212,7 +2234,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all forty-nine tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all sixty tests" >&2
     exit 1
 fi
 exit 0
