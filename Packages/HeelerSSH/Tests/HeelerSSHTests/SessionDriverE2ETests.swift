@@ -404,6 +404,9 @@ struct SessionDriverE2ETests {
         let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
         let connection = try await environment.connect()
         let home = try await remoteHome(of: connection)
+        let recorder = DiagnosticsRecorder()
+        let diagnosticToken = SSHDiagnostics.addSink(recorder.record)
+        defer { SSHDiagnostics.removeSink(diagnosticToken) }
 
         for site in TeardownSite.allCases {
             let close = try await site.open(
@@ -415,6 +418,12 @@ struct SessionDriverE2ETests {
                 "\(site.rawValue) did not report the expired budget"
             ) {
                 try await close(.zero)
+            }
+            if site == .pty {
+                let lines = recorder.lines(startingWith: "PTY close channel ")
+                #expect(lines.count == 1)
+                #expect(lines.first?.contains("send EOF timed out") == true)
+                #expect(lines.first?.contains("elapsed=") == true)
             }
             #expect(await connection.isConnected, "\(site.rawValue) invalidated the session")
             let echo = try await connection.execute("printf survived", timeout: .seconds(5))
@@ -1242,6 +1251,9 @@ struct SessionDriverE2ETests {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
         let connection = try await environment.connect()
+        let recorder = DiagnosticsRecorder()
+        let diagnosticToken = SSHDiagnostics.addSink(recorder.record)
+        defer { SSHDiagnostics.removeSink(diagnosticToken) }
 
         let pty = try await connection.openPTY(
             command: "cat",
@@ -1312,11 +1324,24 @@ struct SessionDriverE2ETests {
         try await waitUntilTrue("the failing exit status should suspend") {
             await failedExitStatusTeardown.hasEntered
         }
+        // Another operation on the same driver must not overwrite the suspended
+        // exit-status task's phase or its timeout-deduplication state.
+        let interleaved = try await connection.execute("printf diagnostic-scope", timeout: .seconds(5))
+        #expect(interleaved.stdout == Data("diagnostic-scope".utf8))
+        await #expect(throws: SSHError.timedOut) {
+            _ = try await retryablePTY.read(timeout: .zero)
+        }
+        #expect(recorder.lines(startingWith: "PTY read channel ").count == 1)
         try await Task.sleep(for: .milliseconds(75))
         await failedExitStatusTeardown.release()
         await #expect(throws: SSHError.timedOut) {
             _ = try await failedExitStatus.value
         }
+        let timeoutLines = recorder.lines(startingWith: "PTY exit status channel ")
+        #expect(timeoutLines.count == 1)
+        #expect(timeoutLines.first?.contains("channel close timed out") == true)
+        #expect(timeoutLines.first?.contains("teardown test hold=") == true)
+        #expect(recorder.lines(startingWith: "PTY open").isEmpty)
         #expect(await retryablePTY.acceptsIOForTesting())
         try await retryablePTY.close(timeout: .seconds(5))
 
@@ -1778,6 +1803,9 @@ struct SessionDriverE2ETests {
     ) async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let proxy = try #require(WeakNetworkProxyFixture.current)
+        let recorder = DiagnosticsRecorder()
+        let diagnosticToken = SSHDiagnostics.addSink(recorder.record)
+        defer { SSHDiagnostics.removeSink(diagnosticToken) }
         try await withDegradedLink(proxy) {
             let connection = try await connectThroughProxy(
                 environment: environment,
@@ -1803,10 +1831,13 @@ struct SessionDriverE2ETests {
                 await gates.loopTop.waitUntilReleased()
                 if let loopTopThrows { throw loopTopThrows }
             }
-            if drainThrows {
-                await connection.holdNextOwnedDrainForTesting {
-                    throw expectedError
+            await connection.holdNextOwnedDrainForTesting {
+                if expectedError == .timedOut {
+                    #expect(
+                        recorder.lines(startingWith: "PTY write channel ").count == 1,
+                        "The timeout must be recorded before owned-send cleanup starts")
                 }
+                if drainThrows { throw expectedError }
             }
             let write = Task {
                 try await pty.write(
@@ -2716,7 +2747,12 @@ private struct SessionDriverTestEnvironment: Sendable {
     static let streamLocalSocketPath: String? =
         ProcessInfo.processInfo.environment["HEELER_SSH_E2E_STREAMLOCAL_SOCKET"]
 
+    /// Installed once per test process so a fixture-backed failure prints its
+    /// phase and libssh2 code into the xcodebuild log beside the test (#343).
+    private static let diagnosticsSink = SSHDiagnostics.addSink(SSHDiagnostics.printingSink())
+
     static let current: SessionDriverTestEnvironment? = {
+        _ = diagnosticsSink
         let environment = ProcessInfo.processInfo.environment
         guard
             let host = environment["HEELER_SSH_E2E_HOST"],

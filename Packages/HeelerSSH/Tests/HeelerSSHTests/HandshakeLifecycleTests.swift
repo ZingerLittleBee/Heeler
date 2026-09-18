@@ -46,7 +46,7 @@ private final class HandshakeFailureCodeRecorder: @unchecked Sendable {
 /// A minimal loopback SSH peer that selects production-supported algorithms,
 /// observes the client's key-exchange request, then closes before replying.
 /// It intentionally implements no authentication or session behavior.
-private struct HandshakeCutoffServer: Sendable {
+struct HandshakeCutoffServer: Sendable {
     let port: UInt16
     private let task: Task<Void, any Error>
 
