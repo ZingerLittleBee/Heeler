@@ -119,6 +119,9 @@ password_user_cleanup_needed=0
 password_ssh_sacl_added=0
 password_pid_file="$fixture_dir/sshd-password.pid"
 password_log="$fixture_dir/sshd-password.log"
+# sysadminctl transcript from create_password_user, preserved with the other
+# fixture logs and scrubbed of the account password before anything reads it.
+sysadminctl_log="$fixture_dir/sysadminctl.log"
 password_log_printed=0
 
 # Merge CI must run the complete mandatory matrix; a laptop need not.
@@ -714,18 +717,52 @@ EXPECT
 }
 
 # sysadminctl owns creation of the complete local account record. Expect feeds
-# its password prompt without putting the secret in argv, a file, the command
-# transcript, or the sysadminctl environment.
+# its password prompt without putting the secret in argv, the command line, or
+# the sysadminctl environment; the pty transcript it records for diagnosis has
+# echo turned off before the password is sent and is scrubbed afterwards.
+# Every command in the password fixture block is silent on success and, under
+# `set -e`, silent on failure too: five CI runs exited 1 between "Claimed
+# simulator" and the first xcodebuild with nothing to read (#348). Route each
+# step through here so the job log names the step and its exit status.
+provisioning_step() {
+    local label=$1
+    local status
+    shift
+    "$@" && return 0
+    status=$?
+    echo "Password fixture provisioning failed at $label (status $status)." >&2
+    return "$status"
+}
+
+# The expect transcript below records the pty. Echo is turned off before the
+# password is sent, so the secret should never reach the file; this scrub is
+# the second line, run before the transcript is printed or preserved. The
+# secret travels in the environment so no quoting can leak or mangle it, and
+# an empty secret must not become an empty match that rewrites the whole file.
+redact_secret_in_file() {
+    local file=$1
+    local secret=$2
+    [[ -f "$file" && -n "$secret" ]] || return 0
+    HEELER_REDACT_SECRET="$secret" perl -pi -e \
+        's/\Q$ENV{HEELER_REDACT_SECRET}\E/[redacted]/g' "$file"
+}
+
 create_password_user() (
     local status
 
+    rm -f "$sysadminctl_log"
     export HEELER_SYSADMINCTL_PASSWORD="$password_secret"
     export HEELER_SYSADMINCTL_USERNAME="$password_username"
     export HEELER_SYSADMINCTL_UID="$password_uid"
     export HEELER_SYSADMINCTL_HOME="$password_home"
+    export HEELER_SYSADMINCTL_LOG="$sysadminctl_log"
+    # log_user 0 keeps the transcript off the job log; -a records it anyway so a
+    # failure can show what sysadminctl said. Each exit path names its reason on
+    # stderr, which the calling shell leaves connected to the job log.
     if /usr/bin/expect <<'EXPECT'
 set timeout 30
 log_user 0
+log_file -a -noappend $env(HEELER_SYSADMINCTL_LOG)
 
 set password $env(HEELER_SYSADMINCTL_PASSWORD)
 unset env(HEELER_SYSADMINCTL_PASSWORD)
@@ -743,15 +780,18 @@ set sent_password 0
 expect {
     -re {(?i)password[^\r\n]*:[[:space:]]*$} {
         if {$sent_password} {
+            puts stderr "sysadminctl prompted for the password a second time"
             close
             catch {wait}
             exit 1
         }
+        catch {exec stty -echo < $spawn_out(slave,name)}
         send -- "$password\r"
         set sent_password 1
         exp_continue
     }
     timeout {
+        puts stderr "sysadminctl timed out after ${timeout}s (password sent: $sent_password)"
         close
         catch {wait}
         exit 1
@@ -759,20 +799,31 @@ expect {
     eof {}
 }
 
-if {!$sent_password || [catch {wait} child_status]} {
+if {!$sent_password} {
+    puts stderr "sysadminctl exited without prompting for a password"
+    exit 1
+}
+if {[catch {wait} child_status]} {
+    puts stderr "could not wait for sysadminctl: $child_status"
     exit 1
 }
 if {[llength $child_status] < 4 || [lindex $child_status 2] ne "0"} {
+    puts stderr "sysadminctl wait reported an error: $child_status"
     exit 1
 }
 if {[llength $child_status] >= 5 \
     && [lindex $child_status 4] eq "CHILDKILLED"} {
+    puts stderr "sysadminctl was killed by a signal: $child_status"
     exit 1
 }
 set child_exit [lindex $child_status 3]
 if {![string is integer -strict $child_exit] \
     || $child_exit < 0 || $child_exit > 255} {
+    puts stderr "sysadminctl exit status is unreadable: $child_status"
     exit 1
+}
+if {$child_exit != 0} {
+    puts stderr "sysadminctl exited with status $child_exit"
 }
 exit $child_exit
 EXPECT
@@ -785,6 +836,12 @@ EXPECT
     unset HEELER_SYSADMINCTL_USERNAME
     unset HEELER_SYSADMINCTL_UID
     unset HEELER_SYSADMINCTL_HOME
+    unset HEELER_SYSADMINCTL_LOG
+    redact_secret_in_file "$sysadminctl_log" "$password_secret"
+    if [[ "$status" != 0 && -s "$sysadminctl_log" ]]; then
+        echo "===== sysadminctl transcript ($sysadminctl_log)" >&2
+        cat "$sysadminctl_log" >&2
+    fi
     return "$status"
 )
 
@@ -1466,15 +1523,18 @@ if [[ "$ci_lane" == "app" ]] && sudo -n true >/dev/null 2>&1; then
     # EXIT/INT/TERM may arrive after sysadminctl creates only part of the user
     # record, so declare cleanup intent before starting that side effect.
     password_user_cleanup_needed=1
-    create_password_user
+    provisioning_step create_password_user create_password_user || exit 1
     release_resource_lock "$account_lock_dir" "password account allocation"
     account_lock_dir=""
-    sudo -n dscl . -create "/Users/$password_username" IsHidden 1
-    sudo -n chown "$password_uid":20 "$password_home"
+    provisioning_step "dscl IsHidden" \
+        sudo -n dscl . -create "/Users/$password_username" IsHidden 1 || exit 1
+    provisioning_step "chown password home" \
+        sudo -n chown "$password_uid":20 "$password_home" || exit 1
     if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then
         password_ssh_sacl_added=1
-        sudo -n /usr/sbin/dseditgroup -o edit \
-            -a "$password_username" -t user com.apple.access_ssh
+        provisioning_step "dseditgroup com.apple.access_ssh" \
+            sudo -n /usr/sbin/dseditgroup -o edit \
+            -a "$password_username" -t user com.apple.access_ssh || exit 1
     fi
     printf '%s\n' \
         "Port $password_port" \
