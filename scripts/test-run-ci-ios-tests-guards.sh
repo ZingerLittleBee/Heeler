@@ -603,12 +603,12 @@ run_suite_case() {
         # shellcheck disable=SC2034
         xcodebuild_test_timeout_seconds=1
         pinned_lane_logs=()
-        # run_suite pipes xcodebuild through tee, so replaying the lane here
-        # exercises the real capture, count guard, skip guard and append.
+        # run_xcodebuild owns the log capture so simulator replacement stays
+        # in the calling shell. Replay into that log for the suite guards.
         # shellcheck disable=SC2329
         run_xcodebuild() {
-            shift 2
-            cat "$case_dir/replay.log"
+            local output_log=$3
+            cat "$case_dir/replay.log" | tee "$output_log"
         }
         run_suite "$@" >/dev/null
         printf 'PINNED_COUNT=%s\n' "${#pinned_lane_logs[@]}"
