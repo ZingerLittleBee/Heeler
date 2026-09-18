@@ -271,16 +271,28 @@ struct ConsoleView: View {
             closeAgent: { clearSelection() })
     }
 
-    /// The sidebar selection as a projection of the router's path. Setting
-    /// it (a row tap, or the collapsed stack popping) writes the path back,
-    /// so user navigation and deep links keep one source of truth. A drawer
-    /// terminal in the detail column has no row, so the list shows no
-    /// selection while one is presented.
-    private var selectedAgent: Binding<ConsoleAgent.ID?> {
+    /// The sidebar selection as a projection of the router's path, or of the
+    /// drawer terminal on stage. Setting it (a row tap, or the collapsed
+    /// stack popping) writes the path back, so user navigation and deep
+    /// links keep one source of truth. A drawer terminal has no row, but it
+    /// must still be *a* selection: on iPhone the split view shows the
+    /// detail column only while this is non-nil, so clearing it to present
+    /// a terminal would pop straight back to the Agent list.
+    private var selectedItem: Binding<ConsoleSelection?> {
         Binding(
-            get: { notificationRouter.path.last },
-            set: { id in
-                if let id { selectAgent(id) } else { clearSelection() }
+            get: {
+                if let id = notificationRouter.path.last { return .agent(id) }
+                return selectedTerminal.map { .terminal($0.id) }
+            },
+            set: { selection in
+                switch selection {
+                case .agent(let id): selectAgent(id)
+                case .terminal(let id):
+                    if let terminal = console.terminals.first(where: { $0.id == id }) {
+                        selectTerminal(terminal)
+                    }
+                case nil: clearSelection()
+                }
             })
     }
 
@@ -491,7 +503,7 @@ struct ConsoleView: View {
                     .hoverEffect(.highlight)
             }
         case .rows:
-            List(selection: selectedAgent) {
+            List(selection: selectedItem) {
                 if listPresentation.mode == .flat {
                     flatAgentListRows
                 } else {
@@ -541,7 +553,7 @@ struct ConsoleView: View {
     }
 
     private func agentRow(_ agent: ConsoleAgent) -> some View {
-        NavigationLink(value: agent.id) {
+        NavigationLink(value: ConsoleSelection.agent(agent.id)) {
             AgentCardView(
                 agent: agent,
                 layout: console.rowLayout(for: agent.hostID),
@@ -947,4 +959,13 @@ private struct ConsoleHostStatusCountPills: View {
             }
         }
     }
+}
+
+/// What the Console sidebar's split-view selection can hold. Only Agents
+/// have rows; a terminal chosen from Agent detail's Workspace drawer takes
+/// the `terminal` case so the detail column stays presented on iPhone
+/// (see `ConsoleView.selectedItem`).
+enum ConsoleSelection: Hashable {
+    case agent(ConsoleAgent.ID)
+    case terminal(ConsoleTerminal.ID)
 }
