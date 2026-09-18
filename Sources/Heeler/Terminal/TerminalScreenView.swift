@@ -185,14 +185,18 @@ final class TerminalSurfaceRetention {
     /// into a store it no longer belongs to; the keyboard is released a turn
     /// later, because this runs inside `makeUIView` when a surface is
     /// replaced (see `HeelerTerminalView.retireLocalInput`).
-    func detachCallbacks() {
+    ///
+    /// `keepingKeyboard` leaves first responder with the surface for the
+    /// screen that is taking the keyboard over; see
+    /// `HeelerTerminalView.retireLocalInput(keepingKeyboard:)`.
+    func detachCallbacks(keepingKeyboard: Bool = false) {
         surface?.updateCallbacks(
             onSizeChanged: nil, onViewportTextChanged: nil,
             onSend: nil, onScroll: nil, onPaste: nil)
         surface?.onOpenLink = nil
         surface?.onFontSizeChanged = nil
         surface?.onKeyboardHandoffEnded = nil
-        surface?.retireLocalInput()
+        surface?.retireLocalInput(keepingKeyboard: keepingKeyboard)
     }
 }
 
@@ -1312,8 +1316,15 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// between an Agent and a Workspace terminal). Input is refused at once;
     /// the responder itself is released on the next run-loop turn, and only
     /// if nothing re-enabled the surface in between.
-    func retireLocalInput() {
+    ///
+    /// `keepingKeyboard` is the surface leaving for a screen that takes the
+    /// keyboard over: it must not resign at all, or the keyboard drops before
+    /// the destination can claim it. Leaving the window ends its responder
+    /// status regardless, and the destination's claim moves the keyboard
+    /// across without a hide.
+    func retireLocalInput(keepingKeyboard: Bool = false) {
         setLocalInputEnabledWithoutResigning(false)
+        guard !keepingKeyboard else { return }
         DispatchQueue.main.async { [self] in
             guard !isLocalInputEnabled else { return }
             _ = dismissKeyboard()

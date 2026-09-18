@@ -193,7 +193,9 @@ struct AgentTerminalView: View {
     private let composer: AgentComposerStore
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
     private let retainedSurface: TerminalSurfaceRetention?
-    private let onRetainDeparture: (() -> Void)?
+    /// Called with whether the next screen takes the keyboard over, so the
+    /// retained surface knows not to dismiss it on the way out.
+    private let onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)?
     /// Edge-docked Workspace navigation; nil where the detail cannot route
     /// to other terminals.
     private let workspaceDrawer: WorkspaceTerminalDrawer?
@@ -286,7 +288,7 @@ struct AgentTerminalView: View {
         composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil,
         retainedSurface: TerminalSurfaceRetention? = nil,
-        onRetainDeparture: (() -> Void)? = nil,
+        onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)? = nil,
         workspaceDrawer: WorkspaceTerminalDrawer? = nil,
         inheritsKeyboardHandoff: Bool = true,
         interactionProbe: AgentTerminalInteractionProbe? = nil
@@ -703,13 +705,14 @@ struct AgentTerminalView: View {
             interactionProbe?.value?.disconnect()
             messageJump.resetSession()
             if let onRetainDeparture {
+                let keepingKeyboard = keyboardHandoff.isArmed
                 if !isOnStage() {
-                    onRetainDeparture()
+                    onRetainDeparture(keepingKeyboard)
                 } else {
                     Task { @MainActor in
                         await Task.yield()
                         guard !isOnStage() else { return }
-                        onRetainDeparture()
+                        onRetainDeparture(keepingKeyboard)
                     }
                 }
             } else {

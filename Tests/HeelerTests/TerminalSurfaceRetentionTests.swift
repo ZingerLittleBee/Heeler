@@ -98,4 +98,39 @@ struct TerminalSurfaceRetentionTests {
         #expect(surface.isFirstResponder)
         surface.dismissKeyboard()
     }
+
+    /// A surface leaving for a screen that inherits its keyboard keeps first
+    /// responder: resigning would start UIKit's hide before the destination
+    /// exists, and its claim could then only bring the keyboard back up
+    /// after it had dropped. Input still stops at once.
+    @Test func retiringWhileKeepingTheKeyboardStopsInputWithoutResigning() async throws {
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer { window.isHidden = true }
+        let retention = TerminalSurfaceRetention()
+        let surface = retention.surface(for: TerminalByteFeed()) {
+            TerminalScreenView.makeConfiguredTerminal(notificationCenter: NotificationCenter())
+        }
+        surface.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
+        host.view.addSubview(surface)
+        surface.requestKeyboard()
+        try #require(surface.isFirstResponder)
+
+        retention.detachCallbacks(keepingKeyboard: true)
+        #expect(!surface.isLocalInputEnabled)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(surface.isFirstResponder, "the destination's claim ends the responder, not this")
+
+        // The next screen's claim takes it over without a dismissal.
+        let next = TerminalScreenView.makeConfiguredTerminal(notificationCenter: NotificationCenter())
+        next.frame = CGRect(x: 0, y: 400, width: 390, height: 300)
+        host.view.addSubview(next)
+        next.requestKeyboard()
+        #expect(next.isFirstResponder)
+        #expect(!surface.isFirstResponder)
+        next.dismissKeyboard()
+        retention.clear()
+    }
 }

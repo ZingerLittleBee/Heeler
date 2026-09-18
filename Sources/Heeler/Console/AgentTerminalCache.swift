@@ -121,12 +121,14 @@ final class AgentTerminalCache {
         entry.attach.rejoin()
     }
 
-    func release(_ entry: Entry, ownerID: UUID) {
+    /// `keepingKeyboard` is a departure whose keyboard the next screen takes
+    /// over; the surface then keeps first responder until that claim.
+    func release(_ entry: Entry, ownerID: UUID, keepingKeyboard: Bool = false) {
         guard entries[entry.agentID] === entry, entry.presentationOwnerID == ownerID else { return }
         entry.lifetime.visible = false
         entry.lifetime.isPresented = nil
         entry.attach.leaveInteractionsForRetention()
-        entry.surfaceRetention.detachCallbacks()
+        entry.surfaceRetention.detachCallbacks(keepingKeyboard: keepingKeyboard)
         budget.markIdle(key: key(for: entry), ownerID: entry.lifetime.ownerID)
         entry.expiry?.cancel()
         entry.expiry = Task { @MainActor [weak self, weak entry] in

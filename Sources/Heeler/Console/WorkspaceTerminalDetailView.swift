@@ -69,6 +69,13 @@ struct WorkspaceTerminalDetailView: View {
                 }
             } else {
                 ProgressView("Opening Terminal…")
+                    // The keyboard this screen inherits must not drop while
+                    // the connection is prepared; see `TerminalKeyboardHolder`.
+                    .background {
+                        if keyboardHandoff?.isShellTerminalArmed == true {
+                            TerminalKeyboardHolderView()
+                        }
+                    }
             }
         }
         .task(id: LoadIdentity(
@@ -80,13 +87,18 @@ struct WorkspaceTerminalDetailView: View {
         }
         .onDisappear {
             let leavingIdentity = entry?.store.identity ?? identity
+            let keepingKeyboard = keyboardHandoff?.isArmed ?? false
             if !isSelected() {
-                console.terminalConnections.release(hostID: terminal.hostID, identity: leavingIdentity, ownerID: ownerID)
+                console.terminalConnections.release(
+                    hostID: terminal.hostID, identity: leavingIdentity, ownerID: ownerID,
+                    keepingKeyboard: keepingKeyboard)
             } else {
                 Task { @MainActor in
                     await Task.yield()
                     guard !isSelected() else { return }
-                    console.terminalConnections.release(hostID: terminal.hostID, identity: leavingIdentity, ownerID: ownerID)
+                    console.terminalConnections.release(
+                        hostID: terminal.hostID, identity: leavingIdentity, ownerID: ownerID,
+                        keepingKeyboard: keepingKeyboard)
                 }
             }
         }
@@ -184,6 +196,9 @@ struct WorkspaceTerminalDetailView: View {
             return
         } catch {
             failure = error.localizedDescription
+            // Nothing is coming to take the keyboard; a later open must
+            // start with it down.
+            keyboardHandoff?.cancelShellTerminal()
         }
     }
 

@@ -32,7 +32,8 @@ Entries reference the issue that motivated them.
 - The keyboard follows you between Agent detail and a Shell Terminal: open a
   terminal while typing and it comes up ready to type, open it with the
   keyboard down and it stays down, and going back to the Agent keeps the
-  same state. (#333)
+  same state. A keyboard that is up stays on screen through the switch in
+  either direction, instead of dropping and rising again. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 

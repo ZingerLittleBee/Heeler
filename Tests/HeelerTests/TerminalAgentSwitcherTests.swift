@@ -741,6 +741,38 @@ struct TerminalAgentSwitcherTests {
         #expect(handoff.consume(agent))
     }
 
+    /// The screen being left reads `isArmed` to keep first responder until
+    /// the destination claims the keyboard; a stand-in for a Shell Terminal
+    /// still being connected reads the Shell-specific intent.
+    @MainActor
+    @Test func anArmedHandoffIsVisibleUntilItIsConsumedOrCancelled() {
+        let handoff = TerminalKeyboardHandoff()
+        let agent = ConsoleAgent.ID(hostID: UUID(), paneID: "w1:pA")
+        #expect(!handoff.isArmed)
+        #expect(!handoff.isShellTerminalArmed)
+
+        handoff.arm(for: agent)
+        #expect(handoff.isArmed)
+        #expect(!handoff.isShellTerminalArmed)
+        _ = handoff.consume(agent)
+        #expect(!handoff.isArmed)
+
+        handoff.arm(for: agent)
+        handoff.cancel(for: agent)
+        #expect(!handoff.isArmed)
+
+        handoff.armShellTerminal()
+        #expect(handoff.isArmed)
+        #expect(handoff.isShellTerminalArmed)
+        _ = handoff.consumeShellTerminal()
+        #expect(!handoff.isArmed)
+        #expect(!handoff.isShellTerminalArmed)
+
+        handoff.armShellTerminal()
+        handoff.cancelShellTerminal()
+        #expect(!handoff.isArmed)
+    }
+
     /// The keyboard may not dip between the two terminals: it carries the
     /// switcher, so a dip flashes the row away mid-switch. The replacement
     /// takes first responder in the same pass it reaches the window.

@@ -247,7 +247,10 @@ struct AgentDetailView: View {
                     attachStore: attach,
                     retainedSurface: retainedAgent?.surfaceRetention,
                     onRetainDeparture: retainedAgent.map { entry in
-                        { console.agentTerminals.release(entry, ownerID: retentionOwnerID) }
+                        { keepingKeyboard in
+                            console.agentTerminals.release(
+                                entry, ownerID: retentionOwnerID, keepingKeyboard: keepingKeyboard)
+                        }
                     },
                     workspaceDrawer: workspaceDrawer,
                     // Retention swaps `attach` on appear and rebuilds this

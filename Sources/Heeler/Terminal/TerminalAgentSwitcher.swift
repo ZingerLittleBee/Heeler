@@ -67,6 +67,17 @@ final class TerminalKeyboardHandoff {
 
     private var shellTerminalArmed = false
 
+    /// Whether a screen is about to take the keyboard over. The screen being
+    /// left must then keep first responder until that screen claims it,
+    /// instead of dismissing on its way out: a dismissal starts UIKit's hide
+    /// animation, and the next claim can only re-present the keyboard after
+    /// it has fully dropped.
+    var isArmed: Bool { armedID != nil || shellTerminalArmed }
+
+    /// Whether the next Shell Terminal screen takes the keyboard over; read
+    /// by the screen that stands in for it while its connection is prepared.
+    var isShellTerminalArmed: Bool { shellTerminalArmed }
+
     /// The keyboard is up and a Shell Terminal is about to be presented. Not
     /// keyed by identity: the destination is often unknown when the intent
     /// is captured (New Terminal creates it first; Open Terminal may ask

@@ -159,7 +159,12 @@ final class TerminalConnectionPool {
 
     /// Deselecting stops accepting user input but preserves the renderer and
     /// live output until expiry, eviction, Host replacement, or suspension.
-    func release(hostID: Host.ID, identity: ShellTerminalIdentity, ownerID: UUID) {
+    ///
+    /// `keepingKeyboard` is a departure whose keyboard the next screen takes
+    /// over; the surface then keeps first responder until that claim.
+    func release(
+        hostID: Host.ID, identity: ShellTerminalIdentity, ownerID: UUID, keepingKeyboard: Bool = false
+    ) {
         let key = Key(hostID: hostID, identity: identity)
         guard let entry = entries[key], entry.ownerID == ownerID else { return }
         entry.ownerID = nil
@@ -169,7 +174,7 @@ final class TerminalConnectionPool {
         entry.idleID = idleID
         budget.markIdle(key: budgetKey(key), ownerID: entry.retentionID)
         entry.store.cancelPaste()
-        entry.surfaceRetention.detachCallbacks()
+        entry.surfaceRetention.detachCallbacks(keepingKeyboard: keepingKeyboard)
         entry.expiry?.cancel()
         let timeout = idleTimeout
         entry.expiry = Task { @MainActor [weak self, weak entry] in

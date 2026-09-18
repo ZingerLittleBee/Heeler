@@ -313,7 +313,13 @@ struct ShellTerminalView: View {
             }
             .onAppear { if managesLifecycle { store.rejoin() } }
             .onDisappear {
-                keyboardControl.dismissKeyboard()
+                // A departure the next screen inherits the keyboard from
+                // keeps first responder until that screen claims it: a
+                // dismissal here would start UIKit's hide, and the claim
+                // could only re-present the keyboard once it had dropped.
+                if keyboardHandoff?.isArmed != true {
+                    keyboardControl.dismissKeyboard()
+                }
                 if managesLifecycle { store.leave() }
             }
     }
