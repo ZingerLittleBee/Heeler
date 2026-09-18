@@ -181,15 +181,18 @@ final class TerminalSurfaceRetention {
         feed = nil
     }
 
+    /// Callbacks come off synchronously so a retired surface can never write
+    /// into a store it no longer belongs to; the keyboard is released a turn
+    /// later, because this runs inside `makeUIView` when a surface is
+    /// replaced (see `HeelerTerminalView.retireLocalInput`).
     func detachCallbacks() {
-        surface?.dismissKeyboard()
         surface?.updateCallbacks(
             onSizeChanged: nil, onViewportTextChanged: nil,
             onSend: nil, onScroll: nil, onPaste: nil)
         surface?.onOpenLink = nil
         surface?.onFontSizeChanged = nil
         surface?.onKeyboardHandoffEnded = nil
-        surface?.setLocalInputEnabled(false)
+        surface?.retireLocalInput()
     }
 }
 
@@ -1290,6 +1293,33 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
         if !isEnabled, isFirstResponder {
             _ = dismissKeyboard()
+        }
+    }
+
+    /// Ends local input for a surface leaving the stage or being replaced,
+    /// without resigning first responder on the spot.
+    ///
+    /// `TerminalSurfaceRetention` retires a surface from inside
+    /// `makeUIView`, which SwiftUI runs during its attribute-graph update.
+    /// Resigning there makes UIKit look for the next responder and ask the
+    /// hosting view `canBecomeFirstResponder`, which re-enters the graph and
+    /// aborts in AttributeGraph (crash seen live on iOS 27 while switching
+    /// between an Agent and a Workspace terminal). Input is refused at once;
+    /// the responder itself is released on the next run-loop turn, and only
+    /// if nothing re-enabled the surface in between.
+    func retireLocalInput() {
+        setLocalInputEnabledWithoutResigning(false)
+        DispatchQueue.main.async { [self] in
+            guard !isLocalInputEnabled else { return }
+            _ = dismissKeyboard()
+        }
+    }
+
+    private func setLocalInputEnabledWithoutResigning(_ isEnabled: Bool) {
+        guard isLocalInputEnabled != isEnabled else { return }
+        isLocalInputEnabled = isEnabled
+        if !isEnabled {
+            cancelKeyboardTransitionLayoutDeferral()
         }
     }
 
