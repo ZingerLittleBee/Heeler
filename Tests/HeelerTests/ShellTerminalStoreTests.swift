@@ -93,6 +93,9 @@ struct ShellTerminalStoreTests {
             zoom: TerminalZoomSettings(defaults: defaults),
             fonts: TerminalFontSettings(defaults: defaults),
             snippets: SnippetStore(defaults: defaults))
+        // The screen that opened this terminal left the keyboard up.
+        let keyboardHandoff = TerminalKeyboardHandoff()
+        keyboardHandoff.armShellTerminal()
         let controller = UIHostingController(
             rootView: ShellTerminalView(
                 store: store,
@@ -100,6 +103,7 @@ struct ShellTerminalStoreTests {
                 terminal: settings,
                 activity: AppActivityCoordinator(),
                 isReturning: false,
+                keyboardHandoff: keyboardHandoff,
                 onBack: {}))
         let window = AgentSurfaceReplacementTests.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
@@ -118,10 +122,12 @@ struct ShellTerminalStoreTests {
             AgentSurfaceReplacementTests.terminals(in: controller.view).first)
 
         #expect(terminal.isLocalInputEnabled)
-        // The keyboard comes up with the terminal: the surface claims first
-        // responder as it reaches the window, so no prompt-row tap is needed.
+        // The keyboard state travels with the user: the armed handoff makes
+        // the surface claim first responder as it reaches the window, and
+        // the one-shot is spent so a later open starts from its own screen.
         #expect(terminal.isFirstResponder)
         #expect(terminal.keyboardMode == .text)
+        #expect(!keyboardHandoff.consumeShellTerminal())
         // No title bar: navigation lives behind the input row's More button,
         // which is present while the keyboard is down. The app test runner
         // enables simulator accessibility before launching the host; polling

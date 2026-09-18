@@ -719,6 +719,28 @@ struct TerminalAgentSwitcherTests {
         #expect(!handoff.consume(second))
     }
 
+    /// A Shell Terminal's identity is often unknown when the keyboard state
+    /// is captured, so its handoff is unkeyed, one-shot, and cancellable.
+    @MainActor
+    @Test func theShellTerminalHandoffIsUnkeyedOneShotAndCancellable() {
+        let handoff = TerminalKeyboardHandoff()
+        #expect(!handoff.consumeShellTerminal())
+
+        handoff.armShellTerminal()
+        #expect(handoff.consumeShellTerminal())
+        #expect(!handoff.consumeShellTerminal(), "spent on the first screen")
+
+        handoff.armShellTerminal()
+        handoff.cancelShellTerminal()
+        #expect(!handoff.consumeShellTerminal(), "a failed creation must not raise a later open")
+
+        // Independent of the Agent-keyed intent.
+        let agent = ConsoleAgent.ID(hostID: UUID(), paneID: "w1:pA")
+        handoff.arm(for: agent)
+        #expect(!handoff.consumeShellTerminal())
+        #expect(handoff.consume(agent))
+    }
+
     /// The keyboard may not dip between the two terminals: it carries the
     /// switcher, so a dip flashes the row away mid-switch. The replacement
     /// takes first responder in the same pass it reaches the window.

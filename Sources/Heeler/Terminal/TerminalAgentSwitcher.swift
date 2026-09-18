@@ -64,6 +64,27 @@ final class TerminalKeyboardHandoff {
         armedID = nil
         return true
     }
+
+    private var shellTerminalArmed = false
+
+    /// The keyboard is up and a Shell Terminal is about to be presented. Not
+    /// keyed by identity: the destination is often unknown when the intent
+    /// is captured (New Terminal creates it first; Open Terminal may ask
+    /// which one), so the next Shell Terminal screen to come up takes it.
+    func armShellTerminal() {
+        shellTerminalArmed = true
+    }
+
+    /// The Shell Terminal never came up (creation failed), so the intent
+    /// must not raise the keyboard on an unrelated later open.
+    func cancelShellTerminal() {
+        shellTerminalArmed = false
+    }
+
+    func consumeShellTerminal() -> Bool {
+        defer { shellTerminalArmed = false }
+        return shellTerminalArmed
+    }
 }
 
 /// The switcher row: a horizontally scrolling strip of Agent chips, resting

@@ -780,6 +780,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// settled grid yet. A cancelled freeze must then report it itself.
     private var windowResizeGridIsPending = false
     private var responderGate = TerminalKeyboardResponderGate()
+    /// The user's standing wish for the keyboard on this surface. Unlike
+    /// `isFirstResponder` it survives UIKit's own resigns (a sheet,
+    /// backgrounding) and the deferred release of a retired surface, so a
+    /// replacement surface can read what the user last asked for.
+    var wantsKeyboard: Bool { responderGate.userWantsKeyboard }
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
     private var textInputStyle = TerminalTextInputStyle.terminal

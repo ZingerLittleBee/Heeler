@@ -9,6 +9,9 @@ struct WorkspaceTerminalDetailView: View {
     let onSelectAgent: (ConsoleAgent.ID) -> Void
     let onSelectTerminal: (ConsoleTerminal) -> Void
     var isSelected: () -> Bool = { true }
+    /// Keyboard state in from the screen that selected this terminal and
+    /// out to an Agent the drawer routes to; see `ShellTerminalView`.
+    var keyboardHandoff: TerminalKeyboardHandoff? = nil
     let onBack: () -> Void
 
     @State private var ownerID = UUID()
@@ -53,6 +56,8 @@ struct WorkspaceTerminalDetailView: View {
                     title: terminal.displayTitle,
                     backTitle: "Back to Console",
                     workspaceDrawer: workspaceDrawer,
+                    keyboardHandoff: keyboardHandoff,
+                    backReturnsToAgent: false,
                     onBack: { onBack() })
             } else if let failure {
                 ContentUnavailableView {
@@ -138,11 +143,13 @@ struct WorkspaceTerminalDetailView: View {
                 guard let target = console.terminals.first(where: {
                     $0.hostID == terminal.hostID && $0.terminalID == created.terminalID
                 }) else {
+                    keyboardHandoff?.cancelShellTerminal()
                     createFailure = "The terminal was created, but its Workspace hasn't refreshed yet."
                     return
                 }
                 onSelectTerminal(target)
             } catch {
+                keyboardHandoff?.cancelShellTerminal()
                 createFailure = AgentOpenTerminalStore.presentation(for: error).message
             }
         }

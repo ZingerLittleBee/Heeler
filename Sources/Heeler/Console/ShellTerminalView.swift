@@ -6,8 +6,10 @@ import UIKit
 /// intentionally no Composer, Agent switcher, staging, notification, or Agent
 /// operation on this surface.
 ///
-/// The keyboard comes up as the terminal opens, in Text mode, so the shell is
-/// ready to type into without a tap on its prompt row.
+/// The keyboard follows the user across the screen change: a terminal opened
+/// with the keyboard up comes up typing-ready, one opened with it down stays
+/// down, and leaving for an Agent carries the state back the same way. The
+/// intent travels through `TerminalKeyboardHandoff`, as Agent switches do.
 ///
 /// The keyboard chrome is app-owned, the Composer's arrangement: the input row
 /// sits above the keyboard as ordinary content, and Keys mode suppresses the
@@ -29,6 +31,13 @@ struct ShellTerminalView: View {
     var backTitle = "Back to Agent"
     /// Edge-docked Workspace navigation; nil on surfaces with nowhere to route.
     var workspaceDrawer: WorkspaceTerminalDrawer?
+    /// Carries the keyboard state in from the screen that opened this
+    /// terminal and back out to the Agent it leaves for; nil (previews,
+    /// tests) opens with the keyboard down.
+    var keyboardHandoff: TerminalKeyboardHandoff? = nil
+    /// Whether Back and Close Terminal land on `agentID`'s detail. False on
+    /// the Console's terminal detail, whose Back returns to the Agent list.
+    var backReturnsToAgent = true
     let onBack: @MainActor () async -> Void
 
     @State private var keyboardControl = TerminalKeyboardControl()
@@ -62,16 +71,24 @@ struct ShellTerminalView: View {
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = true
-        // Every fresh surface raises the keyboard as it reaches its window:
-        // the user opened a terminal to type into it, and a body tap only
-        // answers near the prompt row. This covers the first open, a return
-        // to a retained Workspace terminal, and a recovered pipeline alike.
-        // The inset must already know the window and expect the keyboard
-        // when UIKit posts the first will-show, or that frame is dropped and
-        // Ghostty keeps rendering under the keyboard: `WindowReader` reports
-        // the window from a sibling, whose order against the surface's own
-        // `didMoveToWindow` is not guaranteed.
-        screen.claimsKeyboard = { [keyboardInset, sceneWindow] in
+        // The first surface of this screen takes the keyboard only if the
+        // screen it came from left it up. A later surface on the same screen
+        // (a recovered pipeline) is a replacement, not an arrival: it keeps
+        // whatever the user last asked this screen for, read from the surface
+        // it replaces, which `TerminalKeyboardControl` still holds here.
+        // When the keyboard is coming, the inset must already know the window
+        // and expect it before UIKit posts the first will-show, or that frame
+        // is dropped and Ghostty keeps rendering under the keyboard:
+        // `WindowReader` reports the window from a sibling, whose order
+        // against the surface's own `didMoveToWindow` is not guaranteed.
+        screen.claimsKeyboard = { [keyboardInset, keyboardControl, keyboardHandoff, sceneWindow] in
+            let claims: Bool
+            if let previous = keyboardControl.terminal {
+                claims = previous.wantsKeyboard
+            } else {
+                claims = keyboardHandoff?.consumeShellTerminal() ?? false
+            }
+            guard claims else { return false }
             if let window = sceneWindow?.window {
                 keyboardInset.attach(to: window)
             }
@@ -160,7 +177,7 @@ struct ShellTerminalView: View {
             .id(store.terminalID)
             .overlay {
                 if let workspaceDrawer {
-                    workspaceDrawer.palette(themePalette)
+                    keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
                 }
             }
             .overlay { statusOverlay }
@@ -168,7 +185,7 @@ struct ShellTerminalView: View {
             // gesture's hit region, including their leftmost buttons.
             .overlay(alignment: .leading) {
                 ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                    await onBack()
+                    await goBack()
                 }
             }
             // Always present, keyboard up or down: with no title bar, its
@@ -184,7 +201,7 @@ struct ShellTerminalView: View {
                         backTitle: backTitle,
                         isReturning: isReturning,
                         isClosingTerminal: isClosingTerminal,
-                        onBack: { Task { await onBack() } },
+                        onBack: { Task { await goBack() } },
                         onCloseTerminal: onCloseTerminal == nil
                             ? nil : { isConfirmingClose = true }))
             }
@@ -243,6 +260,9 @@ struct ShellTerminalView: View {
                 "Close Terminal?", isPresented: $isConfirmingClose, titleVisibility: .visible
             ) {
                 Button("Close Terminal", role: .destructive) {
+                    if backReturnsToAgent {
+                        armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+                    }
                     onCloseTerminal?()
                 }
                 Button("Cancel", role: .cancel) {}
@@ -277,8 +297,9 @@ struct ShellTerminalView: View {
                     afterPossibleSuspension: activity.lastAbsenceMayHaveSuspended)
             }
             // A recovered terminal is a fresh surface that starts in Text and
-            // raises the keyboard itself (see `claimsKeyboard`); app-side
-            // mode state has to follow it back to Text without a second raise.
+            // decides the keyboard itself from the user's last intent (see
+            // `claimsKeyboard`); app-side mode state has to follow it back to
+            // Text without raising anything on its own.
             .onChange(of: store.terminalID) { _, _ in
                 setKeyboardMode(.text, restoresSystemKeyboard: false)
             }
@@ -320,6 +341,56 @@ struct ShellTerminalView: View {
                 keyboardControl.requestKeyboard()
             }
         }
+    }
+
+    /// Back leaves for the Agent (or the Console): the keyboard state goes
+    /// with it, captured before the screen is torn down.
+    private func goBack() async {
+        if backReturnsToAgent {
+            armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+        }
+        await onBack()
+    }
+
+    /// The Keys dock counts as up: on iPad it stands without a responder.
+    private var isKeyboardUpForHandoff: Bool {
+        keyboardControl.isKeyboardUp || keyboardMode == .controls
+    }
+
+    private func armAgentKeyboardHandoffIfKeyboardIsUp(for id: ConsoleAgent.ID) {
+        guard let keyboardHandoff, isKeyboardUpForHandoff else { return }
+        keyboardHandoff.arm(for: id, mode: keyboardMode == .controls ? .controls : .text)
+    }
+
+    private func armShellTerminalKeyboardHandoffIfKeyboardIsUp() {
+        guard let keyboardHandoff else { return }
+        if isKeyboardUpForHandoff {
+            keyboardHandoff.armShellTerminal()
+        } else {
+            keyboardHandoff.cancelShellTerminal()
+        }
+    }
+
+    /// The drawer's routes replace this screen with an Agent or another
+    /// terminal; each captures the keyboard state before it leaves.
+    private func keyboardCarryingDrawer(_ drawer: WorkspaceTerminalDrawer) -> WorkspaceTerminalDrawer {
+        var carrying = drawer
+        let onSelect = drawer.onSelect
+        carrying.onSelect = { target in
+            if let agentID = target.agentID {
+                armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+            } else if target.paneID != store.identity.paneID {
+                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+            }
+            onSelect(target)
+        }
+        if let onNewTerminal = drawer.onNewTerminal {
+            carrying.onNewTerminal = {
+                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+                onNewTerminal()
+            }
+        }
+        return carrying
     }
 
     private var themePalette: TerminalThemePalette {

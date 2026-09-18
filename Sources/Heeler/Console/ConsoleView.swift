@@ -395,6 +395,7 @@ struct ConsoleView: View {
                     self.selectedTerminal?.id == selectedTerminal.id
                         && notificationRouter.path.isEmpty
                 },
+                keyboardHandoff: keyboardHandoff,
                 onBack: { clearSelection() })
                 .id(selectedTerminal.id)
         } else {

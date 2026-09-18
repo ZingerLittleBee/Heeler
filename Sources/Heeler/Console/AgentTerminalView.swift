@@ -852,7 +852,11 @@ struct AgentTerminalView: View {
             addImage: { isSelectingPhoto = true },
             addFile: { isSelectingFile = true },
             showAttachLinks: { attachLinksOrigin = .composerChip },
-            openTerminal: canOpenTerminal ? openTerminal : nil,
+            openTerminal: canOpenTerminal
+                ? {
+                    armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+                    openTerminal()
+                } : nil,
             isOpeningTerminal: isOpeningTerminal,
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
@@ -909,7 +913,7 @@ struct AgentTerminalView: View {
         // Above the floating buttons: the open panel covers them.
         .overlay {
             if let workspaceDrawer {
-                workspaceDrawer.palette(themePalette)
+                keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
             }
         }
         .overlay { statusOverlay }
@@ -1434,22 +1438,60 @@ struct AgentTerminalView: View {
     /// terminal claims the handoff as it comes up.
     private func switchToAgent(_ id: ConsoleAgent.ID) {
         guard id != agent.id else { return }
-        // The strip outlives the keyboard, so a switch made with the keyboard
-        // down must not raise one on the other side. Direct Input may keep
-        // first responder with a hardware keyboard and a zero inset.
-        let keyboardIsUp =
-            isDirectInput
+        armAgentKeyboardHandoffIfKeyboardIsUp(for: id)
+        onSwitch(id)
+    }
+
+    /// Whether leaving this screen should bring the keyboard up on the next
+    /// one. The strip and drawer outlive the keyboard, so a move made with
+    /// the keyboard down must not raise one on the other side. Direct Input
+    /// may keep first responder with a hardware keyboard and a zero inset.
+    private var keyboardIsUpForHandoff: Bool {
+        isDirectInput
             ? AgentDirectInputPresentation.shouldClaimKeyboard(
                 wantsKeyboard: directKeyboardIntent.wantsKeyboard,
                 isKeyboardUp: keyboardControl.isKeyboardUp,
                 usesToolsKeyboard: usesDirectToolsKeyboard,
                 softwareKeyboardHeight: keyboardInset.height)
             : keyboardInset.height > 0
-        if keyboardIsUp {
-            keyboardHandoff.arm(
-                for: id, mode: isDirectInput && usesDirectToolsKeyboard ? .controls : .text)
+    }
+
+    private func armAgentKeyboardHandoffIfKeyboardIsUp(for id: ConsoleAgent.ID) {
+        guard id != agent.id, keyboardIsUpForHandoff else { return }
+        keyboardHandoff.arm(
+            for: id, mode: isDirectInput && usesDirectToolsKeyboard ? .controls : .text)
+    }
+
+    /// A Shell Terminal opened from here comes up with the keyboard in the
+    /// state this screen leaves it: up stays up, down stays down.
+    private func armShellTerminalKeyboardHandoffIfKeyboardIsUp() {
+        if keyboardIsUpForHandoff {
+            keyboardHandoff.armShellTerminal()
+        } else {
+            keyboardHandoff.cancelShellTerminal()
         }
-        onSwitch(id)
+    }
+
+    /// The drawer's routes rebuild this screen or replace it with a Shell
+    /// Terminal; each captures the keyboard state before it leaves.
+    private func keyboardCarryingDrawer(_ drawer: WorkspaceTerminalDrawer) -> WorkspaceTerminalDrawer {
+        var carrying = drawer
+        let onSelect = drawer.onSelect
+        carrying.onSelect = { target in
+            if let agentID = target.agentID {
+                armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+            } else {
+                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+            }
+            onSelect(target)
+        }
+        if let onNewTerminal = drawer.onNewTerminal {
+            carrying.onNewTerminal = {
+                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+                onNewTerminal()
+            }
+        }
+        return carrying
     }
 
     private func performClose() async {

@@ -214,7 +214,8 @@ struct AgentDetailView: View {
                     isReturning: openTerminal.isReturning,
                     isClosingTerminal: openTerminal.isClosingTerminal,
                     onCloseTerminal: { openTerminal.closeTerminal() },
-                    workspaceDrawer: workspaceDrawer
+                    workspaceDrawer: workspaceDrawer,
+                    keyboardHandoff: keyboardHandoff
                 ) {
                     await openTerminal.returnToAgent()
                 }
@@ -392,11 +393,13 @@ struct AgentDetailView: View {
                 guard let createdTerminal, let target = console.terminals.first(where: {
                     $0.hostID == agent.hostID && $0.terminalID == createdTerminal.terminalID
                 }) else {
+                    keyboardHandoff.cancelShellTerminal()
                     terminalOpenFailure = "The terminal was created, but its Workspace hasn't refreshed yet. Try Open Terminal again to refresh it."
                     return
                 }
                 if isVisible() { onSelectTerminal?(target) }
             } catch {
+                keyboardHandoff.cancelShellTerminal()
                 terminalOpenFailure = AgentOpenTerminalStore.presentation(for: error).message
             }
         }
