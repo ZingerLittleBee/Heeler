@@ -106,6 +106,8 @@ fake_herdr_pid=""
 weak_network_pid=""
 simulator_udid=""
 simulator_destination=""
+simulator_environment_variables=()
+simulator_listing=""
 
 # The privileged password fixture, provisioned only when sudo -n works.
 password_username=""
@@ -117,6 +119,9 @@ password_user_cleanup_needed=0
 password_ssh_sacl_added=0
 password_pid_file="$fixture_dir/sshd-password.pid"
 password_log="$fixture_dir/sshd-password.log"
+# sysadminctl transcript from create_password_user, preserved with the other
+# fixture logs and scrubbed of the account password before anything reads it.
+sysadminctl_log="$fixture_dir/sysadminctl.log"
 password_log_printed=0
 
 # Merge CI must run the complete mandatory matrix; a laptop need not.
@@ -130,11 +135,20 @@ unprivileged_sshd_pids=()
 run_xcodebuild() {
     local label=$1
     local timeout_seconds=$2
+    local output_log=$3
     local safe_label
-    local status
+    local status=70
     local started_at=$SECONDS
     local action
-    shift 2
+    local attempt
+    local attempt_log
+    local backoff
+    local needs_recovery=0
+    local failed_udid="$simulator_udid"
+    local working_directory="$repo_root"
+    local index
+    local -a arguments=()
+    shift 3
 
     safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
     echo "::group::$label"
@@ -147,24 +161,69 @@ run_xcodebuild() {
         set -- "$action" -disableAutomaticPackageResolution "$@"
         echo "==> $label: skipping automatic package resolution"
     fi
-    # Keep remote checkouts outside the disposable DerivedData path so a
-    # restored CI cache survives fixture cleanup. Local path packages such as
-    # HeelerSSH are unaffected.
     if [[ "$ci_lane" == "app" ]]; then
         mkdir -p "$source_packages_dir"
         set -- "$@" -clonedSourcePackagesDirPath "$source_packages_dir"
-    fi
-    if "$repo_root/scripts/run-with-timeout.py" \
-        --timeout-seconds "$timeout_seconds" \
-        --label "$label" \
-        --diagnostics-dir "$diagnostic_root/$safe_label" \
-        --artifact-path "$app_derived_data_path/Logs/Test" \
-        --artifact-path "$package_derived_data_path/Logs/Test" \
-        --artifact-glob "$fixture_dir/*.log" \
-        -- xcodebuild "$@"; then
-        status=0
     else
-        status=$?
+        working_directory="$repo_root/Packages/HeelerSSH"
+    fi
+    arguments=("$@")
+    # Keep this function in the calling shell. In particular, an outer tee
+    # pipeline or package-directory subshell would discard a replacement UDID
+    # and leave later suites and cleanup pointing at the missing device.
+    for attempt in 1 2 3 4; do
+        if [[ "$needs_recovery" == 1 ]]; then
+            # The observed loss (#327) emptied CoreSimulator's whole visible
+            # set, so a couple of seconds is not a recovery window. Back off
+            # 2s, 10s, 30s: about 42s in total before the retry is exhausted.
+            case "$attempt" in
+                2) backoff=2 ;;
+                3) backoff=10 ;;
+                *) backoff=30 ;;
+            esac
+            echo "==> $label: recovering simulator $failed_udid in ${backoff}s (attempt $attempt/4)"
+            sleep "$backoff"
+            if ! recover_simulator_destination; then
+                continue
+            fi
+        fi
+        for ((index = 0; index < ${#arguments[@]} - 1; index += 1)); do
+            if [[ "${arguments[$index]}" == "-destination" ]]; then
+                arguments[index + 1]="$simulator_destination"
+            fi
+        done
+        attempt_log="$fixture_dir/$safe_label-attempt-$attempt.log"
+        if (
+            cd "$working_directory" || exit 1
+            "$repo_root/scripts/run-with-timeout.py" \
+                --timeout-seconds "$timeout_seconds" \
+                --label "$label" \
+                --diagnostics-dir "$diagnostic_root/$safe_label/attempt-$attempt" \
+                --artifact-path "$app_derived_data_path/Logs/Test" \
+                --artifact-path "$package_derived_data_path/Logs/Test" \
+                --artifact-glob "$fixture_dir/*.log" \
+                -- xcodebuild "${arguments[@]}"
+        ) 2>&1 | tee "$attempt_log" "$output_log"; then
+            status=0
+            break
+        else
+            status=$?
+        fi
+        # Exit 70 alone is not enough: only a missing destination is retryable.
+        # Compilation, test failures, watchdog expiry and lock contention keep
+        # their original failure behavior.
+        if [[ "$status" != 70 ]] || ! grep -qF \
+            'Unable to find a device matching the provided destination specifier' \
+            "$attempt_log"; then
+            needs_recovery=0
+            break
+        fi
+        needs_recovery=1
+        failed_udid="$simulator_udid"
+    done
+    if [[ "$status" != 0 && "$needs_recovery" == 1 ]]; then
+        echo "Simulator destination recovery exhausted for UDID $failed_udid ($ci_simulator_name)." >&2
+        xcrun simctl list devices available >&2 || true
     fi
     echo "::endgroup::"
     echo "==> $label: $((SECONDS - started_at))s (status $status)"
@@ -445,6 +504,7 @@ trap cleanup EXIT INT TERM
 # the launchd values leaves HEELER_SSH_E2E_REQUIRED visible and the
 # fixture-backed suites fail instead of skipping once the fixture is gone.
 clear_simulator_environment() {
+    simulator_environment_variables=()
     local variable
     local pid
     local unsetenv_pids=()
@@ -483,11 +543,13 @@ clear_simulator_environment() {
 # The setenv half of the same trade: a dozen serial `simctl spawn` round trips
 # put most of a minute on the critical path. Values are read through variable
 # indirection, so callers assign first and pass names. Every push is still
-# checked -- under `set -e` a failed wait aborts the gate, exactly as the
-# serial calls did.
+# checked explicitly, including when recovery calls this from a conditional
+# where Bash disables errexit.
 push_simulator_environment() {
+    simulator_environment_variables=("$@")
     local variable
     local pid
+    local status=0
     local setenv_pids=()
     for variable in "$@"; do
         xcrun simctl spawn "$simulator_udid" launchctl setenv \
@@ -495,8 +557,9 @@ push_simulator_environment() {
         setenv_pids+=("$!")
     done
     for pid in "${setenv_pids[@]}"; do
-        wait "$pid"
+        wait "$pid" || status=1
     done
+    return "$status"
 }
 
 stop_privileged_sshd() {
@@ -564,7 +627,7 @@ start_password_sshd() {
     # The invoking shell intentionally owns the diagnostic log redirect.
     # shellcheck disable=SC2024
     sudo -n /usr/sbin/sshd -D -e -f "$password_config" \
-        > "$password_log" 2>&1 &
+        > >(timestamp_lines > "$password_log") 2>&1 &
     password_pid=$!
 
     for ((attempt = 0; attempt < 50; attempt += 1)); do
@@ -654,18 +717,52 @@ EXPECT
 }
 
 # sysadminctl owns creation of the complete local account record. Expect feeds
-# its password prompt without putting the secret in argv, a file, the command
-# transcript, or the sysadminctl environment.
+# its password prompt without putting the secret in argv, the command line, or
+# the sysadminctl environment; the pty transcript it records for diagnosis has
+# echo turned off before the password is sent and is scrubbed afterwards.
+# Every command in the password fixture block is silent on success and, under
+# `set -e`, silent on failure too: five CI runs exited 1 between "Claimed
+# simulator" and the first xcodebuild with nothing to read (#348). Route each
+# step through here so the job log names the step and its exit status.
+provisioning_step() {
+    local label=$1
+    local status
+    shift
+    "$@" && return 0
+    status=$?
+    echo "Password fixture provisioning failed at $label (status $status)." >&2
+    return "$status"
+}
+
+# The expect transcript below records the pty. Echo is turned off before the
+# password is sent, so the secret should never reach the file; this scrub is
+# the second line, run before the transcript is printed or preserved. The
+# secret travels in the environment so no quoting can leak or mangle it, and
+# an empty secret must not become an empty match that rewrites the whole file.
+redact_secret_in_file() {
+    local file=$1
+    local secret=$2
+    [[ -f "$file" && -n "$secret" ]] || return 0
+    HEELER_REDACT_SECRET="$secret" perl -pi -e \
+        's/\Q$ENV{HEELER_REDACT_SECRET}\E/[redacted]/g' "$file"
+}
+
 create_password_user() (
     local status
 
+    rm -f "$sysadminctl_log"
     export HEELER_SYSADMINCTL_PASSWORD="$password_secret"
     export HEELER_SYSADMINCTL_USERNAME="$password_username"
     export HEELER_SYSADMINCTL_UID="$password_uid"
     export HEELER_SYSADMINCTL_HOME="$password_home"
+    export HEELER_SYSADMINCTL_LOG="$sysadminctl_log"
+    # log_user 0 keeps the transcript off the job log; -a records it anyway so a
+    # failure can show what sysadminctl said. Each exit path names its reason on
+    # stderr, which the calling shell leaves connected to the job log.
     if /usr/bin/expect <<'EXPECT'
 set timeout 30
 log_user 0
+log_file -a -noappend $env(HEELER_SYSADMINCTL_LOG)
 
 set password $env(HEELER_SYSADMINCTL_PASSWORD)
 unset env(HEELER_SYSADMINCTL_PASSWORD)
@@ -683,15 +780,18 @@ set sent_password 0
 expect {
     -re {(?i)password[^\r\n]*:[[:space:]]*$} {
         if {$sent_password} {
+            puts stderr "sysadminctl prompted for the password a second time"
             close
             catch {wait}
             exit 1
         }
+        catch {exec stty -echo < $spawn_out(slave,name)}
         send -- "$password\r"
         set sent_password 1
         exp_continue
     }
     timeout {
+        puts stderr "sysadminctl timed out after ${timeout}s (password sent: $sent_password)"
         close
         catch {wait}
         exit 1
@@ -699,20 +799,31 @@ expect {
     eof {}
 }
 
-if {!$sent_password || [catch {wait} child_status]} {
+if {!$sent_password} {
+    puts stderr "sysadminctl exited without prompting for a password"
+    exit 1
+}
+if {[catch {wait} child_status]} {
+    puts stderr "could not wait for sysadminctl: $child_status"
     exit 1
 }
 if {[llength $child_status] < 4 || [lindex $child_status 2] ne "0"} {
+    puts stderr "sysadminctl wait reported an error: $child_status"
     exit 1
 }
 if {[llength $child_status] >= 5 \
     && [lindex $child_status 4] eq "CHILDKILLED"} {
+    puts stderr "sysadminctl was killed by a signal: $child_status"
     exit 1
 }
 set child_exit [lindex $child_status 3]
 if {![string is integer -strict $child_exit] \
     || $child_exit < 0 || $child_exit > 255} {
+    puts stderr "sysadminctl exit status is unreadable: $child_status"
     exit 1
+}
+if {$child_exit != 0} {
+    puts stderr "sysadminctl exited with status $child_exit"
 }
 exit $child_exit
 EXPECT
@@ -725,8 +836,23 @@ EXPECT
     unset HEELER_SYSADMINCTL_USERNAME
     unset HEELER_SYSADMINCTL_UID
     unset HEELER_SYSADMINCTL_HOME
+    unset HEELER_SYSADMINCTL_LOG
+    redact_secret_in_file "$sysadminctl_log" "$password_secret"
+    if [[ "$status" != 0 && -s "$sysadminctl_log" ]]; then
+        echo "===== sysadminctl transcript ($sysadminctl_log)" >&2
+        cat "$sysadminctl_log" >&2
+    fi
     return "$status"
 )
+
+# `sshd -e` writes no timestamps, so a preserved log could not be matched
+# against the wall-clock window of a failing test (#343). Prefix every line
+# with the same UTC format GitHub prints for job log lines. Process
+# substitution keeps `$!` as sshd's own pid for the kill/wait bookkeeping;
+# the filter exits on its own when sshd closes the pipe.
+timestamp_lines() {
+    perl -MPOSIX -pe '$| = 1; $_ = POSIX::strftime("%Y-%m-%dT%H:%M:%SZ ", gmtime) . $_'
+}
 
 # Sets started_sshd_pid rather than printing it: a command substitution would
 # run the append to unprivileged_sshd_pids in a subshell and lose it.
@@ -735,7 +861,7 @@ start_unprivileged_sshd() {
     local config=$1
     local log=$2
 
-    /usr/sbin/sshd -D -e -f "$config" > "$log" 2>&1 &
+    /usr/sbin/sshd -D -e -f "$config" > >(timestamp_lines > "$log") 2>&1 &
     started_sshd_pid=$!
     unprivileged_sshd_pids+=("$started_sshd_pid")
 }
@@ -917,25 +1043,35 @@ printf 'Claimed fixture port block %s-%s\n' \
 # claim "iPhone 17 Pro", and names with parentheses (iPad Pro 13-inch (M5))
 # stay literal rather than becoming an awk regex.
 ci_simulator_name="${HEELER_CI_SIMULATOR_NAME:-iPhone 17}"
-simulator_candidates=()
-while IFS= read -r candidate; do
-    [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
-done < <(xcrun simctl list devices available | awk -v name="$ci_simulator_name" '
-    index($0, name " (") {
-        candidate = ""
-        for (field = 1; field <= NF; field += 1) {
-            value = $field
-            gsub(/[()]/, "", value)
-            if (value ~ /^[0-9A-F-]{36}$/) {
-                candidate = value
+requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
+# Keeps the raw listing in simulator_listing so a recovery attempt can print
+# what CoreSimulator saw at that moment, not only the filtered candidates.
+list_simulator_candidates() {
+    local candidate
+    simulator_listing=$(xcrun simctl list devices available) || return 1
+    simulator_candidates=()
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
+    done < <(printf '%s\n' "$simulator_listing" | awk -v name="$ci_simulator_name" \
+        -v pinned="$requested_simulator_udid" '
+        index($0, name " (") || (pinned != "" && index($0, "(" pinned ")")) {
+            candidate = ""
+            for (field = 1; field <= NF; field += 1) {
+                value = $field
+                gsub(/[()]/, "", value)
+                if (value ~ /^[0-9A-F-]{36}$/) {
+                    candidate = value
+                }
+            }
+            if (candidate != "") {
+                list[++count] = candidate
             }
         }
-        if (candidate != "") {
-            list[++count] = candidate
-        }
-    }
-    END { for (index_ = count; index_ >= 1; index_ -= 1) print list[index_] }
-')
+        END { for (index_ = count; index_ >= 1; index_ -= 1) print list[index_] }
+    ')
+}
+
+list_simulator_candidates
 if [[ "${#simulator_candidates[@]}" -eq 0 ]]; then
     echo "No available ${ci_simulator_name} Simulator was found" >&2
     exit 1
@@ -968,7 +1104,61 @@ claim_simulator() {
     return 1
 }
 
-requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
+# Called only after xcodebuild explicitly reports a missing destination. Keep
+# an explicit caller pin; otherwise use another unclaimed device of the same
+# name. Never reset CoreSimulator or disturb another run's device lock.
+recover_simulator_destination() {
+    local candidate
+    local current_available=0
+
+    list_simulator_candidates || return 1
+    # The next reader needs to know whether the device was gone for seconds or
+    # for the whole window, so every rediscovery records the live listing.
+    printf 'Simulators visible while recovering %s:\n%s\n' \
+        "${simulator_udid:-<released>}" "$simulator_listing" >&2
+    # Bash 3.2 treats an empty array expansion as unbound under nounset.
+    # Handle it before iterating so recovery can retry and report diagnostics.
+    if [[ "${#simulator_candidates[@]}" == 0 ]]; then
+        echo "No available $ci_simulator_name Simulator during destination recovery." >&2
+        return 1
+    fi
+    for candidate in "${simulator_candidates[@]}"; do
+        if [[ "$candidate" == "$simulator_udid" ]]; then
+            current_available=1
+        fi
+    done
+    if [[ "$current_available" == 0 ]]; then
+        if [[ -n "$requested_simulator_udid" ]]; then
+            echo "Explicitly pinned simulator $requested_simulator_udid is still unavailable." >&2
+            return 1
+        fi
+        # Clear the old device while still owning it, but preserve shell values
+        # for the replacement. Release before claiming so cleanup owns one lock.
+        (clear_simulator_environment) || true
+        release_resource_lock "$device_lock_dir" "simulator" || return 1
+        device_lock_dir=""
+        simulator_udid=""
+        simulator_destination=""
+        for candidate in "${simulator_candidates[@]}"; do
+            if claim_simulator "$candidate"; then
+                simulator_udid="$candidate"
+                simulator_destination="platform=iOS Simulator,id=$candidate"
+                break
+            fi
+        done
+        if [[ -z "$simulator_udid" ]]; then
+            echo "Every replacement $ci_simulator_name Simulator is claimed by a live run." >&2
+            return 1
+        fi
+    fi
+    printf 'Recovering simulator %s\n' "$simulator_udid" >&2
+    xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
+    xcrun simctl bootstatus "$simulator_udid" -b || return 1
+    if [[ "${#simulator_environment_variables[@]}" -gt 0 ]]; then
+        push_simulator_environment "${simulator_environment_variables[@]}" || return 1
+    fi
+}
+
 simulator_udid=""
 if [[ -n "$requested_simulator_udid" ]]; then
     if claim_simulator "$requested_simulator_udid"; then
@@ -1090,6 +1280,22 @@ ssh-keygen -q -t ed25519 -N '' -C heeler-ci-device-key -f "$fixture_dir/device_k
 device_key_seed="$(/usr/bin/python3 \
     scripts/fixtures/openssh-ed25519-seed.py "$fixture_dir/device_key")"
 cp "$fixture_dir/device_key.pub" "$fixture_dir/authorized_keys"
+
+# A separate RSA identity exercises the callback signer used by RSA Key auth.
+# Security.framework consumes PKCS#1 DER, while sshd consumes the matching
+# OpenSSH public line. The app only offers RSA-SHA2-512; it has no SHA-1
+# signing fallback.
+/usr/bin/openssl genrsa -out "$fixture_dir/rsa_key.pem" 3072 >/dev/null 2>&1
+chmod 600 "$fixture_dir/rsa_key.pem"
+/usr/bin/openssl rsa \
+    -in "$fixture_dir/rsa_key.pem" \
+    -outform DER \
+    -out "$fixture_dir/rsa_key.der" \
+    >/dev/null 2>&1
+rsa_public_key="$(ssh-keygen -y -f "$fixture_dir/rsa_key.pem")"
+printf '%s heeler-ci-rsa-key\n' "$rsa_public_key" > "$fixture_dir/rsa_key.pub"
+cat "$fixture_dir/rsa_key.pub" >> "$fixture_dir/authorized_keys"
+rsa_key_der="$(base64 < "$fixture_dir/rsa_key.der" | tr -d '\n')"
 printf 'no-port-forwarding %s\n' "$(<"$fixture_dir/device_key.pub")" \
     > "$fixture_dir/authorized_keys-no-forwarding"
 cp "$fixture_dir/authorized_keys" "$fixture_dir/authorized_keys-jump-target"
@@ -1134,6 +1340,7 @@ write_common_config() {
         "PasswordAuthentication no" \
         "KbdInteractiveAuthentication no" \
         "PubkeyAuthentication yes" \
+        "PubkeyAcceptedAlgorithms ssh-ed25519,rsa-sha2-512" \
         "AuthorizedKeysFile $fixture_dir/authorized_keys" \
         "UsePAM yes" \
         "PermitRootLogin no" \
@@ -1339,15 +1546,18 @@ if [[ "$ci_lane" == "app" ]] && sudo -n true >/dev/null 2>&1; then
     # EXIT/INT/TERM may arrive after sysadminctl creates only part of the user
     # record, so declare cleanup intent before starting that side effect.
     password_user_cleanup_needed=1
-    create_password_user
+    provisioning_step create_password_user create_password_user || exit 1
     release_resource_lock "$account_lock_dir" "password account allocation"
     account_lock_dir=""
-    sudo -n dscl . -create "/Users/$password_username" IsHidden 1
-    sudo -n chown "$password_uid":20 "$password_home"
+    provisioning_step "dscl IsHidden" \
+        sudo -n dscl . -create "/Users/$password_username" IsHidden 1 || exit 1
+    provisioning_step "chown password home" \
+        sudo -n chown "$password_uid":20 "$password_home" || exit 1
     if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then
         password_ssh_sacl_added=1
-        sudo -n /usr/sbin/dseditgroup -o edit \
-            -a "$password_username" -t user com.apple.access_ssh
+        provisioning_step "dseditgroup com.apple.access_ssh" \
+            sudo -n /usr/sbin/dseditgroup -o edit \
+            -a "$password_username" -t user com.apple.access_ssh || exit 1
     fi
     printf '%s\n' \
         "Port $password_port" \
@@ -1495,7 +1705,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
         "$password_secret")
 fi
 fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
+    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","rsaKeyDER":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
     "$modern_port" \
     "$legacy_port" \
     "$restricted_port" \
@@ -1506,6 +1716,7 @@ fixture_configuration=$(printf \
     "$weak_network_control_port" \
     "$fixture_username" \
     "$device_key_seed" \
+    "$rsa_key_der" \
     "$password_fixture_json" \
     "$streamlocal_socket" \
     "$streamlocal_socket" \
@@ -1584,7 +1795,7 @@ run_suite() {
     if [[ "$expected_suites" != "1" ]]; then
         noun="suites"
     fi
-    run_xcodebuild "$lane" "$xcodebuild_test_timeout_seconds" \
+    run_xcodebuild "$lane" "$xcodebuild_test_timeout_seconds" "$log" \
         test-without-building \
         -project Heeler.xcodeproj \
         -scheme Heeler \
@@ -1592,8 +1803,7 @@ run_suite() {
         -destination "$simulator_destination" \
         -collect-test-diagnostics never \
         -parallel-testing-enabled NO \
-        "${selectors[@]}" \
-        2>&1 | tee "$log"
+        "${selectors[@]}"
 
     skips=$(grep -cE '(Test|Suite) .* skipped' "$log" || true)
     if [[ "$skips" != "$expected_skips" ]]; then
@@ -1714,6 +1924,7 @@ echo "==> Fixture provisioning finished at t+${SECONDS}s"
 # paying a package-resolution and incremental-build check per session --
 # measured at roughly half a minute per xcodebuild invocation on CI.
 run_xcodebuild "Build for testing" "$xcodebuild_build_timeout_seconds" \
+    "$fixture_dir/build-for-testing.log" \
     build-for-testing \
     -project Heeler.xcodeproj \
     -scheme Heeler \
@@ -1751,7 +1962,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 95 6 0 \
+run_suite SharedFixtureE2ETests 97 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -1777,6 +1988,10 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 assert_behavior "Device Key" HeelerSSHSessionE2ETests \
     '"authorized Device Key authenticates and executes through real sshd"'
+assert_behavior "RSA-SHA2-512" HeelerSSHTransportBehaviorE2ETests \
+    '"RSA credentials authenticate when the Host accepts only RSA-SHA2-512"'
+assert_behavior "Jump Host RSA-SHA2-512" HeelerSSHTransportBehaviorE2ETests \
+    '"RSA authenticates both hops when each Host accepts only RSA-SHA2-512"'
 assert_behavior "Bootstrap Key" PairingCeremonyE2ETests \
     'fullCeremonyEnrollsTheDeviceKeyAndVerifies()'
 assert_behavior "two-hop trust" HeelerSSHJumpHostGateE2ETests \
@@ -1896,15 +2111,13 @@ fi
 if [[ "$ci_lane" == "package" ]]; then
 # Same overlap as the app lane: compilation needs the destination to exist,
 # not to be booted, so remaining simulator boot runs under the build.
-(
-    cd Packages/HeelerSSH
-    run_xcodebuild "HeelerSSH package build" "$xcodebuild_build_timeout_seconds" \
-        build-for-testing \
-        -scheme HeelerSSH \
-        -derivedDataPath "$package_derived_data_path" \
-        -destination "$simulator_destination" \
-        -collect-test-diagnostics never
-)
+run_xcodebuild "HeelerSSH package build" "$xcodebuild_build_timeout_seconds" \
+    "$fixture_dir/package-build.log" \
+    build-for-testing \
+    -scheme HeelerSSH \
+    -derivedDataPath "$package_derived_data_path" \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never
 boot_wait_started=$SECONDS
 xcrun simctl bootstatus "$simulator_udid" -b
 echo "==> Simulator boot wait after the build overlap: $((SECONDS - boot_wait_started))s"
@@ -1922,20 +2135,18 @@ push_simulator_environment \
     HEELER_SSH_E2E_STREAMLOCAL_SOCKET
 
 package_e2e_log="$fixture_dir/package-e2e.log"
-(
-    cd Packages/HeelerSSH
-    run_xcodebuild "HeelerSSH package E2E" "$xcodebuild_test_timeout_seconds" \
-        test-without-building \
-        -scheme HeelerSSH \
-        -derivedDataPath "$package_derived_data_path" \
-        -destination "$simulator_destination" \
-        -collect-test-diagnostics never
-) 2>&1 | tee "$package_e2e_log"
+run_xcodebuild "HeelerSSH package E2E" "$xcodebuild_test_timeout_seconds" \
+    "$package_e2e_log" \
+    test-without-building \
+    -scheme HeelerSSH \
+    -derivedDataPath "$package_derived_data_path" \
+    -destination "$simulator_destination" \
+    -collect-test-diagnostics never
 clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 53 tests in 3 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 60 tests in 4 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "post-negotiation transport loss is not an algorithm mismatch" passed' \
         "$package_e2e_log" \
@@ -2029,7 +2240,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all forty-nine tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all sixty tests" >&2
     exit 1
 fi
 exit 0
@@ -2043,17 +2254,17 @@ fi
 # and rewrite their real authorized_keys) refuse it and skip; see
 # RealSSHFixture.isUnderMergeGate. cleanup() unsets it again on exit.
 export HEELER_SSH_E2E_REQUIRED=0
-xcrun simctl spawn "$simulator_udid" launchctl setenv HEELER_SSH_E2E_REQUIRED 0
+push_simulator_environment HEELER_SSH_E2E_REQUIRED
 
 full_lane_log="$fixture_dir/full-lane.log"
 run_xcodebuild "Full app test lane" "$xcodebuild_test_timeout_seconds" \
+    "$full_lane_log" \
     test-without-building \
     -project Heeler.xcodeproj \
     -scheme Heeler \
     -derivedDataPath "$app_derived_data_path" \
     -destination "$simulator_destination" \
-    -collect-test-diagnostics never \
-    2>&1 | tee "$full_lane_log"
+    -collect-test-diagnostics never
 
 # 769 is a floor, not the current count: it is what the lane executed the day it
 # was written, deliberately left below what the lane reaches now so that adding

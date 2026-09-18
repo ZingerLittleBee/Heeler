@@ -41,7 +41,7 @@ struct HostOnboardingView: View {
                 LabeledContent("Session", value: sessionLine)
                 LabeledContent(
                     "Auth",
-                    value: store.host.authMethod == .deviceKey ? "Device Key" : "Password")
+                    value: authenticationLabel)
             }
 
             if retryConnection != nil {
@@ -176,6 +176,14 @@ struct HostOnboardingView: View {
             if store.phase == .idle {
                 await store.runChecks()
             }
+        }
+    }
+
+    private var authenticationLabel: String {
+        switch store.host.authMethod {
+        case .deviceKey: "Device Key"
+        case .rsaKey: "RSA Key"
+        case .password: "Password"
         }
     }
 

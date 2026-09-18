@@ -19,6 +19,15 @@ _Avoid_: bastion, proxy server
 The device's SSH identity: an Ed25519 keypair generated on this device. The private key never leaves the Keychain; the public half is what a Host authorizes.
 _Avoid_: app key, client key
 
+**RSA Key**:
+The device's alternative SSH identity for a Host that requires RSA-SHA2-512:
+one 3072-bit RSA keypair generated on this device and shared by every Host
+configured for this method. Its private half stays in the Keychain; the user
+registers its OpenSSH public-key line wherever each Host accepts SSH identities.
+Rotating it requires updating every such Host, including both machines when a
+Jump Host is configured.
+_Avoid_: gateway key, provider key, legacy RSA
+
 **Pairing**:
 The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Key, complete Enrollment, then reconnect with the Device Key. Success produces a working Host, persisted only at that point.
 _Avoid_: scan to connect, binding

@@ -491,6 +491,18 @@ actor HeelerSSHTransport: Transport {
                 publicKey: deviceKey.publicKeyBlob,
                 signer: { data in try deviceKey.privateKey.signature(for: data) },
                 timeout: timeout)
+        case .rsaSHA512(let rsaKey):
+            do {
+                try await connection.authenticate(
+                    username: username,
+                    publicKey: rsaKey.publicKeyBlob,
+                    signer: { data in try rsaKey.signature(for: data) },
+                    timeout: timeout)
+            } catch SSHError.algorithmNegotiationFailed {
+                // The handshake already succeeded, so during authentication
+                // this can only mean no RSA-SHA2-512 signature was possible.
+                throw TransportError.rsaSignatureUnsupported
+            }
         }
     }
 
@@ -1747,19 +1759,26 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func runHostCommand(_ command: String) async throws -> Data {
-        try await withRequestDeadline {
-            let result = try await self.runExec(
-                Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
-            if let missing = HerdrHostPath.missingBinaryError(
-                exitStatus: result.exitStatus, command: command)
-            {
-                throw missing
+        do {
+            return try await withRequestDeadline {
+                let result = try await self.runExec(
+                    Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
+                if let missing = HerdrHostPath.missingBinaryError(
+                    exitStatus: result.exitStatus, command: command)
+                {
+                    throw missing
+                }
+                guard result.reachedEOF else {
+                    throw TransportError.channelFailed(
+                        detail: "Host command closed before EOF")
+                }
+                return result.stdout
             }
-            guard result.reachedEOF else {
-                throw TransportError.channelFailed(
-                    detail: "Host command closed before EOF")
-            }
-            return result.stdout
+        } catch TransportError.timedOut {
+            // The SSH layer already named the phase; this names the command
+            // whose request budget it was spent on (#343).
+            SSHDiagnostics.note("Host command budget \(requestTimeout) expired: \(command)")
+            throw TransportError.timedOut
         }
     }
 

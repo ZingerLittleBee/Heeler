@@ -55,6 +55,28 @@ struct HostStoreTests {
         return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
+    private func persistedHost(
+        id: UUID, in defaults: UserDefaults
+    ) throws -> [String: Any] {
+        try #require(persistedHosts(in: defaults).first {
+            $0["id"] as? String == id.uuidString
+        })
+    }
+
+    private func persistedHosts(in defaults: UserDefaults) throws -> [[String: Any]] {
+        let data = try #require(defaults.data(forKey: "hosts"))
+        let catalog = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try #require(catalog["hosts"] as? [[String: Any]])
+    }
+
+    private func persistedHostIDs(in defaults: UserDefaults) throws -> [UUID] {
+        try persistedHosts(in: defaults).map { host in
+            let id = try #require(host["id"] as? String)
+            return try #require(UUID(uuidString: id))
+        }
+    }
+
     @Test func addPersistsAcrossInstances() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -84,6 +106,95 @@ struct HostStoreTests {
         // Hosts saved before jump-host support must keep connecting directly.
         #expect(!host.usesJumpHost)
         #expect(host.jumpPort == 22)
+    }
+
+    @Test func legacyCatalogMigrationPreservesAnUnknownAuthHost() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let knownID = UUID()
+        let unknownID = UUID()
+        let legacy = Data("""
+            [
+              {"id":"\(knownID.uuidString)","name":"Known","address":"known.example",
+               "port":22,"username":"dev","authMethod":"deviceKey"},
+              {"id":"\(unknownID.uuidString)","name":"Future","address":"future.example",
+               "port":22,"username":"dev","authMethod":"futureKey","futureField":42}
+            ]
+            """.utf8)
+        defaults.set(legacy, forKey: "hosts")
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(store.hosts.map(\.id) == [knownID])
+        #expect(store.catalogLoadError == nil)
+        let futureField = try #require(
+            persistedHost(id: unknownID, in: defaults)["futureField"] as? NSNumber)
+        #expect(futureField.intValue == 42)
+        #expect(try persistedHostIDs(in: defaults) == [knownID, unknownID])
+    }
+
+    @Test func unknownAuthMethodSkipsOnlyThatHost() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let firstID = UUID()
+        let unknownID = UUID()
+        let secondID = UUID()
+        let catalog = Data("""
+            {"version":1,"hosts":[
+              {"id":"\(firstID.uuidString)","name":"First","address":"first.example",
+               "port":22,"username":"dev","authMethod":"deviceKey"},
+              {"id":"\(unknownID.uuidString)","name":"Future","address":"future.example",
+               "port":22,"username":"dev","authMethod":"hardwareBackedKey",
+               "futureField":"preserve-me"},
+              {"id":"\(secondID.uuidString)","name":"Second","address":"second.example",
+               "port":22,"username":"dev","authMethod":"password"}
+            ]}
+            """.utf8)
+        defaults.set(catalog, forKey: "hosts")
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(store.hosts.map(\.id) == [firstID, secondID])
+        #expect(store.catalogLoadError == nil)
+        // Loading an older build must not rewrite the future Host out of the
+        // persisted catalog merely because it cannot display that entry.
+        #expect(defaults.data(forKey: "hosts") == catalog)
+
+        let added = Host.fixture(name: "Added")
+        try store.add(added)
+        #expect(try persistedHost(id: unknownID, in: defaults)["futureField"] as? String
+            == "preserve-me")
+        #expect(try persistedHostIDs(in: defaults) == [firstID, unknownID, secondID, added.id])
+
+        var first = try #require(store.hosts.first { $0.id == firstID })
+        first.name = "Edited"
+        try store.update(first)
+        #expect(try persistedHost(id: unknownID, in: defaults)["authMethod"] as? String
+            == "hardwareBackedKey")
+        #expect(try persistedHostIDs(in: defaults) == [firstID, unknownID, secondID, added.id])
+
+        try store.remove(secondID)
+        #expect(try persistedHost(id: unknownID, in: defaults)["futureField"] as? String
+            == "preserve-me")
+        #expect(try persistedHostIDs(in: defaults) == [firstID, unknownID, added.id])
+    }
+
+    @Test func malformedKnownAuthHostStillMakesTheCatalogUnreadable() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let catalog = Data("""
+            {"version":1,"hosts":[
+              {"id":"\(UUID().uuidString)","name":"Broken","address":"broken.example",
+               "port":"twenty-two","username":"dev","authMethod":"deviceKey"}
+            ]}
+            """.utf8)
+        defaults.set(catalog, forKey: "hosts")
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(store.hosts.isEmpty)
+        #expect(store.catalogLoadError == .catalogUnreadable)
+        #expect(defaults.data(forKey: "hosts") == catalog)
     }
 
     @Test func corruptCatalogCannotBeSilentlyOverwritten() throws {
@@ -201,6 +312,19 @@ struct HostStoreTests {
         try store.add(host, password: "hunter2")
 
         host.authMethod = .deviceKey
+        try store.update(host)
+
+        #expect(try store.password(for: host) == nil)
+    }
+
+    @Test func switchingToRSAKeyDeletesTheStoredPassword() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        var host = Host.fixture(authMethod: .password)
+        try store.add(host, password: "hunter2")
+
+        host.authMethod = .rsaKey
         try store.update(host)
 
         #expect(try store.password(for: host) == nil)
