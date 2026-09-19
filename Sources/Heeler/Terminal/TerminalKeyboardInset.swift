@@ -191,6 +191,26 @@ final class TerminalKeyboardInset {
         settleDismissal(measuredHeight: measuredHeight)
     }
 
+    /// Adopts a keyboard that is already on screen when this inset's screen
+    /// comes up: a Shell Terminal inheriting the keyboard from the Agent it
+    /// was opened from. A fresh inset starts at zero, so its input row would
+    /// be laid out at the bottom of the screen and ride up to the keyboard
+    /// once UIKit's next frame notification arrived — the same motion as a
+    /// keyboard being presented, under a keyboard that never left. The
+    /// window's keyboard layout guide already knows the footprint, so the
+    /// first layout can use it. Measures nothing while the window does not
+    /// own the keyboard, and leaves a keyboard-free window alone.
+    func inheritPresentedKeyboard(in window: UIWindow) {
+        attach(to: window)
+        guard let measured = measureWindowKeyboard(), measured > 0 else { return }
+        dismissalConfirmationTask?.cancel()
+        dismissalConfirmationTask = nil
+        isSoftwareKeyboardDismissed = false
+        missedPresentationFrame = false
+        coalesceTask?.cancel()
+        apply(measured)
+    }
+
     /// The app is about to ask UIKit for the software keyboard (Tools→iOS,
     /// or the Composer taking focus), so the pin to ``lastPresentedHeight``
     /// applies again until the keyboard's own frame arrives. If nothing

@@ -311,7 +311,14 @@ struct ShellTerminalView: View {
                 else { return }
                 setKeyboardMode(.text)
             }
-            .onAppear { if managesLifecycle { store.rejoin() } }
+            .onAppear {
+                // A keyboard inherited from the previous screen is already
+                // up: lay the input row out above it from the first frame.
+                if let window = sceneWindow?.window {
+                    keyboardInset.inheritPresentedKeyboard(in: window)
+                }
+                if managesLifecycle { store.rejoin() }
+            }
             .onDisappear {
                 // A departure the next screen inherits the keyboard from
                 // keeps first responder until that screen claims it: a

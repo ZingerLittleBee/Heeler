@@ -1867,6 +1867,42 @@ struct TerminalAttachTests {
             inset: inset, presentation: .system).contentInset == 383)
     }
 
+    /// A screen that comes up under a keyboard the previous screen left up
+    /// lays out against it from the first frame instead of starting at zero
+    /// and riding up on the next notification; a keyboard-free window and a
+    /// window that does not own the keyboard leave the inset untouched.
+    @MainActor
+    @Test func anInheritedKeyboardIsAdoptedFromTheLayoutGuideOnAppear() async throws {
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: UIViewController())
+        defer { window.isHidden = true }
+        var windowKeyboardHeight: CGFloat? = 301
+        let inset = TerminalKeyboardInset(
+            notificationCenter: NotificationCenter(),
+            measure: Self.iPadProPortraitCoverage,
+            measureWindowKeyboard: { windowKeyboardHeight })
+        inset.dismissalConfirmationDelay = .milliseconds(30)
+        inset.expectSoftwareKeyboard()
+
+        inset.inheritPresentedKeyboard(in: window)
+        #expect(inset.height == 301)
+        #expect(inset.lastPresentedHeight == 301)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(!inset.isSoftwareKeyboardDismissed, "an adopted keyboard is not an unanswered will-hide")
+
+        let untouched = TerminalKeyboardInset(
+            notificationCenter: NotificationCenter(),
+            measure: Self.iPadProPortraitCoverage,
+            measureWindowKeyboard: { windowKeyboardHeight })
+        windowKeyboardHeight = 0
+        untouched.inheritPresentedKeyboard(in: window)
+        windowKeyboardHeight = nil
+        untouched.inheritPresentedKeyboard(in: window)
+        #expect(untouched.height == 0)
+        #expect(untouched.lastPresentedHeight == 0)
+    }
+
     /// The did-show reconciliation is only for a dropped presentation. A
     /// measured frame stays authoritative over the layout guide, and a
     /// below-screen frame answered by a will-hide is a dismissal.
