@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-09-19
+
 ### Added
 
 - Browse every terminal in the Workspace from a drawer docked to the edge of
