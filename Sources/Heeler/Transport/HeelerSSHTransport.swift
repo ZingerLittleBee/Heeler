@@ -329,6 +329,22 @@ actor HeelerSSHTransport: Transport {
     private var nextTerminalReaderID: UInt64 = 0
     private var imageStageClients: [UUID: SSHSFTPClient] = [:]
     private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
+    /// One SFTP channel held for ranged Host-file reads (#325). Sessions are
+    /// followed, not staged, so this one outlives any single request — and so
+    /// does its admission lease, which is what keeps the server-side channel
+    /// budget honest.
+    private var sessionFileClient: SSHSFTPClient?
+    private var sessionFileClientLease: SSHChannelAdmissionLease?
+    /// The open in flight, so readers that arrive while nothing is open yet
+    /// share it: the actor is re-entered at every await inside that open, and
+    /// two independent opens would each keep a channel, one of them unowned.
+    private var sessionFileClientOpening: Task<SSHSFTPClient, any Error>?
+    private var sessionFileReadsInFlight = 0
+    /// Returns the channel once no follower has read for a while. A screen
+    /// that stopped looking does not tell the Transport so; without this the
+    /// channel and its lease would stay spent until the Host disconnects.
+    private var sessionFileClientIdleRelease: Task<Void, Never>?
+    static let sessionFileClientIdleTimeout: Duration = .seconds(30)
     private var notificationTemporaryPaths: [UUID: String] = [:]
 #if DEBUG
     private var stagingPhaseHoldsForTesting:
@@ -619,6 +635,113 @@ actor HeelerSSHTransport: Transport {
     func listAgents() async throws -> [Agent] {
         try await request(method: "agent.list", decoding: AgentListResponse.self)
             .agents.map(Agent.init)
+    }
+
+    /// Asks omp for the model's window. An omp missing from the Host (exit
+    /// 127) is an answer of "unknown", not a failure: the strip shows the
+    /// figure without its window, as it does for a model omp does not list.
+    func modelContextWindow(selector: String) async throws -> Int? {
+        guard let command = AgentModelProbe.command(selector: selector) else { return nil }
+        let result = try await withRequestDeadline {
+            try await self.runExec(Self.cLocaleCommand(command))
+        }
+        guard result.exitStatus == 0, result.reachedEOF else { return nil }
+        return AgentModelProbe.contextWindow(in: result.stdout, selector: selector)
+    }
+
+    /// Reads one range of a Host file over a channel kept for exactly that.
+    ///
+    /// The holder is deliberate: a screen that looks every few seconds would
+    /// otherwise allocate and release an SFTP subsystem channel on every tick.
+    /// The lease is held for as long as the channel is (ADR 0011, #148): an
+    /// app-side counter that ignored a channel still open would let the
+    /// server's `MaxSessions` be spent while admission looked free. A failed
+    /// read drops both, so the next look opens a fresh one rather than
+    /// reading through a corpse — except a cancelled one, which says nothing
+    /// about the channel and would only cost the next reader its own read.
+    /// The channel is returned once nobody has read through it for
+    /// `sessionFileClientIdleTimeout`.
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
+        sessionFileReadsInFlight += 1
+        defer {
+            sessionFileReadsInFlight -= 1
+            scheduleSessionFileClientIdleRelease()
+        }
+        do {
+            let client = try await sessionFileClientForReading()
+            let slice = try await client.readFileRange(
+                at: range.path,
+                offset: range.offset,
+                maxBytes: range.maxBytes,
+                timeout: requestTimeout)
+            return RemoteFileSlice(data: slice.data, length: slice.length)
+        } catch {
+            let mapped = await mapOperationError(error)
+            if mapped != .cancelled {
+                await releaseSessionFileClient()
+            }
+            throw mapped
+        }
+    }
+
+    private func sessionFileClientForReading() async throws -> SSHSFTPClient {
+        if let sessionFileClient { return sessionFileClient }
+        if let opening = sessionFileClientOpening {
+            return try await opening.value
+        }
+        // Inherits this actor's isolation, so the task installs the holder
+        // itself; every caller, first or later, just awaits it.
+        let opening = Task { () throws -> SSHSFTPClient in
+            defer { sessionFileClientOpening = nil }
+            let lease = try await channelAdmission.acquire(.ordinarySession)
+            let client: SSHSFTPClient
+            do {
+                client = try await connection.openSFTP(timeout: requestTimeout)
+            } catch {
+                await lease.release()
+                throw error
+            }
+            guard connected else {
+                // Closed while the open was in flight: `close()` already
+                // drained the holders, so this channel would be unowned.
+                try? await client.close(timeout: .seconds(2))
+                await lease.release()
+                throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            }
+            sessionFileClient = client
+            sessionFileClientLease = lease
+            return client
+        }
+        sessionFileClientOpening = opening
+        return try await opening.value
+    }
+
+    private func scheduleSessionFileClientIdleRelease() {
+        sessionFileClientIdleRelease?.cancel()
+        guard sessionFileReadsInFlight == 0, sessionFileClient != nil else { return }
+        sessionFileClientIdleRelease = Task { [weak self] in
+            try? await Task.sleep(for: Self.sessionFileClientIdleTimeout)
+            guard !Task.isCancelled else { return }
+            await self?.releaseSessionFileClientIfIdle()
+        }
+    }
+
+    private func releaseSessionFileClientIfIdle() async {
+        guard sessionFileReadsInFlight == 0 else { return }
+        await releaseSessionFileClient()
+    }
+
+    private func releaseSessionFileClient() async {
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
+        guard let client = sessionFileClient else { return }
+        sessionFileClient = nil
+        let lease = sessionFileClientLease
+        sessionFileClientLease = nil
+        try? await client.close(timeout: .seconds(2))
+        await lease?.release()
     }
 
     func sessionSnapshot() async throws -> SessionSnapshot {
@@ -1588,12 +1711,22 @@ actor HeelerSSHTransport: Transport {
         imageStageClients.removeAll()
         let notificationClients = Array(notificationFileClients.values)
         notificationFileClients.removeAll()
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
+        let fileReader = sessionFileClient
+        sessionFileClient = nil
+        let fileReaderLease = sessionFileClientLease
+        sessionFileClientLease = nil
         for sftp in stagingClients {
             try? await sftp.close(timeout: .seconds(2))
         }
         for sftp in notificationClients {
             try? await sftp.close(timeout: .seconds(2))
         }
+        if let fileReader {
+            try? await fileReader.close(timeout: .seconds(2))
+        }
+        await fileReaderLease?.release()
         do {
             try await connection.close(timeout: .seconds(2))
         } catch {

@@ -261,6 +261,42 @@ final class ConsoleStore {
         projections[hostID]?.imageStager()
     }
 
+    /// Ranged Host-file reads for the terminal usage strip (#325). Late-bound
+    /// for the same reason as `imageStager(for:)`: the strip refreshes on a
+    /// timer, and a reconnect between two refreshes must not leave it reading
+    /// through the transport that was replaced.
+    func sessionFileReader(for hostID: Host.ID) -> SessionFileReader {
+        { [weak self] range in
+            guard let reader = await self?.liveSessionFileReader(for: hostID) else {
+                throw TransportError.sshUnreachable(
+                    detail: "The Host is not connected.")
+            }
+            return try await reader(range)
+        }
+    }
+
+    private func liveSessionFileReader(for hostID: Host.ID) -> SessionFileReader? {
+        projections[hostID]?.sessionFileReader()
+    }
+
+    /// Model window lookups for the terminal usage strip (#325), late-bound
+    /// like `sessionFileReader(for:)`.
+    func modelContextWindowResolver(for hostID: Host.ID) -> ModelContextWindowResolver {
+        { [weak self] selector in
+            guard let resolver = await self?.liveModelContextWindowResolver(for: hostID) else {
+                throw TransportError.sshUnreachable(
+                    detail: "The Host is not connected.")
+            }
+            return try await resolver(selector)
+        }
+    }
+
+    private func liveModelContextWindowResolver(
+        for hostID: Host.ID
+    ) -> ModelContextWindowResolver? {
+        projections[hostID]?.modelContextWindowResolver()
+    }
+
     private func liveFileStager(for hostID: Host.ID) -> FileStager? {
         projections[hostID]?.fileStager()
     }

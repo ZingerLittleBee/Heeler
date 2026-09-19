@@ -255,6 +255,29 @@ final class HostConsoleProjection {
         }
     }
 
+    /// Ranged Host-file reads for the terminal usage strip (#325). Resolved
+    /// through the live connection on every call, so a reconnect cannot leave
+    /// the strip reading through a transport that is already gone.
+    func sessionFileReader() -> SessionFileReader {
+        let session = session
+        return { range in
+            try await session.withTransport { transport in
+                try await transport.readFileSlice(range)
+            }
+        }
+    }
+
+    /// Model window lookups for the terminal usage strip (#325), late-bound
+    /// like `sessionFileReader()`.
+    func modelContextWindowResolver() -> ModelContextWindowResolver {
+        let session = session
+        return { selector in
+            try await session.withTransport { transport in
+                try await transport.modelContextWindow(selector: selector)
+            }
+        }
+    }
+
     func fileStager() -> FileStager {
         let session = session
         return { file, reporter in

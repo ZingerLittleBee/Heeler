@@ -1,6 +1,20 @@
 import Foundation
 import Synchronization
 
+/// One ranged read of a remote file: the bytes that range holds, plus the
+/// file's size at that moment. `length` is `nil` when the file is gone, which
+/// is how a follower tells "nothing appended yet" from "the file it was
+/// following no longer exists".
+public struct SSHSFTPFileSlice: Sendable, Equatable {
+    public let data: Data
+    public let length: UInt64?
+
+    public init(data: Data, length: UInt64?) {
+        self.data = data
+        self.length = length
+    }
+}
+
 /// One SFTP subsystem channel owned by an authenticated SSH connection.
 ///
 /// The surface is intentionally limited to Heeler's atomic file-staging needs.
@@ -55,6 +69,27 @@ public final class SSHSFTPClient: Sendable {
         try await driver.readSFTPFileIfPresent(
             id: id,
             path: path,
+            timeout: timeout)
+    }
+
+    /// Reads at most `maxBytes` from `offset`, answering only that range.
+    ///
+    /// A file that reaches tens of megabytes and grows cannot be read whole on
+    /// every look, so a follower asks for what it has not seen yet and uses
+    /// `length` to notice the file it was following was replaced. Callers that
+    /// look repeatedly should hold one client: each SFTP channel is a real
+    /// server-side allocation.
+    public func readFileRange(
+        at path: String,
+        offset: UInt64,
+        maxBytes: Int,
+        timeout: Duration
+    ) async throws -> SSHSFTPFileSlice {
+        try await driver.readSFTPFileRange(
+            id: id,
+            path: path,
+            offset: offset,
+            maxBytes: maxBytes,
             timeout: timeout)
     }
 

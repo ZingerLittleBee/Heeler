@@ -7,6 +7,19 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- The Agent terminal shows the session's model, prompt size (as a share of
+  the model's context window, `11.0%`, once omp on the Host has named it),
+  and spend in a strip above the terminal. These are the figures the Agent's own status line
+  prints, but a phone-width terminal runs out of room for them and drops the
+  last ones first. Heeler reads them from the Agent's session file on the Host,
+  following only what the file gained since the last look, and the strip wears
+  the terminal's theme. Only omp reports such a file today; a figure that
+  cannot be read is left out rather than shown as a placeholder. When omp's
+  own `tok/s` readout is on (`composer.tokenRate`), the strip shows the last
+  turn's generation rate too. (#325)
+
 ## [0.1.9] - 2026-09-19
 
 ### Added
