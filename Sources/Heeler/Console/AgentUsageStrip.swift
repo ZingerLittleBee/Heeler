@@ -31,7 +31,7 @@ struct AgentUsageStrip: View {
                     item(systemImage: "cpu", text: model, isProminent: false)
                 }
                 if let contextText {
-                    item(systemImage: "rectangle.stack", text: contextText, isProminent: true)
+                    item(systemImage: "rectangle.stack", text: contextText, isProminent: false)
                 }
                 if let costText {
                     item(

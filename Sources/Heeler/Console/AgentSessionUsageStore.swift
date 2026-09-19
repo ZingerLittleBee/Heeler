@@ -25,7 +25,7 @@ final class AgentSessionUsageStore {
     @ObservationIgnored private var contextWindows: [String: Int?] = [:]
     @ObservationIgnored private var resolvingSelector: String?
 
-    /// `11.0%/272K` once the window is known, `30K` until then.
+    /// `11.0%` once the window is known, `30K` until then.
     var contextText: String? { usage.contextText(window: contextWindow) }
 
     /// How long a config read stays good for. The setting is toggled by hand

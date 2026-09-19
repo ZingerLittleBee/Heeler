@@ -10,8 +10,8 @@ Entries reference the issue that motivated them.
 ### Added
 
 - The Agent terminal shows the session's model, prompt size (as a share of
-  the model's context window, `11.0%/272K`, once omp on the Host has named
-  it), and spend in a strip above the terminal. These are the figures the Agent's own status line
+  the model's context window, `11.0%`, once omp on the Host has named it),
+  and spend in a strip above the terminal. These are the figures the Agent's own status line
   prints, but a phone-width terminal runs out of room for them and drops the
   last ones first. Heeler reads them from the Agent's session file on the Host,
   following only what the file gained since the last look, and the strip wears

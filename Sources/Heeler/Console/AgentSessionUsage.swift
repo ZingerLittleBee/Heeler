@@ -157,15 +157,15 @@ struct AgentSessionUsage: Equatable, Sendable {
     /// `248K`, or `nil` while no turn has measured the prompt.
     var contextText: String? { contextText(window: nil) }
 
-    /// omp's own status-line shape: `11.0%/272K` once the model's window is
-    /// known, the bare prompt size (`30K`) until then. A window changes the
-    /// reading from a count into a share, which is what lets sessions on
-    /// models of different sizes be compared at a glance.
+    /// `11.0%` once the model's window is known, the bare prompt size
+    /// (`30K`) until then. A window changes the reading from a count into a
+    /// share, which is what lets sessions on models of different sizes be
+    /// compared at a glance; the window itself is left off, unlike omp's
+    /// `11.0%/272K`, since a phone strip has no room for it.
     func contextText(window: Int?) -> String? {
         guard let contextTokens else { return nil }
         guard let window, window > 0 else { return Self.compact(contextTokens) }
-        let percent = Double(contextTokens) / Double(window) * 100
-        return String(format: "%.1f%%/", percent) + Self.compact(window)
+        return String(format: "%.1f%%", Double(contextTokens) / Double(window) * 100)
     }
 
     /// The shape an Agent's own status line uses: one decimal below ten

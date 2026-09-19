@@ -200,7 +200,7 @@ struct AgentSessionUsageTests {
     }
 
     /// omp's status line turns the count into a share once it knows the
-    /// window: `11.0%/272K`. Without one the count stands on its own.
+    /// window: `11.0%`. Without one the count stands on its own.
     @Test("the context reads as a share of the window once the window is known")
     func contextReadsAsAShareOfTheWindow() {
         var usage = AgentSessionUsage()
@@ -208,10 +208,10 @@ struct AgentSessionUsageTests {
         usage.fold(line: Data(Self.anchored(model: "gpt-6-astra", promptTokens: 30_000, cost: 0.1).utf8))
         #expect(usage.contextText(window: nil) == "30K")
         #expect(usage.contextText(window: 0) == "30K")
-        #expect(usage.contextText(window: 272_000) == "11.0%/272K")
-        #expect(usage.contextText(window: 1_000_000) == "3.0%/1M")
+        #expect(usage.contextText(window: 272_000) == "11.0%")
+        #expect(usage.contextText(window: 1_000_000) == "3.0%")
         usage.fold(line: Data(Self.anchored(model: "gpt-6-astra", promptTokens: 130_500, cost: 0.1).utf8))
-        #expect(usage.contextText(window: 128_000) == "102.0%/128K")
+        #expect(usage.contextText(window: 128_000) == "102.0%")
     }
 
     /// omp's registry is keyed by `provider/model`; a turn that names only
@@ -614,13 +614,13 @@ struct AgentSessionUsageStoreTests {
         let path = "/home/dev/.omp/sessions/s.jsonl"
 
         await store.refresh(path: path, read: read, resolveContextWindow: resolve)
-        #expect(store.contextText == "11.0%/272K")
+        #expect(store.contextText == "11.0%")
         #expect(lookups.selectors == ["openai-codex/gpt-6-astra"])
 
         // Same model, more context: no second question.
         file.append(turn(provider: "openai-codex", model: "gpt-6-astra", tokens: 54_400))
         await store.refresh(path: path, read: read, resolveContextWindow: resolve)
-        #expect(store.contextText == "20.0%/272K")
+        #expect(store.contextText == "20.0%")
         #expect(lookups.selectors.count == 1)
 
         // A model omp cannot size is asked about once, then left unsized.
@@ -638,13 +638,13 @@ struct AgentSessionUsageStoreTests {
         lookups.failing = false
         lookups.answers["google/gemini-3-pro"] = 1_000_000
         await store.refresh(path: path, read: read, resolveContextWindow: resolve)
-        #expect(store.contextText == "10.0%/1M")
+        #expect(store.contextText == "10.0%")
         #expect(lookups.selectors.count == 4)
 
         // Back to a known model: answered from memory.
         file.append(turn(provider: "openai-codex", model: "gpt-6-astra", tokens: 27_200))
         await store.refresh(path: path, read: read, resolveContextWindow: resolve)
-        #expect(store.contextText == "10.0%/272K")
+        #expect(store.contextText == "10.0%")
         #expect(lookups.selectors.count == 4)
     }
 
