@@ -1321,6 +1321,12 @@ pairing_config="$fixture_dir/sshd-pairing.conf"
 pairing_mismatched_config="$fixture_dir/sshd-pairing-mismatched.conf"
 password_config="$fixture_dir/sshd-password.conf"
 
+# DEBUG1, not VERBOSE: VERBOSE stops at "Starting session", so a client that
+# never sees its channel reply (#343: exec request timed out 5s after sshd had
+# started the pty session) cannot be told apart from one that never read it.
+# DEBUG1 logs each channel request as sshd handles it, timestamped by the
+# filter in start_unprivileged_sshd. The full logs go to the diagnostics
+# artifact; the console tail is only an excerpt.
 write_common_config() {
     local port=$1
     local host_key=$2
@@ -1343,7 +1349,7 @@ write_common_config() {
         "PerSourcePenalties no" \
         "PrintMotd no" \
         "PrintLastLog no" \
-        "LogLevel VERBOSE" \
+        "LogLevel DEBUG1" \
         "Subsystem sftp $sftp_server" \
         "SetEnv HOME=$fixture_home" \
         "ForceCommand $force_posix_shell"
@@ -1450,7 +1456,7 @@ write_pairing_config() {
         "PerSourcePenalties no" \
         "PrintMotd no" \
         "PrintLastLog no" \
-        "LogLevel VERBOSE" \
+        "LogLevel DEBUG1" \
         "Subsystem sftp $sftp_server"
 }
 
@@ -1569,7 +1575,7 @@ if [[ "$ci_lane" == "app" ]] && sudo -n true >/dev/null 2>&1; then
         "PerSourcePenalties no" \
         "PrintMotd no" \
         "PrintLastLog no" \
-        "LogLevel VERBOSE" \
+        "LogLevel DEBUG1" \
         "Subsystem sftp $sftp_server" \
         > "$password_config"
     password_fixture_available=1
