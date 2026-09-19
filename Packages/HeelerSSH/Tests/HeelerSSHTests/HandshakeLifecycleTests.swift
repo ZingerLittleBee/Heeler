@@ -46,11 +46,19 @@ private final class HandshakeFailureCodeRecorder: @unchecked Sendable {
 /// A minimal loopback SSH peer that selects production-supported algorithms,
 /// observes the client's key-exchange request, then closes before replying.
 /// It intentionally implements no authentication or session behavior.
+///
+/// `cutoffs` is how many connections it serves that way before it stops
+/// listening. A caller that expects `SSHConnection` to report the failure has
+/// to cover every attempt the redial in `SSHConnection.connect` makes (#332),
+/// or the last attempt is refused instead of cut off and the test observes the
+/// wrong error.
 struct HandshakeCutoffServer: Sendable {
     let port: UInt16
     private let task: Task<Void, any Error>
 
-    static func start() throws -> HandshakeCutoffServer {
+    static func start(
+        cutoffs: Int = SSHConnection.handshakeAttemptLimit
+    ) throws -> HandshakeCutoffServer {
         let listener = socket(AF_INET, SOCK_STREAM, 0)
         guard listener >= 0 else { throw HandshakeCutoffServerError.socketFailed }
 
@@ -76,7 +84,7 @@ struct HandshakeCutoffServer: Sendable {
                     bind(listener, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
                 }
             }
-            guard bound == 0, listen(listener, 1) == 0 else {
+            guard bound == 0, listen(listener, Int32(max(cutoffs, 1))) == 0 else {
                 throw HandshakeCutoffServerError.socketFailed
             }
 
@@ -90,7 +98,7 @@ struct HandshakeCutoffServer: Sendable {
             guard named == 0 else { throw HandshakeCutoffServerError.socketFailed }
             let port = UInt16(bigEndian: localAddress.sin_port)
 
-            let task = Task { try await serve(listener: listener) }
+            let task = Task { try await serve(listener: listener, cutoffs: cutoffs) }
             return HandshakeCutoffServer(port: port, task: task)
         } catch {
             Darwin.close(listener)
@@ -104,20 +112,24 @@ struct HandshakeCutoffServer: Sendable {
 
     private static let queue = DispatchQueue(label: "heelerssh.handshake-cutoff-server")
 
-    private static func serve(listener: Int32) async throws {
+    private static func serve(listener: Int32, cutoffs: Int) async throws {
         try await withCheckedThrowingContinuation { continuation in
             queue.async {
-                continuation.resume(with: Result { try serveBlocking(listener: listener) })
+                continuation.resume(
+                    with: Result { try serveBlocking(listener: listener, cutoffs: cutoffs) })
             }
         }
     }
 
-    private static func serveBlocking(listener: Int32) throws {
-        var ownsListener = true
-        defer {
-            if ownsListener { Darwin.close(listener) }
-        }
+    private static func serveBlocking(listener: Int32, cutoffs: Int) throws {
+        defer { Darwin.close(listener) }
 
+        for _ in 0..<max(cutoffs, 1) {
+            try cutOffOneConnection(on: listener)
+        }
+    }
+
+    private static func cutOffOneConnection(on listener: Int32) throws {
         var readiness = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
         guard poll(&readiness, 1, 5_000) == 1 else {
             throw HandshakeCutoffServerError.acceptFailed
@@ -126,8 +138,6 @@ struct HandshakeCutoffServer: Sendable {
         guard connection >= 0 else {
             throw HandshakeCutoffServerError.acceptFailed
         }
-        Darwin.close(listener)
-        ownsListener = false
         defer { Darwin.close(connection) }
 
         // Bound the blocking calls so a failed peer cannot strand the queue or

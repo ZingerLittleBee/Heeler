@@ -89,6 +89,28 @@ actor SessionDriver {
     private var authenticated = false
     private var valid = true
     private var forwarding = false
+
+    /// Whether the handshake this driver attempted ended in libssh2's key
+    /// exchange rather than anywhere else. `SSHConnection` redials once on it
+    /// (#332).
+    ///
+    /// The pinned libssh2 writes the x25519 half of a hybrid ML-KEM shared
+    /// secret with `BN_bn2bin`, which drops leading zero bytes, into a
+    /// fixed-offset buffer (`src/kex.c:2588`). A secret whose first byte is
+    /// zero — 1 handshake in 256 — therefore hashes differently from the
+    /// server's copy, host key verification fails, and libssh2 reports the
+    /// generic LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE. Measured locally at 12
+    /// failures in 5192 `mlkem768x25519-sha256` handshakes, against 0 in 6000
+    /// `curve25519-sha256` ones. Upstream master carries the same code and
+    /// libssh2's other hybrids share the defect, so dropping the algorithm
+    /// would cost every post-quantum Host rather than fix anything.
+    ///
+    /// A redial is not a repeat of the same attempt: each handshake draws a
+    /// fresh secret, so the retry's odds are independent and one retry takes
+    /// the per-connection failure rate to roughly 1 in 65000. The code also
+    /// covers genuine post-negotiation transport loss, which is equally
+    /// transient.
+    private(set) var handshakeFailedInKeyExchange = false
     private var nextStreamLocalChannelID: UInt64 = 0
     private struct StreamLocalChannelState {
         let channel: OpaquePointer
@@ -2427,6 +2449,8 @@ actor SessionDriver {
 #if DEBUG
             HandshakeFailureObservation.observer?(handshakeResult)
 #endif
+            handshakeFailedInKeyExchange =
+                handshakeResult == LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE
             throw mapSessionError(handshakeResult)
         }
         return try extractHostKey(createdSession)

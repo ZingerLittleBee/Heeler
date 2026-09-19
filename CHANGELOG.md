@@ -23,6 +23,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Connecting to a Host no longer fails intermittently during post-quantum key
+  exchange. Roughly one handshake in 256 was rejected by a defect in the SSH
+  library, and about twice as often for a Host behind a Jump Host; the app now
+  redials once. (#332)
 - A saved Host with an authentication method this build does not understand is
   skipped without making the rest of the Host catalog unreadable. (PR #347)
 - Show the directory browser on the first New Workspace tap. (PR #305)
