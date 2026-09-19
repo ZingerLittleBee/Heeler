@@ -220,6 +220,12 @@ protocol Transport: Sendable {
     /// the whole file on every look.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
 
+    /// The context window, in tokens, of the model an Agent's session names
+    /// as `provider/model`, as the Agent's own CLI on the Host reports it.
+    /// `nil` when the CLI is absent or does not know the model; a session
+    /// figure is then shown without its window (#325).
+    func modelContextWindow(selector: String) async throws -> Int?
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -262,6 +268,9 @@ extension Transport {
         throw TransportError.channelFailed(
             detail: "This transport cannot read Host files.")
     }
+
+    /// A transport without Host commands knows no model windows.
+    func modelContextWindow(selector: String) async throws -> Int? { nil }
 
     /// Non-SSH test doubles and alternative transports can state that SFTP is
     /// unavailable without importing or emulating an SSH library.
@@ -488,6 +497,10 @@ struct RemoteFileSlice: Sendable, Equatable {
 /// A late-bound ranged read. Resolved per call rather than captured, so a
 /// reconnect cannot leave a follower reading through a dead transport.
 typealias SessionFileReader = @Sendable (RemoteFileRange) async throws -> RemoteFileSlice
+
+/// A late-bound `modelContextWindow(selector:)`, resolved per call for the
+/// same reason as `SessionFileReader`.
+typealias ModelContextWindowResolver = @Sendable (String) async throws -> Int?
 
 /// App-domain refinements for the fresh-worktree launch variant (#97). Nil
 /// fields use herdr's defaults, verified live against 0.7.5: branch

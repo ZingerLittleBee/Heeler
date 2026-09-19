@@ -17,6 +17,16 @@ final class AgentSessionUsageStore {
     /// from the config beside the session file. The strip shows the rate
     /// exactly when the Agent would.
     private(set) var showsTokenRate = false
+    /// The current model's context window as omp on the Host reports it,
+    /// nil until asked or when omp does not know. Looked up once per model
+    /// selector for the store's life; a model omp cannot size stays unsized
+    /// rather than being asked about on every tick.
+    private(set) var contextWindow: Int?
+    @ObservationIgnored private var contextWindows: [String: Int?] = [:]
+    @ObservationIgnored private var resolvingSelector: String?
+
+    /// `11.0%/272K` once the window is known, `30K` until then.
+    var contextText: String? { usage.contextText(window: contextWindow) }
 
     /// How long a config read stays good for. The setting is toggled by hand
     /// and rarely, so a minute of lag costs nothing; re-reading on every tick
@@ -55,7 +65,8 @@ final class AgentSessionUsageStore {
     /// resolved per call so a reconnect cannot leave a stale one behind.
     func refresh(
         path: String,
-        read: (RemoteFileRange) async throws -> RemoteFileSlice
+        read: (RemoteFileRange) async throws -> RemoteFileSlice,
+        resolveContextWindow: ((String) async throws -> Int?)? = nil
     ) async {
         refreshGeneration &+= 1
         let generation = refreshGeneration
@@ -65,6 +76,19 @@ final class AgentSessionUsageStore {
         }
         await refreshConfigIfDue(sessionPath: path, generation: generation, read: read)
         guard generation == refreshGeneration, !Task.isCancelled else { return }
+        await follow(path: path, generation: generation, read: read)
+        guard generation == refreshGeneration, !Task.isCancelled else { return }
+        if let resolveContextWindow {
+            await resolveContextWindowIfNeeded(generation: generation, resolve: resolveContextWindow)
+        }
+    }
+
+    /// Reads the appended tail and folds its complete lines.
+    private func follow(
+        path: String,
+        generation: UInt64,
+        read: (RemoteFileRange) async throws -> RemoteFileSlice
+    ) async {
         var budget = Self.catchUpBytes
         while budget > 0 {
             let maxBytes = min(budget, Self.chunkBytes)
@@ -115,6 +139,35 @@ final class AgentSessionUsageStore {
         restart()
     }
 
+    /// Asks the Host once per model. A failed lookup is not remembered, so
+    /// the next refresh asks again; an answer of "unknown" is, so a model omp
+    /// cannot size is not asked about every five seconds.
+    private func resolveContextWindowIfNeeded(
+        generation: UInt64,
+        resolve: (String) async throws -> Int?
+    ) async {
+        guard let selector = usage.modelSelector else {
+            contextWindow = nil
+            return
+        }
+        if let known = contextWindows[selector] {
+            contextWindow = known
+            return
+        }
+        guard resolvingSelector != selector else { return }
+        resolvingSelector = selector
+        defer { resolvingSelector = nil }
+        let window: Int?
+        do {
+            window = try await resolve(selector)
+        } catch {
+            return
+        }
+        guard generation == refreshGeneration, !Task.isCancelled else { return }
+        contextWindows[selector] = window
+        if usage.modelSelector == selector { contextWindow = window }
+    }
+
     /// Reads omp's config once a minute. A failed read keeps the last answer;
     /// an absent config, or a session stored where no config sits beside it,
     /// means the readout is off.
@@ -148,6 +201,7 @@ final class AgentSessionUsageStore {
         offset = 0
         pending = Data()
         usage = AgentSessionUsage()
+        contextWindow = nil
     }
 
     private func foldCompleteLines() {

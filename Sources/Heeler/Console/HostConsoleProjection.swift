@@ -267,6 +267,17 @@ final class HostConsoleProjection {
         }
     }
 
+    /// Model window lookups for the terminal usage strip (#325), late-bound
+    /// like `sessionFileReader()`.
+    func modelContextWindowResolver() -> ModelContextWindowResolver {
+        let session = session
+        return { selector in
+            try await session.withTransport { transport in
+                try await transport.modelContextWindow(selector: selector)
+            }
+        }
+    }
+
     func fileStager() -> FileStager {
         let session = session
         return { file, reporter in

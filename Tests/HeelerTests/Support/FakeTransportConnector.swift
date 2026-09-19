@@ -42,6 +42,20 @@ final actor FakeTransport: Transport {
         return scriptedFileSlices.removeFirst()
     }
 
+    /// Model window lookups (#325): scripted per selector; unscripted ones
+    /// are unknown, as with a model omp does not list.
+    private var scriptedContextWindows: [String: Int] = [:]
+    private(set) var contextWindowSelectors: [String] = []
+
+    func setContextWindows(_ windows: [String: Int]) {
+        scriptedContextWindows = windows
+    }
+
+    func modelContextWindow(selector: String) async throws -> Int? {
+        contextWindowSelectors.append(selector)
+        return scriptedContextWindows[selector]
+    }
+
     func sessionSnapshot() async throws -> SessionSnapshot {
         SessionSnapshot(
             agents: [], layouts: [], panes: [], protocolVersion: 17, tabs: [],

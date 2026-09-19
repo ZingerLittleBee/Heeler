@@ -372,8 +372,10 @@ struct AgentTerminalView: View {
             return
         }
         let read = console.sessionFileReader(for: agent.hostID)
+        let resolveContextWindow = console.modelContextWindowResolver(for: agent.hostID)
         while !Task.isCancelled {
-            await sessionUsage.refresh(path: path, read: read)
+            await sessionUsage.refresh(
+                path: path, read: read, resolveContextWindow: resolveContextWindow)
             do {
                 try await Task.sleep(for: .seconds(Self.sessionUsageInterval))
             } catch {
@@ -1006,7 +1008,7 @@ struct AgentTerminalView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             AgentUsageStrip(
                 model: sessionUsage.usage.model,
-                contextText: sessionUsage.usage.contextText,
+                contextText: sessionUsage.contextText,
                 costText: sessionUsage.usage.costText,
                 rateText: sessionUsage.showsTokenRate ? sessionUsage.usage.rateText : nil,
                 isReserved: agent.sessionFilePath != nil,

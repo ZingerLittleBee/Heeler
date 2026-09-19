@@ -25,6 +25,16 @@ struct AgentSessionUsage: Equatable, Sendable {
     private(set) var contextTokens: Int?
     /// Model named by the last assistant turn that anchored the context.
     private(set) var model: String?
+    /// Provider that turn named, when it did. With `model` it spells the
+    /// `provider/model` selector omp's registry is keyed by.
+    private(set) var provider: String?
+
+    /// `openai-codex/gpt-6-astra`: the key to ask omp about the model with.
+    /// `nil` until a turn has named both halves.
+    var modelSelector: String? {
+        guard let model, let provider, !provider.isEmpty else { return nil }
+        return "\(provider)/\(model)"
+    }
     /// Generation speed of the newest assistant turn that reported an output
     /// count, the way omp keeps its `tok/s` readout between turns: billed
     /// output over the turn's wall-clock duration. `nil` until such a turn
@@ -82,7 +92,13 @@ struct AgentSessionUsage: Equatable, Sendable {
         if let stop = message["stopReason"] as? String, stop == "aborted" || stop == "error" {
             return
         }
-        if let name = message["model"] as? String, !name.isEmpty { model = name }
+        if let name = message["model"] as? String, !name.isEmpty {
+            model = name
+            // The provider travels with the model: a turn naming only the
+            // model leaves the selector unknown rather than pairing it with
+            // an earlier turn's provider.
+            provider = message["provider"] as? String
+        }
         if let measured = Self.contextTokens(in: message, usage: usage) {
             contextTokens = measured
         }
@@ -139,9 +155,17 @@ struct AgentSessionUsage: Equatable, Sendable {
     }
 
     /// `248K`, or `nil` while no turn has measured the prompt.
-    var contextText: String? {
+    var contextText: String? { contextText(window: nil) }
+
+    /// omp's own status-line shape: `11.0%/272K` once the model's window is
+    /// known, the bare prompt size (`30K`) until then. A window changes the
+    /// reading from a count into a share, which is what lets sessions on
+    /// models of different sizes be compared at a glance.
+    func contextText(window: Int?) -> String? {
         guard let contextTokens else { return nil }
-        return Self.compact(contextTokens)
+        guard let window, window > 0 else { return Self.compact(contextTokens) }
+        let percent = Double(contextTokens) / Double(window) * 100
+        return String(format: "%.1f%%/", percent) + Self.compact(window)
     }
 
     /// The shape an Agent's own status line uses: one decimal below ten

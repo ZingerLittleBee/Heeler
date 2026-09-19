@@ -199,6 +199,46 @@ struct AgentSessionUsageTests {
         #expect(empty.contextText == "248K")
     }
 
+    /// omp's status line turns the count into a share once it knows the
+    /// window: `11.0%/272K`. Without one the count stands on its own.
+    @Test("the context reads as a share of the window once the window is known")
+    func contextReadsAsAShareOfTheWindow() {
+        var usage = AgentSessionUsage()
+        #expect(usage.contextText(window: 272_000) == nil)
+        usage.fold(line: Data(Self.anchored(model: "gpt-6-astra", promptTokens: 30_000, cost: 0.1).utf8))
+        #expect(usage.contextText(window: nil) == "30K")
+        #expect(usage.contextText(window: 0) == "30K")
+        #expect(usage.contextText(window: 272_000) == "11.0%/272K")
+        #expect(usage.contextText(window: 1_000_000) == "3.0%/1M")
+        usage.fold(line: Data(Self.anchored(model: "gpt-6-astra", promptTokens: 130_500, cost: 0.1).utf8))
+        #expect(usage.contextText(window: 128_000) == "102.0%/128K")
+    }
+
+    /// omp's registry is keyed by `provider/model`; a turn that names only
+    /// the model must not be paired with an earlier turn's provider.
+    @Test("the model selector needs the provider from the same turn")
+    func modelSelectorNeedsTheProviderFromTheSameTurn() {
+        var usage = AgentSessionUsage()
+        #expect(usage.modelSelector == nil)
+        usage.fold(
+            line: Data(
+                #"{"type":"message","message":{"role":"assistant","model":"gpt-6-astra","provider":"openai-codex","usage":{"output":1}}}"#
+                    .utf8))
+        #expect(usage.modelSelector == "openai-codex/gpt-6-astra")
+        usage.fold(
+            line: Data(
+                #"{"type":"message","message":{"role":"assistant","model":"gemini-3-pro","usage":{"output":1}}}"#
+                    .utf8))
+        #expect(usage.model == "gemini-3-pro")
+        #expect(usage.modelSelector == nil)
+        // An aborted turn anchors nothing, the selector included.
+        usage.fold(
+            line: Data(
+                #"{"type":"message","message":{"role":"assistant","stopReason":"aborted","model":"ghost","provider":"x","usage":{"output":1}}}"#
+                    .utf8))
+        #expect(usage.modelSelector == nil)
+    }
+
     /// omp's between-turns readout: billed output over the turn's duration,
     /// decided by the newest assistant turn with an output count regardless
     /// of how it stopped, and blanked by one that measured nothing.
@@ -550,6 +590,64 @@ struct AgentSessionUsageStoreTests {
         #expect(files.ranges[files.ranges.count - 2].path == configPath)
     }
 
+    @Test("the model's window is asked for once and turns the context into a share")
+    @MainActor
+    func windowIsResolvedOncePerModel() async {
+        func turn(provider: String, model: String, tokens: Int) -> String {
+            #"{"type":"message","message":{"role":"assistant","stopReason":"endTurn","model":"\#(model)","provider":"\#(provider)","contextSnapshot":{"promptTokens":\#(tokens)},"usage":{"cost":{"total":0.01}}}}"#
+        }
+        let file = SessionFile()
+        file.append(turn(provider: "openai-codex", model: "gpt-6-astra", tokens: 30_000))
+        let store = AgentSessionUsageStore()
+        let (read, _) = Self.reader(file)
+        final class Lookups: @unchecked Sendable {
+            var selectors: [String] = []
+            var answers: [String: Int] = ["openai-codex/gpt-6-astra": 272_000]
+            var failing = false
+        }
+        let lookups = Lookups()
+        let resolve: (String) async throws -> Int? = { selector in
+            lookups.selectors.append(selector)
+            if lookups.failing { throw TransportError.timedOut }
+            return lookups.answers[selector]
+        }
+        let path = "/home/dev/.omp/sessions/s.jsonl"
+
+        await store.refresh(path: path, read: read, resolveContextWindow: resolve)
+        #expect(store.contextText == "11.0%/272K")
+        #expect(lookups.selectors == ["openai-codex/gpt-6-astra"])
+
+        // Same model, more context: no second question.
+        file.append(turn(provider: "openai-codex", model: "gpt-6-astra", tokens: 54_400))
+        await store.refresh(path: path, read: read, resolveContextWindow: resolve)
+        #expect(store.contextText == "20.0%/272K")
+        #expect(lookups.selectors.count == 1)
+
+        // A model omp cannot size is asked about once, then left unsized.
+        file.append(turn(provider: "local", model: "mystery", tokens: 12_000))
+        await store.refresh(path: path, read: read, resolveContextWindow: resolve)
+        await store.refresh(path: path, read: read, resolveContextWindow: resolve)
+        #expect(store.contextText == "12K")
+        #expect(lookups.selectors == ["openai-codex/gpt-6-astra", "local/mystery"])
+
+        // A lookup that failed is not an answer: it is retried.
+        lookups.failing = true
+        file.append(turn(provider: "google", model: "gemini-3-pro", tokens: 100_000))
+        await store.refresh(path: path, read: read, resolveContextWindow: resolve)
+        #expect(store.contextText == "100K")
+        lookups.failing = false
+        lookups.answers["google/gemini-3-pro"] = 1_000_000
+        await store.refresh(path: path, read: read, resolveContextWindow: resolve)
+        #expect(store.contextText == "10.0%/1M")
+        #expect(lookups.selectors.count == 4)
+
+        // Back to a known model: answered from memory.
+        file.append(turn(provider: "openai-codex", model: "gpt-6-astra", tokens: 27_200))
+        await store.refresh(path: path, read: read, resolveContextWindow: resolve)
+        #expect(store.contextText == "10.0%/272K")
+        #expect(lookups.selectors.count == 4)
+    }
+
     /// A one-shot latch a test can park a read on.
     @MainActor
     private final class Gate {
@@ -638,6 +736,50 @@ struct AgentSessionConfigTests {
                 in: Data("composer:\n  # tokenRate: true\n".utf8)) == false)
         #expect(AgentSessionConfig.showsTokenRate(in: Data()) == false)
         #expect(AgentSessionConfig.showsTokenRate(in: Data([0xFF, 0xFE])) == false)
+    }
+}
+
+/// The window comes from omp's own registry on the Host; the probe must
+/// reach a mise-managed omp from a non-interactive shell and take the exact
+/// selector's entry, not the first substring match.
+@Suite("Agent model probe")
+struct AgentModelProbeTests {
+    @Test("the command reaches omp through the extra prefixes")
+    func commandReachesOmpThroughExtraPrefixes() throws {
+        let command = try #require(AgentModelProbe.command(selector: "openai-codex/gpt-6-astra"))
+        #expect(command.hasPrefix("/bin/sh -c '"))
+        #expect(command.contains(HerdrHostPath.pathExport))
+        #expect(command.hasSuffix("exec omp models ls openai-codex/gpt-6-astra --json'"))
+        #expect(AgentModelProbe.command(selector: "xai-oauth/grok-4.6:medium") != nil)
+        for bad in ["", "gpt-6-astra", "a/b'; rm -rf /", "a/b c", "a/b$HOME", "a/b\n"] {
+            #expect(AgentModelProbe.command(selector: bad) == nil, "\(bad)")
+        }
+    }
+
+    @Test("the window is the exact selector's, not the first match's")
+    func windowIsTheExactSelectors() {
+        let output = Data(
+            #"{"models":[{"provider":"devin","id":"gpt-6-astra","selector":"devin/gpt-6-astra","contextWindow":1000000},{"provider":"openai-codex","id":"gpt-6-astra","selector":"openai-codex/gpt-6-astra","contextWindow":272000,"maxTokens":128000}]}"#
+                .utf8)
+        #expect(AgentModelProbe.contextWindow(in: output, selector: "openai-codex/gpt-6-astra") == 272_000)
+        #expect(AgentModelProbe.contextWindow(in: output, selector: "devin/gpt-6-astra") == 1_000_000)
+        #expect(AgentModelProbe.contextWindow(in: output, selector: "openai/gpt-6-astra") == nil)
+        #expect(AgentModelProbe.contextWindow(in: Data(#"{"models":[]}"#.utf8), selector: "a/b") == nil)
+        #expect(AgentModelProbe.contextWindow(in: Data("sh: omp: command not found\n".utf8), selector: "a/b") == nil)
+        #expect(
+            AgentModelProbe.contextWindow(
+                in: Data(#"{"models":[{"selector":"a/b","contextWindow":0}]}"#.utf8), selector: "a/b")
+                == nil)
+    }
+
+    @Test("a fake transport answers only scripted windows")
+    func fakeTransportAnswersScriptedWindows() async throws {
+        let transport = FakeTransport(
+            pingResult: .success(ServerInfo(version: "0.9.0-fake", protocolVersion: 17)))
+        await transport.setContextWindows(["openai-codex/gpt-6-astra": 272_000])
+        #expect(try await transport.modelContextWindow(selector: "openai-codex/gpt-6-astra") == 272_000)
+        #expect(try await transport.modelContextWindow(selector: "local/mystery") == nil)
+        #expect(await transport.contextWindowSelectors == ["openai-codex/gpt-6-astra", "local/mystery"])
     }
 }
 

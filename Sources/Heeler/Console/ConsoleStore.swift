@@ -279,6 +279,24 @@ final class ConsoleStore {
         projections[hostID]?.sessionFileReader()
     }
 
+    /// Model window lookups for the terminal usage strip (#325), late-bound
+    /// like `sessionFileReader(for:)`.
+    func modelContextWindowResolver(for hostID: Host.ID) -> ModelContextWindowResolver {
+        { [weak self] selector in
+            guard let resolver = await self?.liveModelContextWindowResolver(for: hostID) else {
+                throw TransportError.sshUnreachable(
+                    detail: "The Host is not connected.")
+            }
+            return try await resolver(selector)
+        }
+    }
+
+    private func liveModelContextWindowResolver(
+        for hostID: Host.ID
+    ) -> ModelContextWindowResolver? {
+        projections[hostID]?.modelContextWindowResolver()
+    }
+
     private func liveFileStager(for hostID: Host.ID) -> FileStager? {
         projections[hostID]?.fileStager()
     }

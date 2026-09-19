@@ -637,6 +637,18 @@ actor HeelerSSHTransport: Transport {
             .agents.map(Agent.init)
     }
 
+    /// Asks omp for the model's window. An omp missing from the Host (exit
+    /// 127) is an answer of "unknown", not a failure: the strip shows the
+    /// figure without its window, as it does for a model omp does not list.
+    func modelContextWindow(selector: String) async throws -> Int? {
+        guard let command = AgentModelProbe.command(selector: selector) else { return nil }
+        let result = try await withRequestDeadline {
+            try await self.runExec(Self.cLocaleCommand(command))
+        }
+        guard result.exitStatus == 0, result.reachedEOF else { return nil }
+        return AgentModelProbe.contextWindow(in: result.stdout, selector: selector)
+    }
+
     /// Reads one range of a Host file over a channel kept for exactly that.
     ///
     /// The holder is deliberate: a screen that looks every few seconds would
