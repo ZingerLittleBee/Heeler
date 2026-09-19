@@ -4,18 +4,26 @@ import SwiftUI
 /// terminal but drops first when there is no room for them (#325).
 ///
 /// Every value is optional and omitted independently: a figure Heeler could not
-/// read is left out rather than shown as a zero. With nothing to show the row
-/// disappears entirely, so an Agent whose session cannot be read looks exactly
-/// as it did before this existed.
+/// read is left out rather than shown as a zero. The row itself is kept once
+/// the Agent is known to have a session file, so figures that arrive a few
+/// seconds after the screen opens fill it in rather than pushing the terminal
+/// down (and resizing its PTY) a second time. An Agent with no session file
+/// shows no row at all and looks exactly as it did before this existed.
+///
+/// It wears the terminal's theme, not the system's: a dark theme under a light
+/// appearance would otherwise get a light band above its grid.
 struct AgentUsageStrip: View {
     let model: String?
     let contextText: String?
     let costText: String?
+    /// Whether to hold the row's height while no figure is known yet.
+    let isReserved: Bool
+    let palette: TerminalThemePalette
 
     static let preferredHeight: CGFloat = 24
 
     var body: some View {
-        if hasContent {
+        if hasContent || isReserved {
             HStack(spacing: 12) {
                 if let model {
                     item(systemImage: "cpu", text: model, isProminent: false)
@@ -34,12 +42,13 @@ struct AgentUsageStrip: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(alignment: .bottom) {
                 Rectangle()
-                    .fill(Color(uiColor: .separator))
+                    .fill(palette.foreground.opacity(0.15))
                     .frame(height: 1 / max(displayScale, 1))
             }
-            .background(Color(uiColor: .secondarySystemBackground))
+            .background(palette.background)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityLabel)
+            .accessibilityHidden(!hasContent)
         }
     }
 
@@ -65,10 +74,10 @@ struct AgentUsageStrip: View {
         HStack(spacing: 4) {
             Image(systemName: systemImage)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                .foregroundStyle(palette.foreground.opacity(0.45))
             Text(text)
                 .font(.system(size: 11, weight: isProminent ? .semibold : .medium))
-                .foregroundStyle(Color(uiColor: isProminent ? .label : .secondaryLabel))
+                .foregroundStyle(palette.foreground.opacity(isProminent ? 1 : 0.7))
                 .monospacedDigit()
                 .lineLimit(1)
         }

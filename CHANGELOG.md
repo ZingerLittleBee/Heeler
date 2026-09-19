@@ -13,8 +13,9 @@ Entries reference the issue that motivated them.
   strip above the terminal. These are the figures the Agent's own status line
   prints, but a phone-width terminal runs out of room for them and drops the
   last ones first. Heeler reads them from the Agent's session file on the Host,
-  following only what the file gained since the last look. An Agent whose
-  session cannot be read shows no strip rather than placeholder figures. (#325)
+  following only what the file gained since the last look, and the strip wears
+  the terminal's theme. Only omp reports such a file today; a figure that
+  cannot be read is left out rather than shown as a placeholder. (#325)
 
 ## [0.1.9] - 2026-09-19
 

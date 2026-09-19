@@ -492,6 +492,42 @@ struct AgentSessionUsageStoreTests {
     }
 }
 
+/// Only omp's session file can be folded, so only omp's path is followed: a
+/// path from another Agent would be downloaded and parsed for nothing.
+@Suite("Agent session file path")
+struct ConsoleAgentSessionFilePathTests {
+    private func agent(session: AgentSessionInfo?) -> ConsoleAgent {
+        ConsoleAgent(
+            hostID: UUID(), hostName: "Studio Mac",
+            agent: Agent(
+                terminalID: "terminal", kind: session?.agent ?? "claude", title: "task",
+                status: .working, workspaceID: "workspace", tabID: "tab", paneID: "w1:p1",
+                cwd: "/work", revision: 1, agentSession: session),
+            workspaceLabel: "Heeler", repositoryCheckout: nil)
+    }
+
+    @Test("omp's path is followed")
+    func ompPathIsFollowed() {
+        let path = "/home/dev/.omp/agent/sessions/s.jsonl"
+        let session = AgentSessionInfo(
+            agent: "omp", kind: .path, source: "herdr:omp", value: path)
+        #expect(agent(session: session).sessionFilePath == path)
+    }
+
+    @Test("an id, another Agent's path, an empty path, and no session give nothing")
+    func otherSessionsGiveNothing() {
+        let claude = AgentSessionInfo(
+            agent: "claude", kind: .id, source: "herdr:claude", value: UUID().uuidString)
+        let other = AgentSessionInfo(
+            agent: "codex", kind: .path, source: "herdr:codex", value: "/home/dev/codex.jsonl")
+        let empty = AgentSessionInfo(agent: "omp", kind: .path, source: "herdr:omp", value: "")
+        #expect(agent(session: claude).sessionFilePath == nil)
+        #expect(agent(session: other).sessionFilePath == nil)
+        #expect(agent(session: empty).sessionFilePath == nil)
+        #expect(agent(session: nil).sessionFilePath == nil)
+    }
+}
+
 /// The ranged read is a Transport requirement, so a double that never expected
 /// one must fail loudly instead of quietly returning an empty file.
 @Suite("Ranged session reads")

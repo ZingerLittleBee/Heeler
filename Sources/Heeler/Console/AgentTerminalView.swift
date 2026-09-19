@@ -1007,7 +1007,9 @@ struct AgentTerminalView: View {
             AgentUsageStrip(
                 model: sessionUsage.usage.model,
                 contextText: sessionUsage.usage.contextText,
-                costText: sessionUsage.usage.costText)
+                costText: sessionUsage.usage.costText,
+                isReserved: agent.sessionFilePath != nil,
+                palette: themePalette)
         }
         // The navigation bar remains present only as the owner of the status
         // bar appearance. Its content stays hidden, while this inset keeps
