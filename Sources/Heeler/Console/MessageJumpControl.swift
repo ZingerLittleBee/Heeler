@@ -597,8 +597,10 @@ struct TerminalEdgeTabBackground: View {
     let palette: TerminalThemePalette
 
     var body: some View {
+        // Translucent enough that output under the tab stays readable; the
+        // border and shadow carry the shape.
         Self.shape
-            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.96))
+            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.3))
             .overlay {
                 Self.shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
             }

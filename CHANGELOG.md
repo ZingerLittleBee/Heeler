@@ -14,7 +14,9 @@ Entries reference the issue that motivated them.
   Workspace and shows Tab titles, paths, and Agent markers. Loaded terminals
   retain their connections and screen state for five idle minutes, with a
   shared limit of five per Host and least-recently-viewed idle eviction. The
-  drawer's New Terminal button opens a fresh shell tab in the Workspace. (#333)
+  drawer's New Terminal button opens a fresh shell tab in the Workspace. The
+  drawer handle and the message-jump tabs are translucent, so output under
+  them stays readable. (#333)
 
 - Choose an existing Workspace or New Workspace from the same dropdown in
   New Agent. New Workspace opens a remote directory browser. The latest directory stays at the
