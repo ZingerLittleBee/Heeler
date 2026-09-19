@@ -25,13 +25,16 @@ struct SSHDiagnosticsTests {
         }
         try await server.waitForCompletion()
 
+        // Every attempt records its own line, and the redial between them
+        // records one of its own, so the count belongs to `KeyExchangeRetryTests`
+        // (#332). What this test owns is the shape of the failure line.
         let lines = recorder.lines(mentioning: server.port)
-        #expect(lines.count == 1)
         #expect(
             lines.first?.hasPrefix(
                 "handshake with 127.0.0.1:\(server.port) failed: "
                     + "LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE (\(LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE))")
-                == true)
+                == true,
+            Comment(rawValue: "recorded: \(lines)"))
     }
 
     @Test("a handshake that never receives a banner names the phase that timed out")

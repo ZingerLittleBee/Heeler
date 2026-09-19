@@ -2146,9 +2146,12 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 61 tests in 4 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 63 tests in 5 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "post-negotiation transport loss is not an algorithm mismatch" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "a key exchange failure is redialled once and then reported" passed' \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "handshake negotiates post-quantum key exchange" passed' \
