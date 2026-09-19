@@ -30,6 +30,20 @@ struct TransportErrorPresentationTests {
                 == "If it is running, check SSH stream-local forwarding.")
     }
 
+    @Test func corruptRSAKeyNamesEveryAffectedHost() {
+        let presentation = TransportError.rsaKeyCorrupt.presentation
+        #expect(presentation.summary == "The RSA Key is corrupted")
+        #expect(presentation.detail == nil)
+        #expect(presentation.recoverySuggestion?.contains("every Host") == true)
+    }
+
+    @Test func unsupportedRSASignaturePointsAtTheHostConfiguration() {
+        let presentation = TransportError.rsaSignatureUnsupported.presentation
+        #expect(presentation.summary == "The Host does not accept RSA-SHA2-512")
+        #expect(presentation.detail == nil)
+        #expect(presentation.recoverySuggestion?.contains("rsa-sha2-512") == true)
+    }
+
     @Test func theEightUnchangedMessagesRecomposeByteForByte() {
         let cases: [(TransportError, String)] = [
             (
@@ -187,6 +201,19 @@ struct TransportErrorPresentationTests {
                 "The Device Key is corrupted",
                 nil,
                 "Replace it and install the new public key on the Host."
+            ),
+            (
+                .jumpHostFailed(.rsaKeyCorrupt),
+                "The RSA Key is corrupted",
+                nil,
+                "Replace it and register the new public key on every Host that uses it."
+            ),
+            (
+                .jumpHostFailed(.rsaSignatureUnsupported),
+                "The Jump Host does not accept RSA-SHA2-512",
+                nil,
+                "Enable rsa-sha2-512 signatures on the Jump Host, or choose another "
+                    + "authentication method."
             ),
         ]
         for (error, summary, detail, suggestion) in cases {

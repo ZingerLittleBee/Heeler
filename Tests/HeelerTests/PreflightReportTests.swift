@@ -58,6 +58,8 @@ struct PreflightReportTests {
         (TransportError.sshUnreachable(detail: "refused"), PreflightCheck.connection),
         (.authenticationFailed, .connection),
         (.deviceKeyCorrupt, .connection),
+        (.rsaKeyCorrupt, .connection),
+        (.rsaSignatureUnsupported, .connection),
         (.hostKeyRejected(
             presented: HostKeyFingerprint(publicKeyBlob: Data("blob-a".utf8))), .connection),
         (.timedOut, .connection),
@@ -97,15 +99,35 @@ struct PreflightReportTests {
 
     @Test func authenticationHintDependsOnTheAuthMethod() {
         let keyReport = PreflightReport.failure(.authenticationFailed, authMethod: .deviceKey)
+        let rsaReport = PreflightReport.failure(.authenticationFailed, authMethod: .rsaKey)
         let passwordReport = PreflightReport.failure(.authenticationFailed, authMethod: .password)
         guard case .failed(let keyHint) = keyReport[.connection],
+            case .failed(let rsaHint) = rsaReport[.connection],
             case .failed(let passwordHint) = passwordReport[.connection]
         else {
             Issue.record("connection check should fail")
             return
         }
         #expect(keyHint.contains("authorized_keys"))
+        #expect(rsaHint.contains("RSA Key"))
+        #expect(rsaHint.contains("SSH identities"))
         #expect(passwordHint.contains("password"))
+    }
+
+    @Test func unsupportedRSASignatureIsNotReportedAsARejectedKey() {
+        let direct = PreflightReport.failure(.rsaSignatureUnsupported, authMethod: .rsaKey)
+        let jump = PreflightReport.failure(
+            .jumpHostFailed(.rsaSignatureUnsupported), authMethod: .rsaKey)
+        guard case .failed(let directHint) = direct[.connection],
+            case .failed(let jumpHint) = jump[.connection]
+        else {
+            Issue.record("connection check should fail")
+            return
+        }
+        #expect(directHint.contains("rsa-sha2-512"))
+        #expect(!directHint.contains("rejected"))
+        #expect(jumpHint.contains("Jump Host"))
+        #expect(jumpHint.contains("rsa-sha2-512"))
     }
 
     @Test func jumpHostFailureHintNamesTheFirstHop() {

@@ -20,6 +20,9 @@ Entries reference the issue that motivated them.
 - Choose an existing Workspace or New Workspace from the same dropdown in
   New Agent. New Workspace opens a remote directory browser. The latest directory stays at the
   bottom of the dropdown, with its name and full path shown when selected. (PR #305)
+- Hosts can authenticate with a device-generated RSA Key using RSA-SHA2-512,
+  including connections through a Jump Host. The private key remains in the
+  Keychain and the public key can be copied from Host settings. (PR #347)
 
 ### Changed
 
@@ -40,6 +43,8 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- A saved Host with an authentication method this build does not understand is
+  skipped without making the rest of the Host catalog unreadable. (PR #347)
 - Show the directory browser on the first New Workspace tap. (PR #305)
 - Viewing a Done Agent marks it seen on its Host and refreshes Console and
   Live Activity status, including other Agents in the same Tab. (#314)

@@ -792,6 +792,9 @@ actor EventsSession {
         if case DeviceKeyStoreError.storedKeyCorrupt = error {
             return .deviceKeyCorrupt
         }
+        if case RSAKeyStoreError.storedKeyCorrupt = error {
+            return .rsaKeyCorrupt
+        }
         return .channelFailed(detail: String(describing: error))
     }
 

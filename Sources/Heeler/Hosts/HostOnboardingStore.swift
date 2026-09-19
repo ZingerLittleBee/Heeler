@@ -79,6 +79,9 @@ final class HostOnboardingStore {
         } catch DeviceKeyStoreError.storedKeyCorrupt {
             report = .failure(.deviceKeyCorrupt, authMethod: host.authMethod)
             return
+        } catch RSAKeyStoreError.storedKeyCorrupt {
+            report = .failure(.rsaKeyCorrupt, authMethod: host.authMethod)
+            return
         } catch {
             report = .failure(
                 check: .connection,

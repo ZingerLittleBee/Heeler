@@ -610,6 +610,29 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    @Test func corruptRSAKeyStopsWithRSARecoveryInsteadOfReconnecting() async throws {
+        let connectionAttempts = Mutex(0)
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { () async throws -> any Transport in
+                connectionAttempts.withLock { $0 += 1 }
+                throw RSAKeyStoreError.storedKeyCorrupt
+            },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(1), multiplier: 1, maxDelay: .milliseconds(1)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.failed(.rsaKeyCorrupt)))
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(connectionAttempts.withLock { $0 } == 1)
+
+        await session.end()
+    }
+
     @Test func suspendDoesNotWaitForAStalledConnectionAttempt() async throws {
         let firstTransport = ScriptedTransport()
         let resumedTransport = ScriptedTransport()
