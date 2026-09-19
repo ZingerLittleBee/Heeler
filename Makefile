@@ -18,9 +18,9 @@ BUILD_FLAGS ?=
 IOS_WATCH_DEBOUNCE ?= 1s
 
 # First physical iPhone / iPad paired with devicectl; override with
-# `make install DEVICE=<uuid>` or `make install-ipad DEVICE_IPAD=<uuid>`.
-DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/iPhone.*physical[a-z]* *$$/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f-]{36}$$/) { print $$i; exit } }')
-DEVICE_IPAD ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/iPad.*physical[a-z]* *$$/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f-]{36}$$/) { print $$i; exit } }')
+# `make install DEVICE=<udid>` or `make install-ipad DEVICE_IPAD=<udid>`.
+DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
+DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
 .PHONY: help generate resolve build test test-app test-ipad test-ci-app build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight bump publish clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
 
@@ -46,12 +46,19 @@ build: generate ## Build Debug for a physical device without installing
 		-allowProvisioningUpdates build
 
 test-app: generate ## Run the app test suite (SIM_DESTINATION, TEST_FLAGS)
-	xcodebuild -project $(PROJECT) -scheme $(SCHEME) \
+	python3 scripts/run-app-simulator-tests.py -project $(PROJECT) -scheme $(SCHEME) \
 		-destination '$(SIM_DESTINATION)' -derivedDataPath $(DERIVED) \
 		$(TEST_FLAGS) test
 
 test: test-app ## Run the app and HeelerSSH unit test suites on a simulator
 	scripts/run-heelerssh-package-tests.sh '$(SIM_DESTINATION)'
+
+# Requires a fresh New Agent form on the installed candidate.
+.PHONY: test-directory-browser-ui
+test-directory-browser-ui: ## Check first Browse presentation (SIMULATOR_UDID, requires idb)
+	@test -n "$(SIMULATOR_UDID)" || { echo "SIMULATOR_UDID is required"; exit 1; }
+	python3 scripts/test-remote-directory-browser.py --udid '$(SIMULATOR_UDID)' \
+		--output-dir '$(DERIVED)/DirectoryBrowserUI'
 
 test-ipad: ## Run the app and HeelerSSH unit test suites on the iPad simulator
 	$(MAKE) test SIM='$(SIM_IPAD)'
@@ -60,8 +67,12 @@ test-ci-app: ## Run the committed-project CI app lane (no generate)
 	HEELER_CI_LANE=app HEELER_CI_SIMULATOR_UDID='$(or $(SIMULATOR_UDID),$(HEELER_CI_SIMULATOR_UDID))' \
 		scripts/run-ci-ios-tests.sh
 
+.PHONY: test-device-discovery
+test-device-discovery: ## Test physical-device selection and explicit overrides
+	python3 scripts/test-find-ios-device.py
+
 check-device:
-	@test -n "$(DEVICE)" || { echo "No physical device found; pass DEVICE=<devicectl uuid>"; exit 1; }
+	@test -n "$(DEVICE)" || { echo "No physical iPhone found; pass DEVICE=<device identifier>"; exit 1; }
 
 # Builds against the concrete device so automatic signing can register it
 # in the development profile; the generic `build` target cannot.
@@ -77,7 +88,7 @@ install: build-device ## Build Debug, install on the iPhone, and relaunch it
 		|| echo "Installed, but the launch was refused (device locked?). Unlock it and open Heeler."
 
 check-device-ipad:
-	@test -n "$(DEVICE_IPAD)" || { echo "No physical iPad found; pass DEVICE_IPAD=<devicectl uuid>"; exit 1; }
+	@test -n "$(DEVICE_IPAD)" || { echo "No physical iPad found; pass DEVICE_IPAD=<device identifier>"; exit 1; }
 
 install-ipad: check-device-ipad ## Build Debug, install on the iPad, and relaunch it
 	$(MAKE) install DEVICE="$(DEVICE_IPAD)"

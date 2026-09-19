@@ -16,6 +16,54 @@ Entries reference the issue that motivated them.
   following only what the file gained since the last look. An Agent whose
   session cannot be read shows no strip rather than placeholder figures. (#325)
 
+## [0.1.9] - 2026-09-19
+
+### Added
+
+- Browse every terminal in the Workspace from a drawer docked to the edge of
+  Agent detail. The list groups by Host and Workspace and shows Tab titles,
+  paths, and which panes run Agents. A terminal you have opened keeps its
+  connection and screen for five idle minutes, up to five per Host; the least
+  recently viewed idle one gives way when a sixth is needed. New Terminal
+  opens a fresh shell tab in the Workspace. Output stays readable under the
+  drawer handle and the message-jump tabs. (#333)
+
+- Choose an existing Workspace or New Workspace from the same dropdown in
+  New Agent. New Workspace opens a remote directory browser. The latest directory stays at the
+  bottom of the dropdown, with its name and full path shown when selected. (PR #305)
+- Hosts can authenticate with a device-generated RSA Key using RSA-SHA2-512,
+  including connections through a Jump Host. The private key remains in the
+  Keychain and the public key can be copied from Host settings. (PR #347)
+
+### Changed
+
+- The message-jump buttons dock flush against the terminal's edge as a tab,
+  matching the Workspace drawer handle. Long-press either to slide it along
+  the edge; each stays where you leave it. (#333)
+- The Shell Terminal drops its title bar so output runs up to the status bar.
+  Back and Close Terminal moved into the More menu on its input row, which now
+  stays visible while the keyboard is down. The row's Insert New Line button
+  is gone; Shift+Enter on the Keys keyboard sends the same line break. (#333)
+- The keyboard follows you between Agent detail and a Shell Terminal: up or
+  down, it is the same on the other side, and it stays on screen through the
+  switch instead of dropping and rising again. The terminal's Text/Keys row
+  sits above it from the first frame, and the two screens dissolve into each
+  other instead of cutting. (#333)
+- Make the remote directory browser more compact, with full-row folder navigation,
+  native filtering, empty states, and retry for failed navigation. (PR #305)
+
+### Fixed
+
+- Connecting to a Host no longer fails intermittently during post-quantum key
+  exchange. Roughly one handshake in 256 was rejected by a defect in the SSH
+  library, and about twice as often for a Host behind a Jump Host; the app now
+  redials once. (#332)
+- A saved Host with an authentication method this build does not understand is
+  skipped without making the rest of the Host catalog unreadable. (PR #347)
+- Show the directory browser on the first New Workspace tap. (PR #305)
+- Viewing a Done Agent marks it seen on its Host and refreshes Console and
+  Live Activity status, including other Agents in the same Tab. (#314)
+
 ## [0.1.8] - 2026-09-13
 
 ### Added
@@ -109,7 +157,6 @@ Entries reference the issue that motivated them.
   and light haptic feedback when tapped. Agent controls put Backspace at the
   top right and Shift+Tab at the bottom left. The Direct Input shortcut row
   no longer duplicates the Terminal keyboard's Ctrl/Alt buttons. (PR #302)
-
 ### Fixed
 
 - Switching Agents keeps the Terminal tools keyboard selected instead of opening
@@ -134,6 +181,11 @@ Entries reference the issue that motivated them.
   height and its test measured only frame minimums, not the rendered text.
   Four three-row cards exceed ActivityKit's 160 pt limit, so four rows remain
   only for two-row layouts. (#281)
+- Console rows show a standard home directory as `~` again: an Agent launched
+  in `/Users/aliefe/Code/bitbucket/opinnate-python` prints
+  `~/Code/bitbucket/opinnate-python`. Only the SSH account's own `/root`,
+  `/Users/<user>`, and `/home/<user>` homes are shortened, so a path that
+  merely shares a prefix with a longer account name is left alone. (#311)
 
 ## [0.1.6] - 2026-09-09
 

@@ -8,7 +8,9 @@ import SwiftUI
 /// launch lands in its terminal instead of back on the list.
 struct StartAgentView: View {
     @State private var store: StartAgentStore
+    @State private var directoryBrowser: RemoteDirectoryBrowser?
     private let onStarted: (ConsoleAgent.ID) -> Void
+    private let console: ConsoleStore
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -17,6 +19,7 @@ struct StartAgentView: View {
         onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
         self.onStarted = onStarted
+        self.console = console
         _store = State(
             initialValue: StartAgentStore(
                 hosts: hosts,
@@ -70,59 +73,18 @@ struct StartAgentView: View {
                         }
                     }
 
-                    Section {
-                        if store.offersNewWorkspace {
-                            Picker("Launch", selection: $store.launchTarget) {
-                                Text("Existing Workspace").tag(
-                                    StartAgentStore.LaunchTarget.existingWorkspace)
-                                Text("New Workspace").tag(
-                                    StartAgentStore.LaunchTarget.newWorkspace)
-                            }
-                        }
-                        if store.launchTarget != .newWorkspace {
-                            Picker("Workspace", selection: $store.selectedWorkspaceID) {
-                                if store.workspaces.isEmpty {
-                                    Text("None reported").tag(String?.none)
-                                }
-                                ForEach(store.workspaces) { workspace in
-                                    Text(workspace.label).tag(String?.some(workspace.id))
-                                }
-                            }
-                            .disabled(store.selectedHostID == nil || store.workspaces.isEmpty)
-                        }
-                    } header: {
-                        Text("Workspace")
-                    } footer: {
-                        if store.launchTarget == .newWorkspace {
-                            Text("The Host does not need to report an existing Workspace.")
-                        } else {
-                            Text(
-                                "Where the agent runs. Defaults to the one you last started an agent in."
-                            )
-                        }
-                    }
-
-                    if store.launchTarget == .newWorkspace {
-                        Section {
-                            TextField("e.g. /home/you/src/app", text: $store.newWorkspaceDirectory)
-                                .font(.callout.monospaced())
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                        } header: {
-                            Text("Directory")
-                        } footer: {
-                            Text("Remote path herdr opens as the new Workspace.")
-                        }
-
-                        Section {
-                            TextField("Optional", text: $store.newWorkspaceLabel)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                        } header: {
-                            Text("Workspace Label")
-                        } footer: {
-                            Text("Empty uses herdr's default label.")
-                        }
+                    Section("Workspace") {
+                        StartWorkspacePicker(
+                            workspaces: store.workspaces,
+                            selectedWorkspaceID: store.launchTarget == .existingWorkspace
+                                ? store.selectedWorkspaceID : nil,
+                            newDirectory: store.newWorkspaceDirectory.isEmpty
+                                ? nil : store.newWorkspaceDirectory,
+                            isNewWorkspaceSelected: store.launchTarget == .newWorkspace,
+                            canBrowse: store.selectedHostID != nil,
+                            onSelect: store.selectExistingWorkspace,
+                            onSelectNewWorkspace: store.selectNewWorkspace,
+                            onNewWorkspace: openDirectoryBrowser)
                     }
                 }
 
@@ -266,7 +228,113 @@ struct StartAgentView: View {
             .task(id: store.selectedHostID) {
                 await store.discoverAgents()
             }
+            // The presented item also supplies the content, so the first
+            // presentation cannot capture an empty browser from an older view.
+            .sheet(item: $directoryBrowser) { browser in
+                RemoteDirectoryBrowserView(browser: browser) { path in
+                    store.applyBrowsedDirectory(path)
+                    directoryBrowser = nil
+                }
+            }
             .interactiveDismissDisabled(!store.canDismiss)
         }
+    }
+
+    private func openDirectoryBrowser() {
+        guard let hostID = store.selectedHostID else { return }
+        directoryBrowser = RemoteDirectoryBrowser(
+            resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
+            list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
+    }
+}
+
+/// Keeps the latest browsed directory as the final menu option, even when an
+/// existing Workspace is selected. Browsing only updates the launch draft.
+struct StartWorkspacePicker: View {
+    private enum Selection: Hashable {
+        case existing(String)
+        case newWorkspace
+    }
+
+    let workspaces: [ConsoleWorkspace]
+    let selectedWorkspaceID: String?
+    let newDirectory: String?
+    let isNewWorkspaceSelected: Bool
+    let canBrowse: Bool
+    let onSelect: (String) -> Void
+    let onSelectNewWorkspace: () -> Void
+    let onNewWorkspace: () -> Void
+
+    private var directoryName: String {
+        newDirectory?.split(separator: "/").last.map(String.init) ?? "/"
+    }
+
+    private var selectedTitle: String {
+        if isNewWorkspaceSelected { return directoryName }
+        return workspaces.first { $0.id == selectedWorkspaceID }?.label ?? "None reported"
+    }
+
+    private var selection: Binding<Selection?> {
+        Binding(
+            get: {
+                isNewWorkspaceSelected ? .newWorkspace : selectedWorkspaceID.map(Selection.existing)
+            },
+            set: { value in
+                switch value {
+                case .existing(let id): onSelect(id)
+                case .newWorkspace: onSelectNewWorkspace()
+                case nil: break
+                }
+            })
+    }
+
+    var body: some View {
+        Menu {
+            Picker("Workspace", selection: selection) {
+                if selectedWorkspaceID == nil && !isNewWorkspaceSelected {
+                    Text("None reported").tag(Selection?.none)
+                }
+                ForEach(workspaces) { workspace in
+                    Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
+                }
+                if newDirectory != nil {
+                    Text(directoryName).tag(Selection?.some(.newWorkspace))
+                }
+            }
+            .disabled(workspaces.isEmpty && newDirectory == nil)
+
+            Divider()
+            Button(action: onNewWorkspace) {
+                Label("New Workspace", systemImage: "folder.badge.plus")
+            }
+            .accessibilityIdentifier("new-workspace")
+        } label: {
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 12) {
+                    Text("Workspace")
+                        .foregroundStyle(Color.primary)
+                    Spacer(minLength: 12)
+                    Text(selectedTitle)
+                        .foregroundStyle(Color.secondary)
+                        .multilineTextAlignment(.trailing)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.secondary)
+                        .accessibilityHidden(true)
+                }
+                if isNewWorkspaceSelected, let newDirectory {
+                    Text(newDirectory)
+                        .font(.caption)
+                        .foregroundStyle(Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .contentShape(Rectangle())
+        }
+        .menuOrder(.fixed)
+        .disabled(!canBrowse)
+        .accessibilityIdentifier("start-workspace-picker")
     }
 }

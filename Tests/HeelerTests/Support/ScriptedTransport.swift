@@ -38,6 +38,8 @@ final actor ScriptedTransport: Transport {
     private var worktreeRemoveFailure: (any Error)?
     private var worktreeRemoveResponsePath: String?
     private var nextWorktreeAuthorizationGate: ScriptedTransportCallGate?
+    private(set) var agentFocuses: [AgentTarget] = []
+    private var focusFailure: TransportError?
     /// Every `agent.rename` / `workspace.rename` received, in order; the
     /// rename flows (#98) assert on the params they forwarded.
     private(set) var agentRenames: [AgentRenameParams] = []
@@ -226,6 +228,10 @@ final actor ScriptedTransport: Transport {
     }
 
     /// Makes every subsequent rename (agent or workspace) throw `failure`.
+    func setFocusFailure(_ failure: TransportError?) {
+        focusFailure = failure
+    }
+
     func setRenameFailure(_ failure: TransportError?) {
         renameFailure = failure
     }
@@ -527,6 +533,11 @@ final actor ScriptedTransport: Transport {
             forced: false,
             path: worktreeRemoveResponsePath ?? request.identity.checkoutPath,
             workspaceID: request.identity.workspaceID)
+    }
+
+    func focusAgent(_ target: AgentTarget) async throws {
+        agentFocuses.append(target)
+        if let focusFailure { throw focusFailure }
     }
 
     func renameAgent(_ params: AgentRenameParams) async throws {

@@ -527,7 +527,8 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func disconnectedHostRemovesItsStaleAgentsImmediately() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func disconnectedHostRemovesItsStaleAgentsImmediately() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
             snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
@@ -540,6 +541,11 @@ struct ConsoleStoreTests {
         await store.resume()
         try await waitUntil("the initial agent should arrive") { store.agents.count == 1 }
 
+        // Publishing the snapshot precedes installing its pane subscription.
+        // Inject the failure only after that replacement stream is live.
+        try await transport.waitForLiveSubscription(containing: [
+            .pane(.agentStatusChanged, paneID: "w1:p1")
+        ])
         await transport.failEventStream(.channelFailed(detail: "Host went offline"))
         try await waitUntil("the Host should report its disconnected state") {
             guard case .reconnecting = store.hostStatuses[host.id] else { return false }
@@ -1243,6 +1249,106 @@ struct ConsoleStoreTests {
         #expect(await transport.closedPanes.isEmpty)
 
         store.setHosts([])
+    }
+
+    @Test func focusAgentForwardsOpaqueTargetToItsHostAndResnapshotsAllRows() async throws {
+        let host = Host.fixture()
+        let otherHost = Host.fixture(name: "Other")
+        let paneID = "opaque:Pane/A"
+        let done: [AgentInfo] = [
+            .fixture(paneID: paneID, status: .done),
+            .fixture(paneID: "sibling", status: .done),
+        ]
+        let transport = ScriptedTransport(snapshot: .fixture(agents: done))
+        let otherTransport = ScriptedTransport(snapshot: .fixture(agents: done))
+        let store = makeStore(transports: [host.id: transport, otherHost.id: otherTransport])
+        store.setHosts([host, otherHost])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("both Hosts should be ready") { store.agents.count == 4 }
+        // Drain subscription-triggered startup snapshots before counting calls.
+        await store.refreshSidebarLayouts()
+        let before = await transport.snapshotFetchCount
+        await transport.setSnapshot(.fixture(agents: [
+            .fixture(paneID: paneID, status: .idle),
+            .fixture(paneID: "sibling", status: .idle),
+        ]))
+        try await store.focusAgent(paneID, on: host.id)
+        #expect(await transport.agentFocuses == [AgentTarget(target: paneID)])
+        #expect(await otherTransport.agentFocuses.isEmpty)
+        try await waitUntil("the full Host snapshot should mark both rows Idle") {
+            store.agents.filter { $0.hostID == host.id }.map(\.agent.status) == [.idle, .idle]
+        }
+        #expect(await transport.snapshotFetchCount > before)
+        #expect(
+            store.agents.filter { $0.hostID == otherHost.id }
+                .allSatisfy { $0.agent.status == .done })
+    }
+
+    @Test func focusFailurePreservesDoneAndDoesNotRequestASuccessResnapshot() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "pane", status: .done)]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Done Agent should arrive") { store.agents.count == 1 }
+        await store.refreshSidebarLayouts()
+        let before = await transport.snapshotFetchCount
+        await transport.setFocusFailure(.timedOut)
+        await #expect(throws: TransportError.timedOut) {
+            try await store.focusAgent("pane", on: host.id)
+        }
+        // Give an incorrectly scheduled success refresh time to reach the transport.
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(store.agents.map(\.agent.status) == [.done])
+        #expect(await transport.snapshotFetchCount == before)
+        #expect(await transport.agentFocuses == [AgentTarget(target: "pane")])
+    }
+
+    @Test func focusDoesNotSendWhenTheAgentHasAlreadyLeftDone() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [
+            .fixture(paneID: "working", status: .working),
+            .fixture(paneID: "idle", status: .idle),
+        ]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Agents should arrive") { store.agents.count == 2 }
+        for paneID in ["working", "idle"] {
+            await #expect(throws: CancellationError.self) {
+                try await store.focusAgent(paneID, on: host.id)
+            }
+        }
+        #expect(await transport.agentFocuses.isEmpty)
+    }
+
+    @Test func focusRejectsUnavailableHostAndMissingAgent() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture())
+        let store = makeStore(transports: [host.id: transport])
+        await #expect(throws: TransportError.self) {
+            try await store.focusAgent("missing", on: host.id)
+        }
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the empty inventory should be known") {
+            store.hostStatuses[host.id] == .connected
+                && !store.hostsAwaitingSnapshot.contains(host.id)
+        }
+        await #expect(throws: TransportError.apiRejected(
+            code: "agent_not_found", message: "The Agent is no longer listed.")) {
+            try await store.focusAgent("missing", on: host.id)
+        }
+        await store.suspend()
+        await #expect(throws: TransportError.self) {
+            try await store.focusAgent("missing", on: host.id)
+        }
+        #expect(await transport.agentFocuses.isEmpty)
     }
 
     @Test func renameAgentForwardsItsParamsAndResnapshots() async throws {

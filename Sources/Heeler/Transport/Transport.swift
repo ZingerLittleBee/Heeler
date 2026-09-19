@@ -111,6 +111,11 @@ protocol Transport: Sendable {
         onDispatched: @escaping @Sendable (WorktreeRemovalRequest) async -> Void
     ) async throws -> WorktreeRemovedResponse
 
+    /// Marks the viewed Agent seen through `agent.focus`. herdr 0.9.0 also
+    /// focuses its Tab and marks every Pane in that Tab seen. Callers must
+    /// refresh the entire Host rather than synthesize a selected-row status.
+    func focusAgent(_ target: AgentTarget) async throws
+
     /// Renames an Agent (`agent.rename`): the Console management action
     /// (#98). A nil name clears the custom name back to the detected kind
     /// (verified live against herdr 0.7.5: omitting the key clears). The
@@ -145,11 +150,9 @@ protocol Transport: Sendable {
     /// a recovery guarantee. Use snapshots for authoritative convergence.
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream
 
-    /// Opens this Host's dedicated terminal channel as a full interactive
-    /// Attach: a PTY running `herdr agent attach`, raw bytes both ways until
-    /// `end()` closes the channel explicitly. One terminal channel is allowed
-    /// per Host, so a second call while one is live throws
-    /// `.terminalChannelAlreadyOpen`.
+    /// Opens an interactive PTY Attach. Each target permits one live channel;
+    /// a duplicate target throws `.terminalChannelAlreadyOpen`. Distinct
+    /// targets share the bounded Host channel admission budget.
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
     /// Stages one normalized app-owned image in private Host temporary
@@ -588,6 +591,14 @@ enum RemoteShellPath {
     }
 }
 
+/// Directories-only listing of one remote directory, for the remote
+/// directory browser (#280). Names are sorted; `truncated` reports that more
+/// directories exist than fit in the surfaced cap.
+struct RemoteDirectoryListing: Sendable, Equatable {
+    let directories: [String]
+    let truncated: Bool
+}
+
 /// A coding agent process running inside a herdr Pane.
 ///
 /// The domain view of the generated wire type `AgentInfo`: only the fields
@@ -755,6 +766,13 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The device's stored Ed25519 private key cannot be decoded. Reconnecting
     /// cannot repair it; the user must explicitly replace the Device Key.
     case deviceKeyCorrupt
+    /// The stored RSA identity cannot be decoded. It must be replaced
+    /// explicitly and the replacement public key registered with every Host.
+    case rsaKeyCorrupt
+    /// RSA Key authentication found no RSA-SHA2-512 signature the Host would
+    /// take: it advertised only other RSA signature algorithms, or none at
+    /// all. No signature was sent, so registering the key again cannot help.
+    case rsaSignatureUnsupported
     /// First connect to an unknown Host and the user declined its key
     /// fingerprint; nothing was stored.
     case hostKeyRejected(presented: HostKeyFingerprint)
@@ -779,6 +797,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The remote home directory could not be resolved, so a home-relative
     /// socket location has no path.
     case homeDirectoryUnresolvable(detail: String)
+    /// A directory-browsing request carried a path that cannot be passed to
+    /// the Host's login shell: empty, relative, or holding NUL, quote,
+    /// backslash, or control characters. Rejected before any channel opens.
+    case invalidDirectoryPath(path: String)
     /// A second events channel was requested while one is live; each Host
     /// keeps exactly one dedicated events channel (ADR 0011 headroom).
     case eventsChannelAlreadyOpen
@@ -816,10 +838,12 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .apiRejected:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
-            .deviceKeyCorrupt, .hostKeyRejected, .hostKeyMismatch,
+            .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
+            .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
             .streamLocalOpenFailed,
-            .homeDirectoryUnresolvable, .eventsChannelAlreadyOpen,
+            .homeDirectoryUnresolvable, .invalidDirectoryPath,
+            .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
             false
         // A Jump Host is retryable exactly when the failure behind it is: a

@@ -10,6 +10,7 @@ final class HostConsoleProjection {
     let session: EventsSession
 
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
+    private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
     /// The failure that last stopped automatic recovery, retained after the
@@ -67,9 +68,10 @@ final class HostConsoleProjection {
     private var snapshotRequestGeneration: UInt64 = 0
     private var workspacesByID: [String: WorkspaceInfo] = [:]
     private var worktreeRemovalOperations: [UUID: WorktreeRemovalOperation] = [:]
-    private var worktreeRemovalReceiptsByAgent: [
-        ConsoleAgent.ID: WorktreeRemovalReceiptRecord
-    ] = [:]
+    private var worktreeRemovalReceiptsByAgent: [ConsoleAgent.ID: WorktreeRemovalReceiptRecord] =
+        [:]
+    private var paneChangeRevision: UInt64 = 0
+    private var latestPaneChanges: [String: (revision: UInt64, pane: PaneInfo)] = [:]
     private var statusChangeRevision: UInt64 = 0
     private var latestStatusChanges: [
         String: (revision: UInt64, status: AgentStatus)
@@ -212,7 +214,8 @@ final class HostConsoleProjection {
     func terminalRunner() -> TerminalSessionRunner {
         let session = session
         return { request, handler in
-            try await session.withTerminalTransport { transport, generation in
+            try await session.withTerminalTransport(target: request.target) {
+                transport, generation in
                 await handler.transportDidBecomeReady(generation)
                 #if DEBUG
                 await handler.attachRequestDidStart()
@@ -229,9 +232,16 @@ final class HostConsoleProjection {
     func createShellTerminal(
         _ request: ShellTerminalCreationRequest
     ) async throws -> ShellTerminalIdentity {
-        try await session.withTransport { transport in
+        let identity = try await session.withTransport { transport in
             try await transport.createShellTerminal(request)
         }
+        await refreshTerminalInventory()
+        return identity
+    }
+
+    /// A successful create must stay successful even if discovery needs retry.
+    func refreshTerminalInventory() async {
+        await refreshSidebarMetadata()
     }
 
     func imageStager() -> ImageStager {
@@ -480,6 +490,29 @@ final class HostConsoleProjection {
         }
     }
 
+    /// Focus can mark sibling Panes seen too; only a full Host snapshot can
+    /// supply the resulting authoritative statuses, including Live Activity.
+    func focusAgent(_ paneID: String) async throws {
+        try Task.checkCancellation()
+        guard !hasEnded, status == .connected, !isAwaitingSnapshot else {
+            throw TransportError.sshUnreachable(detail: "The Host is not ready.")
+        }
+        guard let agent = agentsByPane[paneID] else {
+            throw TransportError.apiRejected(
+                code: "agent_not_found", message: "The Agent is no longer listed.")
+        }
+        guard agent.agent.status == .done else { throw CancellationError() }
+        let epoch = snapshotEpoch
+        try await session.withTransport { transport in
+            try Task.checkCancellation()
+            try await transport.focusAgent(AgentTarget(target: paneID))
+        }
+        // Cancellation cannot undo a delivered focus. A successful reply still
+        // refreshes this connection, even if its detail has since left.
+        guard !hasEnded, snapshotEpoch == epoch else { return }
+        scheduleResync()
+    }
+
     /// Renames an Agent (#98); a nil name clears back to the detected kind.
     /// The new name lands via the post-RPC resync, not an event delta:
     /// `pane.updated` does not carry the agent name and fires on every
@@ -546,6 +579,8 @@ final class HostConsoleProjection {
                     // Unknown can additionally mean the Agent left its Pane.
                     scheduleResync()
                 }
+            } else if event.kind == GlobalEventKind.paneUpdated.kind {
+                applyPaneChange(event.data)
             } else if Self.resyncEventKinds.contains(event.kind) {
                 scheduleResync()
             }
@@ -586,6 +621,7 @@ final class HostConsoleProjection {
         let requestGeneration = snapshotRequestGeneration
         let epochBeforeSnapshot = snapshotEpoch
         let statusRevisionBeforeSnapshot = statusChangeRevision
+        let paneRevisionBeforeSnapshot = paneChangeRevision
         do {
             let snapshot = try await session.withTransport { transport in
                 try await transport.sessionSnapshot()
@@ -601,6 +637,7 @@ final class HostConsoleProjection {
             apply(
                 snapshot,
                 preservingStatusChangesAfter: statusRevisionBeforeSnapshot,
+                preservingPaneChangesAfter: paneRevisionBeforeSnapshot,
                 requestGeneration: requestGeneration)
             await session.updateSubscriptions(
                 Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
@@ -640,6 +677,8 @@ final class HostConsoleProjection {
         resyncRetryTask = nil
         syncError = nil
         latestStatusChanges.removeAll(keepingCapacity: true)
+        latestPaneChanges.removeAll(keepingCapacity: true)
+        terminalsByPane.removeAll(keepingCapacity: true)
         pendingSnippetRefreshes.removeAll(keepingCapacity: true)
         agentsByPane.removeAll(keepingCapacity: true)
         workspaces.removeAll(keepingCapacity: true)
@@ -649,6 +688,7 @@ final class HostConsoleProjection {
     private func apply(
         _ snapshot: SessionSnapshot,
         preservingStatusChangesAfter snapshotStartRevision: UInt64,
+        preservingPaneChangesAfter paneStartRevision: UInt64,
         requestGeneration: UInt64
     ) {
         sidebarRevision &+= 1
@@ -695,6 +735,35 @@ final class HostConsoleProjection {
         latestStatusChanges.removeAll(keepingCapacity: true)
         isAwaitingSnapshot = false
         agentsByPane = nextAgents
+        let workspacePositions = Dictionary(
+            snapshot.workspaces.enumerated().map { ($0.element.workspaceID, $0.offset) }
+        ) { first, _ in first }
+        var nextTerminals: [String: ConsoleTerminal] = [:]
+        for (order, snapshotPane) in snapshot.panes.enumerated() {
+            let pane: PaneInfo
+            if let change = latestPaneChanges[snapshotPane.paneID],
+                change.revision > paneStartRevision,
+                change.pane.terminalID == snapshotPane.terminalID,
+                change.pane.workspaceID == snapshotPane.workspaceID,
+                change.pane.tabID == snapshotPane.tabID
+            {
+                pane = change.pane
+            } else {
+                pane = snapshotPane
+            }
+            let tab = tabByID[pane.tabID].flatMap {
+                $0.workspaceID == pane.workspaceID ? $0 : nil
+            }
+            nextTerminals[pane.paneID] = ConsoleTerminal(
+                hostID: host.id, hostName: host.displayName, hostUsername: host.username,
+                pane: pane, workspaceLabel: workspaceByID[pane.workspaceID]?.label,
+                tabLabel: tab?.label,
+                workspaceOrder: workspacePositions[pane.workspaceID] ?? Int.max,
+                tabPosition: tab.flatMap { tabPositions[$0.tabID] }, snapshotOrder: order,
+                snapshotAgentKind: nextAgents[pane.paneID]?.agent.kind)
+        }
+        latestPaneChanges.removeAll(keepingCapacity: true)
+        terminalsByPane = nextTerminals
         workspacesByID = workspaceByID
         workspaces = snapshot.workspaces
             .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
@@ -743,6 +812,29 @@ final class HostConsoleProjection {
                     atSnapshotRequestGeneration: requestGeneration)
             }
         }
+    }
+
+    /// Title/cwd updates are frequent. Fold their complete PaneInfo locally
+    /// rather than turning terminal output into a stream of snapshot RPCs.
+    private func applyPaneChange(_ data: JSONValue) {
+        guard status == .connected,
+            let value = data["pane"],
+            let encoded = try? JSONEncoder().encode(value),
+            let pane = try? JSONDecoder().decode(PaneInfo.self, from: encoded)
+        else { return }
+        paneChangeRevision &+= 1
+        if resyncTask != nil {
+            latestPaneChanges[pane.paneID] = (paneChangeRevision, pane)
+        }
+        guard var terminal = terminalsByPane[pane.paneID],
+            terminal.terminalID == pane.terminalID,
+            terminal.workspaceID == pane.workspaceID,
+            terminal.tabID == pane.tabID
+        else { return }
+        terminal.pane = pane
+        guard terminal != terminalsByPane[pane.paneID] else { return }
+        terminalsByPane[pane.paneID] = terminal
+        publish()
     }
 
     private func applyStatusChange(_ data: JSONValue) -> AgentStatus? {
@@ -826,7 +918,7 @@ final class HostConsoleProjection {
     }
 
     private static let snapshotChangeKinds: [GlobalEventKind] = [
-        .paneAgentDetected, .paneClosed, .paneExited,
+        .paneAgentDetected, .paneCreated, .paneClosed, .paneExited,
         .workspaceCreated, .workspaceRenamed, .workspaceMetadataUpdated, .workspaceClosed,
         .workspaceMoved, .workspaceReordered,
         .tabCreated, .tabClosed, .tabRenamed, .tabMoved, .paneMoved,
@@ -843,6 +935,7 @@ final class HostConsoleProjection {
         snapshotChangeKinds.filter {
             $0 != .workspaceReordered || (protocolVersion ?? 0) >= 19
         }.map(EventSubscription.global)
+            + [.global(.paneUpdated)]
             + paneIDs.sorted().map { EventSubscription.pane(.agentStatusChanged, paneID: $0) }
     }
 }

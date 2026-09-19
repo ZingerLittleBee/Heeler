@@ -20,11 +20,12 @@ struct HostTerminalClaim: Equatable, Sendable {
     let isShellTerminal: Bool
 }
 
-/// Which window holds each Host's single terminal channel (ADR 0011, ADR
-/// 0015), as a pure decision over the windows' claims.
+/// Which window owns each Host's interactive Agent presentation, as a pure
+/// decision over window claims. ADR 0017 allows retained idle terminals and
+/// separate shell viewers alongside it; those use the shared retention budget.
 ///
-/// A Host keeps one terminal channel however many windows show its Agents,
-/// so with two windows on one Host only one can be live. "Key window" here
+/// Only one window actively presents an Agent on a given Host. Other loaded
+/// Agents may retain their idle PTYs until expiry or eviction. "Key window" here
 /// is the window the user is working in (see `AgentSceneState`), not UIKit's
 /// per-scene key window. The rule:
 ///

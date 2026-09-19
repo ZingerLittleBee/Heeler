@@ -500,7 +500,7 @@ class Server:
                 "argv": ["codex"],
                 "agent": self._agent(pane_id, workspace_id),
             }
-        if method == "agent.rename":
+        if method in ("agent.rename", "agent.focus"):
             return {"type": "agent_info", "agent": self._agent()}
         if method == "workspace.rename":
             return {"type": "workspace_info", "workspace": self._workspace()}

@@ -2,13 +2,14 @@ import Foundation
 
 /// A user-added Host (CONTEXT.md): connection coordinates, how to
 /// authenticate, and which herdr session to reach. Never carries a secret —
-/// the password lives in the Keychain keyed by `id`, the device key in
-/// `DeviceKeyStore`.
+/// the password lives in the Keychain keyed by `id`, and private keys live in
+/// `DeviceKeyStore` or `RSAKeyStore`.
 struct Host: Identifiable, Codable, Hashable, Sendable {
     /// How the app authenticates against this Host. OpenSSH key import is
     /// deliberately absent (out of scope per spec #20).
     enum AuthMethod: String, Codable, Sendable {
         case deviceKey
+        case rsaKey
         case password
     }
 
@@ -82,7 +83,14 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         address = try container.decode(String.self, forKey: .address)
         port = try container.decode(Int.self, forKey: .port)
         username = try container.decode(String.self, forKey: .username)
-        authMethod = try container.decode(AuthMethod.self, forKey: .authMethod)
+        let authMethodValue = try container.decode(String.self, forKey: .authMethod)
+        guard let decodedAuthMethod = AuthMethod(rawValue: authMethodValue) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .authMethod,
+                in: container,
+                debugDescription: "Unknown authentication method: \(authMethodValue)")
+        }
+        authMethod = decodedAuthMethod
         sessionName = try container.decodeIfPresent(String.self, forKey: .sessionName) ?? ""
         // Absent in Hosts saved before jump-host support; a blank address
         // decodes as the direct connection those Hosts already had.

@@ -321,12 +321,11 @@ actor HeelerSSHTransport: Transport {
     private var endedEventsReaders: Set<UInt64> = []
 
     private enum TerminalChannelState: Equatable {
-        case idle
         case opening
         case streaming(readerID: UInt64)
     }
 
-    private var terminalChannelState: TerminalChannelState = .idle
+    private var terminalChannelStates: [TerminalAttachTarget: TerminalChannelState] = [:]
     private var nextTerminalReaderID: UInt64 = 0
     private var imageStageClients: [UUID: SSHSFTPClient] = [:]
     private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
@@ -497,6 +496,18 @@ actor HeelerSSHTransport: Transport {
                 publicKey: deviceKey.publicKeyBlob,
                 signer: { data in try deviceKey.privateKey.signature(for: data) },
                 timeout: timeout)
+        case .rsaSHA512(let rsaKey):
+            do {
+                try await connection.authenticate(
+                    username: username,
+                    publicKey: rsaKey.publicKeyBlob,
+                    signer: { data in try rsaKey.signature(for: data) },
+                    timeout: timeout)
+            } catch SSHError.algorithmNegotiationFailed {
+                // The handshake already succeeded, so during authentication
+                // this can only mean no RSA-SHA2-512 signature was possible.
+                throw TransportError.rsaSignatureUnsupported
+            }
         }
     }
 
@@ -842,6 +853,13 @@ actor HeelerSSHTransport: Transport {
             decoding: OkResponse.self)
     }
 
+    func focusAgent(_ target: AgentTarget) async throws {
+        _ = try await request(
+            method: "agent.focus",
+            params: target,
+            decoding: AgentInfoResponse.self)
+    }
+
     func renameAgent(_ params: AgentRenameParams) async throws {
         _ = try await request(
             method: "agent.rename",
@@ -1140,6 +1158,42 @@ actor HeelerSSHTransport: Transport {
         try await replacePluginConfigFile(named: name, contents: contents)
     }
 #endif
+
+    /// Directories-only listing of one absolute quotable remote path, for
+    /// the remote directory browser (#280). Paths that cannot be passed to
+    /// the Host's login shell throw `TransportError.invalidDirectoryPath`
+    /// before any channel opens.
+    func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        guard Self.validatedDirectoryPath(path) != nil else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        return try await channelAdmission.withChannel(.ordinarySession) {
+            let sftp = try await self.connection.openSFTP(timeout: self.requestTimeout)
+            do {
+                let listing = try await sftp.listDirectories(
+                    at: path,
+                    timeout: self.requestTimeout)
+                try? await sftp.close(timeout: .seconds(2))
+                return RemoteDirectoryListing(
+                    directories: listing.entries.map(\.name),
+                    truncated: listing.truncated)
+            } catch {
+                try? await sftp.close(timeout: .seconds(2))
+                throw error
+            }
+        }
+    }
+
+    /// The path when it is absolute and quotable for the Host's login
+    /// shell, nil otherwise. `RemoteShellPath` refuses empty and relative
+    /// paths plus quote, backslash, and control characters; NUL (`\0`)
+    /// arrives as a control character and is refused the same way.
+    static func validatedDirectoryPath(_ path: String) -> String? {
+        guard !path.isEmpty, RemoteShellPath.isQuotableAbsolute(path) else {
+            return nil
+        }
+        return path
+    }
 
     private func notificationPluginConfigDirectory() async throws -> String {
         try await notificationConfigDirectory.value {
@@ -1745,7 +1799,7 @@ actor HeelerSSHTransport: Transport {
         return socketLocation.path(homeDirectory: try await remoteHomeDirectory())
     }
 
-    private func remoteHomeDirectory() async throws -> String {
+    func remoteHomeDirectory() async throws -> String {
         try await withRequestDeadline {
             try await self.homeDirectory.value {
                 let result = try await self.runExec(Self.cLocaleCommand(self.homeCommand))
@@ -1765,19 +1819,26 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func runHostCommand(_ command: String) async throws -> Data {
-        try await withRequestDeadline {
-            let result = try await self.runExec(
-                Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
-            if let missing = HerdrHostPath.missingBinaryError(
-                exitStatus: result.exitStatus, command: command)
-            {
-                throw missing
+        do {
+            return try await withRequestDeadline {
+                let result = try await self.runExec(
+                    Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command)))
+                if let missing = HerdrHostPath.missingBinaryError(
+                    exitStatus: result.exitStatus, command: command)
+                {
+                    throw missing
+                }
+                guard result.reachedEOF else {
+                    throw TransportError.channelFailed(
+                        detail: "Host command closed before EOF")
+                }
+                return result.stdout
             }
-            guard result.reachedEOF else {
-                throw TransportError.channelFailed(
-                    detail: "Host command closed before EOF")
-            }
-            return result.stdout
+        } catch TransportError.timedOut {
+            // The SSH layer already named the phase; this names the command
+            // whose request budget it was spent on (#343).
+            SSHDiagnostics.note("Host command budget \(requestTimeout) expired: \(command)")
+            throw TransportError.timedOut
         }
     }
 
@@ -2133,10 +2194,10 @@ actor HeelerSSHTransport: Transport {
     func attachTerminal(
         _ request: TerminalAttachRequest
     ) async throws -> TerminalAttachSession {
-        guard terminalChannelState == .idle else {
+        guard terminalChannelStates[request.target] == nil else {
             throw TransportError.terminalChannelAlreadyOpen
         }
-        terminalChannelState = .opening
+        terminalChannelStates[request.target] = .opening
         var admissionLease: SSHChannelAdmissionLease?
 
         do {
@@ -2167,9 +2228,10 @@ actor HeelerSSHTransport: Transport {
             let input = TerminalAttachInputQueue()
             nextTerminalReaderID &+= 1
             let readerID = nextTerminalReaderID
-            terminalChannelState = .streaming(readerID: readerID)
+            terminalChannelStates[request.target] = .streaming(readerID: readerID)
             let readerTask = Task {
                 await self.runAttachChannel(
+                    target: request.target,
                     readerID: readerID,
                     channel: channel,
                     admissionLease: lease,
@@ -2188,7 +2250,7 @@ actor HeelerSSHTransport: Transport {
             }
         } catch {
             if let admissionLease { await admissionLease.release() }
-            terminalChannelState = .idle
+            terminalChannelStates.removeValue(forKey: request.target)
             throw error
         }
     }
@@ -2276,6 +2338,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func runAttachChannel(
+        target: TerminalAttachTarget,
         readerID: UInt64,
         channel: SSHPTYChannel,
         admissionLease: SSHChannelAdmissionLease,
@@ -2330,8 +2393,8 @@ actor HeelerSSHTransport: Transport {
         await admissionLease.release()
 
         input.finish()
-        if terminalChannelState == .streaming(readerID: readerID) {
-            terminalChannelState = .idle
+        if terminalChannelStates[target] == .streaming(readerID: readerID) {
+            terminalChannelStates.removeValue(forKey: target)
         }
         if let failure {
             output.finish(throwing: failure)

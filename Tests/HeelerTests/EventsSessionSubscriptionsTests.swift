@@ -24,6 +24,63 @@ struct EventsSessionSubscriptionsTests {
             keepalive: nil)
     }
 
+    @Test func distinctTerminalsRunTogetherAndSixthWaitsForTeardown() async throws {
+        let transport = ScriptedTransport()
+        let session = makeSession(transport: transport)
+        let gate = ScriptedTransportCallGate()
+        let sixthGate = ScriptedTransportCallGate()
+        await session.resume()
+        let tasks = (1...5).map { index in
+            Task {
+                try await session.withTerminalTransport(target: .terminal("terminal-\(index)")) { _, _ in
+                    await gate.waitUntilOpen()
+                }
+            }
+        }
+        try await waitUntil("five distinct terminals should hold permits concurrently") {
+            await gate.entryCount == 5
+        }
+        let sixth = Task {
+            try await session.withTerminalTransport(target: .terminal("sixth")) { _, _ in
+                await sixthGate.waitUntilOpen()
+            }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(await sixthGate.entryCount == 0)
+        await gate.open()
+        await sixthGate.waitForEntry()
+        await sixthGate.open()
+        for task in tasks { try await task.value }
+        try await sixth.value
+        await session.end()
+    }
+
+    @Test func duplicateTargetWaitsAndCancellationDoesNotConsumeItsPermit() async throws {
+        let transport = ScriptedTransport()
+        let session = makeSession(transport: transport)
+        let gate = ScriptedTransportCallGate()
+        let target = TerminalAttachTarget.terminal("same")
+        await session.resume()
+        let first = Task {
+            try await session.withTerminalTransport(target: target) { _, _ in
+                await gate.waitUntilOpen()
+            }
+        }
+        await gate.waitForEntry()
+        let duplicate = Task {
+            try await session.withTerminalTransport(target: target) { _, _ in
+                Issue.record("duplicate target entered before its owner ended")
+            }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        duplicate.cancel()
+        await #expect(throws: CancellationError.self) { try await duplicate.value }
+        await gate.open()
+        try await first.value
+        try await session.withTerminalTransport(target: target) { _, _ in }
+        await session.end()
+    }
+
     @Test func liveUpdateResubscribesOnTheSameConnectionWithoutReconnecting() async throws {
         let transport = ScriptedTransport()
         let session = makeSession(transport: transport)
@@ -547,6 +604,29 @@ struct EventsSessionSubscriptionsTests {
 
         #expect(await updates.next() == .status(.connecting))
         #expect(await updates.next() == .status(.failed(.deviceKeyCorrupt)))
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(connectionAttempts.withLock { $0 } == 1)
+
+        await session.end()
+    }
+
+    @Test func corruptRSAKeyStopsWithRSARecoveryInsteadOfReconnecting() async throws {
+        let connectionAttempts = Mutex(0)
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { () async throws -> any Transport in
+                connectionAttempts.withLock { $0 += 1 }
+                throw RSAKeyStoreError.storedKeyCorrupt
+            },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(1), multiplier: 1, maxDelay: .milliseconds(1)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.failed(.rsaKeyCorrupt)))
         try await Task.sleep(for: .milliseconds(30))
         #expect(connectionAttempts.withLock { $0 } == 1)
 

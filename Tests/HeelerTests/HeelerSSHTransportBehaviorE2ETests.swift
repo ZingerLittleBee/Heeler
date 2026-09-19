@@ -98,6 +98,18 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await exerciseOrdinaryRPCs(settings: environment.directSettings())
     }
 
+    @Test("RSA credentials authenticate when the Host accepts only RSA-SHA2-512")
+    func rsaSHA512Authenticates() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseOrdinaryRPCs(settings: environment.rsaSettings())
+    }
+
+    @Test("RSA authenticates both hops when each Host accepts only RSA-SHA2-512")
+    func jumpRSAAuthenticatesBothHops() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        try await exerciseOrdinaryRPCs(settings: environment.jumpRSASettings())
+    }
+
     @Test("Jump Host ordinary RPCs preserve the same Transport seam")
     func jumpOrdinaryRPCs() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -289,8 +301,8 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await exerciseCleanAttachExit(settings: environment.jumpSettings())
     }
 
-    @Test("one Host admits exactly one live Attach")
-    func attachIsExclusive() async throws {
+    @Test("distinct targets attach concurrently while each target has one owner")
+    func attachIsExclusivePerTarget() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
         let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
         defer { Task { try? await transport.close() } }
@@ -302,8 +314,14 @@ struct HeelerSSHTransportBehaviorE2ETests {
         try await expectAttachOutput(&iterator, accumulated: &output, contains: "TTY-OK")
         await #expect(throws: TransportError.terminalChannelAlreadyOpen) {
             _ = try await transport.attachTerminal(
-                TerminalAttachRequest(target: "fixture:second", cols: 80, rows: 24))
+                TerminalAttachRequest(target: "fixture:pane", cols: 80, rows: 24))
         }
+        let second = try await transport.attachTerminal(
+            TerminalAttachRequest(target: "fixture:second", cols: 80, rows: 24))
+        var secondIterator = second.output.makeAsyncIterator()
+        var secondOutput = ""
+        try await expectAttachOutput(&secondIterator, accumulated: &secondOutput, contains: "TTY-OK")
+        await second.end()
 
         await first.end()
         let replacement = try await transport.attachTerminal(
@@ -1023,6 +1041,20 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(elapsed < .seconds(5.5))
     }
 
+    @Test("agent focus sends the exact opaque target through the RPC channel")
+    func agentFocusSendsItsTargetExactly() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.focusAgent(AgentTarget(target: token))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded == [#"agent.focus {"target":"\#(token)"}"#])
+    }
+
     /// A custom Agent name is a write against real Host state, so the response
     /// alone is not evidence that the requested value reached herdr. Record the
     /// request at the Unix-socket fixture boundary and pin the exact JSON params.
@@ -1678,6 +1710,7 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
     let port: UInt16
     let username: String
     let deviceKey: Curve25519.Signing.PrivateKey
+    let rsaKey: RSAKey
     let socketPath: String
     let staleSocketPath: String
     let wakeFailureStaleSocketPath: String
@@ -1701,13 +1734,16 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
             let jumpData = Data(base64Encoded: jumpEncoded),
             let direct = try? JSONDecoder().decode(DirectFixture.self, from: directData),
             let jump = try? JSONDecoder().decode(JumpFixture.self, from: jumpData),
-            let deviceKey = try? RealSSHFixture.deviceKey(seed: direct.deviceKeySeed)
+            let deviceKey = try? RealSSHFixture.deviceKey(seed: direct.deviceKeySeed),
+            let rsaKeyData = Data(base64Encoded: direct.rsaKeyDER),
+            let rsaKey = try? RSAKey(privateKeyDER: rsaKeyData)
         else { return nil }
         return HeelerSSHTransportBehaviorEnvironment(
             host: direct.host,
             port: direct.port,
             username: direct.username,
             deviceKey: deviceKey,
+            rsaKey: rsaKey,
             socketPath: direct.socketPath,
             staleSocketPath: direct.staleSocketPath,
             wakeFailureStaleSocketPath: direct.wakeFailureStaleSocketPath,
@@ -1734,6 +1770,29 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
             credentials: credentials,
             jump: nil,
             socket: socket)
+    }
+
+    func rsaSettings() -> SSHTransportSettings {
+        settings(
+            host: host,
+            port: port,
+            credentials: .rsaSHA512(rsaKey),
+            jump: nil,
+            socket: nil)
+    }
+
+    func jumpRSASettings() -> SSHTransportSettings {
+        let credentials = SSHCredentials.rsaSHA512(rsaKey)
+        return settings(
+            host: targetHost,
+            port: targetPort,
+            credentials: credentials,
+            jump: SSHJumpSettings(
+                host: host,
+                port: Int(jumpPort),
+                username: username,
+                credentials: credentials),
+            socket: nil)
     }
 
     func jumpSettings(
@@ -1879,6 +1938,7 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
         let port: UInt16
         let username: String
         let deviceKeySeed: String
+        let rsaKeyDER: String
         let socketPath: String
         let staleSocketPath: String
         let wakeFailureStaleSocketPath: String

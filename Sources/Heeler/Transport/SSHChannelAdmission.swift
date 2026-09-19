@@ -27,7 +27,7 @@ actor SSHChannelAdmission {
         let connection: Int
 
         /// Production budgets. `connection` restates the sum of the four
-        /// category budgets (8+1+8+1), so the connection-level guard does not
+        /// category budgets (8+1+4+5), so the connection-level guard does not
         /// bind under these categories — it only constrains a future category
         /// that would otherwise grow without a connection cap. Per-category
         /// budgets are the live admission limits today; do not treat 18 as a
@@ -35,8 +35,8 @@ actor SSHChannelAdmission {
         static let production = Limits(
             ordinaryForwarding: 8,
             events: 1,
-            ordinarySession: 8,
-            attach: 1,
+            ordinarySession: 4,
+            attach: 5,
             connection: 18)
     }
 

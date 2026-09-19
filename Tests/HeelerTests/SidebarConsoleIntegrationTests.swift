@@ -342,7 +342,9 @@ struct SidebarConsoleIntegrationTests {
         let subscriptions = try #require(await transport.capturedSubscriptions.last)
         #expect(subscriptions.contains(.global(.workspaceReordered)))
         #expect(subscriptions.contains(.global(.workspaceMoved)))
-        #expect(!subscriptions.contains(.global(.paneUpdated)))
+        // Terminal titles and paths use local pane deltas; only membership
+        // and Workspace ordering events request an authoritative resnapshot.
+        #expect(subscriptions.contains(.global(.paneUpdated)))
         for (kind, remote) in [(GlobalEventKind.workspaceReordered, [b, a]), (.workspaceMoved, [a, b])] {
             await transport.setSnapshot(.fixture(agents: remote, protocolVersion: 20))
             #expect(await transport.emit(HerdrEvent(kind: kind.kind, data: .object([:]))))
