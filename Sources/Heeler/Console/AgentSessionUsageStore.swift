@@ -31,6 +31,11 @@ final class AgentSessionUsageStore {
     /// so a refresh never parses half of a line another process is still
     /// writing.
     @ObservationIgnored private var pending = Data()
+    /// Counts refreshes so one that resumes from a read after a newer refresh
+    /// began can tell, and drop its bytes: `.task(id:)` cancels the previous
+    /// follower on a path change but does not wait for it, and its read may
+    /// still land after the new path's totals are in place.
+    @ObservationIgnored private var refreshGeneration: UInt64 = 0
 
     /// Reads whatever was appended since the last refresh and folds every
     /// complete line among it. `read` is the caller's transport borrow,
@@ -39,6 +44,8 @@ final class AgentSessionUsageStore {
         path: String,
         read: (RemoteFileRange) async throws -> RemoteFileSlice
     ) async {
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
         if path != followedPath {
             clear()
             followedPath = path
@@ -55,6 +62,10 @@ final class AgentSessionUsageStore {
                 // and the offset, and try again on the next refresh.
                 return
             }
+            // A newer refresh owns the store now — another path, or the same
+            // one re-followed. These bytes belong to the read that was current
+            // when they were asked for, not to whatever is followed now.
+            guard generation == refreshGeneration, !Task.isCancelled else { return }
             guard let length = slice.length else {
                 // The session file is gone. Its figures were never Heeler's to
                 // invent, so the strip goes back to showing nothing.
@@ -63,8 +74,10 @@ final class AgentSessionUsageStore {
             }
             if length < offset {
                 // The path now holds a shorter file than the one the offset
-                // addresses — replaced or rotated. Start over from its head.
-                clear()
+                // addresses — replaced or rotated. Start over from its head,
+                // still following it: dropping the path too would make the
+                // next refresh start over a second time.
+                restart()
                 continue
             }
             offset += UInt64(slice.data.count)
@@ -82,6 +95,11 @@ final class AgentSessionUsageStore {
     /// outlive the switch.
     func clear() {
         followedPath = nil
+        restart()
+    }
+
+    /// Forgets what was read of the followed file, keeping the path.
+    private func restart() {
         offset = 0
         pending = Data()
         usage = AgentSessionUsage()

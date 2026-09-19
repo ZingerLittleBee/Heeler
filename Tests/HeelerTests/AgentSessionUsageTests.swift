@@ -404,6 +404,78 @@ struct AgentSessionUsageStoreTests {
         #expect(recorded.last?.offset == 0)
     }
 
+    @Test("a read that lands after the path changed is dropped")
+    @MainActor
+    func staleReadAfterPathSwitchIsDropped() async {
+        let store = AgentSessionUsageStore()
+        let entered = Gate()
+        let release = Gate()
+        let old = SessionFile()
+        old.append(Self.assistant(model: "old-model", tokens: 500_000, cost: 9.0))
+        let readOld: (RemoteFileRange) async throws -> RemoteFileSlice = { _ in
+            entered.open()
+            await release.wait()
+            return RemoteFileSlice(data: old.contents, length: UInt64(old.contents.count))
+        }
+        let previous = Task { @MainActor in
+            await store.refresh(path: "/home/dev/.omp/sessions/old.jsonl", read: readOld)
+        }
+        await entered.wait()
+        // What `.task(id:)` does on a path change: cancel, without waiting.
+        previous.cancel()
+
+        let new = SessionFile()
+        new.append(Self.assistant(model: "new-model", tokens: 12_000, cost: 0.05))
+        let (readNew, _) = Self.reader(new)
+        await store.refresh(path: "/home/dev/.omp/sessions/new.jsonl", read: readNew)
+        #expect(store.usage.model == "new-model")
+
+        release.open()
+        await previous.value
+        #expect(store.usage.model == "new-model")
+        #expect(sumsTo(store, 0.05))
+        #expect(store.usage.contextTokens == 12_000)
+    }
+
+    @Test("after a rotation the next refresh reads only the tail")
+    @MainActor
+    func rotationIsFollowedWithoutASecondReRead() async {
+        let file = SessionFile()
+        file.append(Self.assistant(model: "deepseek-flash", tokens: 167_000, cost: 0.89))
+        file.append(Self.assistant(model: "deepseek-flash", tokens: 167_100, cost: 0.9))
+        let store = AgentSessionUsageStore()
+        let (read, ranges) = Self.reader(file)
+        await store.refresh(path: "/home/dev/.omp/sessions/s.jsonl", read: read)
+
+        file.contents = Data()
+        file.append(Self.assistant(model: "gemini-3-pro", tokens: 12_000, cost: 0.05))
+        await store.refresh(path: "/home/dev/.omp/sessions/s.jsonl", read: read)
+        let afterRotation = await ranges().count
+
+        await store.refresh(path: "/home/dev/.omp/sessions/s.jsonl", read: read)
+        let third = Array(await ranges()[afterRotation...])
+        #expect(third.map(\.offset) == [UInt64(file.contents.count)])
+        #expect(sumsTo(store, 0.05))
+    }
+
+    /// A one-shot latch a test can park a read on.
+    @MainActor
+    private final class Gate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var opened = false
+
+        func wait() async {
+            if opened { return }
+            await withCheckedContinuation { continuation = $0 }
+        }
+
+        func open() {
+            opened = true
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
     @Test("clearing drops the followed file")
     func clearDropsState() async {
         let file = SessionFile()

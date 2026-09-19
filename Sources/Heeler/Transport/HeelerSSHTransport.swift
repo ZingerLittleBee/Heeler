@@ -335,6 +335,16 @@ actor HeelerSSHTransport: Transport {
     /// budget honest.
     private var sessionFileClient: SSHSFTPClient?
     private var sessionFileClientLease: SSHChannelAdmissionLease?
+    /// The open in flight, so readers that arrive while nothing is open yet
+    /// share it: the actor is re-entered at every await inside that open, and
+    /// two independent opens would each keep a channel, one of them unowned.
+    private var sessionFileClientOpening: Task<SSHSFTPClient, any Error>?
+    private var sessionFileReadsInFlight = 0
+    /// Returns the channel once no follower has read for a while. A screen
+    /// that stopped looking does not tell the Transport so; without this the
+    /// channel and its lease would stay spent until the Host disconnects.
+    private var sessionFileClientIdleRelease: Task<Void, Never>?
+    static let sessionFileClientIdleTimeout: Duration = .seconds(30)
     private var notificationTemporaryPaths: [UUID: String] = [:]
 #if DEBUG
     private var stagingPhaseHoldsForTesting:
@@ -633,10 +643,20 @@ actor HeelerSSHTransport: Transport {
     /// otherwise allocate and release an SFTP subsystem channel on every tick.
     /// The lease is held for as long as the channel is (ADR 0011, #148): an
     /// app-side counter that ignored a channel still open would let the
-    /// server's `MaxSessions` be spent while admission looked free. Any
-    /// failure drops both, so the next look opens a fresh one rather than
-    /// reading through a corpse.
+    /// server's `MaxSessions` be spent while admission looked free. A failed
+    /// read drops both, so the next look opens a fresh one rather than
+    /// reading through a corpse — except a cancelled one, which says nothing
+    /// about the channel and would only cost the next reader its own read.
+    /// The channel is returned once nobody has read through it for
+    /// `sessionFileClientIdleTimeout`.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
+        sessionFileReadsInFlight += 1
+        defer {
+            sessionFileReadsInFlight -= 1
+            scheduleSessionFileClientIdleRelease()
+        }
         do {
             let client = try await sessionFileClientForReading()
             let slice = try await client.readFileRange(
@@ -646,26 +666,64 @@ actor HeelerSSHTransport: Transport {
                 timeout: requestTimeout)
             return RemoteFileSlice(data: slice.data, length: slice.length)
         } catch {
-            await releaseSessionFileClient()
-            throw await mapOperationError(error)
+            let mapped = await mapOperationError(error)
+            if mapped != .cancelled {
+                await releaseSessionFileClient()
+            }
+            throw mapped
         }
     }
 
     private func sessionFileClientForReading() async throws -> SSHSFTPClient {
         if let sessionFileClient { return sessionFileClient }
-        let lease = try await channelAdmission.acquire(.ordinarySession)
-        do {
-            let client = try await connection.openSFTP(timeout: requestTimeout)
+        if let opening = sessionFileClientOpening {
+            return try await opening.value
+        }
+        // Inherits this actor's isolation, so the task installs the holder
+        // itself; every caller, first or later, just awaits it.
+        let opening = Task { () throws -> SSHSFTPClient in
+            defer { sessionFileClientOpening = nil }
+            let lease = try await channelAdmission.acquire(.ordinarySession)
+            let client: SSHSFTPClient
+            do {
+                client = try await connection.openSFTP(timeout: requestTimeout)
+            } catch {
+                await lease.release()
+                throw error
+            }
+            guard connected else {
+                // Closed while the open was in flight: `close()` already
+                // drained the holders, so this channel would be unowned.
+                try? await client.close(timeout: .seconds(2))
+                await lease.release()
+                throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            }
             sessionFileClient = client
             sessionFileClientLease = lease
             return client
-        } catch {
-            await lease.release()
-            throw error
+        }
+        sessionFileClientOpening = opening
+        return try await opening.value
+    }
+
+    private func scheduleSessionFileClientIdleRelease() {
+        sessionFileClientIdleRelease?.cancel()
+        guard sessionFileReadsInFlight == 0, sessionFileClient != nil else { return }
+        sessionFileClientIdleRelease = Task { [weak self] in
+            try? await Task.sleep(for: Self.sessionFileClientIdleTimeout)
+            guard !Task.isCancelled else { return }
+            await self?.releaseSessionFileClientIfIdle()
         }
     }
 
+    private func releaseSessionFileClientIfIdle() async {
+        guard sessionFileReadsInFlight == 0 else { return }
+        await releaseSessionFileClient()
+    }
+
     private func releaseSessionFileClient() async {
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
         guard let client = sessionFileClient else { return }
         sessionFileClient = nil
         let lease = sessionFileClientLease
@@ -1641,6 +1699,8 @@ actor HeelerSSHTransport: Transport {
         imageStageClients.removeAll()
         let notificationClients = Array(notificationFileClients.values)
         notificationFileClients.removeAll()
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
         let fileReader = sessionFileClient
         sessionFileClient = nil
         let fileReaderLease = sessionFileClientLease
