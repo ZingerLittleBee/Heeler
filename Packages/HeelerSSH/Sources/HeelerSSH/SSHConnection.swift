@@ -90,6 +90,7 @@ public final class SSHConnection: Sendable {
         do {
             let hostKey = try await targetDriver.handshake(
                 transport: transport,
+                endpoint: endpoint,
                 timeout: timeout)
             return SSHConnection(
                 driver: targetDriver,
