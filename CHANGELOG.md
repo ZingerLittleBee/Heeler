@@ -9,14 +9,13 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Browse all Workspace terminals from Agent detail's edge-docked Workspace
-  drawer. The terminal list groups by Host and
-  Workspace and shows Tab titles, paths, and Agent markers. Loaded terminals
-  retain their connections and screen state for five idle minutes, with a
-  shared limit of five per Host and least-recently-viewed idle eviction. The
-  drawer's New Terminal button opens a fresh shell tab in the Workspace. The
-  drawer handle and the message-jump tabs are translucent, so output under
-  them stays readable; the drawer panel itself is not. (#333)
+- Browse every terminal in the Workspace from a drawer docked to the edge of
+  Agent detail. The list groups by Host and Workspace and shows Tab titles,
+  paths, and which panes run Agents. A terminal you have opened keeps its
+  connection and screen for five idle minutes, up to five per Host; the least
+  recently viewed idle one gives way when a sixth is needed. New Terminal
+  opens a fresh shell tab in the Workspace. Output stays readable under the
+  drawer handle and the message-jump tabs. (#333)
 
 - Choose an existing Workspace or New Workspace from the same dropdown in
   New Agent. New Workspace opens a remote directory browser. The latest directory stays at the
@@ -26,18 +25,16 @@ Entries reference the issue that motivated them.
 
 - The message-jump buttons dock flush against the terminal's edge as a tab,
   matching the Workspace drawer handle. Long-press either to slide it along
-  the edge; each rests where it was left. (#333)
+  the edge; each stays where you leave it. (#333)
 - The Shell Terminal drops its title bar so output runs up to the status bar.
   Back and Close Terminal moved into the More menu on its input row, which now
   stays visible while the keyboard is down. The row's Insert New Line button
   is gone; Shift+Enter on the Keys keyboard sends the same line break. (#333)
-- The keyboard follows you between Agent detail and a Shell Terminal: open a
-  terminal while typing and it comes up ready to type, open it with the
-  keyboard down and it stays down, and going back to the Agent keeps the
-  same state. A keyboard that is up stays on screen through the switch in
-  either direction, instead of dropping and rising again, and the
-  terminal's Text/Keys row is above it from the first frame. The switch
-  itself dissolves from one screen to the other instead of cutting. (#333)
+- The keyboard follows you between Agent detail and a Shell Terminal: up or
+  down, it is the same on the other side, and it stays on screen through the
+  switch instead of dropping and rising again. The terminal's Text/Keys row
+  sits above it from the first frame, and the two screens dissolve into each
+  other instead of cutting. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 
