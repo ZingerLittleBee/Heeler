@@ -527,7 +527,8 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func disconnectedHostRemovesItsStaleAgentsImmediately() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func disconnectedHostRemovesItsStaleAgentsImmediately() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
             snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
@@ -540,6 +541,11 @@ struct ConsoleStoreTests {
         await store.resume()
         try await waitUntil("the initial agent should arrive") { store.agents.count == 1 }
 
+        // Publishing the snapshot precedes installing its pane subscription.
+        // Inject the failure only after that replacement stream is live.
+        try await transport.waitForLiveSubscription(containing: [
+            .pane(.agentStatusChanged, paneID: "w1:p1")
+        ])
         await transport.failEventStream(.channelFailed(detail: "Host went offline"))
         try await waitUntil("the Host should report its disconnected state") {
             guard case .reconnecting = store.hostStatuses[host.id] else { return false }
