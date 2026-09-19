@@ -186,8 +186,8 @@ struct TerminalConnectionPoolTests {
     }
 
     @Test func agentAdmissionSharesShellBudgetAndAwaitsShellEviction() async throws {
-        let budget = TerminalRetentionBudget()
-        let pool = TerminalConnectionPool(budget: budget)
+        let budget = TerminalRetentionBudget(maximumPerHost: 3)
+        let pool = TerminalConnectionPool(maximumShellsPerHost: 3, budget: budget)
         let probe = PoolSessionProbe()
         let host = UUID()
         let owner = UUID()
@@ -219,8 +219,8 @@ struct TerminalConnectionPoolTests {
 
     @Test(arguments: [false, true])
     func changedRouteCanBeEvictedBeforeTheOldViewDisappears(withAgentSlot: Bool) async throws {
-        let budget = TerminalRetentionBudget()
-        let pool = TerminalConnectionPool(budget: budget)
+        let budget = TerminalRetentionBudget(maximumPerHost: 3)
+        let pool = TerminalConnectionPool(maximumShellsPerHost: 3, budget: budget)
         let probe = PoolSessionProbe()
         let host = UUID()
         let owner = UUID()

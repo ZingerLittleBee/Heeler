@@ -66,12 +66,12 @@ final class TerminalConnectionPool {
 
     init(
         idleTimeout: Duration = .seconds(300),
-        maximumShellsPerHost: Int = 3,
+        maximumShellsPerHost: Int = 5,
         budget: TerminalRetentionBudget = TerminalRetentionBudget(),
         now: @escaping @MainActor () -> Date = Date.init
     ) {
         self.idleTimeout = idleTimeout
-        self.maximumShellsPerHost = max(1, min(maximumShellsPerHost, 3))
+        self.maximumShellsPerHost = max(1, min(maximumShellsPerHost, 5))
         self.budget = budget
         self.now = now
     }

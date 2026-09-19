@@ -24,34 +24,34 @@ struct EventsSessionSubscriptionsTests {
             keepalive: nil)
     }
 
-    @Test func distinctTerminalsRunTogetherAndFourthWaitsForTeardown() async throws {
+    @Test func distinctTerminalsRunTogetherAndSixthWaitsForTeardown() async throws {
         let transport = ScriptedTransport()
         let session = makeSession(transport: transport)
         let gate = ScriptedTransportCallGate()
-        let fourthGate = ScriptedTransportCallGate()
+        let sixthGate = ScriptedTransportCallGate()
         await session.resume()
-        let tasks = (1...3).map { index in
+        let tasks = (1...5).map { index in
             Task {
                 try await session.withTerminalTransport(target: .terminal("terminal-\(index)")) { _, _ in
                     await gate.waitUntilOpen()
                 }
             }
         }
-        try await waitUntil("three distinct terminals should hold permits concurrently") {
-            await gate.entryCount == 3
+        try await waitUntil("five distinct terminals should hold permits concurrently") {
+            await gate.entryCount == 5
         }
-        let fourth = Task {
-            try await session.withTerminalTransport(target: .terminal("fourth")) { _, _ in
-                await fourthGate.waitUntilOpen()
+        let sixth = Task {
+            try await session.withTerminalTransport(target: .terminal("sixth")) { _, _ in
+                await sixthGate.waitUntilOpen()
             }
         }
         try await Task.sleep(for: .milliseconds(20))
-        #expect(await fourthGate.entryCount == 0)
+        #expect(await sixthGate.entryCount == 0)
         await gate.open()
-        await fourthGate.waitForEntry()
-        await fourthGate.open()
+        await sixthGate.waitForEntry()
+        await sixthGate.open()
         for task in tasks { try await task.value }
-        try await fourth.value
+        try await sixth.value
         await session.end()
     }
 

@@ -197,7 +197,7 @@ actor EventsSession {
     /// behind it, so transitions never interleave across the suspension
     /// points inside a teardown (see the actor doc).
     private var lifecycleTransition: Task<Void, Never>?
-    /// Each target has one owner, with at most three live PTYs per Host.
+    /// Each target has one owner, with at most five live PTYs per Host.
     /// A permit spans the operation and explicit channel teardown.
     private var terminalsInUse: Set<TerminalAttachTarget?> = []
     private var terminalWaiters: [TerminalWaiter] = []
@@ -943,7 +943,7 @@ actor EventsSession {
     }
 
     private func canAcquireTerminal(_ target: TerminalAttachTarget?) -> Bool {
-        guard terminalsInUse.count < 3, !terminalsInUse.contains(target) else { return false }
+        guard terminalsInUse.count < 5, !terminalsInUse.contains(target) else { return false }
         // Legacy callers without a target retain Host-wide exclusivity.
         return target == nil ? terminalsInUse.isEmpty : !terminalsInUse.contains(nil)
     }

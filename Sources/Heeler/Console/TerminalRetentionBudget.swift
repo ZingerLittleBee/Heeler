@@ -35,8 +35,8 @@ final class TerminalRetentionBudget {
     private var sequence: UInt64 = 0
     private var admissionTail: Task<Void, Never>?
 
-    init(maximumPerHost: Int = 3) {
-        self.maximumPerHost = max(1, min(maximumPerHost, 3))
+    init(maximumPerHost: Int = 5) {
+        self.maximumPerHost = max(1, min(maximumPerHost, 5))
     }
 
     func admit(

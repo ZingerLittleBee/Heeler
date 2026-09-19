@@ -6,8 +6,8 @@ import Testing
 @MainActor
 @Suite("Shared terminal retention budget")
 struct TerminalRetentionBudgetTests {
-    @Test func threeTerminalsShareTheBudgetAndFourthAwaitsTheLeastRecentlyUsedIdleOwner() async throws {
-        let budget = TerminalRetentionBudget()
+    @Test func aFullBudgetAdmitsTheNextOwnerAfterEvictingTheLeastRecentlyUsedIdleOne() async throws {
+        let budget = TerminalRetentionBudget(maximumPerHost: 3)
         let host = UUID()
         let owner = UUID()
         let first = TerminalRetentionBudget.Key(hostID: host, terminalID: "agent-one")

@@ -21,16 +21,22 @@ title and directory changes locally instead of making terminal-title traffic
 an RPC resnapshot loop. A reconnect discards the old inventory and reconciles
 against a snapshot from the new connection. Pane ids remain opaque.
 
-## Three retained terminals per Host
+## Five retained terminals per Host
 
 The user explicitly requested lazy connections that survive switching, with
-a five-minute idle expiry and at most three terminal connections per Host.
-This supersedes ADR 0011 and ADR 0015's single live terminal constraint.
+a five-minute idle expiry and a bounded number of terminal connections per
+Host. This supersedes ADR 0011 and ADR 0015's single live terminal
+constraint. The bound started at three and was raised to five once switching
+among a Workspace's Agents and shells kept evicting the one just left: a
+retained attach shares the Host's single SSH connection, so it costs no
+extra radio wakeups, its offscreen surface is not drawn, and an
+alternate-screen Agent keeps no scrollback, which leaves sshd's session
+budget as the binding limit.
 
 Agent and shell owners share one retention budget, keyed by Host and terminal
 id. Admission evicts the least recently viewed idle terminal and awaits its
 channel teardown before opening the next. A terminal displayed in a window
-is protected from eviction; if all three are displayed, opening another fails
+is protected from eviction; if all five are displayed, opening another fails
 with an actionable message. Idle expiry only detaches the client. It never
 closes the remote Pane or terminates its processes.
 
@@ -41,8 +47,9 @@ gets a new surface. Suspension, Host removal and obsolete connection
 generations reclaim retained work. UI ownership prevents one UIKit surface
 being displayed in two windows simultaneously.
 
-The SSH session admission budget allows three attach PTYs and six ordinary
-exec/SFTP sessions, leaving headroom under sshd's default ten session channels.
+The SSH session admission budget allows five attach PTYs and four ordinary
+exec/SFTP sessions, leaving headroom under sshd's default ten session
+channels; ordinary sessions are one-shot commands that rarely overlap.
 Forwarding retains its separate eight ordinary channels plus one events
 channel. EventsSession serializes attaches to the same target but admits
 different targets concurrently. The SSH driver and its native continuation

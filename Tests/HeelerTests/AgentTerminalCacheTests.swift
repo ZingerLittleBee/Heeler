@@ -82,7 +82,7 @@ struct AgentTerminalCacheTests {
 
     @Test func changedRouteAllowsAgentEvictionBeforeItsViewDisappears() async throws {
         let (_, transport, console, agent) = try await connectedAgent()
-        let budget = TerminalRetentionBudget()
+        let budget = TerminalRetentionBudget(maximumPerHost: 3)
         let cache = AgentTerminalCache(budget: budget)
         let presentation = AgentPresentationProbe()
         let entry = cache.acquire(

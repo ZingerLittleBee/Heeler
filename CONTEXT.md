@@ -166,7 +166,7 @@ Agent semantics, no notification routing. It replaces Agent detail while open.
 Like Agent detail it has no title bar: the terminal runs up to the status bar,
 and Back and Close Terminal sit behind the More button on its always-present
 input row, headed by the terminal's title.
-Loaded terminals share a limit of three connections per Host, retained for five
+Loaded terminals share a limit of five connections per Host, retained for five
 minutes after leaving the view. The least recently viewed idle terminal is
 detached when another needs its slot; remote panes stay alive. Its Keys mode reuses the
 full Terminal keyboard from Agent tools, including characters, modifiers,
