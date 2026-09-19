@@ -99,6 +99,42 @@ struct TerminalSurfaceRetentionTests {
         surface.dismissKeyboard()
     }
 
+    /// A retired surface releases the keyboard only while it still owns it.
+    /// Once its replacement has claimed first responder, the deferred
+    /// release must not resign the old surface: on iOS 27 that still tears
+    /// the keyboard down under the new owner.
+    @Test func aReplacedSurfaceWhoseKeyboardWasClaimedDoesNotResignLater() async throws {
+        let host = UIViewController()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: host)
+        defer { window.isHidden = true }
+        let retention = TerminalSurfaceRetention()
+        let first = retention.surface(for: TerminalByteFeed()) {
+            TerminalScreenView.makeConfiguredTerminal(notificationCenter: NotificationCenter())
+        }
+        first.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
+        host.view.addSubview(first)
+        first.requestKeyboard()
+        try #require(first.isFirstResponder)
+
+        let next = retention.surface(for: TerminalByteFeed()) {
+            TerminalScreenView.makeConfiguredTerminal(notificationCenter: NotificationCenter())
+        }
+        next.frame = CGRect(x: 0, y: 400, width: 390, height: 300)
+        host.view.addSubview(next)
+        next.requestKeyboard()
+        try #require(next.isFirstResponder)
+        #expect(!first.isFirstResponder)
+        #expect(!first.dismissKeyboard(), "not the owner: nothing to release")
+        #expect(!first.wantsKeyboard, "the intent is still recorded")
+
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(next.isFirstResponder, "the deferred release left the new owner alone")
+        next.dismissKeyboard()
+        retention.clear()
+    }
+
     /// A surface leaving for a screen that inherits its keyboard keeps first
     /// responder: resigning would start UIKit's hide before the destination
     /// exists, and its claim could then only bring the keyboard back up

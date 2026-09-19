@@ -14,35 +14,55 @@ import UIKit
 /// claims it, which is the same responder-to-responder transfer the Agent
 /// screens use between themselves.
 ///
-/// It presents the Shell Terminal's keyboard, not the Agent's: no
-/// autocorrection or prediction, so nothing but the frame changes when the
-/// terminal takes over.
+/// It is a text view, not a bare `UIKeyInput`, so it presents the keyboard
+/// the terminal will present: a keyboard with a candidate row (Pinyin on an
+/// iPhone, measured at 348pt) keeps that row for any `UITextInput` and drops
+/// it for a plain key-input responder (320pt), which made the keyboard dip
+/// and grow back within the switch. Its traits are the Shell Terminal's — no
+/// autocorrection or prediction — so nothing changes when the terminal takes
+/// over.
 struct TerminalKeyboardHolderView: UIViewRepresentable {
     func makeUIView(context: Context) -> TerminalKeyboardHolder {
-        TerminalKeyboardHolder(frame: .zero)
+        TerminalKeyboardHolder()
     }
 
     func updateUIView(_ uiView: TerminalKeyboardHolder, context: Context) {}
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize, uiView: TerminalKeyboardHolder, context: Context
+    ) -> CGSize? {
+        .zero
+    }
 }
 
-final class TerminalKeyboardHolder: UIView, UIKeyInput {
+final class TerminalKeyboardHolder: UITextView {
+    init() {
+        super.init(frame: .zero, textContainer: nil)
+        isScrollEnabled = false
+        backgroundColor = .clear
+        tintColor = .clear
+        isAccessibilityElement = false
+        autocorrectionType = .no
+        autocapitalizationType = .none
+        spellCheckingType = .no
+        smartQuotesType = .no
+        smartDashesType = .no
+        smartInsertDeleteType = .no
+        inlinePredictionType = .no
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
     override var canBecomeFirstResponder: Bool { window != nil }
 
-    var hasText: Bool { false }
-    func insertText(_ text: String) {}
-    func deleteBackward() {}
-
-    var autocorrectionType: UITextAutocorrectionType = .no
-    var autocapitalizationType: UITextAutocapitalizationType = .none
-    var spellCheckingType: UITextSpellCheckingType = .no
-    var smartQuotesType: UITextSmartQuotesType = .no
-    var smartDashesType: UITextSmartDashesType = .no
-    var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
-    var inlinePredictionType: UITextInlinePredictionType = .no
+    // Keys pressed while the terminal is still on its way go nowhere.
+    override func insertText(_ text: String) {}
+    override func deleteBackward() {}
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         guard window != nil else { return }
-        _ = becomeFirstResponder()
+        becomeFirstResponder()
     }
 }

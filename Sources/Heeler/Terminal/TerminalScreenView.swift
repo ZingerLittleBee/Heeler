@@ -1287,10 +1287,19 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// the keyboard goes away for good: a plain `resignFirstResponder()` is
     /// something UIKit does on its own (backgrounding, a sheet taking focus)
     /// and must stay recoverable.
+    ///
+    /// Only the first responder may release it. A surface whose keyboard
+    /// another responder has already taken over is not first responder any
+    /// more, yet resigning it still tears the keyboard down on iOS 27 —
+    /// traced on an iPhone 17 Pro Max: a replaced Shell Terminal surface
+    /// released its keyboard a turn after its replacement had claimed it,
+    /// and the keyboard dropped under the new owner and rose again. The
+    /// intent is still recorded, so the surface stays down if it returns.
     @discardableResult
     func dismissKeyboard() -> Bool {
         responderGate.beginUserDrivenChange(wantsKeyboard: false)
         defer { responderGate.endUserDrivenChange() }
+        guard isFirstResponder else { return false }
         return resignFirstResponder()
     }
 
