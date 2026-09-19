@@ -16,7 +16,7 @@ Entries reference the issue that motivated them.
   shared limit of five per Host and least-recently-viewed idle eviction. The
   drawer's New Terminal button opens a fresh shell tab in the Workspace. The
   drawer handle and the message-jump tabs are translucent, so output under
-  them stays readable. (#333)
+  them stays readable; the drawer panel itself is not. (#333)
 
 - Choose an existing Workspace or New Workspace from the same dropdown in
   New Agent. New Workspace opens a remote directory browser. The latest directory stays at the

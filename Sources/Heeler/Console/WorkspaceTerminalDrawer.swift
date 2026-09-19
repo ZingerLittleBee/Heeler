@@ -209,7 +209,10 @@ struct WorkspaceTerminalDrawer: View {
             }
         }
         .frame(width: Self.panelWidth, height: height)
-        .background { surface }
+        .background {
+            TerminalEdgeTabBackground(
+                palette: palette, fillOpacity: TerminalEdgeTabBackground.panelFillOpacity)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workspace terminals")
     }
@@ -302,7 +305,7 @@ struct WorkspaceTerminalDrawer: View {
         .padding(.top, -Self.panelBottomInset)
     }
 
-    /// The floating-control surface, squared off on the edge it is docked to.
+    /// The handle's surface, squared off on the edge it is docked to.
     private var surface: some View {
         TerminalEdgeTabBackground(palette: palette)
     }

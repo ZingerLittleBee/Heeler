@@ -594,13 +594,18 @@ struct TerminalEdgeTabBackground: View {
             style: .continuous)
     }
 
+    /// A tab over live output is translucent enough that the output stays
+    /// readable; the border and shadow carry the shape.
+    static let tabFillOpacity: Double = 0.3
+    /// A panel of its own content covers what is under it.
+    static let panelFillOpacity: Double = 0.96
+
     let palette: TerminalThemePalette
+    var fillOpacity: Double = tabFillOpacity
 
     var body: some View {
-        // Translucent enough that output under the tab stays readable; the
-        // border and shadow carry the shape.
         Self.shape
-            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.3))
+            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(fillOpacity))
             .overlay {
                 Self.shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
             }
