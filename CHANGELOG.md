@@ -34,7 +34,8 @@ Entries reference the issue that motivated them.
   keyboard down and it stays down, and going back to the Agent keeps the
   same state. A keyboard that is up stays on screen through the switch in
   either direction, instead of dropping and rising again, and the
-  terminal's Text/Keys row is above it from the first frame. (#333)
+  terminal's Text/Keys row is above it from the first frame. The switch
+  itself dissolves from one screen to the other instead of cutting. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 

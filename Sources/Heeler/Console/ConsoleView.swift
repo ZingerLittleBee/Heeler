@@ -59,6 +59,8 @@ struct ConsoleView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.sceneWindow) private var sceneWindow
+    @State private var detailCrossfade = DetailCrossfade()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     /// The window-aware entry into navigation; nil outside a scene root.
@@ -154,6 +156,9 @@ struct ConsoleView: View {
             }
             // Keep structural identity stable across rotation and size-class changes.
             .navigationSplitViewStyle(.automatic)
+            // The detail column swapping its content dissolves from the
+            // leaving screen to the arriving one; see `DetailCrossfade`.
+            .environment(\.detailCrossfade, detailCrossfade)
             .onChange(of: presentation, initial: true) { _, presentation in
                 splitVisibility.update(from: presentation)
             }
@@ -297,22 +302,41 @@ struct ConsoleView: View {
     }
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
-        selectedTerminal = nil
-        notificationRouter.path = [id]
+        changeSelection {
+            selectedTerminal = nil
+            notificationRouter.path = [id]
+        }
     }
 
     private func selectTerminal(_ terminal: ConsoleTerminal) {
         if let agentID = terminal.agentID {
             selectAgent(agentID)
         } else {
-            notificationRouter.path = []
-            selectedTerminal = terminal
+            changeSelection {
+                notificationRouter.path = []
+                selectedTerminal = terminal
+            }
         }
     }
 
     private func clearSelection() {
-        notificationRouter.path = []
-        selectedTerminal = nil
+        changeSelection {
+            notificationRouter.path = []
+            selectedTerminal = nil
+        }
+    }
+
+    /// A selection that replaces one detail screen with another dissolves
+    /// between them. A first selection or a cleared one is the split view's
+    /// own navigation and needs nothing from here.
+    private func changeSelection(_ change: () -> Void) {
+        let before = selectedItem.wrappedValue
+        change()
+        let after = selectedItem.wrappedValue
+        guard let before, let after, before != after,
+              let window = sceneWindow?.window
+        else { return }
+        detailCrossfade.beginSwap(in: window)
     }
 
     /// The split view owns the window's status-bar appearance on iPhone. A

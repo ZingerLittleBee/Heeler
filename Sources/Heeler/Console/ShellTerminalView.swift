@@ -47,6 +47,7 @@ struct ShellTerminalView: View {
     @Environment(\.colorScheme) private var colorScheme
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
+    @Environment(\.detailCrossfade) private var detailCrossfade
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
 
@@ -312,6 +313,7 @@ struct ShellTerminalView: View {
                 setKeyboardMode(.text)
             }
             .onAppear {
+                detailCrossfade?.contentDidAppear()
                 // A keyboard inherited from the previous screen is already
                 // up: lay the input row out above it from the first frame.
                 if let window = sceneWindow?.window {

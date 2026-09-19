@@ -254,6 +254,7 @@ struct AgentTerminalView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
+    @Environment(\.detailCrossfade) private var detailCrossfade
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     /// Nil outside a scene root, where this screen always holds its Host's
@@ -682,6 +683,9 @@ struct AgentTerminalView: View {
         // calls must stay synchronous, because the spurious pair can land in
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
+            // The build before retention swaps `attach` in is a placeholder;
+            // the dissolve waits for the one with the surface.
+            if inheritsKeyboardHandoff { detailCrossfade?.contentDidAppear() }
             interactionProbe?.value?.connect(
                 selectInputMode: { mode in selectInputMode(mode) },
                 switchAgent: { id in switchToAgent(id) })
