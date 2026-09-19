@@ -16,6 +16,8 @@ struct AgentUsageStrip: View {
     let model: String?
     let contextText: String?
     let costText: String?
+    /// omp's `tok/s` readout, passed only while omp shows it itself.
+    let rateText: String?
     /// Whether to hold the row's height while no figure is known yet.
     let isReserved: Bool
     let palette: TerminalThemePalette
@@ -35,6 +37,9 @@ struct AgentUsageStrip: View {
                     item(
                         systemImage: "dollarsign.circle", text: costText, isProminent: false)
                 }
+                if let rateText {
+                    item(systemImage: "speedometer", text: rateText, isProminent: false)
+                }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
@@ -53,7 +58,7 @@ struct AgentUsageStrip: View {
     }
 
     private var hasContent: Bool {
-        model != nil || contextText != nil || costText != nil
+        model != nil || contextText != nil || costText != nil || rateText != nil
     }
 
     @Environment(\.displayScale) private var displayScale
@@ -65,6 +70,7 @@ struct AgentUsageStrip: View {
         if let model { parts.append("model \(model)") }
         if let contextText { parts.append("context \(contextText)") }
         if let costText { parts.append("session cost \(costText)") }
+        if let rateText { parts.append("generation rate \(rateText)") }
         return "Agent usage: " + parts.joined(separator: ", ")
     }
 

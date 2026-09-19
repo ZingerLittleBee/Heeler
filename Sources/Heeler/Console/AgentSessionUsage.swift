@@ -25,6 +25,15 @@ struct AgentSessionUsage: Equatable, Sendable {
     private(set) var contextTokens: Int?
     /// Model named by the last assistant turn that anchored the context.
     private(set) var model: String?
+    /// Generation speed of the newest assistant turn that reported an output
+    /// count, the way omp keeps its `tok/s` readout between turns: billed
+    /// output over the turn's wall-clock duration. `nil` until such a turn
+    /// exists, and again when the newest one was too short or produced
+    /// nothing, exactly as omp blanks its own readout then.
+    private(set) var tokensPerSecond: Double?
+
+    /// A turn shorter than this measures nothing; omp's own floor.
+    static let minimumRateDurationMilliseconds = 100.0
 
     init() {}
 
@@ -41,6 +50,7 @@ struct AgentSessionUsage: Equatable, Sendable {
         } else if kind == "message", message?["role"] as? String == "assistant" {
             usage = message?["usage"] as? [String: Any]
             adoptContext(from: message, usage: usage)
+            adoptRate(from: message, usage: usage)
         } else if kind == "message", message?["role"] as? String == "toolResult",
             message?["toolName"] as? String == "task"
         {
@@ -78,6 +88,28 @@ struct AgentSessionUsage: Equatable, Sendable {
         }
     }
 
+    /// Mirrors omp's between-turns rate: the newest assistant turn carrying a
+    /// numeric output count and timestamp decides it, whatever its stop
+    /// reason, and decides it as `nil` when it produced nothing or lasted
+    /// under the floor. Turns without an output count are passed over.
+    private mutating func adoptRate(from message: [String: Any]?, usage: [String: Any]?) {
+        guard
+            let message, let usage,
+            let output = Self.number(usage["output"]),
+            Self.number(message["timestamp"]) != nil
+        else { return }
+        guard
+            output > 0,
+            let duration = Self.number(message["duration"]),
+            duration >= Self.minimumRateDurationMilliseconds
+        else {
+            tokensPerSecond = nil
+            return
+        }
+        let rate = output * 1_000 / duration
+        tokensPerSecond = rate.isFinite && rate > 0 ? rate : nil
+    }
+
     /// The prompt size the provider measured for this turn: the recorded
     /// snapshot minus any history a rewrite removed, falling back to the
     /// prompt-side usage counters when no snapshot was recorded.
@@ -98,6 +130,12 @@ struct AgentSessionUsage: Equatable, Sendable {
     var costText: String? {
         guard let cost else { return nil }
         return String(format: "$%.2f", cost)
+    }
+
+    /// `9.5 tok/s`, omp's own format, or `nil` while no turn has a rate.
+    var rateText: String? {
+        guard let tokensPerSecond else { return nil }
+        return String(format: "%.1f tok/s", tokensPerSecond)
     }
 
     /// `248K`, or `nil` while no turn has measured the prompt.

@@ -13,6 +13,17 @@ import Observation
 final class AgentSessionUsageStore {
     /// What the strip renders; empty until a billed entry has been folded.
     private(set) var usage = AgentSessionUsage()
+    /// Whether omp shows its own `tok/s` readout (`composer.tokenRate`), read
+    /// from the config beside the session file. The strip shows the rate
+    /// exactly when the Agent would.
+    private(set) var showsTokenRate = false
+
+    /// How long a config read stays good for. The setting is toggled by hand
+    /// and rarely, so a minute of lag costs nothing; re-reading on every tick
+    /// would double the strip's round trips.
+    static let configInterval: Duration = .seconds(60)
+    /// omp's config is a few hundred bytes; a file this large is not it.
+    static let configBytes = 256 * 1_024
 
     /// How much one refresh may download. A screen opened mid-session catches
     /// up in a single pass for every realistic file, and a file larger than
@@ -36,6 +47,8 @@ final class AgentSessionUsageStore {
     /// follower on a path change but does not wait for it, and its read may
     /// still land after the new path's totals are in place.
     @ObservationIgnored private var refreshGeneration: UInt64 = 0
+    /// When the config was last read, nil until it has been.
+    @ObservationIgnored private var configReadAt: ContinuousClock.Instant?
 
     /// Reads whatever was appended since the last refresh and folds every
     /// complete line among it. `read` is the caller's transport borrow,
@@ -50,6 +63,8 @@ final class AgentSessionUsageStore {
             clear()
             followedPath = path
         }
+        await refreshConfigIfDue(sessionPath: path, generation: generation, read: read)
+        guard generation == refreshGeneration, !Task.isCancelled else { return }
         var budget = Self.catchUpBytes
         while budget > 0 {
             let maxBytes = min(budget, Self.chunkBytes)
@@ -95,7 +110,37 @@ final class AgentSessionUsageStore {
     /// outlive the switch.
     func clear() {
         followedPath = nil
+        showsTokenRate = false
+        configReadAt = nil
         restart()
+    }
+
+    /// Reads omp's config once a minute. A failed read keeps the last answer;
+    /// an absent config, or a session stored where no config sits beside it,
+    /// means the readout is off.
+    private func refreshConfigIfDue(
+        sessionPath: String,
+        generation: UInt64,
+        read: (RemoteFileRange) async throws -> RemoteFileSlice
+    ) async {
+        if let configReadAt, ContinuousClock.now < configReadAt.advanced(by: Self.configInterval) {
+            return
+        }
+        guard let configPath = AgentSessionConfig.configPath(forSessionFile: sessionPath) else {
+            showsTokenRate = false
+            configReadAt = .now
+            return
+        }
+        let slice: RemoteFileSlice
+        do {
+            slice = try await read(
+                RemoteFileRange(path: configPath, offset: 0, maxBytes: Self.configBytes))
+        } catch {
+            return
+        }
+        guard generation == refreshGeneration, !Task.isCancelled else { return }
+        showsTokenRate = slice.length != nil && AgentSessionConfig.showsTokenRate(in: slice.data)
+        configReadAt = .now
     }
 
     /// Forgets what was read of the followed file, keeping the path.

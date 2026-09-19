@@ -1008,6 +1008,7 @@ struct AgentTerminalView: View {
                 model: sessionUsage.usage.model,
                 contextText: sessionUsage.usage.contextText,
                 costText: sessionUsage.usage.costText,
+                rateText: sessionUsage.showsTokenRate ? sessionUsage.usage.rateText : nil,
                 isReserved: agent.sessionFilePath != nil,
                 palette: themePalette)
         }

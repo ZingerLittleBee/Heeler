@@ -199,6 +199,48 @@ struct AgentSessionUsageTests {
         #expect(empty.contextText == "248K")
     }
 
+    /// omp's between-turns readout: billed output over the turn's duration,
+    /// decided by the newest assistant turn with an output count regardless
+    /// of how it stopped, and blanked by one that measured nothing.
+    @Test("the generation rate follows the newest turn with an output count")
+    func generationRateFollowsTheNewestCountedTurn() {
+        func turn(output: Int, duration: Double?, stop: String = "stop", timestamp: Bool = true)
+            -> String
+        {
+            let durationField = duration.map { #","duration":\#($0)"# } ?? ""
+            let timestampField = timestamp ? #","timestamp":1789799473054"# : ""
+            return #"{"type":"message","message":{"role":"assistant","stopReason":"\#(stop)""#
+                + #"\#(durationField)\#(timestampField),"usage":{"output":\#(output),"cost":{"total":0.01}}}}"#
+        }
+        var usage = AgentSessionUsage()
+        #expect(usage.rateText == nil)
+
+        // 45 tokens in 4742 ms, as a live omp turn recorded it: 9.5 tok/s.
+        usage.fold(line: Data(turn(output: 45, duration: 4742.0258).utf8))
+        #expect(usage.rateText == "9.5 tok/s")
+
+        // An aborted turn still counts when it produced output.
+        usage.fold(line: Data(turn(output: 190, duration: 10_614.5, stop: "aborted").utf8))
+        #expect(usage.rateText == "17.9 tok/s")
+
+        // No timestamp: not a turn omp would consider; the rate stands.
+        usage.fold(line: Data(turn(output: 999, duration: 1_000, timestamp: false).utf8))
+        #expect(usage.rateText == "17.9 tok/s")
+
+        // Too short to measure: omp blanks its readout, so does the strip.
+        usage.fold(line: Data(turn(output: 10, duration: 99).utf8))
+        #expect(usage.rateText == nil)
+
+        usage.fold(line: Data(turn(output: 100, duration: 2_000).utf8))
+        #expect(usage.rateText == "50.0 tok/s")
+        // Nothing produced, and no duration: each blanks it again.
+        usage.fold(line: Data(turn(output: 0, duration: 2_000).utf8))
+        #expect(usage.rateText == nil)
+        usage.fold(line: Data(turn(output: 100, duration: 2_000).utf8))
+        usage.fold(line: Data(turn(output: 100, duration: nil).utf8))
+        #expect(usage.rateText == nil)
+    }
+
     /// The shape an Agent's own status line uses, so a reader comparing the two
     /// is not misled by a different rounding rule.
     @Test("context figures carry an order of magnitude and round rather than truncate")
@@ -458,6 +500,56 @@ struct AgentSessionUsageStoreTests {
         #expect(sumsTo(store, 0.05))
     }
 
+    @Test("omp's config decides whether the rate is shown, and is read once a minute")
+    @MainActor
+    func configDecidesTheRateReadout() async {
+        let sessionPath = "/home/dev/.omp/agent/sessions/-work-heeler/s.jsonl"
+        let configPath = "/home/dev/.omp/agent/config.yml"
+        let session = SessionFile()
+        session.append(Self.assistant(model: "gemini-3-pro", tokens: 248_000, cost: 1.65))
+        final class Files: @unchecked Sendable {
+            var byPath: [String: Data] = [:]
+            var ranges: [RemoteFileRange] = []
+        }
+        let files = Files()
+        files.byPath[sessionPath] = session.contents
+        files.byPath[configPath] = Data("composer:\n  shape: band\n  tokenRate: true\n".utf8)
+        let read: (RemoteFileRange) async throws -> RemoteFileSlice = { range in
+            files.ranges.append(range)
+            guard let contents = files.byPath[range.path] else {
+                return RemoteFileSlice(data: Data(), length: nil)
+            }
+            guard range.offset < UInt64(contents.count) else {
+                return RemoteFileSlice(data: Data(), length: UInt64(contents.count))
+            }
+            let start = contents.startIndex.advanced(by: Int(range.offset))
+            let end = min(contents.endIndex, start + range.maxBytes)
+            return RemoteFileSlice(data: contents[start..<end], length: UInt64(contents.count))
+        }
+        let store = AgentSessionUsageStore()
+
+        await store.refresh(path: sessionPath, read: read)
+        #expect(store.showsTokenRate)
+        #expect(sumsTo(store, 1.65))
+        #expect(files.ranges.map(\.path) == [configPath, sessionPath])
+        #expect(files.ranges.first?.offset == 0)
+
+        // Within the minute the config is not read again, whatever it says now.
+        files.byPath[configPath] = nil
+        await store.refresh(path: sessionPath, read: read)
+        #expect(store.showsTokenRate)
+        #expect(files.ranges.map(\.path) == [configPath, sessionPath, sessionPath])
+
+        // Another session file means a fresh read: with no config beside it,
+        // the readout is off.
+        store.clear()
+        #expect(!store.showsTokenRate)
+        await store.refresh(path: sessionPath, read: read)
+        #expect(!store.showsTokenRate)
+        #expect(files.ranges.last?.path == sessionPath)
+        #expect(files.ranges[files.ranges.count - 2].path == configPath)
+    }
+
     /// A one-shot latch a test can park a read on.
     @MainActor
     private final class Gate {
@@ -489,6 +581,63 @@ struct AgentSessionUsageStoreTests {
 
         await store.refresh(path: "/home/dev/.omp/sessions/s.jsonl", read: read)
         #expect(sumsTo(store, 1.65))
+    }
+}
+
+/// The strip shows omp's `tok/s` exactly when omp does, so the config must
+/// be found from the session path and read the way omp writes it.
+@Suite("Agent session config")
+struct AgentSessionConfigTests {
+    @Test("the config sits beside the sessions directory")
+    func configPathSitsBesideSessions() {
+        #expect(
+            AgentSessionConfig.configPath(
+                forSessionFile: "/home/dev/.omp/agent/sessions/-work-heeler/2026-09-19T06_01a0.jsonl")
+                == "/home/dev/.omp/agent/config.yml")
+        #expect(
+            AgentSessionConfig.configPath(
+                forSessionFile: "/Users/dev/.omp/profiles/work/agent/sessions/-tmp/s.jsonl")
+                == "/Users/dev/.omp/profiles/work/agent/config.yml")
+        // `--session-dir`: nothing to say about the config, so none.
+        #expect(AgentSessionConfig.configPath(forSessionFile: "/srv/sessions/s.jsonl") == nil)
+        #expect(AgentSessionConfig.configPath(forSessionFile: "/home/dev/.omp/agent/s.jsonl") == nil)
+        #expect(
+            AgentSessionConfig.configPath(forSessionFile: "/home/dev/.omp/agent/sessions/x/s.log")
+                == nil)
+        #expect(AgentSessionConfig.configPath(forSessionFile: "") == nil)
+    }
+
+    @Test("composer.tokenRate is read from omp's own layout only")
+    func tokenRateIsReadFromOmpLayout() {
+        let real = """
+            providers:
+              webSearchOrder:
+                - tavily
+            symbolPreset: nerd
+            composer:
+              shape: band
+              tokenRate: true
+            theme:
+              dark: titanium
+            """
+        #expect(AgentSessionConfig.showsTokenRate(in: Data(real.utf8)))
+        #expect(
+            AgentSessionConfig.showsTokenRate(
+                in: Data("composer:\n  tokenRate: false\n".utf8)) == false)
+        #expect(
+            AgentSessionConfig.showsTokenRate(
+                in: Data("composer:\n  tokenRate: true # readout\n".utf8)))
+        // Unset, another mapping's key, a commented-out line, and no file.
+        #expect(AgentSessionConfig.showsTokenRate(in: Data("composer:\n  shape: band\n".utf8)) == false)
+        #expect(
+            AgentSessionConfig.showsTokenRate(
+                in: Data("statusLine:\n  tokenRate: true\ncomposer:\n  shape: band\n".utf8))
+                == false)
+        #expect(
+            AgentSessionConfig.showsTokenRate(
+                in: Data("composer:\n  # tokenRate: true\n".utf8)) == false)
+        #expect(AgentSessionConfig.showsTokenRate(in: Data()) == false)
+        #expect(AgentSessionConfig.showsTokenRate(in: Data([0xFF, 0xFE])) == false)
     }
 }
 
