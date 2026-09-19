@@ -22,6 +22,13 @@ actor SessionDriver {
         case wrote(Int)
     }
 
+    /// `writeBridge` folded every unexpected errno into `connectionFailed`,
+    /// which left the forwarding pump with nothing to report (#351). The pump
+    /// maps this back to `connectionFailed` after recording the errno.
+    struct BridgeWriteFailure: Error, Equatable {
+        let code: Int32
+    }
+
     enum TransportSendOwnerDisposition: Equatable {
         case unchanged
         case clear
@@ -211,9 +218,12 @@ actor SessionDriver {
 
     func handshake(
         transport: any SSHByteTransport,
+        endpoint: SSHEndpoint,
         timeout: Duration
     ) async throws -> SSHHostKey {
-        try await withDiagnosticPhase("handshake over the Jump Host transport") {
+        try await withDiagnosticPhase(
+            "handshake with \(endpoint.host):\(endpoint.port) over the Jump Host transport"
+        ) {
             await acquireOperation()
             defer { releaseOperation() }
 
@@ -2617,6 +2627,11 @@ actor SessionDriver {
         var scratch = [UInt8](repeating: 0, count: 32 * 1024)
         var innerEOF = false
         var outerEOF = false
+        // How far the forwarded connection actually got. A pump that dies
+        // before either direction moves is a different incident from one that
+        // dies mid-stream, and the nested session sees the same bare EOF.
+        var forwardedToHost = 0
+        var forwardedFromHost = 0
 
         while true {
             if Task.isCancelled { throw SSHError.cancelled }
@@ -2624,8 +2639,13 @@ actor SessionDriver {
             var madeProgress = false
 
             if !innerEOF, toOuter.count < bufferLimit {
-                let readCount = scratch.withUnsafeMutableBytes { bytes in
-                    Darwin.read(bridgeDescriptor, bytes.baseAddress, bytes.count)
+                // Capture errno with the result: anything between the syscall
+                // and the check can clobber it, and the errno is the whole
+                // content of the report.
+                let (readCount, readErrno) = scratch.withUnsafeMutableBytes {
+                    bytes -> (Int, Int32) in
+                    let result = Darwin.read(bridgeDescriptor, bytes.baseAddress, bytes.count)
+                    return (result, result < 0 ? errno : 0)
                 }
                 if readCount > 0 {
                     toOuter.append(contentsOf: scratch.prefix(readCount))
@@ -2633,7 +2653,12 @@ actor SessionDriver {
                 } else if readCount == 0 {
                     innerEOF = true
                     madeProgress = true
-                } else if errno != EAGAIN && errno != EWOULDBLOCK {
+                } else if readErrno != EAGAIN && readErrno != EWOULDBLOCK {
+                    notePumpFailure(
+                        "bridge read",
+                        errnoCode: readErrno,
+                        toHost: forwardedToHost,
+                        fromHost: forwardedFromHost)
                     throw SSHError.connectionFailed
                 }
             }
@@ -2649,8 +2674,14 @@ actor SessionDriver {
                 }
                 if written > 0 {
                     toOuter.removeFirst(written)
+                    forwardedToHost += written
                     madeProgress = true
                 } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
+                    notePumpFailure(
+                        "channel write",
+                        libssh2Code: Int32(clamping: written),
+                        toHost: forwardedToHost,
+                        fromHost: forwardedFromHost)
                     throw SSHError.connectionFailed
                 }
             }
@@ -2682,6 +2713,11 @@ actor SessionDriver {
 #endif
                     madeProgress = true
                 } else if readCount != 0 && readCount != Int(LIBSSH2_ERROR_EAGAIN) {
+                    notePumpFailure(
+                        "channel read",
+                        libssh2Code: Int32(clamping: readCount),
+                        toHost: forwardedToHost,
+                        fromHost: forwardedFromHost)
                     throw SSHError.connectionFailed
                 }
                 if libssh2_channel_eof(channel) == 1 {
@@ -2697,9 +2733,21 @@ actor SessionDriver {
             shouldHoldBridgeWrites = false
 #endif
             if !toInner.isEmpty, !shouldHoldBridgeWrites {
-                switch try Self.writeBridge(toInner, descriptor: bridgeDescriptor) {
+                let bridgeWrite: BridgeWriteResult
+                do {
+                    bridgeWrite = try Self.writeBridge(toInner, descriptor: bridgeDescriptor)
+                } catch let failure as BridgeWriteFailure {
+                    notePumpFailure(
+                        "bridge write",
+                        errnoCode: failure.code,
+                        toHost: forwardedToHost,
+                        fromHost: forwardedFromHost)
+                    throw SSHError.connectionFailed
+                }
+                switch bridgeWrite {
                 case .wrote(let written):
                     toInner.removeFirst(written)
+                    forwardedFromHost += written
                     madeProgress = true
                 case .blocked:
                     break
@@ -2763,7 +2811,7 @@ actor SessionDriver {
             return .blocked
         }
         if writeErrno == EPIPE { return .peerClosed }
-        throw SSHError.connectionFailed
+        throw BridgeWriteFailure(code: writeErrno)
     }
 
     /// Everything a blocked operation needs to wait on the session, captured
@@ -4521,6 +4569,35 @@ actor SessionDriver {
 
     private var diagnosticContext: String {
         SSHDiagnosticOperation.current?.context ?? "SSH operation"
+    }
+
+    /// The forwarding pump is the one operation that returns its failure
+    /// instead of throwing it, so `withDiagnosticPhase` never observes it and
+    /// `noteFailure` was never reached from here (#351). Report at the point
+    /// of failure, where the task-local phase and its timings still belong to
+    /// this pump; by the time `connectThrough` sees the result it has already
+    /// aborted the transport and is in another task's scope.
+    private func notePumpFailure(
+        _ source: String,
+        errnoCode: Int32? = nil,
+        libssh2Code: Int32? = nil,
+        toHost: Int,
+        fromHost: Int
+    ) {
+        guard SSHDiagnostics.isEnabled else { return }
+        var line = "\(diagnosticContext), \(source) failed"
+        if let libssh2Code {
+            line += ": \(Self.libssh2ErrorName(libssh2Code)) (\(libssh2Code))"
+            if let session, let message = Self.lastErrorMessage(session), !message.isEmpty {
+                line += ": \(message)"
+            }
+        } else if let errnoCode {
+            let description = strerror(errnoCode).map { String(cString: $0) } ?? "unknown"
+            line += ": errno \(errnoCode) (\(description))"
+        }
+        line += " after \(toHost) bytes to the Host and \(fromHost) bytes from it"
+        if let context = SSHDiagnosticOperation.current { line += " \(context.timingDetails)" }
+        SSHDiagnostics.note(line)
     }
 
     /// One line per failure: the phase, the raw libssh2 code by name, and the
