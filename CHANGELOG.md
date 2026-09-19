@@ -20,6 +20,14 @@ Entries reference the issue that motivated them.
   own `tok/s` readout is on (`composer.tokenRate`), the strip shows the last
   turn's generation rate too. (#325)
 
+### Fixed
+
+- Typing into an Agent with Direct Input no longer sends a word twice. The
+  iOS keyboard no longer offers autocorrect or QuickType suggestions there or
+  in Composer, so pressing Space cannot add a suggested word after the letters
+  already typed. Chinese and other input methods keep their candidate bar.
+  (PR #349)
+
 ## [0.1.9] - 2026-09-19
 
 ### Added
