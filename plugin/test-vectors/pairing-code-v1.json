@@ -43,6 +43,16 @@
         "username": "ada",
         "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
       }
+    },
+    {
+      "name": "custom DNS name (Tailscale MagicDNS) plus LAN IPv4",
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyJzbHVybS1sb2dpbi0xN2RhZDI5LTAuZXhhbXBsZS50cy5uZXQiLCIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIn0",
+      "payload": {
+        "addresses": ["slurm-login-17dad29-0.example.ts.net", "192.168.1.42"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
     }
   ],
   "invalid": [

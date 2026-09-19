@@ -95,14 +95,83 @@ herdr plugin action invoke heeler.pair
 ```
 
 The popup checklist: arrows or `j`/`k` move, space toggles, `a` toggles all,
-enter mints a Bootstrap Key and renders the QR, `q`/escape closes (revoking
-the key). On the QR screen, `c` copies the Pairing Code; any other key
-closes. When the code expires, enter generates a fresh one. Once a device
-enrolls, the QR is replaced by a success screen showing the enrolled Device
-Key's fingerprint and label; press `r` there to revoke that key (removing its
-`authorized_keys` line), or any other key to close.
+`n` adds a custom address, enter mints a Bootstrap Key and renders the QR,
+`q`/escape closes (revoking the key). On the QR screen, `c` copies the
+Pairing Code; any other key closes. When the code expires, enter generates a
+fresh one. Once a device enrolls, the QR is replaced by a success screen
+showing the enrolled Device Key's fingerprint and label; press `r` there to
+revoke that key (removing its `authorized_keys` line), or any other key to
+close.
 
 Known limitation: the advertised SSH port is currently fixed at 22.
+
+### Host key discovery
+
+The Pairing Code pins the fingerprint of the host key the local sshd actually
+presents, so it is discovered rather than assumed:
+
+1. `HEELER_SSH_HOST_KEY`, when set, is the host key path (private key or
+   `.pub` file); its `.pub` sibling must be readable.
+2. Otherwise every `HostKey` declared by the effective sshd configuration
+   (`/etc/ssh/sshd_config` plus its `Include`s, `/etc/ssh/sshd_config.d/*`
+   drop-ins) is read in declaration order.
+3. When the configuration declares no `HostKey` at all, the conventional
+   `/etc/ssh/ssh_host_*_key.pub` layout is used, preferring ed25519.
+
+Only public halves (`.pub` files) are ever read. When sshd serves keys from a
+nonstandard directory whose `.pub` files are not readable, pairing refuses to
+start rather than pin a possibly wrong `/etc/ssh` key — set
+`HEELER_SSH_HOST_KEY` in the shell profile that runs herdr (the popup prints
+this hint) and retry. The plugin cannot ask `sshd -T` for the effective
+configuration: unprivileged, it refuses to print a config whose host keys it
+cannot load.
+
+## Custom pairing addresses
+
+Interface discovery cannot know a DNS name that is not assigned to a local
+interface. When the phone must connect through one — a Tailscale MagicDNS
+name, a split-DNS name, or an ordinary hostname — add it as a **custom
+address**: press `n` in the checklist, type the name, and press enter. It is
+saved immediately, appears in the list labeled `custom` with its lexical
+family (`hostname`, `IPv4`, `IPv6`), and stays checked across popup restarts.
+Interface discovery keeps running as before; custom addresses simply lead
+the list, pre-checked, so the app tries them first.
+
+Addresses persist in `pairing.json` inside the plugin's herdr-managed config
+directory (the one `herdr plugin config-dir heeler` prints), next to
+`notify.json` — never in the plugin checkout, so `herdr plugin install`updates keep them:
+
+```json
+{
+  "v": 1,
+  "custom_addresses": ["slurm-login-17dad29-0.example.ts.net"]
+}
+```
+
+The file may be edited by hand instead of through the popup; a missing,
+malformed, or future-version file is ignored (interface discovery alone), and
+unknown fields survive the popup's rewrites. Entries must be non-empty,
+whitespace-free, at most 253 characters each (the DNS-name bound; IPv6
+literals may be written with or without `[...]` brackets), deduplicated
+case-insensitively against each other and the discovered interface
+addresses, and at most 16 in total. Nothing here weakens identity
+verification: a custom address is just another candidate in `addrs`, and the
+pinned `fp` host-key fingerprint is enforced against every address the app
+tries.
+
+### Example: Tailscale MagicDNS
+
+1. Install Tailscale on this machine and the phone, and sign both into the
+   same tailnet. In the Tailscale admin console (or the app's tailnet
+   settings), note this machine's MagicDNS name, e.g.
+   `slurm-login-17dad29-0.example.ts.net`.
+2. Open the pairing popup (`herdr plugin action invoke heeler.pair`), press
+   `n`, type that name, and press enter.
+3. Scan the QR in Heeler. The app resolves the name inside the tailnet and
+   connects over Tailscale, verifying the pinned host key as usual.
+
+The same steps work for any reachable hostname — split-DNS corporate names,
+dynamic-DNS names, or an IP literal outside the interface enumeration.
 
 ## Pairing Code envelope (v1)
 
@@ -123,7 +192,7 @@ HERDR-PAIR:<version>:<base64url(JSON, no padding)>
 
 | Wire key | Type    | Required | Meaning |
 | -------- | ------- | -------- | ------- |
-| `addrs`  | string[]| yes      | Candidate addresses in the order the app should try them. Non-empty; each entry a non-empty string without whitespace. IPv6 literals carry no brackets and no zone id. |
+| `addrs`  | string[]| yes      | Candidate addresses in the order the app should try them. Non-empty; each entry a non-empty string without whitespace. IPv6 literals carry no brackets and no zone id. Entries may be DNS names (Tailscale MagicDNS, split-DNS, ordinary hostnames) added as custom pairing addresses. |
 | `port`   | integer | yes      | SSH port, `1..65535`. |
 | `user`   | string  | yes      | SSH username. Non-empty, no whitespace. |
 | `fp`     | string  | yes      | Host key fingerprint exactly as OpenSSH prints it: `SHA256:` + 43 chars of unpadded standard base64. The app pins this instead of showing a TOFU prompt. |

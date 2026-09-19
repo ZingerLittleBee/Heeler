@@ -6,8 +6,77 @@
 // interface (en0 on macOS, eth0 on Linux), falling back to the best-ranked
 // likely candidate when that interface is absent -- modern Linux often names
 // interfaces enp3s0-style, so eth0 is a preference, not an assumption.
+//
+// Custom addresses extend the list for clients that must connect through a
+// DNS name no local interface carries -- Tailscale MagicDNS, split-DNS, or
+// ordinary hostnames. They persist in pairing.json inside the plugin config
+// directory (see pairing-config.js) and can be added interactively in the
+// popup; they lead the list, pre-checked, in configured order.
 
 import os from "node:os";
+
+// Longest legal DNS name (RFC 1035); IPv6 literals are far shorter, so one
+// bound covers every form and keeps a stray paste from bloating the QR.
+export const MAX_CUSTOM_ADDRESS_LENGTH = 253;
+
+const IPV4_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+
+/**
+ * Sanitize and validate one custom pairing address: a DNS name or IP literal.
+ *
+ * The same rules the pairing envelope enforces (non-empty, no whitespace)
+ * plus a length bound. Surrounding whitespace and URL-style `[...]` IPv6
+ * brackets are trimmed. Family is detected lexically: a colon means IPv6, a
+ * dotted quad means IPv4, anything else is a hostname -- no DNS resolution,
+ * so a name that only resolves inside the tailnet is still accepted.
+ *
+ * @param {unknown} input
+ * @returns {{address: string, family: "IPv4"|"IPv6"|"hostname"}|{error: string}}
+ */
+export function parseCustomAddress(input) {
+  if (typeof input !== "string") {
+    return { error: "Address must be text." };
+  }
+  const address = input.trim().replace(/^\[(.*)\]$/, "$1");
+  if (address.length === 0) {
+    return { error: "Address must not be empty." };
+  }
+  if (/\s/.test(address)) {
+    return { error: "Address must not contain whitespace." };
+  }
+  if (address.length > MAX_CUSTOM_ADDRESS_LENGTH) {
+    return {
+      error: `Address must be at most ${MAX_CUSTOM_ADDRESS_LENGTH} characters.`,
+    };
+  }
+  const family = address.includes(":")
+    ? "IPv6"
+    : IPV4_PATTERN.test(address)
+      ? "IPv4"
+      : "hostname";
+  return { address, family };
+}
+
+/**
+ * Validate a custom address against the current candidate list: the parse
+ * rules plus deduplication. Hostnames and IPv6 literals are case-insensitive,
+ * matching how clients resolve them.
+ *
+ * @param {{address: string}[]} candidates
+ * @param {unknown} input
+ * @returns {{address: string, family: "IPv4"|"IPv6"|"hostname"}|{error: string}}
+ */
+export function validateCustomAddress(candidates, input) {
+  const parsed = parseCustomAddress(input);
+  if (parsed.error) {
+    return parsed;
+  }
+  const key = parsed.address.toLowerCase();
+  if (candidates.some((candidate) => candidate.address.toLowerCase() === key)) {
+    return { error: "Already in the list." };
+  }
+  return parsed;
+}
 
 function ipv4Octets(address) {
   return address.split(".").map(Number);
@@ -37,23 +106,7 @@ function isIpv6Likely(address) {
 
 const PRIMARY_INTERFACE_BY_PLATFORM = { darwin: "en0", linux: "eth0" };
 
-/**
- * Enumerate routable candidate addresses for the Pairing Code.
- *
- * Skips loopback and link-local addresses. Exactly one candidate is
- * pre-checked: the likely one (private IPv4, CGNAT IPv4, ULA IPv6) on the
- * platform's primary interface, else the best-ranked likely one. Ordered
- * pre-checked first, then likely before unlikely, IPv4 before IPv6 within
- * each group, otherwise input order.
- *
- * @param {ReturnType<typeof os.networkInterfaces>} [interfaces]
- * @param {NodeJS.Platform} [platform]
- * @returns {{address: string, family: "IPv4"|"IPv6", interfaceName: string, preChecked: boolean}[]}
- */
-export function candidateAddresses(
-  interfaces = os.networkInterfaces(),
-  platform = process.platform,
-) {
+function interfaceCandidates(interfaces, platform) {
   const seen = new Set();
   const candidates = [];
 
@@ -99,4 +152,48 @@ export function candidateAddresses(
         candidate.address === defaultCandidate.address,
     }))
     .sort((a, b) => Number(b.preChecked) - Number(a.preChecked));
+}
+
+/**
+ * Enumerate routable candidate addresses for the Pairing Code.
+ *
+ * Skips loopback and link-local addresses. Exactly one interface candidate is
+ * pre-checked: the likely one (private IPv4, CGNAT IPv4, ULA IPv6) on the
+ * platform's primary interface, else the best-ranked likely one. Ordered
+ * pre-checked first, then likely before unlikely, IPv4 before IPv6 within
+ * each group, otherwise input order.
+ *
+ * Custom addresses, when given, lead the list in input order, each pre-checked
+ * (they are deliberate configuration, so the app should try them first) and
+ * labeled `interfaceName: "custom"` with a lexical `family`. Invalid entries
+ * and duplicates of interface addresses or earlier customs are dropped.
+ *
+ * @param {ReturnType<typeof os.networkInterfaces>} [interfaces]
+ * @param {NodeJS.Platform} [platform]
+ * @param {unknown[]} [custom]
+ * @returns {{address: string, family: "IPv4"|"IPv6"|"hostname",
+ *             interfaceName: string, preChecked: boolean}[]}
+ */
+export function candidateAddresses(
+  interfaces = os.networkInterfaces(),
+  platform = process.platform,
+  custom = [],
+) {
+  const candidates = interfaceCandidates(interfaces, platform);
+  const seen = new Set(candidates.map((candidate) => candidate.address.toLowerCase()));
+  const additions = [];
+  for (const entry of custom) {
+    const parsed = parseCustomAddress(entry);
+    if (parsed.error) continue;
+    const key = parsed.address.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    additions.push({
+      address: parsed.address,
+      family: parsed.family,
+      interfaceName: "custom",
+      preChecked: true,
+    });
+  }
+  return [...additions, ...candidates];
 }

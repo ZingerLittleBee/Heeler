@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   MISSING_ADDRESS,
+  MISSING_CONFIG_DIR,
   MISSING_HOST_KEY,
   MISSING_STATE_DIR,
   fatalLines,
@@ -22,8 +23,8 @@ suite("fatalLines", () => {
 });
 
 suite("startup copy", () => {
-  test("missing host key tells the user how to generate one", () => {
-    assert.match(MISSING_HOST_KEY, /\/etc\/ssh/);
+  test("missing host key names the override and the conventional fixes", () => {
+    assert.match(MISSING_HOST_KEY, /HEELER_SSH_HOST_KEY/);
     assert.match(MISSING_HOST_KEY, /Remote Login/);
     assert.match(MISSING_HOST_KEY, /sudo ssh-keygen -A/);
   });
@@ -32,6 +33,10 @@ suite("startup copy", () => {
     assert.equal(
       MISSING_STATE_DIR,
       "HERDR_PLUGIN_STATE_DIR is not set. Run this popup through herdr.",
+    );
+    assert.equal(
+      MISSING_CONFIG_DIR,
+      "HERDR_PLUGIN_CONFIG_DIR is not set. Run this popup through herdr.",
     );
     assert.equal(
       MISSING_ADDRESS,
