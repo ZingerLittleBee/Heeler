@@ -623,6 +623,10 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         textView.adjustsFontForContentSizeCategory = true
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         textView.textContainer.lineFragmentPadding = 0
+        // Correction traits are pinned in AgentComposerUITextView's
+        // initializers, identical to the terminal's — matching traits
+        // keep one keyboard context across the Direct Input responder
+        // transfer (de36399).
         textView.accessibilityLabel = "Message the Agent"
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         return textView
@@ -757,12 +761,26 @@ final class AgentComposerUITextView: UITextView {
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
+        applyTerminalMatchedInputTraits()
         installKeyboardObservers()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        applyTerminalMatchedInputTraits()
         installKeyboardObservers()
+    }
+
+    /// No-correction traits, identical to the terminal's — the parity
+    /// keeps one keyboard context across the Direct Input responder
+    /// transfer (de36399).
+    private func applyTerminalMatchedInputTraits() {
+        autocorrectionType = .no
+        spellCheckingType = .no
+        smartQuotesType = .no
+        smartDashesType = .no
+        smartInsertDeleteType = .no
+        inlinePredictionType = .no
     }
 
     private func installKeyboardObservers() {
