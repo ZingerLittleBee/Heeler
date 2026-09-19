@@ -135,10 +135,6 @@ final class TerminalKeyboardControl {
         terminal?.setKeyboardMode(mode)
     }
 
-    func sendNewLine() {
-        terminal?.sendNewLine()
-    }
-
     func paste(_ text: String) {
         terminal?.requestPaste(text)
     }
@@ -163,8 +159,50 @@ enum TerminalKeyboardHandoffOutcome: Equatable {
     case cancelled
 }
 
+/// Keeps the emulator, including offscreen output and scrollback, with a
+/// retained connection. A new feed always gets a new surface.
+@MainActor
+final class TerminalSurfaceRetention {
+    private var feed: TerminalByteFeed?
+    private var surface: HeelerTerminalView?
+
+    func surface(for feed: TerminalByteFeed, make: () -> HeelerTerminalView) -> HeelerTerminalView {
+        if self.feed === feed, let surface { return surface }
+        clear()
+        let surface = make()
+        self.feed = feed
+        self.surface = surface
+        return surface
+    }
+
+    func clear() {
+        detachCallbacks()
+        surface = nil
+        feed = nil
+    }
+
+    /// Callbacks come off synchronously so a retired surface can never write
+    /// into a store it no longer belongs to; the keyboard is released a turn
+    /// later, because this runs inside `makeUIView` when a surface is
+    /// replaced (see `HeelerTerminalView.retireLocalInput`).
+    ///
+    /// `keepingKeyboard` leaves first responder with the surface for the
+    /// screen that is taking the keyboard over; see
+    /// `HeelerTerminalView.retireLocalInput(keepingKeyboard:)`.
+    func detachCallbacks(keepingKeyboard: Bool = false) {
+        surface?.updateCallbacks(
+            onSizeChanged: nil, onViewportTextChanged: nil,
+            onSend: nil, onScroll: nil, onPaste: nil)
+        surface?.onOpenLink = nil
+        surface?.onFontSizeChanged = nil
+        surface?.onKeyboardHandoffEnded = nil
+        surface?.retireLocalInput(keepingKeyboard: keepingKeyboard)
+    }
+}
+
 struct TerminalScreenView: UIViewRepresentable {
     let feed: TerminalByteFeed
+    var retention: TerminalSurfaceRetention?
     #if DEBUG
     /// Reports creation and feed attachment of the concrete UIKit surface.
     /// It does not claim that Ghostty presented a frame.
@@ -208,7 +246,9 @@ struct TerminalScreenView: UIViewRepresentable {
     @Environment(\.openURL) private var openURL
 
     func makeUIView(context: Context) -> HeelerTerminalView {
-        let view = Self.makeConfiguredTerminal(
+        let openURL = openURL
+        let onKeyboardHandoffEnded = onKeyboardHandoffEnded
+        let make = { Self.makeConfiguredTerminal(
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
             onSend: onSend,
@@ -216,7 +256,14 @@ struct TerminalScreenView: UIViewRepresentable {
             onPaste: onPaste,
             theme: theme,
             fontSize: fontSize,
-            fontFamily: fontFamily)
+            fontFamily: fontFamily) }
+        let view = retention?.surface(for: feed, make: make) ?? make()
+        view.updateCallbacks(
+            onSizeChanged: onSizeChanged, onViewportTextChanged: onViewportTextChanged,
+            onSend: onSend, onScroll: onScroll, onPaste: onPaste)
+        view.applyTheme(theme)
+        view.applyFontSize(fontSize)
+        view.applyFontFamily(fontFamily)
         view.onOpenLink = { url in openURL(url) }
         // Only here, never in updateUIView: the intent belongs to this
         // terminal's first appearance, not to every state change after it.
@@ -272,6 +319,8 @@ struct TerminalScreenView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: HeelerTerminalView, context: Context) {
+        let openURL = openURL
+        let onKeyboardHandoffEnded = onKeyboardHandoffEnded
         view.updateCallbacks(
             onSizeChanged: onSizeChanged,
             onViewportTextChanged: onViewportTextChanged,
@@ -735,6 +784,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// settled grid yet. A cancelled freeze must then report it itself.
     private var windowResizeGridIsPending = false
     private var responderGate = TerminalKeyboardResponderGate()
+    /// The user's standing wish for the keyboard on this surface. Unlike
+    /// `isFirstResponder` it survives UIKit's own resigns (a sheet,
+    /// backgrounding) and the deferred release of a retired surface, so a
+    /// replacement surface can read what the user last asked for.
+    var wantsKeyboard: Bool { responderGate.userWantsKeyboard }
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
     private var textInputStyle = TerminalTextInputStyle.terminal
@@ -1233,10 +1287,19 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// the keyboard goes away for good: a plain `resignFirstResponder()` is
     /// something UIKit does on its own (backgrounding, a sheet taking focus)
     /// and must stay recoverable.
+    ///
+    /// Only the first responder may release it. A surface whose keyboard
+    /// another responder has already taken over is not first responder any
+    /// more, yet resigning it still tears the keyboard down on iOS 27 —
+    /// traced on an iPhone 17 Pro Max: a replaced Shell Terminal surface
+    /// released its keyboard a turn after its replacement had claimed it,
+    /// and the keyboard dropped under the new owner and rose again. The
+    /// intent is still recorded, so the surface stays down if it returns.
     @discardableResult
     func dismissKeyboard() -> Bool {
         responderGate.beginUserDrivenChange(wantsKeyboard: false)
         defer { responderGate.endUserDrivenChange() }
+        guard isFirstResponder else { return false }
         return resignFirstResponder()
     }
 
@@ -1248,6 +1311,40 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         }
         if !isEnabled, isFirstResponder {
             _ = dismissKeyboard()
+        }
+    }
+
+    /// Ends local input for a surface leaving the stage or being replaced,
+    /// without resigning first responder on the spot.
+    ///
+    /// `TerminalSurfaceRetention` retires a surface from inside
+    /// `makeUIView`, which SwiftUI runs during its attribute-graph update.
+    /// Resigning there makes UIKit look for the next responder and ask the
+    /// hosting view `canBecomeFirstResponder`, which re-enters the graph and
+    /// aborts in AttributeGraph (crash seen live on iOS 27 while switching
+    /// between an Agent and a Workspace terminal). Input is refused at once;
+    /// the responder itself is released on the next run-loop turn, and only
+    /// if nothing re-enabled the surface in between.
+    ///
+    /// `keepingKeyboard` is the surface leaving for a screen that takes the
+    /// keyboard over: it must not resign at all, or the keyboard drops before
+    /// the destination can claim it. Leaving the window ends its responder
+    /// status regardless, and the destination's claim moves the keyboard
+    /// across without a hide.
+    func retireLocalInput(keepingKeyboard: Bool = false) {
+        setLocalInputEnabledWithoutResigning(false)
+        guard !keepingKeyboard else { return }
+        DispatchQueue.main.async { [self] in
+            guard !isLocalInputEnabled else { return }
+            _ = dismissKeyboard()
+        }
+    }
+
+    private func setLocalInputEnabledWithoutResigning(_ isEnabled: Bool) {
+        guard isLocalInputEnabled != isEnabled else { return }
+        isLocalInputEnabled = isEnabled
+        if !isEnabled {
+            cancelKeyboardTransitionLayoutDeferral()
         }
     }
 

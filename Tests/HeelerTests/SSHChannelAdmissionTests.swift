@@ -9,8 +9,8 @@ struct SSHChannelAdmissionTests {
         let limits = SSHChannelAdmission.Limits.production
         #expect(limits.ordinaryForwarding == 8)
         #expect(limits.events == 1)
-        #expect(limits.ordinarySession == 8)
-        #expect(limits.attach == 1)
+        #expect(limits.ordinarySession == 4)
+        #expect(limits.attach == 5)
         // Production `connection` restates the category sum; it is not a
         // tighter live ceiling under these four budgets (#133, ADR 0011).
         #expect(
@@ -26,9 +26,9 @@ struct SSHChannelAdmissionTests {
             sessions.append(try await admission.acquire(.ordinarySession))
         }
         let attach = try await admission.acquire(.attach)
-        #expect(await admission.snapshot().ordinarySession == 8)
+        #expect(await admission.snapshot().ordinarySession == 4)
         #expect(await admission.snapshot().attach == 1)
-        #expect(await admission.snapshot().connection == 9)
+        #expect(await admission.snapshot().connection == 5)
         await attach.release()
         for session in sessions {
             await session.release()

@@ -37,9 +37,12 @@ and every `make` build target regenerates it. CI builds the *committed*
   suites (those run through `scripts/run-heelerssh-package-tests.sh`, not
   `-only-testing`).
 - One suite:
-  `xcodebuild test -project Heeler.xcodeproj -scheme Heeler -destination
-  'platform=iOS Simulator,name=iPhone 17'
-  -only-testing:HeelerTests/<SuiteTypeName>`
+  `make test-app TEST_FLAGS='-only-testing:HeelerTests/<SuiteTypeName>'`.
+  This and the CI app lane enable simulator accessibility before launching
+  the test host, then restore the original preferences. Direct `xcodebuild`
+  skips that preparation and can miss SwiftUI accessibility labels on a clean
+  simulator. Pin a device with
+  `SIM_DESTINATION='platform=iOS Simulator,id=<UDID>'` when needed.
 - `npm test` inside `plugin/` or `relay/` for the Node deliverables
   (Node >= 20, no install step).
 

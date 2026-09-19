@@ -6,6 +6,11 @@ import UIKit
 /// intentionally no Composer, Agent switcher, staging, notification, or Agent
 /// operation on this surface.
 ///
+/// The keyboard follows the user across the screen change: a terminal opened
+/// with the keyboard up comes up typing-ready, one opened with it down stays
+/// down, and leaving for an Agent carries the state back the same way. The
+/// intent travels through `TerminalKeyboardHandoff`, as Agent switches do.
+///
 /// The keyboard chrome is app-owned, the Composer's arrangement: the input row
 /// sits above the keyboard as ordinary content, and Keys mode suppresses the
 /// system keyboard behind an app-side dock at the measured keyboard footprint.
@@ -20,6 +25,19 @@ struct ShellTerminalView: View {
     /// Nil hides the Close Terminal action entirely (previews, tests).
     var isClosingTerminal: Bool = false
     var onCloseTerminal: (@MainActor () -> Void)? = nil
+    var managesLifecycle = true
+    var surfaceRetention: TerminalSurfaceRetention?
+    var title = "Terminal"
+    var backTitle = "Back to Agent"
+    /// Edge-docked Workspace navigation; nil on surfaces with nowhere to route.
+    var workspaceDrawer: WorkspaceTerminalDrawer?
+    /// Carries the keyboard state in from the screen that opened this
+    /// terminal and back out to the Agent it leaves for; nil (previews,
+    /// tests) opens with the keyboard down.
+    var keyboardHandoff: TerminalKeyboardHandoff? = nil
+    /// Whether Back and Close Terminal land on `agentID`'s detail. False on
+    /// the Console's terminal detail, whose Back returns to the Agent list.
+    var backReturnsToAgent = true
     let onBack: @MainActor () async -> Void
 
     @State private var keyboardControl = TerminalKeyboardControl()
@@ -27,9 +45,21 @@ struct ShellTerminalView: View {
     @State private var keyboardInset = TerminalKeyboardInset()
     @State private var isConfirmingClose = false
     @Environment(\.colorScheme) private var colorScheme
+    /// The scene root's window, known before this screen first renders.
+    @Environment(\.sceneWindow) private var sceneWindow
+    @Environment(\.detailCrossfade) private var detailCrossfade
+    /// This view's own window, for hosts without a scene root.
+    @State private var mountedWindow = WindowReference()
+
+    /// The status bar height of the window this terminal is in; see
+    /// `AgentTerminalView.statusBarInset`.
+    private var statusBarInset: CGFloat {
+        (sceneWindow?.window ?? mountedWindow.window)?.safeAreaInsets.top ?? 0
+    }
 
     private var terminalScreen: TerminalScreenView {
         var screen = TerminalScreenView(feed: store.terminalFeed)
+        screen.retention = surfaceRetention
         screen.onSizeChanged = { cols, rows in
             store.viewDidResize(cols: cols, rows: rows)
         }
@@ -42,6 +72,30 @@ struct ShellTerminalView: View {
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = true
+        // The first surface of this screen takes the keyboard only if the
+        // screen it came from left it up. A later surface on the same screen
+        // (a recovered pipeline) is a replacement, not an arrival: it keeps
+        // whatever the user last asked this screen for, read from the surface
+        // it replaces, which `TerminalKeyboardControl` still holds here.
+        // When the keyboard is coming, the inset must already know the window
+        // and expect it before UIKit posts the first will-show, or that frame
+        // is dropped and Ghostty keeps rendering under the keyboard:
+        // `WindowReader` reports the window from a sibling, whose order
+        // against the surface's own `didMoveToWindow` is not guaranteed.
+        screen.claimsKeyboard = { [keyboardInset, keyboardControl, keyboardHandoff, sceneWindow] in
+            let claims: Bool
+            if let previous = keyboardControl.terminal {
+                claims = previous.wantsKeyboard
+            } else {
+                claims = keyboardHandoff?.consumeShellTerminal() ?? false
+            }
+            guard claims else { return false }
+            if let window = sceneWindow?.window {
+                keyboardInset.attach(to: window)
+            }
+            Self.prepareKeyboardMode(.text, inset: keyboardInset)
+            return true
+        }
         screen.theme = terminal.themes.theme
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
@@ -122,26 +176,35 @@ struct ShellTerminalView: View {
     var body: some View {
         terminalScreen
             .id(store.terminalID)
+            .overlay {
+                if let workspaceDrawer {
+                    keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
+                }
+            }
             .overlay { statusOverlay }
             // The input row and controls dock must stay above the edge
             // gesture's hit region, including their leftmost buttons.
             .overlay(alignment: .leading) {
                 ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                    await onBack()
+                    await goBack()
                 }
             }
+            // Always present, keyboard up or down: with no title bar, its
+            // More menu is the only visible way back or to Close Terminal.
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if keyboardPresentation != .hidden {
-                    ShellTerminalInputRow(
-                        mode: Binding(
-                            get: { keyboardMode },
-                            set: { setKeyboardMode($0) }),
-                        paste: { keyboardControl.paste($0) },
-                        insertNewLine: {
-                            UIDevice.current.playInputClick()
-                            keyboardControl.sendNewLine()
-                        })
-                }
+                ShellTerminalInputRow(
+                    mode: Binding(
+                        get: { keyboardMode },
+                        set: { setKeyboardMode($0) }),
+                    paste: { keyboardControl.paste($0) },
+                    more: ShellTerminalMoreMenu(
+                        title: title,
+                        backTitle: backTitle,
+                        isReturning: isReturning,
+                        isClosingTerminal: isClosingTerminal,
+                        onBack: { Task { await goBack() } },
+                        onCloseTerminal: onCloseTerminal == nil
+                            ? nil : { isConfirmingClose = true }))
             }
             .padding(.bottom, keyboardLayout.contentInset)
             // This dock is always present at the system keyboard's last
@@ -161,49 +224,52 @@ struct ShellTerminalView: View {
             // Keyboard avoidance is owned by `TerminalKeyboardInset`; UIKit's
             // keyboard safe area would resize Ghostty a second time.
             .ignoresSafeArea(.keyboard, edges: .bottom)
-            .terminalKeyboardInsetWindow(keyboardInset)
+            // No title bar, as on Agent detail: the navigation bar stays
+            // only as the owner of the status bar appearance, and this inset
+            // keeps terminal output below the system clock.
+            .padding(.top, statusBarInset)
+            .background {
+                // Keyboard geometry and the status bar inset follow this
+                // view's own window, not whichever window of the app is key.
+                WindowReader { window in
+                    keyboardInset.attach(to: window)
+                    mountedWindow.attach(window)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             .background(
                 terminal.themes.selection(for: colorScheme)
                     .surfaceBackground(for: colorScheme)
             )
+            .ignoresSafeArea(.container, edges: .top)
             .toolbarColorScheme(
                 terminal.themes.selection(for: colorScheme)
                     .chromeColorScheme(for: colorScheme),
                 for: .navigationBar
             )
             .navigationBarBackButtonHidden(true)
-            .navigationTitle("Terminal")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        Task { await onBack() }
-                    } label: {
-                        Label("Back to Agent", systemImage: "chevron.left")
-                    }
-                    .disabled(isReturning)
-                }
-                if onCloseTerminal != nil {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(role: .destructive) {
-                            isConfirmingClose = true
-                        } label: {
-                            Label("Close Terminal", systemImage: "trash")
-                        }
-                        .disabled(isClosingTerminal || isReturning)
-                    }
-                }
-            }
+            // `toolbarColorScheme` takes effect only while the bar background
+            // is visible. A clear visible background keeps the bar visually
+            // absent while still applying status-bar contrast.
+            .toolbarBackground(Color.clear, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar(.visible, for: .navigationBar)
             .confirmationDialog(
                 "Close Terminal?", isPresented: $isConfirmingClose, titleVisibility: .visible
             ) {
                 Button("Close Terminal", role: .destructive) {
+                    if backReturnsToAgent {
+                        armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+                    }
                     onCloseTerminal?()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(
-                    "This closes the tab on the Host, ending anything running in it. "
+                    "This closes the pane on the Host, ending anything running in it. "
                         + "Going Back instead leaves it for desktop handoff.")
             }
             .sheet(
@@ -231,8 +297,10 @@ struct ShellTerminalView: View {
                 store.didBecomeActive(
                     afterPossibleSuspension: activity.lastAbsenceMayHaveSuspended)
             }
-            // A recovered terminal is a fresh surface with no keyboard raised;
-            // app-side mode state has to follow it back to Text.
+            // A recovered terminal is a fresh surface that starts in Text and
+            // decides the keyboard itself from the user's last intent (see
+            // `claimsKeyboard`); app-side mode state has to follow it back to
+            // Text without raising anything on its own.
             .onChange(of: store.terminalID) { _, _ in
                 setKeyboardMode(.text, restoresSystemKeyboard: false)
             }
@@ -244,8 +312,25 @@ struct ShellTerminalView: View {
                 else { return }
                 setKeyboardMode(.text)
             }
-            .onAppear { store.rejoin() }
-            .onDisappear { store.leave() }
+            .onAppear {
+                detailCrossfade?.contentDidAppear()
+                // A keyboard inherited from the previous screen is already
+                // up: lay the input row out above it from the first frame.
+                if let window = sceneWindow?.window {
+                    keyboardInset.inheritPresentedKeyboard(in: window)
+                }
+                if managesLifecycle { store.rejoin() }
+            }
+            .onDisappear {
+                // A departure the next screen inherits the keyboard from
+                // keeps first responder until that screen claims it: a
+                // dismissal here would start UIKit's hide, and the claim
+                // could only re-present the keyboard once it had dropped.
+                if keyboardHandoff?.isArmed != true {
+                    keyboardControl.dismissKeyboard()
+                }
+                if managesLifecycle { store.leave() }
+            }
     }
 
     /// `restoresSystemKeyboard` is false when Text follows a fresh surface
@@ -273,6 +358,56 @@ struct ShellTerminalView: View {
         }
     }
 
+    /// Back leaves for the Agent (or the Console): the keyboard state goes
+    /// with it, captured before the screen is torn down.
+    private func goBack() async {
+        if backReturnsToAgent {
+            armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+        }
+        await onBack()
+    }
+
+    /// The Keys dock counts as up: on iPad it stands without a responder.
+    private var isKeyboardUpForHandoff: Bool {
+        keyboardControl.isKeyboardUp || keyboardMode == .controls
+    }
+
+    private func armAgentKeyboardHandoffIfKeyboardIsUp(for id: ConsoleAgent.ID) {
+        guard let keyboardHandoff, isKeyboardUpForHandoff else { return }
+        keyboardHandoff.arm(for: id, mode: keyboardMode == .controls ? .controls : .text)
+    }
+
+    private func armShellTerminalKeyboardHandoffIfKeyboardIsUp() {
+        guard let keyboardHandoff else { return }
+        if isKeyboardUpForHandoff {
+            keyboardHandoff.armShellTerminal()
+        } else {
+            keyboardHandoff.cancelShellTerminal()
+        }
+    }
+
+    /// The drawer's routes replace this screen with an Agent or another
+    /// terminal; each captures the keyboard state before it leaves.
+    private func keyboardCarryingDrawer(_ drawer: WorkspaceTerminalDrawer) -> WorkspaceTerminalDrawer {
+        var carrying = drawer
+        let onSelect = drawer.onSelect
+        carrying.onSelect = { target in
+            if let agentID = target.agentID {
+                armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+            } else if target.paneID != store.identity.paneID {
+                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+            }
+            onSelect(target)
+        }
+        if let onNewTerminal = drawer.onNewTerminal {
+            carrying.onNewTerminal = {
+                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+                onNewTerminal()
+            }
+        }
+        return carrying
+    }
+
     private var themePalette: TerminalThemePalette {
         terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
     }
@@ -298,6 +433,11 @@ struct ShellTerminalView: View {
                 ) {
                     Button("Reattach") { store.retryTerminal() }
                         .buttonStyle(.borderedProminent)
+                    if !managesLifecycle {
+                        Button("Take Over") { store.takeOverTerminal() }
+                            .buttonStyle(.bordered)
+                            .accessibilityHint("Disconnects another client's attachment to this terminal")
+                    }
                 }
             }
         }
@@ -341,13 +481,53 @@ struct ShellTerminalView: View {
 /// The input row above the keyboard: paste, the Text/Keys mode control, and
 /// new line. App content rather than a keyboard accessory, so a mode switch
 /// never tears it down and UIKit's candidate-row teardown never moves it.
+/// The shell terminal's navigation, folded into the input row's More button
+/// now that the surface has no title bar. The terminal's title heads the menu
+/// so the path is still readable.
+struct ShellTerminalMoreMenu: View {
+    let title: String
+    let backTitle: String
+    let isReturning: Bool
+    let isClosingTerminal: Bool
+    let onBack: () -> Void
+    /// Nil hides Close Terminal entirely (previews, tests).
+    let onCloseTerminal: (() -> Void)?
+
+    var body: some View {
+        Menu {
+            Section(title) {
+                Button(action: onBack) {
+                    Label(backTitle, systemImage: "chevron.left")
+                }
+                .disabled(isReturning)
+                if let onCloseTerminal {
+                    Button(role: .destructive, action: onCloseTerminal) {
+                        Label("Close Terminal", systemImage: "trash")
+                    }
+                    .disabled(isClosingTerminal || isReturning)
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: ShellTerminalInputRow.glyphPointSize))
+                .foregroundStyle(Color(uiColor: .label))
+                .frame(
+                    width: InputChromeLayout.shellAccessoryButtonWidth,
+                    height: InputChromeLayout.shortcutRowHeight)
+                .contentShape(.rect)
+        }
+        .accessibilityLabel("More")
+        .accessibilityHint("Opens terminal actions")
+    }
+}
+
 struct ShellTerminalInputRow: View {
     @Binding var mode: TerminalKeyboardMode
     let paste: (String) -> Void
-    let insertNewLine: () -> Void
+    let more: ShellTerminalMoreMenu
     /// Matches the Composer chrome's small glyphs, or the row's icons read as
     /// borrowed from a different set.
-    private static let glyphPointSize: CGFloat = 12
+    static let glyphPointSize: CGFloat = 12
     @Environment(\.displayScale) private var displayScale
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -382,16 +562,9 @@ struct ShellTerminalInputRow: View {
 
             Spacer(minLength: 4)
 
-            Button(action: insertNewLine) {
-                Image(systemName: "text.append")
-                    .font(.system(size: Self.glyphPointSize))
-                    .foregroundStyle(Color(uiColor: .label))
-                    .frame(
-                        width: InputChromeLayout.shellAccessoryButtonWidth,
-                        height: InputChromeLayout.shortcutRowHeight)
-            }
-            .accessibilityLabel("Insert New Line")
-            .accessibilityHint("Adds a line break without submitting")
+            // A line break without submitting (Shift+Enter) lives on the Keys
+            // keyboard; the row keeps only what Text mode cannot do itself.
+            more
         }
         .padding(.horizontal, 8)
         .frame(height: 48)

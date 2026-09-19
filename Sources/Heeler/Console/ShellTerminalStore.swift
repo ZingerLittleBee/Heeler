@@ -239,7 +239,7 @@ final class AgentOpenTerminalStore {
             runTerminal: runTerminal)
     }
 
-    private static func presentation(for error: any Error) -> OpenTerminalFailure {
+    static func presentation(for error: any Error) -> OpenTerminalFailure {
         switch error {
         case let api as HerdrAPIError:
             OpenTerminalFailure(
@@ -275,6 +275,7 @@ final class ShellTerminalStore {
     let input = TerminalInputController()
     private(set) var terminal: AttachTerminalStore
 
+    @ObservationIgnored private var takeover: Bool
     @ObservationIgnored private let runTerminal: TerminalSessionRunner
     @ObservationIgnored private let isOnStage: @MainActor () -> Bool
     @ObservationIgnored private var transportGeneration: UInt64?
@@ -288,15 +289,18 @@ final class ShellTerminalStore {
     init(
         identity: ShellTerminalIdentity,
         transportGeneration: UInt64?,
+        takeover: Bool = true,
         isOnStage: @escaping @MainActor () -> Bool,
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.identity = identity
+        self.takeover = takeover
         self.transportGeneration = transportGeneration
         self.isOnStage = isOnStage
         self.runTerminal = runTerminal
         terminal = Self.makeTerminal(
             terminalID: identity.terminalID,
+            takeover: takeover,
             input: input,
             transportGeneration: transportGeneration,
             runTerminal: runTerminal)
@@ -339,6 +343,13 @@ final class ShellTerminalStore {
     }
 
     func retryTerminal() { terminal.retry() }
+
+    /// Explicitly displaces another writable attach owner after a normal
+    /// attachment was refused. Merely viewing an existing shell never does.
+    func takeOverTerminal() {
+        takeover = true
+        replaceTerminal()
+    }
 
     func didBecomeActive(afterPossibleSuspension: Bool) {
         guard isOnStage() else { return }
@@ -433,6 +444,7 @@ final class ShellTerminalStore {
             }
             let replacement = Self.makeTerminal(
                 terminalID: self.identity.terminalID,
+                takeover: self.takeover,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -477,6 +489,7 @@ final class ShellTerminalStore {
             }
             let replacement = Self.makeTerminal(
                 terminalID: self.identity.terminalID,
+                takeover: self.takeover,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -545,6 +558,7 @@ final class ShellTerminalStore {
 
     private static func makeTerminal(
         terminalID: String,
+        takeover: Bool,
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
@@ -555,7 +569,7 @@ final class ShellTerminalStore {
     ) -> AttachTerminalStore {
         AttachTerminalStore(
             target: .terminal(terminalID),
-            takeover: true,
+            takeover: takeover,
             input: input,
             transportGeneration: transportGeneration,
             transportReady: transportReady,

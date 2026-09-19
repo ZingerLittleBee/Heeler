@@ -46,7 +46,7 @@ build: generate ## Build Debug for a physical device without installing
 		-allowProvisioningUpdates build
 
 test-app: generate ## Run the app test suite (SIM_DESTINATION, TEST_FLAGS)
-	xcodebuild -project $(PROJECT) -scheme $(SCHEME) \
+	python3 scripts/run-app-simulator-tests.py -project $(PROJECT) -scheme $(SCHEME) \
 		-destination '$(SIM_DESTINATION)' -derivedDataPath $(DERIVED) \
 		$(TEST_FLAGS) test
 

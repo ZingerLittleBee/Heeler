@@ -9,6 +9,14 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Browse every terminal in the Workspace from a drawer docked to the edge of
+  Agent detail. The list groups by Host and Workspace and shows Tab titles,
+  paths, and which panes run Agents. A terminal you have opened keeps its
+  connection and screen for five idle minutes, up to five per Host; the least
+  recently viewed idle one gives way when a sixth is needed. New Terminal
+  opens a fresh shell tab in the Workspace. Output stays readable under the
+  drawer handle and the message-jump tabs. (#333)
+
 - Choose an existing Workspace or New Workspace from the same dropdown in
   New Agent. New Workspace opens a remote directory browser. The latest directory stays at the
   bottom of the dropdown, with its name and full path shown when selected. (PR #305)
@@ -18,6 +26,18 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
+- The message-jump buttons dock flush against the terminal's edge as a tab,
+  matching the Workspace drawer handle. Long-press either to slide it along
+  the edge; each stays where you leave it. (#333)
+- The Shell Terminal drops its title bar so output runs up to the status bar.
+  Back and Close Terminal moved into the More menu on its input row, which now
+  stays visible while the keyboard is down. The row's Insert New Line button
+  is gone; Shift+Enter on the Keys keyboard sends the same line break. (#333)
+- The keyboard follows you between Agent detail and a Shell Terminal: up or
+  down, it is the same on the other side, and it stays on screen through the
+  switch instead of dropping and rising again. The terminal's Text/Keys row
+  sits above it from the first frame, and the two screens dissolve into each
+  other instead of cutting. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 

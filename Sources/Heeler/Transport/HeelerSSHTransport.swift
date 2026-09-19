@@ -321,12 +321,11 @@ actor HeelerSSHTransport: Transport {
     private var endedEventsReaders: Set<UInt64> = []
 
     private enum TerminalChannelState: Equatable {
-        case idle
         case opening
         case streaming(readerID: UInt64)
     }
 
-    private var terminalChannelState: TerminalChannelState = .idle
+    private var terminalChannelStates: [TerminalAttachTarget: TerminalChannelState] = [:]
     private var nextTerminalReaderID: UInt64 = 0
     private var imageStageClients: [UUID: SSHSFTPClient] = [:]
     private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
@@ -2134,10 +2133,10 @@ actor HeelerSSHTransport: Transport {
     func attachTerminal(
         _ request: TerminalAttachRequest
     ) async throws -> TerminalAttachSession {
-        guard terminalChannelState == .idle else {
+        guard terminalChannelStates[request.target] == nil else {
             throw TransportError.terminalChannelAlreadyOpen
         }
-        terminalChannelState = .opening
+        terminalChannelStates[request.target] = .opening
         var admissionLease: SSHChannelAdmissionLease?
 
         do {
@@ -2168,9 +2167,10 @@ actor HeelerSSHTransport: Transport {
             let input = TerminalAttachInputQueue()
             nextTerminalReaderID &+= 1
             let readerID = nextTerminalReaderID
-            terminalChannelState = .streaming(readerID: readerID)
+            terminalChannelStates[request.target] = .streaming(readerID: readerID)
             let readerTask = Task {
                 await self.runAttachChannel(
+                    target: request.target,
                     readerID: readerID,
                     channel: channel,
                     admissionLease: lease,
@@ -2189,7 +2189,7 @@ actor HeelerSSHTransport: Transport {
             }
         } catch {
             if let admissionLease { await admissionLease.release() }
-            terminalChannelState = .idle
+            terminalChannelStates.removeValue(forKey: request.target)
             throw error
         }
     }
@@ -2277,6 +2277,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func runAttachChannel(
+        target: TerminalAttachTarget,
         readerID: UInt64,
         channel: SSHPTYChannel,
         admissionLease: SSHChannelAdmissionLease,
@@ -2331,8 +2332,8 @@ actor HeelerSSHTransport: Transport {
         await admissionLease.release()
 
         input.finish()
-        if terminalChannelState == .streaming(readerID: readerID) {
-            terminalChannelState = .idle
+        if terminalChannelStates[target] == .streaming(readerID: readerID) {
+            terminalChannelStates.removeValue(forKey: target)
         }
         if let failure {
             output.finish(throwing: failure)

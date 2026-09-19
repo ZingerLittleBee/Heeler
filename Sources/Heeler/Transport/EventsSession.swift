@@ -162,7 +162,7 @@ actor EventsSession {
     private var phase: Phase = .suspended
     /// The Host's live Transport. It never escapes this module; consumers
     /// use `withTransport` or `withTerminalTransport` so replacement and
-    /// terminal exclusivity remain local.
+    /// terminal admission remain local.
     private var currentTransport: (any Transport)?
     /// Monotonic identity for the installed Transport. Subscription-only
     /// reconnects reuse the same Transport and therefore do not advance it.
@@ -197,10 +197,9 @@ actor EventsSession {
     /// behind it, so transitions never interleave across the suspension
     /// points inside a teardown (see the actor doc).
     private var lifecycleTransition: Task<Void, Never>?
-    /// Exactly one Attach operation may hold the Host's terminal channel.
-    /// Waiters are FIFO and cancellation-safe; the permit spans the entire
-    /// operation, including explicit terminal teardown.
-    private var terminalInUse = false
+    /// Each target has one owner, with at most five live PTYs per Host.
+    /// A permit spans the operation and explicit channel teardown.
+    private var terminalsInUse: Set<TerminalAttachTarget?> = []
     private var terminalWaiters: [TerminalWaiter] = []
     private var terminalIdleWaiters: [CheckedContinuation<Void, Never>] = []
     private var terminalTransportWaiters: [TerminalTransportWaiter] = []
@@ -341,16 +340,16 @@ actor EventsSession {
         return value
     }
 
-    /// Runs one terminal lifetime with exclusive access to the Host's
-    /// terminal channel. The next caller cannot observe a Transport until
-    /// the previous operation, including its teardown, has returned. A caller
+    /// Runs one terminal lifetime with exclusive access to its target.
+    /// A second caller for that target waits until teardown returns. A caller
     /// that races foreground recovery waits for this activation's ping-proven
     /// Transport instead of failing only because installation is still in
     /// flight; events subscription and snapshot work are not prerequisites.
     func withTerminalTransport<Value: Sendable>(
+        target: TerminalAttachTarget? = nil,
         _ operation: @escaping @Sendable (any Transport, UInt64) async throws -> Value
     ) async throws -> Value {
-        try await acquireTerminal()
+        try await acquireTerminal(target: target)
         do {
             try Task.checkCancellation()
             let ready = try await awaitTerminalTransport()
@@ -360,10 +359,10 @@ actor EventsSession {
             }
             let value = try await operation(ready.transport, ready.transportGeneration)
             noteConnectionActivity()
-            releaseTerminal()
+            releaseTerminal(target: target)
             return value
         } catch {
-            releaseTerminal()
+            releaseTerminal(target: target)
             throw error
         }
     }
@@ -799,10 +798,11 @@ actor EventsSession {
         return .channelFailed(detail: String(describing: error))
     }
 
-    // MARK: Terminal exclusivity
+    // MARK: Terminal admission
 
     private struct TerminalWaiter {
         let id: UUID
+        let target: TerminalAttachTarget?
         let continuation: CheckedContinuation<Void, any Error>
     }
 
@@ -822,7 +822,7 @@ actor EventsSession {
         let continuation: CheckedContinuation<TerminalTransportReady, any Error>
     }
 
-    private func acquireTerminal() async throws {
+    private func acquireTerminal(target: TerminalAttachTarget?) async throws {
         let id = UUID()
         try Task.checkCancellation()
         try await withTaskCancellationHandler {
@@ -830,11 +830,11 @@ actor EventsSession {
                 (continuation: CheckedContinuation<Void, any Error>) in
                 if Task.isCancelled {
                     continuation.resume(throwing: CancellationError())
-                } else if terminalInUse {
+                } else if !canAcquireTerminal(target) {
                     terminalWaiters.append(
-                        TerminalWaiter(id: id, continuation: continuation))
+                        TerminalWaiter(id: id, target: target, continuation: continuation))
                 } else {
-                    terminalInUse = true
+                    terminalsInUse.insert(target)
                     continuation.resume()
                 }
             }
@@ -945,13 +945,20 @@ actor EventsSession {
         waiter.continuation.resume(throwing: CancellationError())
     }
 
-    private func releaseTerminal() {
-        while !terminalWaiters.isEmpty {
-            let waiter = terminalWaiters.removeFirst()
+    private func canAcquireTerminal(_ target: TerminalAttachTarget?) -> Bool {
+        guard terminalsInUse.count < 5, !terminalsInUse.contains(target) else { return false }
+        // Legacy callers without a target retain Host-wide exclusivity.
+        return target == nil ? terminalsInUse.isEmpty : !terminalsInUse.contains(nil)
+    }
+
+    private func releaseTerminal(target: TerminalAttachTarget?) {
+        terminalsInUse.remove(target)
+        while let index = terminalWaiters.firstIndex(where: { canAcquireTerminal($0.target) }) {
+            let waiter = terminalWaiters.remove(at: index)
+            terminalsInUse.insert(waiter.target)
             waiter.continuation.resume()
-            return
         }
-        terminalInUse = false
+        guard terminalsInUse.isEmpty else { return }
         let waiters = terminalIdleWaiters
         terminalIdleWaiters.removeAll()
         for waiter in waiters {
@@ -960,7 +967,7 @@ actor EventsSession {
     }
 
     private func waitForTerminalIdle() async {
-        guard terminalInUse else { return }
+        guard !terminalsInUse.isEmpty else { return }
         await withCheckedContinuation { terminalIdleWaiters.append($0) }
     }
 }

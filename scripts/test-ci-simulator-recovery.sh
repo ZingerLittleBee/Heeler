@@ -50,7 +50,14 @@ case "$*" in
         [[ "$SCENARIO" != list-failure ]] || exit 1
         cat "$CASE_DIR/devices"
         ;;
-    'simctl bootstatus '*) [[ "$SCENARIO" != boot-failure ]] ;;
+    # The device boots for the first attempt (the app-lane runner boots it
+    # too); after the loss it never comes back.
+    'simctl bootstatus '*) [[ "$SCENARIO" != boot-failure || ! -e "$CASE_DIR/calls" ]] ;;
+    # run-app-simulator-tests.py reads the accessibility preferences before
+    # each app-lane attempt; an empty domain is a valid answer.
+    'simctl spawn '*' defaults export com.apple.Accessibility -')
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict/></plist>\n'
+        ;;
     *'launchctl setenv HEELER_SSH_E2E_REQUIRED '*) [[ "$SCENARIO" != env-failure ]] ;;
     *) exit 0 ;;
 esac
@@ -174,7 +181,10 @@ run_case() (
             [[ "$SCENARIO" != other-70 ]] || expected=70
             [[ "$SCENARIO" != watchdog-status ]] || expected=124
             [[ "$status" == "$expected" && "$(cat "$CASE_DIR/calls")" == 1 ]] || fail 'non-destination failure retried or changed'
-            [[ ! -e "$CASE_DIR/simctl" ]] || fail 'non-destination failure touched simulator'
+            # The app-lane runner's accessibility preparation is expected;
+            # rediscovery is not.
+            ! grep -qF 'simctl list devices available' "$CASE_DIR/simctl" 2>/dev/null \
+                || fail 'non-destination failure rediscovered simulators'
             ;;
         *)
             [[ "$status" == 70 ]] || fail 'missing destination status lost'

@@ -2,7 +2,9 @@ import SwiftUI
 
 /// The Console home screen (#8): Agents across every Host, shown either as
 /// the flat status-sorted list or grouped by Host with collapsible sections
-/// (#245). Host management (#14) lives behind the toolbar button.
+/// (#245). Host management (#14) lives behind the toolbar button. A Workspace
+/// terminal selected from Agent detail's drawer shows in the detail column
+/// without a row of its own here.
 struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
@@ -22,6 +24,9 @@ struct ConsoleView: View {
     /// Scene phase widened by the background grace period; an Attach screen
     /// pauses its work on real suspensions only.
     let activity: AppActivityCoordinator
+    /// A Workspace terminal chosen from Agent detail's drawer. It shares the
+    /// detail column with the router's Agent path; only one is ever set.
+    @State private var selectedTerminal: ConsoleTerminal?
     @State private var hostSheet: HostSheet?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
@@ -54,6 +59,8 @@ struct ConsoleView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.sceneWindow) private var sceneWindow
+    @State private var detailCrossfade = DetailCrossfade()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     /// The window-aware entry into navigation; nil outside a scene root.
@@ -149,6 +156,9 @@ struct ConsoleView: View {
             }
             // Keep structural identity stable across rotation and size-class changes.
             .navigationSplitViewStyle(.automatic)
+            // The detail column swapping its content dissolves from the
+            // leaving screen to the arriving one; see `DetailCrossfade`.
+            .environment(\.detailCrossfade, detailCrossfade)
             .onChange(of: presentation, initial: true) { _, presentation in
                 splitVisibility.update(from: presentation)
             }
@@ -216,6 +226,7 @@ struct ConsoleView: View {
         // clearing here is a no-op for it.
         .onChange(of: notificationRouter.path) { _, path in
             guard !path.isEmpty else { return }
+            selectedTerminal = nil
             hostSheet = nil
             isStartingAgent = false
             isShowingSettings = false
@@ -236,7 +247,9 @@ struct ConsoleView: View {
             registry: commandRegistry,
             context: {
                 .init(
-                    selection: notificationRouter.path.last,
+                    selection: notificationRouter.path.last ?? selectedTerminal.map {
+                        ConsoleAgent.ID(hostID: $0.hostID, paneID: $0.paneID)
+                    },
                     agents: listPresentation.mode == .flat
                         ? filteredAgents.map(\.id)
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
@@ -260,21 +273,79 @@ struct ConsoleView: View {
             newAgent: { isStartingAgent = true },
             settings: { isShowingSettings = true },
             hosts: { presentHosts() },
-            closeAgent: { notificationRouter.path = [] })
+            closeAgent: { clearSelection() })
     }
 
-    /// The sidebar selection as a projection of the router's path. Setting
-    /// it (a row tap, or the collapsed stack popping) writes the path back,
-    /// so user navigation and deep links keep one source of truth.
-    private var selectedAgent: Binding<ConsoleAgent.ID?> {
+    /// The sidebar selection as a projection of the router's path, or of the
+    /// drawer terminal on stage. Setting it (a row tap, or the collapsed
+    /// stack popping) writes the path back, so user navigation and deep
+    /// links keep one source of truth. A drawer terminal has no row, but it
+    /// must still be *a* selection: on iPhone the split view shows the
+    /// detail column only while this is non-nil, so clearing it to present
+    /// a terminal would pop straight back to the Agent list.
+    private var selectedItem: Binding<ConsoleSelection?> {
         Binding(
-            get: { notificationRouter.path.last },
-            set: { notificationRouter.path = $0.map { [$0] } ?? [] })
+            get: {
+                if let id = notificationRouter.path.last { return .agent(id) }
+                return selectedTerminal.map { .terminal($0.id) }
+            },
+            set: { selection in
+                switch selection {
+                case .agent(let id): selectAgent(id)
+                case .terminal(let id):
+                    if let terminal = console.terminals.first(where: { $0.id == id }) {
+                        selectTerminal(terminal)
+                    }
+                case nil: clearSelection()
+                }
+            })
+    }
+
+    private func selectAgent(_ id: ConsoleAgent.ID) {
+        changeSelection {
+            selectedTerminal = nil
+            notificationRouter.path = [id]
+        }
+    }
+
+    private func selectTerminal(_ terminal: ConsoleTerminal) {
+        if let agentID = terminal.agentID {
+            selectAgent(agentID)
+        } else {
+            changeSelection {
+                notificationRouter.path = []
+                selectedTerminal = terminal
+            }
+        }
+    }
+
+    private func clearSelection() {
+        changeSelection {
+            notificationRouter.path = []
+            selectedTerminal = nil
+        }
+    }
+
+    /// A selection that replaces one detail screen with another dissolves
+    /// between them. A first selection or a cleared one is the split view's
+    /// own navigation and needs nothing from here.
+    private func changeSelection(_ change: () -> Void) {
+        let before = selectedItem.wrappedValue
+        change()
+        let after = selectedItem.wrappedValue
+        guard let before, let after, before != after,
+              let window = sceneWindow?.window
+        else { return }
+        detailCrossfade.beginSwap(in: window)
     }
 
     /// The split view owns the window's status-bar appearance on iPhone. A
     /// pushed terminal cannot reliably override it from the detail subtree.
     private var terminalStatusBarColorScheme: ColorScheme? {
+        if selectedTerminal != nil {
+            return terminal.themes.selection(for: colorScheme)
+                .chromeColorScheme(for: colorScheme)
+        }
         guard let id = notificationRouter.path.last else { return nil }
         let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
@@ -315,8 +386,9 @@ struct ConsoleView: View {
                         terminalAccess: { [sceneRouting] in
                             sceneRouting?.terminalAccess(for: id.hostID) ?? .holds
                         }),
-                    onSwitch: { notificationRouter.path = [$0] },
-                    onClosed: { notificationRouter.path = [] }
+                    onSwitch: { selectAgent($0) },
+                    onClosed: { clearSelection() },
+                    onSelectTerminal: { selectTerminal($0) }
                 )
                 // Selecting another Agent must tear down the previous terminal
                 // pipeline; without the explicit identity the detail column
@@ -334,6 +406,22 @@ struct ConsoleView: View {
                     agentID: id, console: console, hosts: hosts)
                 missingAgentSurface(presentation)
             }
+        } else if let selectedTerminal {
+            WorkspaceTerminalDetailView(
+                terminal: console.terminals.first(where: { $0.id == selectedTerminal.id })
+                    ?? selectedTerminal,
+                console: console,
+                settings: terminal,
+                activity: activity,
+                onSelectAgent: { selectAgent($0) },
+                onSelectTerminal: { selectTerminal($0) },
+                isSelected: {
+                    self.selectedTerminal?.id == selectedTerminal.id
+                        && notificationRouter.path.isEmpty
+                },
+                keyboardHandoff: keyboardHandoff,
+                onBack: { clearSelection() })
+                .id(selectedTerminal.id)
         } else {
             ConsoleEmptyDetailView(
                 presentation: ConsoleEmptyDetailPresentation(
@@ -440,7 +528,7 @@ struct ConsoleView: View {
                     .hoverEffect(.highlight)
             }
         case .rows:
-            List(selection: selectedAgent) {
+            List(selection: selectedItem) {
                 if listPresentation.mode == .flat {
                     flatAgentListRows
                 } else {
@@ -490,7 +578,7 @@ struct ConsoleView: View {
     }
 
     private func agentRow(_ agent: ConsoleAgent) -> some View {
-        NavigationLink(value: agent.id) {
+        NavigationLink(value: ConsoleSelection.agent(agent.id)) {
             AgentCardView(
                 agent: agent,
                 layout: console.rowLayout(for: agent.hostID),
@@ -896,4 +984,13 @@ private struct ConsoleHostStatusCountPills: View {
             }
         }
     }
+}
+
+/// What the Console sidebar's split-view selection can hold. Only Agents
+/// have rows; a terminal chosen from Agent detail's Workspace drawer takes
+/// the `terminal` case so the detail column stays presented on iPhone
+/// (see `ConsoleView.selectedItem`).
+enum ConsoleSelection: Hashable {
+    case agent(ConsoleAgent.ID)
+    case terminal(ConsoleTerminal.ID)
 }

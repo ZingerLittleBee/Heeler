@@ -148,6 +148,7 @@ run_xcodebuild() {
     local working_directory="$repo_root"
     local index
     local -a arguments=()
+    local -a runner=(xcodebuild)
     shift 3
 
     safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
@@ -164,6 +165,11 @@ run_xcodebuild() {
     if [[ "$ci_lane" == "app" ]]; then
         mkdir -p "$source_packages_dir"
         set -- "$@" -clonedSourcePackagesDirPath "$source_packages_dir"
+        # App suites need the simulator accessibility tree (#339); the runner
+        # prepares it and restores the preferences afterwards.
+        if [[ "${1:-}" == "test-without-building" ]]; then
+            runner=(python3 "$repo_root/scripts/run-app-simulator-tests.py")
+        fi
     else
         working_directory="$repo_root/Packages/HeelerSSH"
     fi
@@ -202,7 +208,7 @@ run_xcodebuild() {
                 --artifact-path "$app_derived_data_path/Logs/Test" \
                 --artifact-path "$package_derived_data_path/Logs/Test" \
                 --artifact-glob "$fixture_dir/*.log" \
-                -- xcodebuild "${arguments[@]}"
+                -- "${runner[@]}" "${arguments[@]}"
         ) 2>&1 | tee "$attempt_log" "$output_log"; then
             status=0
             break
