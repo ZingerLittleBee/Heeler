@@ -117,8 +117,8 @@ final class TerminalKeyboardInset {
     }
 
     /// Measures against the window the terminal is mounted in, which its view
-    /// reports through ``View/terminalKeyboardInsetWindow(_:)``. Idempotent;
-    /// the inset keeps the last window it was given.
+    /// reports from a `WindowReader` in its background. Idempotent; the inset
+    /// keeps the last window it was given.
     func attach(to window: UIWindow) {
         guard self.window !== window else { return }
         self.window = window
@@ -189,6 +189,26 @@ final class TerminalKeyboardInset {
         guard let measuredHeight = measureWindowKeyboard(), measuredHeight > 0 else { return }
         coalesceTask?.cancel()
         settleDismissal(measuredHeight: measuredHeight)
+    }
+
+    /// Adopts a keyboard that is already on screen when this inset's screen
+    /// comes up: a Shell Terminal inheriting the keyboard from the Agent it
+    /// was opened from. A fresh inset starts at zero, so its input row would
+    /// be laid out at the bottom of the screen and ride up to the keyboard
+    /// once UIKit's next frame notification arrived — the same motion as a
+    /// keyboard being presented, under a keyboard that never left. The
+    /// window's keyboard layout guide already knows the footprint, so the
+    /// first layout can use it. Measures nothing while the window does not
+    /// own the keyboard, and leaves a keyboard-free window alone.
+    func inheritPresentedKeyboard(in window: UIWindow) {
+        attach(to: window)
+        guard let measured = measureWindowKeyboard(), measured > 0 else { return }
+        dismissalConfirmationTask?.cancel()
+        dismissalConfirmationTask = nil
+        isSoftwareKeyboardDismissed = false
+        missedPresentationFrame = false
+        coalesceTask?.cancel()
+        apply(measured)
     }
 
     /// The app is about to ask UIKit for the software keyboard (Tools→iOS,
@@ -501,15 +521,5 @@ extension View {
     func terminalKeyboardInset(_ inset: TerminalKeyboardInset) -> some View {
         padding(.bottom, inset.height)
             .ignoresSafeArea(.keyboard)
-    }
-
-    /// Hands `inset` the window this view is mounted in, so it measures the
-    /// keyboard against that window rather than whichever one is key.
-    func terminalKeyboardInsetWindow(_ inset: TerminalKeyboardInset) -> some View {
-        background {
-            WindowReader { inset.attach(to: $0) }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
     }
 }

@@ -16,12 +16,21 @@ struct AgentDetailView: View {
     private let isVisible: () -> Bool
     private let onSwitch: (ConsoleAgent.ID) -> Void
     private let onClosed: () -> Void
+    private let onSelectTerminal: ((ConsoleTerminal) -> Void)?
     @State private var focus = AgentFocusCoordinator()
     @State private var hasAppeared = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var composer: AgentComposerStore
     @State private var attach: AgentAttachStore
     @State private var openTerminal: AgentOpenTerminalStore
+    @State private var retainedAgent: AgentTerminalCache.Entry?
+    @State private var retentionOwnerID: UUID
+    @State private var attachReference: AgentDetailAttachReference
+    private let permitsRetention: Bool
+    @State private var isResolvingTerminal = false
+    @State private var isChoosingTerminal = false
+    @State private var terminalOpenFailure: String?
+    @State private var createdTerminal: ShellTerminalIdentity?
     /// Which window holds this Host's terminal channel; nil outside a scene
     /// root, where this detail always holds it.
     @Environment(\.agentSceneRouting) private var sceneRouting
@@ -38,6 +47,7 @@ struct AgentDetailView: View {
         stage: AgentDetailStage,
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void,
+        onSelectTerminal: ((ConsoleTerminal) -> Void)? = nil,
         composerStore: AgentComposerStore? = nil,
         attachStore: AgentAttachStore? = nil,
         openTerminalStore: AgentOpenTerminalStore? = nil
@@ -55,14 +65,20 @@ struct AgentDetailView: View {
         self.isVisible = stage.isVisible
         self.onSwitch = onSwitch
         self.onClosed = onClosed
+        self.onSelectTerminal = onSelectTerminal
         let composer = composerStore ?? console.composerStore(for: agent)
         _composer = State(initialValue: composer)
+        let ownerID = UUID()
+        _retentionOwnerID = State(initialValue: ownerID)
+        permitsRetention = attachStore == nil && openTerminalStore == nil
+        _retainedAgent = State(initialValue: nil)
+        let retainsSessions = permitsRetention
         let attach = attachStore
             ?? AgentAttachStore(
                 target: agent.agent.paneID,
                 paneTitle: AgentTerminalView.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
-                isOnStage: isOnStage,
+                isOnStage: { !retainsSessions && isOnStage() },
                 runTerminal: console.terminalRunner(for: agent.hostID),
                 stageImage: console.imageStager(for: agent.hostID),
                 stageFile: console.fileStager(for: agent.hostID),
@@ -71,6 +87,8 @@ struct AgentDetailView: View {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             }
         _attach = State(initialValue: attach)
+        let reference = AgentDetailAttachReference(attach)
+        _attachReference = State(initialValue: reference)
         let hostID = agent.hostID
         let workspaceID = agent.agent.workspaceID
         _openTerminal = State(
@@ -83,8 +101,8 @@ struct AgentDetailView: View {
                         try await console.createShellTerminal(request, on: hostID)
                     },
                     runTerminal: console.terminalRunner(for: agent.hostID),
-                    leaveAgent: { attach.leaveForTerminalHandoff() },
-                    rejoinAgent: { attach.rejoin() },
+                    leaveAgent: { reference.store.leaveForTerminalHandoff() },
+                    rejoinAgent: { reference.store.rejoin() },
                     recallTerminal: { [console] in
                         console.recallShellTerminal(
                             forWorkspaceID: workspaceID, on: hostID)
@@ -113,10 +131,52 @@ struct AgentDetailView: View {
         guard openTerminal.shell == nil, !openTerminal.isOpening else { return }
         switch terminalAccess {
         case .holds:
+            prepareRetainedAgent()
             attach.rejoin()
         case .liveInAnotherWindow:
-            attach.leaveForTerminalHandoff()
+            if let retainedAgent {
+                console.agentTerminals.release(retainedAgent, ownerID: retentionOwnerID)
+                self.retainedAgent = nil
+                attach = makePrivateAttach()
+                attachReference.store = attach
+            } else {
+                attach.leaveForTerminalHandoff()
+            }
         }
+    }
+
+    private func prepareRetainedAgent() {
+        guard permitsRetention, isOnStage(), openTerminal.shell == nil else { return }
+        if let retainedAgent, retainedAgent.isRetained {
+            console.agentTerminals.activate(retainedAgent, ownerID: retentionOwnerID, isPresented: { isOnStage() })
+            return
+        }
+        if retainedAgent == nil { attach.leaveForTerminalHandoff() }
+        let entry = console.agentTerminals.acquire(
+            agent: agent, console: console, composer: composer, ownerID: retentionOwnerID,
+            isPresented: { isOnStage() })
+        retainedAgent = entry
+        attach = entry.attach
+        attachReference.store = attach
+    }
+
+    private func makePrivateAttach() -> AgentAttachStore {
+        let console = console
+        let hostID = agent.hostID
+        let paneID = agent.agent.paneID
+        return AgentAttachStore(
+            target: agent.agent.paneID,
+            paneTitle: AgentTerminalView.displayTitle(for: agent),
+            transportGeneration: console.hostConnectionGenerations[agent.hostID],
+            isOnStage: isOnStage,
+            runTerminal: console.terminalRunner(for: agent.hostID),
+            stageImage: console.imageStager(for: agent.hostID),
+            stageFile: console.fileStager(for: agent.hostID),
+            composer: composer,
+            closePane: { [weak console] in
+                guard let console else { throw CancellationError() }
+                try await console.closePane(paneID, on: hostID)
+            })
     }
 
     private var focusViewingState: AgentFocusCoordinator.ViewingState {
@@ -153,7 +213,9 @@ struct AgentDetailView: View {
                     activity: activity,
                     isReturning: openTerminal.isReturning,
                     isClosingTerminal: openTerminal.isClosingTerminal,
-                    onCloseTerminal: { openTerminal.closeTerminal() }
+                    onCloseTerminal: { openTerminal.closeTerminal() },
+                    workspaceDrawer: workspaceDrawer,
+                    keyboardHandoff: keyboardHandoff
                 ) {
                     await openTerminal.returnToAgent()
                 }
@@ -178,16 +240,29 @@ struct AgentDetailView: View {
                     },
                     onSwitch: onSwitch,
                     onClosed: onClosed,
-                    canOpenTerminal: openTerminal.canOpen && terminalAccess == .holds,
-                    isOpeningTerminal: openTerminal.isOpening,
-                    openTerminal: { openTerminal.open() },
+                    canOpenTerminal: (!workspaceShells.isEmpty || openTerminal.canOpen) && terminalAccess == .holds,
+                    isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
+                    openTerminal: { openWorkspaceTerminal() },
                     composer: composer,
-                    attachStore: attach)
-                .id(openTerminal.destination)
+                    attachStore: attach,
+                    retainedSurface: retainedAgent?.surfaceRetention,
+                    onRetainDeparture: retainedAgent.map { entry in
+                        { keepingKeyboard in
+                            console.agentTerminals.release(
+                                entry, ownerID: retentionOwnerID, keepingKeyboard: keepingKeyboard)
+                        }
+                    },
+                    workspaceDrawer: workspaceDrawer,
+                    // Retention swaps `attach` on appear and rebuilds this
+                    // view; the build before that swap is a placeholder and
+                    // must not spend the keyboard handoff meant for the real one.
+                    inheritsKeyboardHandoff: !permitsRetention || retainedAgent != nil)
+                .id(ObjectIdentifier(attach))
             }
         }
         .onAppear {
             hasAppeared = true
+            prepareRetainedAgent()
             updateFocus()
         }
         .onChange(of: focusViewingState) {
@@ -198,7 +273,27 @@ struct AgentDetailView: View {
             focus.leave()
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
+            prepareRetainedAgent()
             openTerminal.transportGenerationDidChange(generation)
+        }
+        .onChange(of: activity.activationCount) { prepareRetainedAgent() }
+        .confirmationDialog("Open Terminal", isPresented: $isChoosingTerminal, titleVisibility: .visible) {
+            ForEach(workspaceShells) { target in
+                Button("\(target.displayTitle) · \(target.tabLabel ?? "Terminal")") {
+                    onSelectTerminal?(target)
+                }
+            }
+            if agent.shellTerminalCreationRequest != nil {
+                Button("New Terminal") { createWorkspaceTerminal() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Couldn't Open Terminal", isPresented: Binding(
+            get: { terminalOpenFailure != nil }, set: { if !$0 { terminalOpenFailure = nil } })
+        ) {
+            Button("OK", role: .cancel) { terminalOpenFailure = nil }
+        } message: {
+            Text(terminalOpenFailure ?? "")
         }
         // The same-Host handoff between windows rides the Attach store's own
         // leave and rejoin, the path the Shell Terminal handoff already
@@ -238,6 +333,88 @@ struct AgentDetailView: View {
         }
         .modifier(ConsoleDetailPresentationRegistration(
             agentID: agent.id,
-            isPresenting: openTerminal.failure != nil || openTerminal.closeFailureMessage != nil))
+            isPresenting: openTerminal.failure != nil || openTerminal.closeFailureMessage != nil
+                || terminalOpenFailure != nil || isChoosingTerminal))
     }
+
+    /// Nil outside a Console that can select terminals (a scene root), and
+    /// while the Workspace has nothing to switch to.
+    private var workspaceDrawer: WorkspaceTerminalDrawer? {
+        guard let onSelectTerminal else { return nil }
+        let terminals = console.terminals(on: agent.hostID, workspaceID: agent.agent.workspaceID)
+        guard !terminals.isEmpty else { return nil }
+        return WorkspaceTerminalDrawer(
+            terminals: terminals,
+            selectedPaneID: openTerminal.shell?.identity.paneID ?? agent.agent.paneID,
+            edgeDock: terminal.edgeDock,
+            onSelect: { target in
+                if let agentID = target.agentID {
+                    if agentID != agent.id { onSwitch(agentID) }
+                    else if openTerminal.shell != nil {
+                        Task { await openTerminal.returnToAgent() }
+                    }
+                } else {
+                    onSelectTerminal(target)
+                }
+            },
+            onNewTerminal: agent.shellTerminalCreationRequest == nil
+                ? nil : { createWorkspaceTerminal(fresh: true) },
+            isCreatingTerminal: isResolvingTerminal)
+    }
+
+    private var workspaceShells: [ConsoleTerminal] {
+        console.terminals(on: agent.hostID, workspaceID: agent.agent.workspaceID)
+            .filter { !$0.isAgent }
+    }
+
+    private func openWorkspaceTerminal() {
+        guard onSelectTerminal != nil else { openTerminal.open(); return }
+        if createdTerminal != nil { createWorkspaceTerminal(); return }
+        switch workspaceShells.count {
+        case 0: createWorkspaceTerminal()
+        case 1: onSelectTerminal?(workspaceShells[0])
+        default: isChoosingTerminal = true
+        }
+    }
+
+    /// Open Terminal routes back to the tab this detail already created;
+    /// `fresh` (the drawer's New Terminal) asks for another one, unless the
+    /// last creation has not reached the inventory yet, in which case it is
+    /// still the retry path and must not create a duplicate.
+    private func createWorkspaceTerminal(fresh: Bool = false) {
+        guard !isResolvingTerminal, let request = agent.shellTerminalCreationRequest else { return }
+        if fresh, let created = createdTerminal, console.terminals.contains(where: {
+            $0.hostID == agent.hostID && $0.terminalID == created.terminalID
+        }) {
+            createdTerminal = nil
+        }
+        isResolvingTerminal = true
+        Task { @MainActor in
+            defer { isResolvingTerminal = false }
+            do {
+                if createdTerminal == nil {
+                    createdTerminal = try await console.createShellTerminal(request, on: agent.hostID)
+                } else {
+                    await console.refreshTerminalInventory(on: agent.hostID)
+                }
+                guard let createdTerminal, let target = console.terminals.first(where: {
+                    $0.hostID == agent.hostID && $0.terminalID == createdTerminal.terminalID
+                }) else {
+                    keyboardHandoff.cancelShellTerminal()
+                    terminalOpenFailure = "The terminal was created, but its Workspace hasn't refreshed yet. Try Open Terminal again to refresh it."
+                    return
+                }
+                if isVisible() { onSelectTerminal?(target) }
+            } catch {
+                keyboardHandoff.cancelShellTerminal()
+                terminalOpenFailure = AgentOpenTerminalStore.presentation(for: error).message
+            }
+        }
+    }
+}
+
+@MainActor
+private final class AgentDetailAttachReference {
+    var store: AgentAttachStore
+    init(_ store: AgentAttachStore) { self.store = store }
 }

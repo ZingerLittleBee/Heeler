@@ -785,29 +785,6 @@ struct TerminalAttachTests {
     }
 
     @MainActor
-    @Test func theInputRowNewLineInsertsWithoutSubmitting() async throws {
-        var sent = Data()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSend: { sent.append($0) })
-        let window = try await Self.host(terminal)
-        defer { window.isHidden = true }
-        let control = TerminalKeyboardControl()
-        control.terminal = terminal
-
-        control.sendNewLine()
-        await Self.expectOutput(Data([0x0A]), received: { sent })
-
-        sent.removeAll()
-        terminal.setKeyboardMode(.controls)
-        control.sendNewLine()
-        await Self.expectOutput(Data([0x0A]), received: { sent })
-
-        terminal.setLocalInputEnabled(false)
-        control.sendNewLine()
-        await Self.expectOutput(Data([0x0A]), received: { sent })
-    }
-
-    @MainActor
     @Test func pasteControlAndHardwarePasteUseTheReviewedPasteCallback() {
         var pastes: [String] = []
         let terminal = TerminalScreenView.makeConfiguredTerminal(
@@ -931,7 +908,6 @@ struct TerminalAttachTests {
         let window = try await Self.host(terminal)
         defer { window.isHidden = true }
         terminal.setLocalInputEnabled(false)
-        terminal.sendNewLine()
         terminal.insertText("\n")
         terminal.terminalSession.waitForPendingOutput()
         await Task.yield()
@@ -1205,7 +1181,10 @@ struct TerminalAttachTests {
         defer { window.isHidden = true }
 
         // A TUI on the alternate screen with its prompt parked on row 20.
+        // `receive` only enqueues; the caret the region is anchored on moves
+        // once Ghostty has parsed the cursor move, so wait for that.
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[20;3H> ".utf8))
+        terminal.terminalSession.waitForPendingOutput()
         terminal.layoutIfNeeded()
         await Task.yield()
 
@@ -1886,6 +1865,42 @@ struct TerminalAttachTests {
         #expect(Self.systemContentInset(inset) == 383)
         #expect(ShellTerminalView.keyboardLayout(
             inset: inset, presentation: .system).contentInset == 383)
+    }
+
+    /// A screen that comes up under a keyboard the previous screen left up
+    /// lays out against it from the first frame instead of starting at zero
+    /// and riding up on the next notification; a keyboard-free window and a
+    /// window that does not own the keyboard leave the inset untouched.
+    @MainActor
+    @Test func anInheritedKeyboardIsAdoptedFromTheLayoutGuideOnAppear() async throws {
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            rootViewController: UIViewController())
+        defer { window.isHidden = true }
+        var windowKeyboardHeight: CGFloat? = 301
+        let inset = TerminalKeyboardInset(
+            notificationCenter: NotificationCenter(),
+            measure: Self.iPadProPortraitCoverage,
+            measureWindowKeyboard: { windowKeyboardHeight })
+        inset.dismissalConfirmationDelay = .milliseconds(30)
+        inset.expectSoftwareKeyboard()
+
+        inset.inheritPresentedKeyboard(in: window)
+        #expect(inset.height == 301)
+        #expect(inset.lastPresentedHeight == 301)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(!inset.isSoftwareKeyboardDismissed, "an adopted keyboard is not an unanswered will-hide")
+
+        let untouched = TerminalKeyboardInset(
+            notificationCenter: NotificationCenter(),
+            measure: Self.iPadProPortraitCoverage,
+            measureWindowKeyboard: { windowKeyboardHeight })
+        windowKeyboardHeight = 0
+        untouched.inheritPresentedKeyboard(in: window)
+        windowKeyboardHeight = nil
+        untouched.inheritPresentedKeyboard(in: window)
+        #expect(untouched.height == 0)
+        #expect(untouched.lastPresentedHeight == 0)
     }
 
     /// The did-show reconciliation is only for a dropped presentation. A

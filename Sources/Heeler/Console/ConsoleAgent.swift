@@ -38,6 +38,23 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
 
     var id: ID { ID(hostID: hostID, paneID: agent.paneID) }
 
+    /// The one Agent whose session file `AgentSessionUsage` knows how to
+    /// fold. Another Agent that came to report a path would only have its
+    /// file downloaded and parsed for nothing.
+    static let sessionFileAgent = "omp"
+
+    /// The Agent's own session transcript on the Host, when herdr reports one
+    /// by path for `sessionFileAgent` (#325). A reference herdr resolves
+    /// itself carries no path to read, so those stay nil rather than being
+    /// guessed at.
+    var sessionFilePath: String? {
+        guard
+            let session = agent.agentSession, session.kind == .path,
+            session.agent == Self.sessionFileAgent
+        else { return nil }
+        return session.value.isEmpty ? nil : session.value
+    }
+
     init(
         hostID: Host.ID,
         hostName: String,

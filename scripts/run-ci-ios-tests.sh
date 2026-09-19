@@ -119,6 +119,9 @@ password_user_cleanup_needed=0
 password_ssh_sacl_added=0
 password_pid_file="$fixture_dir/sshd-password.pid"
 password_log="$fixture_dir/sshd-password.log"
+# sysadminctl transcript from create_password_user, preserved with the other
+# fixture logs and scrubbed of the account password before anything reads it.
+sysadminctl_log="$fixture_dir/sysadminctl.log"
 password_log_printed=0
 
 # Merge CI must run the complete mandatory matrix; a laptop need not.
@@ -145,6 +148,7 @@ run_xcodebuild() {
     local working_directory="$repo_root"
     local index
     local -a arguments=()
+    local -a runner=(xcodebuild)
     shift 3
 
     safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
@@ -161,6 +165,11 @@ run_xcodebuild() {
     if [[ "$ci_lane" == "app" ]]; then
         mkdir -p "$source_packages_dir"
         set -- "$@" -clonedSourcePackagesDirPath "$source_packages_dir"
+        # App suites need the simulator accessibility tree (#339); the runner
+        # prepares it and restores the preferences afterwards.
+        if [[ "${1:-}" == "test-without-building" ]]; then
+            runner=(python3 "$repo_root/scripts/run-app-simulator-tests.py")
+        fi
     else
         working_directory="$repo_root/Packages/HeelerSSH"
     fi
@@ -199,7 +208,7 @@ run_xcodebuild() {
                 --artifact-path "$app_derived_data_path/Logs/Test" \
                 --artifact-path "$package_derived_data_path/Logs/Test" \
                 --artifact-glob "$fixture_dir/*.log" \
-                -- xcodebuild "${arguments[@]}"
+                -- "${runner[@]}" "${arguments[@]}"
         ) 2>&1 | tee "$attempt_log" "$output_log"; then
             status=0
             break
@@ -714,18 +723,52 @@ EXPECT
 }
 
 # sysadminctl owns creation of the complete local account record. Expect feeds
-# its password prompt without putting the secret in argv, a file, the command
-# transcript, or the sysadminctl environment.
+# its password prompt without putting the secret in argv, the command line, or
+# the sysadminctl environment; the pty transcript it records for diagnosis has
+# echo turned off before the password is sent and is scrubbed afterwards.
+# Every command in the password fixture block is silent on success and, under
+# `set -e`, silent on failure too: five CI runs exited 1 between "Claimed
+# simulator" and the first xcodebuild with nothing to read (#348). Route each
+# step through here so the job log names the step and its exit status.
+provisioning_step() {
+    local label=$1
+    local status
+    shift
+    "$@" && return 0
+    status=$?
+    echo "Password fixture provisioning failed at $label (status $status)." >&2
+    return "$status"
+}
+
+# The expect transcript below records the pty. Echo is turned off before the
+# password is sent, so the secret should never reach the file; this scrub is
+# the second line, run before the transcript is printed or preserved. The
+# secret travels in the environment so no quoting can leak or mangle it, and
+# an empty secret must not become an empty match that rewrites the whole file.
+redact_secret_in_file() {
+    local file=$1
+    local secret=$2
+    [[ -f "$file" && -n "$secret" ]] || return 0
+    HEELER_REDACT_SECRET="$secret" perl -pi -e \
+        's/\Q$ENV{HEELER_REDACT_SECRET}\E/[redacted]/g' "$file"
+}
+
 create_password_user() (
     local status
 
+    rm -f "$sysadminctl_log"
     export HEELER_SYSADMINCTL_PASSWORD="$password_secret"
     export HEELER_SYSADMINCTL_USERNAME="$password_username"
     export HEELER_SYSADMINCTL_UID="$password_uid"
     export HEELER_SYSADMINCTL_HOME="$password_home"
+    export HEELER_SYSADMINCTL_LOG="$sysadminctl_log"
+    # log_user 0 keeps the transcript off the job log; -a records it anyway so a
+    # failure can show what sysadminctl said. Each exit path names its reason on
+    # stderr, which the calling shell leaves connected to the job log.
     if /usr/bin/expect <<'EXPECT'
 set timeout 30
 log_user 0
+log_file -a -noappend $env(HEELER_SYSADMINCTL_LOG)
 
 set password $env(HEELER_SYSADMINCTL_PASSWORD)
 unset env(HEELER_SYSADMINCTL_PASSWORD)
@@ -743,15 +786,18 @@ set sent_password 0
 expect {
     -re {(?i)password[^\r\n]*:[[:space:]]*$} {
         if {$sent_password} {
+            puts stderr "sysadminctl prompted for the password a second time"
             close
             catch {wait}
             exit 1
         }
+        catch {exec stty -echo < $spawn_out(slave,name)}
         send -- "$password\r"
         set sent_password 1
         exp_continue
     }
     timeout {
+        puts stderr "sysadminctl timed out after ${timeout}s (password sent: $sent_password)"
         close
         catch {wait}
         exit 1
@@ -759,20 +805,31 @@ expect {
     eof {}
 }
 
-if {!$sent_password || [catch {wait} child_status]} {
+if {!$sent_password} {
+    puts stderr "sysadminctl exited without prompting for a password"
+    exit 1
+}
+if {[catch {wait} child_status]} {
+    puts stderr "could not wait for sysadminctl: $child_status"
     exit 1
 }
 if {[llength $child_status] < 4 || [lindex $child_status 2] ne "0"} {
+    puts stderr "sysadminctl wait reported an error: $child_status"
     exit 1
 }
 if {[llength $child_status] >= 5 \
     && [lindex $child_status 4] eq "CHILDKILLED"} {
+    puts stderr "sysadminctl was killed by a signal: $child_status"
     exit 1
 }
 set child_exit [lindex $child_status 3]
 if {![string is integer -strict $child_exit] \
     || $child_exit < 0 || $child_exit > 255} {
+    puts stderr "sysadminctl exit status is unreadable: $child_status"
     exit 1
+}
+if {$child_exit != 0} {
+    puts stderr "sysadminctl exited with status $child_exit"
 }
 exit $child_exit
 EXPECT
@@ -785,6 +842,12 @@ EXPECT
     unset HEELER_SYSADMINCTL_USERNAME
     unset HEELER_SYSADMINCTL_UID
     unset HEELER_SYSADMINCTL_HOME
+    unset HEELER_SYSADMINCTL_LOG
+    redact_secret_in_file "$sysadminctl_log" "$password_secret"
+    if [[ "$status" != 0 && -s "$sysadminctl_log" ]]; then
+        echo "===== sysadminctl transcript ($sysadminctl_log)" >&2
+        cat "$sysadminctl_log" >&2
+    fi
     return "$status"
 )
 
@@ -1223,6 +1286,22 @@ ssh-keygen -q -t ed25519 -N '' -C heeler-ci-device-key -f "$fixture_dir/device_k
 device_key_seed="$(/usr/bin/python3 \
     scripts/fixtures/openssh-ed25519-seed.py "$fixture_dir/device_key")"
 cp "$fixture_dir/device_key.pub" "$fixture_dir/authorized_keys"
+
+# A separate RSA identity exercises the callback signer used by RSA Key auth.
+# Security.framework consumes PKCS#1 DER, while sshd consumes the matching
+# OpenSSH public line. The app only offers RSA-SHA2-512; it has no SHA-1
+# signing fallback.
+/usr/bin/openssl genrsa -out "$fixture_dir/rsa_key.pem" 3072 >/dev/null 2>&1
+chmod 600 "$fixture_dir/rsa_key.pem"
+/usr/bin/openssl rsa \
+    -in "$fixture_dir/rsa_key.pem" \
+    -outform DER \
+    -out "$fixture_dir/rsa_key.der" \
+    >/dev/null 2>&1
+rsa_public_key="$(ssh-keygen -y -f "$fixture_dir/rsa_key.pem")"
+printf '%s heeler-ci-rsa-key\n' "$rsa_public_key" > "$fixture_dir/rsa_key.pub"
+cat "$fixture_dir/rsa_key.pub" >> "$fixture_dir/authorized_keys"
+rsa_key_der="$(base64 < "$fixture_dir/rsa_key.der" | tr -d '\n')"
 printf 'no-port-forwarding %s\n' "$(<"$fixture_dir/device_key.pub")" \
     > "$fixture_dir/authorized_keys-no-forwarding"
 cp "$fixture_dir/authorized_keys" "$fixture_dir/authorized_keys-jump-target"
@@ -1248,6 +1327,12 @@ pairing_config="$fixture_dir/sshd-pairing.conf"
 pairing_mismatched_config="$fixture_dir/sshd-pairing-mismatched.conf"
 password_config="$fixture_dir/sshd-password.conf"
 
+# DEBUG1, not VERBOSE: VERBOSE stops at "Starting session", so a client that
+# never sees its channel reply (#343: exec request timed out 5s after sshd had
+# started the pty session) cannot be told apart from one that never read it.
+# DEBUG1 logs each channel request as sshd handles it, timestamped by the
+# filter in start_unprivileged_sshd. The full logs go to the diagnostics
+# artifact; the console tail is only an excerpt.
 write_common_config() {
     local port=$1
     local host_key=$2
@@ -1261,6 +1346,7 @@ write_common_config() {
         "PasswordAuthentication no" \
         "KbdInteractiveAuthentication no" \
         "PubkeyAuthentication yes" \
+        "PubkeyAcceptedAlgorithms ssh-ed25519,rsa-sha2-512" \
         "AuthorizedKeysFile $fixture_dir/authorized_keys" \
         "UsePAM yes" \
         "PermitRootLogin no" \
@@ -1269,7 +1355,7 @@ write_common_config() {
         "PerSourcePenalties no" \
         "PrintMotd no" \
         "PrintLastLog no" \
-        "LogLevel VERBOSE" \
+        "LogLevel DEBUG1" \
         "Subsystem sftp $sftp_server" \
         "SetEnv HOME=$fixture_home" \
         "ForceCommand $force_posix_shell"
@@ -1376,7 +1462,7 @@ write_pairing_config() {
         "PerSourcePenalties no" \
         "PrintMotd no" \
         "PrintLastLog no" \
-        "LogLevel VERBOSE" \
+        "LogLevel DEBUG1" \
         "Subsystem sftp $sftp_server"
 }
 
@@ -1466,15 +1552,18 @@ if [[ "$ci_lane" == "app" ]] && sudo -n true >/dev/null 2>&1; then
     # EXIT/INT/TERM may arrive after sysadminctl creates only part of the user
     # record, so declare cleanup intent before starting that side effect.
     password_user_cleanup_needed=1
-    create_password_user
+    provisioning_step create_password_user create_password_user || exit 1
     release_resource_lock "$account_lock_dir" "password account allocation"
     account_lock_dir=""
-    sudo -n dscl . -create "/Users/$password_username" IsHidden 1
-    sudo -n chown "$password_uid":20 "$password_home"
+    provisioning_step "dscl IsHidden" \
+        sudo -n dscl . -create "/Users/$password_username" IsHidden 1 || exit 1
+    provisioning_step "chown password home" \
+        sudo -n chown "$password_uid":20 "$password_home" || exit 1
     if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then
         password_ssh_sacl_added=1
-        sudo -n /usr/sbin/dseditgroup -o edit \
-            -a "$password_username" -t user com.apple.access_ssh
+        provisioning_step "dseditgroup com.apple.access_ssh" \
+            sudo -n /usr/sbin/dseditgroup -o edit \
+            -a "$password_username" -t user com.apple.access_ssh || exit 1
     fi
     printf '%s\n' \
         "Port $password_port" \
@@ -1492,7 +1581,7 @@ if [[ "$ci_lane" == "app" ]] && sudo -n true >/dev/null 2>&1; then
         "PerSourcePenalties no" \
         "PrintMotd no" \
         "PrintLastLog no" \
-        "LogLevel VERBOSE" \
+        "LogLevel DEBUG1" \
         "Subsystem sftp $sftp_server" \
         > "$password_config"
     password_fixture_available=1
@@ -1622,7 +1711,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
         "$password_secret")
 fi
 fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
+    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","rsaKeyDER":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
     "$modern_port" \
     "$legacy_port" \
     "$restricted_port" \
@@ -1633,6 +1722,7 @@ fixture_configuration=$(printf \
     "$weak_network_control_port" \
     "$fixture_username" \
     "$device_key_seed" \
+    "$rsa_key_der" \
     "$password_fixture_json" \
     "$streamlocal_socket" \
     "$streamlocal_socket" \
@@ -1878,7 +1968,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 95 6 0 \
+run_suite SharedFixtureE2ETests 97 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -1904,6 +1994,10 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 assert_behavior "Device Key" HeelerSSHSessionE2ETests \
     '"authorized Device Key authenticates and executes through real sshd"'
+assert_behavior "RSA-SHA2-512" HeelerSSHTransportBehaviorE2ETests \
+    '"RSA credentials authenticate when the Host accepts only RSA-SHA2-512"'
+assert_behavior "Jump Host RSA-SHA2-512" HeelerSSHTransportBehaviorE2ETests \
+    '"RSA authenticates both hops when each Host accepts only RSA-SHA2-512"'
 assert_behavior "Bootstrap Key" PairingCeremonyE2ETests \
     'fullCeremonyEnrollsTheDeviceKeyAndVerifies()'
 assert_behavior "two-hop trust" HeelerSSHJumpHostGateE2ETests \
@@ -2058,9 +2152,12 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 56 tests in 4 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 64 tests in 5 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "post-negotiation transport loss is not an algorithm mismatch" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "a key exchange failure is redialled once and then reported" passed' \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "handshake negotiates post-quantum key exchange" passed' \
@@ -2152,7 +2249,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all forty-nine tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all sixty-four tests" >&2
     exit 1
 fi
 exit 0

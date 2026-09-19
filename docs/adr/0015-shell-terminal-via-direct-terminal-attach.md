@@ -4,6 +4,9 @@ status: accepted
 
 # Shell Terminal rides herdr's direct terminal attach
 
+ADR 0017 supersedes this decision's always-create target selection and single
+Host terminal lifetime. The direct terminal attach transport remains in use.
+
 Agent detail gains **Open Terminal** (#231): one tap creates one fresh herdr
 tab in the Agent's launch directory — `tab.create` with the Agent's workspace
 id, a concrete `cwd`, and `focus: false` — and opens the returned root pane's

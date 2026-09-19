@@ -32,7 +32,9 @@ struct HostOnboardingStoreTests {
             connector: connector,
             knownHosts: knownHosts,
             credentials: HostCredentialsProvider(
-                deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()), secrets: secrets),
+                deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+                rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+                secrets: secrets),
             fingerprintTimeout: fingerprintTimeout)
         return (store, connector)
     }
@@ -121,6 +123,30 @@ struct HostOnboardingStoreTests {
         }
         #expect(hint.contains("Replace Device Key"))
         #expect(hint.contains("authorized_keys"))
+        #expect(await connector.capturedSettings.isEmpty)
+    }
+
+    @Test func corruptRSAKeyExplainsThatRegistrationMustBeRepaired() async throws {
+        let account = "corrupt-rsa-key"
+        let secrets = InMemorySecretStore()
+        try secrets.write(Data("not-an-rsa-key".utf8), account: account)
+        let connector = FakeTransportConnector(outcome: .connects(pingResult: Self.healthyPing))
+        let store = HostOnboardingStore(
+            host: .fixture(authMethod: .rsaKey),
+            connector: connector,
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: HostCredentialsProvider(
+                rsaKeys: RSAKeyStore(secrets: secrets, account: account),
+                secrets: secrets))
+
+        await store.runChecks()
+
+        guard case .failed(let hint) = try #require(store.report)[.connection] else {
+            Issue.record("a corrupt RSA Key should fail the connection check")
+            return
+        }
+        #expect(hint.contains("RSA Key is corrupted"))
+        #expect(hint.contains("every Host"))
         #expect(await connector.capturedSettings.isEmpty)
     }
 
@@ -256,6 +282,19 @@ struct HostOnboardingStoreTests {
             Issue.record("credentials should be the device key")
             return
         }
+    }
+
+    @Test func rsaKeyHostConnectsWithRSASHA512() async throws {
+        let (store, connector) = try makeStore(host: .fixture(authMethod: .rsaKey))
+
+        await store.runChecks()
+
+        let settings = try #require(await connector.capturedSettings.first)
+        guard case .rsaSHA512(let key) = settings.credentials else {
+            Issue.record("credentials should be the RSA-SHA2-512 key")
+            return
+        }
+        #expect(key.keySizeInBits == 3_072)
     }
 
     @Test func missingPasswordFailsBeforeConnecting() async throws {

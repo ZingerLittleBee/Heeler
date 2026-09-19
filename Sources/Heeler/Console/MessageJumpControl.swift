@@ -127,6 +127,8 @@ struct MessageJumpControlAvailability: Equatable, Sendable {
 /// entirely above the band, production hides it rather than overlapping.
 /// `refs #268`.
 enum MessageJumpPlacement {
+    /// Inset for capsule floating controls (the Attach Links button). The
+    /// jump chrome itself is an edge tab and docks flush against the edge.
     static let trailingPadding: CGFloat = 10
 
     /// Distance from the terminal's bottom edge to the control's bottom edge.
@@ -154,14 +156,27 @@ enum MessageJumpPlacement {
         return controlBottom <= bandTop + .ulpOfOne && controlTop >= 0
     }
 
+    /// How far the chrome can slide along the edge: from the terminal's top
+    /// down to the lowest position that still clears the keyboard band.
+    static func edgeTravel(
+        terminalHeight: CGFloat, chromeHeight: CGFloat, minimumBottomInset: CGFloat = 0
+    ) -> CGFloat {
+        let inset = max(bottomInset(terminalHeight: terminalHeight), minimumBottomInset)
+        return max(0, terminalHeight - inset - chromeHeight)
+    }
+
     /// Frame for the chrome inside `terminalSize`, or `nil` when it cannot
     /// fit entirely above the keyboard band or within the trailing edge.
     /// Callers hide the chrome on `nil` rather than letting it overlap.
+    /// `edgeFraction` slides it along the edge: 0 at the top, 1 as low as the
+    /// band allows (``EdgeDockSettings``). `trailingPadding` defaults to
+    /// zero: the chrome is a tab docked flush against the trailing edge.
     static func frame(
         terminalSize: CGSize,
         chromeSize: CGSize,
-        trailingPadding: CGFloat = Self.trailingPadding,
-        minimumBottomInset: CGFloat = 0
+        trailingPadding: CGFloat = 0,
+        minimumBottomInset: CGFloat = 0,
+        edgeFraction: CGFloat = 1
     ) -> CGRect? {
         guard terminalSize.width > 0, terminalSize.height > 0 else { return nil }
         guard chromeSize.width > 0, chromeSize.height > 0 else { return nil }
@@ -180,8 +195,9 @@ enum MessageJumpPlacement {
         guard width > 0 else { return nil }
         let x = terminalSize.width - width - trailingPadding
         guard x >= 0 else { return nil }
-        let y = terminalSize.height - inset - chromeSize.height
-        guard y >= 0 else { return nil }
+        let lowest = terminalSize.height - inset - chromeSize.height
+        guard lowest >= 0 else { return nil }
+        let y = lowest * EdgeDockSettings.clamped(edgeFraction)
         return CGRect(x: x, y: y, width: width, height: chromeSize.height)
     }
 }
@@ -438,8 +454,16 @@ struct MessageJumpControlView: View {
     var palette: TerminalThemePalette = .system
     let onOlder: () -> Void
     let onNewer: () -> Void
+    /// Lift in progress: vertical travel so far. See ``EdgeDockLift``.
+    var onMove: (CGFloat) -> Void = { _ in }
+    /// Lift ended: final vertical travel to dock at.
+    var onDrop: (CGFloat) -> Void = { _ in }
 
     static let buttonSize: CGFloat = 44
+    /// One accessibility nudge moves the chrome by one button.
+    private static let nudge: CGFloat = 44
+
+    @State private var isLifted = false
 
     var body: some View {
         if availability.isVisible {
@@ -453,9 +477,12 @@ struct MessageJumpControlView: View {
                         action: onOlder)
                 }
                 if availability.showsOlder, availability.showsNewer {
+                    // Centred within the visible tab, not the wider hit area.
                     Rectangle()
                         .fill(palette.foreground.opacity(0.14))
-                        .frame(width: 18, height: 1)
+                        .frame(width: 14, height: 1)
+                        .frame(width: TerminalEdgeTabBackground.width)
+                        .frame(width: Self.buttonSize, alignment: .trailing)
                         .allowsHitTesting(false)
                 }
                 if availability.showsNewer {
@@ -467,14 +494,26 @@ struct MessageJumpControlView: View {
                         action: onNewer)
                 }
             }
-            .background {
-                TerminalFloatingControlBackground(palette: palette)
+            // Docked flush against the trailing edge like the Workspace
+            // drawer handle: the tab is narrower than the 44-point hit area.
+            .background(alignment: .trailing) {
+                TerminalEdgeTabBackground(palette: palette)
+                    .frame(width: TerminalEdgeTabBackground.width)
             }
+            .edgeDockLift(isLifted: $isLifted, onMove: onMove, onDrop: onDrop)
             .transition(.scale(scale: 0.85).combined(with: .opacity))
             .foregroundStyle(palette.foreground)
             .animation(.snappy(duration: 0.22), value: availability)
             .disabled(!availability.isEnabled)
             .accessibilityElement(children: .contain)
+            .accessibilityAction(named: "Move up") {
+                onMove(-Self.nudge)
+                onDrop(-Self.nudge)
+            }
+            .accessibilityAction(named: "Move down") {
+                onMove(Self.nudge)
+                onDrop(Self.nudge)
+            }
         }
     }
 
@@ -486,6 +525,8 @@ struct MessageJumpControlView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button {
+            // A release that ends a lift is not a jump.
+            guard !isLifted else { return }
             // The walk itself is silent for up to a second; a light tap says
             // the press landed.
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -499,21 +540,89 @@ struct MessageJumpControlView: View {
                 } else {
                     Image(systemName: systemImage)
                         .font(.system(size: 15, weight: .semibold))
+                        .opacity(TerminalFloatingButtonStyle.iconOpacity)
                 }
             }
         }
-        .buttonStyle(TerminalFloatingButtonStyle(highlight: palette.foreground))
+        .buttonStyle(TerminalEdgeTabButtonStyle(highlight: palette.foreground))
+        .disabled(isLifted)
         .hoverEffect(.highlight)
         .accessibilityLabel(label)
         .accessibilityHint(hint)
     }
 }
 
-/// Press feedback for a jump button: a brief scale-down with a soft fill
-/// behind the glyph. The whole 44-point square is the hit area; the fill
-/// stays inset so the pill's edge reads as one shape. There is no disabled
-/// look — a button that cannot act is hidden, not greyed.
+/// Press feedback for a jump button on the edge tab: the glyph sits centred
+/// in the tab's visible width while the whole 44-point square, extending
+/// inward over the terminal, takes the hit. There is no disabled look — a
+/// button that cannot act is hidden, not greyed.
+struct TerminalEdgeTabButtonStyle: ButtonStyle {
+    let highlight: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(
+                width: TerminalEdgeTabBackground.width,
+                height: MessageJumpControlView.buttonSize)
+            .background {
+                TerminalEdgeTabBackground.shape
+                    .fill(highlight.opacity(configuration.isPressed ? 0.16 : 0))
+                    .padding(.vertical, 4)
+            }
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .frame(width: MessageJumpControlView.buttonSize, alignment: .trailing)
+            .contentShape(.rect)
+    }
+}
+
+/// Shared translucent terminal-theme surface for controls docked against
+/// the terminal's trailing edge: rounded on the side facing the terminal,
+/// squared off on the edge. Used by the Workspace drawer's handle and panel
+/// and by the message-jump tab.
+struct TerminalEdgeTabBackground: View {
+    /// Visible width of a tab; hit areas extend inward past it.
+    static let width: CGFloat = 30
+    static let cornerRadius: CGFloat = 14
+
+    static var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: cornerRadius,
+            bottomLeadingRadius: cornerRadius,
+            bottomTrailingRadius: 0,
+            topTrailingRadius: 0,
+            style: .continuous)
+    }
+
+    /// A tab over live output is translucent enough that the output stays
+    /// readable; the border and shadow carry the shape.
+    static let tabFillOpacity: Double = 0.3
+    /// A panel of its own content covers what is under it.
+    static let panelFillOpacity: Double = 0.96
+
+    let palette: TerminalThemePalette
+    var fillOpacity: Double = tabFillOpacity
+
+    var body: some View {
+        Self.shape
+            .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(fillOpacity))
+            .overlay {
+                Self.shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
+            .allowsHitTesting(false)
+    }
+}
+
+/// Press feedback for a capsule floating button (Attach Links): a brief
+/// scale-down with a soft fill behind the glyph. The whole 44-point square
+/// is the hit area; the fill stays inset so the pill's edge reads as one
+/// shape.
 struct TerminalFloatingButtonStyle: ButtonStyle {
+    /// Glyphs on floating controls sit over live terminal output; muting
+    /// them keeps the controls findable without competing with the text.
+    static let iconOpacity: Double = 0.5
+
     let highlight: Color
 
     func makeBody(configuration: Configuration) -> some View {
@@ -554,8 +663,12 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
     var runningDirection: TerminalMessageJumpController.Direction?
     var palette: TerminalThemePalette = .system
     var minimumBottomInset: CGFloat = 0
+    /// Remembered position along the edge (``EdgeDockSettings``).
+    var edgeFraction: CGFloat = 1
     var onOlder: () -> Void
     var onNewer: () -> Void
+    /// The user docked the chrome at a new fraction; remember it.
+    var onDock: (CGFloat) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -564,31 +677,76 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
     func makeUIView(context: Context) -> MessageJumpChromeContainer {
         let container = MessageJumpChromeContainer()
         container.minimumBottomInset = minimumBottomInset
-        let host = UIHostingController(rootView: makeRoot())
+        container.edgeFraction = edgeFraction
+        let host = UIHostingController(rootView: makeRoot(coordinator: context.coordinator))
         host.view.backgroundColor = .clear
         host.view.isOpaque = false
+        // The chrome can now rest against the terminal's top edge, right
+        // under the status bar. Left to its defaults, the hosting controller
+        // pads its content by that safe area and the buttons drift down.
+        host.safeAreaRegions = []
         context.coordinator.host = host
+        context.coordinator.container = container
+        context.coordinator.onDock = onDock
         container.embed(host.view)
         return container
     }
 
     func updateUIView(_ container: MessageJumpChromeContainer, context: Context) {
-        context.coordinator.host?.rootView = makeRoot()
+        context.coordinator.host?.rootView = makeRoot(coordinator: context.coordinator)
+        context.coordinator.onDock = onDock
         container.minimumBottomInset = minimumBottomInset
+        // A lift in progress owns the position until it drops.
+        if context.coordinator.liftBase == nil {
+            container.edgeFraction = edgeFraction
+        }
         container.setNeedsLayout()
     }
 
-    private func makeRoot() -> MessageJumpControlView {
+    private func makeRoot(coordinator: Coordinator) -> MessageJumpControlView {
         MessageJumpControlView(
             availability: availability,
             runningDirection: runningDirection,
             palette: palette,
             onOlder: onOlder,
-            onNewer: onNewer)
+            onNewer: onNewer,
+            onMove: { [weak coordinator] travel in coordinator?.move(by: travel) },
+            onDrop: { [weak coordinator] travel in coordinator?.drop(after: travel) })
     }
 
+    /// Turns a lift's vertical travel into the container's fraction while
+    /// the finger is down, then hands the docked fraction back to SwiftUI.
+    @MainActor
     final class Coordinator {
         var host: UIHostingController<MessageJumpControlView>?
+        weak var container: MessageJumpChromeContainer?
+        var onDock: (CGFloat) -> Void = { _ in }
+        /// The fraction the lift started from; nil between lifts.
+        private(set) var liftBase: CGFloat?
+
+        func move(by travel: CGFloat) {
+            guard let container else { return }
+            let base = liftBase ?? container.edgeFraction
+            liftBase = base
+            container.edgeFraction = Self.fraction(base: base, travel: travel, edgeTravel: container.edgeTravel)
+            container.setNeedsLayout()
+            container.layoutIfNeeded()
+        }
+
+        func drop(after travel: CGFloat) {
+            guard let container else { return }
+            let base = liftBase ?? container.edgeFraction
+            liftBase = nil
+            let docked = Self.fraction(base: base, travel: travel, edgeTravel: container.edgeTravel)
+            container.edgeFraction = docked
+            container.setNeedsLayout()
+            onDock(docked)
+        }
+
+        static func fraction(base: CGFloat, travel: CGFloat, edgeTravel: CGFloat) -> CGFloat {
+            guard edgeTravel > 0 else { return EdgeDockSettings.clamped(base) }
+            return EdgeDockSettings.clamped(base + travel / edgeTravel)
+        }
     }
 }
 
@@ -599,6 +757,11 @@ final class MessageJumpChromeContainer: UIView {
     private weak var hostedView: UIView?
     /// Keeps lower floating actions clear without consuming terminal space.
     var minimumBottomInset: CGFloat = 0
+    /// Position along the edge, 0 at the top and 1 as low as the band allows.
+    var edgeFraction: CGFloat = 1
+    /// How far the chrome could slide at the last layout, for turning a
+    /// drag's points into a fraction.
+    private(set) var edgeTravel: CGFloat = 0
     /// Test seam: last frame applied to the hosted chrome, or `nil` when hidden.
     private(set) var hostedFrame: CGRect?
 
@@ -627,18 +790,22 @@ final class MessageJumpChromeContainer: UIView {
         guard let hostedView else { return }
         hostedView.setNeedsLayout()
         hostedView.layoutIfNeeded()
-        let maxWidth = max(0, bounds.width - MessageJumpPlacement.trailingPadding)
+        let maxWidth = max(0, bounds.width)
         let fitting = hostedView.sizeThatFits(
             CGSize(width: maxWidth > 0 ? maxWidth : CGFloat.greatestFiniteMagnitude,
                    height: CGFloat.greatestFiniteMagnitude))
         let width = min(max(fitting.width, 0), maxWidth > 0 ? maxWidth : fitting.width)
         let height = max(fitting.height, 0)
         let chromeSize = CGSize(width: width, height: height)
+        edgeTravel = MessageJumpPlacement.edgeTravel(
+            terminalHeight: bounds.height, chromeHeight: height,
+            minimumBottomInset: minimumBottomInset)
 
         if let frame = MessageJumpPlacement.frame(
             terminalSize: bounds.size,
             chromeSize: chromeSize,
-            minimumBottomInset: minimumBottomInset)
+            minimumBottomInset: minimumBottomInset,
+            edgeFraction: edgeFraction)
         {
             hostedView.isHidden = false
             hostedView.frame = frame

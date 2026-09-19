@@ -7,7 +7,7 @@ import Synchronization
 /// ordinary shell terminal instead addresses `herdr terminal attach` with the
 /// terminal id returned by `tab.create`. Keeping the distinction in the
 /// request prevents UI code from selecting remote commands itself.
-enum TerminalAttachTarget: Sendable, Equatable {
+enum TerminalAttachTarget: Sendable, Hashable {
     case agentPane(String)
     case terminal(String)
 

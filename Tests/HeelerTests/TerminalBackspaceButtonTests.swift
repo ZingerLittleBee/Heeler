@@ -60,9 +60,9 @@ struct TerminalBackspaceButtonTests {
         for recognizer in button.gestureRecognizers ?? [] {
             recognizer.touchesBegan([finger], with: event)
         }
-        try await Task.sleep(for: .milliseconds(650))
+        let repeats = await repeatsReaching(3) { count }
         #expect(button.isHighlighted)
-        #expect(count >= 3, "Holding must repeat before delayed touchDown/touchUpInside arrive")
+        #expect(repeats >= 3, "Holding must repeat before delayed touchDown/touchUpInside arrive")
         for recognizer in button.gestureRecognizers ?? [] {
             recognizer.touchesEnded([finger], with: event)
         }
@@ -110,12 +110,39 @@ struct TerminalBackspaceButtonTests {
         let press = Press(button)
         #expect(button.isEnabled)
         press.begin()
-        try await Task.sleep(for: .milliseconds(650))
-        #expect(probe.count >= 3, "A held full-keyboard Backspace must delete repeatedly")
+        #expect(
+            await repeatsReaching(3) { probe.count } >= 3,
+            "A held full-keyboard Backspace must delete repeatedly")
         press.end()
         let count = probe.count
         try await Task.sleep(for: .milliseconds(150))
         #expect(probe.count == count)
+    }
+
+    /// Waits for a held key to reach `target` repeats, and answers how many it
+    /// reached.
+    ///
+    /// Each repeat arms the next on a main run loop timer, so a machine that
+    /// stalls the main thread delays the whole chain without changing the
+    /// behaviour under test. Sampling the count at a fixed instant measures
+    /// that stall as well as the repeat, and the margin was under two repeats:
+    /// a 650ms hold lands 5 or 6 deletes with the timers on schedule, and the
+    /// app lane twice reported 1 — the same assertion, the same count, on
+    /// 2026-09-16 and again on 2026-09-19, on unrelated branches. That lane's
+    /// wall clock for one run of these suites has ranged from 59s to 135s, so
+    /// no fixed window in this suite was safe.
+    ///
+    /// Waiting keeps the assertion on the behaviour rather than on the clock.
+    /// A hold that never repeats still fails; it just takes the timeout to
+    /// say so.
+    private func repeatsReaching(
+        _ target: Int, within timeout: Duration = .seconds(5), count: () -> Int
+    ) async -> Int {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while count() < target, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return count()
     }
 
     private func host(action: @escaping () -> Void) async throws -> (TerminalRepeatingBackspaceButton, UIWindow) {
@@ -182,8 +209,7 @@ struct TerminalBackspaceButtonTests {
         press.finger.point = points[edge].0
         press.begin()
         press.move(to: points[edge].1)
-        try await Task.sleep(for: .milliseconds(550))
-        #expect(count >= 3)
+        #expect(await repeatsReaching(3) { count } >= 3)
         let beforeRelease = count
         press.end()
         try await Task.sleep(for: .milliseconds(150))
@@ -221,8 +247,7 @@ struct TerminalBackspaceButtonTests {
         }
         #expect(count > 0)
         #expect(start.duration(to: .now) < .milliseconds(500))
-        try await Task.sleep(for: .milliseconds(170))
-        #expect(count >= 3)
+        #expect(await repeatsReaching(3) { count } >= 3)
         let beforeRelease = count
         press.end()
         try await Task.sleep(for: .milliseconds(200))

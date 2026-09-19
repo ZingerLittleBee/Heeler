@@ -166,6 +166,9 @@ struct AgentTerminalView: View {
     /// Keeps the keyboard up across the terminal rebuild an Agent switch
     /// forces; owned by the Console so it survives that rebuild.
     private let keyboardHandoff: TerminalKeyboardHandoff
+    /// False for the placeholder Agent detail builds before its retained
+    /// terminal is prepared; see `AgentComposerView.inheritsKeyboardHandoff`.
+    private let inheritsKeyboardHandoff: Bool
     /// How much of the bottom edge the keyboard covers. Console-owned for the
     /// same reason as the handoff: a switch that inherits a raised keyboard
     /// must lay the terminal out at the right height on its first frame.
@@ -189,7 +192,17 @@ struct AgentTerminalView: View {
     private let openTerminal: () -> Void
     private let composer: AgentComposerStore
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
+    private let retainedSurface: TerminalSurfaceRetention?
+    /// Called with whether the next screen takes the keyboard over, so the
+    /// retained surface knows not to dismiss it on the way out.
+    private let onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)?
+    /// Edge-docked Workspace navigation; nil where the detail cannot route
+    /// to other terminals.
+    private let workspaceDrawer: WorkspaceTerminalDrawer?
+    /// Follows the Agent's own session file for the usage strip (#325).
+    @State private var sessionUsage = AgentSessionUsageStore()
     @State private var attach: AgentAttachStore
+
     /// Nil for agent kinds without a skills source catalog; the Keys
     /// keyboard hides the Skills tab in that case.
     @State private var skills: SkillsPaneStore?
@@ -244,6 +257,7 @@ struct AgentTerminalView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
+    @Environment(\.detailCrossfade) private var detailCrossfade
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     /// Nil outside a scene root, where this screen always holds its Host's
@@ -277,6 +291,10 @@ struct AgentTerminalView: View {
         openTerminal: @escaping () -> Void = {},
         composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil,
+        retainedSurface: TerminalSurfaceRetention? = nil,
+        onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)? = nil,
+        workspaceDrawer: WorkspaceTerminalDrawer? = nil,
+        inheritsKeyboardHandoff: Bool = true,
         interactionProbe: AgentTerminalInteractionProbe? = nil
     ) {
         self.agent = agent
@@ -286,6 +304,7 @@ struct AgentTerminalView: View {
         self.hosts = hosts
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
+        self.inheritsKeyboardHandoff = inheritsKeyboardHandoff
         self.keyboardInset = keyboardInset
         _usesDirectToolsKeyboard = State(
             initialValue: inputMode.isDirect && keyboardHandoff.mode(for: agent.id) == .controls)
@@ -298,6 +317,9 @@ struct AgentTerminalView: View {
         self.openTerminal = openTerminal
         self.composer = composer
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
+        self.retainedSurface = retainedSurface
+        self.onRetainDeparture = onRetainDeparture
+        self.workspaceDrawer = workspaceDrawer
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -338,8 +360,35 @@ struct AgentTerminalView: View {
         }
     }
 
+    /// Follows the Agent's session file for the usage strip (#325).
+    ///
+    /// The interval is deliberately unhurried: the figures are a running total
+    /// a reader glances at, not a live meter, and every refresh costs a round
+    /// trip. An Agent with no session file on the Host clears the strip and
+    /// stops, so nothing polls for a figure that cannot arrive.
+    private func followSessionUsage() async {
+        guard let path = agent.sessionFilePath else {
+            sessionUsage.clear()
+            return
+        }
+        let read = console.sessionFileReader(for: agent.hostID)
+        let resolveContextWindow = console.modelContextWindowResolver(for: agent.hostID)
+        while !Task.isCancelled {
+            await sessionUsage.refresh(
+                path: path, read: read, resolveContextWindow: resolveContextWindow)
+            do {
+                try await Task.sleep(for: .seconds(Self.sessionUsageInterval))
+            } catch {
+                return
+            }
+        }
+    }
+
+    private static let sessionUsageInterval: Double = 5
+
     private var terminalScreen: TerminalScreenView {
         var screen = TerminalScreenView(feed: attach.terminalFeed)
+        screen.retention = retainedSurface
         #if DEBUG
         screen.onSurfaceAttached = {
             attach.terminalSurfaceDidAttach()
@@ -375,6 +424,7 @@ struct AgentTerminalView: View {
         screen.claimsKeyboard = {
             [
                 keyboardHandoff,
+                inheritsKeyboardHandoff,
                 agent,
                 inputMode,
                 directKeyboardIntent,
@@ -393,6 +443,8 @@ struct AgentTerminalView: View {
             } else {
                 keyboardInset.resumeHeightCapture()
             }
+            // A placeholder build leaves the one-shot for the real screen.
+            guard inheritsKeyboardHandoff else { return directKeyboardIntent.wantsKeyboard }
             // An iPad tools dock stands without a responder; the token is
             // still consumed so it cannot raise a later surface.
             if usesDirectToolsKeyboard, TerminalKeyboardMode.controlsReleaseFirstResponder {
@@ -450,6 +502,10 @@ struct AgentTerminalView: View {
         // otherwise replacing the system keyboard changes the proposal that
         // reaches Ghostty even when our explicit inset is unchanged.
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        // Keyed on the path, not the Agent: herdr hands a pane a new session
+        // file when the Agent starts a fresh session, and the loop must follow
+        // it instead of re-reading a file nothing writes to any more.
+        .task(id: agent.sessionFilePath) { await followSessionUsage() }
         .modifier(ConsoleTerminalCommandRegistration(
             agentID: agent.id,
             isFocused: keyboardControl.isFirstResponder,
@@ -660,6 +716,9 @@ struct AgentTerminalView: View {
         // calls must stay synchronous, because the spurious pair can land in
         // one transaction and rejoin() can only undo a leave it can see.
         .onAppear {
+            // The build before retention swaps `attach` in is a placeholder;
+            // the dissolve waits for the one with the surface.
+            if inheritsKeyboardHandoff { detailCrossfade?.contentDidAppear() }
             interactionProbe?.value?.connect(
                 selectInputMode: { mode in selectInputMode(mode) },
                 switchAgent: { id in switchToAgent(id) })
@@ -682,7 +741,20 @@ struct AgentTerminalView: View {
         .onDisappear {
             interactionProbe?.value?.disconnect()
             messageJump.resetSession()
-            attach.leave()
+            if let onRetainDeparture {
+                let keepingKeyboard = keyboardHandoff.isArmed
+                if !isOnStage() {
+                    onRetainDeparture(keepingKeyboard)
+                } else {
+                    Task { @MainActor in
+                        await Task.yield()
+                        guard !isOnStage() else { return }
+                        onRetainDeparture(keepingKeyboard)
+                    }
+                }
+            } else {
+                attach.leave()
+            }
             Task { @MainActor in
                 await Task.yield()
                 guard !isOnStage() else { return }
@@ -828,7 +900,11 @@ struct AgentTerminalView: View {
             addImage: { isSelectingPhoto = true },
             addFile: { isSelectingFile = true },
             showAttachLinks: { attachLinksOrigin = .composerChip },
-            openTerminal: canOpenTerminal ? openTerminal : nil,
+            openTerminal: canOpenTerminal
+                ? {
+                    armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+                    openTerminal()
+                } : nil,
             isOpeningTerminal: isOpeningTerminal,
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
@@ -882,6 +958,12 @@ struct AgentTerminalView: View {
         .overlay(alignment: .bottomTrailing) {
             attachLinksChrome
         }
+        // Above the floating buttons: the open panel covers them.
+        .overlay {
+            if let workspaceDrawer {
+                keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
+            }
+        }
         .overlay { statusOverlay }
         // Keep the edge gesture below the input chrome and tools dock so
         // its transparent hit region cannot intercept their leading keys.
@@ -920,6 +1002,17 @@ struct AgentTerminalView: View {
             .disabled(activeKeyboardPresentation != .tools)
             .allowsHitTesting(activeKeyboardPresentation == .tools)
             .accessibilityHidden(activeKeyboardPresentation != .tools)
+        }
+        // Above the status-bar padding, so the strip lands just below the
+        // clock and the terminal keeps the offset it already had (#325).
+        .safeAreaInset(edge: .top, spacing: 0) {
+            AgentUsageStrip(
+                model: sessionUsage.usage.model,
+                contextText: sessionUsage.contextText,
+                costText: sessionUsage.usage.costText,
+                rateText: sessionUsage.showsTokenRate ? sessionUsage.usage.rateText : nil,
+                isReserved: agent.sessionFilePath != nil,
+                palette: themePalette)
         }
         // The navigation bar remains present only as the owner of the status
         // bar appearance. Its content stays hidden, while this inset keeps
@@ -1038,6 +1131,7 @@ struct AgentTerminalView: View {
                 .chromeColorScheme(for: colorScheme),
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
+            inheritsKeyboardHandoff: inheritsKeyboardHandoff,
             keyboardHeight: composerKeyboardLayout.availableToolsHeight,
             actions: composerActions,
             attachLinksPopover: attachLinksPopover(from: .composerChip),
@@ -1404,22 +1498,60 @@ struct AgentTerminalView: View {
     /// terminal claims the handoff as it comes up.
     private func switchToAgent(_ id: ConsoleAgent.ID) {
         guard id != agent.id else { return }
-        // The strip outlives the keyboard, so a switch made with the keyboard
-        // down must not raise one on the other side. Direct Input may keep
-        // first responder with a hardware keyboard and a zero inset.
-        let keyboardIsUp =
-            isDirectInput
+        armAgentKeyboardHandoffIfKeyboardIsUp(for: id)
+        onSwitch(id)
+    }
+
+    /// Whether leaving this screen should bring the keyboard up on the next
+    /// one. The strip and drawer outlive the keyboard, so a move made with
+    /// the keyboard down must not raise one on the other side. Direct Input
+    /// may keep first responder with a hardware keyboard and a zero inset.
+    private var keyboardIsUpForHandoff: Bool {
+        isDirectInput
             ? AgentDirectInputPresentation.shouldClaimKeyboard(
                 wantsKeyboard: directKeyboardIntent.wantsKeyboard,
                 isKeyboardUp: keyboardControl.isKeyboardUp,
                 usesToolsKeyboard: usesDirectToolsKeyboard,
                 softwareKeyboardHeight: keyboardInset.height)
             : keyboardInset.height > 0
-        if keyboardIsUp {
-            keyboardHandoff.arm(
-                for: id, mode: isDirectInput && usesDirectToolsKeyboard ? .controls : .text)
+    }
+
+    private func armAgentKeyboardHandoffIfKeyboardIsUp(for id: ConsoleAgent.ID) {
+        guard id != agent.id, keyboardIsUpForHandoff else { return }
+        keyboardHandoff.arm(
+            for: id, mode: isDirectInput && usesDirectToolsKeyboard ? .controls : .text)
+    }
+
+    /// A Shell Terminal opened from here comes up with the keyboard in the
+    /// state this screen leaves it: up stays up, down stays down.
+    private func armShellTerminalKeyboardHandoffIfKeyboardIsUp() {
+        if keyboardIsUpForHandoff {
+            keyboardHandoff.armShellTerminal()
+        } else {
+            keyboardHandoff.cancelShellTerminal()
         }
-        onSwitch(id)
+    }
+
+    /// The drawer's routes rebuild this screen or replace it with a Shell
+    /// Terminal; each captures the keyboard state before it leaves.
+    private func keyboardCarryingDrawer(_ drawer: WorkspaceTerminalDrawer) -> WorkspaceTerminalDrawer {
+        var carrying = drawer
+        let onSelect = drawer.onSelect
+        carrying.onSelect = { target in
+            if let agentID = target.agentID {
+                armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
+            } else {
+                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+            }
+            onSelect(target)
+        }
+        if let onNewTerminal = drawer.onNewTerminal {
+            carrying.onNewTerminal = {
+                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+                onNewTerminal()
+            }
+        }
+        return carrying
     }
 
     private func performClose() async {
@@ -1453,6 +1585,7 @@ struct AgentTerminalView: View {
             } label: {
                 Image(systemName: "link")
                     .font(.system(size: 15, weight: .semibold))
+                    .opacity(TerminalFloatingButtonStyle.iconOpacity)
             }
             .buttonStyle(TerminalFloatingButtonStyle(highlight: themePalette.foreground))
             .background {
@@ -1476,8 +1609,10 @@ struct AgentTerminalView: View {
             palette: themePalette,
             minimumBottomInset: isDirectInput && !attach.attachLinks.isEmpty
                 ? MessageJumpControlView.buttonSize + 16 : 0,
+            edgeFraction: terminal.edgeDock.fraction(for: .messageJump),
             onOlder: { jumpToOlderMessage() },
-            onNewer: { jumpToNewerMessageOrLive() })
+            onNewer: { jumpToNewerMessageOrLive() },
+            onDock: { terminal.edgeDock.setFraction($0, for: .messageJump) })
         // Hit-test only while enabled. The in-flight spinner must not eat
         // terminal drags. Placement and pass-through live in
         // MessageJumpChromeContainer.

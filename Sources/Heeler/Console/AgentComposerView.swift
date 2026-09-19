@@ -107,6 +107,11 @@ struct AgentComposerView: View {
     let chromeColorScheme: ColorScheme
     let switcher: TerminalAgentSwitcher
     let keyboardHandoff: TerminalKeyboardHandoff
+    /// False for the placeholder Agent detail builds before its retained
+    /// terminal is prepared: that instance is torn down a moment later, and
+    /// spending the one-shot handoff there would leave the real screen
+    /// without it. See `AgentDetailView.prepareRetainedAgent`.
+    var inheritsKeyboardHandoff = true
     let keyboardHeight: CGFloat
     let actions: AgentComposerActions
     /// Anchors the Attach Links list to the link chip that opens it.
@@ -313,7 +318,8 @@ struct AgentComposerView: View {
             hasDraft: { store.canSend },
             send: { await deliverDraft { await store.send() } }))
         .onAppear {
-            guard let selectedID = switcher.selectedID,
+            guard inheritsKeyboardHandoff,
+                  let selectedID = switcher.selectedID,
                   keyboardHandoff.consume(selectedID)
             else { return }
             setKeyboardPresentation(.system)
@@ -640,9 +646,15 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.wantsFocus = shouldFocus
         guard shouldFocus != textView.isFirstResponder else { return }
+        // Focus asked for before the view has a window is a keyboard
+        // inherited from the screen being replaced (see `onAppear`); it is
+        // claimed as the view reaches the window, not a turn later.
+        textView.claimsKeyboardWhenReady =
+            shouldFocus && keyboardHandoffID == nil && textView.window == nil
         DispatchQueue.main.async { [weak textView] in
             guard let textView else { return }
             if shouldFocus {
+                guard !textView.isFirstResponder else { return }
                 if let keyboardHandoffID {
                     guard textView.window != nil,
                           isKeyboardHandoffCurrent(keyboardHandoffID)
@@ -732,6 +744,20 @@ final class AgentComposerUITextView: UITextView {
     private var keyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     var onKeyboardHandoffSettled: ((UUID) -> Void)?
     private var activeKeyboardHandoffID: UUID?
+    /// Focus requested before the view is in a window. The keyboard is then
+    /// taken over in the same pass the view is inserted — while the surface
+    /// it inherits from is still first responder — so UIKit moves it between
+    /// responders instead of hiding it when that surface leaves the window
+    /// and presenting it again a turn later. `HeelerTerminalView` claims an
+    /// inherited keyboard the same way from `didMoveToWindow`.
+    var claimsKeyboardWhenReady = false
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, claimsKeyboardWhenReady else { return }
+        claimsKeyboardWhenReady = false
+        _ = becomeFirstResponder()
+    }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)

@@ -624,6 +624,30 @@ struct AgentSurfaceReplacementTests {
 
     // MARK: Fixtures
 
+    /// Every accessibility label reachable from `root`, through both the view
+    /// tree and the accessibility element tree that SwiftUI hosts publish.
+    static func accessibilityLabels(in root: UIView) -> Set<String> {
+        var visited = Set<ObjectIdentifier>()
+        var labels = Set<String>()
+        func visit(_ node: NSObject) {
+            guard visited.insert(ObjectIdentifier(node)).inserted,
+                  !node.accessibilityElementsHidden else { return }
+            if let label = node.accessibilityLabel { labels.insert(label) }
+            for object in node.accessibilityElements ?? [] {
+                if let object = object as? NSObject { visit(object) }
+            }
+            let count = node.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                for index in 0..<count {
+                    if let object = node.accessibilityElement(at: index) as? NSObject { visit(object) }
+                }
+            }
+            if let view = node as? UIView { view.subviews.forEach(visit) }
+        }
+        visit(root)
+        return labels
+    }
+
     static func terminals(in root: UIView) -> [HeelerTerminalView] {
         var found: [HeelerTerminalView] = []
         func walk(_ view: UIView) {

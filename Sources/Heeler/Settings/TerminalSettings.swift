@@ -10,4 +10,7 @@ struct TerminalSettings {
     let zoom: TerminalZoomSettings
     let fonts: TerminalFontSettings
     let snippets: SnippetStore
+    /// Where the floating edge controls rest; defaulted so the many call
+    /// sites that never move them need not know it exists.
+    var edgeDock: EdgeDockSettings = EdgeDockSettings()
 }

@@ -9,17 +9,61 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- The Agent terminal shows the session's model, prompt size (as a share of
+  the model's context window, `11.0%`, once omp on the Host has named it),
+  and spend in a strip above the terminal. These are the figures the Agent's own status line
+  prints, but a phone-width terminal runs out of room for them and drops the
+  last ones first. Heeler reads them from the Agent's session file on the Host,
+  following only what the file gained since the last look, and the strip wears
+  the terminal's theme. Only omp reports such a file today; a figure that
+  cannot be read is left out rather than shown as a placeholder. When omp's
+  own `tok/s` readout is on (`composer.tokenRate`), the strip shows the last
+  turn's generation rate too. (#325)
+
+## [0.1.9] - 2026-09-19
+
+### Added
+
+- Browse every terminal in the Workspace from a drawer docked to the edge of
+  Agent detail. The list groups by Host and Workspace and shows Tab titles,
+  paths, and which panes run Agents. A terminal you have opened keeps its
+  connection and screen for five idle minutes, up to five per Host; the least
+  recently viewed idle one gives way when a sixth is needed. New Terminal
+  opens a fresh shell tab in the Workspace. Output stays readable under the
+  drawer handle and the message-jump tabs. (#333)
+
 - Choose an existing Workspace or New Workspace from the same dropdown in
   New Agent. New Workspace opens a remote directory browser. The latest directory stays at the
   bottom of the dropdown, with its name and full path shown when selected. (PR #305)
+- Hosts can authenticate with a device-generated RSA Key using RSA-SHA2-512,
+  including connections through a Jump Host. The private key remains in the
+  Keychain and the public key can be copied from Host settings. (PR #347)
 
 ### Changed
 
+- The message-jump buttons dock flush against the terminal's edge as a tab,
+  matching the Workspace drawer handle. Long-press either to slide it along
+  the edge; each stays where you leave it. (#333)
+- The Shell Terminal drops its title bar so output runs up to the status bar.
+  Back and Close Terminal moved into the More menu on its input row, which now
+  stays visible while the keyboard is down. The row's Insert New Line button
+  is gone; Shift+Enter on the Keys keyboard sends the same line break. (#333)
+- The keyboard follows you between Agent detail and a Shell Terminal: up or
+  down, it is the same on the other side, and it stays on screen through the
+  switch instead of dropping and rising again. The terminal's Text/Keys row
+  sits above it from the first frame, and the two screens dissolve into each
+  other instead of cutting. (#333)
 - Make the remote directory browser more compact, with full-row folder navigation,
   native filtering, empty states, and retry for failed navigation. (PR #305)
 
 ### Fixed
 
+- Connecting to a Host no longer fails intermittently during post-quantum key
+  exchange. Roughly one handshake in 256 was rejected by a defect in the SSH
+  library, and about twice as often for a Host behind a Jump Host; the app now
+  redials once. (#332)
+- A saved Host with an authentication method this build does not understand is
+  skipped without making the rest of the Host catalog unreadable. (PR #347)
 - Show the directory browser on the first New Workspace tap. (PR #305)
 - Viewing a Done Agent marks it seen on its Host and refreshes Console and
   Live Activity status, including other Agents in the same Tab. (#314)

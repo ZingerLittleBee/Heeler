@@ -940,6 +940,68 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    @Test("SFTP ranged reads follow a growing file and report its size")
+    func rangedReadsFollowAGrowingFile() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let rootResult = try await connection.execute(
+            "mktemp -d /tmp/heeler-sftp.XXXXXXXX",
+            timeout: .seconds(5))
+        let root = String(decoding: rootResult.stdout, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = "\(root)/session.jsonl"
+        // Larger than one 64 KiB read chunk, so both the seek and the loop
+        // that follows it move past the first chunk.
+        let contents = Data((0..<150_000).map { UInt8(truncatingIfNeeded: $0) })
+
+        let sftp = try await connection.openSFTP(timeout: .seconds(5))
+        #expect(
+            try await sftp.readFileRange(
+                at: path, offset: 0, maxBytes: 64, timeout: .seconds(5))
+                == SSHSFTPFileSlice(data: Data(), length: nil))
+
+        let file = try await sftp.openFileForWriting(
+            at: path,
+            permissions: 0o600,
+            timeout: .seconds(5))
+        try await file.write(contents, timeout: .seconds(5))
+        try await file.close(timeout: .seconds(5))
+
+        let head = try await sftp.readFileRange(
+            at: path, offset: 0, maxBytes: 100_000, timeout: .seconds(5))
+        #expect(head.data == contents.prefix(100_000))
+        #expect(head.length == UInt64(contents.count))
+
+        let tail = try await sftp.readFileRange(
+            at: path, offset: 100_000, maxBytes: 1_000_000, timeout: .seconds(5))
+        #expect(tail.data == Data(contents[100_000...]))
+        #expect(tail.length == UInt64(contents.count))
+
+        let end = try await sftp.readFileRange(
+            at: path, offset: UInt64(contents.count), maxBytes: 64, timeout: .seconds(5))
+        #expect(end.data.isEmpty)
+        #expect(end.length == UInt64(contents.count))
+
+        // Another process appends: the same offset now yields exactly the
+        // appended bytes, and the size grows with them.
+        _ = try await connection.execute(
+            "printf 'appended\\n' >> '\(path)'",
+            timeout: .seconds(5))
+        let appended = try await sftp.readFileRange(
+            at: path, offset: UInt64(contents.count), maxBytes: 64, timeout: .seconds(5))
+        #expect(appended.data == Data("appended\n".utf8))
+        #expect(appended.length == UInt64(contents.count + 9))
+
+        let nothing = try await sftp.readFileRange(
+            at: path, offset: 0, maxBytes: 0, timeout: .seconds(5))
+        #expect(nothing.data.isEmpty)
+        #expect(nothing.length == UInt64(contents.count + 9))
+
+        try await sftp.close(timeout: .seconds(5))
+        _ = try await connection.execute("rm -rf -- '\(root)'", timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
     @Test("SFTP directory listings return only sorted directories")
     func sftpDirectoryListingsReturnOnlySortedDirectories() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

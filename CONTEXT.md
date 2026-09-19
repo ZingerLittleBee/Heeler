@@ -19,6 +19,15 @@ _Avoid_: bastion, proxy server
 The device's SSH identity: an Ed25519 keypair generated on this device. The private key never leaves the Keychain; the public half is what a Host authorizes.
 _Avoid_: app key, client key
 
+**RSA Key**:
+The device's alternative SSH identity for a Host that requires RSA-SHA2-512:
+one 3072-bit RSA keypair generated on this device and shared by every Host
+configured for this method. Its private half stays in the Keychain; the user
+registers its OpenSSH public-key line wherever each Host accepts SSH identities.
+Rotating it requires updating every such Host, including both machines when a
+Jump Host is configured.
+_Avoid_: gateway key, provider key, legacy RSA
+
 **Pairing**:
 The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Key, complete Enrollment, then reconnect with the Device Key. Success produces a working Host, persisted only at that point.
 _Avoid_: scan to connect, binding
@@ -156,17 +165,35 @@ _Avoid_: recent link, visible link, link history
 
 **Shell Terminal**:
 The full interactive terminal on an ordinary shell Pane, opened by Agent
-detail's Open Terminal action. Heeler creates a fresh herdr tab in the Agent's
-launch directory and attaches the returned terminal id through herdr's direct
-terminal attach with takeover. libghostty renders it, and direct keyboard
+detail's edge-docked Workspace drawer, the Console's Terminals list, or Open
+Terminal. Open Terminal prefers an existing shell in the Workspace and creates
+a tab in the Agent's launch directory only as a fallback or explicit choice.
+Existing shells use direct terminal attach without takeover; Take Over is an
+explicit action when another client owns the terminal. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
-Agent semantics, no notification routing. It replaces Agent detail while open
-so the Host's single terminal lifetime hands off cleanly; Back detaches and
-leaves the remote tab alive for desktop handoff. Its Keys mode reuses the
+Agent semantics, no notification routing. It replaces Agent detail while open.
+Like Agent detail it has no title bar: the terminal runs up to the status bar,
+and Back and Close Terminal sit behind the More button on its always-present
+input row, headed by the terminal's title.
+Loaded terminals share a limit of five connections per Host, retained for five
+minutes after leaving the view. The least recently viewed idle terminal is
+detached when another needs its slot; remote panes stay alive. Its Keys mode reuses the
 full Terminal keyboard from Agent tools, including characters, modifiers,
 symbols, and function keys, inside the measured iOS keyboard footprint.
 _Avoid_: Attach (that's the Agent-specific display surface), shell console,
 terminal pane view
+
+**Workspace Terminal**:
+A Pane listed with its Host, Workspace, Tab title and current directory.
+Includes Agent panes, which open Agent detail, and ordinary panes, which open
+Shell Terminal. The detail drawer includes every Tab in the current Workspace
+with a New Terminal button pinned below them that opens a fresh shell tab in
+the current pane's directory, and its handle, like the message-jump buttons,
+is long-pressed to slide it along the terminal's edge and rests where it was
+left;
+the Console's Terminals view groups the same inventory by Host and Workspace.
+Discovery is independent of loading: only selecting a terminal opens its PTY.
+_Avoid_: SSH session, tab (a Tab can contain several Workspace Terminals)
 
 **Direct Input**:
 The opt-in Agent-detail mode that hides the Composer card and routes the

@@ -2,6 +2,7 @@ import CLibSSH2
 import CHeelerSSHSupport
 import Darwin
 import Foundation
+import Synchronization
 
 #if DEBUG
 enum HandshakeFailureObservation {
@@ -19,6 +20,13 @@ actor SessionDriver {
         case blocked
         case peerClosed
         case wrote(Int)
+    }
+
+    /// `writeBridge` folded every unexpected errno into `connectionFailed`,
+    /// which left the forwarding pump with nothing to report (#351). The pump
+    /// maps this back to `connectionFailed` after recording the errno.
+    struct BridgeWriteFailure: Error, Equatable {
+        let code: Int32
     }
 
     enum TransportSendOwnerDisposition: Equatable {
@@ -42,6 +50,10 @@ actor SessionDriver {
     ]
 
     private static let hostKeyPreference = hostKeyAlgorithms.joined(separator: ",")
+
+    static let signatureAlgorithms = ["rsa-sha2-512"]
+
+    private static let signaturePreference = signatureAlgorithms.joined(separator: ",")
 
     private static let keyExchangePreference = [
         "mlkem768x25519-sha256",
@@ -77,6 +89,28 @@ actor SessionDriver {
     private var authenticated = false
     private var valid = true
     private var forwarding = false
+
+    /// Whether the handshake this driver attempted ended in libssh2's key
+    /// exchange rather than anywhere else. `SSHConnection` redials once on it
+    /// (#332).
+    ///
+    /// The pinned libssh2 writes the x25519 half of a hybrid ML-KEM shared
+    /// secret with `BN_bn2bin`, which drops leading zero bytes, into a
+    /// fixed-offset buffer (`src/kex.c:2588`). A secret whose first byte is
+    /// zero — 1 handshake in 256 — therefore hashes differently from the
+    /// server's copy, host key verification fails, and libssh2 reports the
+    /// generic LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE. Measured locally at 12
+    /// failures in 5192 `mlkem768x25519-sha256` handshakes, against 0 in 6000
+    /// `curve25519-sha256` ones. Upstream master carries the same code and
+    /// libssh2's other hybrids share the defect, so dropping the algorithm
+    /// would cost every post-quantum Host rather than fix anything.
+    ///
+    /// A redial is not a repeat of the same attempt: each handshake draws a
+    /// fresh secret, so the retry's odds are independent and one retry takes
+    /// the per-connection failure rate to roughly 1 in 65000. The code also
+    /// covers genuine post-negotiation transport loss, which is equally
+    /// transient.
+    private(set) var handshakeFailedInKeyExchange = false
     private var nextStreamLocalChannelID: UInt64 = 0
     private struct StreamLocalChannelState {
         let channel: OpaquePointer
@@ -206,9 +240,12 @@ actor SessionDriver {
 
     func handshake(
         transport: any SSHByteTransport,
+        endpoint: SSHEndpoint,
         timeout: Duration
     ) async throws -> SSHHostKey {
-        try await withDiagnosticPhase("handshake over the Jump Host transport") {
+        try await withDiagnosticPhase(
+            "handshake with \(endpoint.host):\(endpoint.port) over the Jump Host transport"
+        ) {
             await acquireOperation()
             defer { releaseOperation() }
 
@@ -281,7 +318,8 @@ actor SessionDriver {
                 throw SSHError.authenticationFailed
             }
             let deadline = ContinuousClock.now.advanced(by: timeout)
-            let retainedContext = Unmanaged.passRetained(SigningContext(signer: signer))
+            let context = SigningContext(publicKey: publicKey, signer: signer)
+            let retainedContext = Unmanaged.passRetained(context)
             defer { retainedContext.release() }
             var abstract: UnsafeMutableRawPointer? = retainedContext.toOpaque()
 
@@ -301,7 +339,16 @@ actor SessionDriver {
                         }
                     }
                 }
-                guard result == 0 else { throw mapAuthenticationError(result) }
+                guard result == 0 else {
+                    // The server never saw a signature, so this is not its
+                    // verdict on the key: no pinned signature algorithm could
+                    // be used for this request.
+                    if context.refusedSignatureAlgorithm {
+                        noteFailure(result)
+                        throw SSHError.algorithmNegotiationFailed
+                    }
+                    throw mapAuthenticationError(result)
+                }
                 authenticated = true
             } catch {
                 let normalized = normalize(error)
@@ -1289,6 +1336,100 @@ actor SessionDriver {
                 }
             }
         }
+    }
+
+    /// Reads up to `maxBytes` starting at `offset`, so a follower of a file
+    /// that only ever grows can ask for the tail it has not folded yet.
+    ///
+    /// `length` is the file's own reported size, and `nil` only when the file
+    /// is absent — the follower's signal to drop what it had. It is the raw
+    /// size rather than the byte count this call happened to read, because a
+    /// follower compares it against its own offset to notice that the path now
+    /// holds a different, shorter file; reporting the read count instead would
+    /// hide exactly that case.
+    func readSFTPFileRange(
+        id: UInt64,
+        path: String,
+        offset: UInt64,
+        maxBytes: Int,
+        timeout: Duration
+    ) async throws -> SSHSFTPFileSlice {
+        guard Self.isValidSFTPPath(path), maxBytes >= 0 else { throw SSHError.channelFailed }
+        // Asked for by path, before the ranged read claims the subsystem:
+        // `sftpAttributes` waits for the subsystem to be idle, so it cannot run
+        // inside the read's own use.
+        let reportedSize: UInt64?
+        do {
+            reportedSize = try await sftpAttributes(id: id, path: path, timeout: timeout).size
+        } catch {
+            // A file that is not there is an answer, not a failure: it is how
+            // the follower learns to stop showing figures nothing backs.
+            if case SSHError.sftpFailure(let status) = error,
+                status == UInt64(LIBSSH2_FX_NO_SUCH_FILE)
+            {
+                return SSHSFTPFileSlice(data: Data(), length: nil)
+            }
+            throw error
+        }
+
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        let data: Data? = try await withSFTPUse(id: id, deadline: deadline) {
+            guard
+                let fileID = try await openSFTPFileForReadingIfPresent(
+                    sftpID: id,
+                    path: path,
+                    deadline: deadline)
+            else { return nil }
+
+            do {
+                if offset > 0 {
+                    try await seekSFTPFileToStart(sftpID: id, fileID: fileID, offset: offset)
+                }
+                var contents = Data()
+                while contents.count < maxBytes {
+                    guard
+                        let chunk = try await readSFTPFileChunk(
+                            sftpID: id,
+                            fileID: fileID,
+                            deadline: deadline)
+                    else { break }
+                    contents.append(chunk.prefix(maxBytes - contents.count))
+                }
+                try await closeSFTPFileWithinUse(
+                    sftpID: id,
+                    fileID: fileID,
+                    timeout: timeout)
+                return contents
+            } catch {
+                try? await closeSFTPFileWithinUse(
+                    sftpID: id,
+                    fileID: fileID,
+                    timeout: .seconds(2))
+                throw normalize(error)
+            }
+        }
+        // Gone between the size check and the open.
+        guard let data else { return SSHSFTPFileSlice(data: Data(), length: nil) }
+        // A server that reports no size at all leaves the bytes read as the
+        // only floor available.
+        return SSHSFTPFileSlice(
+            data: data,
+            length: reportedSize ?? offset + UInt64(data.count))
+    }
+
+    /// Moves an open read handle to `offset`. Local to the handle — the next
+    /// read is what travels — so it takes no send admission of its own.
+    private func seekSFTPFileToStart(
+        sftpID: UInt64,
+        fileID: UInt64,
+        offset: UInt64
+    ) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+        guard valid, let state = sftpClients[sftpID], let file = state.files[fileID] else {
+            throw SSHError.connectionInvalidated
+        }
+        libssh2_sftp_seek64(file, offset)
     }
 
     private func openSFTPFileForReadingIfPresent(
@@ -2366,6 +2507,7 @@ actor SessionDriver {
     private func configureAlgorithms(_ session: OpaquePointer) throws {
         let preferences: [(Int32, String)] = [
             (LIBSSH2_METHOD_HOSTKEY, Self.hostKeyPreference),
+            (LIBSSH2_METHOD_SIGN_ALGO, Self.signaturePreference),
             (LIBSSH2_METHOD_KEX, Self.keyExchangePreference),
             (LIBSSH2_METHOD_CRYPT_CS, Self.cipherPreference),
             (LIBSSH2_METHOD_CRYPT_SC, Self.cipherPreference),
@@ -2401,6 +2543,8 @@ actor SessionDriver {
 #if DEBUG
             HandshakeFailureObservation.observer?(handshakeResult)
 #endif
+            handshakeFailedInKeyExchange =
+                handshakeResult == LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE
             throw mapSessionError(handshakeResult)
         }
         return try extractHostKey(createdSession)
@@ -2601,6 +2745,11 @@ actor SessionDriver {
         var scratch = [UInt8](repeating: 0, count: 32 * 1024)
         var innerEOF = false
         var outerEOF = false
+        // How far the forwarded connection actually got. A pump that dies
+        // before either direction moves is a different incident from one that
+        // dies mid-stream, and the nested session sees the same bare EOF.
+        var forwardedToHost = 0
+        var forwardedFromHost = 0
 
         while true {
             if Task.isCancelled { throw SSHError.cancelled }
@@ -2608,8 +2757,13 @@ actor SessionDriver {
             var madeProgress = false
 
             if !innerEOF, toOuter.count < bufferLimit {
-                let readCount = scratch.withUnsafeMutableBytes { bytes in
-                    Darwin.read(bridgeDescriptor, bytes.baseAddress, bytes.count)
+                // Capture errno with the result: anything between the syscall
+                // and the check can clobber it, and the errno is the whole
+                // content of the report.
+                let (readCount, readErrno) = scratch.withUnsafeMutableBytes {
+                    bytes -> (Int, Int32) in
+                    let result = Darwin.read(bridgeDescriptor, bytes.baseAddress, bytes.count)
+                    return (result, result < 0 ? errno : 0)
                 }
                 if readCount > 0 {
                     toOuter.append(contentsOf: scratch.prefix(readCount))
@@ -2617,7 +2771,12 @@ actor SessionDriver {
                 } else if readCount == 0 {
                     innerEOF = true
                     madeProgress = true
-                } else if errno != EAGAIN && errno != EWOULDBLOCK {
+                } else if readErrno != EAGAIN && readErrno != EWOULDBLOCK {
+                    notePumpFailure(
+                        "bridge read",
+                        errnoCode: readErrno,
+                        toHost: forwardedToHost,
+                        fromHost: forwardedFromHost)
                     throw SSHError.connectionFailed
                 }
             }
@@ -2633,8 +2792,14 @@ actor SessionDriver {
                 }
                 if written > 0 {
                     toOuter.removeFirst(written)
+                    forwardedToHost += written
                     madeProgress = true
                 } else if written != Int(LIBSSH2_ERROR_EAGAIN) {
+                    notePumpFailure(
+                        "channel write",
+                        libssh2Code: Int32(clamping: written),
+                        toHost: forwardedToHost,
+                        fromHost: forwardedFromHost)
                     throw SSHError.connectionFailed
                 }
             }
@@ -2666,6 +2831,11 @@ actor SessionDriver {
 #endif
                     madeProgress = true
                 } else if readCount != 0 && readCount != Int(LIBSSH2_ERROR_EAGAIN) {
+                    notePumpFailure(
+                        "channel read",
+                        libssh2Code: Int32(clamping: readCount),
+                        toHost: forwardedToHost,
+                        fromHost: forwardedFromHost)
                     throw SSHError.connectionFailed
                 }
                 if libssh2_channel_eof(channel) == 1 {
@@ -2681,9 +2851,21 @@ actor SessionDriver {
             shouldHoldBridgeWrites = false
 #endif
             if !toInner.isEmpty, !shouldHoldBridgeWrites {
-                switch try Self.writeBridge(toInner, descriptor: bridgeDescriptor) {
+                let bridgeWrite: BridgeWriteResult
+                do {
+                    bridgeWrite = try Self.writeBridge(toInner, descriptor: bridgeDescriptor)
+                } catch let failure as BridgeWriteFailure {
+                    notePumpFailure(
+                        "bridge write",
+                        errnoCode: failure.code,
+                        toHost: forwardedToHost,
+                        fromHost: forwardedFromHost)
+                    throw SSHError.connectionFailed
+                }
+                switch bridgeWrite {
                 case .wrote(let written):
                     toInner.removeFirst(written)
+                    forwardedFromHost += written
                     madeProgress = true
                 case .blocked:
                     break
@@ -2747,7 +2929,7 @@ actor SessionDriver {
             return .blocked
         }
         if writeErrno == EPIPE { return .peerClosed }
-        throw SSHError.connectionFailed
+        throw BridgeWriteFailure(code: writeErrno)
     }
 
     /// Everything a blocked operation needs to wait on the session, captured
@@ -4507,6 +4689,35 @@ actor SessionDriver {
         SSHDiagnosticOperation.current?.context ?? "SSH operation"
     }
 
+    /// The forwarding pump is the one operation that returns its failure
+    /// instead of throwing it, so `withDiagnosticPhase` never observes it and
+    /// `noteFailure` was never reached from here (#351). Report at the point
+    /// of failure, where the task-local phase and its timings still belong to
+    /// this pump; by the time `connectThrough` sees the result it has already
+    /// aborted the transport and is in another task's scope.
+    private func notePumpFailure(
+        _ source: String,
+        errnoCode: Int32? = nil,
+        libssh2Code: Int32? = nil,
+        toHost: Int,
+        fromHost: Int
+    ) {
+        guard SSHDiagnostics.isEnabled else { return }
+        var line = "\(diagnosticContext), \(source) failed"
+        if let libssh2Code {
+            line += ": \(Self.libssh2ErrorName(libssh2Code)) (\(libssh2Code))"
+            if let session, let message = Self.lastErrorMessage(session), !message.isEmpty {
+                line += ": \(message)"
+            }
+        } else if let errnoCode {
+            let description = strerror(errnoCode).map { String(cString: $0) } ?? "unknown"
+            line += ": errno \(errnoCode) (\(description))"
+        }
+        line += " after \(toHost) bytes to the Host and \(fromHost) bytes from it"
+        if let context = SSHDiagnosticOperation.current { line += " \(context.timingDetails)" }
+        SSHDiagnostics.note(line)
+    }
+
     /// One line per failure: the phase, the raw libssh2 code by name, and the
     /// message libssh2 attached to it. The coarse `SSHError` the caller gets
     /// is unchanged; this is the detail it deliberately does not carry.
@@ -4772,10 +4983,21 @@ actor SessionDriver {
 }
 
 private final class SigningContext: Sendable {
+    let publicKey: Data
     let signer: SSHSigningClosure
+    private let refusal = Mutex(false)
 
-    init(signer: @escaping SSHSigningClosure) {
+    init(publicKey: Data, signer: @escaping SSHSigningClosure) {
+        self.publicKey = publicKey
         self.signer = signer
+    }
+
+    var refusedSignatureAlgorithm: Bool {
+        refusal.withLock { $0 }
+    }
+
+    func noteRefusedSignatureAlgorithm() {
+        refusal.withLock { $0 = true }
     }
 }
 
@@ -4804,8 +5026,17 @@ private func signPublicKey(
         .fromOpaque(contextPointer)
         .takeUnretainedValue()
 
+    let signedData = Data(bytes: dataPointer, count: dataLength)
+    guard PublicKeySignaturePolicy.permits(publicKey: context.publicKey, signedData: signedData)
+    else {
+        context.noteRefusedSignatureAlgorithm()
+        // Not LIBSSH2_ERROR_ALGO_UNSUPPORTED: libssh2 answers that code by
+        // retrying with the key's default algorithm, which is `ssh-rsa`.
+        return LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED
+    }
+
     do {
-        let signature = try context.signer(Data(bytes: dataPointer, count: dataLength))
+        let signature = try context.signer(signedData)
         // SessionDriver initializes libssh2 with its default malloc/free
         // allocator. libssh2 takes ownership here and frees this buffer after
         // copying it into the authentication packet.

@@ -47,6 +47,43 @@ struct DeviceKeyStoreTests {
     }
 }
 
+@Suite("RSA key store")
+struct RSAKeyStoreTests {
+    @Test func generatesOnFirstUseAndReturnsTheSameKeyAfterwards() throws {
+        let secrets = InMemorySecretStore()
+        let store = RSAKeyStore(secrets: secrets)
+
+        let first = try store.loadOrCreate()
+        let second = try store.loadOrCreate()
+
+        #expect(first.openSSHPublicKey == second.openSSHPublicKey)
+    }
+
+    @Test func persistedKeySurvivesANewStoreInstance() throws {
+        let secrets = InMemorySecretStore()
+
+        let first = try RSAKeyStore(secrets: secrets).loadOrCreate()
+        let second = try RSAKeyStore(secrets: secrets).loadOrCreate()
+
+        #expect(first.openSSHPublicKey == second.openSSHPublicKey)
+    }
+
+    @Test func explicitReplacementRecoversACorruptStoredKey() throws {
+        let secrets = InMemorySecretStore()
+        let account = "corrupt-rsa-key"
+        try secrets.write(Data("not-an-rsa-private-key".utf8), account: account)
+        let store = RSAKeyStore(secrets: secrets, account: account)
+
+        #expect(throws: RSAKeyStoreError.storedKeyCorrupt) {
+            try store.loadOrCreate()
+        }
+
+        let replacement = try store.replaceStoredKey()
+
+        #expect(try store.loadOrCreate().openSSHPublicKey == replacement.openSSHPublicKey)
+    }
+}
+
 // The real Keychain works in simulator test bundles for generic passwords;
 // exercise it for real rather than trusting the in-memory stand-in.
 @Suite("Keychain secret store", .serialized)
@@ -97,6 +134,17 @@ struct KeychainSecretStoreTests {
         let account = "device-key-test-\(UUID().uuidString)"
         defer { try? store.removeSecret(account: account) }
         let keyStore = DeviceKeyStore(secrets: store, account: account)
+
+        let first = try keyStore.loadOrCreate()
+        let second = try keyStore.loadOrCreate()
+
+        #expect(first.openSSHPublicKey == second.openSSHPublicKey)
+    }
+
+    @Test func rsaKeyStoreOnRealKeychainReturnsAStableKey() throws {
+        let account = "rsa-key-test-\(UUID().uuidString)"
+        defer { try? store.removeSecret(account: account) }
+        let keyStore = RSAKeyStore(secrets: store, account: account)
 
         let first = try keyStore.loadOrCreate()
         let second = try keyStore.loadOrCreate()

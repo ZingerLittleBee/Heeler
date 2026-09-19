@@ -25,6 +25,37 @@ final actor FakeTransport: Transport {
         []
     }
 
+    /// Ranged Host-file reads (#325): scripted answers, in order.
+    private var scriptedFileSlices: [RemoteFileSlice] = []
+    private(set) var fileRanges: [RemoteFileRange] = []
+
+    func setFileSlices(_ slices: [RemoteFileSlice]) {
+        scriptedFileSlices = slices
+    }
+
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        fileRanges.append(range)
+        guard !scriptedFileSlices.isEmpty else {
+            throw TransportError.channelFailed(
+                detail: "FakeTransport does not script file slices")
+        }
+        return scriptedFileSlices.removeFirst()
+    }
+
+    /// Model window lookups (#325): scripted per selector; unscripted ones
+    /// are unknown, as with a model omp does not list.
+    private var scriptedContextWindows: [String: Int] = [:]
+    private(set) var contextWindowSelectors: [String] = []
+
+    func setContextWindows(_ windows: [String: Int]) {
+        scriptedContextWindows = windows
+    }
+
+    func modelContextWindow(selector: String) async throws -> Int? {
+        contextWindowSelectors.append(selector)
+        return scriptedContextWindows[selector]
+    }
+
     func sessionSnapshot() async throws -> SessionSnapshot {
         SessionSnapshot(
             agents: [], layouts: [], panes: [], protocolVersion: 17, tabs: [],
