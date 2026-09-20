@@ -418,7 +418,13 @@ struct EventsSessionSubscriptionsTests {
         try await Task.sleep(for: .milliseconds(50))
         await connectGate.open()
         #expect(try await probe.value == "replacement")
-        #expect(await replacement.capturedSubscriptions == [initial, updated])
+        // A fresh transport sees exactly one `events.subscribe`, with the
+        // CURRENT set: the `[initial]` capture belongs to `first`, the
+        // transport that was replaced. Same contract as the suspend/resume
+        // replacement above (`replacement.capturedSubscriptions == [initial]`)
+        // — accumulating `[initial, updated]` is the same-transport
+        // resubscribe case, not a fresh dial.
+        #expect(await replacement.capturedSubscriptions == [updated])
 
         // The deliberate replacement never announced a failure or a new
         // activation; the fresh `.connected` is its only signal.
