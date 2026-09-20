@@ -43,9 +43,6 @@ struct ConsoleView: View {
     @State private var isSearchPresented = false
     @FocusState private var isSearchFocused: Bool
     @State private var commandRegistry = ConsoleCommandRegistry()
-    /// The Agent whose tab the swipe action wants to close; non-nil shows
-    /// the confirmation. Dismissing the dialog clears it without closing.
-    @State private var pendingTabClose: ConsoleAgent?
     /// Row-level `tab.close` failure text; non-nil shows the error alert.
     @State private var tabCloseError: String?
     /// Owns flat/grouped mode and per-Host collapsed state (#245).
@@ -540,15 +537,6 @@ struct ConsoleView: View {
                 }
             }
             .listStyle(.plain)
-            .confirmationDialog(
-                "Close Tab?", isPresented: tabCloseDialogPresented,
-                titleVisibility: .visible
-            ) {
-                Button("Close", role: .destructive) { confirmTabClose() }
-                Button("Cancel", role: .cancel) { pendingTabClose = nil }
-            } message: {
-                Text(pendingTabClose.map(tabCloseMessage(for:)) ?? "")
-            }
             .alert("Could Not Close Tab", isPresented: tabCloseErrorPresented) {
                 Button("OK", role: .cancel) { tabCloseError = nil }
             } message: {
@@ -677,60 +665,23 @@ struct ConsoleView: View {
                 isEnabled: supportsMultipleWindows))
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
-                pendingTabClose = agent
+                Task {
+                    do {
+                        try await console.closeAgentTab(agent)
+                    } catch {
+                        tabCloseError = error.localizedDescription
+                    }
+                }
             } label: {
                 Label("Close", systemImage: "trash")
             }
         }
     }
 
-    /// Whether the tab-close confirmation is up for whichever Agent the
-    /// swipe action queued.
-    private var tabCloseDialogPresented: Binding<Bool> {
-        Binding(
-            get: { pendingTabClose != nil },
-            set: { shown in if !shown { pendingTabClose = nil } })
-    }
-
     private var tabCloseErrorPresented: Binding<Bool> {
         Binding(
             get: { tabCloseError != nil },
             set: { shown in if !shown { tabCloseError = nil } })
-    }
-
-    private func confirmTabClose() {
-        guard let agent = pendingTabClose else { return }
-        pendingTabClose = nil
-        Task {
-            do {
-                try await console.closeAgentTab(agent)
-            } catch {
-                tabCloseError = error.localizedDescription
-            }
-        }
-    }
-
-    /// Confirmation copy naming the Agent and its tab, plus the sibling
-    /// hint when other agents share the same tab.
-    private func tabCloseMessage(for agent: ConsoleAgent) -> String {
-        var target: String
-        switch (agent.showsTabLabel, agent.tabLabel) {
-        case (true, .some(let label)): target = "\(agent.agent.displayName) — \(label)"
-        default: target = agent.agent.displayName
-        }
-        var message = "Close \"\(target)\"? The workspace closes too if this is its last tab."
-        let others = console.agents.filter {
-            $0.hostID == agent.hostID
-                && $0.agent.tabID == agent.agent.tabID
-                && $0.id != agent.id
-        }.count
-        if others > 0 {
-            message +=
-                others == 1
-                ? " 1 other agent shares this tab."
-                : " \(others) other agents share this tab."
-        }
-        return message
     }
 
     /// A window already showing this Agent comes forward instead of a second
