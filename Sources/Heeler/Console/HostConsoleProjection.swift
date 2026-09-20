@@ -340,6 +340,23 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
+    /// Moves a Pane into another Workspace (`pane.move`). The reply carries
+    /// the moved Pane's new id (herdr re-keys it); confirmation events also
+    /// trigger a resync, the post-RPC call just makes the move land without
+    /// waiting on the event round trip.
+    @discardableResult
+    func movePane(_ paneID: String, toWorkspaceID: String) async throws -> PaneMoveResponse {
+        let response = try await session.withTransport { transport in
+            try await transport.movePane(
+                PaneMoveParams(
+                    destination: .newTab(
+                        PaneMoveDestinationNewTab(workspaceID: toWorkspaceID)),
+                    paneID: paneID))
+        }
+        scheduleResync()
+        return response
+    }
+
     /// Whether a Pane is still alive on the Host, probed with a minimal
     /// `pane.read`. A server rejection means the Pane is gone (closed on the
     /// desktop, or the server restarted and lost every tab); a transport

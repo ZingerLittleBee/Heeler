@@ -803,6 +803,12 @@ struct AgentTerminalView: View {
         .onChange(of: keyboardControl.isFirstResponder) { _, isUp in
             guard isDirectInput else { return }
             if isUp {
+                // A tap on the terminal surface raises the keyboard directly
+                // (see `HeelerTerminalView.tapAction`), bypassing every arm
+                // site above. Record the raised intent so a same-screen
+                // pipeline replacement reclaims first responder when its
+                // attach goes live instead of coming up cold.
+                directKeyboardIntent.setWantsKeyboard(true)
                 // On iPad the tools dock stands without a responder, so a tap
                 // on the terminal's input row asks for the system keyboard.
                 guard usesDirectToolsKeyboard, toolsDockReleasesFocus else { return }

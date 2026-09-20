@@ -1192,11 +1192,12 @@ struct TerminalAttachTests {
         let insideTheBand = CGPoint(x: 195, y: region.midY)
         let outputArea = CGPoint(x: 195, y: 20)
         // Chat TUIs pin the input box to the bottom rows; a tap there must
-        // answer even when the caret band sits elsewhere.
+        // answer even when the caret band sits elsewhere. Tap-to-focus is
+        // the contract now: any settled tap raises the keyboard.
         let bottomQuarter = CGPoint(x: 195, y: 700)
         #expect(!region.contains(outputArea))
         #expect(terminal.tapAction(at: insideTheBand) == .report(raisesKeyboard: true))
-        #expect(terminal.tapAction(at: outputArea) == .report(raisesKeyboard: false))
+        #expect(terminal.tapAction(at: outputArea) == .report(raisesKeyboard: true))
         #expect(terminal.tapAction(at: bottomQuarter) == .report(raisesKeyboard: true))
     }
 
@@ -1209,7 +1210,7 @@ struct TerminalAttachTests {
 
         terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1049l".utf8))
 
-        #expect(terminal.tapAction(at: CGPoint(x: 195, y: 120)) == .report(raisesKeyboard: false))
+        #expect(terminal.tapAction(at: CGPoint(x: 195, y: 120)) == .report(raisesKeyboard: true))
     }
 
     /// Tapping to stop a flick is the oldest gesture on the platform. Now that

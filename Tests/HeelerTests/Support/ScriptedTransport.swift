@@ -36,6 +36,11 @@ final actor ScriptedTransport: Transport {
     private(set) var closedPanes: [PaneTarget] = []
     private(set) var closedTabs: [TabTarget] = []
     private var closeFailure: TransportError?
+    /// Every `pane.move` received, in order; the drag-to-workspace flow
+    /// asserts on the pane and destination it forwarded.
+    private(set) var paneMoves: [PaneMoveParams] = []
+    private var paneMoveResponse: PaneMoveResponse?
+    private var moveFailure: (any Error)?
     private(set) var listedWorktreeWorkspaceIDs: [String] = []
     private(set) var removedWorktreeRequests: [WorktreeRemovalRequest] = []
     private var worktreeListResponse: WorktreeListResponse?
@@ -221,6 +226,17 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `closePane` throw `failure`.
     func setCloseFailure(_ failure: TransportError?) {
         closeFailure = failure
+    }
+
+    /// Scripts the `pane.move` reply; nil restores the synthesized default
+    /// (the moved pane re-keyed under the destination workspace).
+    func setPaneMoveResponse(_ response: PaneMoveResponse?) {
+        paneMoveResponse = response
+    }
+
+    /// Makes every subsequent `movePane` throw `failure`.
+    func setMoveFailure(_ failure: (any Error)?) {
+        moveFailure = failure
     }
 
     func configureWorktreeList(
@@ -537,6 +553,40 @@ final actor ScriptedTransport: Transport {
     func closeTab(_ params: TabTarget) async throws {
         if let closeFailure { throw closeFailure }
         closedTabs.append(params)
+    }
+
+    func movePane(_ params: PaneMoveParams) async throws -> PaneMoveResponse {
+        paneMoves.append(params)
+        if let moveFailure { throw moveFailure }
+        if let paneMoveResponse { return paneMoveResponse }
+        // Default: the moved pane re-keyed under the destination workspace,
+        // the shape herdr reports for a cross-workspace `new_tab` move.
+        let workspaceID: String
+        if case .newTab(let destination) = params.destination,
+            let destinationWorkspace = destination.workspaceID
+        {
+            workspaceID = destinationWorkspace
+        } else {
+            workspaceID = params.paneID.split(separator: ":").first.map(String.init) ?? "w1"
+        }
+        let newPaneID = "\(workspaceID):moved"
+        let sourceWorkspace =
+            params.paneID.split(separator: ":").first.map(String.init) ?? "w1"
+        return PaneMoveResponse(
+            moveResult: PaneMoveResult(
+                changed: true,
+                focusedPaneID: newPaneID,
+                pane: PaneInfo(
+                    agentStatus: .idle, focused: false, paneID: newPaneID, revision: 1,
+                    tabID: "\(workspaceID):t1", terminalID: "term-\(newPaneID)",
+                    workspaceID: workspaceID),
+                previousPaneID: params.paneID,
+                previousTabID: "\(sourceWorkspace):t1",
+                previousWorkspaceID: sourceWorkspace,
+                targetLayout: PaneLayoutSnapshot(
+                    area: PaneLayoutRect(height: 24, width: 80, x: 0, y: 0),
+                    focusedPaneID: newPaneID, panes: [], splits: [],
+                    tabID: "\(workspaceID):t1", workspaceID: workspaceID, zoomed: false)))
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {

@@ -310,6 +310,43 @@ struct ConsoleListPresentationStoreTests {
         #expect(otherSections[0].workspaceGroups.map(\.isCollapsed) == [true])
     }
 
+    @Test func movingIntoAWorkspaceExpandsTheDestinationGroup() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        // Before the move the destination workspace has no Agents, so its
+        // group does not even project — the group the Agent will arrive in
+        // starts collapsed like any workspace never seen before.
+        var sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(host: host, paneID: "a-1", status: .working, workspaceLabel: "Old"),
+            ],
+            workspacesByHost: [host.id: [
+                ConsoleWorkspace(id: "w-old", label: "Old"),
+                ConsoleWorkspace(id: "w-new", label: "New"),
+            ]])
+        #expect(sections[0].workspaceGroups.map(\.label) == ["Old"])
+
+        // The move lands; the Console view calls setExpanded for the
+        // moved-to group so the arriving Agent is visible without a tap.
+        store.setExpanded(true, for: host.id, workspaceLabel: "New")
+        sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(host: host, paneID: "a-1", status: .working, workspaceLabel: "New"),
+            ],
+            workspacesByHost: [host.id: [
+                ConsoleWorkspace(id: "w-old", label: "Old"),
+                ConsoleWorkspace(id: "w-new", label: "New"),
+            ]])
+        #expect(sections[0].workspaceGroups.map(\.label) == ["New"])
+        #expect(sections[0].workspaceGroups.map(\.isCollapsed) == [false])
+        #expect(sections[0].workspaceGroups[0].agents.map(\.id.paneID) == ["a-1"])
+    }
+
     @Test func byHostWorkspaceCollapseStateIsIsolatedPerHostPair() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

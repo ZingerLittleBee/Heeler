@@ -1477,6 +1477,95 @@ struct ConsoleStoreTests {
         }
     }
 
+    @Test func moveAgentForwardsToItsHostAndRekeysItsPin() async throws {
+        // pane.move (drag-to-workspace): the destination reaches the Host's
+        // transport, and the moved Agent's pin re-keys onto the new pane id
+        // herdr reports in the reply — while pins on panes the move did not
+        // re-key survive untouched.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(
+                agents: [
+                    .fixture(paneID: "w1:p1", status: .idle),
+                    .fixture(paneID: "w1:p2", status: .idle),
+                    .fixture(paneID: "w2:p1", status: .idle, workspaceID: "w2"),
+                ],
+                workspaces: [
+                    .fixture(workspaceID: "w1", label: "Proj", repoName: "proj"),
+                    .fixture(workspaceID: "w2", label: "Api"),
+                ]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("all agents should arrive") { store.agents.count == 3 }
+        store.togglePin(hostID: host.id, paneID: "w1:p1")
+        store.togglePin(hostID: host.id, paneID: "w2:p1")
+
+        // The next snapshot already reflects the move: herdr re-keyed the
+        // pane (w1:p1 → w2:moved) and the emptied tab closed.
+        await transport.setSnapshot(
+            .fixture(
+                agents: [
+                    .fixture(paneID: "w1:p2", status: .idle),
+                    .fixture(paneID: "w2:p1", status: .idle, workspaceID: "w2"),
+                    .fixture(paneID: "w2:moved", status: .idle, workspaceID: "w2"),
+                ],
+                workspaces: [
+                    .fixture(workspaceID: "w1", label: "Proj", repoName: "proj"),
+                    .fixture(workspaceID: "w2", label: "Api"),
+                ]))
+
+        let victim = try #require(store.agents.first { $0.agent.paneID == "w1:p1" })
+        let response = try await store.moveAgent(victim, toWorkspaceID: "w2", on: host.id)
+
+        #expect(
+            await transport.paneMoves
+                == [PaneMoveParams(
+                    destination: .newTab(PaneMoveDestinationNewTab(workspaceID: "w2")),
+                    paneID: "w1:p1")])
+        // The reply carries the re-keyed pane.
+        #expect(response?.moveResult.pane.paneID == "w2:moved")
+        // The moved pin re-keys; the untouched w2:p1 pin survives.
+        #expect(!store.pins.isPinned(hostID: host.id, paneID: "w1:p1"))
+        #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:moved"))
+        #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:p1"))
+        // The post-RPC resync converges the list.
+        try await waitUntil("the resync should show the moved agent") {
+            store.agents.contains { $0.agent.paneID == "w2:moved" }
+        }
+    }
+
+    @Test func moveAgentToItsOwnWorkspaceIsASilentNoOp() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(
+                agents: [.fixture(paneID: "w1:p1", status: .idle)],
+                workspaces: [.fixture(workspaceID: "w1", label: "Proj")]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
+
+        let agent = try #require(store.agents.first)
+        let response = try await store.moveAgent(agent, toWorkspaceID: "w1", on: host.id)
+
+        #expect(response == nil)
+        #expect(await transport.paneMoves.isEmpty)
+    }
+
+    @Test func moveAgentThrowsWhenTheHostIsUnknown() async throws {
+        let host = Host.fixture()
+        let store = makeStore(transports: [:])
+        let agent = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "w1:p1", status: .idle)
+
+        await #expect(throws: TransportError.self) {
+            try await store.moveAgent(agent, toWorkspaceID: "w2", on: host.id)
+        }
+    }
+
     @Test func focusAgentForwardsOpaqueTargetToItsHostAndResnapshotsAllRows() async throws {
         let host = Host.fixture()
         let otherHost = Host.fixture(name: "Other")

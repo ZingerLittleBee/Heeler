@@ -505,6 +505,234 @@ struct PaneLayoutSplit: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/PaneMoveDestination`.
+///
+/// A `type`-tagged union: the tag selects which payload decodes, and
+/// encoding writes the tag and the payload's fields into one object.
+enum PaneMoveDestination: Codable, Equatable, Sendable {
+    case tab(PaneMoveDestinationTab)
+    case newTab(PaneMoveDestinationNewTab)
+    case newWorkspace(PaneMoveDestinationNewWorkspace)
+
+    private enum Kind: String, Codable, Sendable {
+        case tab = "tab"
+        case newTab = "new_tab"
+        case newWorkspace = "new_workspace"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case label
+        case ratio
+        case split
+        case tabID = "tab_id"
+        case tabLabel = "tab_label"
+        case targetPaneID = "target_pane_id"
+        case workspaceID = "workspace_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(Kind.self, forKey: .type) {
+        case .tab:
+            self = .tab(try PaneMoveDestinationTab(from: decoder))
+        case .newTab:
+            self = .newTab(try PaneMoveDestinationNewTab(from: decoder))
+        case .newWorkspace:
+            self = .newWorkspace(try PaneMoveDestinationNewWorkspace(from: decoder))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .tab(let payload):
+            try container.encode(Kind.tab, forKey: .type)
+            try container.encodeIfPresent(payload.ratio, forKey: .ratio)
+            try container.encode(payload.split, forKey: .split)
+            try container.encode(payload.tabID, forKey: .tabID)
+            try container.encodeIfPresent(payload.targetPaneID, forKey: .targetPaneID)
+        case .newTab(let payload):
+            try container.encode(Kind.newTab, forKey: .type)
+            try container.encodeIfPresent(payload.label, forKey: .label)
+            try container.encodeIfPresent(payload.workspaceID, forKey: .workspaceID)
+        case .newWorkspace(let payload):
+            try container.encode(Kind.newWorkspace, forKey: .type)
+            try container.encodeIfPresent(payload.label, forKey: .label)
+            try container.encodeIfPresent(payload.tabLabel, forKey: .tabLabel)
+        }
+    }
+}
+
+/// Payload of the `new_tab` variant of `PaneMoveDestination`.
+struct PaneMoveDestinationNewTab: Codable, Equatable, Sendable {
+    let label: String?
+    let workspaceID: String?
+
+    init(label: String? = nil, workspaceID: String? = nil) {
+        self.label = label
+        self.workspaceID = workspaceID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label
+        case workspaceID = "workspace_id"
+    }
+}
+
+/// Payload of the `new_workspace` variant of `PaneMoveDestination`.
+struct PaneMoveDestinationNewWorkspace: Codable, Equatable, Sendable {
+    let label: String?
+    let tabLabel: String?
+
+    init(label: String? = nil, tabLabel: String? = nil) {
+        self.label = label
+        self.tabLabel = tabLabel
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label
+        case tabLabel = "tab_label"
+    }
+}
+
+/// Payload of the `tab` variant of `PaneMoveDestination`.
+struct PaneMoveDestinationTab: Codable, Equatable, Sendable {
+    let ratio: Double?
+    let split: SplitDirection
+    let tabID: String
+    let targetPaneID: String?
+
+    init(
+        split: SplitDirection,
+        tabID: String,
+        ratio: Double? = nil,
+        targetPaneID: String? = nil
+    ) {
+        self.split = split
+        self.tabID = tabID
+        self.ratio = ratio
+        self.targetPaneID = targetPaneID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ratio
+        case split
+        case tabID = "tab_id"
+        case targetPaneID = "target_pane_id"
+    }
+}
+
+/// herdr schema `$defs/PaneMoveParams`.
+struct PaneMoveParams: Codable, Equatable, Sendable {
+    let destination: PaneMoveDestination
+    let focus: Bool?
+    let paneID: String
+
+    init(destination: PaneMoveDestination, paneID: String, focus: Bool? = nil) {
+        self.destination = destination
+        self.paneID = paneID
+        self.focus = focus
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case destination
+        case focus
+        case paneID = "pane_id"
+    }
+}
+
+/// herdr schema `$defs/PaneMoveReason`.
+///
+/// Closed set in the source schema, but herdr's API has no stability
+/// guarantee — unknown raw values decode intact instead of failing.
+struct PaneMoveReason: RawRepresentable, Codable, Hashable, Sendable {
+    let rawValue: String
+
+    init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    static let sameTab = PaneMoveReason(rawValue: "same_tab")
+    static let zoomedTab = PaneMoveReason(rawValue: "zoomed_tab")
+}
+
+/// The `"type":"pane_move"` result payload of herdr's success_response schema.
+struct PaneMoveResponse: Codable, Equatable, Sendable {
+    let moveResult: PaneMoveResult
+
+    init(moveResult: PaneMoveResult) {
+        self.moveResult = moveResult
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case moveResult = "move_result"
+    }
+}
+
+/// herdr schema `$defs/PaneMoveResult`.
+struct PaneMoveResult: Codable, Equatable, Sendable {
+    let changed: Bool
+    let closedTabID: String?
+    let closedWorkspaceID: String?
+    let createdTab: TabInfo?
+    let createdWorkspace: WorkspaceInfo?
+    let focusedPaneID: String
+    let pane: PaneInfo
+    let previousPaneID: String
+    let previousTabID: String
+    let previousWorkspaceID: String
+    let reason: PaneMoveReason?
+    let sourceLayout: PaneLayoutSnapshot?
+    let targetLayout: PaneLayoutSnapshot
+
+    init(
+        changed: Bool,
+        focusedPaneID: String,
+        pane: PaneInfo,
+        previousPaneID: String,
+        previousTabID: String,
+        previousWorkspaceID: String,
+        targetLayout: PaneLayoutSnapshot,
+        closedTabID: String? = nil,
+        closedWorkspaceID: String? = nil,
+        createdTab: TabInfo? = nil,
+        createdWorkspace: WorkspaceInfo? = nil,
+        reason: PaneMoveReason? = nil,
+        sourceLayout: PaneLayoutSnapshot? = nil
+    ) {
+        self.changed = changed
+        self.focusedPaneID = focusedPaneID
+        self.pane = pane
+        self.previousPaneID = previousPaneID
+        self.previousTabID = previousTabID
+        self.previousWorkspaceID = previousWorkspaceID
+        self.targetLayout = targetLayout
+        self.closedTabID = closedTabID
+        self.closedWorkspaceID = closedWorkspaceID
+        self.createdTab = createdTab
+        self.createdWorkspace = createdWorkspace
+        self.reason = reason
+        self.sourceLayout = sourceLayout
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case changed
+        case closedTabID = "closed_tab_id"
+        case closedWorkspaceID = "closed_workspace_id"
+        case createdTab = "created_tab"
+        case createdWorkspace = "created_workspace"
+        case focusedPaneID = "focused_pane_id"
+        case pane
+        case previousPaneID = "previous_pane_id"
+        case previousTabID = "previous_tab_id"
+        case previousWorkspaceID = "previous_workspace_id"
+        case reason
+        case sourceLayout = "source_layout"
+        case targetLayout = "target_layout"
+    }
+}
+
 /// herdr schema `$defs/PaneReadParams`.
 struct PaneReadParams: Codable, Equatable, Sendable {
     let format: ReadFormat?

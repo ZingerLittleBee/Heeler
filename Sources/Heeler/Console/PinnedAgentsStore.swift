@@ -85,6 +85,16 @@ final class PinnedAgentsStore {
         revision += 1
     }
 
+    /// Adds one pin (most-recent). The drag-to-workspace move re-keys the
+    /// moved pane's pin onto herdr's new pane id, so the pin must survive
+    /// the move without bouncing through the unpinned state.
+    func addPin(hostID: Host.ID, paneID: String) {
+        guard !isPinned(hostID: hostID, paneID: paneID) else { return }
+        pin(hostID: hostID, paneID: paneID)
+        persist()
+        revision += 1
+    }
+
     private func pin(hostID: Host.ID, paneID: String) {
         entries.insert(Entry(hostID: hostID, paneID: paneID), at: 0)
     }

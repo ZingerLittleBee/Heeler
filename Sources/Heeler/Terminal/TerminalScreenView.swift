@@ -2217,27 +2217,19 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     /// What a tap means, given what the terminal is currently doing.
     ///
-    /// In the normal buffer the keyboard follows the input row alone, so that a
-    /// touch meant for native scrollback is never answered with a keyboard-driven
-    /// viewport resize.
+    /// Any settled tap on the surface asks for the keyboard: the user taps the
+    /// terminal to type into it, wherever the caret or the TUI's own input box
+    /// happens to be parked. The earlier caret-band / alternate-screen policy
+    /// (caret bands per #90, the bottom quarter, and #92's whole-screen trial)
+    /// is superseded by that intent. Scrolling is untouched: pans stay with the
+    /// touch-scroll gesture recognizer, and a tap that only stops a running
+    /// flick answers with momentum halt instead of a keyboard raise.
     ///
-    /// The alternate screen reaches further, two ways. The caret band grows to
-    /// three rows' worth, because an agent TUI parks its caret below the row
-    /// the user reads as the prompt (Claude Code's visible `>` measured
-    /// 16–40 pt above it, #90). And the bottom quarter always answers, because
-    /// chat-style TUIs (Claude Code, Codex, Amp, Droid, …) pin their input box
-    /// there while parking the caret in tool-specific spots the band cannot
-    /// chase. Whole-screen activation was tried first (#92) and answered every
-    /// output-area tap with the keyboard.
+    /// In Composer mode the raise is a no-op: `requestKeyboard()` refuses
+    /// surfaces without local input, and the Composer field owns the keyboard.
     func tapAction(at location: CGPoint) -> TerminalTapAction {
         if isTouchScrollMomentumRunning { return .haltMomentum }
-        if keyboardActivationRegion.contains(location) {
-            return .report(raisesKeyboard: true)
-        }
-        let inBottomBand = modeTracker.isAlternateScreen
-            && TerminalKeyboardTapTarget.alternateScreenBottomRegion(in: bounds)
-                .contains(location)
-        return .report(raisesKeyboard: inBottomBand)
+        return .report(raisesKeyboard: true)
     }
 
     var isTouchScrollMomentumRunning: Bool {

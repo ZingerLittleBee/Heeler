@@ -104,6 +104,17 @@ protocol Transport: Sendable {
     /// id; returns once the server acknowledges.
     func closeTab(_ params: TabTarget) async throws
 
+    /// Moves a Pane into a new Workspace or Tab (`pane.move`): the Console
+    /// row's drag-to-workspace action. `destination` selects the target:
+    /// an existing Workspace (new tab in it), a brand-new Workspace, or an
+    /// existing Tab (with an optional split target). herdr auto-closes the
+    /// emptied source Tab (and Workspace when it was its last Tab), and the
+    /// moved Pane's id changes — the reply's `pane` carries the new id, so
+    /// callers re-key local state (pins, selection) from it. The move
+    /// surfaces in the Console through the normal snapshot/delta machinery
+    /// (the confirmation events trigger a re-snapshot).
+    func movePane(_ params: PaneMoveParams) async throws -> PaneMoveResponse
+
     /// Lists git worktrees for the repository containing `workspaceID`.
     /// Console detail uses this only to obtain branch presentation because
     /// `session.snapshot` already carries repository and checkout identity.

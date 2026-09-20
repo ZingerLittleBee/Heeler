@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The Console home screen (#8): Agents across every Host, shown either as
 /// the flat status-sorted list or grouped by Host with collapsible sections
@@ -45,6 +46,8 @@ struct ConsoleView: View {
     @State private var commandRegistry = ConsoleCommandRegistry()
     /// Row-level `tab.close` failure text; non-nil shows the error alert.
     @State private var tabCloseError: String?
+    /// Row-level `pane.move` failure text; non-nil shows the error alert.
+    @State private var moveAgentError: String?
     /// The Agent whose swipe action would close the workspace's last tab;
     /// non-nil shows the workspace-close confirmation.
     @State private var pendingTabClose: ConsoleAgent?
@@ -554,6 +557,11 @@ struct ConsoleView: View {
             } message: {
                 Text(tabCloseError ?? "")
             }
+            .alert("Could Not Move Agent", isPresented: moveAgentErrorPresented) {
+                Button("OK", role: .cancel) { moveAgentError = nil }
+            } message: {
+                Text(moveAgentError ?? "")
+            }
         }
     }
 
@@ -624,7 +632,10 @@ struct ConsoleView: View {
                         ConsoleWorkspaceGroupHeaderView(
                             label: group.label,
                             isCollapsed: group.isCollapsed,
-                            agents: group.agents
+                            agents: group.agents,
+                            onMove: moveTarget(
+                                hostID: section.host.hostID,
+                                workspaceLabel: group.label)
                         ) {
                             toggleWorkspaceGroup(
                                 hostID: section.host.hostID,
@@ -663,12 +674,41 @@ struct ConsoleView: View {
                 console.togglePin(
                     hostID: agent.hostID, paneID: agent.agent.paneID)
             }
+            // Every presentation gets the menu — flat and "By Host" have no
+            // workspace headers to drop on, so this is their move path.
+            if !moveWorkspaces(for: agent).isEmpty {
+                Menu {
+                    ForEach(moveWorkspaces(for: agent)) { workspace in
+                        Button(workspace.label) {
+                            moveAgent(agent, to: workspace)
+                        }
+                    }
+                } label: {
+                    Label("Move to Workspace…", systemImage: "folder")
+                }
+            }
             // Never on iPhone, and not for the Agent this window already shows.
             if supportsMultipleWindows, notificationRouter.path.last != agent.id {
                 Button("Open in New Window", systemImage: "plus.rectangle.on.rectangle") {
                     openInNewWindow(agent)
                 }
             }
+        }
+        // Drag source for the "By Host, By Workspace" header drop targets.
+        // The provider registers the payload's JSON under `UTType.json`,
+        // which the payload's CodableRepresentation imports on the drop side.
+        .onDrag {
+            let provider = NSItemProvider()
+            let payload = ConsoleAgentDragPayload(agent)
+            if let data = try? JSONEncoder().encode(payload) {
+                provider.registerDataRepresentation(
+                    for: .json, visibility: .all
+                ) { completion in
+                    completion(data, nil)
+                    return nil
+                }
+            }
+            return provider
         }
         .modifier(
             AgentWindowDrag(
@@ -698,6 +738,61 @@ struct ConsoleView: View {
         }
     }
 
+    /// Workspaces offered as move targets for one Agent: the Agent's Host's
+    /// known workspaces, minus the one it already lives in (a same-workspace
+    /// move is a no-op, so it must not be offered).
+    private func moveWorkspaces(for agent: ConsoleAgent) -> [ConsoleWorkspace] {
+        (console.workspacesByHost[agent.hostID] ?? [])
+            .filter { $0.id != agent.agent.workspaceID }
+    }
+
+    /// Resolves a "By Host, By Workspace" group header's workspace label to
+    /// a drop target. Groups are label-keyed, so a label the Host's snapshot
+    /// no longer reports (e.g. "Unassigned") yields nil — no drop target.
+    private func moveTarget(
+        hostID: Host.ID, workspaceLabel: String
+    ) -> ((ConsoleAgentDragPayload) -> Void)? {
+        guard let workspace = console.workspacesByHost[hostID]?.first(where: {
+            $0.label == workspaceLabel
+        }) else { return nil }
+        return { payload in
+            guard let agent = console.agents.first(where: {
+                $0.id == ConsoleAgent.ID(hostID: payload.hostID, paneID: payload.paneID)
+            }) else { return }
+            moveAgent(agent, to: workspace)
+        }
+    }
+
+    /// Moves the Agent into `workspace` (`pane.move`). The destination group
+    /// expands so the moved Agent is visible, and when the moved Agent was
+    /// the open detail the selection re-targets to its new pane id — herdr
+    /// re-keys the pane during the move and reports the new id in the reply.
+    private func moveAgent(_ agent: ConsoleAgent, to workspace: ConsoleWorkspace) {
+        let hostID = agent.hostID
+        Task {
+            do {
+                let response = try await console.moveAgent(
+                    agent, toWorkspaceID: workspace.id, on: hostID)
+                if reduceMotion {
+                    listPresentation.setExpanded(true, for: hostID, workspaceLabel: workspace.label)
+                } else {
+                    withAnimation(.snappy) {
+                        listPresentation.setExpanded(
+                            true, for: hostID, workspaceLabel: workspace.label)
+                    }
+                }
+                guard let response,
+                    notificationRouter.path.last == agent.id
+                else { return }
+                let newID = ConsoleAgent.ID(
+                    hostID: hostID, paneID: response.moveResult.pane.paneID)
+                notificationRouter.path = [newID]
+            } catch {
+                moveAgentError = error.localizedDescription
+            }
+        }
+    }
+
     /// Whether the workspace-close confirmation is up for whichever Agent
     /// the swipe action queued.
     private var tabCloseDialogPresented: Binding<Bool> {
@@ -710,6 +805,12 @@ struct ConsoleView: View {
         Binding(
             get: { tabCloseError != nil },
             set: { shown in if !shown { tabCloseError = nil } })
+    }
+
+    private var moveAgentErrorPresented: Binding<Bool> {
+        Binding(
+            get: { moveAgentError != nil },
+            set: { shown in if !shown { moveAgentError = nil } })
     }
 
     private func confirmTabClose() {
@@ -1052,6 +1153,10 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
     /// dot row — a compact echo of herdr's sidebar colours at the group
     /// level, so a collapsed group still shows who needs attention.
     let agents: [ConsoleAgent]
+    /// Drop target for a dragged Agent row. Nil when this Host reports no
+    /// workspace matching the group's label (e.g. the "Unassigned" bucket),
+    /// in which case no drop destination is installed.
+    let onMove: ((ConsoleAgentDragPayload) -> Void)?
     let onToggle: () -> Void
 
     var body: some View {
@@ -1076,6 +1181,7 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
+        .modifier(ConsoleWorkspaceDropDestination(onMove: onMove))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
@@ -1084,6 +1190,24 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
                 ? "Expands this workspace group."
                 : "Collapses this workspace group.")
         .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Installs the group header's drop destination only when a workspace target
+/// resolved — a drop that cannot resolve to a `workspace_id` must not accept.
+private struct ConsoleWorkspaceDropDestination: ViewModifier {
+    let onMove: ((ConsoleAgentDragPayload) -> Void)?
+
+    func body(content: Content) -> some View {
+        if let onMove {
+            content.dropDestination(for: ConsoleAgentDragPayload.self) { payloads, _ in
+                guard let payload = payloads.first else { return false }
+                onMove(payload)
+                return true
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -1221,4 +1345,23 @@ private struct ConsoleHostStatusCountPills: View {
 enum ConsoleSelection: Hashable {
     case agent(ConsoleAgent.ID)
     case terminal(ConsoleTerminal.ID)
+}
+
+/// Value-typed drag payload for Console row drag-to-workspace moves
+/// (mirrors the `ComposerDropTransfer` idiom). `ConsoleAgent.ID` itself is
+/// not `Codable`, so the payload carries the raw fields; the row's `.onDrag`
+/// registers it as JSON and the workspace group header's drop destination
+/// decodes it through `CodableRepresentation`.
+struct ConsoleAgentDragPayload: Transferable, Codable, Equatable, Sendable {
+    let hostID: Host.ID
+    let paneID: String
+
+    init(_ agent: ConsoleAgent) {
+        hostID = agent.hostID
+        paneID = agent.agent.paneID
+    }
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .json)
+    }
 }

@@ -538,6 +538,40 @@ final class ConsoleStore {
         rebuild()
     }
 
+    /// Moves the Agent into another Workspace on its Host (Console row
+    /// drag-to-workspace). A drop on the Agent's own workspace is a
+    /// silent no-op (nil, no RPC). herdr auto-closes the emptied source tab
+    /// (and workspace when it was its last tab) and re-keys the moved
+    /// Pane's id — the reply's `pane` carries the new id, so every pinned
+    /// pane that shared the moved Agent's tab is re-keyed: the moved pin
+    /// lands on the new id, while sibling panes keep their ids (and pins).
+    /// The projection's resync refreshes the list. Returns the reply so
+    /// callers can re-target the open detail to the new pane id.
+    @discardableResult
+    func moveAgent(
+        _ agent: ConsoleAgent,
+        toWorkspaceID: String,
+        on hostID: Host.ID
+    ) async throws -> PaneMoveResponse? {
+        guard agent.agent.workspaceID != toWorkspaceID else { return nil }
+        let tabID = agent.agent.tabID
+        let pinnedPaneIDs = agents
+            .filter { $0.hostID == hostID && $0.agent.tabID == tabID }
+            .map(\.agent.paneID)
+            .filter { pins.isPinned(hostID: hostID, paneID: $0) }
+        let response = try await projection(for: hostID).movePane(
+            agent.agent.paneID, toWorkspaceID: toWorkspaceID)
+        let newPaneID = response.moveResult.pane.paneID
+        // Only the moved Pane's pin re-keys; sibling panes in the source tab
+        // keep their ids, so their pins stay as they are.
+        if pinnedPaneIDs.contains(agent.agent.paneID) {
+            pins.removePin(hostID: hostID, paneID: agent.agent.paneID)
+            pins.addPin(hostID: hostID, paneID: newPaneID)
+        }
+        rebuild()
+        return response
+    }
+
     func listWorktrees(
         forWorkspaceID workspaceID: String, on hostID: Host.ID
     ) async throws -> WorktreeListResponse {

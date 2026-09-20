@@ -110,6 +110,10 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script closes")
     }
 
+    func movePane(_ params: PaneMoveParams) async throws -> PaneMoveResponse {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script moves")
+    }
+
     func focusAgent(_ target: AgentTarget) async throws {
         throw TransportError.channelFailed(detail: "FakeTransport does not script focus")
     }

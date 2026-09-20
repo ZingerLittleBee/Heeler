@@ -62,6 +62,7 @@ METHODS = [
     "tab.rename",
     "pane.read",
     "pane.close",
+    "pane.move",
     "session.snapshot",
     "workspace.create",
     "workspace.rename",
@@ -93,6 +94,7 @@ RESULT_TAGS = [
     "agent_started",  # agent.start
     "agent_list",  # agent.list
     "pane_read",  # pane.read, agent.read
+    "pane_move",  # pane.move
     "session_snapshot",  # session.snapshot
     "subscription_started",  # events.subscribe ack
     "tab_created",  # tab.create
@@ -319,6 +321,105 @@ def emit_string_wrapper(name: str, doc: str, values: list[str]) -> str:
     return "\n".join(lines)
 
 
+def emit_tagged_union(
+    name: str, doc: str, variants: list[dict], needed: set[str]
+) -> tuple[str, dict[str, str]]:
+    """Emits a `type`-tagged union def as a Swift enum with payload structs.
+
+    Every variant must be an object carrying a string `type` const (the
+    discriminator); its remaining fields become one generated payload struct
+    named `<Enum><Tag>`. Codable is written by hand: decode switches on the
+    tag and hands the decoder to the matching payload struct (payloads ignore
+    the unknown `type` key), and encode writes the tag plus the payload's
+    fields flat into the same container, matching herdr's wire shape.
+    """
+    if not variants:
+        fail(f"{name}: tagged unions must carry at least one variant")
+
+    payloads: list[tuple[str, str, list[Field]]] = []  # (tag, kind case, fields)
+    extras: dict[str, str] = {}
+    for variant in variants:
+        tag = variant.get("properties", {}).get("type", {}).get("const")
+        if not isinstance(tag, str):
+            fail(f"{name}: every variant needs a string `type` const")
+        if any(tag == seen for seen, _, _ in payloads):
+            fail(f"{name}: duplicate variant tag '{tag}'")
+        struct_name = f"{name}{pascal_case(tag)}"
+        if struct_name in extras:
+            fail(f"{name}: payload struct name '{struct_name}' collides")
+        fields = object_fields(variant, struct_name, needed, skip={"type"})
+        extras[struct_name] = emit_struct(
+            struct_name, f"Payload of the `{tag}` variant of `{name}`.", fields)
+        payloads.append((tag, member_name(tag), fields))
+
+    lines = [
+        f"/// {doc}",
+        "///",
+        "/// A `type`-tagged union: the tag selects which payload decodes, and",
+        "/// encoding writes the tag and the payload's fields into one object.",
+        f"enum {name}: Codable, Equatable, Sendable {{",
+    ]
+    for tag, kind, fields in payloads:
+        lines.append(f"    case {kind}({name}{pascal_case(tag)})")
+    lines += [
+        "",
+        "    private enum Kind: String, Codable, Sendable {",
+    ]
+    for tag, kind, _ in payloads:
+        lines.append(f'        case {kind} = "{tag}"')
+    lines += [
+        "    }",
+        "",
+        "    private enum CodingKeys: String, CodingKey {",
+        "        case type",
+    ]
+    key_names: dict[str, str] = {}
+    for _, _, fields in payloads:
+        for field in fields:
+            if field.wire_name not in key_names:
+                key_names[field.wire_name] = field.name
+    for wire_name in sorted(key_names):
+        member = key_names[wire_name]
+        if member == wire_name:
+            lines.append(f"        case {member}")
+        else:
+            lines.append(f'        case {member} = "{wire_name}"')
+    lines += [
+        "    }",
+        "",
+        "    init(from decoder: Decoder) throws {",
+        "        let container = try decoder.container(keyedBy: CodingKeys.self)",
+        "        switch try container.decode(Kind.self, forKey: .type) {",
+    ]
+    for tag, kind, _ in payloads:
+        struct_name = f"{name}{pascal_case(tag)}"
+        lines += [
+            f"        case .{kind}:",
+            f"            self = .{kind}(try {struct_name}(from: decoder))",
+        ]
+    lines += [
+        "        }",
+        "    }",
+        "",
+        "    func encode(to encoder: Encoder) throws {",
+        "        var container = encoder.container(keyedBy: CodingKeys.self)",
+        "        switch self {",
+    ]
+    for tag, kind, fields in payloads:
+        lines.append(f"        case .{kind}(let payload):")
+        lines.append(f"            try container.encode(Kind.{kind}, forKey: .type)")
+        for field in fields:
+            encode_call = "encodeIfPresent" if field.optional else "encode"
+            lines.append(
+                f"            try container.{encode_call}(payload.{field.name}, forKey: .{field.name})")
+    lines += [
+        "        }",
+        "    }",
+        "}",
+    ]
+    return "\n".join(lines), extras
+
+
 def object_fields(definition: dict, context: str, needed: set[str], skip: set[str] = frozenset()) -> list[Field]:
     required = set(definition.get("required", []))
     fields = [
@@ -379,6 +480,19 @@ def generate(schema: dict) -> str:
             if definition.get("type") != "string":
                 fail(f"$defs/{name}: only string enums are handled")
             emitted[name] = emit_string_wrapper(name, doc, definition["enum"])
+            continue
+        if definition.get("oneOf") is not None:
+            before = set(needed)
+            union_code, payload_structs = emit_tagged_union(
+                name, doc, definition["oneOf"], needed)
+            for payload_name, payload_code in payload_structs.items():
+                if payload_name in emitted or payload_name in defs:
+                    fail(f"{name}: payload struct '{payload_name}' collides with a schema def")
+                emitted[payload_name] = payload_code
+            emitted[name] = union_code
+            # Payload fields may pull in defs the union's callers never
+            # referenced; schedule them like the object branch does.
+            pending |= needed - before
             continue
         if definition.get("type") != "object":
             fail(f"$defs/{name}: unhandled top-level shape")

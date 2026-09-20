@@ -954,6 +954,13 @@ actor HeelerSSHTransport: Transport {
             decoding: OkResponse.self)
     }
 
+    func movePane(_ params: PaneMoveParams) async throws -> PaneMoveResponse {
+        try await request(
+            method: "pane.move",
+            params: params,
+            decoding: PaneMoveResponse.self)
+    }
+
     func focusAgent(_ target: AgentTarget) async throws {
         _ = try await request(
             method: "agent.focus",

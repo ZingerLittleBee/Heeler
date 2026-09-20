@@ -5,8 +5,8 @@ import Foundation
 enum TerminalTapAction: Equatable {
     /// A flick is still running: halt it, and let the tap mean nothing else.
     case haltMomentum
-    /// Report the tap to the remote application, raising the keyboard if the
-    /// tap also landed somewhere that asks for it.
+    /// Report the tap to the remote application, and raise the keyboard —
+    /// a tap on the terminal means the user wants to type.
     case report(raisesKeyboard: Bool)
 }
 

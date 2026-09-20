@@ -444,6 +444,9 @@
 
         func closePane(_ params: PaneTarget) async throws {}
         func closeTab(_ params: TabTarget) async throws {}
+        func movePane(_ params: PaneMoveParams) async throws -> PaneMoveResponse {
+            throw TransportError.channelFailed(detail: "moves are not scripted in demo mode")
+        }
         func focusAgent(_ target: AgentTarget) async throws {}
         func renameAgent(_ params: AgentRenameParams) async throws {}
         func renameWorkspace(_ params: WorkspaceRenameParams) async throws {}

@@ -29,6 +29,27 @@ struct PinnedAgentsStoreTests {
         #expect(reloaded.pinRank(hostID: hostID, paneID: "w1:p1") == 1)
     }
 
+    @Test func addPinPersistsWithoutTogglingOff() throws {
+        // The drag-to-workspace re-key path adds a pin for the moved pane's
+        // new id; the pin must persist and adding again must not duplicate.
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let hostID = UUID()
+        let store = PinnedAgentsStore(defaults: defaults)
+
+        store.addPin(hostID: hostID, paneID: "w2:moved")
+        #expect(store.isPinned(hostID: hostID, paneID: "w2:moved"))
+        #expect(store.pinRank(hostID: hostID, paneID: "w2:moved") == 0)
+        #expect(store.revision == 1)
+
+        store.addPin(hostID: hostID, paneID: "w2:moved")
+        #expect(store.pinnedPaneIDs(for: hostID) == ["w2:moved"])
+        #expect(store.revision == 1)
+
+        let reloaded = PinnedAgentsStore(defaults: defaults)
+        #expect(reloaded.isPinned(hostID: hostID, paneID: "w2:moved"))
+    }
+
     @Test func togglePinsThenUnpins() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
