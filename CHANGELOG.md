@@ -9,6 +9,13 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Agent rows in the Console take a swipe: swipe left and tap Close to
+  close the Agent's tab over SSH. herdr closes a Workspace when its last
+  tab goes, and the app asks first with "Are you sure you want to also
+  close workspace X?" when that would happen; tabs that leave the
+  Workspace alive close with no prompt. Pins on a closed tab are dropped
+  so none dangle. (#366)
+
 - The Agent terminal shows the session's model, prompt size (as a share of
   the model's context window, `11.0%`, once omp on the Host has named it),
   and spend in a strip above the terminal. These are the figures the Agent's own status line

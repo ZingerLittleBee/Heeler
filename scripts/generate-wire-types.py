@@ -58,6 +58,7 @@ METHODS = [
     "agent.start",
     "events.subscribe",
     "tab.create",
+    "tab.close",
     "pane.read",
     "pane.close",
     "session.snapshot",
