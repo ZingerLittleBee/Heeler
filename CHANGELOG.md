@@ -75,6 +75,25 @@ Entries reference the issue that motivated them.
 - Show the directory browser on the first New Workspace tap. (PR #305)
 - Viewing a Done Agent marks it seen on its Host and refreshes Console and
   Live Activity status, including other Agents in the same Tab. (#314)
+- The pairing plugin now pins the fingerprint of the host key the local sshd
+  actually presents. It reads `HostKey` directives from the effective sshd
+  configuration (`/etc/ssh/sshd_config` and its `Include`s) instead of assuming
+  `/etc/ssh`, so servers configured like `HostKey
+  /opt/sunk/etc/ssh/ssh_host_ed25519_key` no longer mint Pairing Codes pinned to
+  a stale decoy key — the mismatch Heeler then correctly rejected. Machines
+  with the conventional `/etc/ssh` layout keep working unchanged; a
+  `HEELER_SSH_HOST_KEY` environment override names the host key path directly
+  when the configuration cannot be read, and pairing fails with guidance
+  instead of pinning an unverifiable key.
+- The pairing popup accepts custom addresses — DNS names or IP literals that no
+  local interface carries, such as Tailscale MagicDNS, split-DNS, or ordinary
+  hostnames. Press `n` in the checklist to add one; it is saved to
+  `pairing.json` in the plugin config directory (surviving plugin updates),
+  leads the candidate list pre-checked, and rides in the Pairing Code like any
+  interface address, with the pinned host key still enforced on every address
+  the app tries. Entries are validated (non-empty, no whitespace, at most 253
+  characters), deduplicated case-insensitively, capped at 16, and can also be
+  written by hand in the same file.
 
 ## [0.1.8] - 2026-09-13
 

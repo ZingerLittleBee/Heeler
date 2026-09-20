@@ -10,7 +10,16 @@ import os from "node:os";
 import { emitKeypressEvents } from "node:readline";
 import QRCode from "qrcode";
 
-import { candidateAddresses } from "./addresses.js";
+import {
+  candidateAddresses,
+  validateCustomAddress,
+  MAX_CUSTOM_ADDRESS_LENGTH,
+} from "./addresses.js";
+import {
+  readPairingConfig,
+  writePairingConfig,
+  MAX_CUSTOM_ADDRESSES,
+} from "./pairing-config.js";
 import { readHostKeyFingerprint } from "./host-key.js";
 import { encodePairingCode } from "./envelope.js";
 import { commentOf, removeKeyLine, sweepExpiredBootstrapLines } from "./authorized-keys.js";
@@ -80,6 +89,23 @@ async function holdFatal(message) {
   process.exit(1);
 }
 
+function renderAddAddress(draft, warning) {
+  const lines = [
+    `${BOLD}Add a pairing address${RESET}`,
+    "",
+    "Type a DNS name or IP the phone can reach this machine on, then enter:",
+    "",
+    `  ${draft}${REVERSE} ${RESET}`,
+    "",
+    `${DIM}enter add, escape cancel${RESET}`,
+  ];
+  if (warning) {
+    lines.push("");
+    lines.push(`${BOLD}${warning}${RESET}`);
+  }
+  process.stdout.write(CLEAR + lines.join("\n") + "\n");
+}
+
 function renderChecklist(state, warning) {
   const lines = [
     `${BOLD}Pair a Heeler device${RESET}`,
@@ -94,7 +120,9 @@ function renderChecklist(state, warning) {
     lines.push(` ${cursor} ${box} ${label}${RESET}`);
   });
   lines.push("");
-  lines.push(`${DIM}up/down move, space toggle, a all, enter confirm, q quit${RESET}`);
+  lines.push(
+    `${DIM}up/down move, space toggle, a all, n add address, enter confirm, q quit${RESET}`,
+  );
   if (warning) {
     lines.push("");
     lines.push(`${BOLD}${warning}${RESET}`);
@@ -208,6 +236,11 @@ async function main() {
     await holdFatal(MISSING_STATE_DIR);
     return;
   }
+  const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR;
+  if (!configDir) {
+    await holdFatal(MISSING_CONFIG_DIR);
+    return;
+  }
   const home = os.homedir();
 
   const hostKey = readHostKeyFingerprint();
@@ -215,7 +248,12 @@ async function main() {
     await holdFatal(MISSING_HOST_KEY);
     return;
   }
-  const candidates = candidateAddresses();
+  const customAddresses = readPairingConfig(configDir).addresses;
+  const candidates = candidateAddresses(
+    os.networkInterfaces(),
+    process.platform,
+    customAddresses,
+  );
   if (candidates.length === 0) {
     await holdFatal(MISSING_ADDRESS);
     return;
@@ -228,6 +266,7 @@ async function main() {
 
   let state = createSelection(candidates);
   let phase = "select";
+  let draft = "";
   let confirmedAddresses = null;
   let session = null;
   let expiryTimer = null;
@@ -461,6 +500,67 @@ async function main() {
       }
       return;
     }
+    if (phase === "add") {
+      if (key.name === "escape") {
+        phase = "select";
+        renderChecklist(state);
+        return;
+      }
+      if (key.name === "return") {
+        if (draft.length === 0) {
+          phase = "select";
+          renderChecklist(state);
+          return;
+        }
+        const existing = readPairingConfig(configDir).addresses;
+        if (existing.length >= MAX_CUSTOM_ADDRESSES) {
+          renderAddAddress(draft, `At most ${MAX_CUSTOM_ADDRESSES} custom addresses.`);
+          return;
+        }
+        const validated = validateCustomAddress(
+          [...state.items, ...existing.map((address) => ({ address }))],
+          draft,
+        );
+        if (validated.error) {
+          renderAddAddress(draft, validated.error);
+          return;
+        }
+        try {
+          writePairingConfig(configDir, [...existing, validated.address]);
+        } catch (error) {
+          renderAddAddress(draft, `Could not save: ${error.message}`);
+          return;
+        }
+        const custom = [...existing, validated.address];
+        state = createSelection(
+          candidateAddresses(os.networkInterfaces(), process.platform, custom),
+        );
+        phase = "select";
+        renderChecklist(state);
+        return;
+      }
+      if (key.name === "backspace") {
+        draft = draft.slice(0, -1);
+        renderAddAddress(draft);
+        return;
+      }
+      if (key.ctrl && key.name === "c") {
+        draft = "";
+        renderAddAddress(draft);
+        return;
+      }
+      if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) {
+        const char = key.sequence;
+        if (draft.length + char.length > MAX_CUSTOM_ADDRESS_LENGTH) {
+          renderAddAddress(draft, `At most ${MAX_CUSTOM_ADDRESS_LENGTH} characters.`);
+          return;
+        }
+        draft += char;
+        renderAddAddress(draft);
+        return;
+      }
+      return;
+    }
     switch (key.name) {
       case "up":
       case "k":
@@ -476,6 +576,11 @@ async function main() {
       case "a":
         state = toggleAll(state);
         break;
+      case "n":
+        phase = "add";
+        draft = "";
+        renderAddAddress(draft);
+        return;
       case "return": {
         const addresses = selectedAddresses(state);
         if (addresses.length === 0) {
