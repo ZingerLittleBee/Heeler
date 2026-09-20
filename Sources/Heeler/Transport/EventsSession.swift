@@ -362,15 +362,23 @@ actor EventsSession {
             }
             // A replacement may already be in flight (currentTransport nil)
             // or a fresher transport may have been installed since; either
-            // way the single retry rides whatever is current.
+            // way the single retry rides whatever is current. It is also
+            // bounded: an operation that exhausts its own deadline on the
+            // replacement surfaces that cause instead of a second full
+            // wait, and a failing redial releases the waiter through the
+            // run loop's announce with its real cause.
             if isSameTransport(currentTransport, transport) {
                 transportSuspect = true
                 currentTransport = nil
             }
             let replacement = try await awaitUsableTransport()
-            let value = try await operation(replacement)
-            noteConnectionActivity()
-            return value
+            do {
+                let value = try await operation(replacement)
+                noteConnectionActivity()
+                return value
+            } catch TransportError.timedOut {
+                throw error
+            }
         }
     }
 
