@@ -80,7 +80,7 @@ async function holdFatal(message) {
   process.exit(1);
 }
 
-function renderChecklist(state, sshPort, warning) {
+function renderChecklist(state, config, warning) {
   const lines = [
     `${BOLD}Pair a Heeler device${RESET}`,
     "",
@@ -94,7 +94,12 @@ function renderChecklist(state, sshPort, warning) {
     lines.push(` ${cursor} ${box} ${label}${RESET}`);
   });
   lines.push("");
-  lines.push(`SSH port ${BOLD}${sshPort}${RESET} ${DIM}(pair.json ssh_port)${RESET}`);
+  lines.push(`SSH port ${BOLD}${config.sshPort}${RESET} ${DIM}(pair.json ssh_port)${RESET}`);
+  // A rejected override stays on screen next to the port it failed to change:
+  // the transient warning below is spent on checklist mistakes instead.
+  if (config.warning) {
+    lines.push(`${BOLD}${config.warning} Advertising ${config.sshPort}.${RESET}`);
+  }
   lines.push(`${DIM}up/down move, space toggle, a all, enter confirm, q quit${RESET}`);
   if (warning) {
     lines.push("");
@@ -210,7 +215,7 @@ async function main() {
     return;
   }
   const home = os.homedir();
-  const { sshPort } = readPairingConfig(process.env.HERDR_PLUGIN_CONFIG_DIR);
+  const pairingConfig = readPairingConfig(process.env.HERDR_PLUGIN_CONFIG_DIR);
 
   const hostKey = readHostKeyFingerprint();
   if (hostKey === null) {
@@ -364,7 +369,7 @@ async function main() {
     }, PAIRING_TTL_SECONDS * 1000);
     lastPayload = {
       addresses: confirmedAddresses,
-      port: sshPort,
+      port: pairingConfig.sshPort,
       username: os.userInfo().username,
       hostKeyFingerprint: hostKey.fingerprint,
       bootstrapSeed: session.seed,
@@ -415,7 +420,7 @@ async function main() {
     });
   }
 
-  renderChecklist(state, sshPort);
+  renderChecklist(state, pairingConfig);
 
   readKeys((key) => {
     if (closing) {
@@ -481,7 +486,7 @@ async function main() {
       case "return": {
         const addresses = selectedAddresses(state);
         if (addresses.length === 0) {
-          renderChecklist(state, sshPort, "Select at least one address.");
+          renderChecklist(state, pairingConfig, "Select at least one address.");
           return;
         }
         phase = "qr";
@@ -492,7 +497,7 @@ async function main() {
       default:
         return;
     }
-    renderChecklist(state, sshPort);
+    renderChecklist(state, pairingConfig);
   });
 }
 

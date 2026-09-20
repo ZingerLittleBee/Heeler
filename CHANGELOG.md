@@ -22,7 +22,8 @@ Entries reference the issue that motivated them.
 
 - Pairing Codes can advertise a non-default SSH port via `pair.json`
   (`ssh_port`) in the plugin config directory, so OpenSSH can share a Host
-  with Tailscale SSH on port 22. (#355)
+  with Tailscale SSH on port 22. A `pair.json` the plugin cannot honor is
+  named in the pair checklist instead of quietly reverting to 22. (#355)
 
 ### Fixed
 
