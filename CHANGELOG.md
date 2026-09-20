@@ -20,6 +20,10 @@ Entries reference the issue that motivated them.
   own `tok/s` readout is on (`composer.tokenRate`), the strip shows the last
   turn's generation rate too. (#325)
 
+- Pairing Codes can advertise a non-default SSH port via `pair.json`
+  (`ssh_port`) in the plugin config directory, so OpenSSH can share a Host
+  with Tailscale SSH on port 22. (#355)
+
 ### Fixed
 
 - Typing into an Agent with Direct Input no longer sends a word twice. The
