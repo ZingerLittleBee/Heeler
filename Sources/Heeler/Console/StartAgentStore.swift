@@ -224,6 +224,7 @@ final class StartAgentStore {
     /// missing-Agent placeholder over a launch that just succeeded.
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
     @ObservationIgnored private let recents: RecentWorkspaceStore
+    @ObservationIgnored private let selections: RecentSelectionsStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -238,7 +239,8 @@ final class StartAgentStore {
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         origin: LaunchOrigin? = nil,
-        recents: RecentWorkspaceStore = RecentWorkspaceStore()
+        recents: RecentWorkspaceStore = RecentWorkspaceStore(),
+        selections: RecentSelectionsStore = RecentSelectionsStore()
     ) {
         self.hosts = hosts
         self.origin = origin
@@ -249,8 +251,14 @@ final class StartAgentStore {
         self.start = start
         self.awaitAgentVisible = awaitAgentVisible
         self.recents = recents
-        // Pre-select when there is no choice to make.
-        self.selectedHostID = origin?.hostID ?? (hosts.count == 1 ? hosts.first?.id : nil)
+        self.selections = selections
+        // Pre-select when there is no choice to make; with several Hosts, the
+        // last-used one wins if it still exists.
+        self.selectedHostID =
+            origin?.hostID
+            ?? (hosts.count == 1
+                ? hosts.first?.id
+                : hosts.first(where: { $0.id == selections.lastHostID })?.id)
     }
 
     /// Whether the fresh-worktree variant is offered. An origin launch is
@@ -352,7 +360,8 @@ final class StartAgentStore {
             let kinds = try await discoverAgentKinds(hostID)
             guard selectedHostID == hostID else { return }
             availableAgentKinds = kinds
-            selectedAgentKind = kinds.first
+            selectedAgentKind =
+                kinds.first(where: { $0 == selections.lastAgentKind }) ?? kinds.first
             agentDiscoveryState = .loaded
         } catch is CancellationError {
             guard selectedHostID == hostID else { return }
@@ -430,6 +439,7 @@ final class StartAgentStore {
             cwd: origin?.cwd)
         do {
             let agent = try await start(request, destination, hostID)
+            selections.remember(hostID: hostID, kind: kind)
             if case .newWorkspace = destination {
                 recents.remember(agent.workspaceID, for: hostID)
             } else if let workspaceID {

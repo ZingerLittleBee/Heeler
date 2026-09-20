@@ -47,7 +47,10 @@ Entries reference the issue that motivated them.
   Host-scoped requests now wait for the replacement transport instead of
   failing against a gap the connection status never announced, and still fail
   at once with the real cause when the session is suspended, stopped on an
-  action-required failure, or visibly reconnecting.
+  action-required failure, or visibly reconnecting. A caller that reaches the
+  degraded transport before the session notices also gets one redial-and-retry
+  instead of a phantom "The Host is not connected." — the case the launch
+  window kept producing. (#368)
 
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or

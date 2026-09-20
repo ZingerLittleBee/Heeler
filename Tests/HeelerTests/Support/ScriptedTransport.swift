@@ -415,6 +415,15 @@ final actor ScriptedTransport: Transport {
     // MARK: Transport
 
     func ping() async throws -> ServerInfo {
+        // A real Transport's ping fails on a link its events reader has not
+        // reported dead yet; the scripted one must too, or callers that race
+        // a replacement see a phantom success from the transport that is
+        // about to be replaced. A closed transport is NOT modelled here:
+        // tests reuse one ScriptedTransport across a teardown redial, which
+        // a real connection could not survive.
+        guard connectionAlive else {
+            throw TransportError.sshUnreachable(detail: "connection is dead")
+        }
         pingCount += 1
         let failure = pingFailures[pingCount]
         let gate = pingGate

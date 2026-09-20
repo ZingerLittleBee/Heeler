@@ -52,6 +52,15 @@ struct StartAgentStoreTests {
         return RecentWorkspaceStore(defaults: defaults)
     }
 
+    /// A throwaway defaults domain per test, so the remembered Host and Agent
+    /// kind persistence is real but isolated.
+    private func makeSelections() -> RecentSelectionsStore {
+        let name = "recent-selections-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return RecentSelectionsStore(defaults: defaults)
+    }
+
     private func makeStore(
         hosts: [Host],
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace] = { _ in [] },
@@ -63,6 +72,7 @@ struct StartAgentStoreTests {
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void = { _ in },
         origin: StartAgentStore.LaunchOrigin? = nil,
         recents: RecentWorkspaceStore? = nil,
+        selections: RecentSelectionsStore? = nil,
         recorder: StartRecorder
     ) -> StartAgentStore {
         StartAgentStore(
@@ -75,7 +85,8 @@ struct StartAgentStoreTests {
             },
             awaitAgentVisible: awaitAgentVisible,
             origin: origin,
-            recents: recents ?? makeRecents())
+            recents: recents ?? makeRecents(),
+            selections: selections ?? makeSelections())
     }
 
     /// The `.started` state a default-recorder submit lands in: the recorder's
@@ -1280,5 +1291,111 @@ struct StartAgentStoreTests {
 
         #expect(store.state == .editing)
         #expect(recorder.params.isEmpty)
+    }
+
+    // MARK: Remembered Host and Agent kind
+
+    @Test func rememberedHostPreselectsWhenItStillExists() {
+        let rememberedHost = Host.fixture(address: "a.example")
+        let selections = makeSelections()
+        selections.remember(hostID: rememberedHost.id, kind: .codex)
+        let store = makeStore(
+            hosts: [Host.fixture(address: "z.example"), rememberedHost],
+            selections: selections,
+            recorder: StartRecorder())
+        #expect(store.selectedHostID == rememberedHost.id)
+    }
+
+    @Test func rememberedHostFallsBackToNilWhenGone() {
+        let selections = makeSelections()
+        selections.remember(hostID: UUID(), kind: .codex)
+        let store = makeStore(
+            hosts: [Host.fixture(address: "a.example"), Host.fixture(address: "b.example")],
+            selections: selections,
+            recorder: StartRecorder())
+        #expect(store.selectedHostID == nil)
+    }
+
+    @Test func rememberedAgentKindPreselectsWhenAvailable() async {
+        let selections = makeSelections()
+        selections.remember(hostID: UUID(), kind: .codex)
+        let store = makeStore(
+            hosts: [Host.fixture()],
+            agentKinds: { _ in [.claude, .codex] },
+            selections: selections,
+            recorder: StartRecorder())
+        await store.discoverAgents()
+        #expect(store.selectedAgentKind == .codex)
+    }
+
+    @Test func rememberedAgentKindFallsBackToFirstWhenUnavailable() async {
+        let selections = makeSelections()
+        selections.remember(hostID: UUID(), kind: .codex)
+        let store = makeStore(
+            hosts: [Host.fixture()],
+            agentKinds: { _ in [.claude] },
+            selections: selections,
+            recorder: StartRecorder())
+        await store.discoverAgents()
+        #expect(store.selectedAgentKind == .claude)
+    }
+
+    @Test func submitPersistsHostAndKindForTheNextSheet() async {
+        let hostA = Host.fixture(address: "a.example")
+        let hostB = Host.fixture(address: "b.example")
+        let selections = makeSelections()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [hostA, hostB],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            selections: selections,
+            recorder: recorder)
+        store.selectedHostID = hostB.id
+        await store.discoverAgents()
+        store.selectedAgentKind = .gemini
+        store.name = "reviewer"
+        await store.submit()
+        #expect(store.state == started(on: hostB))
+
+        // A fresh store over the same defaults suite restores both picks.
+        let reopened = makeStore(
+            hosts: [hostA, hostB],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.claude, .gemini] },
+            selections: selections,
+            recorder: StartRecorder())
+        #expect(reopened.selectedHostID == hostB.id)
+        await reopened.discoverAgents()
+        #expect(reopened.selectedAgentKind == .gemini)
+    }
+
+    @Test func failedSubmitDoesNotRememberTheSelections() async {
+        let host = Host.fixture()
+        let selections = makeSelections()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(code: "400", message: "no such workspace")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            selections: selections,
+            recorder: recorder)
+        store.name = "reviewer"
+        await store.discoverAgents()
+        await store.submit()
+
+        #expect(selections.lastHostID == nil)
+        #expect(selections.lastAgentKind == nil)
+    }
+
+    @Test func originLaunchIgnoresRememberedHostAndKind() {
+        let originHost = Host.fixture(address: "a.example")
+        let selections = makeSelections()
+        selections.remember(hostID: Host.fixture(address: "b.example").id, kind: .codex)
+        let store = makeStore(
+            hosts: [originHost],
+            origin: .init(hostID: originHost.id, workspaceID: "w1", cwd: "/home/you/proj"),
+            selections: selections,
+            recorder: StartRecorder())
+        #expect(store.selectedHostID == originHost.id)
     }
 }

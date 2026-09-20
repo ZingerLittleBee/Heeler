@@ -461,6 +461,10 @@ struct EventsSessionSubscriptionsTests {
 
         await first.setConnectionAlive(false)
         await session.updateSubscriptions(updated)
+        // The run loop must have cleared the dead transport and failed its
+        // first dial before the caller arrives, so the caller parks as a
+        // transport waiter instead of being handed the stale transport.
+        try await Task.sleep(for: .milliseconds(50))
 
         let probe = Task {
             try await session.withTransport { _ in
@@ -479,6 +483,58 @@ struct EventsSessionSubscriptionsTests {
                     failure: .timedOut)))
 
         await session.suspend()
+        await session.end()
+    }
+
+    /// The other half of the degraded-link story: the events reader has not
+    /// noticed the dead link yet, so a caller still receives the installed
+    /// transport and its operation fails on it. withTransport marks the
+    /// transport suspect, lets the run loop redial, and retries once on the
+    /// replacement instead of surfacing a phantom unreachable Host.
+    @Test func aSendFailedOnADeadTransportRetriesOnTheReplacement() async throws {
+        let first = ScriptedTransport(
+            serverInfo: ServerInfo(version: "first", protocolVersion: 17))
+        let replacement = ScriptedTransport(
+            serverInfo: ServerInfo(version: "replacement", protocolVersion: 17))
+        let connector = SequencedTransportConnector([first, replacement])
+        let connectGate = ScriptedTransportCallGate()
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: {
+                let transport = try await connector.connect()
+                let dial = await connector.connectCount
+                if dial > 1 {
+                    await connectGate.waitUntilOpen()
+                }
+                return transport
+            },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+
+        await session.resume()
+
+        // The degraded link its events reader has not reported yet.
+        await first.setConnectionAlive(false)
+        await first.failPing(
+            atCall: 1, with: TransportError.sshUnreachable(detail: "dead link"))
+
+        let probe = Task {
+            try await session.withTransport { transport in
+                try await transport.ping().version
+            }
+        }
+        // Let the first attempt fail on the dead transport and the retry
+        // queue behind the redial.
+        try await Task.sleep(for: .milliseconds(50))
+        // Force the redial the way the real session's own traffic would: a
+        // subscription change ends the stream and the run loop reconnects,
+        // releasing the queued retry.
+        await session.updateSubscriptions(updated)
+        try await Task.sleep(for: .milliseconds(50))
+        await connectGate.open()
+        #expect(try await probe.value == "replacement")
+
         await session.end()
     }
 
