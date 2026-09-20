@@ -513,6 +513,13 @@ final class ConsoleStore {
         try await projection(for: hostID).closePane(paneID)
     }
 
+    /// Whether closing this agent's tab also closes the Workspace: the tab
+    /// is the workspace's last one (shell tabs count), which herdr turns
+    /// into a workspace close.
+    func closesWorkspaceWithTab(of agent: ConsoleAgent) -> Bool {
+        agent.workspaceTabCount <= 1
+    }
+
     /// Closes the Agent's tab (Console row swipe action). Every agent on the
     /// Host sharing that tab disappears with it, so their pins are dropped
     /// too — a deliberately closed tab must not leave a pin that would

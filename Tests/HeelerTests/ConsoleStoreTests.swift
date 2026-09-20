@@ -49,14 +49,33 @@ struct ConsoleStoreTests {
         hostName: String,
         paneID: String,
         status: AgentStatus,
-        workspaceLabel: String? = "Proj"
+        workspaceLabel: String? = "Proj",
+        workspaceTabCount: Int = 0
     ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: hostID,
             hostName: hostName,
             agent: Agent(.fixture(paneID: paneID, status: status)),
             workspaceLabel: workspaceLabel,
+            workspaceTabCount: workspaceTabCount,
             repositoryCheckout: nil)
+    }
+
+    @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {
+        // (#swipe): the confirmation only stands between the swipe and a
+        // close when the tab is the workspace's last one — closing it takes
+        // the workspace down with it.
+        let host = Host.fixture()
+        let store = makeStore(hosts: [host], recorder: StartRecorder())
+        let last = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "w1:p1",
+            status: .idle, workspaceTabCount: 1)
+        let shared = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "w1:p2",
+            status: .idle, workspaceTabCount: 3)
+
+        #expect(store.closesWorkspaceWithTab(of: last))
+        #expect(!store.closesWorkspaceWithTab(of: shared))
     }
 
     private func makePinDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
