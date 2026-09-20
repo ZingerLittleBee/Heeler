@@ -78,10 +78,10 @@ struct ConsoleStoreTests {
         #expect(await condition(), comment)
     }
 
-    @Test func sortBucketsRankBlockedThenDoneThenWorkingThenIdle() {
-        #expect(AgentStatus.blocked.consoleSortBucket < AgentStatus.done.consoleSortBucket)
-        #expect(AgentStatus.done.consoleSortBucket < AgentStatus.working.consoleSortBucket)
-        #expect(AgentStatus.working.consoleSortBucket < AgentStatus.idle.consoleSortBucket)
+    @Test func sortBucketsRankBlockedThenWorkingThenDoneThenIdle() {
+        #expect(AgentStatus.blocked.consoleSortBucket < AgentStatus.working.consoleSortBucket)
+        #expect(AgentStatus.working.consoleSortBucket < AgentStatus.done.consoleSortBucket)
+        #expect(AgentStatus.done.consoleSortBucket < AgentStatus.idle.consoleSortBucket)
         #expect(AgentStatus.idle.consoleSortBucket < AgentStatus.unknown.consoleSortBucket)
         // herdr's API has no stability guarantee: a status this build does
         // not recognize must land in the bottom bucket, not on top.
@@ -102,8 +102,8 @@ struct ConsoleStoreTests {
         let done = consoleAgent(
             hostID: hostB, hostName: "beta", paneID: "w2:p2", status: .done)
         let agents = [idle, working, blocked, done]
-        // Unpinned order is blocked > done > working > idle.
-        #expect(agents.consoleSorted().map(\.agent.paneID) == ["w2:p1", "w2:p2", "w1:p2", "w1:p1"])
+        // Unpinned order is blocked > working > done > idle.
+        #expect(agents.consoleSorted().map(\.agent.paneID) == ["w2:p1", "w1:p2", "w2:p2", "w1:p1"])
 
         // idle pinned first (rank 1), working pinned more recently (rank 0).
         // Unpinned blocked/done keep their relative order.
@@ -127,6 +127,92 @@ struct ConsoleStoreTests {
         let ranks: [ConsoleAgent.ID: Int] = [laterName.id: 0]
         let pinned = [laterName, earlierName].consoleSorted { ranks[$0.id] }
         #expect(pinned.map(\.agent.paneID) == ["w1:p1", "w2:p1"])
+    }
+
+    /// A ConsoleAgent with an explicit `stateChangeSeq`, the recency signal
+    /// the default sort orders buckets by, on one shared Host.
+    private func sequencedAgent(
+        paneID: String, status: AgentStatus, sequence: Int?, snapshotOrder: Int? = nil
+    ) -> ConsoleAgent {
+        let info = AgentInfo(
+            agentStatus: status, focused: false, paneID: paneID, revision: 1,
+            tabID: "w1:t1", terminalID: "term_\(paneID)", workspaceID: "w1",
+            agent: "claude", stateChangeSeq: sequence)
+        return ConsoleAgent(
+            hostID: Self.sharedSortHost, hostName: "alpha", agent: Agent(info),
+            workspaceLabel: "Proj", repositoryCheckout: nil,
+            snapshotOrder: snapshotOrder)
+    }
+
+    private static let sharedSortHost = UUID()
+
+    @Test func consoleSortedDefaultsToWaitingActiveDoneWithNewestFirstInsideBuckets() {
+        let host = UUID()
+        func agent(_ paneID: String, _ status: AgentStatus, _ sequence: Int?) -> ConsoleAgent {
+            let info = AgentInfo(
+                agentStatus: status, focused: false, paneID: paneID, revision: 1,
+                tabID: "w1:t1", terminalID: "term_\(paneID)", workspaceID: "w1",
+                agent: "claude", stateChangeSeq: sequence)
+            return ConsoleAgent(
+                hostID: host, hostName: "alpha", agent: Agent(info),
+                workspaceLabel: "Proj", repositoryCheckout: nil)
+        }
+        let staleDone = agent("p1", .done, 1)
+        let freshDone = agent("p2", .done, 9)
+        let waiting = agent("p3", .blocked, 2)
+        let active = agent("p4", .working, 5)
+        let idle = agent("p5", .idle, nil)
+        // No plugin sort on the Host: the default is waiting on a reply
+        // first, then active, then done/idle; inside a bucket the highest
+        // `stateChangeSeq` (newest activity) leads.
+        #expect(
+            [staleDone, freshDone, waiting, active, idle].consoleSorted().map(\.agent.paneID)
+                == ["p3", "p4", "p2", "p1", "p5"])
+    }
+
+    @Test func consoleSortedKeepsSpacesOrderForHostsThatOptIn() {
+        // Statuses and recency must not reorder the plugin's space order.
+        let first = sequencedAgent(paneID: "p0", status: .idle, sequence: 9, snapshotOrder: 0)
+        let second = sequencedAgent(paneID: "p1", status: .blocked, sequence: 1, snapshotOrder: 1)
+        let third = sequencedAgent(paneID: "p2", status: .done, sequence: 7, snapshotOrder: 2)
+        let rows = [third, first, second]
+        let host = Self.sharedSortHost
+        #expect(
+            rows.consoleSorted(sortByHost: [host: .spaces]).map(\.agent.paneID)
+                == ["p0", "p1", "p2"])
+        // Pins keep their current semantics under `.spaces` too: a pinned
+        // row leaves its space slot and leads the list.
+        #expect(
+            rows.consoleSorted(sortByHost: [host: .spaces]) {
+                $0.id == third.id ? 0 : nil
+            }.map(\.agent.paneID) == ["p2", "p0", "p1"])
+    }
+
+    @Test func hostsWithoutPluginSortGetTheRecencyDefault() async throws {
+        let host = Host.fixture()
+        func agent(_ paneID: String, _ status: AgentStatus, _ sequence: Int?) -> AgentInfo {
+            AgentInfo(
+                agentStatus: status, focused: false, paneID: paneID, revision: 1,
+                tabID: "w1:t1", terminalID: "term_\(paneID)", workspaceID: "w1",
+                agent: "claude", stateChangeSeq: sequence)
+        }
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [
+                agent("w1:p1", .done, 3),
+                agent("w1:p2", .done, 9),
+                agent("w1:p3", .working, 1),
+            ]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("agents should arrive") { store.agents.count == 3 }
+
+        // No sidebar snapshot was ever fetched, so the Host runs the new
+        // default: working before done, newest activity first within done.
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p3", "w1:p2", "w1:p1"])
+
+        store.setHosts([])
     }
 
     @Test func snapshotsAcrossHostsFlattenIntoOneStatusSortedList() async throws {
@@ -154,12 +240,12 @@ struct ConsoleStoreTests {
         await store.resume()
         try await waitUntil("all four agents should arrive") { store.agents.count == 4 }
 
-        // Blocked > Done > Working > Idle, flat across both Hosts.
-        #expect(store.agents.map(\.agent.paneID) == ["w2:p1", "w2:p2", "w1:p2", "w1:p1"])
+        // Blocked > Working > Done > Idle, flat across both Hosts.
+        #expect(store.agents.map(\.agent.paneID) == ["w2:p1", "w1:p2", "w2:p2", "w1:p1"])
         #expect(store.agents.first?.hostName == "beta")
         // Workspace rides along as a context tag.
         #expect(store.agents.first?.workspaceLabel == "Api")
-        #expect(store.agents[1].workspaceLabel == "Api")
+        #expect(store.agents[1].workspaceLabel == "Proj")
         #expect(store.agents.last?.repoName == "proj")
 
         store.setHosts([])
@@ -258,17 +344,17 @@ struct ConsoleStoreTests {
         store.setHosts([hostA, hostB])
         await store.resume()
         try await waitUntil("all four agents should arrive") { store.agents.count == 4 }
-        #expect(store.agents.map(\.agent.paneID) == ["w2:p1", "w2:p2", "w1:p2", "w1:p1"])
+        #expect(store.agents.map(\.agent.paneID) == ["w2:p1", "w1:p2", "w2:p2", "w1:p1"])
 
         // Pin the idle agent first, then the working one: working is rank 0.
         store.togglePin(hostID: hostA.id, paneID: "w1:p1")
-        #expect(store.agents.map(\.agent.paneID) == ["w1:p1", "w2:p1", "w2:p2", "w1:p2"])
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p1", "w2:p1", "w1:p2", "w2:p2"])
 
         store.togglePin(hostID: hostA.id, paneID: "w1:p2")
         #expect(store.agents.map(\.agent.paneID) == ["w1:p2", "w1:p1", "w2:p1", "w2:p2"])
 
         store.togglePin(hostID: hostA.id, paneID: "w1:p2")
-        #expect(store.agents.map(\.agent.paneID) == ["w1:p1", "w2:p1", "w2:p2", "w1:p2"])
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p1", "w2:p1", "w1:p2", "w2:p2"])
 
         store.setHosts([])
     }

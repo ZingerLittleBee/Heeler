@@ -4,14 +4,18 @@ extension AgentStatus {
     /// The one status palette in the app, in two roles: `tintUIColor` is the
     /// wash (low-opacity capsule fills), `inkUIColor` the foreground (badge
     /// text, the switcher's dot). Both read from the same palette, so a
-    /// colour never means two things.
+    /// colour never means two things. Blocked is blue, not red, to match
+    /// herdr's sidebar, where the rows waiting on the user lead in blue —
+    /// red is reserved for what this build cannot read.
     var tintUIColor: UIColor {
         switch self {
-        case .blocked: AgentStatusPalette.red
+        case .blocked: AgentStatusPalette.blue
         case .done: AgentStatusPalette.green
         case .working: AgentStatusPalette.yellow
-        // Idle, Unknown, and anything this build cannot read: not asking for
-        // the user, so it stays out of the way.
+        // Unknown: something failed the palette cannot read, so it gets red.
+        case .unknown: AgentStatusPalette.red
+        // Idle, and anything this build cannot read: not asking for the
+        // user, so it stays out of the way.
         default: AgentStatusPalette.muted
         }
     }
@@ -21,9 +25,10 @@ extension AgentStatus {
     /// Latte cannot use the wash directly.
     var inkUIColor: UIColor {
         switch self {
-        case .blocked: AgentStatusPalette.redInk
+        case .blocked: AgentStatusPalette.blueInk
         case .done: AgentStatusPalette.greenInk
         case .working: AgentStatusPalette.yellowInk
+        case .unknown: AgentStatusPalette.redInk
         default: AgentStatusPalette.mutedInk
         }
     }
@@ -37,6 +42,9 @@ enum AgentStatusPalette {
     static let green = flavoured(mocha: 0xA6E3A1, latte: 0x40A02B)
     static let yellow = flavoured(mocha: 0xF9E2AF, latte: 0xDF8E1D)
     static let red = flavoured(mocha: 0xF38BA8, latte: 0xD20F39)
+    /// herdr's Catppuccin blue — the hue its sidebar paints the rows waiting
+    /// on the user. Blocked carries it here for the same reason.
+    static let blue = flavoured(mocha: 0x89B4FA, latte: 0x1E66F7)
     /// herdr's muted-text role. Its Mocha `overlay0` is too dim to carry a
     /// label on a phone, so each flavour takes the legible end of the role:
     /// Mocha `overlay1`, Latte `subtext0`.
@@ -52,6 +60,11 @@ enum AgentStatusPalette {
     static let greenInk = flavoured(mocha: 0xA6E3A1, latte: 0x0D7900)
     static let yellowInk = flavoured(mocha: 0xF9E2AF, latte: 0x9F5300)
     static let redInk = flavoured(mocha: 0xF38BA8, latte: 0xC70030)
+    /// Same-hue darkening as the other Latte inks: Latte blue measures 2.2:1
+    /// as badge text on its own capsule, so keep OKLCH H and C and drop L —
+    /// 0x1852C6 clears 4.5:1 on the 0.15-op blue wash and 3:1 as a bare dot
+    /// on the card.
+    static let blueInk = flavoured(mocha: 0x89B4FA, latte: 0x1852C6)
     static let mutedInk = flavoured(mocha: 0xA6ADC8, latte: 0x5C5F77)
 
     private static func flavoured(mocha: UInt32, latte: UInt32) -> UIColor {

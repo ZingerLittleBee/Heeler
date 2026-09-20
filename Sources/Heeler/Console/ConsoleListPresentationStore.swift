@@ -1,12 +1,13 @@
 import Foundation
 import Observation
 
-/// The two Console Agent-list presentations. Flat remains the default so
+/// The three Console Agent-list presentations. Flat remains the default so
 /// introducing grouped-list support does not change the existing surface
 /// until the UI explicitly selects it.
 enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
     case flat
     case grouped
+    case byHostWorkspace
 
     var id: Self { self }
 
@@ -15,8 +16,37 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .flat: "All Agents"
         case .grouped: "By Host"
+        case .byHostWorkspace: "By Host, By Workspace"
         }
     }
+}
+
+/// One Workspace group nested inside a Host section for the
+/// "By Host, By Workspace" presentation. Agents arrive already sorted by
+/// ConsoleStore; the group preserves that exact relative order.
+struct ConsoleWorkspaceGroup: Identifiable, Equatable {
+    /// Bucket for agents whose snapshot carried no workspace label.
+    static let unassignedLabel = "Unassigned"
+
+    let label: String
+    let agents: [ConsoleAgent]
+    /// Resolved by the store's projection: workspace groups start collapsed
+    /// unless the user expanded this host+workspace pair. The Host-level
+    /// collapse is carried by the section itself and hides whole groups.
+    var isCollapsed: Bool = true
+
+    var id: String { label }
+}
+
+/// A Host section joined with its Workspace groups. The Host part is the
+/// exact `ConsoleHostSection` the "By Host" mode projects, so connection
+/// status, collapse state, and status counts stay identical between the
+/// two grouped presentations.
+struct ConsoleHostWorkspaceSection: Identifiable, Equatable {
+    let host: ConsoleHostSection
+    let workspaceGroups: [ConsoleWorkspaceGroup]
+
+    var id: Host.ID { host.hostID }
 }
 
 /// One Host section projected from the Host catalog and the Console's
@@ -80,9 +110,14 @@ struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
 final class ConsoleListPresentationStore {
     private static let modeDefaultsKey = "console-list.presentation-mode"
     private static let collapsedHostsDefaultsKey = "console-list.collapsed-hosts"
+    private static let expandedWorkspacesDefaultsKey = "console-list.expanded-workspaces"
 
     private(set) var mode: ConsoleListPresentationMode
     private var collapsedHostIDs: Set<Host.ID>
+    /// Stores EXPANDED host+workspace keys, so a workspace never seen before
+    /// defaults to collapsed. Keyed per host+workspace pair because workspace
+    /// labels repeat across hosts.
+    private var expandedWorkspaceKeys: Set<String>
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
 
@@ -94,6 +129,8 @@ final class ConsoleListPresentationStore {
         collapsedHostIDs = Set(
             (defaults.stringArray(forKey: Self.collapsedHostsDefaultsKey) ?? [])
                 .compactMap(UUID.init(uuidString:)))
+        expandedWorkspaceKeys = Set(
+            defaults.stringArray(forKey: Self.expandedWorkspacesDefaultsKey) ?? [])
     }
 
     func select(_ mode: ConsoleListPresentationMode) {
@@ -119,6 +156,37 @@ final class ConsoleListPresentationStore {
 
     func toggleCollapsed(_ hostID: Host.ID) {
         setCollapsed(!isCollapsed(hostID), for: hostID)
+    }
+
+    /// Workspace groups default to collapsed: an expanded key is stored
+    /// explicitly, so a workspace appearing for the first time starts closed.
+    func isExpanded(_ hostID: Host.ID, workspaceLabel: String) -> Bool {
+        expandedWorkspaceKeys.contains(Self.expandedWorkspaceKey(hostID, workspaceLabel))
+    }
+
+    func setExpanded(_ expanded: Bool, for hostID: Host.ID, workspaceLabel: String) {
+        let key = Self.expandedWorkspaceKey(hostID, workspaceLabel)
+        let changed: Bool
+        if expanded {
+            changed = expandedWorkspaceKeys.insert(key).inserted
+        } else {
+            changed = expandedWorkspaceKeys.remove(key) != nil
+        }
+        guard changed else { return }
+        defaults.set(
+            expandedWorkspaceKeys.sorted(),
+            forKey: Self.expandedWorkspacesDefaultsKey)
+    }
+
+    func toggleExpanded(_ hostID: Host.ID, workspaceLabel: String) {
+        setExpanded(
+            !isExpanded(hostID, workspaceLabel: workspaceLabel),
+            for: hostID,
+            workspaceLabel: workspaceLabel)
+    }
+
+    private static func expandedWorkspaceKey(_ hostID: Host.ID, _ workspaceLabel: String) -> String {
+        "\(hostID.uuidString)|\(workspaceLabel)"
     }
 
     /// Convenience contract for the Console UI. Reading these observable
@@ -192,6 +260,103 @@ final class ConsoleListPresentationStore {
                 isCollapsed: isCollapsed(host.id),
                 statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))
         }
+    }
+
+    /// Convenience contract for the Console UI, mirroring `sections`.
+    func sectionsByHostThenWorkspace(
+        hosts: [Host],
+        console: ConsoleStore,
+        filteredHostID: Host.ID? = nil,
+        searchQuery: String = ""
+    ) -> [ConsoleHostWorkspaceSection] {
+        sectionsByHostThenWorkspace(
+            hosts: hosts,
+            agents: console.agents,
+            workspacesByHost: console.workspacesByHost,
+            hostStatuses: console.hostStatuses,
+            hostStandingFailures: console.hostStandingFailures,
+            hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
+            hostSyncErrors: console.hostSyncErrors,
+            filteredHostID: filteredHostID,
+            searchQuery: searchQuery)
+    }
+
+    /// Projects the "By Host, By Workspace" presentation: the exact per-Host
+    /// sections the "By Host" mode projects, each carrying its Agents grouped
+    /// into Workspace buckets. Hosts with no Agents project the same empty
+    /// section with no groups, matching the "By Host" behavior exactly.
+    func sectionsByHostThenWorkspace(
+        hosts: [Host],
+        agents: [ConsoleAgent],
+        workspacesByHost: [Host.ID: [ConsoleWorkspace]] = [:],
+        hostStatuses: [Host.ID: EventsSessionStatus] = [:],
+        hostStandingFailures: [Host.ID: TransportError] = [:],
+        hostsAwaitingSnapshot: Set<Host.ID> = [],
+        hostSyncErrors: [Host.ID: String] = [:],
+        filteredHostID: Host.ID? = nil,
+        searchQuery: String = ""
+    ) -> [ConsoleHostWorkspaceSection] {
+        sections(
+            hosts: hosts,
+            agents: agents,
+            hostStatuses: hostStatuses,
+            hostStandingFailures: hostStandingFailures,
+            hostsAwaitingSnapshot: hostsAwaitingSnapshot,
+            hostSyncErrors: hostSyncErrors,
+            filteredHostID: filteredHostID,
+            searchQuery: searchQuery)
+        .map { section in
+            var groups = Self.workspaceGroups(
+                for: section.agents,
+                workspaces: workspacesByHost[section.hostID] ?? [])
+            for index in groups.indices {
+                groups[index].isCollapsed = !isExpanded(
+                    section.hostID, workspaceLabel: groups[index].label)
+            }
+            return ConsoleHostWorkspaceSection(host: section, workspaceGroups: groups)
+        }
+    }
+
+    /// Groups one Host's Agents by workspace label. Buckets follow the
+    /// Host's known workspace order; a label the snapshot no longer reports
+    /// keeps first-appearance order among the Agents, and Agents with no
+    /// workspace label fall under "Unassigned" last. Within a bucket the
+    /// incoming (already-sorted) Agent order is preserved untouched.
+    static func workspaceGroups(
+        for agents: [ConsoleAgent],
+        workspaces: [ConsoleWorkspace]
+    ) -> [ConsoleWorkspaceGroup] {
+        var agentsByLabel: [String: [ConsoleAgent]] = [:]
+        var labelOrder: [String] = []
+        var unassigned: [ConsoleAgent] = []
+        for agent in agents {
+            guard let label = agent.workspaceLabel, !label.isEmpty else {
+                unassigned.append(agent)
+                continue
+            }
+            if agentsByLabel[label] == nil {
+                labelOrder.append(label)
+            }
+            agentsByLabel[label, default: []].append(agent)
+        }
+
+        var projectedLabels = Set<String>()
+        var groups: [ConsoleWorkspaceGroup] = []
+        for workspace in workspaces where agentsByLabel[workspace.label] != nil {
+            groups.append(
+                ConsoleWorkspaceGroup(
+                    label: workspace.label,
+                    agents: agentsByLabel[workspace.label] ?? []))
+            projectedLabels.insert(workspace.label)
+        }
+        for label in labelOrder where !projectedLabels.contains(label) {
+            groups.append(ConsoleWorkspaceGroup(label: label, agents: agentsByLabel[label] ?? []))
+        }
+        if !unassigned.isEmpty {
+            groups.append(
+                ConsoleWorkspaceGroup(label: ConsoleWorkspaceGroup.unassignedLabel, agents: unassigned))
+        }
+        return groups
     }
 
     private func persistCollapsedHostIDs() {
