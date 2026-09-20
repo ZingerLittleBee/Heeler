@@ -228,7 +228,18 @@ async function main() {
     return;
   }
   const home = os.homedir();
-  const pairingConfig = readPairingConfig(process.env.HERDR_PLUGIN_CONFIG_DIR);
+  const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR;
+  // Re-read on every checklist repaint. The warnings below tell the operator
+  // to edit pair.json, so an edit made in another pane has to take effect
+  // here without reopening the popup -- reading one small file is cheap.
+  let checklistConfig = { ...readPairingConfig(configDir), tailscaleSSHEnabled: false };
+  function currentConfig() {
+    checklistConfig = {
+      ...readPairingConfig(configDir),
+      tailscaleSSHEnabled: checklistConfig.tailscaleSSHEnabled,
+    };
+    return checklistConfig;
+  }
 
   const hostKey = readHostKeyFingerprint();
   if (hostKey === null) {
@@ -240,14 +251,6 @@ async function main() {
     await holdFatal(MISSING_ADDRESS);
     return;
   }
-  // Probed once, and only on a machine that actually has a tailnet address to
-  // offer: elsewhere the answer cannot change the checklist.
-  const checklistConfig = {
-    ...pairingConfig,
-    tailscaleSSHEnabled: candidates.some((candidate) => isTailscaleAddress(candidate.address))
-      ? detectTailscaleSSH()
-      : false,
-  };
 
   // Startup sweep: crashed or killed ceremonies must leave no residue —
   // neither authorized_keys lines nor pending/enrolled state files.
@@ -390,7 +393,7 @@ async function main() {
     }, PAIRING_TTL_SECONDS * 1000);
     lastPayload = {
       addresses: confirmedAddresses,
-      port: pairingConfig.sshPort,
+      port: currentConfig().sshPort,
       username: os.userInfo().username,
       hostKeyFingerprint: hostKey.fingerprint,
       bootstrapSeed: session.seed,
@@ -441,7 +444,17 @@ async function main() {
     });
   }
 
-  renderChecklist(state, checklistConfig);
+  renderChecklist(state, currentConfig());
+
+  // Probed after that first paint, and only where a tailnet address is on
+  // offer: spawnSync blocks, and a wedged tailscaled must not hold the
+  // checklist off the screen.
+  if (candidates.some((candidate) => isTailscaleAddress(candidate.address))) {
+    checklistConfig.tailscaleSSHEnabled = detectTailscaleSSH();
+    if (checklistConfig.tailscaleSSHEnabled) {
+      renderChecklist(state, currentConfig());
+    }
+  }
 
   readKeys((key) => {
     if (closing) {
@@ -507,7 +520,7 @@ async function main() {
       case "return": {
         const addresses = selectedAddresses(state);
         if (addresses.length === 0) {
-          renderChecklist(state, checklistConfig, "Select at least one address.");
+          renderChecklist(state, currentConfig(), "Select at least one address.");
           return;
         }
         phase = "qr";
@@ -518,7 +531,7 @@ async function main() {
       default:
         return;
     }
-    renderChecklist(state, checklistConfig);
+    renderChecklist(state, currentConfig());
   });
 }
 

@@ -116,6 +116,13 @@ herdr plugin action invoke heeler.pair
 | ---------- | ------- | ------- |
 | `ssh_port` | integer | SSH port advertised in the Pairing Code, `1..65535`. Default 22. An absent `pair.json` means 22; a file that cannot be read or parsed, or an `ssh_port` outside that range, also falls back to 22 and says so in the checklist. |
 
+The Pairing Code pins the host key found under `/etc/ssh` (`src/host-key.js`),
+so the alternate port must be served by **the same sshd** — another `Port`
+line in `sshd_config`, not a second instance with its own `HostKey`, whose
+fingerprint the code would not match. `pair.json` is re-read on every
+checklist repaint, so an edit made in another pane lands on the next keypress
+without reopening the popup.
+
 The checklist and QR screen both show the advertised port, and the checklist
 names an override it could not honor rather than quietly handing back 22 —
 the port a Tailscale-SSH Host is trying to get away from. Pairing still

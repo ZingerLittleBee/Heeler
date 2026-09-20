@@ -64,6 +64,15 @@ suite("pairing config", () => {
     }
   });
 
+  test("accepts the ends of the port range", () => {
+    for (const ssh_port of [1, 65535]) {
+      writeConfig({ ssh_port });
+      assert.deepEqual(readPairingConfig(configDir), { sshPort: ssh_port, warning: null });
+      rmSync(configDir, { recursive: true, force: true });
+      configDir = undefined;
+    }
+  });
+
   test("ignores unrelated fields", () => {
     writeConfig({ ssh_port: 2222, relay_url: "https://example.com" });
 

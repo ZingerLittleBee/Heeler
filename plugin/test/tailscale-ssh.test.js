@@ -4,8 +4,21 @@ import assert from "node:assert/strict";
 import {
   detectTailscaleSSH,
   isTailscaleAddress,
+  runTailscale,
   tailscaleSSHConflict,
 } from "../src/tailscale-ssh.js";
+
+const BUNDLE_UPPER = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+const BUNDLE_LOWER = "/Applications/Tailscale.app/Contents/MacOS/tailscale";
+
+function fakeSpawn(byCommand) {
+  const calls = [];
+  const spawnFn = (command, args, options) => {
+    calls.push({ command, args, options });
+    return byCommand[command] ?? { error: Object.assign(new Error("not found"), { code: "ENOENT" }) };
+  };
+  return { spawnFn, calls };
+}
 
 function fakeRun(responses) {
   const calls = [];
@@ -40,6 +53,46 @@ suite("tailscale addresses", () => {
   test("survives a non-string address", () => {
     assert.equal(isTailscaleAddress(undefined), false);
     assert.equal(isTailscaleAddress(null), false);
+  });
+});
+
+suite("running the tailscale CLI", () => {
+  test("uses the one on PATH and stops there", () => {
+    const { spawnFn, calls } = fakeSpawn({ tailscale: { status: 0, stdout: "{}" } });
+
+    assert.equal(runTailscale(["status", "--json"], { spawnFn }), "{}");
+    assert.deepEqual(calls.map((call) => call.command), ["tailscale"]);
+    assert.deepEqual(calls[0].args, ["status", "--json"]);
+    assert.ok(calls[0].options.timeout > 0, "a wedged tailscaled must not hang the popup");
+  });
+
+  test("falls through to the app bundle when PATH has none", () => {
+    const { spawnFn, calls } = fakeSpawn({ [BUNDLE_UPPER]: { status: 0, stdout: "up" } });
+
+    assert.equal(runTailscale(["status"], { spawnFn }), "up");
+    assert.deepEqual(calls.map((call) => call.command), ["tailscale", BUNDLE_UPPER]);
+  });
+
+  test("tries the lowercase bundle path a case-sensitive volume would need", () => {
+    const { spawnFn, calls } = fakeSpawn({ [BUNDLE_LOWER]: { status: 0, stdout: "up" } });
+
+    assert.equal(runTailscale(["status"], { spawnFn }), "up");
+    assert.deepEqual(calls.length, 3);
+  });
+
+  test("treats a non-zero exit as no answer", () => {
+    const { spawnFn } = fakeSpawn({
+      tailscale: { status: 1, stdout: "", stderr: "logged out" },
+    });
+
+    assert.equal(runTailscale(["debug", "prefs"], { spawnFn }), null);
+  });
+
+  test("treats a spawn failure as no answer", () => {
+    const { spawnFn, calls } = fakeSpawn({});
+
+    assert.equal(runTailscale(["status"], { spawnFn }), null);
+    assert.equal(calls.length, 3, "every candidate location is tried before giving up");
   });
 });
 

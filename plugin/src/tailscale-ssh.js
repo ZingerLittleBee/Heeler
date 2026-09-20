@@ -12,11 +12,19 @@ import { spawnSync } from "node:child_process";
 // The only port Tailscale SSH takes over.
 const INTERCEPTED_PORT = 22;
 
-// The App Store build does not put the CLI on PATH; this is the path its own
-// documentation gives for it.
-const TAILSCALE_COMMANDS = ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"];
+// The macOS builds do not put the CLI on PATH; these are the paths inside the
+// app bundle, in both spellings shipped over the years -- a case-sensitive
+// volume gets only the one it has.
+const TAILSCALE_COMMANDS = [
+  "tailscale",
+  "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+  "/Applications/Tailscale.app/Contents/MacOS/tailscale",
+];
 
-const COMMAND_TIMEOUT_MS = 1500;
+// Two probes run back to back before the warning can appear, and a wedged
+// tailscaled reaches the timeout rather than answering. Keep the pair short
+// enough that the checklist is never unresponsive for long.
+const COMMAND_TIMEOUT_MS = 800;
 
 /**
  * Whether an address is one Tailscale hands out, and so one whose port 22
@@ -32,9 +40,18 @@ export function isTailscaleAddress(address) {
   return /^fd7a:115c:a1e0\b/i.test(address); // fd7a:115c:a1e0::/48
 }
 
-function runTailscale(args) {
+/**
+ * Run `tailscale <args>` at the first location that answers, or null when
+ * none does. A missing binary, a non-zero exit (logged out, wrong build) and
+ * a timeout are all "no answer".
+ *
+ * @param {string[]} args
+ * @param {{spawnFn?: typeof spawnSync}} [deps]
+ * @returns {string | null}
+ */
+export function runTailscale(args, { spawnFn = spawnSync } = {}) {
   for (const command of TAILSCALE_COMMANDS) {
-    const result = spawnSync(command, args, {
+    const result = spawnFn(command, args, {
       encoding: "utf8",
       timeout: COMMAND_TIMEOUT_MS,
     });
