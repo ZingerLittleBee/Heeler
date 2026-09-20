@@ -123,6 +123,19 @@ requires a real OpenSSH listener (host key under `/etc/ssh`,
 `authorized_keys` forced commands); Tailscale SSH alone cannot run the
 ceremony.
 
+On a machine with a tailnet address to offer, the popup asks Tailscale once
+whether it is serving SSH: `tailscale status --json` (this node's own
+`sshHostKeys`), then `tailscale debug prefs` (`RunSSH`). If it is, and a
+`100.64.0.0/10` or `fd7a:115c:a1e0::/48` address is checked while the code
+still advertises port 22, the checklist says so before the QR appears —
+tailscaled would answer that port, and Enrollment cannot run there.
+
+Both probes only ever answer yes. No `tailscale` on `PATH` (nor at the App
+Store build's `/Applications/Tailscale.app/Contents/MacOS/Tailscale`), a
+logged-out tailscaled, or an output shape that changed all read as "not
+serving" and warn about nothing: a false alarm on every pairing would cost
+more than this warning saves.
+
 ## Pairing Code envelope (v1)
 
 The Pairing Code is a single-line string; the QR image is just its rendering.

@@ -23,6 +23,7 @@ import {
   PAIRING_TTL_SECONDS,
 } from "./pairing-session.js";
 import { readPairingConfig } from "./pairing-config.js";
+import { detectTailscaleSSH, isTailscaleAddress, tailscaleSSHConflict } from "./tailscale-ssh.js";
 import {
   createSelection,
   moveCursor,
@@ -99,6 +100,18 @@ function renderChecklist(state, config, warning) {
   // the transient warning below is spent on checklist mistakes instead.
   if (config.warning) {
     lines.push(`${BOLD}${config.warning} Advertising ${config.sshPort}.${RESET}`);
+  }
+  // Follows the selection: checking a tailnet address raises it, unchecking
+  // it again takes it away.
+  const conflict = tailscaleSSHConflict({
+    addresses: selectedAddresses(state),
+    sshPort: config.sshPort,
+    tailscaleSSHEnabled: config.tailscaleSSHEnabled,
+  });
+  if (conflict) {
+    for (const line of conflict.split("\n")) {
+      lines.push(`${BOLD}${line}${RESET}`);
+    }
   }
   lines.push(`${DIM}up/down move, space toggle, a all, enter confirm, q quit${RESET}`);
   if (warning) {
@@ -227,6 +240,14 @@ async function main() {
     await holdFatal(MISSING_ADDRESS);
     return;
   }
+  // Probed once, and only on a machine that actually has a tailnet address to
+  // offer: elsewhere the answer cannot change the checklist.
+  const checklistConfig = {
+    ...pairingConfig,
+    tailscaleSSHEnabled: candidates.some((candidate) => isTailscaleAddress(candidate.address))
+      ? detectTailscaleSSH()
+      : false,
+  };
 
   // Startup sweep: crashed or killed ceremonies must leave no residue —
   // neither authorized_keys lines nor pending/enrolled state files.
@@ -420,7 +441,7 @@ async function main() {
     });
   }
 
-  renderChecklist(state, pairingConfig);
+  renderChecklist(state, checklistConfig);
 
   readKeys((key) => {
     if (closing) {
@@ -486,7 +507,7 @@ async function main() {
       case "return": {
         const addresses = selectedAddresses(state);
         if (addresses.length === 0) {
-          renderChecklist(state, pairingConfig, "Select at least one address.");
+          renderChecklist(state, checklistConfig, "Select at least one address.");
           return;
         }
         phase = "qr";
@@ -497,7 +518,7 @@ async function main() {
       default:
         return;
     }
-    renderChecklist(state, pairingConfig);
+    renderChecklist(state, checklistConfig);
   });
 }
 
