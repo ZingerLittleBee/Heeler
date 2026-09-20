@@ -22,6 +22,11 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Manually adding a Host (or finishing Scan to Pair) no longer loses the
+  "Trust this Host?" alert. Navigation into onboarding waits until the add
+  sheet has finished dismissing, so preflight's TOFU prompt is not dropped
+  mid-transition. (#359)
+
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or
   in Composer, so pressing Space cannot add a suggested word after the letters
