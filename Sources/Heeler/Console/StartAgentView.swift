@@ -31,6 +31,7 @@ struct StartAgentView: View {
                             .compactMap { $0.agent.name })
                 },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
+                remoteHome: { try await console.remoteHomeDirectory(on: $0) },
                 start: { params, destination, hostID in
                     switch destination {
                     case .existingWorkspace:
@@ -73,7 +74,7 @@ struct StartAgentView: View {
                         }
                     }
 
-                    Section("Workspace") {
+                    Section {
                         StartWorkspacePicker(
                             workspaces: store.workspaces,
                             selectedWorkspaceID: store.launchTarget == .existingWorkspace
@@ -85,6 +86,35 @@ struct StartAgentView: View {
                             onSelect: store.selectExistingWorkspace,
                             onSelectNewWorkspace: store.selectNewWorkspace,
                             onNewWorkspace: openDirectoryBrowser)
+                        if store.launchTarget == .newWorkspace {
+                            TextField(
+                                "Workspace name (optional)",
+                                text: $store.newWorkspaceLabel)
+                                .autocorrectionDisabled()
+                            if store.newWorkspaceDirectory.isEmpty {
+                                Label(
+                                    "Directory: the Host's home directory",
+                                    systemImage: "house")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Label(store.newWorkspaceDirectory, systemImage: "folder")
+                                    .font(.callout.monospaced())
+                                    .lineLimit(2)
+                                    .truncationMode(.middle)
+                            }
+                            Button("Browse Directory…", systemImage: "folder.badge.plus") {
+                                openDirectoryBrowser()
+                            }
+                        }
+                    } header: {
+                        Text("Workspace")
+                    } footer: {
+                        if store.launchTarget == .newWorkspace {
+                            Text(
+                                "Creates a fresh Workspace on the Host. An empty name uses the directory's name."
+                            )
+                        }
                     }
                 }
 
@@ -270,7 +300,9 @@ struct StartWorkspacePicker: View {
     }
 
     private var selectedTitle: String {
-        if isNewWorkspaceSelected { return directoryName }
+        if isNewWorkspaceSelected {
+            return newDirectory == nil ? "Home" : directoryName
+        }
         return workspaces.first { $0.id == selectedWorkspaceID }?.label ?? "None reported"
     }
 
