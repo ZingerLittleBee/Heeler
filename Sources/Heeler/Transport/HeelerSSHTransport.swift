@@ -794,6 +794,7 @@ actor HeelerSSHTransport: Transport {
             params: TabCreateParams(
                 cwd: launch.cwd,
                 focus: false,
+                label: launch.name,
                 workspaceID: launch.workspaceID),
             decoding: TabCreatedResponse.self)
         do {
@@ -817,6 +818,7 @@ actor HeelerSSHTransport: Transport {
                 base: worktree.base,
                 branch: worktree.branch,
                 focus: false,
+                label: launch.name,
                 workspaceID: launch.workspaceID),
             decoding: WorktreeCreatedResponse.self)
         do {
