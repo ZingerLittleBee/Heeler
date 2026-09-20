@@ -866,6 +866,31 @@ struct TabInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// The `"type":"tab_info"` result payload of herdr's success_response schema.
+struct TabInfoResponse: Codable, Equatable, Sendable {
+    let tab: TabInfo
+
+    init(tab: TabInfo) {
+        self.tab = tab
+    }
+}
+
+/// herdr schema `$defs/TabRenameParams`.
+struct TabRenameParams: Codable, Equatable, Sendable {
+    let label: String
+    let tabID: String
+
+    init(label: String, tabID: String) {
+        self.label = label
+        self.tabID = tabID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label
+        case tabID = "tab_id"
+    }
+}
+
 /// herdr schema `$defs/WorkspaceCloseParams`.
 struct WorkspaceCloseParams: Codable, Equatable, Sendable {
     let closeGroup: Bool?

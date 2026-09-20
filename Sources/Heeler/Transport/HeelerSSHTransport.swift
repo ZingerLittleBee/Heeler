@@ -772,6 +772,16 @@ actor HeelerSSHTransport: Transport {
             decoding: OkResponse.self)
     }
 
+    /// Renames a tab. Best-effort at launch sites: the reply is `tab_info`
+    /// (probed live against herdr 0.9), so a cosmetic rename must never fail
+    /// a start that already succeeded.
+    func renameTab(_ params: TabRenameParams) async throws -> TabInfoResponse {
+        try await request(
+            method: "tab.rename",
+            params: params,
+            decoding: TabInfoResponse.self)
+    }
+
     func createShellTerminal(
         _ creation: ShellTerminalCreationRequest
     ) async throws -> ShellTerminalIdentity {
@@ -821,6 +831,10 @@ actor HeelerSSHTransport: Transport {
                 label: launch.name,
                 workspaceID: launch.workspaceID),
             decoding: WorktreeCreatedResponse.self)
+        // Same tab-label gap as the New Workspace path: the worktree label
+        // lands on the Workspace, so rename the tab to the agent's name.
+        try? await renameTab(
+            TabRenameParams(label: launch.name, tabID: created.tab.tabID))
         do {
             let response = try await startAgentAwaitingShell(
                 launch,
@@ -843,6 +857,11 @@ actor HeelerSSHTransport: Transport {
                 focus: false,
                 label: workspace.label),
             decoding: WorkspaceCreatedResponse.self)
+        // workspace.create labels the Workspace, not its first tab; give the
+        // fresh tab the agent's name so the tab bar reads right. Best-effort:
+        // a rename failure must not abort a launch that already succeeded.
+        try? await renameTab(
+            TabRenameParams(label: launch.name, tabID: created.tab.tabID))
         do {
             let response = try await startAgentAwaitingShell(
                 launch,
