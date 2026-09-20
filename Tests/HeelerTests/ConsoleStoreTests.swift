@@ -1378,11 +1378,22 @@ struct ConsoleStoreTests {
         await #expect(throws: TransportError.timedOut) {
             try await store.focusAgent("pane", on: host.id)
         }
+        // The single retry rides the replacement, so the focus reaches the
+        // transport once per attempt.
+        #expect(await transport.agentFocuses == [
+            AgentTarget(target: "pane"), AgentTarget(target: "pane"),
+        ])
+        // The redial ends the stale events channel, and the fresh
+        // `.connected` that follows is the consumer's usual re-snapshot
+        // signal: exactly one resync beyond the pre-focus count. A FAILED
+        // focus must not add a success resync on top of it.
+        try await waitUntil("the reconnect resync should land") {
+            await transport.snapshotFetchCount == before + 1
+        }
         // Give an incorrectly scheduled success refresh time to reach the transport.
         try await Task.sleep(for: .milliseconds(25))
+        #expect(await transport.snapshotFetchCount == before + 1)
         #expect(store.agents.map(\.agent.status) == [.done])
-        #expect(await transport.snapshotFetchCount == before)
-        #expect(await transport.agentFocuses == [AgentTarget(target: "pane")])
     }
 
     @Test func focusDoesNotSendWhenTheAgentHasAlreadyLeftDone() async throws {

@@ -511,8 +511,13 @@ struct EventsSessionSubscriptionsTests {
             reconnectPolicy: ReconnectPolicy(
                 initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
             keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        // Scripting the dead link before the first dial's ping would race
+        // the connect path and fail the dial itself, so arrive connected.
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
 
         // The degraded link its events reader has not reported yet.
         await first.setConnectionAlive(false)

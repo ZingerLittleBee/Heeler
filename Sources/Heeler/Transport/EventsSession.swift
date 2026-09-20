@@ -370,6 +370,18 @@ actor EventsSession {
             if isSameTransport(currentTransport, transport) {
                 transportSuspect = true
                 currentTransport = nil
+                // The run loop is parked on the live stream and cannot act on
+                // the suspect mark by itself: a link whose events reader is
+                // still alive never ends the stream, and with the keepalive
+                // quiet or disabled nothing else wakes it — the retry below
+                // would wait forever. End the channel the way a failed
+                // keepalive does, but flagged as a deliberate re-subscribe so
+                // the run loop re-dials silently (no `.reconnecting`) and
+                // installs the replacement this retry rides. A redial that
+                // fails instead releases the waiter through the run loop's
+                // announce with its real cause.
+                resubscribeRequested = true
+                await liveStream?.end()
             }
             let replacement = try await awaitUsableTransport()
             do {
