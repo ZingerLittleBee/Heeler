@@ -66,6 +66,12 @@ final class AgentComposerStore: ComposerDraftOperations {
     private var agentStatus: AgentStatus
     private var statusRevision: UInt64 = 0
     private let statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>?
+    /// Pace and budget for waiting out a fresh Agent's launch on
+    /// `agent_not_ready`; the defaults mirror the transport's
+    /// shell-readiness wait (`startAgentAwaitingShell`). Tests inject
+    /// smaller values so the wait itself stays under test.
+    private let agentNotReadyRetryDelay: Duration
+    private let agentNotReadyRetryBudget: Duration
     private let prompt: @Sendable (AgentPromptParams) async throws -> Agent
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var statusTask: Task<Void, Never>?
@@ -108,13 +114,24 @@ final class AgentComposerStore: ComposerDraftOperations {
         target: String,
         initialStatus: AgentStatus = .idle,
         statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>? = nil,
+        agentNotReadyRetryDelay: Duration = AgentComposerStore.defaultAgentNotReadyRetryDelay,
+        agentNotReadyRetryBudget: Duration = AgentComposerStore.defaultAgentNotReadyRetryBudget,
         prompt: @escaping @Sendable (AgentPromptParams) async throws -> Agent
     ) {
         self.target = target
         agentStatus = initialStatus
         self.statusUpdates = statusUpdates
+        self.agentNotReadyRetryDelay = agentNotReadyRetryDelay
+        self.agentNotReadyRetryBudget = agentNotReadyRetryBudget
         self.prompt = prompt
     }
+
+    /// The shell-readiness wait in `HeelerSSHTransport.startAgentAwaitingShell`
+    /// covers the 0.7.5 `agent_pane_busy` shape only; on 0.8.0+ the launch
+    /// race moved downstream to `agent.prompt`, so the composer carries the
+    /// same budget here.
+    private static let defaultAgentNotReadyRetryDelay: Duration = .milliseconds(500)
+    private static let defaultAgentNotReadyRetryBudget: Duration = .seconds(10)
 
     deinit {
         statusTask?.cancel()
@@ -356,7 +373,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         let input = attachInput
         let generation = input?.liveGeneration
         do {
-            _ = try await prompt(AgentPromptParams(target: target, text: text))
+            _ = try await promptWaitingOutLaunch(
+                AgentPromptParams(target: target, text: text))
             guard let acknowledgedIndex = messages.firstIndex(where: { $0.id == id }) else {
                 return .ignored
             }
@@ -371,6 +389,33 @@ final class AgentComposerStore: ComposerDraftOperations {
                 return deliverThroughAttach(id, text: text)
             }
             return fail(id, message: Self.message(for: error))
+        }
+    }
+
+    /// Delivers one `agent.prompt` request, waiting out a fresh launch's
+    /// `agent_not_ready` rejections first. herdr 0.8.0+ answers `agent.start`
+    /// while the pane's agent is still booting (`launch_pending`), so the
+    /// first prompt of a just-started Agent can beat the agent's registration
+    /// on the Host and be refused with "agent wX:pY is not an active named
+    /// agent" — the pane id is correct, and re-entering the session later
+    /// finds it active because only time was missing. Retrying on that code
+    /// alone, at a fixed pace inside a bounded budget (the transport's
+    /// shell-readiness wait shape), keeps that bubble off the user's first
+    /// send while a genuinely absent Agent (`agent_not_found`) still fails
+    /// immediately.
+    private func promptWaitingOutLaunch(
+        _ params: AgentPromptParams
+    ) async throws -> Agent {
+        let deadline = ContinuousClock.now + agentNotReadyRetryBudget
+        while true {
+            do {
+                return try await prompt(params)
+            } catch let error where Self.isAgentNotReady(error) {
+                guard ContinuousClock.now + agentNotReadyRetryDelay < deadline else {
+                    throw error
+                }
+                try await Task.sleep(for: agentNotReadyRetryDelay)
+            }
         }
     }
 
@@ -401,6 +446,18 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
         messages[failedIndex].state = .failed(message)
         return .failed
+    }
+
+    private static func isAgentNotReady(_ error: any Error) -> Bool {
+        if let apiError = error as? HerdrAPIError {
+            return apiError.code == "agent_not_ready"
+        }
+        if let transportError = error as? TransportError,
+            case .apiRejected(let code, _) = transportError
+        {
+            return code == "agent_not_ready"
+        }
+        return false
     }
 
     private static func isAgentBlocked(_ error: any Error) -> Bool {

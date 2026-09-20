@@ -235,6 +235,89 @@ struct AgentComposerStoreTests {
         #expect(await transport.agentPromptParams.count == 1)
     }
 
+    /// herdr 0.8.0+ answers `agent.start` while the pane's agent is still
+    /// booting, so the first prompt of a freshly started Agent is rejected
+    /// with `agent_not_ready` ("agent wX:pY is not an active named agent")
+    /// until the agent registers. The composer waits that launch out instead
+    /// of surfacing the refusal.
+    @Test func firstSendToAFreshAgentWaitsOutAgentNotReadyRejections() async throws {
+        let transport = ScriptedTransport()
+        let notReady = HerdrAPIError(
+            code: "agent_not_ready",
+            message: "agent w15:p1 is not an active named agent")
+        await transport.setAgentPromptFailures([notReady, notReady])
+        let store = AgentComposerStore(
+            target: "w15:p1", agentNotReadyRetryDelay: .milliseconds(5)
+        ) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "First message")
+
+        let result = await store.send()
+
+        #expect(result == .deliveredViaPrompt)
+        #expect(store.draft.isEmpty)
+        #expect(store.messages.map(\.state) == [.delivered(.acknowledged)])
+        #expect(await transport.agentPromptParams.count == 3)
+        #expect(
+            await transport.agentPromptParams.allSatisfy { $0 == AgentPromptParams(
+                target: "w15:p1", text: "First message") })
+    }
+
+    /// The wait is bounded: an agent that never becomes active still
+    /// surfaces herdr's refusal as a retryable failure once the budget is
+    /// spent, and the budget keeps retrying past a first refusal.
+    @Test func agentNotReadyRetryExhaustionSurfacesTheRefusalWithAttemptsLeft() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentPromptFailure(
+            HerdrAPIError(
+                code: "agent_not_ready",
+                message: "agent w15:p1 is not an active named agent"))
+        let store = AgentComposerStore(
+            target: "w15:p1",
+            agentNotReadyRetryDelay: .milliseconds(5),
+            agentNotReadyRetryBudget: .milliseconds(20)
+        ) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Stuck launch")
+
+        let result = await store.send()
+
+        #expect(result == .failed)
+        #expect(
+            store.messages.map(\.state)
+                == [.failed("herdr rejected the message: agent w15:p1 is not an active named agent")]
+        )
+        #expect(await transport.agentPromptParams.count > 1)
+        #expect(store.messages.first?.text == "Stuck launch")
+    }
+
+    /// Only the launch race is worth waiting out: an agent target that
+    /// genuinely hosts nothing (`agent_not_found`) fails on its first
+    /// attempt without burning the budget.
+    @Test func agentNotFoundFailsOnTheFirstAttemptWithoutRetrying() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentPromptFailure(
+            HerdrAPIError(code: "agent_not_found", message: "agent target w15:p1 not found"))
+        let store = AgentComposerStore(
+            target: "w15:p1",
+            agentNotReadyRetryDelay: .milliseconds(5),
+            agentNotReadyRetryBudget: .milliseconds(20)
+        ) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "Wrong target")
+
+        let result = await store.send()
+
+        #expect(result == .failed)
+        #expect(
+            store.messages.map(\.state)
+                == [.failed("herdr rejected the message: agent target w15:p1 not found")])
+        #expect(await transport.agentPromptParams.count == 1)
+    }
+
     @Test func reconnectStatusUpdatesDoNotTouchTheLocalDraft() async throws {
         let transport = ScriptedTransport()
         let (updates, continuation) = AsyncStream.makeStream(
