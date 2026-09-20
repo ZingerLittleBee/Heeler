@@ -203,6 +203,10 @@ actor EventsSession {
     private var terminalWaiters: [TerminalWaiter] = []
     private var terminalIdleWaiters: [CheckedContinuation<Void, Never>] = []
     private var terminalTransportWaiters: [TerminalTransportWaiter] = []
+    /// `withTransport` callers waiting for a Transport an active run loop is
+    /// installing (a silent replacement — no status change, unlike the
+    /// `.reconnecting` cycles).
+    private var transportWaiters: [TransportWaiter] = []
     /// An action-required connection failure is sticky until the user starts a
     /// new activation. Requests arriving after the failed run must receive the
     /// real failure instead of waiting for work that no longer exists.
@@ -329,15 +333,48 @@ actor EventsSession {
     /// Runs an ordinary RPC against the currently installed Transport.
     /// Calls are intentionally concurrent; the Transport owns its channel
     /// budget. The Transport value never becomes caller-owned state.
+    ///
+    /// A Transport the run loop is replacing (a subscription reinstall that
+    /// found the connection degraded) must not fail every Host-scoped RPC
+    /// while the status still claims `.connected`: callers wait for the next
+    /// installed Transport, the same grace `withTerminalTransport` has. Every
+    /// run-loop exit path — a `.reconnecting`/`.failed` announcement, or
+    /// windDown — releases that wait with the real failure, so a suspended,
+    /// stopped, or user-retryable Host still fails loudly and at once.
     func withTransport<Value: Sendable>(
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
-        guard let transport = currentTransport else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
-        }
+        let transport = try await awaitUsableTransport()
         let value = try await operation(transport)
         noteConnectionActivity()
         return value
+    }
+
+    /// The installed Transport, or — while the active run loop is
+    /// establishing one — the next Transport it installs.
+    private func awaitUsableTransport() async throws -> any Transport {
+        if let transport = currentTransport { return transport }
+        guard phase == .active, !isWindingDown, runTask != nil else {
+            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+        }
+        if let terminalTransportFailure { throw terminalTransportFailure }
+        let id = UUID()
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<any Transport, any Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if let transport = currentTransport {
+                    continuation.resume(returning: transport)
+                } else {
+                    transportWaiters.append(
+                        TransportWaiter(id: id, continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelTransportWaiter(id: id) }
+        }
     }
 
     /// Runs one terminal lifetime with exclusive access to its target.
@@ -482,9 +519,11 @@ actor EventsSession {
                 guard failure.isRetryable else {
                     recordTerminalTransportFailure(failure)
                     failTerminalTransportWaiters(failure, for: generation)
+                    failTransportWaiters(failure)
                     yieldUpdate(.status(.failed(failure)))
                     return
                 }
+                failTransportWaiters(failure)
                 dropSnapshotSubscriptions()
                 attempt += 1
                 await emitReconnectingAndBackOff(
@@ -544,9 +583,11 @@ actor EventsSession {
             guard failure.isRetryable else {
                 recordTerminalTransportFailure(failure)
                 failTerminalTransportWaiters(failure, for: generation)
+                failTransportWaiters(failure)
                 yieldUpdate(.status(.failed(failure)))
                 return
             }
+            failTransportWaiters(failure)
             dropSnapshotSubscriptions()
             attempt += 1
             await emitReconnectingAndBackOff(
@@ -659,6 +700,7 @@ actor EventsSession {
     private func windDown() async {
         isWindingDown = true
         failTerminalTransportWaiters(TransportError.cancelled)
+        failTransportWaiters(TransportError.cancelled)
         backoffSleep?.cancel()
         backoffSleep = nil
         backoffGeneration = nil
@@ -822,6 +864,11 @@ actor EventsSession {
         let continuation: CheckedContinuation<TerminalTransportReady, any Error>
     }
 
+    private struct TransportWaiter {
+        let id: UUID
+        let continuation: CheckedContinuation<any Transport, any Error>
+    }
+
     private func acquireTerminal(target: TerminalAttachTarget?) async throws {
         let id = UUID()
         try Task.checkCancellation()
@@ -912,6 +959,29 @@ actor EventsSession {
                 waiter.continuation.resume(returning: ready)
             }
         }
+        let rpcWaiters = transportWaiters
+        transportWaiters.removeAll()
+        for waiter in rpcWaiters {
+            waiter.continuation.resume(returning: transport)
+        }
+    }
+
+    /// Releases `withTransport` waiters with the failure that stopped the run
+    /// loop — a `.reconnecting` cycle's cause, a `.failed` activation's cause,
+    /// or the teardown's cancellation — so a waiting RPC reports what the
+    /// session is actually doing instead of a phantom unreachable Host.
+    private func failTransportWaiters(_ failure: any Error) {
+        let waiters = transportWaiters
+        transportWaiters.removeAll()
+        for waiter in waiters {
+            waiter.continuation.resume(throwing: failure)
+        }
+    }
+
+    private func cancelTransportWaiter(id: UUID) {
+        guard let index = transportWaiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = transportWaiters.remove(at: index)
+        waiter.continuation.resume(throwing: CancellationError())
     }
 
     private func failTerminalTransportWaiters(

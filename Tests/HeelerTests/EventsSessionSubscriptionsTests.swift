@@ -368,6 +368,170 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    // MARK: Silent transport replacement
+
+    /// A subscription reinstall that finds the connection degraded replaces
+    /// the Transport without announcing anything: the status stays
+    /// `.connected` for the whole redial. The fresh-agent flow lands its
+    /// first `agent.prompt` inside exactly that window — the launch's new
+    /// pane forces the reinstall — and the send used to fail with
+    /// `sshUnreachable` while every surface claimed the Host was connected.
+    /// A caller now waits for the replacement Transport instead.
+    @Test func aRequestWaitsOutTheSilentTransportReplacement() async throws {
+        let first = ScriptedTransport(
+            serverInfo: ServerInfo(version: "first", protocolVersion: 17))
+        let replacement = ScriptedTransport(
+            serverInfo: ServerInfo(version: "replacement", protocolVersion: 17))
+        let connector = SequencedTransportConnector([first, replacement])
+        let connectGate = ScriptedTransportCallGate()
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: {
+                let transport = try await connector.connect()
+                let dial = await connector.connectCount
+                if dial > 1 {
+                    await connectGate.waitUntilOpen()
+                }
+                return transport
+            },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        // The degraded link the events reader has not reported yet: the
+        // reinstall's transport check must replace it, silently.
+        await first.setConnectionAlive(false)
+        await session.updateSubscriptions(updated)
+
+        let probe = Task {
+            try await session.withTransport { transport in
+                try await transport.ping().version
+            }
+        }
+        // Hold the dial closed long enough that the old fail-fast behavior
+        // would already have thrown.
+        try await Task.sleep(for: .milliseconds(50))
+        await connectGate.open()
+        #expect(try await probe.value == "replacement")
+        // A fresh transport sees exactly one `events.subscribe`, with the
+        // CURRENT set: the `[initial]` capture belongs to `first`, the
+        // transport that was replaced. Same contract as the suspend/resume
+        // replacement above (`replacement.capturedSubscriptions == [initial]`)
+        // — accumulating `[initial, updated]` is the same-transport
+        // resubscribe case, not a fresh dial.
+        #expect(await replacement.capturedSubscriptions == [updated])
+
+        // The deliberate replacement never announced a failure or a new
+        // activation; the fresh `.connected` is its only signal.
+        #expect(await updates.next() == .status(.connected))
+        #expect(await session.transportGeneration == 1)
+
+        await session.end()
+    }
+
+    /// The same window, when the replacement dial fails: the waiter must be
+    /// released with that real cause at the `.reconnecting` announcement
+    /// instead of waiting through the backoff.
+    @Test func aRequestWaitingThroughAReplacementFailsWithTheReconnectCause() async throws {
+        let first = ScriptedTransport()
+        let connector = SequencedTransportConnector([first])
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: {
+                let transport = try await connector.connect()
+                let dial = await connector.connectCount
+                if dial > 1 {
+                    throw TransportError.timedOut
+                }
+                return transport
+            },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        await first.setConnectionAlive(false)
+        await session.updateSubscriptions(updated)
+
+        let probe = Task {
+            try await session.withTransport { _ in
+                "delivered"
+            }
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        await #expect(throws: TransportError.timedOut) { try await probe.value }
+
+        // The release rode the honest `.reconnecting` announcement.
+        #expect(
+            await updates.next()
+                == .status(.reconnecting(
+                    attempt: 1,
+                    delay: .milliseconds(10),
+                    failure: .timedOut)))
+
+        await session.suspend()
+        await session.end()
+    }
+
+    /// Parity with `withTerminalTransport`: after the run loop stopped on an
+    /// action-required failure, a Host-scoped RPC reports that cause instead
+    /// of a generic unreachable Host.
+    @Test func aRequestAfterConnectionFailureReceivesTheRealFailureToo() async throws {
+        let transport = ScriptedTransport()
+        let failure = TransportError.socketNotFound(path: "/remote/herdr.sock")
+        await transport.failPing(atCall: 1, with: failure)
+        let session = makeSession(transport: transport)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.failed(failure)))
+
+        do {
+            try await session.withTransport { _ in
+                Issue.record("a failed session handed out a Transport")
+            }
+        } catch let error as TransportError {
+            #expect(error == failure)
+        } catch {
+            Issue.record("expected \(failure), got \(error)")
+        }
+
+        await session.end()
+    }
+
+    /// A suspended session has no run loop to install anything: the honest
+    /// unreachable failure stays immediate.
+    @Test func aRequestOnASuspendedSessionFailsAtOnceWithoutWaiting() async throws {
+        let transport = ScriptedTransport()
+        let session = makeSession(transport: transport)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        await session.suspend()
+        #expect(await updates.next() == .status(.suspended))
+
+        await #expect(throws: TransportError.sshUnreachable(detail: "The Host is not connected.")) {
+            try await session.withTransport { _ in
+                Issue.record("a suspended session handed out a Transport")
+            }
+        }
+
+        await session.end()
+    }
+
     @Test func aNewActivationInvalidatesTheOldReadinessWaiter() async throws {
         let first = ScriptedTransport()
         let second = ScriptedTransport()
