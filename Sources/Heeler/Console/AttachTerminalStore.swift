@@ -231,6 +231,15 @@ final class AttachTerminalStore {
     private var session: TerminalAttachSession?
     private var inputGeneration: TerminalInputController.SessionGeneration?
     private var runTask: Task<Void, Never>?
+    /// Set once an automatic mosh→SSH fallback has run for this store.
+    /// Never reset by the fallback's own restart, so a failed invalidation
+    /// cannot loop mosh against the same dead handshake.
+    private var moshAutoFallbackUsed = false
+    /// True only while the current `.ended` status was produced by
+    /// ``TransportError/moshSessionFailed(detail:)`` — the Session Ended
+    /// overlay uses it to offer "Use SSH Instead".
+    private(set) var endedWithMoshFailure = false
+    private let onMoshFailure: (@MainActor @Sendable () async -> Void)?
     #if DEBUG
     private(set) var restorationTrace = AttachRestorationTrace()
 
@@ -249,6 +258,7 @@ final class AttachTerminalStore {
             _, _ in
         },
         runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
+        onMoshFailure: (@MainActor @Sendable () async -> Void)? = nil,
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.target = target
@@ -259,6 +269,7 @@ final class AttachTerminalStore {
         self.finishOutput = finishOutput
         self.transportReady = transportReady
         self.runDidFinish = runDidFinish
+        self.onMoshFailure = onMoshFailure
         self.runTerminal = runTerminal
     }
 
@@ -272,6 +283,7 @@ final class AttachTerminalStore {
             _, _ in
         },
         runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
+        onMoshFailure: (@MainActor @Sendable () async -> Void)? = nil,
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.init(
@@ -283,6 +295,7 @@ final class AttachTerminalStore {
             finishOutput: finishOutput,
             transportReady: transportReady,
             runDidFinish: runDidFinish,
+            onMoshFailure: onMoshFailure,
             runTerminal: runTerminal)
     }
 
@@ -332,7 +345,27 @@ final class AttachTerminalStore {
     /// Reattaches after the session ended remotely.
     func retry() {
         guard case .ended = status, runTask == nil else { return }
+        // A user-driven reattach is a fresh consent to the mosh path: the
+        // Host may have been fixed since the last handshake failed.
+        moshAutoFallbackUsed = false
         start()
+    }
+
+    /// The Session Ended overlay's "Use SSH Instead": invalidates mosh for
+    /// the Host (so the runner picks SSH), then reattaches. The automatic
+    /// fallback budget stays spent — if mosh were somehow chosen again and
+    /// failed, the overlay would come back rather than loop.
+    func retryOverSSH() {
+        guard case .ended = status else { return }
+        moshAutoFallbackUsed = true
+        let current = runTask
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await current?.value
+            guard !self.stopRequested else { return }
+            await self.onMoshFailure?()
+            self.start()
+        }
     }
 
     /// Ends the session by explicit close (only `end()` runs the channel's
@@ -359,6 +392,7 @@ final class AttachTerminalStore {
 
     private func start() {
         status = .connecting
+        endedWithMoshFailure = false
         runTask = Task { await self.run() }
     }
 
@@ -402,6 +436,27 @@ final class AttachTerminalStore {
             try await runTerminal(request, handler)
         } catch {
             guard !stopRequested else { return }
+            if case TransportError.moshSessionFailed = error {
+                endedWithMoshFailure = true
+                // The mosh attempt died after the banner: invalidate mosh
+                // for the Host and restart once, so SSH takes over without
+                // user action. The fallback restart is scheduled off this
+                // run task — `start()` synchronously would be cleared by
+                // this function's `runTask = nil` defer.
+                if !moshAutoFallbackUsed, onMoshFailure != nil {
+                    moshAutoFallbackUsed = true
+                    status = .connecting
+                    let current = runTask
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        await current?.value
+                        guard !self.stopRequested else { return }
+                        await self.onMoshFailure?()
+                        self.start()
+                    }
+                    return
+                }
+            }
             status = .ended(Self.message(for: error))
             return
         }
@@ -475,6 +530,8 @@ final class AttachTerminalStore {
             "Another terminal is already open on this Host."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.moshSessionFailed(let detail):
+            "The mosh session failed: \(detail)"
         case TransportError.herdrBinaryNotFound:
             TransportError.herdrBinaryNotFound.presentation.message
         default:

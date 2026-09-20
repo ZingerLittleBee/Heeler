@@ -70,6 +70,10 @@ final class AgentAttachStore {
     private let target: String
     private let runTerminal: TerminalSessionRunner
     private let linkIndex: AttachLinkIndex
+    /// Invalidates mosh for the store's Host, wired from the Console. The
+    /// automatic fallback and the Session Ended overlay's "Use SSH Instead"
+    /// both route through it.
+    private let invalidateMosh: (@MainActor @Sendable () async -> Void)?
     /// Whether this screen is still the Console's current detail. The
     /// router's path is the ground truth SwiftUI's appear/disappear
     /// callbacks lack: they hand out spurious pairs amid navigation churn,
@@ -122,12 +126,14 @@ final class AgentAttachStore {
         stageImage: @escaping ImageStager,
         stageFile: @escaping FileStager,
         composer: any ComposerDraftOperations,
-        closePane: @escaping () async throws -> Void
+        closePane: @escaping () async throws -> Void,
+        invalidateMosh: (@MainActor @Sendable () async -> Void)? = nil
     ) {
         let input = TerminalInputController()
         self.target = target
         self.isOnStage = isOnStage
         self.runTerminal = runTerminal
+        self.invalidateMosh = invalidateMosh
         self.transportGeneration = transportGeneration
         self.input = input
         self.composer = composer
@@ -135,7 +141,8 @@ final class AgentAttachStore {
         self.linkIndex = linkIndex
         terminal = Self.makeTerminal(
             target: target, input: input, transportGeneration: transportGeneration,
-            runTerminal: runTerminal, linkIndex: linkIndex)
+            runTerminal: runTerminal, linkIndex: linkIndex,
+            onMoshFailure: invalidateMosh)
         staging = ComposerStagingStore(
             stageImage: stageImage,
             stageFile: stageFile,
@@ -435,7 +442,8 @@ final class AgentAttachStore {
                 },
                 runDidFinish: { [weak self] pipelineID in
                     self?.activationRecovery.clear(boundTo: pipelineID)
-                })
+                },
+                onMoshFailure: self.invalidateMosh)
             #if DEBUG
             self.publishReplacement(replacement)
             #else
@@ -477,6 +485,21 @@ final class AgentAttachStore {
 
     func retryTerminal() {
         terminal.retry()
+    }
+
+    /// Whether the current ended session failed on the mosh path: the
+    /// Session Ended overlay shows "Use SSH Instead" only then.
+    var terminalEndedWithMoshFailure: Bool {
+        if case .ended = terminalStatus, terminal.endedWithMoshFailure {
+            return true
+        }
+        return false
+    }
+
+    /// The overlay's "Use SSH Instead": invalidates mosh for the Host, then
+    /// reattaches — SSH takes over.
+    func useSSHInstead() {
+        terminal.retryOverSSH()
     }
 
     func confirmClose() async -> Bool {
@@ -558,7 +581,8 @@ final class AgentAttachStore {
                 },
                 runDidFinish: { [weak self] pipelineID in
                     self?.activationRecovery.clear(boundTo: pipelineID)
-                })
+                },
+                onMoshFailure: self.invalidateMosh)
             #if DEBUG
             self.publishReplacement(replacement)
             #else
@@ -699,7 +723,8 @@ final class AgentAttachStore {
         transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
             _, _ in
         },
-        runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in }
+        runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
+        onMoshFailure: (@MainActor @Sendable () async -> Void)? = nil
     ) -> AttachTerminalStore {
         AttachTerminalStore(
             target: target,
@@ -710,6 +735,7 @@ final class AgentAttachStore {
             finishOutput: { linkIndex.finishOutput() },
             transportReady: transportReady,
             runDidFinish: runDidFinish,
+            onMoshFailure: onMoshFailure,
             runTerminal: runTerminal)
     }
 }

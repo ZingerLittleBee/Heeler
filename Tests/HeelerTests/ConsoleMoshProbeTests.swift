@@ -85,4 +85,33 @@ private struct ConsoleMoshProbeTests {
 
         store.setHosts([])
     }
+
+    /// `invalidateMosh` marks the current generation unavailable immediately
+    /// — the runner reads SSH — and the generation's own background probe
+    /// cannot re-mark it available afterwards.
+    @Test func invalidationMarksTheCurrentGenerationUnavailable() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture())
+        await transport.setMoshProbeAvailable(true)
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the probe outcome should land") {
+            store.moshProbe(for: host.id)?.available == true
+        }
+
+        store.invalidateMosh(for: host.id)
+        let generation = store.hostConnectionGenerations[host.id] ?? 0
+        #expect(!store.moshAvailability(for: host.id, generation: generation))
+
+        // A slow probe completing after the invalidation must not flip the
+        // Host back to mosh-available within the same generation.
+        await transport.setMoshProbeAvailable(true)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(store.moshProbe(for: host.id)?.available == false)
+        #expect(store.moshProbe(for: host.id)?.generation == generation)
+
+        store.setHosts([])
+    }
 }

@@ -365,12 +365,30 @@ final class ConsoleStore {
         let available: Bool
     }
 
+    /// Generations whose mosh availability was invalidated by a failed
+    /// handshake (`invalidateMosh(for:)`). The in-flight background probe
+    /// for that generation must not override the invalidation; only the
+    /// next connection generation may re-probe.
+    @ObservationIgnored private var moshInvalidatedGenerations: [Host.ID: UInt64] = [:]
+
     /// The mosh runner's availability input: the current connection
     /// generation's probe outcome. A Host still probing, or whose probe
     /// raced a reconnect, reads unavailable — SSH stays the backbone.
     func moshAvailability(for hostID: Host.ID, generation: UInt64) -> Bool {
         guard let probe = moshProbes[hostID] else { return false }
         return probe.generation == generation && probe.available
+    }
+
+    /// Marks mosh unavailable for the Host's current connection generation:
+    /// the terminal runner reads SSH immediately, and the per-generation
+    /// background probe may re-probe only on the next connection
+    /// generation. This is the mosh handshake-failure path — the automatic
+    /// fallback and the Session Ended overlay's "Use SSH Instead" both
+    /// route here.
+    func invalidateMosh(for hostID: Host.ID) {
+        let generation = hostConnectionGenerations[hostID] ?? 0
+        moshProbes[hostID] = MoshProbeOutcome(generation: generation, available: false)
+        moshInvalidatedGenerations[hostID] = generation
     }
 
     /// Test surface: the cached probe outcome, proving the probe ran (once)
@@ -762,8 +780,13 @@ final class ConsoleStore {
                         available = false
                     }
                     // A probe landing for a replaced connection must not
-                    // override a newer generation's outcome.
+                    // override a newer generation's outcome, and a probe
+                    // racing an invalidation must not re-mark a failed
+                    // handshake as available before the next generation.
                     if moshProbes[hostID].map({ $0.generation > generation }) ?? false {
+                        return
+                    }
+                    if moshInvalidatedGenerations[hostID].map({ $0 >= generation }) ?? false {
                         return
                     }
                     moshProbes[hostID] = MoshProbeOutcome(

@@ -85,6 +85,8 @@ struct AgentDetailView: View {
                 composer: composer
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
+            } invalidateMosh: {
+                await console.invalidateMosh(for: agent.hostID)
             }
         _attach = State(initialValue: attach)
         let reference = AgentDetailAttachReference(attach)
@@ -176,6 +178,10 @@ struct AgentDetailView: View {
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
                 try await console.closePane(paneID, on: hostID)
+            },
+            invalidateMosh: { [weak console] in
+                guard let console else { return }
+                await console.invalidateMosh(for: hostID)
             })
     }
 

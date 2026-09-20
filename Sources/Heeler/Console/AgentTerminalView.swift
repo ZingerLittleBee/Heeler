@@ -332,6 +332,8 @@ struct AgentTerminalView: View {
                 composer: composer
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
+            } invalidateMosh: {
+                await console.invalidateMosh(for: agent.hostID)
             })
         _skills = State(initialValue: Self.makeSkillsStore(for: agent, console: console))
         _messageJump = State(
@@ -1685,8 +1687,14 @@ struct AgentTerminalView: View {
                     palette: themePalette,
                     dimsBackground: presentation.dimsBackground
                 ) {
-                    Button("Reattach") { attach.retryTerminal() }
-                        .buttonStyle(.borderedProminent)
+                    VStack(spacing: 8) {
+                        Button("Reattach") { attach.retryTerminal() }
+                            .buttonStyle(.borderedProminent)
+                        if attach.terminalEndedWithMoshFailure {
+                            Button("Use SSH Instead") { attach.useSSHInstead() }
+                                .buttonStyle(.bordered)
+                        }
+                    }
                 }
             }
         } else {

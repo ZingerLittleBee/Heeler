@@ -29,6 +29,15 @@ struct AttachTerminalStoreTests {
         return (store, captured)
     }
 
+    /// Thread-safe record of the fallback wiring's calls and the runner's
+    /// attempts, for the mosh auto-fallback tests.
+    final class MoshFallbackTrace: @unchecked Sendable {
+        let lock = NSLock()
+        var attempts = 0
+        var invalidations = 0
+        var invalidatedBeforeSSH = false
+    }
+
     /// Stands in for the Ghostty surface: a terminal the feed can deliver to,
     /// and one the test can drop to model SwiftUI replacing it.
     @MainActor
@@ -295,6 +304,69 @@ struct AttachTerminalStoreTests {
         store.viewDidResize(cols: 80, rows: 24)
         try await waitUntil("the store should surface the missing transport") {
             store.status == .ended("The Host is not connected.")
+        }
+    }
+
+    /// A mosh failure after the banner auto-falls back to SSH exactly once:
+    /// the invalidation runs before the restart, the second run lands live
+    /// on SSH, and no `.ended` overlay ever shows.
+    @Test func moshSessionFailureFallsBackToSSHAutomaticallyOnce() async throws {
+        let trace = MoshFallbackTrace()
+        let store = AttachTerminalStore(
+            target: "w1:p1", takeover: true,
+            onMoshFailure: { trace.lock.withLock { trace.invalidations += 1 } }
+        ) { _, _ in
+            trace.lock.withLock { trace.attempts += 1 }
+            let attempts = trace.lock.withLock { trace.attempts }
+            if attempts == 1 {
+                throw TransportError.moshSessionFailed(
+                    detail: "mosh session failed (exit status 1)")
+            }
+            trace.lock.withLock { trace.invalidatedBeforeSSH = trace.invalidations > 0 }
+            throw TransportError.sshUnreachable(detail: "scripted SSH failure")
+        }
+
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the fallback should restart over SSH") {
+            let (attempts, invalidations) = trace.lock.withLock { (trace.attempts, trace.invalidations) }
+            return attempts == 2 && invalidations == 1
+        }
+        #expect(trace.lock.withLock { trace.invalidatedBeforeSSH })
+        // The SSH attempt's own failure ends the session — no mosh message,
+        // no second fallback.
+        #expect(
+            store.status == .ended("The Host is not connected."))
+
+        await store.stop()
+    }
+
+    /// Without fallback wiring the mosh failure ends the session once, with
+    /// the mosh message and the "Use SSH Instead" affordance — and
+    /// `retryOverSSH` cannot loop: one invalidation, one restart, and the
+    /// budget stays spent.
+    @Test func moshFailureWithoutFallbackEndsAndOffersSSHInstead() async throws {
+        let store = AttachTerminalStore(
+            target: "w1:p1", takeover: true
+        ) { _, _ in
+            throw TransportError.moshSessionFailed(
+                detail: "mosh session failed (exit status 1)")
+        }
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the mosh failure should surface") {
+            store.status == .ended("The mosh session failed: mosh session failed (exit status 1)")
+        }
+        #expect(store.endedWithMoshFailure)
+
+        store.retryOverSSH()
+        try await waitUntil("the forced reattach should end again") {
+            if case .ended = store.status { return true }
+            return false
+        }
+        // One restart only: the second failure ends, never loops.
+        try await Task.sleep(for: .milliseconds(50))
+        guard case .ended = store.status else {
+            #expect(false, "expected .ended, got \(store.status)")
+            return
         }
     }
 

@@ -870,6 +870,12 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// herdr answered with an error envelope: the request arrived intact and
     /// the server rejected it on its own terms.
     case apiRejected(code: String, message: String)
+    /// The mosh bootstrap produced a banner, but the UDP session itself
+    /// failed: `mosh_main` exited nonzero or the output pump broke. A real
+    /// SSH failure on the same connection surfaces under its own cause —
+    /// this case marks only the mosh path, which the Console invalidates
+    /// and falls back from.
+    case moshSessionFailed(detail: String)
     /// The channel failed outside the known failure shapes; carries the
     /// underlying description for diagnostics.
     case channelFailed(detail: String)
@@ -885,7 +891,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // A rejection is retryable because herdr's error codes are open-ended
         // and most of them describe a target that moved, not a broken setup.
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
-            .apiRejected:
+            .apiRejected, .moshSessionFailed:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,

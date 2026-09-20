@@ -86,6 +86,10 @@ final class AgentTerminalCache {
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
+            },
+            invalidateMosh: { [weak console] in
+                guard let console else { return }
+                await console.invalidateMosh(for: agent.hostID)
             })
         let entry = Entry(
             agentID: agent.id, terminalID: agent.agent.terminalID,

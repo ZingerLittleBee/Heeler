@@ -120,4 +120,37 @@ struct MoshBootstrapTests {
                 socketPath: "/home/user/.herdr/herdr.sock")
         }
     }
+
+    // MARK: typed mosh failure and transport choice
+
+    @Test func moshSessionFailedCarriesItsDetailAndIsRetryable() {
+        let error = TransportError.moshSessionFailed(
+            detail: "mosh session failed (exit status 1)")
+        #expect(error == .moshSessionFailed(detail: "mosh session failed (exit status 1)"))
+        #expect(error.isRetryable)
+        #expect(error.presentation.summary == "The mosh session failed")
+        #expect(!error.isHostKeySecurityFailure)
+    }
+
+    @Test func probeBootstrapCommandWrapsAKeepAliveNotAHerdrAttach() throws {
+        let command = try HeelerSSHTransport.moshProbeBootstrapCommand(
+            socketPath: "/home/user/.herdr/herdr.sock")
+        #expect(command.contains("sh -c \"exec sleep 120\""))
+        #expect(command.contains("mosh-probe"))
+    }
+
+    @Test func invalidationMakesTheTransportChoiceReadSSH() {
+        // The runner consults MoshTransportChoice with the Console's
+        // availability read; an invalidated probe must read unavailable even
+        // though mosh-server exists on the Host.
+        #expect(
+            MoshTransportChoice.select(availability: true, target: .agentPane("w1:p1"))
+                == .mosh)
+        #expect(
+            MoshTransportChoice.select(availability: false, target: .agentPane("w1:p1"))
+                == .ssh)
+        #expect(
+            MoshTransportChoice.select(availability: true, target: .terminal("t1"))
+                == .ssh)
+    }
 }

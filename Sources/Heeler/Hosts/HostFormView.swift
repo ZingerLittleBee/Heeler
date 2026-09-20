@@ -121,6 +121,21 @@ struct HostFormView: View {
                         Text("Leave blank to connect to the Host directly.")
                     }
                 }
+
+                Section {
+                    moshTestRow
+                    Button("Test Mosh on this Host") {
+                        Task { await testMosh() }
+                    }
+                    .disabled(moshTest == .testing)
+                } header: {
+                    Text("Mosh")
+                } footer: {
+                    Text(
+                        "Connects with the credentials entered above and runs a real "
+                            + "mosh handshake. Sessions fall back to SSH whenever mosh "
+                            + "fails, so a failed test does not block saving.")
+                }
             }
             .navigationTitle(editing == nil ? "Add Host" : "Edit Host")
             .navigationBarTitleDisplayMode(.inline)
@@ -202,6 +217,94 @@ struct HostFormView: View {
         return "The Host's Address and Port are resolved from the Jump Host, usually through "
             + "a loopback-only reverse tunnel. \(credentialRequirement) You confirm each "
             + "machine's host key fingerprint independently on first connect."
+    }
+
+    // MARK: mosh test
+
+    enum MoshTestState: Equatable {
+        case idle
+        case testing
+        case available
+        case unavailable
+        /// The test could not reach the Host at all; carries why.
+        case couldNotConnect(String)
+    }
+
+    @State private var moshTest: MoshTestState = .idle
+
+    @ViewBuilder
+    private var moshTestRow: some View {
+        switch moshTest {
+        case .idle:
+            Label(
+                "Not tested yet — sessions use SSH until mosh is proven",
+                systemImage: "circle.dashed")
+                .foregroundStyle(.secondary)
+        case .testing:
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Testing mosh on this Host…")
+            }
+        case .available:
+            Label("Mosh available on this Host", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .unavailable:
+            Label(
+                "Mosh handshake failed — sessions will use SSH",
+                systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+        case .couldNotConnect(let reason):
+            Label(
+                "Could not connect to test. \(reason)",
+                systemImage: "minus.circle")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Runs a mosh handshake proof against the draft Host: resolves the
+    /// draft's credentials, connects exactly like onboarding's preflight,
+    /// then runs the transport's real handshake probe. Untrusted host keys
+    /// are declined — the test only works for a Host the device has already
+    /// trusted (or an unchanged edit), and says so otherwise.
+    @MainActor
+    private func testMosh() async {
+        guard moshTest != .testing else { return }
+        guard let host = draft.makeHost() else {
+            moshTest = .couldNotConnect("The Host details above are incomplete.")
+            return
+        }
+        if draft.authMethod == .password, draft.password.isEmpty, editing == nil {
+            moshTest = .couldNotConnect(
+                "Enter the password above first — it is not stored until the Host is saved.")
+            return
+        }
+        moshTest = .testing
+        defer { if moshTest == .testing { moshTest = .couldNotConnect("The test was interrupted.") } }
+        let provider = HostCredentialsProvider()
+        do {
+            let credentials = try provider.credentials(for: host)
+            let policy = HostKeyPolicy(knownHosts: UserDefaultsKnownHostsStore.shared) { _ in
+                false
+            }
+            let connector = SSHTransportConnector()
+            let transport = try await connector.connect(
+                settings: SSHTransportSettings(
+                    host: host, credentials: credentials, hostKeyPolicy: policy))
+            defer { Task { try? await transport.close() } }
+            do {
+                let available = try await transport.probeMoshServer()
+                moshTest = available ? .available : .unavailable
+            } catch {
+                moshTest = .couldNotConnect("The mosh probe could not run.")
+            }
+        } catch HostCredentialsError.passwordNotSet {
+            moshTest = .couldNotConnect(
+                "No password is saved for this Host. Save the Host and try again.")
+        } catch {
+            moshTest = .couldNotConnect(
+                (error as? TransportError)?.presentation.summary
+                    ?? String(describing: error))
+        }
     }
 
     @ViewBuilder

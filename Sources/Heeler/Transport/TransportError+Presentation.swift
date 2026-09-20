@@ -135,6 +135,11 @@ extension TransportError {
                 summary: "herdr rejected the request",
                 detail: "\(message) (\(code))",
                 recoverySuggestion: nil)
+        case .moshSessionFailed(let detail):
+            TransportErrorPresentation(
+                summary: "The mosh session failed",
+                detail: detail,
+                recoverySuggestion: "Sessions will use SSH instead.")
         case .channelFailed(let detail):
             TransportErrorPresentation(
                 summary: "Connection dropped",

@@ -195,7 +195,7 @@ private final class MoshSessionLifecycle: Sendable {
             }
             if count == 0 { break }
             if errno == EINTR { continue }
-            failure = TransportError.channelFailed(
+            failure = TransportError.moshSessionFailed(
                 detail: "mosh output read failed (errno \(errno))")
             break
         }
@@ -204,7 +204,7 @@ private final class MoshSessionLifecycle: Sendable {
         // exit code is recorded before that close — so it is already here.
         let exitCode = state.withLock { $0.moshExitCode } ?? 1
         if failure == nil, exitCode != 0 {
-            failure = TransportError.channelFailed(
+            failure = TransportError.moshSessionFailed(
                 detail: "mosh session failed (exit status \(exitCode))")
         }
         outputGate.finish(throwing: failure)

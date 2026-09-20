@@ -143,6 +143,11 @@ struct PreflightReport: Equatable, Sendable {
         case .apiRejected(let code, let message):
             check = .serverRunning
             hint = "herdr answered but rejected the check: \(message) (\(code))"
+        case .moshSessionFailed(let detail):
+            // A connect+ping preflight never opens a mosh session; keep the
+            // closed taxonomy total anyway.
+            check = .connection
+            hint = "The mosh session failed. (\(detail))"
         case .channelFailed(let detail):
             check = .connection
             hint = "The connection failed unexpectedly. (\(detail))"

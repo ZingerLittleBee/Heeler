@@ -2307,12 +2307,97 @@ actor HeelerSSHTransport: Transport {
         return line
     }
 
-    /// Whether `mosh-server` is on the Host's effective PATH. The probe
-    /// rides the same PATH export as every herdr exec (mosh installs into
-    /// the same Homebrew/linuxbrew prefixes), so `command -v` is enough.
+    /// Whether mosh can carry an interactive session on this Host, proven by
+    /// a real handshake: a throwaway `mosh-server new` bootstrap, then a
+    /// short-lived ``MoshAttachSession`` whose output is read on a bounded
+    /// watchdog. `command -v mosh-server` only answers whether the binary
+    /// is installed — it cannot see the broken UDP handshake the bundled
+    /// library can hit even on a healthy Host.
     func probeMoshServer() async throws -> Bool {
         let output = try await runHostCommand(Self.moshProbeCommand)
-        return !output.isEmpty
+        guard !output.isEmpty else { return false }
+        return await probeMoshHandshake()
+    }
+
+    /// The mosh UDP failure's printed epilogue, from libmoshios: the client
+    /// prints it when the UDP path to mosh-server is unreachable. Seeing it
+    /// means the handshake will fail for real sessions too.
+    static let moshFailureEpilogue = "Please verify that UDP port"
+
+    /// Probe budget: the bootstrap exec plus this watchdog window, so a
+    /// stuck mosh_main cannot hold the probe open.
+    static let moshHandshakeWatchdog: Duration = .seconds(6)
+
+    /// One full mosh handshake proof. Bootstraps `mosh-server new` around a
+    /// trivial keep-alive (not a live Agent's pane), drives `mosh_main`
+    /// through ``MoshAttachSession``, and reads its output under a watchdog:
+    /// a thrown failure, a nonzero mosh exit, or the UDP epilogue text mark
+    /// the handshake failed; surviving the window without either proves the
+    /// UDP session is live.
+    private func probeMoshHandshake() async -> Bool {
+        let bootstrap: MoshBootstrap
+        do {
+            let socketPath = try await resolvedSocketPath()
+            let command = try Self.moshProbeBootstrapCommand(socketPath: socketPath)
+            let output = try await runHostCommand(command)
+            guard let parsed = MoshBootstrap.parse(output, host: sshHost) else {
+                return false
+            }
+            bootstrap = parsed
+        } catch {
+            return false
+        }
+        let session = MoshAttachSession.make(
+            bootstrap: bootstrap, cols: 80, rows: 24)
+        defer { Task { await session.end() } }
+        return await Self.awaitHandshakeProof(session)
+    }
+
+    /// Races the session's output against the watchdog. Any output that
+    /// carries the UDP-failure epilogue, or a thrown ``moshSessionFailed``,
+    /// decides first; a watchdog that outlasts both proves the session
+    /// stayed up. A clean early exit also counts as proof: mosh only exits
+    /// cleanly after the wrapped command finished on a working UDP session.
+    private static func awaitHandshakeProof(_ session: TerminalAttachSession) async -> Bool {
+        let failureBytes = Data(moshFailureEpilogue.utf8)
+        let window = moshHandshakeWatchdog
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                do {
+                    var received = Data()
+                    for try await bytes in session.output {
+                        received.append(bytes)
+                        if received.range(of: failureBytes) != nil {
+                            return false
+                        }
+                    }
+                    return true
+                } catch {
+                    return false
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: moshHandshakeWatchdog)
+                return true
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// Builds the probe's bootstrap: the same `mosh-server new` exec as the
+    /// real attach, wrapping a keep-alive shell instead of a herdr attach so
+    /// the probe never touches a live Agent pane. The keep-alive command
+    /// deliberately contains no single quotes (it rides inside the
+    /// bootstrap's outer `/bin/sh -c '…'` wrapper).
+    static func moshProbeBootstrapCommand(socketPath: String) throws -> String {
+        try moshBootstrapCommand(
+            agentAttachCommand: "sh -c \"exec sleep 120\"",
+            terminalAttachCommand: "",
+            request: TerminalAttachRequest(
+                target: .agentPane("mosh-probe"), takeover: false, cols: 80, rows: 24),
+            socketPath: socketPath)
     }
 
     func runMoshBootstrap(_ request: TerminalAttachRequest) async throws -> MoshBootstrap {
