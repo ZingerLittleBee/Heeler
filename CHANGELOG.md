@@ -22,6 +22,20 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- A message sent to an Agent the app had just launched no longer fails with
+  "The Host is not connected." Launching an Agent — a new Workspace's Agent in
+  particular — makes the Console subscribe to that pane's status events, and
+  when the Host's connection has gone quiet or degraded during the launch,
+  that subscription swap silently replaces the SSH transport. The Console kept
+  reporting the Host as connected while every Host-scoped request — the
+  composer's send included — was refused for the seconds the replacement dial
+  took, and the first message typed into the fresh Agent's tab died inside
+  that window; leaving the Agent and returning was what made sending work.
+  Host-scoped requests now wait for the replacement transport instead of
+  failing against a gap the connection status never announced, and still fail
+  at once with the real cause when the session is suspended, stopped on an
+  action-required failure, or visibly reconnecting.
+
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or
   in Composer, so pressing Space cannot add a suggested word after the letters

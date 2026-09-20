@@ -1281,6 +1281,84 @@ struct ConsoleStoreTests {
         #expect(store.agents.isEmpty)
     }
 
+    /// The fresh-session send bug: a launch's new pane forces the next resync
+    /// to reinstall the pane subscription set, and a degraded link turns that
+    /// reinstall into a silent transport replacement (no `.reconnecting`, the
+    /// Host still reads `.connected`). The composer's first send used to die
+    /// with `sshUnreachable` inside that window; it now waits out the redial
+    /// and delivers on the replacement Transport.
+    @Test func promptAgentSurvivesTheSilentTransportReplacement() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let replacement = ScriptedTransport(
+            snapshot: .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w1:pnew", status: .idle),
+            ]))
+        let queue = ConnectionAttemptQueue([.success(first), .success(replacement)])
+        let connectGate = ScriptedTransportCallGate()
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            pins: PinnedAgentsStore(
+                defaults: UserDefaults(suiteName: "hm-console-pins-\(UUID().uuidString)")
+                    ?? .standard)
+        ) { host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    let transport = try await queue.next()
+                    let dial = await queue.attemptCount
+                    if dial > 1 {
+                        await connectGate.waitUntilOpen()
+                    }
+                    return transport
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial Agent should arrive") {
+            store.agents.map(\.agent.paneID) == ["w1:p1"]
+        }
+
+        // The launched pane's membership change forces the reinstall, and
+        // the degraded link makes it a silent redial held closed by the gate.
+        await first.setSnapshot(
+            .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w1:pnew", status: .idle),
+            ]))
+        await first.setConnectionAlive(false)
+        #expect(
+            await first.emit(
+                HerdrEvent(kind: GlobalEventKind.paneAgentDetected.kind, data: .object([:])))
+            == true)
+        try await waitUntil("the reinstall should hold the replacement dial closed") {
+            await connectGate.entryCount == 1
+        }
+
+        let prompt = Task {
+            try await store.promptAgent(
+                AgentPromptParams(target: "w1:pnew", text: "hello"), on: host.id)
+        }
+        // The redial is still closed; the old fail-fast behavior would
+        // already have surfaced `sshUnreachable` here.
+        try await Task.sleep(for: .milliseconds(50))
+        await connectGate.open()
+        let prompted = try await prompt.value
+
+        #expect(prompted.paneID == "w1:pnew")
+        try await waitUntil("the send should have landed on the replacement") {
+            let params = await replacement.agentPromptParams
+            return params.map(\.target) == ["w1:pnew"] && params.map(\.text) == ["hello"]
+        }
+
+        store.setHosts([])
+    }
+
     @Test func startAgentThrowsWhenTheHostIsUnknown() async throws {
         let host = Host.fixture()
         let store = makeStore(transports: [:])
