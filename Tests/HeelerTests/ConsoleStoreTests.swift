@@ -57,8 +57,8 @@ struct ConsoleStoreTests {
             hostName: hostName,
             agent: Agent(.fixture(paneID: paneID, status: status)),
             workspaceLabel: workspaceLabel,
-            workspaceTabCount: workspaceTabCount,
-            repositoryCheckout: nil)
+            repositoryCheckout: nil,
+            workspaceTabCount: workspaceTabCount)
     }
 
     @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {
@@ -66,7 +66,7 @@ struct ConsoleStoreTests {
         // close when the tab is the workspace's last one — closing it takes
         // the workspace down with it.
         let host = Host.fixture()
-        let store = makeStore(hosts: [host], recorder: StartRecorder())
+        let store = makeStore(transports: [:])
         let last = consoleAgent(
             hostID: host.id, hostName: host.name, paneID: "w1:p1",
             status: .idle, workspaceTabCount: 1)
