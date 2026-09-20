@@ -1021,19 +1021,19 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
     }
 }
 
-/// Far-right dot row for one workspace group header: one dot per Agent whose
-/// status asks for anything (Idle contributes nothing), read left to right
-/// in attention order — Unknown red, Blocked blue, Working yellow, Done
-/// green. Done renders as an outline, the only status whose dot announces a
-/// finished result rather than an open one. Capped at five dots with a
-/// muted "+N" for the rest.
+/// Far-right dot row for one workspace group header: one dot per Agent,
+/// read left to right in attention order — Unknown red, Blocked blue,
+/// Working yellow, Done green, Idle gray last. Done and Idle render as
+/// outlines: Done announces a finished result, and Idle stays hollow so a
+/// crowd of resting agents never outweighs the one that needs you. Capped
+/// at five dots with a muted "+N" for the rest.
 private struct ConsoleWorkspaceStatusDots: View {
     let statuses: [AgentStatus]
 
     /// Priority order for the row: the red `unknown` (an unreadable failure)
     /// leads, then Blocked, Working, Done — matching herdr's sidebar, where
-    /// the rows waiting on the user lead in blue.
-    private static let priority: [AgentStatus] = [.unknown, .blocked, .working, .done]
+    /// the rows waiting on the user lead in blue. Idle trails, hollow.
+    private static let priority: [AgentStatus] = [.unknown, .blocked, .working, .done, .idle]
 
     private var dots: (visible: [AgentStatus], overflow: Int) {
         let sorted = statuses.sorted { lhs, rhs in
@@ -1048,7 +1048,7 @@ private struct ConsoleWorkspaceStatusDots: View {
     var body: some View {
         HStack(spacing: 3) {
             ForEach(Array(dots.visible.enumerated()), id: \.offset) { _, status in
-                if status == .done {
+                if status == .done || status == .idle {
                     Circle()
                         .strokeBorder(
                             Color(status.inkUIColor),
