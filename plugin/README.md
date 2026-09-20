@@ -102,9 +102,10 @@ enrolls, the QR is replaced by a success screen showing the enrolled Device
 Key's fingerprint and label; press `r` there to revoke that key (removing its
 `authorized_keys` line), or any other key to close.
 
-The Pairing Code advertises SSH port 22 by default. Override it with
-`pair.json` in the plugin config directory when OpenSSH listens elsewhere —
-for example, Tailscale SSH on port 22 with OpenSSH on 2222:
+Starting with plugin 0.5.0, the advertised SSH port is configurable. It is 22
+by default; override it with `pair.json` in the plugin config directory when
+OpenSSH listens elsewhere — for example, Tailscale SSH on port 22 with
+OpenSSH on 2222:
 
 ```bash
 herdr plugin config-dir heeler
