@@ -19,6 +19,11 @@ packages:
   # checked-in native artifacts. The one SSH backend (ADR 0011).
   HeelerSSH:
     path: Packages/HeelerSSH
+  # Repository-local package owning the mosh (UDP) transport's native
+  # artifacts: libmoshios + protobuf 2.6.1 merged per slice. The SSH
+  # connection bootstraps mosh-server; the session itself runs over UDP.
+  HeelerMosh:
+    path: Packages/HeelerMosh
   # Pin the reviewed 1.6.20260909 source commit. Its prebuilt libghostty is
   # Ghostty 82938b633ba6 with SwiftPM checksum
   # 2d9a26e80c3836c450f03ea2cf9d191841d9093d4f61c1cea466d2fc8e215dbb.
@@ -89,6 +94,10 @@ targets:
         # declaring it here keeps every TestFlight upload from stalling on the
         # Missing Compliance prompt.
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        # libmoshios is C++ and its protobuf I/O paths need zlib; both must
+        # reach the final app link (mirrored in the HeelerMosh package's
+        # linkerSettings for SwiftPM-driven builds).
+        OTHER_LDFLAGS: "-lc++ -lz"
         # iPhone and iPad. App Store Connect derives device support from the build.
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -99,6 +108,7 @@ targets:
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
     dependencies:
       - package: HeelerSSH
+      - package: HeelerMosh
       - package: GhosttyTerminal
       - package: GhosttyTerminal
         product: GhosttyTheme
@@ -222,6 +232,7 @@ targets:
     dependencies:
       - target: Heeler
       - package: HeelerSSH
+      - package: HeelerMosh
       - package: GhosttyTerminal
 
 schemes:

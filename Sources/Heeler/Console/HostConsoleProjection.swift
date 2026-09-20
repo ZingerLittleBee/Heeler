@@ -34,6 +34,12 @@ final class HostConsoleProjection {
         worktreeRemovalReceiptsByAgent.mapValues(\.receipt)
     }
 
+    /// Installed by ConsoleStore once per projection: reads the Host's
+    /// mosh-availability probe for the *current* connection generation.
+    /// Late-bound so the projection never reaches into the store; the
+    /// default keeps every consumer on SSH until the probe lands.
+    var moshAvailability: @Sendable () async -> Bool = { false }
+
     private struct WorktreeRemovalReceiptRecord {
         let receipt: WorktreeRemovalReceipt
         let snapshotRequestGeneration: UInt64
@@ -213,6 +219,7 @@ final class HostConsoleProjection {
 
     func terminalRunner() -> TerminalSessionRunner {
         let session = session
+        let availability = moshAvailability
         return { request, handler in
             try await session.withTerminalTransport(target: request.target) {
                 transport, generation in
@@ -220,6 +227,36 @@ final class HostConsoleProjection {
                 #if DEBUG
                 await handler.attachRequestDidStart()
                 #endif
+                // mosh carries the Agent terminal over UDP when the Host
+                // probed mosh-server; any bootstrap failure — absent
+                // binary, unparseable banner — falls back below to the
+                // SSH attach on the same acquired transport. Ordinary
+                // shell terminals stay on SSH outright.
+                if MoshTransportChoice.select(
+                    availability: await availability(), target: request.target
+                ) == .mosh {
+                    let terminal: TerminalAttachSession
+                    do {
+                        let bootstrap = try await transport.runMoshBootstrap(
+                            request)
+                        terminal = MoshAttachSession.make(
+                            bootstrap: bootstrap,
+                            cols: request.cols,
+                            rows: request.rows)
+                    } catch {
+                        // The mosh session never came up, so the SSH path
+                        // has not run yet on this connection: ride it.
+                        let fallback = try await transport.attachTerminal(
+                            request)
+                        #if DEBUG
+                        await handler.attachChannelDidOpen()
+                        #endif
+                        try await handler.runEndingSession(fallback)
+                        return
+                    }
+                    try await handler.runEndingSession(terminal)
+                    return
+                }
                 let terminal = try await transport.attachTerminal(request)
                 #if DEBUG
                 await handler.attachChannelDidOpen()
@@ -451,22 +488,37 @@ final class HostConsoleProjection {
     private func authorizeWorktreeRemoval(_ request: WorktreeRemovalRequest) throws {
         guard
             var operation = worktreeRemovalOperations[request.id],
-            operation.request == request,
-            case .preparing = operation.phase,
-            let workspace = workspacesByID[request.identity.workspaceID],
-            let checkout = workspace.worktree.map(RepositoryCheckout.init),
-            request.identity.matches(checkout)
+            operation.request == request
         else {
             throw WorktreeRemovalError.staleIdentity
         }
-        operation.affectedAgentIDs = Set(
-            agentsByPane.values.lazy
-                .filter {
-                    $0.agent.workspaceID == request.identity.workspaceID
-                        && $0.repositoryCheckout.map(request.identity.matches) == true
-                }
-                .map(\.id))
-        worktreeRemovalOperations[request.id] = operation
+        // The transport retry legitimately re-enters this boundary while the
+        // first write is still in flight (.dispatched): the request is
+        // unchanged, so re-authorizing is a no-op for that phase. Only the
+        // pre-dispatch phase requires the workspace-identity proof.
+        switch operation.phase {
+        case .dispatched:
+            worktreeRemovalOperations[request.id] = operation
+            return
+        case .preparing:
+            guard
+                let workspace = workspacesByID[request.identity.workspaceID],
+                let checkout = workspace.worktree.map(RepositoryCheckout.init),
+                request.identity.matches(checkout)
+            else {
+                throw WorktreeRemovalError.staleIdentity
+            }
+            operation.affectedAgentIDs = Set(
+                agentsByPane.values.lazy
+                    .filter {
+                        $0.agent.workspaceID == request.identity.workspaceID
+                            && $0.repositoryCheckout.map(request.identity.matches) == true
+                    }
+                    .map(\.id))
+            worktreeRemovalOperations[request.id] = operation
+        default:
+            throw WorktreeRemovalError.staleIdentity
+        }
     }
 
     private func worktreeRemovalWasDispatched(_ request: WorktreeRemovalRequest) {

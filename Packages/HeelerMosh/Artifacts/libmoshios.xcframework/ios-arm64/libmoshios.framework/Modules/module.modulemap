@@ -1,0 +1,4 @@
+framework module libmoshios [system] {
+    umbrella header "moshiosbridge.h"
+    export *
+}

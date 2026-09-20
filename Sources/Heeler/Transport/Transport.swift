@@ -174,6 +174,24 @@ protocol Transport: Sendable {
     /// targets share the bounded Host channel admission budget.
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
+    /// Probes whether this Host can serve a mosh (UDP) terminal:
+    /// `mosh-server` must be on the Host's effective PATH. Console-side
+    /// callers run this once per connection generation and cache the
+    /// outcome — including a thrown probe as unavailable — so Attach never
+    /// pays it per session. SSH stays the backbone either way: the probe
+    /// only gates whether the mosh runner may attempt a bootstrap.
+    func probeMoshServer() async throws -> Bool
+
+    /// Bootstraps one mosh session for an interactive Attach: runs
+    /// `mosh-server new` for the request's target over a PTY-less exec
+    /// (mosh-server allocates its own PTY for the wrapped command), parses
+    /// the `MOSH CONNECT` banner, and returns the UDP endpoint plus session
+    /// key. mosh-server keeps running on the Host after this returns; the
+    /// returned bootstrap's `host` is the SSH host it was started on.
+    /// Throws — and the caller falls back to ``attachTerminal`` — when
+    /// mosh-server is absent or its banner never arrives.
+    func runMoshBootstrap(_ request: TerminalAttachRequest) async throws -> MoshBootstrap
+
     /// Stages one normalized app-owned image in private Host temporary
     /// storage. Concrete transports own destination selection, restrictive
     /// permissions, partial-file handling, and atomic completion (ADR 0006).

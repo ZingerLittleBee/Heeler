@@ -444,6 +444,15 @@
 
         func closePane(_ params: PaneTarget) async throws {}
         func closeTab(_ params: TabTarget) async throws {}
+
+        // Demo terminals are scripted fixture streams; there is no Host to
+        // probe or bootstrap, so mosh reports unavailable and every attach
+        // rides the SSH-shaped attachTerminal above.
+        func probeMoshServer() async throws -> Bool { false }
+        func runMoshBootstrap(_ request: TerminalAttachRequest) async throws -> MoshBootstrap {
+            throw TransportError.channelFailed(detail: "mosh is not available in demo mode")
+        }
+
         func movePane(_ params: PaneMoveParams) async throws -> PaneMoveResponse {
             throw TransportError.channelFailed(detail: "moves are not scripted in demo mode")
         }

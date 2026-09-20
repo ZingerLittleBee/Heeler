@@ -41,6 +41,14 @@ final class ConsoleStore {
     /// so a reconnect naturally invalidates, and evicted per Host on insert
     /// so stale generations cannot accumulate.
     @ObservationIgnored private var skillsCache: [SkillsCacheKey: [AgentSkill]] = [:]
+    /// mosh availability probed once per Host connection, keyed like the
+    /// skills cache on the transport generation. A thrown probe caches
+    /// unavailable — SSH stays the backbone, mosh only upgrades the Agent
+    /// terminal when it is demonstrably there.
+    @ObservationIgnored private var moshProbes: [Host.ID: MoshProbeOutcome] = [:]
+    /// Generations already sent to probe, so repeated rebuilds while a
+    /// probe is in flight do not pile up duplicate probes.
+    @ObservationIgnored private var moshProbedGenerations: [Host.ID: UInt64] = [:]
     /// Status events already converge through each Host's one pane-scoped
     /// subscription. Composers consume this fan-out instead of opening a
     /// second events channel that could outlive the connection snapshot.
@@ -116,6 +124,8 @@ final class ConsoleStore {
             sidebarSnapshots.invalidate(id)
             terminalSnapshotRevisions[id] = nil
             terminalTransportGenerations[id] = nil
+            moshProbes[id] = nil
+            moshProbedGenerations[id] = nil
             Task {
                 await terminalConnections.removeHost(id)
                 await agentTerminals.removeHost(id)
@@ -348,6 +358,26 @@ final class ConsoleStore {
         let generation: UInt64
         let kind: SupportedAgentKind
         let projectRoot: String?
+    }
+
+    private struct MoshProbeOutcome: Equatable {
+        let generation: UInt64
+        let available: Bool
+    }
+
+    /// The mosh runner's availability input: the current connection
+    /// generation's probe outcome. A Host still probing, or whose probe
+    /// raced a reconnect, reads unavailable — SSH stays the backbone.
+    func moshAvailability(for hostID: Host.ID, generation: UInt64) -> Bool {
+        guard let probe = moshProbes[hostID] else { return false }
+        return probe.generation == generation && probe.available
+    }
+
+    /// Test surface: the cached probe outcome, proving the probe ran (once)
+    /// and how it was cached.
+    func moshProbe(for hostID: Host.ID) -> (generation: UInt64, available: Bool)? {
+        guard let probe = moshProbes[hostID] else { return nil }
+        return (probe.generation, probe.available)
     }
 
     /// The Skills pane's data source: probes the Host over its live Console
@@ -612,6 +642,11 @@ final class ConsoleStore {
             self?.rebuild()
         }
         projections[host.id] = projection
+        projection.moshAvailability = { [weak self, weak projection] in
+            guard let self, let projection else { return false }
+            return await moshAvailability(
+                for: projection.host.id, generation: projection.transportGeneration)
+        }
         projection.start(isActive: isActive)
     }
 
@@ -702,6 +737,37 @@ final class ConsoleStore {
                         generation, for: hostID, isCurrent: isCurrent)
                     await agentTerminals.transportGenerationDidChange(
                         generation, for: hostID, isCurrent: isCurrent)
+                }
+            }
+            // One mosh probe per connection generation, off the critical
+            // path. It waits for `.connected`: a transport is only usable
+            // from then on, and an earlier kick would fail and cache the
+            // Host as mosh-less. Deduplicated by generation, so reconnects
+            // re-probe while ordinary rebuilds do not.
+            if projection.status == .connected,
+                moshProbedGenerations[hostID] != generation
+            {
+                moshProbedGenerations[hostID] = generation
+                Task { [weak self, weak projection] in
+                    guard let self, let projection, projections[hostID] === projection,
+                        projection.transportGeneration == generation
+                    else { return }
+                    let available: Bool
+                    do {
+                        available = try await projection.session.withTransport {
+                            transport in
+                            try await transport.probeMoshServer()
+                        }
+                    } catch {
+                        available = false
+                    }
+                    // A probe landing for a replaced connection must not
+                    // override a newer generation's outcome.
+                    if moshProbes[hostID].map({ $0.generation > generation }) ?? false {
+                        return
+                    }
+                    moshProbes[hostID] = MoshProbeOutcome(
+                        generation: generation, available: available)
                 }
             }
             guard !projection.isAwaitingSnapshot,

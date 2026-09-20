@@ -362,15 +362,35 @@ actor EventsSession {
             }
             // A replacement may already be in flight (currentTransport nil)
             // or a fresher transport may have been installed since; either
-            // way the single retry rides whatever is current.
+            // way the single retry rides whatever is current. It is also
+            // bounded: an operation that exhausts its own deadline on the
+            // replacement surfaces that cause instead of a second full
+            // wait, and a failing redial releases the waiter through the
+            // run loop's announce with its real cause.
             if isSameTransport(currentTransport, transport) {
                 transportSuspect = true
                 currentTransport = nil
+                // The run loop is parked on the live stream and cannot act on
+                // the suspect mark by itself: a link whose events reader is
+                // still alive never ends the stream, and with the keepalive
+                // quiet or disabled nothing else wakes it — the retry below
+                // would wait forever. End the channel the way a failed
+                // keepalive does, but flagged as a deliberate re-subscribe so
+                // the run loop re-dials silently (no `.reconnecting`) and
+                // installs the replacement this retry rides. A redial that
+                // fails instead releases the waiter through the run loop's
+                // announce with its real cause.
+                resubscribeRequested = true
+                await liveStream?.end()
             }
             let replacement = try await awaitUsableTransport()
-            let value = try await operation(replacement)
-            noteConnectionActivity()
-            return value
+            do {
+                let value = try await operation(replacement)
+                noteConnectionActivity()
+                return value
+            } catch TransportError.timedOut {
+                throw error
+            }
         }
     }
 

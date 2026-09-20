@@ -106,6 +106,12 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script closes")
     }
 
+    // mosh is not scripted in store tests; every attach stays SSH.
+    func probeMoshServer() async throws -> Bool { false }
+    func runMoshBootstrap(_ request: TerminalAttachRequest) async throws -> MoshBootstrap {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script mosh")
+    }
+
     func closeTab(_ params: TabTarget) async throws {
         throw TransportError.channelFailed(detail: "FakeTransport does not script closes")
     }

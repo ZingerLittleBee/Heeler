@@ -293,6 +293,9 @@ actor HeelerSSHTransport: Transport {
     static let maxConnectionChannels = SSHChannelAdmission.Limits.production.connection
 
     private let connection: SSHConnection
+    /// The SSH host mosh-server runs on — the IP `mosh_main` sends its UDP
+    /// traffic to. Filled from the connection settings, not the socket.
+    private let sshHost: String
     private let socketLocation: HerdrSocketLocation
     private let requestTimeout: Duration
     private let wakeCommand: String
@@ -427,9 +430,11 @@ actor HeelerSSHTransport: Transport {
     init(
         connection: SSHConnection,
         socketPath: String,
+        host: String = "127.0.0.1",
         requestTimeout: Duration = SSHTransportSettings.defaultRequestTimeout
     ) {
         self.connection = connection
+        sshHost = host
         socketLocation = .absolutePath(socketPath)
         self.requestTimeout = requestTimeout
         wakeCommand = SSHTransportSettings.defaultWakeCommand
@@ -447,6 +452,7 @@ actor HeelerSSHTransport: Transport {
 
     private init(connection: SSHConnection, settings: SSHTransportSettings) {
         self.connection = connection
+        sshHost = settings.host
         socketLocation = settings.socket
         requestTimeout = settings.requestTimeout
         wakeCommand = settings.wakeCommand
@@ -2301,6 +2307,29 @@ actor HeelerSSHTransport: Transport {
         return line
     }
 
+    /// Whether `mosh-server` is on the Host's effective PATH. The probe
+    /// rides the same PATH export as every herdr exec (mosh installs into
+    /// the same Homebrew/linuxbrew prefixes), so `command -v` is enough.
+    func probeMoshServer() async throws -> Bool {
+        let output = try await runHostCommand(Self.moshProbeCommand)
+        return !output.isEmpty
+    }
+
+    func runMoshBootstrap(_ request: TerminalAttachRequest) async throws -> MoshBootstrap {
+        let socketPath = try await resolvedSocketPath()
+        let command = try Self.moshBootstrapCommand(
+            agentAttachCommand: attachCommand,
+            terminalAttachCommand: terminalAttachCommand,
+            request: request,
+            socketPath: socketPath)
+        let output = try await runHostCommand(command)
+        guard let bootstrap = MoshBootstrap.parse(output, host: sshHost) else {
+            throw TransportError.channelFailed(
+                detail: "mosh-server did not print a MOSH CONNECT banner")
+        }
+        return bootstrap
+    }
+
     func attachTerminal(
         _ request: TerminalAttachRequest
     ) async throws -> TerminalAttachSession {
@@ -2363,6 +2392,56 @@ actor HeelerSSHTransport: Transport {
             terminalChannelStates.removeValue(forKey: request.target)
             throw error
         }
+    }
+
+    /// Command the mosh availability probe runs on the Host.
+    static let moshProbeCommand = "command -v mosh-server"
+
+    /// Builds the PTY-less exec that bootstraps one mosh session. Mirrors
+    /// `attachExecCommand` up to the PTY source: mosh-server provides the
+    /// wrapped command's PTY itself, so the SSH exec is an ordinary
+    /// request. mosh-server prints its `MOSH CONNECT` banner and detaches,
+    /// which closes the channel and lets the caller parse the answer.
+    static func moshBootstrapCommand(
+        agentAttachCommand: String,
+        terminalAttachCommand: String,
+        request: TerminalAttachRequest,
+        socketPath: String
+    ) throws -> String {
+        let attachCommand = attachCommand(
+            agentAttachCommand: agentAttachCommand,
+            terminalAttachCommand: terminalAttachCommand,
+            target: request.target)
+        let target = request.target.identifier
+        let unquotable: (Character) -> Bool = { character in
+            character == "'" || character == "\\"
+                || character.unicodeScalars.contains(where: {
+                    CharacterSet.controlCharacters.contains($0)
+                })
+        }
+        guard
+            !attachCommand.isEmpty,
+            !target.isEmpty,
+            !target.contains(where: unquotable),
+            request.cols > 0
+        else {
+            throw TransportError.channelFailed(
+                detail: "mosh bootstrap target cannot be quoted for the remote command")
+        }
+        guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
+            throw TransportError.channelFailed(
+                detail: "The remote socket path cannot be quoted safely.")
+        }
+        let takeover = request.takeover ? " --takeover" : ""
+        // `-l LANG=en_US.UTF-8` gives the server-side PTY the UTF-8 locale
+        // the attach TUI needs; the exec itself stays LC_ALL=C-prefixed by
+        // the Host-command wrapper, which only affects mosh-server's own
+        // argument parsing.
+        return "/bin/sh -c '\(HerdrHostPath.pathExport); "
+            + "export HERDR_SOCKET_PATH=\"$2\"; "
+            + "exec mosh-server new -c \(request.cols) -l LANG=en_US.UTF-8 "
+            + "-- \(attachCommand) \"$1\"\(takeover)' mosh "
+            + "'\(target)' \(quotedSocketPath)"
     }
 
     /// Builds the remote exec request used after the PTY has been accepted.

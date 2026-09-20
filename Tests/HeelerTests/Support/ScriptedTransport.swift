@@ -550,6 +550,34 @@ final actor ScriptedTransport: Transport {
         closedPanes.append(params)
     }
 
+    // MARK: mosh scripting
+
+    /// Scripts the mosh availability probe: `available` answers plainly,
+    /// `failure` throws (cached as unavailable by the Console). Unset
+    /// probes answer false, like a Host without mosh-server.
+    private var moshProbeAvailable = false
+    private var moshProbeFailure: (any Error)?
+    private(set) var moshProbeCount = 0
+
+    func setMoshProbeAvailable(_ available: Bool) {
+        moshProbeAvailable = available
+        moshProbeFailure = nil
+    }
+
+    func setMoshProbeFailure(_ failure: any Error) {
+        moshProbeFailure = failure
+    }
+
+    func probeMoshServer() async throws -> Bool {
+        moshProbeCount += 1
+        if let moshProbeFailure { throw moshProbeFailure }
+        return moshProbeAvailable
+    }
+
+    func runMoshBootstrap(_ request: TerminalAttachRequest) async throws -> MoshBootstrap {
+        throw TransportError.channelFailed(detail: "mosh bootstrap is not scripted")
+    }
+
     func closeTab(_ params: TabTarget) async throws {
         if let closeFailure { throw closeFailure }
         closedTabs.append(params)
