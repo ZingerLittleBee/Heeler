@@ -130,18 +130,30 @@ requires a real OpenSSH listener (host key under `/etc/ssh`,
 `authorized_keys` forced commands); Tailscale SSH alone cannot run the
 ceremony.
 
-On a machine with a tailnet address to offer, the popup asks Tailscale once
-whether it is serving SSH: `tailscale status --json` (this node's own
-`sshHostKeys`), then `tailscale debug prefs` (`RunSSH`). If it is, and a
-`100.64.0.0/10` or `fd7a:115c:a1e0::/48` address is checked while the code
-still advertises port 22, the checklist says so before the QR appears —
-tailscaled would answer that port, and Enrollment cannot run there.
+On a machine holding an address that *might* be a tailnet one, the popup asks
+Tailscale once, after the first paint, whether it is serving SSH:
+`tailscale debug prefs` (`RunSSH`), falling back to `tailscale status --json`
+(this node's `sshHostKeys`). If it is, and one of the addresses
+`status --json` reports as this node's own (`Self.TailscaleIPs`) is checked
+while the code still advertises port 22, the checklist says so before the QR
+appears — tailscaled would answer that port, and Enrollment cannot run there.
 
-Both probes only ever answer yes. No `tailscale` on `PATH` (nor at the App
-Store build's `/Applications/Tailscale.app/Contents/MacOS/Tailscale`), a
-logged-out tailscaled, or an output shape that changed all read as "not
-serving" and warn about nothing: a false alarm on every pairing would cost
-more than this warning saves.
+The warning matches those addresses exactly rather than the `100.64.0.0/10`
+range, which is the whole carrier-grade NAT block: measured on a VPS whose
+own NIC held `100.114.1.129` while `tailscale0` held `100.73.39.6`, a
+range test warns about an address tailscaled never answers for. The range is
+only a screen for whether asking Tailscale is worth a subprocess at all.
+
+Measured against Tailscale 1.102.4: `RunSSH` tracks `tailscale set --ssh`
+in both directions, `sshHostKeys` was absent from `Self` and from every peer
+either way, and `Self.CapMap` is no substitute — its `cap/ssh` and
+`ssh-behavior-v1` entries are ACL grants that survive `--ssh=false`.
+
+Every probe only ever answers yes. No `tailscale` on `PATH` (nor in the macOS
+app bundle), a logged-out tailscaled, an output shape that changed, or a
+readable `RunSSH` with unreadable addresses all read as "not serving" and
+warn about nothing: a false alarm on every pairing would cost more than this
+warning saves.
 
 ## Pairing Code envelope (v1)
 

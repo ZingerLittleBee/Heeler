@@ -23,7 +23,11 @@ import {
   PAIRING_TTL_SECONDS,
 } from "./pairing-session.js";
 import { readPairingConfig } from "./pairing-config.js";
-import { detectTailscaleSSH, isTailscaleAddress, tailscaleSSHConflict } from "./tailscale-ssh.js";
+import {
+  detectTailscaleSSH,
+  mayBeTailscaleAddress,
+  tailscaleSSHConflict,
+} from "./tailscale-ssh.js";
 import {
   createSelection,
   moveCursor,
@@ -106,7 +110,7 @@ function renderChecklist(state, config, warning) {
   const conflict = tailscaleSSHConflict({
     addresses: selectedAddresses(state),
     sshPort: config.sshPort,
-    tailscaleSSHEnabled: config.tailscaleSSHEnabled,
+    tailscale: config.tailscale,
   });
   if (conflict) {
     for (const line of conflict.split("\n")) {
@@ -232,11 +236,14 @@ async function main() {
   // Re-read on every checklist repaint. The warnings below tell the operator
   // to edit pair.json, so an edit made in another pane has to take effect
   // here without reopening the popup -- reading one small file is cheap.
-  let checklistConfig = { ...readPairingConfig(configDir), tailscaleSSHEnabled: false };
+  let checklistConfig = {
+    ...readPairingConfig(configDir),
+    tailscale: { enabled: false, addresses: [] },
+  };
   function currentConfig() {
     checklistConfig = {
       ...readPairingConfig(configDir),
-      tailscaleSSHEnabled: checklistConfig.tailscaleSSHEnabled,
+      tailscale: checklistConfig.tailscale,
     };
     return checklistConfig;
   }
@@ -449,9 +456,9 @@ async function main() {
   // Probed after that first paint, and only where a tailnet address is on
   // offer: spawnSync blocks, and a wedged tailscaled must not hold the
   // checklist off the screen.
-  if (candidates.some((candidate) => isTailscaleAddress(candidate.address))) {
-    checklistConfig.tailscaleSSHEnabled = detectTailscaleSSH();
-    if (checklistConfig.tailscaleSSHEnabled) {
+  if (candidates.some((candidate) => mayBeTailscaleAddress(candidate.address))) {
+    checklistConfig.tailscale = detectTailscaleSSH();
+    if (checklistConfig.tailscale.enabled) {
       renderChecklist(state, currentConfig());
     }
   }

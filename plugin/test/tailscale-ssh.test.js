@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   detectTailscaleSSH,
-  isTailscaleAddress,
+  mayBeTailscaleAddress,
   runTailscale,
   tailscaleSSHConflict,
 } from "../src/tailscale-ssh.js";
@@ -29,30 +29,30 @@ function fakeRun(responses) {
   return { run, calls };
 }
 
-suite("tailscale addresses", () => {
+suite("tailscale address screening", () => {
   test("recognizes the CGNAT range Tailscale assigns from", () => {
-    assert.equal(isTailscaleAddress("100.64.0.1"), true);
-    assert.equal(isTailscaleAddress("100.127.255.254"), true);
-    assert.equal(isTailscaleAddress("100.101.102.103"), true);
+    assert.equal(mayBeTailscaleAddress("100.64.0.1"), true);
+    assert.equal(mayBeTailscaleAddress("100.127.255.254"), true);
+    assert.equal(mayBeTailscaleAddress("100.101.102.103"), true);
   });
 
   test("leaves neighbouring IPv4 ranges alone", () => {
-    assert.equal(isTailscaleAddress("100.63.255.255"), false);
-    assert.equal(isTailscaleAddress("100.128.0.1"), false);
-    assert.equal(isTailscaleAddress("192.168.1.10"), false);
-    assert.equal(isTailscaleAddress("10.0.0.4"), false);
+    assert.equal(mayBeTailscaleAddress("100.63.255.255"), false);
+    assert.equal(mayBeTailscaleAddress("100.128.0.1"), false);
+    assert.equal(mayBeTailscaleAddress("192.168.1.10"), false);
+    assert.equal(mayBeTailscaleAddress("10.0.0.4"), false);
   });
 
   test("recognizes the Tailscale ULA prefix only", () => {
-    assert.equal(isTailscaleAddress("fd7a:115c:a1e0::1"), true);
-    assert.equal(isTailscaleAddress("FD7A:115C:A1E0:AB12::4"), true);
-    assert.equal(isTailscaleAddress("fd00:1234::1"), false);
-    assert.equal(isTailscaleAddress("2001:db8::1"), false);
+    assert.equal(mayBeTailscaleAddress("fd7a:115c:a1e0::1"), true);
+    assert.equal(mayBeTailscaleAddress("FD7A:115C:A1E0:AB12::4"), true);
+    assert.equal(mayBeTailscaleAddress("fd00:1234::1"), false);
+    assert.equal(mayBeTailscaleAddress("2001:db8::1"), false);
   });
 
   test("survives a non-string address", () => {
-    assert.equal(isTailscaleAddress(undefined), false);
-    assert.equal(isTailscaleAddress(null), false);
+    assert.equal(mayBeTailscaleAddress(undefined), false);
+    assert.equal(mayBeTailscaleAddress(null), false);
   });
 });
 
@@ -97,32 +97,44 @@ suite("running the tailscale CLI", () => {
 });
 
 suite("tailscale SSH detection", () => {
-  test("reads this node's own SSH host keys from status", () => {
+  // Measured on a live 1.102.4 host: RunSSH is the probe that answers,
+  // sshHostKeys is absent either way, and Self.TailscaleIPs names exactly the
+  // addresses tailscaled serves on.
+  test("reports RunSSH plus the addresses tailscaled owns", () => {
     const { run, calls } = fakeRun({
-      "status --json": JSON.stringify({ Self: { sshHostKeys: ["ssh-ed25519 AAAA"] } }),
-    });
-
-    assert.equal(detectTailscaleSSH({ run }), true);
-    assert.deepEqual(calls, ["status --json"], "a yes from status needs no second opinion");
-  });
-
-  test("falls back to prefs when status does not say", () => {
-    const { run, calls } = fakeRun({
-      "status --json": JSON.stringify({ Self: { sshHostKeys: [] } }),
       "debug prefs": JSON.stringify({ RunSSH: true }),
+      "status --json": JSON.stringify({
+        Self: { TailscaleIPs: ["100.73.39.6", "fd7a:115c:a1e0::c839:2707"] },
+      }),
     });
 
-    assert.equal(detectTailscaleSSH({ run }), true);
+    assert.deepEqual(detectTailscaleSSH({ run }), {
+      enabled: true,
+      addresses: ["100.73.39.6", "fd7a:115c:a1e0::c839:2707"],
+    });
     assert.deepEqual(calls, ["status --json", "debug prefs"]);
   });
 
-  test("reports not enabled when both probes say so", () => {
+  test("falls back to the status host keys when prefs stops answering", () => {
     const { run } = fakeRun({
-      "status --json": JSON.stringify({ Self: { HostName: "host" } }),
-      "debug prefs": JSON.stringify({ RunSSH: false }),
+      "status --json": JSON.stringify({
+        Self: { sshHostKeys: ["ssh-ed25519 AAAA"], TailscaleIPs: ["100.73.39.6"] },
+      }),
     });
 
-    assert.equal(detectTailscaleSSH({ run }), false);
+    assert.deepEqual(detectTailscaleSSH({ run }), {
+      enabled: true,
+      addresses: ["100.73.39.6"],
+    });
+  });
+
+  test("reads RunSSH false as not serving, and keeps no addresses", () => {
+    const { run } = fakeRun({
+      "debug prefs": JSON.stringify({ RunSSH: false }),
+      "status --json": JSON.stringify({ Self: { TailscaleIPs: ["100.73.39.6"] } }),
+    });
+
+    assert.deepEqual(detectTailscaleSSH({ run }), { enabled: false, addresses: [] });
   });
 
   test("stays quiet when tailscale is absent or unreadable", () => {
@@ -133,36 +145,56 @@ suite("tailscale SSH detection", () => {
       { "status --json": JSON.stringify({ Self: null }) },
     ]) {
       const { run } = fakeRun(responses);
-      assert.equal(detectTailscaleSSH({ run }), false);
+      assert.deepEqual(detectTailscaleSSH({ run }), { enabled: false, addresses: [] });
     }
+  });
+
+  test("serving with no readable addresses warns about nothing", () => {
+    const { run } = fakeRun({ "debug prefs": JSON.stringify({ RunSSH: true }) });
+
+    assert.deepEqual(detectTailscaleSSH({ run }), { enabled: true, addresses: [] });
   });
 });
 
 suite("tailscale SSH conflict", () => {
-  const enabled = { sshPort: 22, tailscaleSSHEnabled: true };
+  const serving = {
+    sshPort: 22,
+    tailscale: { enabled: true, addresses: ["100.73.39.6", "fd7a:115c:a1e0::c839:2707"] },
+  };
 
-  test("names the selected addresses tailscaled would answer for", () => {
+  test("names only the addresses tailscaled actually answers for", () => {
     const warning = tailscaleSSHConflict({
-      ...enabled,
-      addresses: ["192.168.1.10", "100.101.102.103", "fd7a:115c:a1e0::2"],
+      ...serving,
+      addresses: ["192.168.1.10", "100.73.39.6"],
     });
 
-    assert.match(warning, /100\.101\.102\.103/);
-    assert.match(warning, /fd7a:115c:a1e0::2/);
+    assert.match(warning, /100\.73\.39\.6/);
     assert.doesNotMatch(warning, /192\.168\.1\.10/);
     assert.match(warning, /ssh_port/);
   });
 
-  test("says nothing once the code advertises another port", () => {
+  // The case that made this address-exact: a hosting provider handed
+  // 100.114.1.129 to the VPS's own NIC while tailscale0 held 100.73.39.6.
+  // Warning about the NIC address would be a false alarm.
+  test("ignores a CGNAT address that belongs to another interface", () => {
     assert.equal(
-      tailscaleSSHConflict({ ...enabled, sshPort: 2222, addresses: ["100.101.102.103"] }),
+      tailscaleSSHConflict({ ...serving, addresses: ["100.114.1.129"] }),
       null,
     );
   });
 
-  test("says nothing without a tailnet address in the selection", () => {
+  test("matches an IPv6 address across case and zone id", () => {
+    const warning = tailscaleSSHConflict({
+      ...serving,
+      addresses: ["FD7A:115C:A1E0::C839:2707%tailscale0"],
+    });
+
+    assert.match(warning, /FD7A:115C:A1E0::C839:2707/);
+  });
+
+  test("says nothing once the code advertises another port", () => {
     assert.equal(
-      tailscaleSSHConflict({ ...enabled, addresses: ["192.168.1.10"] }),
+      tailscaleSSHConflict({ ...serving, sshPort: 2222, addresses: ["100.73.39.6"] }),
       null,
     );
   });
@@ -171,15 +203,19 @@ suite("tailscale SSH conflict", () => {
     assert.equal(
       tailscaleSSHConflict({
         sshPort: 22,
-        tailscaleSSHEnabled: false,
-        addresses: ["100.101.102.103"],
+        tailscale: { enabled: false, addresses: ["100.73.39.6"] },
+        addresses: ["100.73.39.6"],
       }),
       null,
     );
   });
 
-  test("survives an empty or missing selection", () => {
-    assert.equal(tailscaleSSHConflict({ ...enabled, addresses: [] }), null);
-    assert.equal(tailscaleSSHConflict({ ...enabled, addresses: undefined }), null);
+  test("survives an empty or missing selection and an absent probe", () => {
+    assert.equal(tailscaleSSHConflict({ ...serving, addresses: [] }), null);
+    assert.equal(tailscaleSSHConflict({ ...serving, addresses: undefined }), null);
+    assert.equal(
+      tailscaleSSHConflict({ sshPort: 22, addresses: ["100.73.39.6"] }),
+      null,
+    );
   });
 });
