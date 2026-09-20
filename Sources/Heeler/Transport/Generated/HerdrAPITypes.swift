@@ -891,6 +891,19 @@ struct TabRenameParams: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/TabTarget`.
+struct TabTarget: Codable, Equatable, Sendable {
+    let tabID: String
+
+    init(tabID: String) {
+        self.tabID = tabID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tabID = "tab_id"
+    }
+}
+
 /// herdr schema `$defs/WorkspaceCloseParams`.
 struct WorkspaceCloseParams: Codable, Equatable, Sendable {
     let closeGroup: Bool?

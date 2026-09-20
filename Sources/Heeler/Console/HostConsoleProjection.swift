@@ -333,6 +333,13 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
+    func closeTab(_ tabID: String) async throws {
+        try await session.withTransport { transport in
+            try await transport.closeTab(TabTarget(tabID: tabID))
+        }
+        scheduleResync()
+    }
+
     /// Whether a Pane is still alive on the Host, probed with a minimal
     /// `pane.read`. A server rejection means the Pane is gone (closed on the
     /// desktop, or the server restarted and lost every tab); a transport

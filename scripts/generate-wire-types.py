@@ -58,6 +58,7 @@ METHODS = [
     "agent.start",
     "events.subscribe",
     "tab.create",
+    "tab.close",
     "tab.rename",
     "pane.read",
     "pane.close",

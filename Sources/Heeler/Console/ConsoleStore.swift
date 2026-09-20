@@ -513,6 +513,24 @@ final class ConsoleStore {
         try await projection(for: hostID).closePane(paneID)
     }
 
+    /// Closes the Agent's tab (Console row swipe action). Every agent on the
+    /// Host sharing that tab disappears with it, so their pins are dropped
+    /// too — a deliberately closed tab must not leave a pin that would
+    /// re-pin a herdr-reused id. The projection's resync refreshes the list.
+    func closeAgentTab(_ agent: ConsoleAgent) async throws {
+        let hostID = agent.hostID
+        let tabID = agent.agent.tabID
+        let pinnedPaneIDs = agents
+            .filter { $0.hostID == hostID && $0.agent.tabID == tabID }
+            .map(\.agent.paneID)
+            .filter { pins.isPinned(hostID: hostID, paneID: $0) }
+        try await projection(for: hostID).closeTab(tabID)
+        for paneID in pinnedPaneIDs {
+            pins.removePin(hostID: hostID, paneID: paneID)
+        }
+        rebuild()
+    }
+
     func listWorktrees(
         forWorkspaceID workspaceID: String, on hostID: Host.ID
     ) async throws -> WorktreeListResponse {
