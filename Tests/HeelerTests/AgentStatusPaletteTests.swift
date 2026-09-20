@@ -45,15 +45,21 @@ struct AgentStatusPaletteTests {
     }
 
     /// herdr's API has no stability guarantee: a status this build cannot
-    /// read must look as inert as Idle, never as loud as Blocked or Done.
-    @Test func unreadableStatusesShareTheMutedTint() {
+    /// read must look as inert as Idle. Unknown is different — the one
+    /// failure-ish state the palette names, so it resolves to red in both
+    /// roles, never blue or yellow.
+    @Test func unknownIsRedAndUnreadableIsMuted() {
         for style in Self.styles {
             for (role, color) in Self.roles {
                 let muted = rgba(color(.idle), style)
-                #expect(rgba(color(.unknown), style) == muted, "\(role) \(style)")
                 #expect(
                     rgba(color(AgentStatus(rawValue: "haunted")), style) == muted,
                     "\(role) \(style)")
+                let unknown = rgba(color(.unknown), style)
+                #expect(unknown != muted, "\(role) \(style)")
+                #expect(unknown != rgba(color(.blocked), style), "\(role) \(style)")
+                #expect(unknown != rgba(color(.done), style), "\(role) \(style)")
+                #expect(unknown != rgba(color(.working), style), "\(role) \(style)")
             }
         }
     }
@@ -62,9 +68,10 @@ struct AgentStatusPaletteTests {
     /// agree on what green means.
     @Test func huesMatchHerdrsCatppuccinFlavours() {
         let expected: [(AgentStatus, light: UInt32, dark: UInt32)] = [
-            (.blocked, light: 0xD20F39, dark: 0xF38BA8),
+            (.blocked, light: 0x1E66F7, dark: 0x89B4FA),
             (.done, light: 0x40A02B, dark: 0xA6E3A1),
             (.working, light: 0xDF8E1D, dark: 0xF9E2AF),
+            (.unknown, light: 0xD20F39, dark: 0xF38BA8),
         ]
         for (status, light, dark) in expected {
             #expect(hex(rgba(status.tintUIColor, .light)) == light, "\(status.rawValue) light")
@@ -77,7 +84,7 @@ struct AgentStatusPaletteTests {
     /// 4.5:1 for the badge's caption text over its wash, and 3:1 as the
     /// switcher's bare dot on the card background.
     @Test func inksStayLegibleOnTheirWashes() {
-        let statuses = [AgentStatus.blocked, .done, .working, .idle]
+        let statuses = [AgentStatus.blocked, .done, .working, .idle, .unknown]
         for style in Self.styles {
             // secondarySystemGroupedBackground: the Console card and the
             // terminal chrome the switcher chips sit over.

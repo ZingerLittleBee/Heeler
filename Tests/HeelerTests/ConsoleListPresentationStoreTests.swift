@@ -15,13 +15,14 @@ struct ConsoleListPresentationStoreTests {
     private func consoleAgent(
         host: Host,
         paneID: String,
-        status: AgentStatus
+        status: AgentStatus,
+        workspaceLabel: String? = nil
     ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: host.id,
             hostName: host.displayName,
             agent: Agent(.fixture(paneID: paneID, status: status)),
-            workspaceLabel: nil,
+            workspaceLabel: workspaceLabel,
             repositoryCheckout: nil)
     }
 
@@ -167,6 +168,187 @@ struct ConsoleListPresentationStoreTests {
         #expect(section.isCollapsed)
         #expect(section.statusCounts == .init(blocked: 1, working: 1, done: 1))
         #expect(section.statusCounts.items.map(\.status) == [.blocked, .working, .done])
+    }
+
+    @Test func byHostWorkspaceModePersistsAcrossRecreation() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        store.select(.byHostWorkspace)
+        #expect(ConsoleListPresentationStore(defaults: defaults).mode == .byHostWorkspace)
+        #expect(ConsoleListPresentationMode.byHostWorkspace.title == "By Host, By Workspace")
+    }
+
+    @Test func byHostWorkspaceSectionsNestWorkspaceGroupsInKnownOrder() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let hostA = Host.fixture(name: "alpha")
+        let hostB = Host.fixture(name: "beta")
+        // The incoming (already-sorted) sequence interleaves hosts and
+        // workspaces; each group must preserve its host's exact relative
+        // agent order without re-sorting.
+        let agents = [
+            consoleAgent(host: hostA, paneID: "a-pay-1", status: .blocked, workspaceLabel: "Payments"),
+            consoleAgent(host: hostB, paneID: "b-app-1", status: .working, workspaceLabel: "App"),
+            consoleAgent(host: hostA, paneID: "a-app-1", status: .done, workspaceLabel: "App"),
+            consoleAgent(host: hostB, paneID: "b-pay-1", status: .idle, workspaceLabel: "Payments"),
+            consoleAgent(host: hostA, paneID: "a-pay-2", status: .working, workspaceLabel: "Payments"),
+        ]
+        let workspacesByHost = [
+            hostA.id: [
+                ConsoleWorkspace(id: "w1", label: "App"),
+                ConsoleWorkspace(id: "w2", label: "Payments"),
+            ],
+            hostB.id: [
+                ConsoleWorkspace(id: "w1", label: "App"),
+                ConsoleWorkspace(id: "w2", label: "Payments"),
+            ],
+        ]
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let sections = store.sectionsByHostThenWorkspace(
+            hosts: [hostA, hostB],
+            agents: agents,
+            workspacesByHost: workspacesByHost)
+
+        #expect(sections.map(\.id) == [hostA.id, hostB.id])
+        // The Host part is the exact projection the "By Host" mode produces.
+        #expect(sections.map(\.host) == store.sections(hosts: [hostA, hostB], agents: agents))
+
+        let alpha = try #require(sections.first)
+        #expect(alpha.workspaceGroups.map(\.label) == ["App", "Payments"])
+        #expect(alpha.workspaceGroups[0].agents.map(\.agent.paneID) == ["a-app-1"])
+        #expect(alpha.workspaceGroups[1].agents.map(\.agent.paneID) == ["a-pay-1", "a-pay-2"])
+
+        let beta = try #require(sections.last)
+        #expect(beta.workspaceGroups.map(\.label) == ["App", "Payments"])
+        #expect(beta.workspaceGroups[0].agents.map(\.agent.paneID) == ["b-app-1"])
+        #expect(beta.workspaceGroups[1].agents.map(\.agent.paneID) == ["b-pay-1"])
+    }
+
+    @Test func unknownWorkspaceAgentsFallIntoTheFinalBucket() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        let agents = [
+            consoleAgent(host: host, paneID: "no-workspace", status: .working, workspaceLabel: nil),
+            consoleAgent(host: host, paneID: "orphan", status: .done, workspaceLabel: "Orphaned"),
+            consoleAgent(host: host, paneID: "known", status: .idle, workspaceLabel: "App"),
+            consoleAgent(host: host, paneID: "blank", status: .blocked, workspaceLabel: ""),
+        ]
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: agents,
+            workspacesByHost: [
+                host.id: [ConsoleWorkspace(id: "w1", label: "App")],
+            ])
+
+        let section = try #require(sections.first)
+        #expect(section.workspaceGroups.map(\.label) == ["App", "Orphaned", "Unassigned"])
+        #expect(section.workspaceGroups[0].agents.map(\.agent.paneID) == ["known"])
+        #expect(section.workspaceGroups[1].agents.map(\.agent.paneID) == ["orphan"])
+        #expect(section.workspaceGroups[2].agents.map(\.agent.paneID) == ["no-workspace", "blank"])
+    }
+
+    @Test func byHostWorkspaceModeMatchesByHostForEmptyHosts() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let empty = Host.fixture(name: "empty")
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let sections = store.sectionsByHostThenWorkspace(hosts: [empty], agents: [])
+        #expect(sections.count == 1)
+        #expect(sections[0].host.agents.isEmpty)
+        #expect(sections[0].workspaceGroups.isEmpty)
+    }
+
+    @Test func byHostWorkspaceGroupsDefaultToCollapsedAndExpansionPersists() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        let other = Host.fixture(name: "beta")
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        var sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(host: host, paneID: "a-1", status: .working, workspaceLabel: "App"),
+            ],
+            workspacesByHost: [host.id: [ConsoleWorkspace(id: "w1", label: "App")]])
+        // A brand-new workspace key is collapsed by default.
+        #expect(sections[0].workspaceGroups.map(\.isCollapsed) == [true])
+
+        store.setExpanded(true, for: host.id, workspaceLabel: "App")
+        sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(host: host, paneID: "a-1", status: .working, workspaceLabel: "App"),
+            ],
+            workspacesByHost: [host.id: [ConsoleWorkspace(id: "w1", label: "App")]])
+        #expect(sections[0].workspaceGroups.map(\.isCollapsed) == [false])
+
+        // Expansion persists across store recreation.
+        let reloaded = ConsoleListPresentationStore(defaults: defaults)
+        let reloadedSections = reloaded.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(host: host, paneID: "a-1", status: .working, workspaceLabel: "App"),
+            ],
+            workspacesByHost: [host.id: [ConsoleWorkspace(id: "w1", label: "App")]])
+        #expect(reloadedSections[0].workspaceGroups.map(\.isCollapsed) == [false])
+
+        // Expansion is scoped to the host+workspace pair.
+        let otherSections = reloaded.sectionsByHostThenWorkspace(
+            hosts: [other],
+            agents: [
+                consoleAgent(host: other, paneID: "b-1", status: .working, workspaceLabel: "App"),
+            ],
+            workspacesByHost: [other.id: [ConsoleWorkspace(id: "w2", label: "App")]])
+        #expect(otherSections[0].workspaceGroups.map(\.isCollapsed) == [true])
+    }
+
+    @Test func byHostWorkspaceCollapseStateIsIsolatedPerHostPair() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        store.setExpanded(true, for: host.id, workspaceLabel: "App")
+        // Re-collapsing clears the expanded key.
+        store.setExpanded(false, for: host.id, workspaceLabel: "App")
+        let reloaded = ConsoleListPresentationStore(defaults: defaults)
+        let reloadedSections = reloaded.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(host: host, paneID: "a-1", status: .working, workspaceLabel: "App"),
+            ],
+            workspacesByHost: [host.id: [ConsoleWorkspace(id: "w1", label: "App")]])
+        #expect(reloadedSections[0].workspaceGroups.map(\.isCollapsed) == [true])
+    }
+
+    @Test func collapsedHostStillProjectsWorkspaceGroupsAsHidden() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        store.setCollapsed(true, for: host.id)
+        store.setExpanded(true, for: host.id, workspaceLabel: "App")
+
+        let sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(host: host, paneID: "a-1", status: .working, workspaceLabel: "App"),
+            ],
+            workspacesByHost: [host.id: [ConsoleWorkspace(id: "w1", label: "App")]])
+
+        #expect(sections[0].host.isCollapsed)
+        #expect(sections[0].workspaceGroups.map(\.label) == ["App"])
+        #expect(sections[0].workspaceGroups.map(\.isCollapsed) == [false])
+        #expect(sections[0].workspaceGroups[0].agents.map(\.agent.paneID) == ["a-1"])
+        #expect(sections[0].host.statusCounts.working == 1)
     }
 }
 

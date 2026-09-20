@@ -128,7 +128,7 @@ enum ConsoleAgentsSurface: Equatable {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if hostCount == 0 {
             self = .noHosts
-        } else if presentationMode == .grouped {
+        } else if presentationMode != .flat {
             if projectedSectionCount > 0 {
                 self = .rows
             } else if isSearching {
@@ -163,7 +163,7 @@ enum ConsoleHostIssuePlacement: Equatable {
     init(mode: ConsoleListPresentationMode) {
         switch mode {
         case .flat: self = .flatIssueRows
-        case .grouped: self = .sectionHeaders
+        case .grouped, .byHostWorkspace: self = .sectionHeaders
         }
     }
 }

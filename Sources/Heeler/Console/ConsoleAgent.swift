@@ -199,18 +199,19 @@ struct ConsoleWorkspace: Identifiable, Hashable, Sendable {
 }
 
 extension AgentStatus {
-    /// Console sort bucket: Blocked > Done > Working > Idle. The order tracks
-    /// how much of the user's attention each status is asking for — Blocked
-    /// has stopped and is waiting on an answer, Done has a result to read,
-    /// Working needs nothing, Idle least of all. Unknown and any status this
-    /// build does not recognize (herdr's API has no stability guarantee)
-    /// share the bottom bucket — a status we cannot interpret is not
-    /// actionable, so it must not outrank one we can.
+    /// Console sort bucket: Blocked > Working > Done > Idle. Blocked has
+    /// stopped and is waiting on the user's reply, Working is producing one,
+    /// Done has a result waiting to be read, and Idle asks for nothing. The
+    /// order tracks how soon each status needs the user, so an agent waiting
+    /// on a reply always outranks one that is merely busy. Unknown and any
+    /// status this build does not recognize (herdr's API has no stability
+    /// guarantee) share the bottom bucket — a status we cannot interpret is
+    /// not actionable, so it must not outrank one we can.
     var consoleSortBucket: Int {
         switch self {
         case .blocked: 0
-        case .done: 1
-        case .working: 2
+        case .working: 1
+        case .done: 2
         case .idle: 3
         default: 4
         }
@@ -218,9 +219,12 @@ extension AgentStatus {
 }
 
 extension [ConsoleAgent] {
-    /// Pins always lead by recency. Snapshot policy controls each Host's
-    /// remaining Agents; absent snapshots retain the legacy priority order.
-    /// Space order uses stable Host blocks even in the flat presentation.
+    /// Pins always lead by recency. Every Host shares one default attention
+    /// order: Blocked > Working > Done > Idle buckets, newest activity first
+    /// inside each bucket (the `stateChangeSeq` comment at the comparator).
+    /// A Host whose plugin snapshot asks for `spaces` keeps that order
+    /// instead of the buckets. Space order uses stable Host blocks even in
+    /// the flat presentation.
     func consoleSorted(
         sortByHost: [Host.ID: AgentPanelSort] = [:],
         pinRank: (ConsoleAgent) -> Int? = { _ in nil }
@@ -256,13 +260,21 @@ extension [ConsoleAgent] {
             if lhs.hostID != rhs.hostID {
                 return lhs.hostID.uuidString < rhs.hostID.uuidString
             }
+            // Recency inside a bucket is `stateChangeSeq`, newest first: the
+            // highest monotonic counter herdr exposes on an Agent, and the
+            // only one updated by status events. Comparisons reach this line
+            // only after Host name and id tie, so the counter is compared
+            // within its one Host. Hosts without a plugin snapshot get the
+            // same default as `.priority` Hosts (previously they fell
+            // straight to workspace/pane ties); a plugin's own
+            // `snapshotOrder` then only refines ties for Hosts that publish
+            // a sidebar snapshot.
+            if policy == .priority {
+                let lhsSequence = lhs.agent.stateChangeSeq ?? 0
+                let rhsSequence = rhs.agent.stateChangeSeq ?? 0
+                if lhsSequence != rhsSequence { return lhsSequence > rhsSequence }
+            }
             if sortByHost[lhs.hostID] != nil {
-                // State sequences are comparable only within their Host.
-                if policy == .priority {
-                    let lhsSequence = lhs.agent.stateChangeSeq ?? 0
-                    let rhsSequence = rhs.agent.stateChangeSeq ?? 0
-                    if lhsSequence != rhsSequence { return lhsSequence > rhsSequence }
-                }
                 let lhsOrder = lhs.snapshotOrder ?? Int.max
                 let rhsOrder = rhs.snapshotOrder ?? Int.max
                 if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }

@@ -9,6 +9,16 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- The Console can group agents by Host and then Workspace, with each
+  Workspace group collapsed until you tap it open. Collapsed headers
+  wear a row of status dots, one per Agent and capped at five: blue for
+  an Agent waiting on your reply, yellow for one working, a green
+  outline for one done. The dots only appear when that state has
+  Agents. The list's default order now matches herdr's priority view:
+  Agents waiting on your reply first, then working, then done, newest
+  activity first inside each group. The old "All Agents" and "By Host"
+  views are unchanged. (#364)
+
 - The Agent terminal shows the session's model, prompt size (as a share of
   the model's context window, `11.0%`, once omp on the Host has named it),
   and spend in a strip above the terminal. These are the figures the Agent's own status line
@@ -21,6 +31,9 @@ Entries reference the issue that motivated them.
   turn's generation rate too. (#325)
 
 ### Fixed
+
+- An Agent waiting on your reply is now blue, like herdr's sidebar,
+  instead of red. One colour should not mean two things. (#364)
 
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or

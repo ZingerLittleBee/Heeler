@@ -121,9 +121,8 @@ struct ConsoleView: View {
                                 } label: {
                                     Label(
                                         "Presentation",
-                                        systemImage: listPresentation.mode == .grouped
-                                            ? "list.bullet.rectangle"
-                                            : "list.bullet")
+                                        systemImage: listPresentation.mode == .flat
+                                            ? "list.bullet" : "list.bullet.rectangle")
                                 }
                                 .hoverEffect(.highlight)
                                 .accessibilityLabel("Agent list presentation")
@@ -559,21 +558,70 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var groupedAgentListRows: some View {
-        ForEach(hostSections) { section in
-            Section {
-                if !section.isCollapsed {
-                    ForEach(section.agents) { agent in
-                        agentRow(agent)
+        switch listPresentation.mode {
+        case .flat:
+            EmptyView()
+        case .grouped:
+            ForEach(hostSections) { section in
+                hostSection(section)
+            }
+        case .byHostWorkspace:
+            ForEach(hostWorkspaceSections) { section in
+                hostWorkspaceSection(section)
+            }
+        }
+    }
+
+    private func hostSection(_ section: ConsoleHostSection) -> some View {
+        Section {
+            if !section.isCollapsed {
+                ForEach(section.agents) { agent in
+                    agentRow(agent)
+                }
+            }
+        } header: {
+            ConsoleHostSectionHeaderView(
+                presentation: ConsoleHostSectionHeaderPresentation(section: section)
+            ) {
+                toggleHostSection(section.hostID)
+            }
+            .textCase(nil)
+        }
+    }
+
+    /// "By Host, By Workspace": the same Host section as the "By Host" mode,
+    /// with each collapsed Host's Agents sub-grouped under workspace headers.
+    private func hostWorkspaceSection(_ section: ConsoleHostWorkspaceSection) -> some View {
+        Section {
+            if !section.host.isCollapsed {
+                ForEach(section.workspaceGroups) { group in
+                    Section {
+                        if !group.isCollapsed {
+                            ForEach(group.agents) { agent in
+                                agentRow(agent)
+                            }
+                        }
+                    } header: {
+                        ConsoleWorkspaceGroupHeaderView(
+                            label: group.label,
+                            isCollapsed: group.isCollapsed,
+                            agents: group.agents
+                        ) {
+                            toggleWorkspaceGroup(
+                                hostID: section.host.hostID,
+                                workspaceLabel: group.label)
+                        }
+                        .textCase(nil)
                     }
                 }
-            } header: {
-                ConsoleHostSectionHeaderView(
-                    presentation: ConsoleHostSectionHeaderPresentation(section: section)
-                ) {
-                    toggleHostSection(section.hostID)
-                }
-                .textCase(nil)
             }
+        } header: {
+            ConsoleHostSectionHeaderView(
+                presentation: ConsoleHostSectionHeaderPresentation(section: section.host)
+            ) {
+                toggleHostSection(section.host.hostID)
+            }
+            .textCase(nil)
         }
     }
 
@@ -647,6 +695,14 @@ struct ConsoleView: View {
             searchQuery: searchText)
     }
 
+    private var hostWorkspaceSections: [ConsoleHostWorkspaceSection] {
+        listPresentation.sectionsByHostThenWorkspace(
+            hosts: hosts.hosts,
+            console: console,
+            filteredHostID: hostFilter,
+            searchQuery: searchText)
+    }
+
     private var presentationModeBinding: Binding<ConsoleListPresentationMode> {
         Binding(
             get: { listPresentation.mode },
@@ -659,6 +715,16 @@ struct ConsoleView: View {
         } else {
             withAnimation(.snappy) {
                 listPresentation.toggleCollapsed(hostID)
+            }
+        }
+    }
+
+    private func toggleWorkspaceGroup(hostID: Host.ID, workspaceLabel: String) {
+        if reduceMotion {
+            listPresentation.toggleExpanded(hostID, workspaceLabel: workspaceLabel)
+        } else {
+            withAnimation(.snappy) {
+                listPresentation.toggleExpanded(hostID, workspaceLabel: workspaceLabel)
             }
         }
     }
@@ -905,6 +971,102 @@ struct MissingAgentPresentation: Equatable {
             hosts: hosts.hosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostStandingFailures: console.hostStandingFailures)
+    }
+}
+
+/// Subheader for one Workspace group inside a "By Host, By Workspace"
+/// Host section. Deliberately a lighter echo of ConsoleHostSectionHeaderView —
+/// the same caption weight and secondary tint, one step below the Host header's
+/// visual weight — but it is itself the collapse affordance: tapping toggles
+/// this workspace group's visibility, and the chevron mirrors that state.
+private struct ConsoleWorkspaceGroupHeaderView: View {
+    let label: String
+    let isCollapsed: Bool
+    /// This workspace group's Agents. Their statuses become the trailing
+    /// dot row — a compact echo of herdr's sidebar colours at the group
+    /// level, so a collapsed group still shows who needs attention.
+    let agents: [ConsoleAgent]
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 6) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 10, alignment: .center)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if !agents.isEmpty {
+                    ConsoleWorkspaceStatusDots(statuses: agents.map(\.agent.status))
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
+        .accessibilityHint(
+            isCollapsed
+                ? "Expands this workspace group."
+                : "Collapses this workspace group.")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Far-right dot row for one workspace group header: one dot per Agent,
+/// read left to right in attention order — Unknown red, Blocked blue,
+/// Working yellow, Done green, Idle gray last. Done and Idle render as
+/// outlines: Done announces a finished result, and Idle stays hollow so a
+/// crowd of resting agents never outweighs the one that needs you. Capped
+/// at five dots with a muted "+N" for the rest.
+private struct ConsoleWorkspaceStatusDots: View {
+    let statuses: [AgentStatus]
+
+    /// Priority order for the row: the red `unknown` (an unreadable failure)
+    /// leads, then Blocked, Working, Done — matching herdr's sidebar, where
+    /// the rows waiting on the user lead in blue. Idle trails, hollow.
+    private static let priority: [AgentStatus] = [.unknown, .blocked, .working, .done, .idle]
+
+    private var dots: (visible: [AgentStatus], overflow: Int) {
+        let sorted = statuses.sorted { lhs, rhs in
+            let l = Self.priority.firstIndex(of: lhs) ?? Self.priority.count
+            let r = Self.priority.firstIndex(of: rhs) ?? Self.priority.count
+            return l < r
+        }
+        let visible = Array(sorted.prefix(5))
+        return (visible, sorted.count - visible.count)
+    }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(Array(dots.visible.enumerated()), id: \.offset) { _, status in
+                if status == .done || status == .idle {
+                    Circle()
+                        .strokeBorder(
+                            Color(status.inkUIColor),
+                            lineWidth: 1.5)
+                        .frame(width: 9, height: 9)
+                } else {
+                    Circle()
+                        .fill(Color(status.inkUIColor))
+                        .frame(width: 9, height: 9)
+                }
+            }
+            if dots.overflow > 0 {
+                Text("+\(dots.overflow)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            }
+        }
     }
 }
 
