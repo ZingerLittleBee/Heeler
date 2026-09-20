@@ -9,6 +9,17 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- The New Agent sheet can create a Workspace from a name alone. A
+  name-only launch defaults the directory to the Host's home and the
+  workspace label is now a field on the form; a browsed directory still
+  overrides it. (#362)
+
+### Fixed
+
+- New Agent tabs take the agent's name. `tab.create` now carries it as
+  the tab's label, and after a workspace or worktree launch the fresh
+  tab is renamed once the agent is running, so the tab bar shows names
+  instead of herdr's automatic "Tab N". (#362)
 - The Agent terminal shows the session's model, prompt size (as a share of
   the model's context window, `11.0%`, once omp on the Host has named it),
   and spend in a strip above the terminal. These are the figures the Agent's own status line
