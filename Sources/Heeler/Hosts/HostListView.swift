@@ -77,6 +77,10 @@ struct HostListView: View {
     @State private var isAddingHost = false
     @State private var isScanningToPair = false
     @State private var manualFallbackRequested = false
+    /// Stashed while a Host form / Pairing scan sheet dismisses; navigation
+    /// waits for `onDismiss` so the TOFU alert is not suppressed mid-transition
+    /// (#359).
+    @State private var pendingOnboardingHostID: Host.ID?
     @State private var path: [Host.ID] = []
 
     init(
@@ -167,9 +171,14 @@ struct HostListView: View {
                     ContentUnavailableView("Host removed", systemImage: "server.rack")
                 }
             }
-            .sheet(isPresented: $isAddingHost) {
+            .sheet(
+                isPresented: $isAddingHost,
+                onDismiss: {
+                    navigateToPendingOnboardingHostIfNeeded()
+                }
+            ) {
                 HostFormView(store: store) { saved in
-                    path.append(saved.id)
+                    pendingOnboardingHostID = saved.id
                 }
             }
             .sheet(
@@ -181,13 +190,15 @@ struct HostListView: View {
                     if manualFallbackRequested {
                         manualFallbackRequested = false
                         isAddingHost = true
+                        return
                     }
+                    navigateToPendingOnboardingHostIfNeeded()
                 }
             ) {
                 // A successful Pairing lands in the same onboarding preflight
                 // a manually added Host enters (session discovery included).
                 PairingScanView(catalog: store) { paired in
-                    path.append(paired.id)
+                    pendingOnboardingHostID = paired.id
                 } onAddManually: {
                     manualFallbackRequested = true
                 }
@@ -242,6 +253,12 @@ struct HostListView: View {
 
     private func removeHosts(at offsets: IndexSet) {
         removal.requestRemoval(offsets.map { store.hosts[$0].id })
+    }
+
+    private func navigateToPendingOnboardingHostIfNeeded() {
+        guard let id = pendingOnboardingHostID else { return }
+        pendingOnboardingHostID = nil
+        path.append(id)
     }
 
     private func retryAction(
