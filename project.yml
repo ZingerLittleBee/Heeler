@@ -68,6 +68,11 @@ targets:
         # manifest already declares multiple-scene support.
         NSUserActivityTypes:
           - com.otreva.heeler-manual.agent
+        # mosh's UDP client dials LAN addresses directly; without the local
+        # network declaration iOS silently drops those datagrams (#mosh).
+        NSLocalNetworkUsageDescription: "Heeler connects to your machines on the local network over SSH and mosh. mosh keeps terminals alive across network changes and sleep."
+        NSBonjourServices:
+          - _ssh._tcp
     entitlements:
       path: Sources/Heeler/Heeler.entitlements
       properties:

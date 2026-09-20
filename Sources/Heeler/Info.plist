@@ -18,6 +18,12 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ssh._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Heeler connects to your machines on the local network over SSH and mosh. mosh keeps terminals alive across network changes and sleep.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>com.otreva.heeler-manual.agent</string>
