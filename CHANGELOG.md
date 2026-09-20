@@ -22,6 +22,18 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- A message sent to an Agent the app had just launched no longer fails with
+  "herdr rejected the message: agent wX:pY is not an active named agent".
+  herdr 0.8.0+ answers `agent.start` while the pane's agent is still booting,
+  and the Console's post-start wait only checks that the Agent's row exists —
+  so the first prompt typed into the fresh Agent's tab could beat the agent's
+  registration on the Host, and herdr refused the send even though the pane
+  id was correct; leaving the Agent and returning was what made sending work.
+  The composer now treats that rejection as the launch race it is and waits
+  it out at a fixed pace inside the same bounded budget the transport already
+  uses for a fresh pane's booting shell, still surfacing herdr's refusal once
+  the budget is spent and never retrying a genuinely absent Agent
+  (`agent_not_found`). (#368)
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or
   in Composer, so pressing Space cannot add a suggested word after the letters
