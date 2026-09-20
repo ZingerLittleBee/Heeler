@@ -173,11 +173,11 @@ final class StartAgentStore {
         selectNewWorkspace()
     }
 
-    /// Reuses the latest directory after switching to an existing Workspace.
+    /// Switches the draft destination to a New Workspace launch. Allowed
+    /// without a browsed directory: a name-only workspace resolves to the
+    /// Host's home directory at submit.
     func selectNewWorkspace() {
-        guard offersNewWorkspace, RemoteShellPath.isQuotableAbsolute(newWorkspaceDirectory) else {
-            return
-        }
+        guard offersNewWorkspace else { return }
         launchTarget = .newWorkspace
     }
 
@@ -212,6 +212,9 @@ final class StartAgentStore {
     /// skipping them merely bumps the suffix.
     private let existingAgentNames: (Host.ID) -> Set<String>
     private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
+    /// Resolves the Host's home directory for a name-only New Workspace
+    /// launch; fetched at submit so an unreachable Host never blocks editing.
+    private let remoteHome: (Host.ID) async throws -> String
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
@@ -231,6 +234,7 @@ final class StartAgentStore {
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
         existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
+        remoteHome: @escaping (Host.ID) async throws -> String,
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         origin: LaunchOrigin? = nil,
@@ -241,6 +245,7 @@ final class StartAgentStore {
         self.workspacesProvider = workspaces
         self.existingAgentNames = existingAgentNames
         self.discoverAgentKinds = discoverAgentKinds
+        self.remoteHome = remoteHome
         self.start = start
         self.awaitAgentVisible = awaitAgentVisible
         self.recents = recents
@@ -320,7 +325,9 @@ final class StartAgentStore {
         case .existingWorkspace:
             return selectedWorkspaceID != nil
         case .newWorkspace:
-            return Self.nonEmptyTrimmed(newWorkspaceDirectory) != nil
+            // Directory is optional: a name-only launch falls back to the
+            // Host's home directory at submit.
+            return true
         }
     }
 
@@ -363,7 +370,6 @@ final class StartAgentStore {
             !isStarting,
             let hostID = selectedHostID,
             let kind = selectedAgentKind,
-            let destination = launchDestination,
             case .success(let arguments) = parsedArguments,
             worktreeBranchErrorMessage == nil,
             nameErrorMessage == nil
@@ -374,8 +380,30 @@ final class StartAgentStore {
             ? Self.defaultAgentName(for: kind, taken: existingAgentNames(hostID))
             : trimmedName
         isStarting = true
-        state = .starting
         defer { isStarting = false }
+        // A name-only New Workspace launch has no browsed directory: fall
+        // back to the Host's home directory, resolved at submit so an
+        // unreachable Host is reported here instead of blocking the form.
+        // isStarting flips before the first await so a double-tap cannot
+        // dispatch twice while the probe is in flight; state stays .editing
+        // until the launch target resolves.
+        if origin == nil, launchTarget == .newWorkspace,
+            Self.nonEmptyTrimmed(newWorkspaceDirectory) == nil
+        {
+            do {
+                let home = try await remoteHome(hostID)
+                guard RemoteShellPath.isQuotableAbsolute(home) else {
+                    state = .failed("The Host's home directory is not a usable path: \(home)")
+                    return
+                }
+                newWorkspaceDirectory = home
+            } catch {
+                state = .failed("Could not determine the Host's home directory: \(error)")
+                return
+            }
+        }
+        guard let destination = launchDestination else { return }
+        state = .starting
         let workspaceID: String?
         switch destination {
         case .newWorkspace:
