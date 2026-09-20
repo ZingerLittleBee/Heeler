@@ -831,14 +831,16 @@ actor HeelerSSHTransport: Transport {
                 label: launch.name,
                 workspaceID: launch.workspaceID),
             decoding: WorktreeCreatedResponse.self)
-        // Same tab-label gap as the New Workspace path: the worktree label
-        // lands on the Workspace, so rename the tab to the agent's name.
-        try? await renameTab(
-            TabRenameParams(label: launch.name, tabID: created.tab.tabID))
         do {
             let response = try await startAgentAwaitingShell(
                 launch,
                 paneID: created.rootPane.paneID)
+            // The launch succeeded, so the name is now real: rename the
+            // worktree's fresh tab, which only carries the worktree label.
+            // Best-effort — a cosmetic rename failure must not fail a start
+            // that already succeeded.
+            try? await renameTab(
+                TabRenameParams(label: launch.name, tabID: created.tab.tabID))
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
             try? await removeCreatedWorktree(workspaceID: created.workspace.workspaceID)
@@ -857,15 +859,17 @@ actor HeelerSSHTransport: Transport {
                 focus: false,
                 label: workspace.label),
             decoding: WorkspaceCreatedResponse.self)
-        // workspace.create labels the Workspace, not its first tab; give the
-        // fresh tab the agent's name so the tab bar reads right. Best-effort:
-        // a rename failure must not abort a launch that already succeeded.
-        try? await renameTab(
-            TabRenameParams(label: launch.name, tabID: created.tab.tabID))
         do {
             let response = try await startAgentAwaitingShell(
                 launch,
                 paneID: created.rootPane.paneID)
+            // The launch succeeded, so the name is now real: rename the
+            // fresh tab, which only carries the Workspace label (herdr
+            // labels the Workspace, not its first tab). Best-effort — a
+            // cosmetic rename failure must not fail a start that already
+            // succeeded.
+            try? await renameTab(
+                TabRenameParams(label: launch.name, tabID: created.tab.tabID))
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
             try? await closeCreatedWorkspace(workspaceID: created.workspace.workspaceID)

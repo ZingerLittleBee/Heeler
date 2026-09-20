@@ -162,8 +162,8 @@ final class StartAgentStore {
             }
         }
     }
-    /// Remote directory for a New Workspace launch. Required once that
-    /// target is selected; trimmed at submit.
+    /// Remote directory for a New Workspace launch. Optional: empty resolves
+    /// to the Host's home directory at submit. Trimmed before use.
     var newWorkspaceDirectory: String = ""
     /// Selecting a directory switches the draft destination without starting
     /// an Agent. Dismissing the browser never changes the current selection.
@@ -318,7 +318,8 @@ final class StartAgentStore {
     }
 
     /// Existing Workspace and origin launches need a reported Workspace;
-    /// New Workspace needs a non-empty trimmed directory instead.
+    /// a New Workspace launch is complete as chosen, because a name-only
+    /// launch resolves its directory at submit.
     private var hasLaunchTarget: Bool {
         if origin != nil { return selectedWorkspaceID != nil }
         switch launchTarget {
@@ -385,20 +386,30 @@ final class StartAgentStore {
         // back to the Host's home directory, resolved at submit so an
         // unreachable Host is reported here instead of blocking the form.
         // isStarting flips before the first await so a double-tap cannot
-        // dispatch twice while the probe is in flight; state stays .editing
-        // until the launch target resolves.
+        // dispatch twice while the probe is in flight.
         if origin == nil, launchTarget == .newWorkspace,
             Self.nonEmptyTrimmed(newWorkspaceDirectory) == nil
         {
+            state = .starting
             do {
                 let home = try await remoteHome(hostID)
+                // The form stays editable while the probe is in flight;
+                // discard the answer if it no longer applies.
+                guard selectedHostID == hostID,
+                    launchTarget == .newWorkspace,
+                    Self.nonEmptyTrimmed(newWorkspaceDirectory) == nil
+                else {
+                    state = .editing
+                    return
+                }
                 guard RemoteShellPath.isQuotableAbsolute(home) else {
-                    state = .failed("The Host's home directory is not a usable path: \(home)")
+                    state = .failed(
+                        "The Host's home directory is not a usable path: \(home)")
                     return
                 }
                 newWorkspaceDirectory = home
             } catch {
-                state = .failed("Could not determine the Host's home directory: \(error)")
+                state = .failed(Self.homeProbeMessage(for: error))
                 return
             }
         }
@@ -613,6 +624,19 @@ final class StartAgentStore {
             "Agent detection timed out."
         default:
             "Detecting Agents failed: \(error)"
+        }
+    }
+
+    /// User-facing copy for a failed home-directory probe: the same
+    /// TransportError arms the launch path maps, with the probe's subject.
+    private static func homeProbeMessage(for error: any Error) -> String {
+        switch error {
+        case TransportError.sshUnreachable:
+            "The Host is not connected, so its home directory could not be resolved."
+        case TransportError.timedOut:
+            "Resolving the Host's home directory timed out."
+        default:
+            "Could not determine the Host's home directory: \(error)"
         }
     }
 

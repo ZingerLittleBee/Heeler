@@ -331,6 +331,8 @@ struct StartWorkspacePicker: View {
                 }
                 if newDirectory != nil {
                     Text(directoryName).tag(Selection?.some(.newWorkspace))
+                } else if isNewWorkspaceSelected {
+                    Text("Home").tag(Selection?.some(.newWorkspace))
                 }
             }
             .disabled(workspaces.isEmpty && newDirectory == nil)

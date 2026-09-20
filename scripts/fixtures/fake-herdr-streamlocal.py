@@ -34,6 +34,12 @@ NON_RETRYABLE_START_FAILURE = {
     "code": "fixture_agent_start_refused",
     "message": "scripted non-retryable agent.start failure",
 }
+# The cosmetic rename refusal: `tab.rename` alone fails, so a test can prove
+# the launch it decorated still succeeds.
+TAB_RENAME_REFUSED = {
+    "code": "fixture_tab_rename_refused",
+    "message": "scripted non-retryable tab.rename failure",
+}
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -271,15 +277,21 @@ class Server:
         `busyforever` never lets it through; `startfails` refuses once with a
         code no retry policy may swallow; `startdrop` is handled in `_serve`
         by closing the channel with no reply (an ambiguous transport failure);
-        `ok` scripts no failure at all.
+        `ok` scripts no failure at all. `renamefail` refuses only `tab.rename`
+        (the launch itself must succeed, so a test can prove a cosmetic
+        rename refusal stays cosmetic).
 
         A word outside that set is refused rather than treated as `ok`: a
         mistyped behaviour would otherwise leave a test green while proving
         nothing, which is the one way a fixture can lie.
         """
-        if token is None or method != "agent.start":
+        if token is None:
             return None
         behavior = token.split(":")[1]
+        if method == "tab.rename" and behavior == "renamefail":
+            return dict(TAB_RENAME_REFUSED)
+        if method != "agent.start":
+            return None
         if behavior == "ok":
             return None
         if behavior == "startdrop":
@@ -504,6 +516,12 @@ class Server:
             return {"type": "agent_info", "agent": self._agent()}
         if method == "workspace.rename":
             return {"type": "workspace_info", "workspace": self._workspace()}
+        if method == "tab.rename":
+            request = params if isinstance(params, dict) else {}
+            tab = self._tab(request.get("tab_id"), "workspace-1")
+            if isinstance(tab, dict) and request.get("label") is not None:
+                tab["label"] = request.get("label")
+            return {"type": "tab_info", "tab": tab}
         return {"type": "ok"}
 
     def _scripted_result(self, method: str, token: str) -> Optional[object]:
