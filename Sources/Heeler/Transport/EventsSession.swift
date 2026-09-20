@@ -345,9 +345,53 @@ actor EventsSession {
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
         let transport = try await awaitUsableTransport()
-        let value = try await operation(transport)
-        noteConnectionActivity()
-        return value
+        do {
+            let value = try await operation(transport)
+            noteConnectionActivity()
+            return value
+        } catch {
+            // A degraded SSH link can sit installed-but-dead until the run
+            // loop's own traffic notices. A caller that hit it first does
+            // what the keepalive does — distrust the transport, let the run
+            // loop redial, and retry once on the replacement. Retrying only
+            // while this transport is still the installed one keeps a raced
+            // replacement from double-failing a caller, and server answers
+            // (API rejections) are never retried.
+            guard Self.isTransportLinkFailure(error) else {
+                throw error
+            }
+            // A replacement may already be in flight (currentTransport nil)
+            // or a fresher transport may have been installed since; either
+            // way the single retry rides whatever is current.
+            if isSameTransport(currentTransport, transport) {
+                transportSuspect = true
+                currentTransport = nil
+            }
+            let replacement = try await awaitUsableTransport()
+            let value = try await operation(replacement)
+            noteConnectionActivity()
+            return value
+        }
+    }
+
+    /// Link-level failures worth one redial-and-retry: the SSH connection
+    /// itself failed or swallowed the call. Server answers and cancellation
+    /// are not retried.
+    private static func isTransportLinkFailure(_ error: any Error) -> Bool {
+        switch error as? TransportError {
+        case .sshUnreachable, .timedOut: true
+        default: false
+        }
+    }
+
+    private func isSameTransport(
+        _ a: (any Transport)?, _ b: any Transport
+    ) -> Bool {
+        guard let a else { return false }
+        guard let aObject = a as AnyObject?, let bObject = b as AnyObject? else {
+            return false
+        }
+        return ObjectIdentifier(aObject) == ObjectIdentifier(bObject)
     }
 
     /// The installed Transport, or — while the active run loop is
