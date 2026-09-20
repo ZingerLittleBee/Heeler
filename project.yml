@@ -1,6 +1,6 @@
 name: Heeler
 options:
-  bundleIdPrefix: dev.bybee
+  bundleIdPrefix: com.otreva
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
@@ -11,7 +11,7 @@ settings:
     # Swift 6 language mode implies complete strict concurrency checking.
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    DEVELOPMENT_TEAM: 9VM4RM39R3
+    DEVELOPMENT_TEAM: 5NWMRTN5BA
     CODE_SIGN_STYLE: Automatic
 
 packages:
@@ -62,7 +62,7 @@ targets:
         # window from it only for a declared type. The generated scene
         # manifest already declares multiple-scene support.
         NSUserActivityTypes:
-          - dev.bybee.heeler.agent
+          - com.otreva.heeler-manual.agent
     entitlements:
       path: Sources/Heeler/Heeler.entitlements
       properties:
@@ -73,13 +73,13 @@ targets:
         # Shared with the Notification Service Extension; doubles as the
         # Keychain access group holding the Notification Keys.
         com.apple.security.application-groups:
-          - group.dev.bybee.heeler.shared
+          - group.com.otreva.heeler-manual.shared
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler
+        PRODUCT_BUNDLE_IDENTIFIER: com.otreva.heeler-manual
         # Home-screen name; the App Store listing is "Heeler for herdr".
-        INFOPLIST_KEY_CFBundleDisplayName: Heeler
+        INFOPLIST_KEY_CFBundleDisplayName: Heeler-Manual
         MARKETING_VERSION: "0.1.9"
         CURRENT_PROJECT_VERSION: "21"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
@@ -125,7 +125,7 @@ targets:
       path: Sources/HeelerNotificationService/HeelerNotificationService.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.dev.bybee.heeler.shared
+          - group.com.otreva.heeler-manual.shared
     info:
       path: Sources/HeelerNotificationService/Info.plist
       properties:
@@ -143,7 +143,7 @@ targets:
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
+        PRODUCT_BUNDLE_IDENTIFIER: com.otreva.heeler-manual.NotificationService
         MARKETING_VERSION: "0.1.9"
         CURRENT_PROJECT_VERSION: "21"
         # Match the containing app's iPhone and iPad device family.
@@ -174,7 +174,7 @@ targets:
       path: Sources/HeelerWidgets/HeelerWidgets.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.dev.bybee.heeler.shared
+          - group.com.otreva.heeler-manual.shared
     info:
       path: Sources/HeelerWidgets/Info.plist
       properties:
@@ -191,7 +191,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.Widgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.otreva.heeler-manual.Widgets
         MARKETING_VERSION: "0.1.9"
         CURRENT_PROJECT_VERSION: "21"
         # Match the containing app's iPhone and iPad device family.
@@ -218,7 +218,7 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.otreva.heeler-manual.tests
     dependencies:
       - target: Heeler
       - package: HeelerSSH

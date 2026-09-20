@@ -10,7 +10,7 @@ struct AgentRoute: Codable, Hashable, Sendable {
 
     /// The user activity a Console row vends while dragged; dropping it at
     /// the screen edge asks the system for a new window on that Agent.
-    static let activityType = "dev.bybee.heeler.agent"
+    static let activityType = "com.otreva.heeler-manual.agent"
 
     init(agentID: ConsoleAgent.ID) {
         self.agentID = agentID

@@ -20,7 +20,7 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSUserActivityTypes</key>
 	<array>
-		<string>dev.bybee.heeler.agent</string>
+		<string>com.otreva.heeler-manual.agent</string>
 	</array>
 </dict>
 </plist>

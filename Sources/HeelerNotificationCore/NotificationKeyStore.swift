@@ -35,7 +35,7 @@ struct NotificationKeyStore: Sendable {
     /// The app-group id doubling as the Keychain access group (iOS accepts
     /// app groups in `kSecAttrAccessGroup` without the team prefix), granted
     /// to the app and the service extension by their entitlements.
-    static let sharedAccessGroup = "group.dev.bybee.heeler.shared"
+    static let sharedAccessGroup = "group.com.otreva.heeler-manual.shared"
 
     private static let service = "dev.bybee.heeler.notifications"
     private static let keyBytes = 32
