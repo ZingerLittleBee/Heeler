@@ -37,10 +37,37 @@ function isIpv6Likely(address) {
 
 const PRIMARY_INTERFACE_BY_PLATFORM = { darwin: "en0", linux: "eth0" };
 
+// Virtual interfaces owned by container/VM runtimes. Their addresses are
+// private (so they pass isIpv4Likely) but they only ever route inside this
+// host -- a phone can never reach 172.17.0.1. On a box running Docker they
+// otherwise outnumber and outrank the real interfaces, which makes the
+// pre-checked default a dead address and buries the reachable ones.
+const VIRTUAL_INTERFACE_PATTERNS = [
+  /^docker\d*$/i, // docker0
+  /^br-[0-9a-f]+$/i, // docker user-defined bridges
+  /^veth/i, // container veth pairs
+  /^virbr\d*/i, // libvirt
+  /^vmnet\d*$/i, // VMware
+  /^vboxnet\d*$/i, // VirtualBox
+  /^podman\d*$/i, // podman
+  /^cni\d*$/i, // CNI
+  /^flannel/i,
+  /^cali/i, // Calico
+  /^lxcbr\d*$/i,
+  /^lxdbr\d*$/i,
+  /^kube-/i,
+  /^bridge\d+$/i, // macOS Docker Desktop / VM bridges
+  /^anpi\d+$/i, // macOS internal
+];
+
+function isVirtualInterface(interfaceName) {
+  return VIRTUAL_INTERFACE_PATTERNS.some((pattern) => pattern.test(interfaceName));
+}
+
 /**
  * Enumerate routable candidate addresses for the Pairing Code.
  *
- * Skips loopback and link-local addresses. Exactly one candidate is
+ * Skips loopback, link-local, and container/VM bridge addresses. Exactly one candidate is
  * pre-checked: the likely one (private IPv4, CGNAT IPv4, ULA IPv6) on the
  * platform's primary interface, else the best-ranked likely one. Ordered
  * pre-checked first, then likely before unlikely, IPv4 before IPv6 within
@@ -58,6 +85,7 @@ export function candidateAddresses(
   const candidates = [];
 
   for (const [interfaceName, entries] of Object.entries(interfaces)) {
+    if (isVirtualInterface(interfaceName)) continue;
     for (const entry of entries ?? []) {
       if (entry.internal) continue;
       const { family } = entry;

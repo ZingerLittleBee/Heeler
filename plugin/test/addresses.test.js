@@ -141,6 +141,32 @@ suite("candidateAddresses", () => {
     ]);
   });
 
+  test("skips container and VM bridges, so a Docker host pre-checks Tailscale", () => {
+    const candidates = candidateAddresses(
+      {
+        lo: [iface("127.0.0.1", "IPv4", true)],
+        docker0: [iface("172.17.0.1", "IPv4")],
+        "br-6b73c0427855": [iface("172.18.0.1", "IPv4")],
+        "br-295b62ad6116": [iface("172.19.0.1", "IPv4")],
+        veth1a2b3c4: [iface("172.20.0.2", "IPv4")],
+        tailscale0: [iface("100.64.0.5", "IPv4"), iface("fd7a:115c:a1e0::1", "IPv6")],
+        eth0: [iface("203.0.113.9", "IPv4"), iface("2001:db8::7", "IPv6")],
+      },
+      "linux",
+    );
+    assert.deepEqual(
+      candidates.map((c) => c.address),
+      [
+        "100.64.0.5",
+        "fd7a:115c:a1e0::1",
+        "203.0.113.9",
+        "2001:db8::7",
+      ],
+    );
+    assert.equal(candidates[0].preChecked, true);
+    assert.deepEqual(candidates.slice(1).map((c) => c.preChecked), [false, false, false]);
+  });
+
   test("returns an empty list when nothing is routable", () => {
     assert.deepEqual(candidateAddresses({ lo0: [iface("127.0.0.1", "IPv4", true)] }), []);
   });
