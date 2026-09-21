@@ -292,7 +292,9 @@ class Server:
             return dict(TAB_RENAME_REFUSED)
         if method != "agent.start":
             return None
-        if behavior == "ok":
+        if behavior in ("ok", "renamefail"):
+            # `renamefail` scripts a refusal for the rename only; the
+            # launch it decorates must go through like `ok`.
             return None
         if behavior == "startdrop":
             return None
