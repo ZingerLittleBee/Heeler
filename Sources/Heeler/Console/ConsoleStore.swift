@@ -44,8 +44,10 @@ final class ConsoleStore {
     /// mosh availability probed once per Host connection, keyed like the
     /// skills cache on the transport generation. A thrown probe caches
     /// unavailable — SSH stays the backbone, mosh only upgrades the Agent
-    /// terminal when it is demonstrably there.
-    @ObservationIgnored private var moshProbes: [Host.ID: MoshProbeOutcome] = [:]
+    /// terminal when it is demonstrably there. Tracked on purpose: mosh
+    /// compatibility is a Host property, so the Console index's per-Host
+    /// capsule reads this dict live.
+    private(set) var moshStates: [Host.ID: MoshProbeOutcome] = [:]
     /// Generations already sent to probe, so repeated rebuilds while a
     /// probe is in flight do not pile up duplicate probes.
     @ObservationIgnored private var moshProbedGenerations: [Host.ID: UInt64] = [:]
@@ -124,8 +126,9 @@ final class ConsoleStore {
             sidebarSnapshots.invalidate(id)
             terminalSnapshotRevisions[id] = nil
             terminalTransportGenerations[id] = nil
-            moshProbes[id] = nil
+            moshStates[id] = nil
             moshProbedGenerations[id] = nil
+            moshProbeClaims[id] = nil
             Task {
                 await terminalConnections.removeHost(id)
                 await agentTerminals.removeHost(id)
@@ -360,7 +363,14 @@ final class ConsoleStore {
         let projectRoot: String?
     }
 
-    private struct MoshProbeOutcome: Equatable {
+enum MoshHostCapsuleState: Equatable, Sendable {
+    case untested
+    case testing
+    case available
+    case unavailable
+}
+
+struct MoshProbeOutcome: Equatable {
         let generation: UInt64
         let available: Bool
     }
@@ -379,7 +389,7 @@ final class ConsoleStore {
         // per-generation one: the last proven outcome stands for every
         // attach until a newer probe (fresh connection generation, manual
         // test, or a runtime mosh failure) replaces it.
-        moshProbes[hostID]?.available ?? false
+        moshStates[hostID]?.available ?? false
     }
 
     /// Marks mosh unavailable for the Host's current connection generation:
@@ -390,15 +400,91 @@ final class ConsoleStore {
     /// route here.
     func invalidateMosh(for hostID: Host.ID) {
         let generation = hostConnectionGenerations[hostID] ?? 0
-        moshProbes[hostID] = MoshProbeOutcome(generation: generation, available: false)
+        moshStates[hostID] = MoshProbeOutcome(generation: generation, available: false)
         moshInvalidatedGenerations[hostID] = generation
     }
 
     /// Test surface: the cached probe outcome, proving the probe ran (once)
     /// and how it was cached.
     func moshProbe(for hostID: Host.ID) -> (generation: UInt64, available: Bool)? {
-        guard let probe = moshProbes[hostID] else { return nil }
+        guard let probe = moshStates[hostID] else { return nil }
         return (probe.generation, probe.available)
+    }
+
+    /// The Console index's per-Host mosh capsule. Compatibility is a Host
+    /// property, so the capsule state lives here rather than on any one
+    /// terminal tab — every session on the Host shares it.
+
+    /// In-flight capsule re-probes, keyed per Host so a second tap is a
+    /// no-op instead of piling up duplicate probes. The claim is a fresh
+    /// UUID: the finishing task confirms the claim is still its own before
+    /// clearing, so a Host removed and re-added mid-probe (whose fresh
+    /// claim replaces this one) is not wiped by the stale probe. Tracked:
+    /// the capsule renders its spinner from this.
+    private var moshProbeClaims: [Host.ID: UUID] = [:]
+
+    /// What the Host's mosh capsule renders. A forced re-probe in flight
+    /// shows testing; otherwise the last proven outcome, or untested
+    /// before any probe has landed for the Host.
+    func moshCapsuleState(for hostID: Host.ID) -> MoshHostCapsuleState {
+        if moshProbeClaims[hostID] != nil { return .testing }
+        guard let outcome = moshStates[hostID] else { return .untested }
+        return outcome.available ? .available : .unavailable
+    }
+
+    /// The capsule's tap: re-probes mosh over the Host's live connection
+    /// and, when mosh is there, upgrades the Host's live SSH terminals to
+    /// it. A failed probe just records unavailable — the SSH fallback is
+    /// silent by design, and the Host's sessions keep running over SSH.
+    func forceMoshReprobe(for hostID: Host.ID) async {
+        guard moshProbeClaims[hostID] == nil,
+            let projection = projections[hostID],
+            projection.status == .connected
+        else { return }
+        let generation = projection.transportGeneration
+        // One probe per connection generation, whichever kicks first: a
+        // capsule tap claims the generation so the connect-time probe
+        // does not duplicate it.
+        moshProbedGenerations[hostID] = generation
+        let claim = UUID()
+        moshProbeClaims[hostID] = claim
+        Task { [weak self, weak projection] in
+            guard let self else { return }
+            defer {
+                if moshProbeClaims[hostID] == claim {
+                    moshProbeClaims[hostID] = nil
+                }
+            }
+            guard let projection, projections[hostID] === projection,
+                projection.transportGeneration == generation,
+                projection.status == .connected
+            else { return }
+            let available: Bool
+            do {
+                available = try await projection.session.withTransport {
+                    transport in
+                    try await transport.probeMoshServer()
+                }
+            } catch {
+                available = false
+            }
+            // Newest-generation-wins and invalidation guards, matching
+            // the connect-time probe: a probe landing for a replaced
+            // connection must not override a newer generation's outcome,
+            // and a probe racing an invalidation must not re-mark a
+            // failed handshake as available before the next generation.
+            if moshStates[hostID].map({ $0.generation > generation }) ?? false {
+                return
+            }
+            if moshInvalidatedGenerations[hostID].map({ $0 >= generation }) ?? false {
+                return
+            }
+            moshStates[hostID] = MoshProbeOutcome(
+                generation: generation, available: available)
+            if available {
+                agentTerminals.upgradeSSHAttachToMosh(for: hostID)
+            }
+        }
     }
 
     /// The Skills pane's data source: probes the Host over its live Console
@@ -786,13 +872,13 @@ final class ConsoleStore {
                     // override a newer generation's outcome, and a probe
                     // racing an invalidation must not re-mark a failed
                     // handshake as available before the next generation.
-                    if moshProbes[hostID].map({ $0.generation > generation }) ?? false {
+                    if moshStates[hostID].map({ $0.generation > generation }) ?? false {
                         return
                     }
                     if moshInvalidatedGenerations[hostID].map({ $0 >= generation }) ?? false {
                         return
                     }
-                    moshProbes[hostID] = MoshProbeOutcome(
+                    moshStates[hostID] = MoshProbeOutcome(
                         generation: generation, available: available)
                 }
             }

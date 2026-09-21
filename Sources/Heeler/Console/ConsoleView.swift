@@ -608,7 +608,13 @@ struct ConsoleView: View {
             }
         } header: {
             ConsoleHostSectionHeaderView(
-                presentation: ConsoleHostSectionHeaderPresentation(section: section)
+                presentation: ConsoleHostSectionHeaderPresentation(section: section),
+                moshState: section.connectionStatus != nil
+                    ? console.moshCapsuleState(for: section.hostID)
+                    : nil,
+                onMoshCapsuleTap: {
+                    Task { await console.forceMoshReprobe(for: section.hostID) }
+                }
             ) {
                 toggleHostSection(section.hostID)
             }
@@ -647,7 +653,13 @@ struct ConsoleView: View {
             }
         } header: {
             ConsoleHostSectionHeaderView(
-                presentation: ConsoleHostSectionHeaderPresentation(section: section.host)
+                presentation: ConsoleHostSectionHeaderPresentation(section: section.host),
+                moshState: section.host.connectionStatus != nil
+                    ? console.moshCapsuleState(for: section.host.hostID)
+                    : nil,
+                onMoshCapsuleTap: {
+                    Task { await console.forceMoshReprobe(for: section.host.hostID) }
+                }
             ) {
                 toggleHostSection(section.host.hostID)
             }
@@ -1263,41 +1275,102 @@ private struct ConsoleWorkspaceStatusDots: View {
 /// Collapsible Host-section header for the grouped Console list (#245).
 private struct ConsoleHostSectionHeaderView: View {
     let presentation: ConsoleHostSectionHeaderPresentation
+    /// The Host's per-Host mosh capsule; nil renders nothing.
+    var moshState: ConsoleStore.MoshHostCapsuleState?
+    var onMoshCapsuleTap: (() -> Void)?
     let onToggle: () -> Void
 
     var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 8) {
-                Image(systemName: presentation.disclosureSystemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 12, alignment: .center)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(presentation.hostDisplayName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(presentation.readinessText)
-                        .font(.caption)
+        HStack(spacing: 8) {
+            Button(action: onToggle) {
+                HStack(spacing: 8) {
+                    Image(systemName: presentation.disclosureSystemImage)
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if presentation.showsStatusPills {
-                    ConsoleHostStatusCountPills(items: presentation.statusItems)
+                        .frame(width: 12, alignment: .center)
                         .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(presentation.hostDisplayName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(presentation.readinessText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    if presentation.showsStatusPills {
+                        ConsoleHostStatusCountPills(items: presentation.statusItems)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Rectangle())
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(presentation.accessibilityLabel)
+            .accessibilityValue(presentation.accessibilityValue)
+            .accessibilityHint(presentation.accessibilityHint)
+            .accessibilityAddTraits(.isHeader)
+            // The mosh capsule is its own tap target: tapping it must not
+            // collapse the section.
+            if let moshState, let onMoshCapsuleTap {
+                MoshHostCapsuleView(state: moshState, action: onMoshCapsuleTap)
+            }
+        }
+    }
+}
+
+/// The Console Host header's mosh capsule: a per-Host transport summary
+/// and tap target. Blue MOSH means a probe proved mosh and tapping
+/// re-tests (upgrading live SSH sessions on the Host); grey SSH means
+/// SSH is the current backbone; a spinner means a forced re-probe is in
+/// flight.
+private struct MoshHostCapsuleView: View {
+    let state: ConsoleStore.MoshHostCapsuleState
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                switch state {
+                case .testing:
+                    ProgressView()
+                        .controlSize(.mini)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                case .available:
+                    Text("MOSH")
+                        .font(.caption2.weight(.bold).monospaced())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.blue, in: Capsule())
+                case .unavailable, .untested:
+                    Text("SSH")
+                        .font(.caption2.weight(.bold).monospaced())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.15), in: Capsule())
                 }
             }
-            .contentShape(Rectangle())
-            .padding(.vertical, 4)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(presentation.accessibilityLabel)
-        .accessibilityValue(presentation.accessibilityValue)
-        .accessibilityHint(presentation.accessibilityHint)
-        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Tests mosh for this Host and upgrades its sessions.")
+    }
+
+    private var accessibilityLabel: String {
+        switch state {
+        case .testing: return "Testing mosh"
+        case .available: return "Mosh available"
+        case .unavailable: return "Mosh unavailable"
+        case .untested: return "Mosh untested"
+        }
     }
 }
 

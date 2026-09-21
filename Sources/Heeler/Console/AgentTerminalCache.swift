@@ -171,6 +171,16 @@ final class AgentTerminalCache {
         }
     }
 
+    /// The host-level mosh capsule's tap: every visible Agent terminal on
+    /// the Host still riding a live SSH session gets restarted so the
+    /// runner re-selects mosh now that the Host's probe proved it.
+    func upgradeSSHAttachToMosh(for hostID: Host.ID) {
+        for entry in entries.values.filter({ $0.agentID.hostID == hostID })
+        where entry.lifetime.visible {
+            entry.attach.upgradeToMoshIfNeeded()
+        }
+    }
+
     func reconcile(
         hostID: Host.ID, agents: [ConsoleAgent],
         isCurrent: @escaping @MainActor () -> Bool = { true }

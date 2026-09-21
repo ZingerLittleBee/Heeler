@@ -88,11 +88,11 @@ final class AgentAttachStore {
     private(set) var attachLinkOpenFailure: AttachLinkOpenFailure?
 
     private var transportGeneration: UInt64?
-    /// How the most recent attach session was carried (mosh UDP or SSH PTY),
-    /// surfaced in the terminal chrome as a transport badge.
+    /// How the most recent attach session was carried (mosh UDP or SSH PTY).
     /// The live terminal's transport flavor: every AttachTerminalStore
     /// records its own flavor when transportDidBecomeReady fires, so this
-    /// reads the source of truth for the initial attach AND replacements.
+    /// reads the source of truth for the initial attach AND replacements —
+    /// and for the host-level capsule's SSH→mosh upgrade.
     var lastSessionFlavor: TerminalSessionFlavor {
         terminal.lastSessionFlavor
     }
@@ -508,6 +508,15 @@ final class AgentAttachStore {
     /// reattaches — SSH takes over.
     func useSSHInstead() {
         terminal.retryOverSSH()
+    }
+
+    /// The host-level mosh capsule's tap: upgrades this screen's live SSH
+    /// session to mosh by restarting the terminal pipeline — the runner
+    /// re-selects mosh now that the Host's probe proved it. No-op for a
+    /// session already on mosh or not live.
+    func upgradeToMoshIfNeeded() {
+        guard lastSessionFlavor == .ssh, terminal.status == .live else { return }
+        terminal.upgradeToMosh()
     }
 
     func confirmClose() async -> Bool {

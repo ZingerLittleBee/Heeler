@@ -2670,6 +2670,54 @@ struct AgentAttachStoreTests {
             closePane: close)
     }
 
+    /// The host-level mosh capsule's tap: a live SSH session restarts so
+    /// the runner re-selects mosh. Two synchronous taps must schedule only
+    /// one restart.
+    @Test func upgradeToMoshIfNeededRestartsALiveSSHSession() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 0)
+        try await goLive(store, transport)
+        #expect(store.lastSessionFlavor == .ssh)
+        #expect(store.terminalStatus == .live)
+        #expect(await transport.attachRequests.count == 1)
+
+        store.upgradeToMoshIfNeeded()
+        store.upgradeToMoshIfNeeded()
+        try await waitUntil("the reattach should open for the upgrade") {
+            await transport.attachRequests.count == 2
+        }
+        try await paint(transport)
+        try await waitUntil("the upgraded session should be live again") {
+            store.terminalStatus == .live
+        }
+        #expect(await transport.attachRequests.count == 2)
+
+        await store.leave().value
+    }
+
+    /// A session already riding mosh (or not live) is left alone: the
+    /// upgrade is only for SSH sessions on a Host whose probe proved mosh.
+    @Test func upgradeToMoshIfNeededNoOpsForASessionAlreadyOnMosh() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(
+            transport: transport, generation: 0,
+            runTerminal: { request, handler in
+                await handler.transportDidBecomeReady(0, flavor: .mosh)
+                let session = try await transport.attachTerminal(request)
+                try await handler.runEndingSession(session)
+            })
+        try await goLive(store, transport)
+        #expect(store.lastSessionFlavor == .mosh)
+        #expect(store.terminalStatus == .live)
+
+        store.upgradeToMoshIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(store.terminalStatus == .live)
+        #expect(await transport.attachRequests.count == 1)
+
+        await store.leave().value
+    }
+
     private func observeTerminalChanges(
         of store: AgentAttachStore
     ) -> ObservationChangeProbe {

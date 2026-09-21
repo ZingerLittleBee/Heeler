@@ -557,6 +557,7 @@ final actor ScriptedTransport: Transport {
     /// probes answer false, like a Host without mosh-server.
     private var moshProbeAvailable = false
     private var moshProbeFailure: (any Error)?
+    private var nextMoshProbeGate: ScriptedTransportCallGate?
     private(set) var moshProbeCount = 0
 
     func setMoshProbeAvailable(_ available: Bool) {
@@ -568,8 +569,19 @@ final actor ScriptedTransport: Transport {
         moshProbeFailure = failure
     }
 
+    /// Pauses the next mosh availability probe, so a test can observe the
+    /// capsule's in-flight state before the outcome lands.
+    func gateNextMoshProbe(on gate: ScriptedTransportCallGate) {
+        nextMoshProbeGate = gate
+    }
+
     func probeMoshServer() async throws -> Bool {
         moshProbeCount += 1
+        let gate = nextMoshProbeGate
+        nextMoshProbeGate = nil
+        if let gate {
+            await gate.waitUntilOpen()
+        }
         if let moshProbeFailure { throw moshProbeFailure }
         return moshProbeAvailable
     }

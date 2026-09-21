@@ -229,8 +229,9 @@ final class AttachTerminalStore {
     private var cols: Int?
     private var rows: Int?
     private(set) var transportGeneration: UInt64?
-    /// How the most recent attach session was carried (mosh UDP or SSH PTY),
-    /// surfaced in the terminal chrome as a transport badge.
+    /// How the most recent attach session was carried (mosh UDP or SSH PTY).
+    /// The source of truth for the mosh upgrade path: the host-level
+    /// capsule upgrades only sessions still riding SSH.
     private(set) var lastSessionFlavor: TerminalSessionFlavor = .ssh
     /// The Transport generation this pipeline actually acquired from its
     /// runner. Unlike `transportGeneration`, this is never seeded from a
@@ -378,6 +379,42 @@ final class AttachTerminalStore {
         }
     }
 
+    /// True while a mosh-upgrade restart is scheduled for the live
+    /// session. A second request must not schedule a second restart, and
+    /// the dying run must not overwrite the Connecting status the
+    /// scheduled restart already installed.
+    private var moshUpgradeRestartScheduled = false
+
+    /// The host-level mosh capsule's upgrade: the Host's probe proved
+    /// mosh available, so the live SSH session is ended and the pipeline
+    /// reattaches — the runner re-selects mosh for the fresh attach. Same
+    /// spawned-restart shape as the automatic mosh-failure fallback: the
+    /// restart is scheduled off this run task (a synchronous `start()`
+    /// would be cleared by `run()`'s own `runTask = nil` teardown), one
+    /// restart is ever in flight, and a session that stopped meanwhile
+    /// stays stopped.
+    func upgradeToMosh() {
+        guard status == .live, runTask != nil, !stopRequested,
+            !moshUpgradeRestartScheduled
+        else { return }
+        moshUpgradeRestartScheduled = true
+        // Fresh consent to the mosh path, like a user-driven retry: the
+        // upgrade is deliberate, so a spent automatic fallback must not
+        // pin the reattach to SSH.
+        moshAutoFallbackUsed = false
+        status = .connecting
+        let session = self.session
+        let current = runTask
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await session?.end()
+            await current?.value
+            guard !self.stopRequested else { return }
+            self.moshUpgradeRestartScheduled = false
+            self.start()
+        }
+    }
+
     /// Ends the session by explicit close (only `end()` runs the channel's
     /// teardown; abandoning the session does not) and waits for the teardown.
     /// Terminal: the detail screen creates a fresh store after a Host
@@ -446,7 +483,7 @@ final class AttachTerminalStore {
         do {
             try await runTerminal(request, handler)
         } catch {
-            guard !stopRequested else { return }
+            guard !stopRequested, !moshUpgradeRestartScheduled else { return }
             if case TransportError.moshSessionFailed = error {
                 endedWithMoshFailure = true
                 // The mosh attempt died after the banner: invalidate mosh
@@ -471,7 +508,7 @@ final class AttachTerminalStore {
             status = .ended(Self.message(for: error))
             return
         }
-        guard !stopRequested else { return }
+        guard !stopRequested, !moshUpgradeRestartScheduled else { return }
         status = .ended("The session ended.")
     }
 

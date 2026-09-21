@@ -114,4 +114,120 @@ private struct ConsoleMoshProbeTests {
 
         store.setHosts([])
     }
+
+    // MARK: host capsule
+
+    /// Acquires one live SSH Agent terminal on the connected Host, the way
+    /// the Console detail does.
+    private func connectLiveAgent(
+        host: Host, transport: ScriptedTransport, store: ConsoleStore
+    ) async throws -> AgentTerminalCache.Entry {
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Agent should appear") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+        let entry = store.agentTerminals.acquire(
+            agent: agent, console: store,
+            composer: store.composerStore(for: agent), ownerID: UUID())
+        entry.attach.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the attach should open") { await transport.hasLiveAttachSession }
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
+        try await waitUntil("the session should paint live") {
+            entry.attach.terminalStatus == .live
+        }
+        return entry
+    }
+
+    /// The capsule tap re-probes mosh and, because it is available,
+    /// restarts the Host's live SSH session so the runner picks mosh.
+    @Test func capsuleTapReprobesAndUpgradesTheHostsLiveSSHSessions() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        await transport.setMoshProbeAvailable(true)
+        let store = makeStore(transports: [host.id: transport])
+        let entry = try await connectLiveAgent(
+            host: host, transport: transport, store: store)
+        #expect(entry.attach.lastSessionFlavor == .ssh)
+        #expect(await transport.attachRequests.count == 1)
+        try await waitUntil("the capsule should read available") {
+            store.moshCapsuleState(for: host.id) == .available
+        }
+
+        await store.forceMoshReprobe(for: host.id)
+        try await waitUntil("the live SSH session should have restarted for mosh") {
+            await transport.attachRequests.count == 2
+        }
+        try await waitUntil("the restarted attach should open") {
+            await transport.hasLiveAttachSession
+        }
+        #expect(await transport.emitAttachOutput(Data("\u{1B}[2J".utf8)))
+        try await waitUntil("the restarted session should be live again") {
+            entry.attach.terminalStatus == .live
+        }
+        #expect(store.moshCapsuleState(for: host.id) == .available)
+        // One connect-time probe, one forced re-probe.
+        #expect(await transport.moshProbeCount == 2)
+
+        store.setHosts([])
+        await store.agentTerminals.suspend()
+    }
+
+    /// A failed forced probe records unavailable and leaves the live SSH
+    /// session running — the SSH fallback is silent by design.
+    @Test func failedCapsuleReprobeRecordsUnavailableWithoutUpgrading() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        await transport.setMoshProbeAvailable(true)
+        let store = makeStore(transports: [host.id: transport])
+        _ = try await connectLiveAgent(host: host, transport: transport, store: store)
+        try await waitUntil("the capsule should read available") {
+            store.moshCapsuleState(for: host.id) == .available
+        }
+
+        await transport.setMoshProbeFailure(
+            TransportError.channelFailed(detail: "probe failed"))
+        await store.forceMoshReprobe(for: host.id)
+        try await waitUntil("the failed re-probe should land as unavailable") {
+            store.moshCapsuleState(for: host.id) == .unavailable
+        }
+        #expect(await transport.attachRequests.count == 1)
+        #expect(store.moshProbe(for: host.id)?.available == false)
+
+        store.setHosts([])
+        await store.agentTerminals.suspend()
+    }
+
+    /// The capsule shows the in-flight re-probe, and a tap on an offline
+    /// Host is a graceful no-op.
+    @Test func capsuleShowsTestingInFlightAndNoOpsOffline() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture())
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextMoshProbe(on: gate)
+        let store = makeStore(transports: [host.id: transport])
+
+        // Offline: no connection to probe over.
+        #expect(store.moshCapsuleState(for: host.id) == .untested)
+        await store.forceMoshReprobe(for: host.id)
+        #expect(store.moshCapsuleState(for: host.id) == .untested)
+        #expect(await transport.moshProbeCount == 0)
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the connect-time probe should reach the gate") {
+            await gate.entryCount >= 1
+        }
+        await store.forceMoshReprobe(for: host.id)
+        try await waitUntil("the capsule should show the in-flight re-probe") {
+            store.moshCapsuleState(for: host.id) == .testing
+        }
+        await gate.open()
+        try await waitUntil("the re-probe outcome should land") {
+            store.moshCapsuleState(for: host.id) == .unavailable
+        }
+
+        store.setHosts([])
+    }
 }
