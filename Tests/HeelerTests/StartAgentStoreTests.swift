@@ -780,6 +780,35 @@ struct StartAgentStoreTests {
         #expect(recorder.worktrees == [nil])
     }
 
+    /// The tab label is free text next to the slug-constrained agent name:
+    /// trimmed on the way out, and dropped when empty so the Transport
+    /// falls back to the agent's name.
+    @Test func submitForwardsATrimmedTabLabelAndDropsAnEmptyOne() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.selectedWorkspaceID = "w1"
+        store.name = "reviewer"
+        store.tabLabel = "  Fix login bug \n"
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == started(on: host))
+        #expect(recorder.params.first?.tabLabel == "Fix login bug")
+        #expect(recorder.params.first?.resolvedTabLabel == "Fix login bug")
+
+        store.tabLabel = " \t "
+        await store.submit()
+
+        #expect(recorder.params.count == 2)
+        #expect(recorder.params.last?.tabLabel == nil)
+        #expect(recorder.params.last?.resolvedTabLabel == "reviewer")
+    }
+
     @Test func submitDispatchesAgentStartWithQwenKind() async {
         let host = Host.fixture()
         let recorder = StartRecorder()

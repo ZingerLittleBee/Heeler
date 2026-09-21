@@ -804,7 +804,7 @@ actor HeelerSSHTransport: Transport {
             params: TabCreateParams(
                 cwd: launch.cwd,
                 focus: false,
-                label: launch.name,
+                label: launch.resolvedTabLabel,
                 workspaceID: launch.workspaceID),
             decoding: TabCreatedResponse.self)
         do {
@@ -840,7 +840,7 @@ actor HeelerSSHTransport: Transport {
             // Best-effort — a cosmetic rename failure must not fail a start
             // that already succeeded.
             try? await renameTab(
-                TabRenameParams(label: launch.name, tabID: created.tab.tabID))
+                TabRenameParams(label: launch.resolvedTabLabel, tabID: created.tab.tabID))
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
             try? await removeCreatedWorktree(workspaceID: created.workspace.workspaceID)
@@ -869,7 +869,7 @@ actor HeelerSSHTransport: Transport {
             // cosmetic rename failure must not fail a start that already
             // succeeded.
             try? await renameTab(
-                TabRenameParams(label: launch.name, tabID: created.tab.tabID))
+                TabRenameParams(label: launch.resolvedTabLabel, tabID: created.tab.tabID))
             return Agent(response.agent)
         } catch let error as HerdrAPIError {
             try? await closeCreatedWorkspace(workspaceID: created.workspace.workspaceID)

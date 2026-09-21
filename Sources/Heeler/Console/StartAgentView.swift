@@ -210,6 +210,15 @@ struct StartAgentView: View {
                 }
 
                 Section {
+                    TextField("e.g. Fix login bug", text: $store.tabLabel)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Tab Name")
+                } footer: {
+                    Text("Optional. Empty labels the tab with the agent's name.")
+                }
+
+                Section {
                     AgentArgumentsField(
                         text: $store.arguments,
                         placeholder: #"e.g. --model "gpt 5" --continue"#)

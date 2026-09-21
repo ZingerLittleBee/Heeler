@@ -19,7 +19,9 @@ Entries reference the issue that motivated them.
 - New Agent tabs take the agent's name. `tab.create` now carries it as
   the tab's label, and after a workspace or worktree launch the fresh
   tab is renamed once the agent is running, so the tab bar shows names
-  instead of herdr's automatic "Tab N". (#362)
+  instead of herdr's automatic "Tab N". An optional Tab Name field on
+  the form overrides that default with free text, since herdr limits
+  agent names to a lowercase slug but not tab labels. (#362)
 - The Agent terminal shows the session's model, prompt size (as a share of
   the model's context window, `11.0%`, once omp on the Host has named it),
   and spend in a strip above the terminal. These are the figures the Agent's own status line

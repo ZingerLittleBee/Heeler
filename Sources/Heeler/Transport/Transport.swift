@@ -410,17 +410,27 @@ struct AgentLaunchRequest: Sendable, Equatable {
     /// from another agent's screen and should land in the same place. Nil
     /// lets herdr fall back to the workspace's own directory.
     let cwd: String?
+    /// Label for the tab the launch creates. Nil labels the tab with the
+    /// agent's name; see `resolvedTabLabel`. Kept separate from `name`
+    /// because herdr constrains agent names to a lowercase slug while a tab
+    /// label accepts any text.
+    let tabLabel: String?
 
     init(
         kind: String, name: String, arguments: [String] = [], workspaceID: String? = nil,
-        cwd: String? = nil
+        cwd: String? = nil, tabLabel: String? = nil
     ) {
         self.kind = kind
         self.name = name
         self.arguments = arguments
         self.workspaceID = workspaceID
         self.cwd = cwd
+        self.tabLabel = tabLabel
     }
+
+    /// The label the launch's tab should carry: the explicit tab label when
+    /// one was given, otherwise the agent's name.
+    var resolvedTabLabel: String { tabLabel ?? name }
 }
 
 /// The one-shot API request behind Agent Detail's Open Terminal action.

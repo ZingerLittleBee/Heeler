@@ -189,6 +189,10 @@ final class StartAgentStore {
     /// Optional label for a New Workspace launch. Empty or whitespace
     /// becomes nil so herdr applies its default.
     var newWorkspaceLabel: String = ""
+    /// Optional label for the tab the launch creates. Empty or whitespace
+    /// becomes nil and the tab takes the agent's name. Unlike the agent's
+    /// name it is free text: herdr's slug rule applies to agents, not tabs.
+    var tabLabel: String = ""
     /// Whether the launch targets a fresh git worktree of the selected
     /// workspace's repository instead of the workspace itself (#97).
     var startsInNewWorktree = false
@@ -427,7 +431,8 @@ final class StartAgentStore {
             name: agentName,
             arguments: arguments,
             workspaceID: workspaceID,
-            cwd: origin?.cwd)
+            cwd: origin?.cwd,
+            tabLabel: Self.nonEmptyTrimmed(tabLabel))
         do {
             let agent = try await start(request, destination, hostID)
             if case .newWorkspace = destination {

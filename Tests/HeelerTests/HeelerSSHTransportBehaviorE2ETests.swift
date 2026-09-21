@@ -969,8 +969,58 @@ struct HeelerSSHTransportBehaviorE2ETests {
         let recorded = try await Self.recordedRequests(from: transport, token: token)
         #expect(
             recorded.first
-                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"workspace_id":"workspace-1"}"#
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"label":"fixture","workspace_id":"workspace-1"}"#
         )
+    }
+
+    /// A tab label is free text next to the slug-constrained agent name. When
+    /// the launch carries one it replaces the agent's name on `tab.create`,
+    /// while `agent.start` still names the agent.
+    @Test("a custom tab label replaces the agent's name on tab.create")
+    func customTabLabelReplacesTheAgentNameOnTabCreate() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgent(
+            AgentLaunchRequest(
+                kind: "codex",
+                name: "fixture",
+                workspaceID: "workspace-1",
+                cwd: "/fixture/\(token)",
+                tabLabel: "Fix login bug"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(
+            recorded.first
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"label":"Fix login bug","workspace_id":"workspace-1"}"#
+        )
+        #expect(recorded.contains { $0.hasPrefix("agent.start ") && $0.contains(#""name":"fixture""#) })
+    }
+
+    /// The same override on the new-workspace path: the post-start rename
+    /// carries the tab label, and the Workspace keeps its own label.
+    @Test("a custom tab label drives the post-start rename of a new workspace's tab")
+    func customTabLabelDrivesTheNewWorkspaceTabRename() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgentInNewWorkspace(
+            AgentLaunchRequest(kind: "codex", name: "fixture", tabLabel: "Fix login bug"),
+            workspace: NewWorkspaceSpec(directory: "/fixture/\(token)", label: "App"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(
+            recorded[0]
+                == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false,"label":"App"}"#
+        )
+        #expect(recorded[2] == #"tab.rename {"label":"Fix login bug","tab_id":"tab:\#(token)"}"#)
     }
 
     @Test("shell terminal creation sends one exact tab create request")
