@@ -132,16 +132,17 @@ struct MoshBootstrapTests {
         #expect(!error.isHostKeySecurityFailure)
     }
 
-    @Test func probeBootstrapCommandWrapsAKeepAliveNotAHerdrAttach() throws {
+    @Test func probeBootstrapCommandEchoesAMarkerNotAHerdrAttach() throws {
         let command = try HeelerSSHTransport.moshProbeBootstrapCommand(
             socketPath: "/home/user/.herdr/herdr.sock")
         // A bare command: mosh-server flattens inner quoting when it joins
         // its arguments through the login shell, so anything that needs
-        // quotes dies on connect. `sleep 120` survives the join verbatim.
-        #expect(command.contains("-- sleep 120"))
+        // quotes dies on connect. `echo MOSH_HANDSHAKE_OK` survives the
+        // join verbatim and its marker rides the UDP session back.
+        #expect(command.contains("-- echo MOSH_HANDSHAKE_OK"))
         // The probe passes appendsTarget: false — the script must not
-        // reference the pane id at all. `sleep 120 mosh-probe` would reject
-        // its arguments and exit immediately, killing the proof session.
+        // reference the pane id at all. `echo MOSH_HANDSHAKE_OK mosh-probe`
+        // would echo the pane id back and corrupt the marker.
         #expect(!command.contains("$1"))
         // The keep-alive must be a bare command, but the OUTER wrapper is
         // itself a `/bin/sh -c '…'` — that occurrence is the wrapper, not

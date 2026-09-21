@@ -2324,6 +2324,9 @@ actor HeelerSSHTransport: Transport {
     /// prints it when the UDP path to mosh-server is unreachable. Seeing it
     /// means the handshake will fail for real sessions too.
     static let moshFailureEpilogue = "Please verify that UDP port"
+    /// The probe's wrapped command prints this marker; seeing it
+    /// rendered back on the device proves the UDP session end-to-end.
+    static let moshHandshakeMarker = "MOSH_HANDSHAKE_OK"
 
     /// Probe budget: the bootstrap exec plus this watchdog window, so a
     /// stuck mosh_main cannot hold the probe open.
@@ -2368,6 +2371,7 @@ actor HeelerSSHTransport: Transport {
     /// wrapped command finished on a working UDP session.
     private static func awaitHandshakeProof(_ session: TerminalAttachSession) async throws {
         let failureBytes = Data(moshFailureEpilogue.utf8)
+        let marker = Data(moshHandshakeMarker.utf8)
         let window = moshHandshakeWatchdog
         let received = DataReceiveBox()
         do {
@@ -2375,13 +2379,19 @@ actor HeelerSSHTransport: Transport {
                 group.addTask {
                     for try await bytes in session.output {
                         received.append(bytes)
-                        if let tail = received.epilogueFailure() {
+                        if received.range(of: marker) != nil {
+                            // The wrapped command's marker rendered back on
+                            // the device: the UDP session is proven live.
+                            return
+                        }
+                        if received.range(of: failureBytes) != nil {
                             throw TransportError.moshSessionFailed(
                                 detail: "The UDP session received nothing from the server."
-                                    + " Output tail: \(tail)")
+                                    + " Output tail: \(received.tail())")
                         }
                     }
-                    // Clean exit before the watchdog: proof.
+                    // Clean exit before the watchdog: the wrapped command
+                    // finished on a working UDP session — proof.
                 }
                 group.addTask {
                     try? await Task.sleep(for: window)
@@ -2389,8 +2399,11 @@ actor HeelerSSHTransport: Transport {
                 try await group.waitForAll()
             }
         } catch is CancellationError {
-            // Watchdog won the race: the session stayed up for the whole
-            // window without the failure epilogue — proof.
+            throw TransportError.moshSessionFailed(
+                detail: "The Host did not answer over UDP within "
+                    + "\(Int(window.components.seconds))s.")
+        } catch let error as TransportError {
+            throw error
         }
     }
 
@@ -2404,10 +2417,13 @@ actor HeelerSSHTransport: Transport {
             lock.withLock { data.append(bytes) }
         }
 
+        func range(of needle: Data) -> Range<Data.Index>? {
+            lock.withLock { data.range(of: needle) }
+        }
+
         /// The failure epilogue's output tail when seen, else nil.
-        func epilogueFailure() -> String? {
+        func tail() -> String {
             let text = lock.withLock { String(decoding: data, as: UTF8.self) }
-            guard text.contains(moshFailureEpilogue) else { return nil }
             let lines = text
                 .split(separator: "\n", omittingEmptySubsequences: true)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -2435,12 +2451,12 @@ actor HeelerSSHTransport: Transport {
     /// bootstrap's outer `/bin/sh -c '…'` wrapper).
     static func moshProbeBootstrapCommand(socketPath: String) throws -> String {
         try moshBootstrapCommand(
-            // `sleep 120` as a bare command: mosh-server joins its arguments
-            // after `--` with spaces and runs the joined string through the
-            // login shell, which flattens any inner quoting — a wrapped
-            // `sh -c "exec sleep 120"` degenerates to `sh -c exec` and exits
-            // immediately, killing the probe session on connect.
-            agentAttachCommand: "sleep 120",
+            // `echo` as a bare command: mosh-server flattens inner quoting
+            // when it joins its arguments through the login shell, so the
+            // wrapped command must not need quotes. The marker rides the
+            // mosh session's rendered output back to the device — a real
+            // end-to-end proof, and it completes in well under a second.
+            agentAttachCommand: "echo MOSH_HANDSHAKE_OK",
             terminalAttachCommand: "",
             request: TerminalAttachRequest(
                 target: .agentPane("mosh-probe"), takeover: false, cols: 80, rows: 24),
