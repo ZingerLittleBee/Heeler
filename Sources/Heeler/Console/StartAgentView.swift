@@ -210,12 +210,12 @@ struct StartAgentView: View {
                 }
 
                 Section {
-                    TextField("e.g. Fix login bug", text: $store.tabLabel)
+                    TextField("Tab name (optional)", text: $store.tabLabel)
                         .autocorrectionDisabled()
                 } header: {
                     Text("Tab Name")
                 } footer: {
-                    Text("Optional. Empty labels the tab with the agent's name.")
+                    Text("Empty labels the tab with the agent's name.")
                 }
 
                 Section {
