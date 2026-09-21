@@ -185,11 +185,21 @@ private final class MoshSessionLifecycle: Sendable {
         let fOutReadFD = state.withLock { $0.fOutReadFD }
         var buffer = [UInt8](repeating: 0, count: Self.outputChunkSize)
         var failure: (any Error)?
+        var outputTail: [String] = []
         while true {
             let count = buffer.withUnsafeMutableBytes { raw in
                 read(fOutReadFD, raw.baseAddress, Self.outputChunkSize)
             }
             if count > 0 {
+                let chunk = String(decoding: buffer.prefix(count), as: UTF8.self)
+                // Keep the tail for failure diagnosis: mosh reports the
+                // concrete reason (sendto errno, "Nothing received", locale
+                // problems) through this stream, not through the exit code.
+                for line in chunk.split(separator: "\n", omittingEmptySubsequences: true)
+                where !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                    outputTail.append(String(line))
+                    if outputTail.count > 6 { outputTail.removeFirst() }
+                }
                 outputGate.yield(Data(buffer.prefix(count)))
                 continue
             }
@@ -204,8 +214,11 @@ private final class MoshSessionLifecycle: Sendable {
         // exit code is recorded before that close — so it is already here.
         let exitCode = state.withLock { $0.moshExitCode } ?? 1
         if failure == nil, exitCode != 0 {
+            let reason = outputTail.isEmpty
+                ? ""
+                : " — last output: \(outputTail.suffix(2).joined(separator: " | "))"
             failure = TransportError.moshSessionFailed(
-                detail: "mosh session failed (exit status \(exitCode))")
+                detail: "mosh session failed (exit status \(exitCode))\(reason)")
         }
         outputGate.finish(throwing: failure)
         markOutputDone()

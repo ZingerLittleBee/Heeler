@@ -259,11 +259,16 @@ struct HostOnboardingView: View {
         case .available:
             Label("Mosh supported — agent sessions ride mosh UDP", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
-        case .unavailable:
-            Label(
-                "Mosh handshake failed — sessions will use SSH",
-                systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
+        case .unavailable(let reason):
+            VStack(alignment: .leading, spacing: 4) {
+                Label(
+                    "Mosh handshake failed — sessions will use SSH",
+                    systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

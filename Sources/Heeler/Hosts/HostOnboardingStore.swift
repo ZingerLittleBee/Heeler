@@ -16,7 +16,8 @@ enum MoshSupportState: Equatable, Sendable {
     case idle
     case testing
     case available
-    case unavailable
+    /// Carries the concrete failure reason so the row can show it.
+    case unavailable(String)
 }
 
 @MainActor
@@ -136,12 +137,16 @@ final class HostOnboardingStore {
     func runMoshSupportCheck() async {
         guard moshSupport != .testing else { return }
         moshSupport = .testing
-        defer { if moshSupport == .testing { moshSupport = .unavailable } }
+        defer {
+            if moshSupport == .testing {
+                moshSupport = .unavailable("The test was interrupted.")
+            }
+        }
         let resolved: SSHCredentials
         do {
             resolved = try credentials.credentials(for: host)
         } catch {
-            moshSupport = .unavailable
+            moshSupport = .unavailable("The Host probe could not run.")
             return
         }
         let policy = HostKeyPolicy(knownHosts: knownHosts) { [weak self] candidate in
@@ -153,9 +158,30 @@ final class HostOnboardingStore {
             let transport = try await connector.connect(settings: settings)
             defer { Task { try? await transport.close() } }
             let available = try await transport.probeMoshServer()
-            moshSupport = available ? .available : .unavailable
+            moshSupport = available
+                ? .available
+                : .unavailable(
+                    "The Host has mosh-server but the UDP handshake did not "
+                        + "complete — sessions will use SSH.")
+        } catch let error as TransportError {
+            moshSupport = .unavailable(Self.moshFailureDetail(error))
         } catch {
-            moshSupport = .unavailable
+            moshSupport = .unavailable("The mosh probe could not run. (\(error))")
+        }
+    }
+
+    /// Renders a probe failure for the Host detail row: mosh session
+    /// failures carry the library's own output tail (the concrete reason).
+    private static func moshFailureDetail(_ error: TransportError) -> String {
+        switch error {
+        case .moshSessionFailed(let detail):
+            detail
+        case .timedOut:
+            "The mosh handshake timed out."
+        case .sshUnreachable(let detail):
+            "Could not reach the Host over SSH. (\(detail))"
+        default:
+            "\(error)"
         }
     }
 
