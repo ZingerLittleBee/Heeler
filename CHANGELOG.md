@@ -27,7 +27,20 @@ Entries reference the issue that motivated them.
   own `tok/s` readout is on (`composer.tokenRate`), the strip shows the last
   turn's generation rate too. (#325)
 
+- Pairing Codes can advertise a non-default SSH port via `pair.json`
+  (`ssh_port`) in the plugin config directory, so OpenSSH can share a Host
+  with Tailscale SSH on port 22. A `pair.json` the plugin cannot honor is
+  named in the pair checklist instead of quietly reverting to 22, and a
+  checked tailnet address on a Host that is serving Tailscale SSH is called
+  out there too — before the QR appears, rather than as a failure on the
+  phone. (#355)
+
 ### Fixed
+
+- Manually adding a Host (or finishing Scan to Pair) no longer loses the
+  "Trust this Host?" alert. Navigation into onboarding waits until the add
+  sheet has finished dismissing, so preflight's TOFU prompt is not dropped
+  mid-transition. (#359)
 
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or
