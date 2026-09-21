@@ -174,6 +174,11 @@ private final class MoshSessionLifecycle: Sendable {
     private func runMosh() {
         // The library exits the whole process without a UTF-8 native locale.
         mosh_prepare_locale()
+        // DIAGNOSTIC (mosh-trace-diag): the vendored library carries
+        // MOSH_DEBUG_TRACE instrumentation (sendto/recvmsg/CryptoException,
+        // timestamped, duplicated onto f_out) — turn it on so the output
+        // tail in any moshSessionFailed detail carries the traces.
+        setenv("MOSH_DEBUG_TRACE", "1", 1)
         let fds = state.withLock { currentState -> (Int32, Int32) in
             (currentState.fInReadFD, currentState.fOutWriteFD)
         }
