@@ -147,9 +147,19 @@ upload: ## Upload the existing archive to App Store Connect (TestFlight)
 testflight: archive upload ## Archive and upload in one go
 
 bump: ## Increment CURRENT_PROJECT_VERSION in project.yml (app + extension stay in lockstep)
-	@CUR=$$(awk -F'"' '/CURRENT_PROJECT_VERSION/ { print $$2; exit }' project.yml); \
+	@# Anchor to the setting itself: an unanchored match also hits the
+	@# `CFBundleVersion: $$(CURRENT_PROJECT_VERSION)` plist line, which carries no
+	@# quotes, so `$$2` came back empty and every target was reset to "1". Guard
+	@# the parse and the rewrite the way scripts/publish.sh does.
+	@CUR=$$(awk -F'"' '/^ *CURRENT_PROJECT_VERSION:/ { print $$2; exit }' project.yml); \
+	case "$$CUR" in \
+	  '' | *[!0-9]*) echo "CURRENT_PROJECT_VERSION '$$CUR' is not an integer" >&2; exit 1 ;; \
+	esac; \
+	LINES=$$(grep -c '^ *CURRENT_PROJECT_VERSION:' project.yml); \
 	NEW=$$((CUR + 1)); \
-	sed -i '' -E "s/CURRENT_PROJECT_VERSION: \"[0-9]+\"/CURRENT_PROJECT_VERSION: \"$$NEW\"/g" project.yml; \
+	sed -i '' -E "s/^( *CURRENT_PROJECT_VERSION: )\"[0-9]+\"/\1\"$$NEW\"/" project.yml; \
+	test "$$(grep -c "^ *CURRENT_PROJECT_VERSION: \"$$NEW\"$$" project.yml)" = "$$LINES" \
+	  || { echo "CURRENT_PROJECT_VERSION was not rewritten in all $$LINES targets" >&2; exit 1; }; \
 	echo "CURRENT_PROJECT_VERSION: $$CUR -> $$NEW"
 	@# Regenerate immediately so the tracked pbxproj changes with project.yml
 	@# and one commit carries both (otherwise the next make target regenerates
