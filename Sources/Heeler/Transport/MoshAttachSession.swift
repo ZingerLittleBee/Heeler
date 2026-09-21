@@ -85,6 +85,42 @@ private final class MoshSessionLifecycle: Sendable {
     }
     private static let moshThreadStackSize = 8 << 20
 
+    /// The vendored libmoshios resolves its remote endpoint with
+    /// `AI_NUMERICHOST` — it only accepts a numeric IP. The bootstrap's
+    /// host is whatever the SSH settings carry (often a hostname), so
+    /// resolve it here first and pass mosh the address, exactly what the
+    /// vanilla mosh CLI does before exec'ing the client.
+    static func numericIP(for hostname: String) -> String? {
+        var hints = addrinfo()
+        hints.ai_family = AF_INET
+        hints.ai_socktype = SOCK_DGRAM
+        var info: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(hostname, nil, &hints, &info) == 0, let first = info else {
+            // Fall back to any family before giving up: the library's own
+            // numeric-host check accepts IPv6 literals too.
+            var anyHints = addrinfo()
+            anyHints.ai_family = AF_UNSPEC
+            anyHints.ai_socktype = SOCK_DGRAM
+            var anyInfo: UnsafeMutablePointer<addrinfo>?
+            guard getaddrinfo(hostname, nil, &anyHints, &anyInfo) == 0,
+                let anyFirst = anyInfo
+            else { return nil }
+            defer { freeaddrinfo(anyInfo) }
+            return numericHost(anyFirst)
+        }
+        defer { freeaddrinfo(info) }
+        return numericHost(first)
+    }
+
+    private static func numericHost(_ info: UnsafeMutablePointer<addrinfo>) -> String? {
+        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        guard getnameinfo(
+            info.pointee.ai_addr, info.pointee.ai_addrlen,
+            &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0
+        else { return nil }
+        return String(cString: host)
+    }
+
     private struct State {
         let fInWriteFD: Int32
         let fInReadFD: Int32
@@ -185,13 +221,17 @@ private final class MoshSessionLifecycle: Sendable {
         let exitCode: Int32
         if let fInFILE = fdopen(fds.0, "r"), let fOutFILE = fdopen(fds.1, "w") {
             let ws = state.withLock { $0.ws }
+            // The library demands a numeric IP (AI_NUMERICHOST inside its
+            // client Connection) — hand it the resolved address, keeping
+            // the hostname only as a last-resort fallback.
+            let endpoint = Self.numericIP(for: bootstrap.host) ?? bootstrap.host
             exitCode = mosh_main(
                 fInFILE,
                 fOutFILE,
                 mosh_ws_pointer(ws),
                 mosh_state_discard,
                 nil,
-                bootstrap.host,
+                endpoint,
                 bootstrap.udpPort,
                 bootstrap.key,
                 "adaptive",
