@@ -101,6 +101,23 @@ struct HostOnboardingView: View {
                 }
             }
 
+            Section {
+                moshSupportRow
+                Button {
+                    Task { await store.runMoshSupportCheck() }
+                } label: {
+                    Label("Test Mosh Support", systemImage: "bolt.horizontal")
+                }
+                .disabled(store.moshSupport == .testing)
+            } header: {
+                Text("Mosh")
+            } footer: {
+                Text(
+                    "Runs a real mosh handshake against this Host. Agent sessions "
+                        + "ride mosh when it passes, and fall back to SSH whenever "
+                        + "mosh fails.")
+            }
+
             availableSessionsSection
 
             Section {
@@ -223,6 +240,31 @@ struct HostOnboardingView: View {
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {
         store.report?[check]
+    }
+
+    /// Tap-to-test row for the mosh handshake proof on this Host.
+    @ViewBuilder
+    private var moshSupportRow: some View {
+        switch store.moshSupport {
+        case .idle:
+            Label(
+                "Not tested — sessions use SSH until mosh passes the handshake",
+                systemImage: "circle.dashed")
+                .foregroundStyle(.secondary)
+        case .testing:
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Running mosh handshake…")
+            }
+        case .available:
+            Label("Mosh supported — agent sessions ride mosh UDP", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .unavailable:
+            Label(
+                "Mosh handshake failed — sessions will use SSH",
+                systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+        }
     }
 
     @ViewBuilder

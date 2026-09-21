@@ -11,6 +11,14 @@ struct HostKeyReplacement: Equatable, Sendable {
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
 /// connect (surfacing the TOFU first-connect prompt), discover sessions,
 /// ping the selected session, and render the outcome as the checklist.
+/// Tap-to-test state for the Host detail page's mosh handshake proof.
+enum MoshSupportState: Equatable, Sendable {
+    case idle
+    case testing
+    case available
+    case unavailable
+}
+
 @MainActor
 @Observable
 final class HostOnboardingStore {
@@ -31,6 +39,7 @@ final class HostOnboardingStore {
     private(set) var serverInfo: ServerInfo?
     private(set) var availableSessions: [HerdrSession] = []
     private(set) var sessionDiscoveryError: String?
+    private(set) var moshSupport: MoshSupportState = .idle
 
     let host: Host
 
@@ -119,6 +128,35 @@ final class HostOnboardingStore {
     /// The user's verdict on the pending fingerprint.
     func confirmFingerprint(trusted: Bool) {
         resolveFingerprint(trusted)
+    }
+
+    /// Tap-to-test on the Host detail page: connects with this Host's
+    /// credentials and runs the REAL mosh handshake proof (bootstrap +
+    /// live UDP session attempt), not just a binary-presence check.
+    func runMoshSupportCheck() async {
+        guard moshSupport != .testing else { return }
+        moshSupport = .testing
+        defer { if moshSupport == .testing { moshSupport = .unavailable } }
+        let resolved: SSHCredentials
+        do {
+            resolved = try credentials.credentials(for: host)
+        } catch {
+            moshSupport = .unavailable
+            return
+        }
+        let policy = HostKeyPolicy(knownHosts: knownHosts) { [weak self] candidate in
+            await self?.awaitFingerprintDecision(for: candidate) ?? false
+        }
+        let settings = SSHTransportSettings(
+            host: host, credentials: resolved, hostKeyPolicy: policy)
+        do {
+            let transport = try await connector.connect(settings: settings)
+            defer { Task { try? await transport.close() } }
+            let available = try await transport.probeMoshServer()
+            moshSupport = available ? .available : .unavailable
+        } catch {
+            moshSupport = .unavailable
+        }
     }
 
     /// Persists a discovered session through the Host catalog. The enclosing
