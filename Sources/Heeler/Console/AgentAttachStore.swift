@@ -90,7 +90,12 @@ final class AgentAttachStore {
     private var transportGeneration: UInt64?
     /// How the most recent attach session was carried (mosh UDP or SSH PTY),
     /// surfaced in the terminal chrome as a transport badge.
-    private(set) var lastSessionFlavor: TerminalSessionFlavor = .ssh
+    /// The live terminal's transport flavor: every AttachTerminalStore
+    /// records its own flavor when transportDidBecomeReady fires, so this
+    /// reads the source of truth for the initial attach AND replacements.
+    var lastSessionFlavor: TerminalSessionFlavor {
+        terminal.lastSessionFlavor
+    }
     private var lifecycleTask: Task<Void, Never>?
     private var lifecycleID: UInt64 = 0
     private var attachLinkOpenTask: Task<Void, Never>?
@@ -142,17 +147,10 @@ final class AgentAttachStore {
         self.composer = composer
         let linkIndex = AttachLinkIndex()
         self.linkIndex = linkIndex
-        var pendingFlavor: TerminalSessionFlavor?
         terminal = Self.makeTerminal(
             target: target, input: input, transportGeneration: transportGeneration,
             runTerminal: runTerminal, linkIndex: linkIndex,
-            transportReady: { _, _, flavor in
-                pendingFlavor = flavor
-            },
             onMoshFailure: invalidateMosh)
-        if let flavor = pendingFlavor {
-            lastSessionFlavor = flavor
-        }
         staging = ComposerStagingStore(
             stageImage: stageImage,
             stageFile: stageFile,
@@ -446,8 +444,7 @@ final class AgentAttachStore {
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex,
-                transportReady: { [weak self] pipelineID, generation, flavor in
-                    self?.lastSessionFlavor = flavor
+                transportReady: { [weak self] pipelineID, generation, _ in
                     self?.terminalTransportDidBecomeReady(
                         pipelineID: pipelineID, generation: generation)
                 },
@@ -586,8 +583,7 @@ final class AgentAttachStore {
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex,
-                transportReady: { [weak self] pipelineID, generation, flavor in
-                    self?.lastSessionFlavor = flavor
+                transportReady: { [weak self] pipelineID, generation, _ in
                     self?.terminalTransportDidBecomeReady(
                         pipelineID: pipelineID, generation: generation)
                 },
