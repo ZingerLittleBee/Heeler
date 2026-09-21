@@ -2316,7 +2316,8 @@ actor HeelerSSHTransport: Transport {
     func probeMoshServer() async throws -> Bool {
         let output = try await runHostCommand(Self.moshProbeCommand)
         guard !output.isEmpty else { return false }
-        return await probeMoshHandshake()
+        try await probeMoshHandshake()
+        return true
     }
 
     /// The mosh UDP failure's printed epilogue, from libmoshios: the client
@@ -2334,56 +2335,97 @@ actor HeelerSSHTransport: Transport {
     /// a thrown failure, a nonzero mosh exit, or the UDP epilogue text mark
     /// the handshake failed; surviving the window without either proves the
     /// UDP session is live.
-    private func probeMoshHandshake() async -> Bool {
+    private func probeMoshHandshake() async throws {
         let bootstrap: MoshBootstrap
         do {
             let socketPath = try await resolvedSocketPath()
             let command = try Self.moshProbeBootstrapCommand(socketPath: socketPath)
             let output = try await runHostCommand(command)
             guard let parsed = MoshBootstrap.parse(output, host: sshHost) else {
-                return false
+                throw TransportError.moshSessionFailed(
+                    detail: "mosh-server did not print a MOSH CONNECT banner."
+                        + " Exec output tail: \(Self.outputTail(output))")
             }
             bootstrap = parsed
+        } catch let error as TransportError {
+            throw error
         } catch {
-            return false
+            throw TransportError.moshSessionFailed(
+                detail: "The mosh bootstrap could not run. (\(error))")
         }
         let session = MoshAttachSession.make(
             bootstrap: bootstrap, cols: 80, rows: 24)
         defer { Task { await session.end() } }
-        return await Self.awaitHandshakeProof(session)
+        try await Self.awaitHandshakeProof(session)
     }
 
     /// Races the session's output against the watchdog. Any output that
     /// carries the UDP-failure epilogue, or a thrown ``moshSessionFailed``,
-    /// decides first; a watchdog that outlasts both proves the session
-    /// stayed up. A clean early exit also counts as proof: mosh only exits
-    /// cleanly after the wrapped command finished on a working UDP session.
-    private static func awaitHandshakeProof(_ session: TerminalAttachSession) async -> Bool {
+    /// decides first — surfaced as a typed failure carrying the client's own
+    /// output tail, so the Host detail row names the concrete reason. A
+    /// watchdog that outlasts both proves the session stayed up. A clean
+    /// early exit also counts as proof: mosh only exits cleanly after the
+    /// wrapped command finished on a working UDP session.
+    private static func awaitHandshakeProof(_ session: TerminalAttachSession) async throws {
         let failureBytes = Data(moshFailureEpilogue.utf8)
         let window = moshHandshakeWatchdog
-        return await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                do {
-                    var received = Data()
+        let received = DataReceiveBox()
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
                     for try await bytes in session.output {
                         received.append(bytes)
-                        if received.range(of: failureBytes) != nil {
-                            return false
+                        if let tail = received.epilogueFailure() {
+                            throw TransportError.moshSessionFailed(
+                                detail: "The UDP session received nothing from the server."
+                                    + " Output tail: \(tail)")
                         }
                     }
-                    return true
-                } catch {
-                    return false
+                    // Clean exit before the watchdog: proof.
                 }
+                group.addTask {
+                    try? await Task.sleep(for: window)
+                }
+                try await group.waitForAll()
             }
-            group.addTask {
-                try? await Task.sleep(for: moshHandshakeWatchdog)
-                return true
-            }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
+        } catch is CancellationError {
+            // Watchdog won the race: the session stayed up for the whole
+            // window without the failure epilogue — proof.
         }
+    }
+
+    /// Sendable accumulator for the handshake-proof race: the output loop
+    /// appends; the failure check reads through the same lock.
+    final class DataReceiveBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+
+        func append(_ bytes: Data) {
+            lock.withLock { data.append(bytes) }
+        }
+
+        /// The failure epilogue's output tail when seen, else nil.
+        func epilogueFailure() -> String? {
+            let text = lock.withLock { String(decoding: data, as: UTF8.self) }
+            guard text.contains(moshFailureEpilogue) else { return nil }
+            let lines = text
+                .split(separator: "\n", omittingEmptySubsequences: true)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            return lines.suffix(2).joined(separator: " | ")
+        }
+    }
+
+    /// The last two non-empty lines of the session output, for failure
+    /// details — mosh reports the concrete reason (sendto errno, locale,
+    /// "Nothing received") through this stream.
+    static func outputTail(_ data: Data) -> String {
+        let text = String(decoding: data, as: UTF8.self)
+        let lines = text
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return lines.suffix(2).joined(separator: " | ")
     }
 
     /// Builds the probe's bootstrap: the same `mosh-server new` exec as the
