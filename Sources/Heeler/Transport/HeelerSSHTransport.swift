@@ -2592,8 +2592,13 @@ actor HeelerSSHTransport: Transport {
         // the Host-command wrapper, which only affects mosh-server's own
         // argument parsing.
         let targetArgument = appendsTarget ? " \"$1\"" : ""
+        // TERM must ride the wrapper: the bootstrap exec runs without a
+        // PTY, so nothing sets a terminal type for mosh-server's own PTY —
+        // and the herdr attach TUI exits immediately without one. The SSH
+        // attach path never hits this because libssh2 sets TERM on its PTY
+        // request.
         return "/bin/sh -c '\(HerdrHostPath.pathExport); "
-            + "export HERDR_SOCKET_PATH=\"$2\"; "
+            + "export HERDR_SOCKET_PATH=\"$2\"; export TERM=xterm-256color; "
             + "exec mosh-server new -c \(request.cols) -l LANG=en_US.UTF-8 "
             + "-- \(attachCommand)\(targetArgument)\(takeover)' mosh "
             + "'\(target)' \(quotedSocketPath)"
