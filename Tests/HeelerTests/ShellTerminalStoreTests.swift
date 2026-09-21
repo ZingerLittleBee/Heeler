@@ -252,7 +252,7 @@ struct ShellTerminalStoreTests {
         let generation = ShellTerminalGenerationSource(1)
         let runner: TerminalSessionRunner = { request, handler in
             let readyGeneration = await generation.acquire()
-            await handler.transportDidBecomeReady(readyGeneration)
+            await handler.transportDidBecomeReady(readyGeneration, flavor: .ssh)
             let session = try await transport.attachTerminal(request)
             try await handler.runEndingSession(session)
         }
@@ -321,7 +321,7 @@ struct ShellTerminalStoreTests {
         let generation = ShellTerminalGenerationSource(1)
         let runner: TerminalSessionRunner = { request, handler in
             let readyGeneration = await generation.acquire()
-            await handler.transportDidBecomeReady(readyGeneration)
+            await handler.transportDidBecomeReady(readyGeneration, flavor: .ssh)
             let session = try await transport.attachTerminal(request)
             try await handler.runEndingSession(session)
         }
@@ -392,7 +392,7 @@ struct ShellTerminalStoreTests {
         let generation = ShellTerminalGenerationSource(1)
         let runner: TerminalSessionRunner = { request, handler in
             let readyGeneration = await generation.acquire()
-            await handler.transportDidBecomeReady(readyGeneration)
+            await handler.transportDidBecomeReady(readyGeneration, flavor: .ssh)
             let session = try await transport.attachTerminal(request)
             try await handler.runEndingSession(session)
         }
@@ -449,7 +449,7 @@ struct ShellTerminalStoreTests {
         let generation = ShellTerminalGenerationSource(1)
         let runner: TerminalSessionRunner = { request, handler in
             let readyGeneration = await generation.acquire()
-            await handler.transportDidBecomeReady(readyGeneration)
+            await handler.transportDidBecomeReady(readyGeneration, flavor: .ssh)
             let session = try await transport.attachTerminal(request)
             try await handler.runEndingSession(session)
         }
@@ -500,7 +500,7 @@ struct ShellTerminalStoreTests {
         let generation = ShellTerminalGenerationSource(1)
         let runner: TerminalSessionRunner = { request, handler in
             let readyGeneration = await generation.acquire()
-            await handler.transportDidBecomeReady(readyGeneration)
+            await handler.transportDidBecomeReady(readyGeneration, flavor: .ssh)
             let session = try await transport.attachTerminal(request)
             try await handler.runEndingSession(session)
         }

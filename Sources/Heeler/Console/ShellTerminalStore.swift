@@ -448,7 +448,7 @@ final class ShellTerminalStore {
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
-                transportReady: { [weak self] pipelineID, generation in
+                transportReady: { [weak self] pipelineID, generation, _ in
                     self?.terminalTransportDidBecomeReady(
                         pipelineID: pipelineID, generation: generation)
                 },
@@ -493,7 +493,7 @@ final class ShellTerminalStore {
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
-                transportReady: { [weak self] pipelineID, generation in
+                transportReady: { [weak self] pipelineID, generation, _ in
                     self?.terminalTransportDidBecomeReady(
                         pipelineID: pipelineID, generation: generation)
                 },
@@ -562,8 +562,8 @@ final class ShellTerminalStore {
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
-        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
-            _, _ in
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64, TerminalSessionFlavor) -> Void = {
+            _, _, _ in
         },
         runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in }
     ) -> AttachTerminalStore {

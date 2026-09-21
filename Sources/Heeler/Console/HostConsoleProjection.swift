@@ -223,15 +223,6 @@ final class HostConsoleProjection {
         return { request, handler in
             try await session.withTerminalTransport(target: request.target) {
                 transport, generation in
-                await handler.transportDidBecomeReady(generation)
-                #if DEBUG
-                await handler.attachRequestDidStart()
-                #endif
-                // mosh carries the Agent terminal over UDP when the Host
-                // probed mosh-server; any bootstrap failure — absent
-                // binary, unparseable banner — falls back below to the
-                // SSH attach on the same acquired transport. Ordinary
-                // shell terminals stay on SSH outright.
                 if MoshTransportChoice.select(
                     availability: await availability(), target: request.target
                 ) == .mosh {
@@ -239,6 +230,11 @@ final class HostConsoleProjection {
                     do {
                         let bootstrap = try await transport.runMoshBootstrap(
                             request)
+                        #if DEBUG
+                        await handler.attachRequestDidStart()
+                        #endif
+                        await handler.transportDidBecomeReady(
+                            generation, flavor: .mosh)
                         terminal = MoshAttachSession.make(
                             bootstrap: bootstrap,
                             cols: request.cols,
@@ -257,6 +253,10 @@ final class HostConsoleProjection {
                     try await handler.runEndingSession(terminal)
                     return
                 }
+                await handler.transportDidBecomeReady(generation, flavor: .ssh)
+                #if DEBUG
+                await handler.attachRequestDidStart()
+                #endif
                 let terminal = try await transport.attachTerminal(request)
                 #if DEBUG
                 await handler.attachChannelDidOpen()

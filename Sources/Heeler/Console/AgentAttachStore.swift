@@ -88,6 +88,9 @@ final class AgentAttachStore {
     private(set) var attachLinkOpenFailure: AttachLinkOpenFailure?
 
     private var transportGeneration: UInt64?
+    /// How the most recent attach session was carried (mosh UDP or SSH PTY),
+    /// surfaced in the terminal chrome as a transport badge.
+    private(set) var lastSessionFlavor: TerminalSessionFlavor = .ssh
     private var lifecycleTask: Task<Void, Never>?
     private var lifecycleID: UInt64 = 0
     private var attachLinkOpenTask: Task<Void, Never>?
@@ -436,7 +439,8 @@ final class AgentAttachStore {
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex,
-                transportReady: { [weak self] pipelineID, generation in
+                transportReady: { [weak self] pipelineID, generation, flavor in
+                    self?.lastSessionFlavor = flavor
                     self?.terminalTransportDidBecomeReady(
                         pipelineID: pipelineID, generation: generation)
                 },
@@ -575,7 +579,8 @@ final class AgentAttachStore {
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
                 linkIndex: self.linkIndex,
-                transportReady: { [weak self] pipelineID, generation in
+                transportReady: { [weak self] pipelineID, generation, flavor in
+                    self?.lastSessionFlavor = flavor
                     self?.terminalTransportDidBecomeReady(
                         pipelineID: pipelineID, generation: generation)
                 },
@@ -720,8 +725,8 @@ final class AgentAttachStore {
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
         linkIndex: AttachLinkIndex,
-        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
-            _, _ in
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64, TerminalSessionFlavor) -> Void = {
+            _, _, _ in
         },
         runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
         onMoshFailure: (@MainActor @Sendable () async -> Void)? = nil

@@ -1022,6 +1022,25 @@ struct AgentTerminalView: View {
                 isReserved: agent.sessionFilePath != nil,
                 palette: themePalette)
         }
+        .overlay(alignment: .topTrailing) {
+            // Live transport badge: mosh sessions ride UDP and survive
+            // network changes, so the user can see when roaming protection
+            // is active (and when a session fell back to SSH).
+            if attach.terminalStatus == .live {
+                Text(attach.lastSessionFlavor == .mosh ? "MOSH" : "SSH")
+                    .font(.caption2.weight(.bold).monospaced())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.thinMaterial, in: Capsule())
+                    .foregroundStyle(
+                        attach.lastSessionFlavor == .mosh ? Color.blue : Color.secondary)
+                    .padding(.trailing, 8)
+                    .accessibilityLabel(
+                        attach.lastSessionFlavor == .mosh
+                            ? "Session running over mosh"
+                            : "Session running over SSH")
+            }
+        }
         // The navigation bar remains present only as the owner of the status
         // bar appearance. Its content stays hidden, while this inset keeps
         // terminal output below the system clock.

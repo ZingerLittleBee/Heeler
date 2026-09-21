@@ -6,15 +6,22 @@ typealias TerminalSessionOperation =
 typealias TerminalSessionRunner =
     @Sendable (TerminalAttachRequest, TerminalSessionHandler) async throws -> Void
 
+/// How the attach channel was carried. Surfaces in the terminal chrome so
+/// the user can see whether a session is riding mosh UDP or plain SSH.
+enum TerminalSessionFlavor: String, Sendable {
+    case mosh
+    case ssh
+}
+
 struct TerminalSessionHandler: Sendable {
     private let operation: TerminalSessionOperation
-    private let transportReady: @MainActor @Sendable (UInt64) -> Void
+    private let transportReady: @MainActor @Sendable (UInt64, TerminalSessionFlavor) -> Void
     #if DEBUG
     private let traceEvents: AttachRestorationTraceEvents?
     #endif
 
     init(
-        transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        transportReady: @escaping @MainActor @Sendable (UInt64, TerminalSessionFlavor) -> Void = { _, _ in },
         _ operation: @escaping TerminalSessionOperation
     ) {
         self.transportReady = transportReady
@@ -26,7 +33,7 @@ struct TerminalSessionHandler: Sendable {
 
     #if DEBUG
     init(
-        transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        transportReady: @escaping @MainActor @Sendable (UInt64, TerminalSessionFlavor) -> Void = { _, _ in },
         traceEvents: AttachRestorationTraceEvents,
         _ operation: @escaping TerminalSessionOperation
     ) {
@@ -37,8 +44,8 @@ struct TerminalSessionHandler: Sendable {
     #endif
 
     @MainActor
-    func transportDidBecomeReady(_ generation: UInt64) {
-        transportReady(generation)
+    func transportDidBecomeReady(_ generation: UInt64, flavor: TerminalSessionFlavor = .ssh) {
+        transportReady(generation, flavor)
     }
 
     #if DEBUG
@@ -213,7 +220,7 @@ final class AttachTerminalStore {
     private let input: TerminalInputController
     private let observeOutput: @MainActor @Sendable (Data) -> Void
     private let finishOutput: @MainActor @Sendable () -> Void
-    private let transportReady: @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void
+    private let transportReady: @MainActor @Sendable (TerminalSurfaceID, UInt64, TerminalSessionFlavor) -> Void
     private let runDidFinish: @MainActor @Sendable (TerminalSurfaceID) -> Void
     /// Opens and owns exclusive Host terminal access for one complete run,
     /// including explicit channel teardown.
@@ -222,6 +229,9 @@ final class AttachTerminalStore {
     private var cols: Int?
     private var rows: Int?
     private(set) var transportGeneration: UInt64?
+    /// How the most recent attach session was carried (mosh UDP or SSH PTY),
+    /// surfaced in the terminal chrome as a transport badge.
+    private(set) var lastSessionFlavor: TerminalSessionFlavor = .ssh
     /// The Transport generation this pipeline actually acquired from its
     /// runner. Unlike `transportGeneration`, this is never seeded from a
     /// projection value before the terminal-ready seam has been crossed.
@@ -254,8 +264,8 @@ final class AttachTerminalStore {
         transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
-        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
-            _, _ in
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64, TerminalSessionFlavor) -> Void = {
+            _, _, _ in
         },
         runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
         onMoshFailure: (@MainActor @Sendable () async -> Void)? = nil,
@@ -279,8 +289,8 @@ final class AttachTerminalStore {
         transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
         finishOutput: @escaping @MainActor @Sendable () -> Void = {},
-        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64) -> Void = {
-            _, _ in
+        transportReady: @escaping @MainActor @Sendable (TerminalSurfaceID, UInt64, TerminalSessionFlavor) -> Void = {
+            _, _, _ in
         },
         runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
         onMoshFailure: (@MainActor @Sendable () async -> Void)? = nil,
@@ -413,11 +423,12 @@ final class AttachTerminalStore {
             }
             try await self.consume(session, initialCols: cols, initialRows: rows)
         }
-        let transportReady: @MainActor @Sendable (UInt64) -> Void = { [weak self] generation in
+        let transportReady: @MainActor @Sendable (UInt64, TerminalSessionFlavor) -> Void = { [weak self] generation, flavor in
             guard let self else { return }
             self.transportGeneration = generation
             self.acquiredTransportGeneration = generation
-            self.transportReady(self.surfaceID, generation)
+            self.lastSessionFlavor = flavor
+            self.transportReady(self.surfaceID, generation, flavor)
             #if DEBUG
             self.restorationTrace.emit(.transportAcquired, generation: generation)
             #endif
