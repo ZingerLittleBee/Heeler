@@ -142,10 +142,17 @@ final class AgentAttachStore {
         self.composer = composer
         let linkIndex = AttachLinkIndex()
         self.linkIndex = linkIndex
+        var pendingFlavor: TerminalSessionFlavor?
         terminal = Self.makeTerminal(
             target: target, input: input, transportGeneration: transportGeneration,
             runTerminal: runTerminal, linkIndex: linkIndex,
+            transportReady: { _, _, flavor in
+                pendingFlavor = flavor
+            },
             onMoshFailure: invalidateMosh)
+        if let flavor = pendingFlavor {
+            lastSessionFlavor = flavor
+        }
         staging = ComposerStagingStore(
             stageImage: stageImage,
             stageFile: stageFile,
