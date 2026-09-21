@@ -7,6 +7,10 @@ import Foundation
 /// by hand. No SSH anywhere.
 final actor ScriptedTransport: Transport {
     private(set) var isClosed = false
+    /// Liveness is scripted separately from `close()`, so a test can model a
+    /// degraded connection (dead link, live events reader) before the session
+    /// decides to replace the transport.
+    private var connectionAlive = true
     /// Every subscription set received, in order; the Console's
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
@@ -401,6 +405,13 @@ final actor ScriptedTransport: Transport {
     // MARK: Transport
 
     func ping() async throws -> ServerInfo {
+        // A real Transport's ping fails on a link its events reader has not
+        // reported dead yet; the scripted one must too, or callers that race
+        // a replacement see a phantom success from the transport that is
+        // about to be replaced.
+        guard connectionAlive else {
+            throw TransportError.sshUnreachable(detail: "connection is dead")
+        }
         pingCount += 1
         let failure = pingFailures[pingCount]
         let gate = pingGate
@@ -701,7 +712,14 @@ final actor ScriptedTransport: Transport {
     }
 
     var isConnected: Bool {
-        !isClosed
+        connectionAlive && !isClosed
+    }
+
+    /// Scripts the connection's liveness independently of the events stream,
+    /// so a test can hold the session's silent transport-replacement path
+    /// open (a degraded connection its events reader has not reported yet).
+    func setConnectionAlive(_ alive: Bool) {
+        connectionAlive = alive
     }
 
     func close() async throws {
