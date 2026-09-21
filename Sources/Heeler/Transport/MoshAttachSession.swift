@@ -57,6 +57,32 @@ enum MoshAttachSession {
 private final class MoshSessionLifecycle: Sendable {
     /// Matches mosh's own keystroke read size on the remote side.
     private static let outputChunkSize = 16 * 1024
+
+    /// Strips CSI control sequences from a terminal-output line so failure
+    /// tails surface printable text instead of cursor/screen teardown codes.
+    static func stripEscapes(_ line: String) -> String {
+        var result = ""
+        var iterator = line.unicodeScalars.makeIterator()
+        while let scalar = iterator.next() {
+            if scalar == "\u{1B}" {
+                // CSI: skip through the final parameter/intermediate byte.
+                var next = iterator.next()
+                if next == "[" {
+                    while let c = iterator.next(),
+                        c.value >= 0x20 && c.value <= 0x3F
+                    {} // parameter bytes
+                    while let c = iterator.next(),
+                        c.value >= 0x40 && c.value <= 0x7E
+                    {} // final byte
+                    continue
+                }
+                if let n = next { result.unicodeScalars.append(n) }
+                continue
+            }
+            result.unicodeScalars.append(scalar)
+        }
+        return result
+    }
     private static let moshThreadStackSize = 8 << 20
 
     private struct State {
@@ -195,10 +221,15 @@ private final class MoshSessionLifecycle: Sendable {
                 // Keep the tail for failure diagnosis: mosh reports the
                 // concrete reason (sendto errno, "Nothing received", locale
                 // problems) through this stream, not through the exit code.
+                // Escape-only lines (TUI teardown) are collapsed to a marker
+                // so a text failure line cannot be crowded out.
                 for line in chunk.split(separator: "\n", omittingEmptySubsequences: true)
                 where !line.trimmingCharacters(in: .whitespaces).isEmpty {
-                    outputTail.append(String(line))
-                    if outputTail.count > 6 { outputTail.removeFirst() }
+                    let printable = line.trimmingCharacters(in: .whitespaces)
+                    let stripped = Self.stripEscapes(printable)
+                    outputTail.append(
+                        stripped.isEmpty ? "[escapes]" : "[escapes]+\(stripped)")
+                    if outputTail.count > 8 { outputTail.removeFirst() }
                 }
                 outputGate.yield(Data(buffer.prefix(count)))
                 continue
@@ -216,7 +247,7 @@ private final class MoshSessionLifecycle: Sendable {
         if failure == nil, exitCode != 0 {
             let reason = outputTail.isEmpty
                 ? ""
-                : " — last output: \(outputTail.suffix(2).joined(separator: " | "))"
+                : " — output tail: \(outputTail.joined(separator: " | "))"
             failure = TransportError.moshSessionFailed(
                 detail: "mosh session failed (exit status \(exitCode))\(reason)")
         }
