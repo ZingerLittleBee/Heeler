@@ -375,8 +375,11 @@ final class ConsoleStore {
     /// generation's probe outcome. A Host still probing, or whose probe
     /// raced a reconnect, reads unavailable — SSH stays the backbone.
     func moshAvailability(for hostID: Host.ID, generation: UInt64) -> Bool {
-        guard let probe = moshProbes[hostID] else { return false }
-        return probe.generation == generation && probe.available
+        // Mosh compatibility is a Host property, not a per-tab or
+        // per-generation one: the last proven outcome stands for every
+        // attach until a newer probe (fresh connection generation, manual
+        // test, or a runtime mosh failure) replaces it.
+        moshProbes[hostID]?.available ?? false
     }
 
     /// Marks mosh unavailable for the Host's current connection generation:
