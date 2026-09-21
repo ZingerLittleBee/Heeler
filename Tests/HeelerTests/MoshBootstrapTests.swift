@@ -139,7 +139,10 @@ struct MoshBootstrapTests {
         // its arguments through the login shell, so anything that needs
         // quotes dies on connect. `sleep 120` survives the join verbatim.
         #expect(command.contains("-- sleep 120"))
-        #expect(command.contains("mosh-probe"))
+        // The probe passes appendsTarget: false — the script must not
+        // reference the pane id at all. `sleep 120 mosh-probe` would reject
+        // its arguments and exit immediately, killing the proof session.
+        #expect(!command.contains("$1"))
         // The keep-alive must be a bare command, but the OUTER wrapper is
         // itself a `/bin/sh -c '…'` — that occurrence is the wrapper, not
         // the keep-alive.

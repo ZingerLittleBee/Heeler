@@ -2444,7 +2444,8 @@ actor HeelerSSHTransport: Transport {
             terminalAttachCommand: "",
             request: TerminalAttachRequest(
                 target: .agentPane("mosh-probe"), takeover: false, cols: 80, rows: 24),
-            socketPath: socketPath)
+            socketPath: socketPath,
+            appendsTarget: false)
     }
 
     func runMoshBootstrap(_ request: TerminalAttachRequest) async throws -> MoshBootstrap {
@@ -2538,7 +2539,8 @@ actor HeelerSSHTransport: Transport {
         agentAttachCommand: String,
         terminalAttachCommand: String,
         request: TerminalAttachRequest,
-        socketPath: String
+        socketPath: String,
+        appendsTarget: Bool = true
     ) throws -> String {
         let attachCommand = attachCommand(
             agentAttachCommand: agentAttachCommand,
@@ -2565,14 +2567,19 @@ actor HeelerSSHTransport: Transport {
                 detail: "The remote socket path cannot be quoted safely.")
         }
         let takeover = request.takeover ? " --takeover" : ""
+        // `$1` is the attach target (the pane id herdr attach consumes).
+        // Probes pass `appendsTarget: false`: their keep-alive command must
+        // not receive the pane id — `sleep 120 mosh-probe` would reject the
+        // extra argument and exit, killing the proof session on connect.
         // `-l LANG=en_US.UTF-8` gives the server-side PTY the UTF-8 locale
         // the attach TUI needs; the exec itself stays LC_ALL=C-prefixed by
         // the Host-command wrapper, which only affects mosh-server's own
         // argument parsing.
+        let targetArgument = appendsTarget ? " \"$1\"" : ""
         return "/bin/sh -c '\(HerdrHostPath.pathExport); "
             + "export HERDR_SOCKET_PATH=\"$2\"; "
             + "exec mosh-server new -c \(request.cols) -l LANG=en_US.UTF-8 "
-            + "-- \(attachCommand) \"$1\"\(takeover)' mosh "
+            + "-- \(attachCommand)\(targetArgument)\(takeover)' mosh "
             + "'\(target)' \(quotedSocketPath)"
     }
 
