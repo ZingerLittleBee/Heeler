@@ -15,9 +15,6 @@ enum PreflightCheck: CaseIterable, Sendable {
     case serverRunning
     /// The server speaks a protocol version this build supports.
     case protocolCompatible
-    /// mosh-server exists AND a real UDP handshake round-trips — required
-    /// before agent sessions may ride mosh.
-    case moshSupport
 
     var title: String {
         switch self {
@@ -26,7 +23,6 @@ enum PreflightCheck: CaseIterable, Sendable {
         case .herdrInstalled: "herdr installed"
         case .serverRunning: "herdr server running"
         case .protocolCompatible: "protocol compatible"
-        case .moshSupport: "mosh supported"
         }
     }
 }
