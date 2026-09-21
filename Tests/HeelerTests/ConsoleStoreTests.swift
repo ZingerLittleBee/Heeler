@@ -1302,6 +1302,22 @@ struct ConsoleStoreTests {
         #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:p1"))
     }
 
+    /// The swipe action's alert must read as herdr's refusal or a transport
+    /// state, never as Foundation's opaque `localizedDescription` for a
+    /// non-`LocalizedError` enum.
+    @Test func tabCloseFailureMessageNamesTheCause() {
+        #expect(
+            ConsoleStore.tabCloseFailureMessage(
+                for: HerdrAPIError(code: "tab_not_found", message: "tab w1:t9 not found"))
+                == "herdr rejected the close: tab w1:t9 not found")
+        #expect(
+            ConsoleStore.tabCloseFailureMessage(for: TransportError.sshUnreachable(detail: ""))
+                == "The Host is not connected.")
+        #expect(
+            ConsoleStore.tabCloseFailureMessage(for: TransportError.timedOut)
+                == "The Host did not answer in time.")
+    }
+
     @Test func closeAgentTabThrowsWhenTheHostIsUnknown() async throws {
         let host = Host.fixture()
         let store = makeStore(transports: [:])

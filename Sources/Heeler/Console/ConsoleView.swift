@@ -645,7 +645,7 @@ struct ConsoleView: View {
             do {
                 try await console.closeAgentTab(agent)
             } catch {
-                tabCloseError = error.localizedDescription
+                tabCloseError = ConsoleStore.tabCloseFailureMessage(for: error)
             }
         }
     }
