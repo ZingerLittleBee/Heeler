@@ -650,6 +650,12 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(agent.paneID == "pane:\(token)")
         let recorded = try await Self.recordedRequests(from: transport, token: token)
         #expect(recorded.filter { $0.hasPrefix("agent.start ") }.count == 3)
+        // The agent's name rides into tab.create as the label, so the tab
+        // bar never shows a positional default for a named agent.
+        #expect(
+            recorded[0]
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"label":"fixture","workspace_id":"workspace-1"}"#
+        )
         #expect(!recorded.contains { $0.hasPrefix("pane.close ") })
     }
 
@@ -763,11 +769,15 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(agent.paneID == "pane:\(token)")
         #expect(agent.workspaceID == "workspace:\(token)")
         let recorded = try await Self.recordedRequests(from: transport, token: token)
-        try #require(recorded.count == 2)
+        // workspace.create, agent.start, then the cosmetic tab rename that
+        // gives the fresh tab the agent's name.
+        try #require(recorded.count == 3)
         #expect(
             recorded[0]
-                == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false,"label":"App"}"#)
+                == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false,"label":"App"}"#
+        )
         #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(recorded[2] == #"tab.rename {"label":"fixture","tab_id":"tab:\#(token)"}"#)
         #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
     }
 
@@ -821,6 +831,52 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(recorded[1].hasPrefix("agent.start "))
         #expect(!recorded.contains { $0.hasPrefix("workspace.close ") })
         #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
+    }
+
+    /// The worktree's fresh tab carries the worktree label, not the agent's
+    /// name; the launch renames it once the agent is real.
+    @Test("a worktree agent start renames the fresh tab to the agent's name")
+    func worktreeAgentStartRenamesTheFreshTab() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgentInNewWorktree(
+            AgentLaunchRequest(
+                kind: "codex",
+                name: "fixture",
+                workspaceID: "workspace-1"),
+            worktree: WorktreeSpec(branch: "task/\(token)", base: "main"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(recorded[0].hasPrefix("worktree.create "))
+        #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(recorded[2] == #"tab.rename {"label":"fixture","tab_id":"tab:\#(token)"}"#)
+    }
+
+    /// A refused `tab.rename` is cosmetic: the agent already exists, so the
+    /// launch must still return it and the rename failure must stay swallowed.
+    @Test("a refused tab rename does not fail the launch it decorated")
+    func refusedTabRenameDoesNotFailTheLaunch() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("renamefail")
+        let agent = try await transport.startAgentInNewWorkspace(
+            AgentLaunchRequest(kind: "codex", name: "fixture"),
+            workspace: NewWorkspaceSpec(directory: "/fixture/\(token)", label: "App"))
+
+        #expect(agent.paneID == "pane:\(token)")
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(recorded[0].hasPrefix("workspace.create "))
+        #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(recorded[2].hasPrefix("tab.rename "))
     }
 
     @Test("confirmed worktree removal crosses the real wire dispatch seam")
@@ -913,8 +969,58 @@ struct HeelerSSHTransportBehaviorE2ETests {
         let recorded = try await Self.recordedRequests(from: transport, token: token)
         #expect(
             recorded.first
-                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"workspace_id":"workspace-1"}"#
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"label":"fixture","workspace_id":"workspace-1"}"#
         )
+    }
+
+    /// A tab label is free text next to the slug-constrained agent name. When
+    /// the launch carries one it replaces the agent's name on `tab.create`,
+    /// while `agent.start` still names the agent.
+    @Test("a custom tab label replaces the agent's name on tab.create")
+    func customTabLabelReplacesTheAgentNameOnTabCreate() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgent(
+            AgentLaunchRequest(
+                kind: "codex",
+                name: "fixture",
+                workspaceID: "workspace-1",
+                cwd: "/fixture/\(token)",
+                tabLabel: "Fix login bug"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(
+            recorded.first
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"label":"Fix login bug","workspace_id":"workspace-1"}"#
+        )
+        #expect(recorded.contains { $0.hasPrefix("agent.start ") && $0.contains(#""name":"fixture""#) })
+    }
+
+    /// The same override on the new-workspace path: the post-start rename
+    /// carries the tab label, and the Workspace keeps its own label.
+    @Test("a custom tab label drives the post-start rename of a new workspace's tab")
+    func customTabLabelDrivesTheNewWorkspaceTabRename() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("ok")
+        _ = try await transport.startAgentInNewWorkspace(
+            AgentLaunchRequest(kind: "codex", name: "fixture", tabLabel: "Fix login bug"),
+            workspace: NewWorkspaceSpec(directory: "/fixture/\(token)", label: "App"))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(
+            recorded[0]
+                == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false,"label":"App"}"#
+        )
+        #expect(recorded[2] == #"tab.rename {"label":"Fix login bug","tab_id":"tab:\#(token)"}"#)
     }
 
     @Test("shell terminal creation sends one exact tab create request")
