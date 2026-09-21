@@ -59,6 +59,7 @@ struct StartAgentStoreTests {
         agentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind] = { _ in
             [.claude]
         },
+        remoteHome: @escaping (Host.ID) async throws -> String = { _ in "/home/you" },
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void = { _ in },
         origin: StartAgentStore.LaunchOrigin? = nil,
         recents: RecentWorkspaceStore? = nil,
@@ -68,6 +69,7 @@ struct StartAgentStoreTests {
             hosts: hosts, workspaces: workspaces,
             existingAgentNames: existingAgentNames,
             discoverAgentKinds: agentKinds,
+            remoteHome: remoteHome,
             start: { params, destination, hostID in
                 try await recorder.record(params, destination, hostID)
             },
@@ -159,8 +161,42 @@ struct StartAgentStoreTests {
         store.applyBrowsedDirectory("/home/you/project")
         store.selectedHostID = hosts[1].id
         #expect(store.newWorkspaceDirectory.isEmpty)
+        // The stale directory is dropped, but a name-only New Workspace needs
+        // no directory: switching targets still works.
         store.selectNewWorkspace()
-        #expect(store.launchTarget == .existingWorkspace)
+        #expect(store.launchTarget == .newWorkspace)
+    }
+
+    @Test func nameOnlyNewWorkspaceFallsBackToHomeDirectory() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(hosts: [host], recorder: recorder)
+        await store.discoverAgents()
+        store.selectNewWorkspace()
+        store.newWorkspaceLabel = "Fresh"
+        #expect(store.canSubmit)
+        await store.submit()
+        #expect(recorder.destinations == [
+            .newWorkspace(NewWorkspaceSpec(directory: "/home/you", label: "Fresh"))
+        ])
+    }
+
+    @Test func nameOnlyNewWorkspaceReportsWhenHomeCannotBeResolved() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        struct ProbeFailed: Error {}
+        let store = makeStore(
+            hosts: [host],
+            remoteHome: { _ in throw ProbeFailed() },
+            recorder: recorder)
+        await store.discoverAgents()
+        store.selectNewWorkspace()
+        await store.submit()
+        #expect(recorder.destinations.isEmpty)
+        guard case .failed = store.state else {
+            #expect(false, "expected a failed state, got \(store.state)")
+            return
+        }
     }
 
     @Test func invalidDirectoryAndStaleWorkspaceDoNotReplaceTheSelection() {
@@ -471,9 +507,11 @@ struct StartAgentStoreTests {
 
         #expect(store.canSubmit == false)
         store.launchTarget = .newWorkspace
-        #expect(store.canSubmit == false)
+        // Name-only launches are complete without a directory: submit falls
+        // back to the Host's home directory.
+        #expect(store.canSubmit == true)
         store.newWorkspaceDirectory = "   "
-        #expect(store.canSubmit == false)
+        #expect(store.canSubmit == true)
         store.newWorkspaceDirectory = "  /home/you/src/app  "
         #expect(store.canSubmit == true)
 
@@ -740,6 +778,35 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.workspaceID == "w1")
         #expect(recorder.destinations == [.existingWorkspace])
         #expect(recorder.worktrees == [nil])
+    }
+
+    /// The tab label is free text next to the slug-constrained agent name:
+    /// trimmed on the way out, and dropped when empty so the Transport
+    /// falls back to the agent's name.
+    @Test func submitForwardsATrimmedTabLabelAndDropsAnEmptyOne() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.selectedWorkspaceID = "w1"
+        store.name = "reviewer"
+        store.tabLabel = "  Fix login bug \n"
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(store.state == started(on: host))
+        #expect(recorder.params.first?.tabLabel == "Fix login bug")
+        #expect(recorder.params.first?.resolvedTabLabel == "Fix login bug")
+
+        store.tabLabel = " \t "
+        await store.submit()
+
+        #expect(recorder.params.count == 2)
+        #expect(recorder.params.last?.tabLabel == nil)
+        #expect(recorder.params.last?.resolvedTabLabel == "reviewer")
     }
 
     @Test func submitDispatchesAgentStartWithQwenKind() async {

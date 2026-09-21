@@ -162,8 +162,8 @@ final class StartAgentStore {
             }
         }
     }
-    /// Remote directory for a New Workspace launch. Required once that
-    /// target is selected; trimmed at submit.
+    /// Remote directory for a New Workspace launch. Optional: empty resolves
+    /// to the Host's home directory at submit. Trimmed before use.
     var newWorkspaceDirectory: String = ""
     /// Selecting a directory switches the draft destination without starting
     /// an Agent. Dismissing the browser never changes the current selection.
@@ -173,11 +173,11 @@ final class StartAgentStore {
         selectNewWorkspace()
     }
 
-    /// Reuses the latest directory after switching to an existing Workspace.
+    /// Switches the draft destination to a New Workspace launch. Allowed
+    /// without a browsed directory: a name-only workspace resolves to the
+    /// Host's home directory at submit.
     func selectNewWorkspace() {
-        guard offersNewWorkspace, RemoteShellPath.isQuotableAbsolute(newWorkspaceDirectory) else {
-            return
-        }
+        guard offersNewWorkspace else { return }
         launchTarget = .newWorkspace
     }
 
@@ -189,6 +189,10 @@ final class StartAgentStore {
     /// Optional label for a New Workspace launch. Empty or whitespace
     /// becomes nil so herdr applies its default.
     var newWorkspaceLabel: String = ""
+    /// Optional label for the tab the launch creates. Empty or whitespace
+    /// becomes nil and the tab takes the agent's name. Unlike the agent's
+    /// name it is free text: herdr's slug rule applies to agents, not tabs.
+    var tabLabel: String = ""
     /// Whether the launch targets a fresh git worktree of the selected
     /// workspace's repository instead of the workspace itself (#97).
     var startsInNewWorktree = false
@@ -212,6 +216,9 @@ final class StartAgentStore {
     /// skipping them merely bumps the suffix.
     private let existingAgentNames: (Host.ID) -> Set<String>
     private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
+    /// Resolves the Host's home directory for a name-only New Workspace
+    /// launch; fetched at submit so an unreachable Host never blocks editing.
+    private let remoteHome: (Host.ID) async throws -> String
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
@@ -231,6 +238,7 @@ final class StartAgentStore {
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
         existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
+        remoteHome: @escaping (Host.ID) async throws -> String,
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         origin: LaunchOrigin? = nil,
@@ -241,6 +249,7 @@ final class StartAgentStore {
         self.workspacesProvider = workspaces
         self.existingAgentNames = existingAgentNames
         self.discoverAgentKinds = discoverAgentKinds
+        self.remoteHome = remoteHome
         self.start = start
         self.awaitAgentVisible = awaitAgentVisible
         self.recents = recents
@@ -313,14 +322,17 @@ final class StartAgentStore {
     }
 
     /// Existing Workspace and origin launches need a reported Workspace;
-    /// New Workspace needs a non-empty trimmed directory instead.
+    /// a New Workspace launch is complete as chosen, because a name-only
+    /// launch resolves its directory at submit.
     private var hasLaunchTarget: Bool {
         if origin != nil { return selectedWorkspaceID != nil }
         switch launchTarget {
         case .existingWorkspace:
             return selectedWorkspaceID != nil
         case .newWorkspace:
-            return Self.nonEmptyTrimmed(newWorkspaceDirectory) != nil
+            // Directory is optional: a name-only launch falls back to the
+            // Host's home directory at submit.
+            return true
         }
     }
 
@@ -363,7 +375,6 @@ final class StartAgentStore {
             !isStarting,
             let hostID = selectedHostID,
             let kind = selectedAgentKind,
-            let destination = launchDestination,
             case .success(let arguments) = parsedArguments,
             worktreeBranchErrorMessage == nil,
             nameErrorMessage == nil
@@ -374,8 +385,40 @@ final class StartAgentStore {
             ? Self.defaultAgentName(for: kind, taken: existingAgentNames(hostID))
             : trimmedName
         isStarting = true
-        state = .starting
         defer { isStarting = false }
+        // A name-only New Workspace launch has no browsed directory: fall
+        // back to the Host's home directory, resolved at submit so an
+        // unreachable Host is reported here instead of blocking the form.
+        // isStarting flips before the first await so a double-tap cannot
+        // dispatch twice while the probe is in flight.
+        if origin == nil, launchTarget == .newWorkspace,
+            Self.nonEmptyTrimmed(newWorkspaceDirectory) == nil
+        {
+            state = .starting
+            do {
+                let home = try await remoteHome(hostID)
+                // The form stays editable while the probe is in flight;
+                // discard the answer if it no longer applies.
+                guard selectedHostID == hostID,
+                    launchTarget == .newWorkspace,
+                    Self.nonEmptyTrimmed(newWorkspaceDirectory) == nil
+                else {
+                    state = .editing
+                    return
+                }
+                guard RemoteShellPath.isQuotableAbsolute(home) else {
+                    state = .failed(
+                        "The Host's home directory is not a usable path: \(home)")
+                    return
+                }
+                newWorkspaceDirectory = home
+            } catch {
+                state = .failed(Self.homeProbeMessage(for: error))
+                return
+            }
+        }
+        guard let destination = launchDestination else { return }
+        state = .starting
         let workspaceID: String?
         switch destination {
         case .newWorkspace:
@@ -388,7 +431,8 @@ final class StartAgentStore {
             name: agentName,
             arguments: arguments,
             workspaceID: workspaceID,
-            cwd: origin?.cwd)
+            cwd: origin?.cwd,
+            tabLabel: Self.nonEmptyTrimmed(tabLabel))
         do {
             let agent = try await start(request, destination, hostID)
             if case .newWorkspace = destination {
@@ -585,6 +629,19 @@ final class StartAgentStore {
             "Agent detection timed out."
         default:
             "Detecting Agents failed: \(error)"
+        }
+    }
+
+    /// User-facing copy for a failed home-directory probe: the same
+    /// TransportError arms the launch path maps, with the probe's subject.
+    private static func homeProbeMessage(for error: any Error) -> String {
+        switch error {
+        case TransportError.sshUnreachable:
+            "The Host is not connected, so its home directory could not be resolved."
+        case TransportError.timedOut:
+            "Resolving the Host's home directory timed out."
+        default:
+            "Could not determine the Host's home directory: \(error)"
         }
     }
 

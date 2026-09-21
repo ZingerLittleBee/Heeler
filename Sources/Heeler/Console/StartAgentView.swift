@@ -31,6 +31,7 @@ struct StartAgentView: View {
                             .compactMap { $0.agent.name })
                 },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
+                remoteHome: { try await console.remoteHomeDirectory(on: $0) },
                 start: { params, destination, hostID in
                     switch destination {
                     case .existingWorkspace:
@@ -73,7 +74,7 @@ struct StartAgentView: View {
                         }
                     }
 
-                    Section("Workspace") {
+                    Section {
                         StartWorkspacePicker(
                             workspaces: store.workspaces,
                             selectedWorkspaceID: store.launchTarget == .existingWorkspace
@@ -85,6 +86,35 @@ struct StartAgentView: View {
                             onSelect: store.selectExistingWorkspace,
                             onSelectNewWorkspace: store.selectNewWorkspace,
                             onNewWorkspace: openDirectoryBrowser)
+                        if store.launchTarget == .newWorkspace {
+                            TextField(
+                                "Workspace name (optional)",
+                                text: $store.newWorkspaceLabel)
+                                .autocorrectionDisabled()
+                            if store.newWorkspaceDirectory.isEmpty {
+                                Label(
+                                    "Directory: the Host's home directory",
+                                    systemImage: "house")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Label(store.newWorkspaceDirectory, systemImage: "folder")
+                                    .font(.callout.monospaced())
+                                    .lineLimit(2)
+                                    .truncationMode(.middle)
+                            }
+                            Button("Browse Directory…", systemImage: "folder.badge.plus") {
+                                openDirectoryBrowser()
+                            }
+                        }
+                    } header: {
+                        Text("Workspace")
+                    } footer: {
+                        if store.launchTarget == .newWorkspace {
+                            Text(
+                                "Creates a fresh Workspace on the Host. An empty name uses the directory's name."
+                            )
+                        }
                     }
                 }
 
@@ -163,7 +193,7 @@ struct StartAgentView: View {
                 }
 
                 Section {
-                    TextField(store.defaultAgentName ?? "e.g. reviewer", text: $store.name)
+                    TextField("Agent name (optional)", text: $store.name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 } header: {
@@ -173,16 +203,25 @@ struct StartAgentView: View {
                         Text(message)
                             .foregroundStyle(.red)
                     } else if let defaultName = store.defaultAgentName {
-                        Text("Optional. Empty names the agent \(Text(defaultName).monospaced()).")
+                        Text("Empty names the agent \(Text(defaultName).monospaced()).")
                     } else {
-                        Text("Optional. Empty names the agent after its kind.")
+                        Text("Empty names the agent after its kind.")
                     }
+                }
+
+                Section {
+                    TextField("Tab name (optional)", text: $store.tabLabel)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Tab Name")
+                } footer: {
+                    Text("Empty labels the tab with the agent's name.")
                 }
 
                 Section {
                     AgentArgumentsField(
                         text: $store.arguments,
-                        placeholder: #"e.g. --model "gpt 5" --continue"#)
+                        placeholder: "Arguments (optional)")
                 } header: {
                     Text("Arguments")
                 } footer: {
@@ -190,7 +229,9 @@ struct StartAgentView: View {
                         Text(message)
                             .foregroundStyle(.red)
                     } else {
-                        Text("Optional. Quotes and backslash escapes are supported.")
+                        Text(
+                            "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
+                        )
                     }
                 }
 
@@ -270,7 +311,9 @@ struct StartWorkspacePicker: View {
     }
 
     private var selectedTitle: String {
-        if isNewWorkspaceSelected { return directoryName }
+        if isNewWorkspaceSelected {
+            return newDirectory == nil ? "Home" : directoryName
+        }
         return workspaces.first { $0.id == selectedWorkspaceID }?.label ?? "None reported"
     }
 
@@ -299,6 +342,8 @@ struct StartWorkspacePicker: View {
                 }
                 if newDirectory != nil {
                     Text(directoryName).tag(Selection?.some(.newWorkspace))
+                } else if isNewWorkspaceSelected {
+                    Text("Home").tag(Selection?.some(.newWorkspace))
                 }
             }
             .disabled(workspaces.isEmpty && newDirectory == nil)
