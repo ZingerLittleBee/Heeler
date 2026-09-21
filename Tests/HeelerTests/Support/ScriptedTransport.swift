@@ -34,6 +34,7 @@ final actor ScriptedTransport: Transport {
     /// asserts on the pane it targeted (and that the cancel path never
     /// appends here).
     private(set) var closedPanes: [PaneTarget] = []
+    private(set) var closedTabs: [TabTarget] = []
     private var closeFailure: TransportError?
     private(set) var listedWorktreeWorkspaceIDs: [String] = []
     private(set) var removedWorktreeRequests: [WorktreeRemovalRequest] = []
@@ -517,6 +518,11 @@ final actor ScriptedTransport: Transport {
     func closePane(_ params: PaneTarget) async throws {
         if let closeFailure { throw closeFailure }
         closedPanes.append(params)
+    }
+
+    func closeTab(_ params: TabTarget) async throws {
+        if let closeFailure { throw closeFailure }
+        closedTabs.append(params)
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {

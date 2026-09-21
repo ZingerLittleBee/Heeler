@@ -106,6 +106,10 @@ final actor FakeTransport: Transport {
         throw TransportError.channelFailed(detail: "FakeTransport does not script closes")
     }
 
+    func closeTab(_ params: TabTarget) async throws {
+        throw TransportError.channelFailed(detail: "FakeTransport does not script closes")
+    }
+
     func focusAgent(_ target: AgentTarget) async throws {
         throw TransportError.channelFailed(detail: "FakeTransport does not script focus")
     }

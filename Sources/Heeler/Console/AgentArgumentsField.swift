@@ -12,8 +12,9 @@ struct AgentArgumentsField: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             if text.isEmpty {
+                // Plain body text like every other field's placeholder; only
+                // typed arguments are shell text and earn the monospace.
                 Text(placeholder)
-                    .font(.callout.monospaced())
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
                     .allowsHitTesting(false)
