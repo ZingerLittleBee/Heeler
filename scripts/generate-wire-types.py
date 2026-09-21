@@ -59,6 +59,7 @@ METHODS = [
     "events.subscribe",
     "tab.create",
     "tab.rename",
+    "tab.close",
     "pane.read",
     "pane.close",
     "session.snapshot",

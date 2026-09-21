@@ -513,6 +513,49 @@ final class ConsoleStore {
         try await projection(for: hostID).closePane(paneID)
     }
 
+    /// Whether closing this agent's tab also closes the Workspace: the tab
+    /// is the workspace's last one (shell tabs count), which herdr turns
+    /// into a workspace close.
+    func closesWorkspaceWithTab(of agent: ConsoleAgent) -> Bool {
+        agent.workspaceTabCount <= 1
+    }
+
+    /// Closes the Agent's tab (Console row swipe action). Every agent on the
+    /// Host sharing that tab disappears with it, so their pins are dropped
+    /// too — a deliberately closed tab must not leave a pin that would
+    /// re-pin a herdr-reused id. The projection's resync refreshes the list.
+    func closeAgentTab(_ agent: ConsoleAgent) async throws {
+        let hostID = agent.hostID
+        let tabID = agent.agent.tabID
+        let pinnedPaneIDs = agents
+            .filter { $0.hostID == hostID && $0.agent.tabID == tabID }
+            .map(\.agent.paneID)
+            .filter { pins.isPinned(hostID: hostID, paneID: $0) }
+        try await projection(for: hostID).closeTab(tabID)
+        for paneID in pinnedPaneIDs {
+            pins.removePin(hostID: hostID, paneID: paneID)
+        }
+        rebuild()
+    }
+
+    /// User-facing copy for a failed `tab.close`. `TransportError` is not a
+    /// `LocalizedError`, so `localizedDescription` would read as an opaque
+    /// Foundation code; mirror the rename path's mapping instead.
+    static func tabCloseFailureMessage(for error: any Error) -> String {
+        switch error {
+        case TransportError.sshUnreachable:
+            "The Host is not connected."
+        case TransportError.timedOut:
+            "The Host did not answer in time."
+        case let apiError as HerdrAPIError:
+            "herdr rejected the close: \(apiError.message)"
+        case TransportError.apiRejected(_, let message):
+            "herdr rejected the close: \(message)"
+        default:
+            "Closing the tab failed: \(error)"
+        }
+    }
+
     func listWorktrees(
         forWorkspaceID workspaceID: String, on hostID: Host.ID
     ) async throws -> WorktreeListResponse {

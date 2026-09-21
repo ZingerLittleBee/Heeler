@@ -96,6 +96,14 @@ protocol Transport: Sendable {
     /// id; returns once the server acknowledges.
     func closePane(_ params: PaneTarget) async throws
 
+    /// Closes a Tab (`tab.close`): the Console row's swipe-to-close action.
+    /// herdr removes the tab and every pane in it; when it was the
+    /// workspace's last tab, herdr also closes the workspace server-side, so
+    /// no compensation call is needed. The removal surfaces in the Console
+    /// through the normal snapshot/delta machinery. Targeted by the Tab's
+    /// id; returns once the server acknowledges.
+    func closeTab(_ params: TabTarget) async throws
+
     /// Lists git worktrees for the repository containing `workspaceID`.
     /// Console detail uses this only to obtain branch presentation because
     /// `session.snapshot` already carries repository and checkout identity.

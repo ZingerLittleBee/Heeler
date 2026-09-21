@@ -948,6 +948,16 @@ actor HeelerSSHTransport: Transport {
             decoding: OkResponse.self)
     }
 
+    /// Closes a Tab (`tab.close`): the Console row's swipe-to-close action.
+    /// herdr closes the workspace server-side when this was its last tab; no
+    /// compensation call is needed here.
+    func closeTab(_ params: TabTarget) async throws {
+        _ = try await request(
+            method: "tab.close",
+            params: params,
+            decoding: OkResponse.self)
+    }
+
     func focusAgent(_ target: AgentTarget) async throws {
         _ = try await request(
             method: "agent.focus",

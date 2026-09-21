@@ -1161,6 +1161,23 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(recorded == [#"agent.focus {"target":"\#(token)"}"#])
     }
 
+    /// Tab close is a destructive write against real Host state, so the `ok`
+    /// reply alone is not evidence. Record the request at the Unix-socket
+    /// fixture boundary and pin the exact JSON params.
+    @Test("a tab close records tab.close with the tab id")
+    func tabCloseSendsItsTabIDExactly() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("wire")
+        try await transport.closeTab(TabTarget(tabID: token))
+
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        #expect(recorded == [#"tab.close {"tab_id":"\#(token)"}"#])
+    }
+
     /// A custom Agent name is a write against real Host state, so the response
     /// alone is not evidence that the requested value reached herdr. Record the
     /// request at the Unix-socket fixture boundary and pin the exact JSON params.
