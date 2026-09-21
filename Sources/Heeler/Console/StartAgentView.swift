@@ -193,7 +193,7 @@ struct StartAgentView: View {
                 }
 
                 Section {
-                    TextField(store.defaultAgentName ?? "e.g. reviewer", text: $store.name)
+                    TextField("Agent name (optional)", text: $store.name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 } header: {
@@ -203,9 +203,9 @@ struct StartAgentView: View {
                         Text(message)
                             .foregroundStyle(.red)
                     } else if let defaultName = store.defaultAgentName {
-                        Text("Optional. Empty names the agent \(Text(defaultName).monospaced()).")
+                        Text("Empty names the agent \(Text(defaultName).monospaced()).")
                     } else {
-                        Text("Optional. Empty names the agent after its kind.")
+                        Text("Empty names the agent after its kind.")
                     }
                 }
 
@@ -221,7 +221,7 @@ struct StartAgentView: View {
                 Section {
                     AgentArgumentsField(
                         text: $store.arguments,
-                        placeholder: #"e.g. --model "gpt 5" --continue"#)
+                        placeholder: "Arguments (optional)")
                 } header: {
                     Text("Arguments")
                 } footer: {
@@ -229,7 +229,9 @@ struct StartAgentView: View {
                         Text(message)
                             .foregroundStyle(.red)
                     } else {
-                        Text("Optional. Quotes and backslash escapes are supported.")
+                        Text(
+                            "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
+                        )
                     }
                 }
 
