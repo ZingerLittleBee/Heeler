@@ -135,8 +135,15 @@ struct MoshBootstrapTests {
     @Test func probeBootstrapCommandWrapsAKeepAliveNotAHerdrAttach() throws {
         let command = try HeelerSSHTransport.moshProbeBootstrapCommand(
             socketPath: "/home/user/.herdr/herdr.sock")
-        #expect(command.contains("sh -c \"exec sleep 120\""))
+        // A bare command: mosh-server flattens inner quoting when it joins
+        // its arguments through the login shell, so anything that needs
+        // quotes dies on connect. `sleep 120` survives the join verbatim.
+        #expect(command.contains("-- sleep 120"))
         #expect(command.contains("mosh-probe"))
+        // The keep-alive must be a bare command, but the OUTER wrapper is
+        // itself a `/bin/sh -c '…'` — that occurrence is the wrapper, not
+        // the keep-alive.
+        #expect(!command.contains("-- sh -c"))
     }
 
     @Test func invalidationMakesTheTransportChoiceReadSSH() {

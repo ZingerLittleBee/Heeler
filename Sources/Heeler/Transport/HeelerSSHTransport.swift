@@ -2435,7 +2435,12 @@ actor HeelerSSHTransport: Transport {
     /// bootstrap's outer `/bin/sh -c '…'` wrapper).
     static func moshProbeBootstrapCommand(socketPath: String) throws -> String {
         try moshBootstrapCommand(
-            agentAttachCommand: "sh -c \"exec sleep 120\"",
+            // `sleep 120` as a bare command: mosh-server joins its arguments
+            // after `--` with spaces and runs the joined string through the
+            // login shell, which flattens any inner quoting — a wrapped
+            // `sh -c "exec sleep 120"` degenerates to `sh -c exec` and exits
+            // immediately, killing the probe session on connect.
+            agentAttachCommand: "sleep 120",
             terminalAttachCommand: "",
             request: TerminalAttachRequest(
                 target: .agentPane("mosh-probe"), takeover: false, cols: 80, rows: 24),
