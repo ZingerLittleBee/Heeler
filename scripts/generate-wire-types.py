@@ -58,6 +58,8 @@ METHODS = [
     "agent.start",
     "events.subscribe",
     "tab.create",
+    "tab.rename",
+    "tab.close",
     "pane.read",
     "pane.close",
     "session.snapshot",
@@ -94,6 +96,7 @@ RESULT_TAGS = [
     "session_snapshot",  # session.snapshot
     "subscription_started",  # events.subscribe ack
     "tab_created",  # tab.create
+    "tab_info",  # tab.get, tab.rename
     "ok",  # pane.close, workspace.close
     "workspace_created",  # workspace.create
     "workspace_info",  # workspace.rename

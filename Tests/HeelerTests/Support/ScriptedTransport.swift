@@ -7,6 +7,10 @@ import Foundation
 /// by hand. No SSH anywhere.
 final actor ScriptedTransport: Transport {
     private(set) var isClosed = false
+    /// Liveness is scripted separately from `close()`, so a test can model a
+    /// degraded connection (dead link, live events reader) before the session
+    /// decides to replace the transport.
+    private var connectionAlive = true
     /// Every subscription set received, in order; the Console's
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
@@ -30,6 +34,7 @@ final actor ScriptedTransport: Transport {
     /// asserts on the pane it targeted (and that the cancel path never
     /// appends here).
     private(set) var closedPanes: [PaneTarget] = []
+    private(set) var closedTabs: [TabTarget] = []
     private var closeFailure: TransportError?
     private(set) var listedWorktreeWorkspaceIDs: [String] = []
     private(set) var removedWorktreeRequests: [WorktreeRemovalRequest] = []
@@ -78,6 +83,7 @@ final actor ScriptedTransport: Transport {
     private var paneReadFailure: TransportError?
     private var nextPaneReadGate: ScriptedTransportCallGate?
     private var agentPromptFailure: (any Error)?
+    private var agentPromptFailures: [any Error] = []
     private var nextAgentPromptGate: ScriptedTransportCallGate?
     private var missingPaneIDs: Set<String> = []
     private var nextStreamID: UInt64 = 0
@@ -164,6 +170,15 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `promptAgent` throw `failure`.
     func setAgentPromptFailure(_ failure: (any Error)?) {
         agentPromptFailure = failure
+    }
+
+    /// Scripts one-shot `promptAgent` failures consumed in order, one per
+    /// call, before any persistent failure applies: a call whose queue is
+    /// non-empty throws the head and the rest stays queued. Lets a test
+    /// model herdr refusing the first prompts of a booting agent and then
+    /// accepting.
+    func setAgentPromptFailures(_ failures: [any Error]) {
+        agentPromptFailures = failures
     }
 
     /// Pauses the next Agent prompt after recording its params.
@@ -400,6 +415,13 @@ final actor ScriptedTransport: Transport {
     // MARK: Transport
 
     func ping() async throws -> ServerInfo {
+        // A real Transport's ping fails on a link its events reader has not
+        // reported dead yet; the scripted one must too, or callers that race
+        // a replacement see a phantom success from the transport that is
+        // about to be replaced.
+        guard connectionAlive else {
+            throw TransportError.sshUnreachable(detail: "connection is dead")
+        }
         pingCount += 1
         let failure = pingFailures[pingCount]
         let gate = pingGate
@@ -454,10 +476,12 @@ final actor ScriptedTransport: Transport {
 
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
         agentPromptParams.append(params)
+        let oneShotFailure = agentPromptFailures.isEmpty ? nil : agentPromptFailures.removeFirst()
         let failure = agentPromptFailure
         let gate = nextAgentPromptGate
         nextAgentPromptGate = nil
         await gate?.waitUntilOpen()
+        if let oneShotFailure { throw oneShotFailure }
         if let failure { throw failure }
         return Agent(.fixture(paneID: params.target, status: .working))
     }
@@ -506,6 +530,11 @@ final actor ScriptedTransport: Transport {
     func closePane(_ params: PaneTarget) async throws {
         if let closeFailure { throw closeFailure }
         closedPanes.append(params)
+    }
+
+    func closeTab(_ params: TabTarget) async throws {
+        if let closeFailure { throw closeFailure }
+        closedTabs.append(params)
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
@@ -695,7 +724,14 @@ final actor ScriptedTransport: Transport {
     }
 
     var isConnected: Bool {
-        !isClosed
+        connectionAlive && !isClosed
+    }
+
+    /// Scripts the connection's liveness independently of the events stream,
+    /// so a test can hold the session's silent transport-replacement path
+    /// open (a degraded connection its events reader has not reported yet).
+    func setConnectionAlive(_ alive: Bool) {
+        connectionAlive = alive
     }
 
     func close() async throws {

@@ -40,10 +40,10 @@ suite("sidebar hook process boundary", () => {
     return JSON.parse(readFileSync(join(configDir, "sidebar.json"), "utf8"));
   }
 
-  test("manifest and package agree on 0.4.0 with a 0.7.5 startup hook", () => {
+  test("manifest and package agree on 0.5.0 with a 0.7.5 startup hook", () => {
     const manifest = parse(readFileSync(new URL("../herdr-plugin.toml", import.meta.url), "utf8"));
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-    assert.equal(manifest.version, "0.4.0");
+    assert.equal(manifest.version, "0.5.0");
     assert.equal(pkg.version, manifest.version);
     assert.equal(manifest.min_herdr_version, "0.7.5");
     assert.deepEqual(manifest.startup, [{ command: ["node", "src/sidebar-hook.js"] }]);
