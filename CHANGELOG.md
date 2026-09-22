@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-09-23
+
 ### Added
 
 - Swipe an Agent row left to close it or right to pin it; a full swipe
