@@ -1,6 +1,61 @@
 import Foundation
 import Observation
 
+/// Throwaway diagnostic instrument (build 101): records every byte chunk
+/// fed into a terminal surface, tagged with surface, transport generation,
+/// timestamp, and resize events, so a garbled iPhone render can be replayed
+/// and attributed on the Mac. Remove once the render regression is found.
+#if DEBUG
+final class TerminalStreamCapture: @unchecked Sendable {
+    static let shared = TerminalStreamCapture()
+    private let lock = NSLock()
+    private var handle: FileHandle?
+    private var written = 0
+    private let cap = 24 * 1024 * 1024
+    private static let stamp: String = {
+        let f = DateFormatter()
+        f.dateFormat = "HHmmss"
+        return f.string(from: Date())
+    }()
+
+    private var activeHandle: FileHandle? {
+        lock.lock(); defer { lock.unlock() }
+        if handle == nil, written < cap, let dir = FileManager
+            .default
+            .urls(for: .documentDirectory, in: .userDomainMask).first
+        {
+            let path = dir.appendingPathComponent("stream-\(Self.stamp).bin")
+            FileManager.default.createFile(atPath: path.path, contents: nil)
+            handle = try? FileHandle(forWritingTo: path)
+        }
+        return handle
+    }
+
+    func record(surfaceID: TerminalSurfaceID, generation: UInt64?, bytes: Data) {
+        guard let h = activeHandle else { return }
+        let sid = surfaceID.uuidValuePrefix
+        let head = Data("[\(Self.stamp)] s=\(sid) g=\(generation.map(String.init) ?? "-") n=\(bytes.count)\n".utf8)
+        lock.lock(); defer { lock.unlock() }
+        guard written < cap else { return }
+        try? h.write(contentsOf: head)
+        try? h.write(contentsOf: bytes)
+        written += head.count + bytes.count
+    }
+
+    func recordEvent(surfaceID: TerminalSurfaceID, kind: String) {
+        guard let h = activeHandle else { return }
+        let head = Data("[\(Self.stamp)] s=\(surfaceID.uuidValuePrefix) EVENT=\(kind)\n".utf8)
+        lock.lock(); defer { lock.unlock() }
+        try? h.write(contentsOf: head)
+    }
+}
+
+extension TerminalSurfaceID {
+    var uuidValuePrefix: String {
+        String(value.uuidString.suffix(8))
+    }
+}
+#endif
 typealias TerminalSessionOperation =
     @MainActor @Sendable (TerminalAttachSession) async throws -> Void
 typealias TerminalSessionRunner =
@@ -19,6 +74,7 @@ struct TerminalSessionHandler: Sendable {
     #if DEBUG
     private let traceEvents: AttachRestorationTraceEvents?
     #endif
+
 
     init(
         transportReady: @escaping @MainActor @Sendable (UInt64, TerminalSessionFlavor) -> Void = { _, _ in },
@@ -315,6 +371,9 @@ final class AttachTerminalStore {
     /// session; later changes ride the live channel as window-change.
     func viewDidResize(cols: Int, rows: Int) {
         guard cols > 0, rows > 0, cols != self.cols || rows != self.rows else { return }
+        #if DEBUG
+        TerminalStreamCapture.shared.recordEvent(surfaceID: surfaceID, kind: "resize \(self.cols)x\(self.rows)->\(cols)x\(rows)")
+        #endif
         self.cols = cols
         self.rows = rows
         if runTask == nil {
@@ -549,6 +608,8 @@ final class AttachTerminalStore {
                 }
                 #if DEBUG
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
+                TerminalStreamCapture.shared.record(
+                    surfaceID: surfaceID, generation: acquiredTransportGeneration, bytes: bytes)
                 #endif
                 observeOutput(bytes)
                 feed.write(bytes)
@@ -557,6 +618,9 @@ final class AttachTerminalStore {
             finishSession(inputGeneration)
             throw error
         }
+        #if DEBUG
+        TerminalStreamCapture.shared.recordEvent(surfaceID: surfaceID, kind: "stream-end")
+        #endif
         finishSession(inputGeneration)
     }
 

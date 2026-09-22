@@ -293,10 +293,12 @@ struct AgentComposerStoreTests {
         #expect(store.messages.first?.text == "Stuck launch")
     }
 
-    /// Only the launch race is worth waiting out: an agent target that
-    /// genuinely hosts nothing (`agent_not_found`) fails on its first
-    /// attempt without burning the budget.
-    @Test func agentNotFoundFailsOnTheFirstAttemptWithoutRetrying() async throws {
+    /// 0.9.1 also returns `agent_not_found` transiently on a freshly created
+    /// pane ("agent target wX:pY not found") during the same registration
+    /// window as `agent_not_ready`, so it is waited out with the same
+    /// budget; a target that never registers surfaces the refusal at the
+    /// budget's end.
+    @Test func agentNotFoundOnAFreshPaneIsWaitedOutWithTheSameBudget() async throws {
         let transport = ScriptedTransport()
         await transport.setAgentPromptFailure(
             HerdrAPIError(code: "agent_not_found", message: "agent target w15:p1 not found"))
@@ -315,7 +317,59 @@ struct AgentComposerStoreTests {
         #expect(
             store.messages.map(\.state)
                 == [.failed("herdr rejected the message: agent target w15:p1 not found")])
-        #expect(await transport.agentPromptParams.count == 1)
+        #expect(await transport.agentPromptParams.count > 1)
+    }
+
+    /// A stuck fresh launch is un-stuck by pane activity: after the second
+    /// refusal, each retry nudges the live Attach PTY with space+backspace —
+    /// a redraw that cannot submit, delete, or alter the remote input line.
+    @Test func persistentNotReadyNudgesTheLiveAttachWithSpaceBackspace() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentPromptFailure(
+            HerdrAPIError(
+                code: "agent_not_ready",
+                message: "agent w15:p1 is not an active named agent"))
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(
+            target: "w15:p1",
+            agentNotReadyRetryDelay: .milliseconds(5),
+            agentNotReadyRetryBudget: .milliseconds(40)
+        ) { params in
+            try await transport.promptAgent(params)
+        }
+        store.bindAttachInput(input)
+        store.replaceDraft(with: "Stuck launch")
+
+        let result = await store.send()
+
+        #expect(result == .failed)
+        #expect(writes.contains(Data([0x20, 0x7F])))
+        #expect(!writes.contains { $0.contains(0x0D) })
+    }
+
+    /// With no live Attach there is nothing to nudge; the retry loop still
+    /// runs to the budget without writing anywhere.
+    @Test func persistentNotReadyWithoutAttachRetriesWithoutNudging() async throws {
+        let transport = ScriptedTransport()
+        await transport.setAgentPromptFailure(
+            HerdrAPIError(
+                code: "agent_not_ready",
+                message: "agent w15:p1 is not an active named agent"))
+        let store = AgentComposerStore(
+            target: "w15:p1",
+            agentNotReadyRetryDelay: .milliseconds(5),
+            agentNotReadyRetryBudget: .milliseconds(20)
+        ) { params in
+            try await transport.promptAgent(params)
+        }
+        store.replaceDraft(with: "No attach yet")
+
+        let result = await store.send()
+
+        #expect(result == .failed)
+        #expect(await transport.agentPromptParams.count > 1)
     }
 
     @Test func reconnectStatusUpdatesDoNotTouchTheLocalDraft() async throws {

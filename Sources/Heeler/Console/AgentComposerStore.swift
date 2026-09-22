@@ -129,9 +129,12 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// The shell-readiness wait in `HeelerSSHTransport.startAgentAwaitingShell`
     /// covers the 0.7.5 `agent_pane_busy` shape only; on 0.8.0+ the launch
     /// race moved downstream to `agent.prompt`, so the composer carries the
-    /// same budget here.
+    /// same budget here. 0.9.1 on a fresh pane can sit unregistered far past
+    /// a second — one observed launch stayed "not an active named agent"
+    /// for over a minute until pane activity un-stuck it — so the budget
+    /// is generous and the retry nudges the pane through the live Attach.
     private static let defaultAgentNotReadyRetryDelay: Duration = .milliseconds(500)
-    private static let defaultAgentNotReadyRetryBudget: Duration = .seconds(10)
+    private static let defaultAgentNotReadyRetryBudget: Duration = .seconds(45)
 
     deinit {
         statusTask?.cancel()
@@ -393,26 +396,38 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     /// Delivers one `agent.prompt` request, waiting out a fresh launch's
-    /// `agent_not_ready` rejections first. herdr 0.8.0+ answers `agent.start`
+    /// registration rejections first. herdr 0.8.0+ answers `agent.start`
     /// while the pane's agent is still booting (`launch_pending`), so the
     /// first prompt of a just-started Agent can beat the agent's registration
     /// on the Host and be refused with "agent wX:pY is not an active named
-    /// agent" — the pane id is correct, and re-entering the session later
-    /// finds it active because only time was missing. Retrying on that code
-    /// alone, at a fixed pace inside a bounded budget (the transport's
-    /// shell-readiness wait shape), keeps that bubble off the user's first
-    /// send while a genuinely absent Agent (`agent_not_found`) still fails
-    /// immediately.
+    /// agent" (`agent_not_ready`) — the pane id is correct, and re-entering
+    /// the session later finds it active because only time was missing.
+    /// 0.9.1 also returns `agent_not_found` ("agent target wX:pY not found")
+    /// during that same window on a fresh pane, so both codes are waited
+    /// out. Retrying alone is not always enough: one observed launch sat
+    /// unregistered for over a minute until pane activity un-stuck it, so
+    /// after the first two refusals each wait sends a space+backspace nudge
+    /// through the live Attach PTY — the same nudge the user's own first
+    /// keystroke provides — which redraws the TUI without submitting
+    /// anything. A target that never comes up still fails at the budget's
+    /// end with herdr's refusal.
     private func promptWaitingOutLaunch(
         _ params: AgentPromptParams
     ) async throws -> Agent {
         let deadline = ContinuousClock.now + agentNotReadyRetryBudget
+        var refusals = 0
         while true {
             do {
                 return try await prompt(params)
             } catch let error where Self.isAgentNotReady(error) {
+                refusals += 1
                 guard ContinuousClock.now + agentNotReadyRetryDelay < deadline else {
                     throw error
+                }
+                if refusals > 2 {
+                    // Space then backspace: a redraw nudge that cannot
+                    // submit, delete, or alter the remote input line.
+                    attachInput?.send(Data([0x20, 0x7F]))
                 }
                 try await Task.sleep(for: agentNotReadyRetryDelay)
             }
@@ -448,16 +463,23 @@ final class AgentComposerStore: ComposerDraftOperations {
         return .failed
     }
 
+    /// Both registration-window codes: `agent_not_ready` ("is not an active
+    /// named agent") and `agent_not_found` ("agent target ... not found",
+    /// transiently returned for a freshly created pane before its agent
+    /// registers). A genuinely absent target still surfaces at the budget's
+    /// end rather than on the first attempt.
     private static func isAgentNotReady(_ error: any Error) -> Bool {
+        let code: String?
         if let apiError = error as? HerdrAPIError {
-            return apiError.code == "agent_not_ready"
-        }
-        if let transportError = error as? TransportError,
-            case .apiRejected(let code, _) = transportError
+            code = apiError.code
+        } else if let transportError = error as? TransportError,
+            case .apiRejected(let rejected, _) = transportError
         {
-            return code == "agent_not_ready"
+            code = rejected
+        } else {
+            code = nil
         }
-        return false
+        return code == "agent_not_ready" || code == "agent_not_found"
     }
 
     private static func isAgentBlocked(_ error: any Error) -> Bool {
