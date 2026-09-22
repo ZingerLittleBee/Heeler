@@ -541,10 +541,7 @@ struct ConsoleView: View {
                 }
             }
             .listStyle(.plain)
-            .confirmationDialog(
-                tabCloseDialogTitle, isPresented: tabCloseDialogPresented,
-                titleVisibility: .visible
-            ) {
+            .alert(tabCloseDialogTitle, isPresented: tabCloseDialogPresented) {
                 Button(tabCloseConfirmLabel, role: .destructive) { confirmTabClose() }
                 Button("Cancel", role: .cancel) { pendingTabClose = nil }
             } message: {
