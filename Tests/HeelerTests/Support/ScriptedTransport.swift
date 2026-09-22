@@ -83,6 +83,7 @@ final actor ScriptedTransport: Transport {
     private var paneReadFailure: TransportError?
     private var nextPaneReadGate: ScriptedTransportCallGate?
     private var agentPromptFailure: (any Error)?
+    private var agentPromptFailures: [any Error] = []
     private var nextAgentPromptGate: ScriptedTransportCallGate?
     private var missingPaneIDs: Set<String> = []
     private var nextStreamID: UInt64 = 0
@@ -169,6 +170,15 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `promptAgent` throw `failure`.
     func setAgentPromptFailure(_ failure: (any Error)?) {
         agentPromptFailure = failure
+    }
+
+    /// Scripts one-shot `promptAgent` failures consumed in order, one per
+    /// call, before any persistent failure applies: a call whose queue is
+    /// non-empty throws the head and the rest stays queued. Lets a test
+    /// model herdr refusing the first prompts of a booting agent and then
+    /// accepting.
+    func setAgentPromptFailures(_ failures: [any Error]) {
+        agentPromptFailures = failures
     }
 
     /// Pauses the next Agent prompt after recording its params.
@@ -466,10 +476,12 @@ final actor ScriptedTransport: Transport {
 
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
         agentPromptParams.append(params)
+        let oneShotFailure = agentPromptFailures.isEmpty ? nil : agentPromptFailures.removeFirst()
         let failure = agentPromptFailure
         let gate = nextAgentPromptGate
         nextAgentPromptGate = nil
         await gate?.waitUntilOpen()
+        if let oneShotFailure { throw oneShotFailure }
         if let failure { throw failure }
         return Agent(.fixture(paneID: params.target, status: .working))
     }
