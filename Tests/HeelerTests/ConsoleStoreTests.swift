@@ -49,14 +49,33 @@ struct ConsoleStoreTests {
         hostName: String,
         paneID: String,
         status: AgentStatus,
-        workspaceLabel: String? = "Proj"
+        workspaceLabel: String? = "Proj",
+        workspaceTabCount: Int = 0
     ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: hostID,
             hostName: hostName,
             agent: Agent(.fixture(paneID: paneID, status: status)),
             workspaceLabel: workspaceLabel,
-            repositoryCheckout: nil)
+            repositoryCheckout: nil,
+            workspaceTabCount: workspaceTabCount)
+    }
+
+    @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {
+        // (#swipe): the confirmation only stands between the swipe and a
+        // close when the tab is the workspace's last one — closing it takes
+        // the workspace down with it.
+        let host = Host.fixture()
+        let store = makeStore(transports: [:])
+        let last = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "w1:p1",
+            status: .idle, workspaceTabCount: 1)
+        let shared = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "w1:p2",
+            status: .idle, workspaceTabCount: 3)
+
+        #expect(store.closesWorkspaceWithTab(of: last))
+        #expect(!store.closesWorkspaceWithTab(of: shared))
     }
 
     private func makePinDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
@@ -1176,6 +1195,84 @@ struct ConsoleStoreTests {
         #expect(store.agents.isEmpty)
     }
 
+    /// The fresh-session send bug: a launch's new pane forces the next resync
+    /// to reinstall the pane subscription set, and a degraded link turns that
+    /// reinstall into a silent transport replacement (no `.reconnecting`, the
+    /// Host still reads `.connected`). The composer's first send used to die
+    /// with `sshUnreachable` inside that window; it now waits out the redial
+    /// and delivers on the replacement Transport.
+    @Test func promptAgentSurvivesTheSilentTransportReplacement() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let replacement = ScriptedTransport(
+            snapshot: .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w1:pnew", status: .idle),
+            ]))
+        let queue = ConnectionAttemptQueue([.success(first), .success(replacement)])
+        let connectGate = ScriptedTransportCallGate()
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            pins: PinnedAgentsStore(
+                defaults: UserDefaults(suiteName: "hm-console-pins-\(UUID().uuidString)")
+                    ?? .standard)
+        ) { host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    let transport = try await queue.next()
+                    let dial = await queue.attemptCount
+                    if dial > 1 {
+                        await connectGate.waitUntilOpen()
+                    }
+                    return transport
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the initial Agent should arrive") {
+            store.agents.map(\.agent.paneID) == ["w1:p1"]
+        }
+
+        // The launched pane's membership change forces the reinstall, and
+        // the degraded link makes it a silent redial held closed by the gate.
+        await first.setSnapshot(
+            .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w1:pnew", status: .idle),
+            ]))
+        await first.setConnectionAlive(false)
+        #expect(
+            await first.emit(
+                HerdrEvent(kind: GlobalEventKind.paneAgentDetected.kind, data: .object([:])))
+            == true)
+        try await waitUntil("the reinstall should hold the replacement dial closed") {
+            await connectGate.entryCount == 1
+        }
+
+        let prompt = Task {
+            try await store.promptAgent(
+                AgentPromptParams(target: "w1:pnew", text: "hello"), on: host.id)
+        }
+        // The redial is still closed; the old fail-fast behavior would
+        // already have surfaced `sshUnreachable` here.
+        try await Task.sleep(for: .milliseconds(50))
+        await connectGate.open()
+        let prompted = try await prompt.value
+
+        #expect(prompted.paneID == "w1:pnew")
+        try await waitUntil("the send should have landed on the replacement") {
+            let params = await replacement.agentPromptParams
+            return params.map(\.target) == ["w1:pnew"] && params.map(\.text) == ["hello"]
+        }
+
+        store.setHosts([])
+    }
+
     @Test func startAgentThrowsWhenTheHostIsUnknown() async throws {
         let host = Host.fixture()
         let store = makeStore(transports: [:])
@@ -1251,6 +1348,65 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    @Test func closeAgentTabClosesTheSharedTabAndDropsItsPins() async throws {
+        // tab.close (#8 swipe action): the target reaches the Host's
+        // transport, and every agent pinned on that tab is unpinned — the
+        // tab close destroys them all, so a pin must not dangle onto an id
+        // herdr could reuse.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w1:p2", status: .idle),
+                .fixture(paneID: "w2:p1", status: .idle, workspaceID: "w2"),
+            ]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("all agents should arrive") { store.agents.count == 3 }
+        store.togglePin(hostID: host.id, paneID: "w1:p1")
+        store.togglePin(hostID: host.id, paneID: "w1:p2")
+        store.togglePin(hostID: host.id, paneID: "w2:p1")
+
+        // Two agents share w1's tab; closing it targets the tab id once and
+        // drops both pins while the untouched w2 pin survives.
+        let victim = try #require(store.agents.first { $0.agent.paneID == "w1:p1" })
+        try await store.closeAgentTab(victim)
+
+        #expect(await transport.closedTabs == [TabTarget(tabID: "w1:t1")])
+        #expect(!store.pins.isPinned(hostID: host.id, paneID: "w1:p1"))
+        #expect(!store.pins.isPinned(hostID: host.id, paneID: "w1:p2"))
+        #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:p1"))
+    }
+
+    /// The swipe action's alert must read as herdr's refusal or a transport
+    /// state, never as Foundation's opaque `localizedDescription` for a
+    /// non-`LocalizedError` enum.
+    @Test func tabCloseFailureMessageNamesTheCause() {
+        #expect(
+            ConsoleStore.tabCloseFailureMessage(
+                for: HerdrAPIError(code: "tab_not_found", message: "tab w1:t9 not found"))
+                == "herdr rejected the close: tab w1:t9 not found")
+        #expect(
+            ConsoleStore.tabCloseFailureMessage(for: TransportError.sshUnreachable(detail: ""))
+                == "The Host is not connected.")
+        #expect(
+            ConsoleStore.tabCloseFailureMessage(for: TransportError.timedOut)
+                == "The Host did not answer in time.")
+    }
+
+    @Test func closeAgentTabThrowsWhenTheHostIsUnknown() async throws {
+        let host = Host.fixture()
+        let store = makeStore(transports: [:])
+        let agent = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "w1:p1", status: .idle)
+
+        await #expect(throws: TransportError.self) {
+            try await store.closeAgentTab(agent)
+        }
+    }
+
     @Test func focusAgentForwardsOpaqueTargetToItsHostAndResnapshotsAllRows() async throws {
         let host = Host.fixture()
         let otherHost = Host.fixture(name: "Other")
@@ -1300,11 +1456,22 @@ struct ConsoleStoreTests {
         await #expect(throws: TransportError.timedOut) {
             try await store.focusAgent("pane", on: host.id)
         }
+        // The single retry rides the replacement, so the focus reaches the
+        // transport once per attempt.
+        #expect(await transport.agentFocuses == [
+            AgentTarget(target: "pane"), AgentTarget(target: "pane"),
+        ])
+        // The redial ends the stale events channel, and the fresh
+        // `.connected` that follows is the consumer's usual re-snapshot
+        // signal: exactly one resync beyond the pre-focus count. A FAILED
+        // focus must not add a success resync on top of it.
+        try await waitUntil("the reconnect resync should land") {
+            await transport.snapshotFetchCount == before + 1
+        }
         // Give an incorrectly scheduled success refresh time to reach the transport.
         try await Task.sleep(for: .milliseconds(25))
+        #expect(await transport.snapshotFetchCount == before + 1)
         #expect(store.agents.map(\.agent.status) == [.done])
-        #expect(await transport.snapshotFetchCount == before)
-        #expect(await transport.agentFocuses == [AgentTarget(target: "pane")])
     }
 
     @Test func focusDoesNotSendWhenTheAgentHasAlreadyLeftDone() async throws {

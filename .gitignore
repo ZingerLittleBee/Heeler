@@ -38,3 +38,6 @@ __pycache__/
 
 # Agent workspace (research reports, scratch)
 .claude/
+
+# Lefthook per-developer overrides
+lefthook-local.yml

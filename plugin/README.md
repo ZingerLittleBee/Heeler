@@ -102,7 +102,59 @@ enrolls, the QR is replaced by a success screen showing the enrolled Device
 Key's fingerprint and label; press `r` there to revoke that key (removing its
 `authorized_keys` line), or any other key to close.
 
-Known limitation: the advertised SSH port is currently fixed at 22.
+Starting with plugin 0.5.0, the advertised SSH port is configurable. It is 22
+by default; override it with `pair.json` in the plugin config directory when
+OpenSSH listens elsewhere — for example, Tailscale SSH on port 22 with
+OpenSSH on 2222:
+
+```bash
+herdr plugin config-dir heeler
+# write {"ssh_port": 2222} into that directory as pair.json
+herdr plugin action invoke heeler.pair
+```
+
+| Field      | Type    | Meaning |
+| ---------- | ------- | ------- |
+| `ssh_port` | integer | SSH port advertised in the Pairing Code, `1..65535`. Default 22. An absent `pair.json` means 22; a file that cannot be read or parsed, or an `ssh_port` outside that range, also falls back to 22 and says so in the checklist. |
+
+The Pairing Code pins the host key found under `/etc/ssh` (`src/host-key.js`),
+so the alternate port must be served by **the same sshd** — another `Port`
+line in `sshd_config`, not a second instance with its own `HostKey`, whose
+fingerprint the code would not match. `pair.json` is re-read on every
+checklist repaint, so an edit made in another pane lands on the next keypress
+without reopening the popup.
+
+The checklist and QR screen both show the advertised port, and the checklist
+names an override it could not honor rather than quietly handing back 22 —
+the port a Tailscale-SSH Host is trying to get away from. Pairing still
+requires a real OpenSSH listener (host key under `/etc/ssh`,
+`authorized_keys` forced commands); Tailscale SSH alone cannot run the
+ceremony.
+
+On a machine holding an address that *might* be a tailnet one, the popup asks
+Tailscale once, after the first paint, whether it is serving SSH:
+`tailscale debug prefs` (`RunSSH`), falling back to `tailscale status --json`
+(this node's `sshHostKeys`). If it is, and one of the addresses
+`status --json` reports as this node's own (`Self.TailscaleIPs`) is checked
+while the code still advertises port 22, the checklist says so before the QR
+appears — tailscaled would answer that port, and Enrollment cannot run there.
+
+The warning matches those addresses exactly rather than the `100.64.0.0/10`
+range, which is the whole carrier-grade NAT block: measured on a VPS whose
+own NIC held `100.114.1.129` while `tailscale0` held `100.73.39.6`, a
+range test warns about an address tailscaled never answers for. The range is
+only a screen for whether asking Tailscale is worth a subprocess at all.
+
+Measured against Tailscale 1.102.4: `RunSSH` tracks `tailscale set --ssh`
+in both directions, `sshHostKeys` was absent from `Self` and from every peer
+either way, and `Self.CapMap` is no substitute — its `cap/ssh` and
+`ssh-behavior-v1` entries are ACL grants that survive `--ssh=false`.
+
+Every probe only ever answers yes. No `tailscale` on `PATH` (nor in the macOS
+app bundle), a logged-out tailscaled, an output shape that changed, or a
+readable `RunSSH` with unreadable addresses all read as "not serving" and
+warn about nothing: a false alarm on every pairing would cost more than this
+warning saves.
 
 ## Pairing Code envelope (v1)
 

@@ -333,6 +333,13 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
+    func closeTab(_ tabID: String) async throws {
+        try await session.withTransport { transport in
+            try await transport.closeTab(TabTarget(tabID: tabID))
+        }
+        scheduleResync()
+    }
+
     /// Whether a Pane is still alive on the Host, probed with a minimal
     /// `pane.read`. A server rejection means the Pane is gone (closed on the
     /// desktop, or the server restarted and lost every tab); a transport
@@ -427,22 +434,37 @@ final class HostConsoleProjection {
     private func authorizeWorktreeRemoval(_ request: WorktreeRemovalRequest) throws {
         guard
             var operation = worktreeRemovalOperations[request.id],
-            operation.request == request,
-            case .preparing = operation.phase,
-            let workspace = workspacesByID[request.identity.workspaceID],
-            let checkout = workspace.worktree.map(RepositoryCheckout.init),
-            request.identity.matches(checkout)
+            operation.request == request
         else {
             throw WorktreeRemovalError.staleIdentity
         }
-        operation.affectedAgentIDs = Set(
-            agentsByPane.values.lazy
-                .filter {
-                    $0.agent.workspaceID == request.identity.workspaceID
-                        && $0.repositoryCheckout.map(request.identity.matches) == true
-                }
-                .map(\.id))
-        worktreeRemovalOperations[request.id] = operation
+        // The transport retry legitimately re-enters this boundary while the
+        // first write is still in flight (.dispatched): the request is
+        // unchanged, so re-authorizing is a no-op for that phase. Only the
+        // pre-dispatch phase requires the workspace-identity proof.
+        switch operation.phase {
+        case .dispatched:
+            worktreeRemovalOperations[request.id] = operation
+            return
+        case .preparing:
+            guard
+                let workspace = workspacesByID[request.identity.workspaceID],
+                let checkout = workspace.worktree.map(RepositoryCheckout.init),
+                request.identity.matches(checkout)
+            else {
+                throw WorktreeRemovalError.staleIdentity
+            }
+            operation.affectedAgentIDs = Set(
+                agentsByPane.values.lazy
+                    .filter {
+                        $0.agent.workspaceID == request.identity.workspaceID
+                            && $0.repositoryCheckout.map(request.identity.matches) == true
+                    }
+                    .map(\.id))
+            worktreeRemovalOperations[request.id] = operation
+        default:
+            throw WorktreeRemovalError.staleIdentity
+        }
     }
 
     private func worktreeRemovalWasDispatched(_ request: WorktreeRemovalRequest) {

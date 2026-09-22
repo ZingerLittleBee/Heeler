@@ -96,6 +96,14 @@ protocol Transport: Sendable {
     /// id; returns once the server acknowledges.
     func closePane(_ params: PaneTarget) async throws
 
+    /// Closes a Tab (`tab.close`): the Console row's swipe-to-close action.
+    /// herdr removes the tab and every pane in it; when it was the
+    /// workspace's last tab, herdr also closes the workspace server-side, so
+    /// no compensation call is needed. The removal surfaces in the Console
+    /// through the normal snapshot/delta machinery. Targeted by the Tab's
+    /// id; returns once the server acknowledges.
+    func closeTab(_ params: TabTarget) async throws
+
     /// Lists git worktrees for the repository containing `workspaceID`.
     /// Console detail uses this only to obtain branch presentation because
     /// `session.snapshot` already carries repository and checkout identity.
@@ -410,17 +418,27 @@ struct AgentLaunchRequest: Sendable, Equatable {
     /// from another agent's screen and should land in the same place. Nil
     /// lets herdr fall back to the workspace's own directory.
     let cwd: String?
+    /// Label for the tab the launch creates. Nil labels the tab with the
+    /// agent's name; see `resolvedTabLabel`. Kept separate from `name`
+    /// because herdr constrains agent names to a lowercase slug while a tab
+    /// label accepts any text.
+    let tabLabel: String?
 
     init(
         kind: String, name: String, arguments: [String] = [], workspaceID: String? = nil,
-        cwd: String? = nil
+        cwd: String? = nil, tabLabel: String? = nil
     ) {
         self.kind = kind
         self.name = name
         self.arguments = arguments
         self.workspaceID = workspaceID
         self.cwd = cwd
+        self.tabLabel = tabLabel
     }
+
+    /// The label the launch's tab should carry: the explicit tab label when
+    /// one was given, otherwise the agent's name.
+    var resolvedTabLabel: String { tabLabel ?? name }
 }
 
 /// The one-shot API request behind Agent Detail's Open Terminal action.

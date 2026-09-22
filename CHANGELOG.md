@@ -9,6 +9,25 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- Agent rows in the Console take a swipe: swipe left and tap Close to
+  close the Agent's tab over SSH. herdr closes a Workspace when its last
+  tab goes, and the app asks first with "Are you sure you want to also
+  close workspace X?" when that would happen; tabs that leave the
+  Workspace alive close with no prompt. Pins on a closed tab are dropped
+  so none dangle. (#366)
+- The New Agent sheet can create a Workspace from a name alone. A
+  name-only launch defaults the directory to the Host's home and the
+  workspace label is now a field on the form; a browsed directory still
+  overrides it. (#362)
+
+### Fixed
+
+- New Agent tabs take the agent's name. `tab.create` now carries it as
+  the tab's label, and after a workspace or worktree launch the fresh
+  tab is renamed once the agent is running, so the tab bar shows names
+  instead of herdr's automatic "Tab N". An optional Tab Name field on
+  the form overrides that default with free text, since herdr limits
+  agent names to a lowercase slug but not tab labels. (#362)
 - The Agent terminal shows the session's model, prompt size (as a share of
   the model's context window, `11.0%`, once omp on the Host has named it),
   and spend in a strip above the terminal. These are the figures the Agent's own status line
@@ -19,6 +38,14 @@ Entries reference the issue that motivated them.
   cannot be read is left out rather than shown as a placeholder. When omp's
   own `tok/s` readout is on (`composer.tokenRate`), the strip shows the last
   turn's generation rate too. (#325)
+
+- Pairing Codes can advertise a non-default SSH port via `pair.json`
+  (`ssh_port`) in the plugin config directory, so OpenSSH can share a Host
+  with Tailscale SSH on port 22. A `pair.json` the plugin cannot honor is
+  named in the pair checklist instead of quietly reverting to 22, and a
+  checked tailnet address on a Host that is serving Tailscale SSH is called
+  out there too — before the QR appears, rather than as a failure on the
+  phone. (#355)
 
 ### Fixed
 
@@ -34,6 +61,29 @@ Entries reference the issue that motivated them.
   uses for a fresh pane's booting shell, still surfacing herdr's refusal once
   the budget is spent and never retrying a genuinely absent Agent
   (`agent_not_found`). (#368)
+
+- A message sent to an Agent the app had just launched no longer fails with
+  "The Host is not connected." Launching an Agent — a new Workspace's Agent in
+  particular — makes the Console subscribe to that pane's status events, and
+  when the Host's connection has gone quiet or degraded during the launch,
+  that subscription swap silently replaces the SSH transport. The Console kept
+  reporting the Host as connected while every Host-scoped request — the
+  composer's send included — was refused for the seconds the replacement dial
+  took, and the first message typed into the fresh Agent's tab died inside
+  that window; leaving the Agent and returning was what made sending work.
+  Host-scoped requests now wait for the replacement transport instead of
+  failing against a gap the connection status never announced, and still fail
+  at once with the real cause when the session is suspended, stopped on an
+  action-required failure, or visibly reconnecting. A caller that reaches the
+  degraded transport before the session notices also gets one redial-and-retry
+  instead of a phantom "The Host is not connected." — the case the launch
+  window kept producing. (#368)
+
+- Manually adding a Host (or finishing Scan to Pair) no longer loses the
+  "Trust this Host?" alert. Navigation into onboarding waits until the add
+  sheet has finished dismissing, so preflight's TOFU prompt is not dropped
+  mid-transition. (#359)
+
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or
   in Composer, so pressing Space cannot add a suggested word after the letters

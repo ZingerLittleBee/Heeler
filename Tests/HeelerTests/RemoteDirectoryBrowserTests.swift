@@ -228,6 +228,7 @@ struct RemoteDirectoryBrowserTests {
             hosts: [Host.fixture()], workspaces: { _ in [] },
             existingAgentNames: { _ in [] },
             discoverAgentKinds: { _ in [.claude] },
+            remoteHome: { _ in "/home/you" },
             start: { _, _, _ in
                 starts.count += 1
                 return Agent(.fixture(paneID: "w1:pnew", status: .working))
