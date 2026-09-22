@@ -26,6 +26,9 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// automatic label uses position, not TabInfo.number's stable identity.
     let tabPosition: Int?
     let workspaceTabCount: Int
+    /// Panes in the Agent's tab, shells included; decides whether a close
+    /// takes the whole tab or only this Agent's pane.
+    let tabPaneCount: Int
     /// Collection order from session.snapshot.agents for the `spaces` sort.
     let snapshotOrder: Int?
     /// Snapshot git metadata when the workspace reported any. Presence does
@@ -66,6 +69,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         tabLabel: String? = nil,
         tabPosition: Int? = nil,
         workspaceTabCount: Int = 0,
+        tabPaneCount: Int = 1,
         snapshotOrder: Int? = nil,
         paneLabel: String? = nil
     ) {
@@ -78,6 +82,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         self.paneLabel = paneLabel
         self.tabPosition = tabPosition
         self.workspaceTabCount = workspaceTabCount
+        self.tabPaneCount = tabPaneCount
         self.snapshotOrder = snapshotOrder
         self.repositoryCheckout = repositoryCheckout
         self.lastOutputSnippet = lastOutputSnippet

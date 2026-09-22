@@ -513,19 +513,34 @@ final class ConsoleStore {
         try await projection(for: hostID).closePane(paneID)
     }
 
-    /// Whether closing this agent's tab also closes the Workspace: the tab
-    /// is the workspace's last one (shell tabs count), which herdr turns
-    /// into a workspace close.
-    func closesWorkspaceWithTab(of agent: ConsoleAgent) -> Bool {
-        agent.workspaceTabCount <= 1
+    /// Whether the Console row's close takes the Agent's whole tab: only
+    /// when its pane is the tab's last one. Beside other panes (shells
+    /// count), only the Agent's own pane closes.
+    func closesTab(of agent: ConsoleAgent) -> Bool {
+        agent.tabPaneCount <= 1
     }
 
-    /// Closes the Agent's tab (Console row swipe action). Every agent on the
-    /// Host sharing that tab disappears with it, so their pins are dropped
-    /// too — a deliberately closed tab must not leave a pin that would
-    /// re-pin a herdr-reused id. The projection's resync refreshes the list.
-    func closeAgentTab(_ agent: ConsoleAgent) async throws {
+    /// Whether the Console row's close also closes the Workspace: it takes
+    /// the whole tab and that tab is the workspace's last one (shell tabs
+    /// count), which herdr turns into a workspace close.
+    func closesWorkspaceWithTab(of agent: ConsoleAgent) -> Bool {
+        closesTab(of: agent) && agent.workspaceTabCount <= 1
+    }
+
+    /// Closes the Agent from its Console row's swipe action: its pane when
+    /// the tab holds others, otherwise the whole tab. Every agent on the
+    /// Host that closes with it loses its pin — a deliberate close must not
+    /// leave a pin that would re-pin a herdr-reused id. The projection's
+    /// resync refreshes the list.
+    func closeAgent(_ agent: ConsoleAgent) async throws {
         let hostID = agent.hostID
+        guard closesTab(of: agent) else {
+            let paneID = agent.agent.paneID
+            try await projection(for: hostID).closePane(paneID)
+            pins.removePin(hostID: hostID, paneID: paneID)
+            rebuild()
+            return
+        }
         let tabID = agent.agent.tabID
         let pinnedPaneIDs = agents
             .filter { $0.hostID == hostID && $0.agent.tabID == tabID }
@@ -552,7 +567,7 @@ final class ConsoleStore {
         case TransportError.apiRejected(_, let message):
             "herdr rejected the close: \(message)"
         default:
-            "Closing the tab failed: \(error)"
+            "Closing failed: \(error)"
         }
     }
 

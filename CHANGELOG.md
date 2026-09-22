@@ -9,25 +9,13 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Agent rows in the Console take a swipe: swipe left and tap Close to
-  close the Agent's tab over SSH. herdr closes a Workspace when its last
-  tab goes, and the app asks first with "Are you sure you want to also
-  close workspace X?" when that would happen; tabs that leave the
-  Workspace alive close with no prompt. Pins on a closed tab are dropped
-  so none dangle. (#366)
+- Swipe an Agent row left to close it or right to pin it; a full swipe
+  acts at once. Closing always asks first and takes only the Agent's
+  pane when its tab holds others. (#366; PR #374)
 - The New Agent sheet can create a Workspace from a name alone. A
   name-only launch defaults the directory to the Host's home and the
   workspace label is now a field on the form; a browsed directory still
   overrides it. (#362)
-
-### Fixed
-
-- New Agent tabs take the agent's name. `tab.create` now carries it as
-  the tab's label, and after a workspace or worktree launch the fresh
-  tab is renamed once the agent is running, so the tab bar shows names
-  instead of herdr's automatic "Tab N". An optional Tab Name field on
-  the form overrides that default with free text, since herdr limits
-  agent names to a lowercase slug but not tab labels. (#362)
 - The Agent terminal shows the session's model, prompt size (as a share of
   the model's context window, `11.0%`, once omp on the Host has named it),
   and spend in a strip above the terminal. These are the figures the Agent's own status line
@@ -38,7 +26,6 @@ Entries reference the issue that motivated them.
   cannot be read is left out rather than shown as a placeholder. When omp's
   own `tok/s` readout is on (`composer.tokenRate`), the strip shows the last
   turn's generation rate too. (#325)
-
 - Pairing Codes can advertise a non-default SSH port via `pair.json`
   (`ssh_port`) in the plugin config directory, so OpenSSH can share a Host
   with Tailscale SSH on port 22. A `pair.json` the plugin cannot honor is
@@ -49,12 +36,17 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- New Agent tabs take the agent's name. `tab.create` now carries it as
+  the tab's label, and after a workspace or worktree launch the fresh
+  tab is renamed once the agent is running, so the tab bar shows names
+  instead of herdr's automatic "Tab N". An optional Tab Name field on
+  the form overrides that default with free text, since herdr limits
+  agent names to a lowercase slug but not tab labels. (#362)
 - Pairing no longer defaults to a Docker bridge address when the Host's
   primary interface has no suitable private or VPN address. Docker bridge
   and veth addresses remain available for manual selection at the end of
   the checklist, without being pre-checked. Normal LAN bridges keep their
   existing selection behavior. (PR #357, refs #356)
-
 - A message sent to an Agent the app had just launched no longer fails with
   "herdr rejected the message: agent wX:pY is not an active named agent".
   herdr 0.8.0+ answers `agent.start` while the pane's agent is still booting,
@@ -67,7 +59,6 @@ Entries reference the issue that motivated them.
   uses for a fresh pane's booting shell, still surfacing herdr's refusal once
   the budget is spent and never retrying a genuinely absent Agent
   (`agent_not_found`). (#368)
-
 - A message sent to an Agent the app had just launched no longer fails with
   "The Host is not connected." Launching an Agent — a new Workspace's Agent in
   particular — makes the Console subscribe to that pane's status events, and
@@ -84,12 +75,10 @@ Entries reference the issue that motivated them.
   degraded transport before the session notices also gets one redial-and-retry
   instead of a phantom "The Host is not connected." — the case the launch
   window kept producing. (#368)
-
 - Manually adding a Host (or finishing Scan to Pair) no longer loses the
   "Trust this Host?" alert. Navigation into onboarding waits until the add
   sheet has finished dismissing, so preflight's TOFU prompt is not dropped
   mid-transition. (#359)
-
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or
   in Composer, so pressing Space cannot add a suggested word after the letters

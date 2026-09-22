@@ -11,8 +11,8 @@ import Observation
 ///
 /// Kept off the SSH types (standing repo rule): it talks to an injected
 /// closure over the `ConsoleStore`, so it is testable against a scripted
-/// transport. There is deliberately no swipe-to-close anywhere — the
-/// confirmation dialog is the only path.
+/// transport. The Console row's swipe-to-close is gated behind its own
+/// confirmation as well.
 @MainActor
 @Observable
 final class ClosePaneStore {
