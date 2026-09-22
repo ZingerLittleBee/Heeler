@@ -927,10 +927,12 @@ actor HeelerSSHTransport: Transport {
         let deadline = ContinuousClock.now + Self.shellReadinessBudget
         while true {
             do {
-                return try await request(
+                let started = try await request(
                     method: "agent.start",
                     params: params,
                     decoding: AgentStartedResponse.self)
+                try? await waitOutRegistration(paneID: paneID)
+                return started
             } catch let error as HerdrAPIError where error.code == "agent_pane_busy" {
                 guard ContinuousClock.now + Self.shellReadinessRetryDelay < deadline else {
                     throw error
@@ -940,8 +942,36 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// herdr's API `agent.start` returns as soon as the spawn is dispatched —
+    /// a Heeler-created pane answered in ~3 ms — while the CLI's
+    /// `agent start` blocks until the agent registers as an "active named
+    /// agent". A prompt that races that registration is refused
+    /// `agent_not_ready`/`agent_not_found`, and one observed Heeler-created
+    /// launch sat unregistered for over a minute while CLI-launched panes on
+    /// the same Host registered in seconds. Poll `agent.list` until the
+    /// started pane's agent carries its session — what the prompt gate
+    /// checks — and let a list failure or a spent budget proceed anyway: the
+    /// composer's own launch wait is the backstop.
+    private func waitOutRegistration(paneID: String) async throws {
+        let deadline = ContinuousClock.now + Self.registrationBudget
+        while true {
+            let agents = try await listAgents()
+            if let agent = agents.first(where: { $0.paneID == paneID }),
+                agent.agentSession != nil
+            {
+                return
+            }
+            guard ContinuousClock.now + Self.registrationPollDelay < deadline else {
+                return
+            }
+            try await Task.sleep(for: Self.registrationPollDelay)
+        }
+    }
+
     private static let shellReadinessBudget: Duration = .seconds(10)
     private static let shellReadinessRetryDelay: Duration = .milliseconds(500)
+    private static let registrationBudget: Duration = .seconds(10)
+    private static let registrationPollDelay: Duration = .milliseconds(500)
 
     func closePane(_ params: PaneTarget) async throws {
         _ = try await request(
