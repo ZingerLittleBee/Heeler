@@ -22,12 +22,11 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
-- The Pairing Code no longer defaults to a container bridge address on Hosts
-  running Docker. Every private address counted as a likely candidate, so
-  `docker0` and the `br-` bridges outranked the real interfaces and the QR
-  pre-checked an address that only routes inside the Host — the phone reported
-  that no address answered. Interfaces belonging to container and VM runtimes
-  are now left out of the candidate list. (#356)
+- Pairing no longer defaults to a Docker bridge address when the Host's
+  primary interface has no suitable private or VPN address. Docker bridge
+  and veth addresses remain available for manual selection at the end of
+  the checklist, without being pre-checked. Normal LAN bridges keep their
+  existing selection behavior. (PR #357, refs #356)
 
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or

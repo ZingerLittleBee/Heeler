@@ -1,5 +1,6 @@
 import { test, suite } from "node:test";
 import assert from "node:assert/strict";
+import { candidateAddresses } from "../src/addresses.js";
 
 import {
   createSelection,
@@ -58,5 +59,23 @@ suite("selection list", () => {
       selectedAddresses(state),
       ["192.168.1.42", "100.101.102.103", "203.0.113.9"],
     );
+  });
+
+  test("Docker addresses remain manually selectable when no address is pre-checked", () => {
+    const candidates = candidateAddresses(
+      {
+        docker0: [{ address: "172.17.0.1", family: "IPv4", internal: false }],
+        eth0: [{ address: "203.0.113.9", family: "IPv4", internal: false }],
+      },
+      "linux",
+    );
+    let state = createSelection(candidates);
+    assert.deepEqual(state.items.map((item) => item.address), [
+      "203.0.113.9",
+      "172.17.0.1",
+    ]);
+    assert.deepEqual(selectedAddresses(state), []);
+    state = toggleCurrent(moveCursor(state, 1));
+    assert.deepEqual(selectedAddresses(state), ["172.17.0.1"]);
   });
 });

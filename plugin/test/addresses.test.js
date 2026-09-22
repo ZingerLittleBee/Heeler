@@ -49,13 +49,18 @@ suite("candidateAddresses", () => {
   test("pre-checks only eth0's likely address on Linux", () => {
     const candidates = candidateAddresses(
       {
+        docker0: [iface("172.17.0.1", "IPv4")],
         wlan0: [iface("192.168.0.5", "IPv4")],
         eth0: [iface("10.1.2.3", "IPv4")],
       },
       "linux",
     );
     const byAddress = Object.fromEntries(candidates.map((c) => [c.address, c.preChecked]));
-    assert.deepEqual(byAddress, { "10.1.2.3": true, "192.168.0.5": false });
+    assert.deepEqual(byAddress, {
+      "10.1.2.3": true,
+      "192.168.0.5": false,
+      "172.17.0.1": false,
+    });
   });
 
   test("falls back to the best-ranked likely candidate when the primary interface is absent", () => {
@@ -141,7 +146,7 @@ suite("candidateAddresses", () => {
     ]);
   });
 
-  test("skips container and VM bridges, so a Docker host pre-checks Tailscale", () => {
+  test("pre-checks Tailscale and lists Docker addresses last without removing them", () => {
     const candidates = candidateAddresses(
       {
         lo: [iface("127.0.0.1", "IPv4", true)],
@@ -161,10 +166,41 @@ suite("candidateAddresses", () => {
         "fd7a:115c:a1e0::1",
         "203.0.113.9",
         "2001:db8::7",
+        "172.17.0.1",
+        "172.18.0.1",
+        "172.19.0.1",
+        "172.20.0.2",
       ],
     );
-    assert.equal(candidates[0].preChecked, true);
-    assert.deepEqual(candidates.slice(1).map((c) => c.preChecked), [false, false, false]);
+    assert.deepEqual(
+      candidates.filter((c) => c.preChecked).map((c) => c.address),
+      ["100.64.0.5"],
+    );
+  });
+
+  test("a Docker alias cannot hide the primary interface's default address", () => {
+    const candidates = candidateAddresses(
+      {
+        docker0: [iface("192.168.1.42", "IPv4")],
+        tailscale0: [iface("100.64.0.5", "IPv4")],
+        eth0: [iface("192.168.1.42", "IPv4")],
+      },
+      "linux",
+    );
+    assert.deepEqual(candidates, [
+      { address: "192.168.1.42", family: "IPv4", interfaceName: "eth0", preChecked: true },
+      { address: "100.64.0.5", family: "IPv4", interfaceName: "tailscale0", preChecked: false },
+    ]);
+  });
+
+  test("keeps a normal LAN bridge eligible as the default address", () => {
+    const candidates = candidateAddresses(
+      { bridge0: [iface("192.168.1.42", "IPv4")] },
+      "darwin",
+    );
+    assert.deepEqual(candidates, [
+      { address: "192.168.1.42", family: "IPv4", interfaceName: "bridge0", preChecked: true },
+    ]);
   });
 
   test("returns an empty list when nothing is routable", () => {
