@@ -650,11 +650,13 @@ struct ConsoleView: View {
     }
 
     /// Pinning moves the row. Reordering while the swipe is still closing
-    /// tears the action button away from its row, so the toggle waits for
-    /// the collapse and then moves the row in one animation.
+    /// tears the action button away from its row, and for a while after the
+    /// collapse the swiped cell still cannot move: List removes and
+    /// reinserts it instead, so it vanishes and pops in at the new slot.
+    /// Measured on iOS 27 that settles after ~0.8 s; the wait keeps margin.
     private func togglePinAfterSwipe(_ agent: ConsoleAgent) {
         Task {
-            try? await Task.sleep(for: .milliseconds(600))
+            try? await Task.sleep(for: .milliseconds(1000))
             withAnimation(reduceMotion ? nil : .snappy) {
                 console.togglePin(hostID: agent.hostID, paneID: agent.agent.paneID)
             }
