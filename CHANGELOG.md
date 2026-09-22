@@ -49,6 +49,12 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Pairing no longer defaults to a Docker bridge address when the Host's
+  primary interface has no suitable private or VPN address. Docker bridge
+  and veth addresses remain available for manual selection at the end of
+  the checklist, without being pre-checked. Normal LAN bridges keep their
+  existing selection behavior. (PR #357, refs #356)
+
 - A message sent to an Agent the app had just launched no longer fails with
   "herdr rejected the message: agent wX:pY is not an active named agent".
   herdr 0.8.0+ answers `agent.start` while the pane's agent is still booting,
