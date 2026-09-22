@@ -736,6 +736,13 @@ final class HostConsoleProjection {
             tabCounts[tab.workspaceID, default: 0] += 1
             tabPositions[tab.tabID] = tabCounts[tab.workspaceID]
         }
+        var tabPaneIDs: [String: Set<String>] = [:]
+        for pane in snapshot.panes {
+            tabPaneIDs[pane.tabID, default: []].insert(pane.paneID)
+        }
+        for agent in snapshot.agents {
+            tabPaneIDs[agent.tabID, default: []].insert(agent.paneID)
+        }
         var nextAgents: [String: ConsoleAgent] = [:]
         for (snapshotOrder, info) in snapshot.agents.enumerated() {
             let agent = Agent(info)
@@ -754,6 +761,7 @@ final class HostConsoleProjection {
                 tabLabel: tab?.label,
                 tabPosition: tab.flatMap { tabPositions[$0.tabID] },
                 workspaceTabCount: max(workspace?.tabCount ?? 0, tabCounts[agent.workspaceID] ?? 0),
+                tabPaneCount: max(tab?.paneCount ?? 0, tabPaneIDs[agent.tabID]?.count ?? 0),
                 snapshotOrder: snapshotOrder,
                 paneLabel: paneByID[agent.paneID].flatMap {
                     $0.tabID == agent.tabID && $0.workspaceID == agent.workspaceID ? $0.label : nil

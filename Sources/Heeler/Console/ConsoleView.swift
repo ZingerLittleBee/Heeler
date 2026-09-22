@@ -547,7 +547,7 @@ struct ConsoleView: View {
             } message: {
                 Text(pendingTabClose.map(tabCloseMessage(for:)) ?? "")
             }
-            .alert("Could Not Close Tab", isPresented: tabCloseErrorPresented) {
+            .alert("Could Not Close", isPresented: tabCloseErrorPresented) {
                 Button("OK", role: .cancel) { tabCloseError = nil }
             } message: {
                 Text(tabCloseError ?? "")
@@ -653,7 +653,7 @@ struct ConsoleView: View {
     private func closeTabNow(_ agent: ConsoleAgent) {
         Task {
             do {
-                try await console.closeAgentTab(agent)
+                try await console.closeAgent(agent)
             } catch {
                 tabCloseError = ConsoleStore.tabCloseFailureMessage(for: error)
             }
@@ -680,26 +680,29 @@ struct ConsoleView: View {
         closeTabNow(agent)
     }
 
-    private var pendingCloseTakesWorkspace: Bool {
-        pendingTabClose.map(console.closesWorkspaceWithTab(of:)) ?? false
+    /// What the pending close takes down, widest first.
+    private var pendingCloseScope: String {
+        guard let agent = pendingTabClose else { return "Tab" }
+        if console.closesWorkspaceWithTab(of: agent) { return "Workspace" }
+        return console.closesTab(of: agent) ? "Tab" : "Pane"
     }
 
-    private var tabCloseDialogTitle: String {
-        pendingCloseTakesWorkspace ? "Close Workspace?" : "Close Tab?"
-    }
+    private var tabCloseDialogTitle: String { "Close \(pendingCloseScope)?" }
 
-    private var tabCloseConfirmLabel: String {
-        pendingCloseTakesWorkspace ? "Close Workspace" : "Close Tab"
-    }
+    private var tabCloseConfirmLabel: String { "Close \(pendingCloseScope)" }
 
-    /// Confirmation copy naming the tab's Agent, and the workspace when it
-    /// dies with the tab.
+    /// Confirmation copy naming the Agent, and the workspace when it dies
+    /// with the tab.
     private func tabCloseMessage(for agent: ConsoleAgent) -> String {
+        let name = agent.agent.displayName
         if console.closesWorkspaceWithTab(of: agent) {
             let workspace = agent.workspaceLabel ?? "this workspace"
             return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
         }
-        return "Closes the tab running \(agent.agent.displayName) and every pane in it."
+        if console.closesTab(of: agent) {
+            return "Closes the tab running \(name)."
+        }
+        return "Closes the pane running \(name). The tab's other panes stay open."
     }
 
     /// A window already showing this Agent comes forward instead of a second

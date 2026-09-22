@@ -50,7 +50,8 @@ struct ConsoleStoreTests {
         paneID: String,
         status: AgentStatus,
         workspaceLabel: String? = "Proj",
-        workspaceTabCount: Int = 0
+        workspaceTabCount: Int = 0,
+        tabPaneCount: Int = 1
     ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: hostID,
@@ -58,7 +59,8 @@ struct ConsoleStoreTests {
             agent: Agent(.fixture(paneID: paneID, status: status)),
             workspaceLabel: workspaceLabel,
             repositoryCheckout: nil,
-            workspaceTabCount: workspaceTabCount)
+            workspaceTabCount: workspaceTabCount,
+            tabPaneCount: tabPaneCount)
     }
 
     @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {
@@ -76,6 +78,24 @@ struct ConsoleStoreTests {
 
         #expect(store.closesWorkspaceWithTab(of: last))
         #expect(!store.closesWorkspaceWithTab(of: shared))
+    }
+
+    @Test func aTabWithOtherPanesClosesOnlyTheAgentsPane() {
+        // The row's close takes the whole tab only when the Agent's pane is
+        // its last; beside a split it closes just that pane, so even the
+        // workspace's last tab keeps the workspace alive.
+        let host = Host.fixture()
+        let store = makeStore(transports: [:])
+        let alone = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "w1:p1",
+            status: .idle, workspaceTabCount: 1, tabPaneCount: 1)
+        let split = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "w1:p2",
+            status: .idle, workspaceTabCount: 1, tabPaneCount: 2)
+
+        #expect(store.closesTab(of: alone))
+        #expect(!store.closesTab(of: split))
+        #expect(!store.closesWorkspaceWithTab(of: split))
     }
 
     private func makePinDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
@@ -1348,11 +1368,10 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func closeAgentTabClosesTheSharedTabAndDropsItsPins() async throws {
-        // tab.close (#8 swipe action): the target reaches the Host's
-        // transport, and every agent pinned on that tab is unpinned — the
-        // tab close destroys them all, so a pin must not dangle onto an id
-        // herdr could reuse.
+    @Test func closeAgentInASharedTabClosesOnlyItsPaneAndPin() async throws {
+        // The swipe action on an Agent whose tab holds other panes: only its
+        // pane.close reaches the transport, and only its pin is dropped —
+        // the neighbours in the tab live on.
         let host = Host.fixture()
         let transport = ScriptedTransport(
             snapshot: .fixture(agents: [
@@ -1369,15 +1388,69 @@ struct ConsoleStoreTests {
         store.togglePin(hostID: host.id, paneID: "w1:p2")
         store.togglePin(hostID: host.id, paneID: "w2:p1")
 
-        // Two agents share w1's tab; closing it targets the tab id once and
-        // drops both pins while the untouched w2 pin survives.
         let victim = try #require(store.agents.first { $0.agent.paneID == "w1:p1" })
-        try await store.closeAgentTab(victim)
+        #expect(victim.tabPaneCount == 2)
+        try await store.closeAgent(victim)
+
+        #expect(await transport.closedPanes == [PaneTarget(paneID: "w1:p1")])
+        #expect(await transport.closedTabs.isEmpty)
+        #expect(!store.pins.isPinned(hostID: host.id, paneID: "w1:p1"))
+        #expect(store.pins.isPinned(hostID: host.id, paneID: "w1:p2"))
+        #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:p1"))
+    }
+
+    @Test func closeAgentAloneInItsTabClosesTheTabAndDropsItsPin() async throws {
+        // tab.close (#8 swipe action): an Agent whose pane is its tab's last
+        // takes the tab with it, and its pin must not dangle onto an id
+        // herdr could reuse.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [
+                .fixture(paneID: "w1:p1", status: .idle),
+                .fixture(paneID: "w2:p1", status: .idle, workspaceID: "w2"),
+            ]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("all agents should arrive") { store.agents.count == 2 }
+        store.togglePin(hostID: host.id, paneID: "w1:p1")
+        store.togglePin(hostID: host.id, paneID: "w2:p1")
+
+        let victim = try #require(store.agents.first { $0.agent.paneID == "w1:p1" })
+        try await store.closeAgent(victim)
 
         #expect(await transport.closedTabs == [TabTarget(tabID: "w1:t1")])
+        #expect(await transport.closedPanes.isEmpty)
         #expect(!store.pins.isPinned(hostID: host.id, paneID: "w1:p1"))
-        #expect(!store.pins.isPinned(hostID: host.id, paneID: "w1:p2"))
         #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:p1"))
+    }
+
+    @Test func aShellPaneBesideTheAgentKeepsItsTabOpen() async throws {
+        // Shell panes are not Agents, so only the tab's reported pane count
+        // shows the Agent is not alone in it.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: SessionSnapshot(
+                agents: [.fixture(paneID: "w1:p1", status: .idle)], layouts: [], panes: [],
+                protocolVersion: 17,
+                tabs: [
+                    TabInfo(agentStatus: .idle, focused: false, label: "1", number: 1,
+                            paneCount: 2, tabID: "w1:t1", workspaceID: "w1"),
+                ],
+                version: "0.7.5-fake", workspaces: []))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
+
+        let agent = try #require(store.agents.first)
+        #expect(agent.tabPaneCount == 2)
+        try await store.closeAgent(agent)
+
+        #expect(await transport.closedPanes == [PaneTarget(paneID: "w1:p1")])
+        #expect(await transport.closedTabs.isEmpty)
     }
 
     /// The swipe action's alert must read as herdr's refusal or a transport
@@ -1396,14 +1469,14 @@ struct ConsoleStoreTests {
                 == "The Host did not answer in time.")
     }
 
-    @Test func closeAgentTabThrowsWhenTheHostIsUnknown() async throws {
+    @Test func closeAgentThrowsWhenTheHostIsUnknown() async throws {
         let host = Host.fixture()
         let store = makeStore(transports: [:])
         let agent = consoleAgent(
             hostID: host.id, hostName: host.name, paneID: "w1:p1", status: .idle)
 
         await #expect(throws: TransportError.self) {
-            try await store.closeAgentTab(agent)
+            try await store.closeAgent(agent)
         }
     }
 

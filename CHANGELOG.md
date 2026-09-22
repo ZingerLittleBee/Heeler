@@ -10,11 +10,13 @@ Entries reference the issue that motivated them.
 ### Added
 
 - Agent rows in the Console take a swipe: swipe left and tap Close, or
-  keep swiping, to close the Agent's tab over SSH. Every close asks for
-  confirmation first; herdr closes a Workspace when its last tab goes,
-  and the prompt then reads "Are you sure you want to also close
-  workspace X?". Pins on a closed tab are dropped so none dangle. Swipe
-  right to Pin or Unpin the Agent the same way. (#366)
+  keep swiping, to close the Agent over SSH. An Agent sharing its tab
+  with other panes closes just its own pane; otherwise the whole tab
+  goes. Every close asks for confirmation first; herdr closes a
+  Workspace when its last tab goes, and the prompt then reads "Are you
+  sure you want to also close workspace X?". Pins on closed panes are
+  dropped so none dangle. Swipe right to Pin or Unpin the Agent the same
+  way. (#366)
 - The New Agent sheet can create a Workspace from a name alone. A
   name-only launch defaults the directory to the Host's home and the
   workspace label is now a field on the form; a browsed directory still
