@@ -11,7 +11,7 @@ Entries reference the issue that motivated them.
 
 - Swipe an Agent row left to close it or right to pin it; a full swipe
   acts at once. Closing always asks first and takes only the Agent's
-  pane when its tab holds others. (#366)
+  pane when its tab holds others. (#366; PR #374)
 - The New Agent sheet can create a Workspace from a name alone. A
   name-only launch defaults the directory to the Host's home and the
   workspace label is now a field on the form; a browsed directory still
