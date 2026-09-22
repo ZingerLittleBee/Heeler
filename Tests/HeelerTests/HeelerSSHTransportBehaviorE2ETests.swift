@@ -680,10 +680,11 @@ struct HeelerSSHTransportBehaviorE2ETests {
         // A band, not a point: the budget is private to the Transport. The
         // lower bound is load-safe because the wait is a deadline rather than
         // work — a slow machine cannot finish it early. The upper bound stays
-        // generous because load pushes only that way.
+        // generous because load pushes only that way. The budget covers a
+        // slow shell boot observed on a real Host (>10 s before the prompt).
         let elapsed = started.duration(to: .now)
-        #expect(elapsed > .seconds(8))
-        #expect(elapsed < .seconds(30))
+        #expect(elapsed > .seconds(28))
+        #expect(elapsed < .seconds(90))
 
         let attempts = try await Self.recordedRequests(from: transport, token: token)
             .filter { $0.hasPrefix("agent.start ") }

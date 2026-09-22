@@ -968,7 +968,7 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
-    private static let shellReadinessBudget: Duration = .seconds(10)
+    private static let shellReadinessBudget: Duration = .seconds(30)
     private static let shellReadinessRetryDelay: Duration = .milliseconds(500)
     private static let registrationBudget: Duration = .seconds(10)
     private static let registrationPollDelay: Duration = .milliseconds(500)
