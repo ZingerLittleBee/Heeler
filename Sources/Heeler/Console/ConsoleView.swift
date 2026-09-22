@@ -1115,15 +1115,15 @@ struct MissingAgentPresentation: Equatable {
                 message = named("Fetching the latest Agents.")
             } else {
                 cause = .paneGone
-                title = "Agent Gone"
+                title = "Please select an agent"
                 systemImage = "rectangle.on.rectangle.slash"
-                message = "This Agent's pane is no longer reported."
+                message = "This Agent's pane is no longer reported. Choose another Agent from the list."
             }
         case .ended, nil:
             cause = .paneGone
-            title = "Agent Gone"
+            title = "Please select an agent"
             systemImage = "rectangle.on.rectangle.slash"
-            message = "This Agent's pane is no longer reported."
+            message = "This Agent's pane is no longer reported. Choose another Agent from the list."
         }
     }
 

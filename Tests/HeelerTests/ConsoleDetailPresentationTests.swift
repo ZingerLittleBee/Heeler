@@ -35,7 +35,8 @@ struct ConsoleDetailPresentationTests {
     private static let socketGuidance =
         "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
 
-    private static let paneGoneMessage = "This Agent's pane is no longer reported."
+    private static let paneGoneMessage =
+        "This Agent's pane is no longer reported. Choose another Agent from the list."
 
     private static let reconnectingSummary = TransportError.timedOut.presentation.summary
 
@@ -160,8 +161,9 @@ struct ConsoleDetailPresentationTests {
         console.setHosts([])
     }
 
-    /// The other half: with the Host fine, the placeholder means what it says.
-    @Test func aVanishedPaneOnAHealthyHostStillSaysTheAgentIsGone() {
+    /// The other half: with the Host fine, the placeholder hands the choice
+    /// back to the user instead of narrating the loss (#user-copy).
+    @Test func aVanishedPaneOnAHealthyHostAsksForANewSelection() {
         let host = Host.fixture()
         let presentation = MissingAgentPresentation(
             agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
@@ -169,7 +171,7 @@ struct ConsoleDetailPresentationTests {
             hosts: [host])
 
         #expect(presentation.cause == .paneGone)
-        #expect(presentation.title == "Agent Gone")
+        #expect(presentation.title == "Please select an agent")
         #expect(presentation.systemImage == "rectangle.on.rectangle.slash")
         #expect(presentation.message == Self.paneGoneMessage)
         // A healthy Host must not be described as a Host problem.
@@ -396,9 +398,9 @@ struct ConsoleDetailPresentationTests {
     }
 
     /// A healthy, ended, or deleted Host still gets the placeholder. `nil`
-    /// stays Agent Gone because it also covers a deleted Host whose
+    /// stays in the same family because it also covers a deleted Host whose
     /// projection is gone from both maps.
-    @Test func aHealthyOrDeletedHostStillSaysTheAgentIsGone() {
+    @Test func aHealthyOrDeletedHostStillAsksForANewSelection() {
         let host = Host.fixture()
         let atRest: [EventsSessionStatus?] = [.connected, .ended, nil]
         for status in atRest {
@@ -407,7 +409,7 @@ struct ConsoleDetailPresentationTests {
                 hostStatuses: status.map { [host.id: $0] } ?? [:],
                 hosts: [host])
             #expect(presentation.cause == .paneGone)
-            #expect(presentation.title == "Agent Gone")
+            #expect(presentation.title == "Please select an agent")
             #expect(presentation.renderingMode == .staticUnavailable)
             #expect(presentation.message == Self.paneGoneMessage)
         }
