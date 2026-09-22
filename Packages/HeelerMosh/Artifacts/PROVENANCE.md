@@ -2,7 +2,7 @@
 
 - Source: mosh (Blink iOS port) + protobuf 2.6.1, built in `~/src/mosh-spike`
   (`build-all.sh`; patches recorded in the spike's `patches/`).
-- Spike mosh device-slice archive SHA-256: `0d3be21784122b172fc864c143ad642546de8eeebdc5c006954b80ba040d9f8c`
+- Spike mosh device-slice archive SHA-256: `1d0f34fb4b09e0a2a705e388935e143fc058fadf28e8eb3e316e07483e1e826e`
 - Assembled by `Scripts/build-native.sh`: libtool-merged
   libmoshios + libprotobuf per slice, repacked into the original framework
   skeleton, combined with `xcodebuild -create-xcframework`.

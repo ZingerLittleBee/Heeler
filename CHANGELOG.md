@@ -22,6 +22,15 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- The mosh-backed Agent terminal now renders as you type. libmoshios wrote
+  every rendered frame diff into the fully buffered `f_out` stdio stream
+  without ever flushing it, so the iPhone's terminal surface received
+  nothing during interactive use — keystrokes still reached the Host pane,
+  but the local screen only updated in bursts when the buffer filled, and
+  everything arrived at once when the session ended. The frame writer now
+  flushes per frame, matching vanilla mosh-client's unbuffered per-frame
+  writes; the vendored `Packages/HeelerMosh` framework is rebuilt from the
+  spike with the fix (provenance and sums updated alongside).
 - A message sent to an Agent the app had just launched no longer fails with
   "herdr rejected the message: agent wX:pY is not an active named agent".
   herdr 0.8.0+ answers `agent.start` while the pane's agent is still booting,
