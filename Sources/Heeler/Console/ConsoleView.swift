@@ -628,8 +628,7 @@ struct ConsoleView: View {
             let pinned = console.pins.isPinned(
                 hostID: agent.hostID, paneID: agent.agent.paneID)
             Button {
-                console.togglePin(
-                    hostID: agent.hostID, paneID: agent.agent.paneID)
+                togglePinAfterSwipe(agent)
             } label: {
                 Label(
                     pinned ? "Unpin" : "Pin",
@@ -647,6 +646,18 @@ struct ConsoleView: View {
                 Label("Close", systemImage: "trash")
             }
             .tint(.red)
+        }
+    }
+
+    /// Pinning moves the row. Reordering while the swipe is still closing
+    /// tears the action button away from its row, so the toggle waits for
+    /// the collapse and then moves the row in one animation.
+    private func togglePinAfterSwipe(_ agent: ConsoleAgent) {
+        Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            withAnimation(reduceMotion ? nil : .snappy) {
+                console.togglePin(hostID: agent.hostID, paneID: agent.agent.paneID)
+            }
         }
     }
 
