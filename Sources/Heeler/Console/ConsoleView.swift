@@ -45,8 +45,8 @@ struct ConsoleView: View {
     @State private var commandRegistry = ConsoleCommandRegistry()
     /// Row-level `tab.close` failure text; non-nil shows the error alert.
     @State private var tabCloseError: String?
-    /// The Agent whose swipe action would close the workspace's last tab;
-    /// non-nil shows the workspace-close confirmation.
+    /// The Agent whose tab the swipe action would close; non-nil shows the
+    /// close confirmation.
     @State private var pendingTabClose: ConsoleAgent?
     /// Owns flat/grouped mode and per-Host collapsed state (#245).
     @State private var listPresentation = ConsoleListPresentationStore()
@@ -542,10 +542,10 @@ struct ConsoleView: View {
             }
             .listStyle(.plain)
             .confirmationDialog(
-                "Close Workspace?", isPresented: tabCloseDialogPresented,
+                tabCloseDialogTitle, isPresented: tabCloseDialogPresented,
                 titleVisibility: .visible
             ) {
-                Button("Close Workspace", role: .destructive) { confirmTabClose() }
+                Button(tabCloseConfirmLabel, role: .destructive) { confirmTabClose() }
                 Button("Cancel", role: .cancel) { pendingTabClose = nil }
             } message: {
                 Text(pendingTabClose.map(tabCloseMessage(for:)) ?? "")
@@ -627,16 +627,29 @@ struct ConsoleView: View {
                 route: AgentRoute(agentID: agent.id),
                 title: agent.agent.displayName,
                 isEnabled: supportsMultipleWindows))
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                if console.closesWorkspaceWithTab(of: agent) {
-                    pendingTabClose = agent
-                } else {
-                    closeTabNow(agent)
-                }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            let pinned = console.pins.isPinned(
+                hostID: agent.hostID, paneID: agent.agent.paneID)
+            Button {
+                console.togglePin(
+                    hostID: agent.hostID, paneID: agent.agent.paneID)
+            } label: {
+                Label(
+                    pinned ? "Unpin" : "Pin",
+                    systemImage: pinned ? "pin.slash.fill" : "pin.fill")
+            }
+            .tint(.orange)
+        }
+        // A full swipe makes closing one gesture away, so every close asks
+        // first. No `.destructive` role: List would animate the row out
+        // while the confirmation is still up, even if the user cancels.
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button {
+                pendingTabClose = agent
             } label: {
                 Label("Close", systemImage: "trash")
             }
+            .tint(.red)
         }
     }
 
@@ -650,8 +663,8 @@ struct ConsoleView: View {
         }
     }
 
-    /// Whether the workspace-close confirmation is up for whichever Agent
-    /// the swipe action queued.
+    /// Whether the close confirmation is up for whichever Agent the swipe
+    /// action queued.
     private var tabCloseDialogPresented: Binding<Bool> {
         Binding(
             get: { pendingTabClose != nil },
@@ -670,10 +683,26 @@ struct ConsoleView: View {
         closeTabNow(agent)
     }
 
-    /// Confirmation copy naming the workspace that dies with the tab.
+    private var pendingCloseTakesWorkspace: Bool {
+        pendingTabClose.map(console.closesWorkspaceWithTab(of:)) ?? false
+    }
+
+    private var tabCloseDialogTitle: String {
+        pendingCloseTakesWorkspace ? "Close Workspace?" : "Close Tab?"
+    }
+
+    private var tabCloseConfirmLabel: String {
+        pendingCloseTakesWorkspace ? "Close Workspace" : "Close Tab"
+    }
+
+    /// Confirmation copy naming the tab's Agent, and the workspace when it
+    /// dies with the tab.
     private func tabCloseMessage(for agent: ConsoleAgent) -> String {
-        let workspace = agent.workspaceLabel ?? "this workspace"
-        return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
+        if console.closesWorkspaceWithTab(of: agent) {
+            let workspace = agent.workspaceLabel ?? "this workspace"
+            return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
+        }
+        return "Closes the tab running \(agent.agent.displayName) and every pane in it."
     }
 
     /// A window already showing this Agent comes forward instead of a second
