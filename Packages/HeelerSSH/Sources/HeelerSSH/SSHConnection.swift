@@ -36,6 +36,10 @@ enum SSHConnectionTeardownStep: Sendable, Equatable {
 /// which #149 tracks only some.
 public final class SSHConnection: Sendable {
     public let hostKey: SSHHostKey
+    /// The server's SSH identification string, such as
+    /// `SSH-2.0-OpenSSH_9.9`, without the trailing CR LF. Nil only if libssh2
+    /// did not retain one.
+    public let serverIdentification: String?
 
     private let driver: SessionDriver
     private let parent: SSHConnection?
@@ -45,12 +49,14 @@ public final class SSHConnection: Sendable {
     private init(
         driver: SessionDriver,
         hostKey: SSHHostKey,
+        serverIdentification: String?,
         parent: SSHConnection? = nil,
         byteTransport: (any SSHByteTransport)? = nil,
         teardownObserver: (@Sendable (SSHConnectionTeardownStep) -> Void)? = nil
     ) {
         self.driver = driver
         self.hostKey = hostKey
+        self.serverIdentification = serverIdentification
         self.parent = parent
         self.byteTransport = byteTransport
         self.teardownObserver = teardownObserver
@@ -76,7 +82,10 @@ public final class SSHConnection: Sendable {
                 let hostKey = try await driver.handshake(
                     endpoint: endpoint,
                     timeout: ContinuousClock.now.duration(to: deadline))
-                return SSHConnection(driver: driver, hostKey: hostKey)
+                return SSHConnection(
+                    driver: driver,
+                    hostKey: hostKey,
+                    serverIdentification: await driver.serverIdentification)
             } catch {
                 guard
                     attemptsLeft > 0,
@@ -125,6 +134,7 @@ public final class SSHConnection: Sendable {
                 return SSHConnection(
                     driver: targetDriver,
                     hostKey: hostKey,
+                    serverIdentification: await targetDriver.serverIdentification,
                     parent: self,
                     byteTransport: transport,
                     teardownObserver: teardownObserver)

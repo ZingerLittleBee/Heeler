@@ -39,6 +39,19 @@ struct SessionDriverE2ETests {
         try await driver.close(timeout: .seconds(2))
     }
 
+    @Test("connection reports the server identification string")
+    func connectionReportsServerIdentification() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await SSHConnection.connect(
+            to: environment.endpoint,
+            timeout: SessionDriverTestEnvironment.setupTimeout)
+
+        let identification = try #require(connection.serverIdentification)
+        #expect(identification.hasPrefix("SSH-2.0-OpenSSH"))
+        #expect(!identification.contains("\r") && !identification.contains("\n"))
+        try await connection.close(timeout: .seconds(1))
+    }
+
     @Test("public connection resolves localhost before authenticating")
     func publicConnectionResolvesLocalhost() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

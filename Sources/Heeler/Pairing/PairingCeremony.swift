@@ -24,12 +24,25 @@ enum PairingCeremonyError: Error, Sendable, Equatable {
     /// key within the per-address timeout. Carries one line per attempted
     /// address for diagnostics.
     case hostUnreachable(detail: String)
+    /// Tailscale SSH, not OpenSSH, answered the Pairing Code's port at these
+    /// addresses, and no other candidate completed. tailscaled authorizes by
+    /// tailnet identity and never reads `authorized_keys`, so the Bootstrap
+    /// Key's forced command cannot run there (#358). Checked before
+    /// authenticating: a `check` policy would otherwise hold authentication
+    /// open for a browser login, and an `accept` one would run the requested
+    /// command as the user.
+    case tailscaleSSH(addresses: [String], port: Int)
     /// The Host is there — its key matched the pinned fingerprint — but it
     /// rejected the Bootstrap Key: the code was already used, its line
     /// expired and was swept, or the popup was closed.
     case bootstrapRejected
     /// The Enrollment entrypoint answered, and said no.
     case enrollmentRefused(EnrollmentRefusal)
+    /// The Bootstrap Key authenticated, but the Enrollment entrypoint ended
+    /// without writing a response line: the forced command did not run (an
+    /// SSH server that ignores `authorized_keys` options, a missing Node) or
+    /// exited before answering. Not a network failure.
+    case enrollmentUnanswered
     /// The Enrollment exchange broke down: the forced command's stdout did
     /// not speak the accept protocol, the channel died, or the exchange
     /// timed out.
@@ -41,9 +54,9 @@ enum PairingCeremonyError: Error, Sendable, Equatable {
     /// The Pairing step this failure is attributed to.
     var step: PairingStep {
         switch self {
-        case .hostUnreachable: .reach
+        case .hostUnreachable, .tailscaleSSH: .reach
         case .bootstrapRejected: .authenticate
-        case .enrollmentRefused, .enrollmentFailed: .enroll
+        case .enrollmentRefused, .enrollmentUnanswered, .enrollmentFailed: .enroll
         case .verificationFailed: .verify
         }
     }

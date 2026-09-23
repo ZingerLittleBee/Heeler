@@ -56,10 +56,29 @@ struct EnrollmentResponseTests {
 struct PairingCeremonyErrorTests {
     @Test func classifiesEveryFailureToItsStep() {
         #expect(PairingCeremonyError.hostUnreachable(detail: "x").step == .reach)
+        #expect(PairingCeremonyError.tailscaleSSH(addresses: ["100.64.0.1"], port: 22).step == .reach)
         #expect(PairingCeremonyError.bootstrapRejected.step == .authenticate)
         #expect(PairingCeremonyError.enrollmentRefused(.expired).step == .enroll)
+        #expect(PairingCeremonyError.enrollmentUnanswered.step == .enroll)
         #expect(PairingCeremonyError.enrollmentFailed(detail: "x").step == .enroll)
         #expect(PairingCeremonyError.verificationFailed(detail: "x").step == .verify)
+    }
+
+    @Test(arguments: [
+        ("SSH-2.0-Tailscale", true),
+        ("SSH-2.0-Tailscale_1.102.4", true),
+        ("SSH-2.0-Tailscale some comment", true),
+        ("SSH-2.0-OpenSSH_9.9", false),
+        ("SSH-2.0-OpenSSH_9.9 Tailscale", false),
+        ("SSH-1.99-Tailscale", false),
+        ("", false),
+    ])
+    func recognizesTailscaleSSHByItsIdentification(identification: String, expected: Bool) {
+        #expect(SSHPairingConnector.isTailscaleSSH(identification) == expected)
+    }
+
+    @Test func missingIdentificationIsNotTailscaleSSH() {
+        #expect(!SSHPairingConnector.isTailscaleSSH(nil))
     }
 
     @Test func refusalCodesRoundTripTheWireCodes() {

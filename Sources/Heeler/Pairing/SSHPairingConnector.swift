@@ -13,6 +13,9 @@ struct SSHPairingConnector: PairingConnector {
     var enrollTimeout: Duration = .seconds(20)
     /// Comment on the submitted Device Key line.
     var deviceKeyComment: String = "heeler"
+    /// Recognizes Tailscale SSH from a server identification string. A
+    /// property only so the e2e suite can stand the local OpenSSH in for it.
+    var identifiesTailscaleSSH: @Sendable (String?) -> Bool = Self.isTailscaleSSH
 
     private static let authenticationTimeout: Duration = .seconds(10)
     private static let cleanupTimeout: Duration = .seconds(2)
@@ -28,6 +31,7 @@ struct SSHPairingConnector: PairingConnector {
             let reached = try await reach(
                 code: code,
                 identity: deviceKey,
+                refusingTailscaleSSH: false,
                 whenAuthenticationFails: .verificationFailed(
                     detail: "The Host did not accept the Device Key; it is not enrolled there yet."
                 ))
@@ -52,6 +56,7 @@ struct SSHPairingConnector: PairingConnector {
         let reached = try await reach(
             code: code,
             identity: bootstrapKey,
+            refusingTailscaleSSH: true,
             whenAuthenticationFails: .bootstrapRejected)
 
         onStep(.enroll)
@@ -79,12 +84,17 @@ struct SSHPairingConnector: PairingConnector {
     /// Tries candidates in order. A different Host Key identifies another
     /// machine and is skipped. Once the pin matches, an authentication
     /// rejection is authoritative for the ceremony stage and stops failover.
+    /// With `refusingTailscaleSSH`, a candidate answered by Tailscale SSH is
+    /// skipped before its Host Key is even compared: tailscaled can present
+    /// the system's OpenSSH key, so the pin alone does not tell them apart.
     private func reach(
         code: PairingCode,
         identity: DeviceKey,
+        refusingTailscaleSSH: Bool,
         whenAuthenticationFails: PairingCeremonyError
     ) async throws -> ReachedHost {
         var attempts: [String] = []
+        var tailscaleAddresses: [String] = []
 
         for address in code.addresses {
             try Task.checkCancellation()
@@ -107,6 +117,13 @@ struct SSHPairingConnector: PairingConnector {
                 throw CancellationError()
             } catch {
                 attempts.append("\(address): \(error)")
+                continue
+            }
+
+            if refusingTailscaleSSH, identifiesTailscaleSSH(connection.serverIdentification) {
+                await Self.close(connection)
+                attempts.append("\(address): answered by Tailscale SSH")
+                tailscaleAddresses.append(address)
                 continue
             }
 
@@ -142,7 +159,23 @@ struct SSHPairingConnector: PairingConnector {
             }
         }
 
+        if !tailscaleAddresses.isEmpty {
+            throw PairingCeremonyError.tailscaleSSH(addresses: tailscaleAddresses, port: code.port)
+        }
         throw PairingCeremonyError.hostUnreachable(detail: attempts.joined(separator: "; "))
+    }
+
+    /// Whether a server identification string is Tailscale SSH's. tailscaled
+    /// identifies as `SSH-2.0-Tailscale` (`ssh/tailssh`, verified live on
+    /// 1.102.4); the software version is compared up to its first space so a
+    /// comment or a later version suffix still matches.
+    static func isTailscaleSSH(_ serverIdentification: String?) -> Bool {
+        guard let serverIdentification else { return false }
+        let prefix = "SSH-2.0-"
+        guard serverIdentification.hasPrefix(prefix) else { return false }
+        let softwareVersion = serverIdentification.dropFirst(prefix.count)
+            .prefix { $0 != " " }
+        return softwareVersion.hasPrefix("Tailscale")
     }
 
     // MARK: Enroll
@@ -177,15 +210,13 @@ struct SSHPairingConnector: PairingConnector {
             throw PairingCeremonyError.enrollmentFailed(
                 detail: "the Enrollment exchange timed out")
         } catch SSHError.unexpectedEOF {
-            throw PairingCeremonyError.enrollmentFailed(
-                detail: "the accept entrypoint closed without answering")
+            throw PairingCeremonyError.enrollmentUnanswered
         } catch {
             throw PairingCeremonyError.enrollmentFailed(detail: "\(error)")
         }
 
         guard response.last == 0x0A else {
-            throw PairingCeremonyError.enrollmentFailed(
-                detail: "the accept entrypoint closed without answering")
+            throw PairingCeremonyError.enrollmentUnanswered
         }
         let responseLine = String(decoding: response.dropLast(), as: UTF8.self)
         switch EnrollmentResponse.parse(line: responseLine) {

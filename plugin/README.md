@@ -156,6 +156,14 @@ readable `RunSSH` with unreadable addresses all read as "not serving" and
 warn about nothing: a false alarm on every pairing would cost more than this
 warning saves.
 
+A missed warning is caught on the phone instead. tailscaled identifies itself
+as `SSH-2.0-Tailscale`, and the app skips any candidate that does before
+comparing its host key or authenticating, then names Tailscale SSH and
+`ssh_port` rather than reporting the Host unreachable. Stopping before
+authentication matters: under a `check` policy tailscaled holds
+authentication open for a browser login, and under `accept` it would run the
+requested command as the user.
+
 ## Pairing Code envelope (v1)
 
 The Pairing Code is a single-line string; the QR image is just its rendering.
