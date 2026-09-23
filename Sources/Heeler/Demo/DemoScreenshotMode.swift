@@ -442,6 +442,22 @@
             try await startAgent(request)
         }
 
+        func startShellTerminal(_ request: ShellLaunchRequest) async throws -> ShellLaunchResult {
+            throw TransportError.channelFailed(detail: "shells are not scripted in demo mode")
+        }
+
+        func startShellTerminalInNewWorktree(
+            _ request: ShellLaunchRequest, worktree: WorktreeSpec
+        ) async throws -> ShellLaunchResult {
+            throw TransportError.channelFailed(detail: "shells are not scripted in demo mode")
+        }
+
+        func startShellTerminalInNewWorkspace(
+            _ request: ShellLaunchRequest, workspace: NewWorkspaceSpec
+        ) async throws -> ShellLaunchResult {
+            throw TransportError.channelFailed(detail: "shells are not scripted in demo mode")
+        }
+
         func closePane(_ params: PaneTarget) async throws {}
         func closeTab(_ params: TabTarget) async throws {}
 

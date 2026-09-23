@@ -15,6 +15,7 @@ struct StartAgentStoreTests {
     @MainActor
     private final class StartRecorder {
         var params: [AgentLaunchRequest] = []
+        var shellParams: [ShellLaunchRequest] = []
         var destinations: [StartAgentStore.LaunchDestination] = []
         /// One entry per start, aligned with `params`; nil is a plain
         /// workspace launch, non-nil the fresh-worktree variant (#97).
@@ -27,6 +28,9 @@ struct StartAgentStoreTests {
         var hostIDs: [Host.ID] = []
         var error: (any Error)?
         var agent = Agent(.fixture(paneID: "w1:pnew", status: .working))
+        var shellResult = ShellLaunchResult(
+            paneID: "w1:p-shell", tabID: "w1:t-shell", terminalID: "term-shell",
+            workspaceID: "w1")
         var gate: ScriptedTransportCallGate?
 
         func record(
@@ -40,6 +44,19 @@ struct StartAgentStoreTests {
             await gate?.waitUntilOpen()
             if let error { throw error }
             return agent
+        }
+
+        func recordShell(
+            _ params: ShellLaunchRequest,
+            _ destination: StartAgentStore.LaunchDestination,
+            _ hostID: Host.ID
+        ) async throws -> ShellLaunchResult {
+            shellParams.append(params)
+            destinations.append(destination)
+            hostIDs.append(hostID)
+            await gate?.waitUntilOpen()
+            if let error { throw error }
+            return shellResult
         }
     }
 
@@ -70,6 +87,7 @@ struct StartAgentStoreTests {
         },
         remoteHome: @escaping (Host.ID) async throws -> String = { _ in "/home/you" },
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void = { _ in },
+        awaitPaneVisible: @escaping (String, Host.ID) async -> Void = { _, _ in },
         origin: StartAgentStore.LaunchOrigin? = nil,
         recents: RecentWorkspaceStore? = nil,
         selections: RecentSelectionsStore? = nil,
@@ -83,16 +101,28 @@ struct StartAgentStoreTests {
             start: { params, destination, hostID in
                 try await recorder.record(params, destination, hostID)
             },
+            startShell: { params, destination, hostID in
+                try await recorder.recordShell(params, destination, hostID)
+            },
             awaitAgentVisible: awaitAgentVisible,
+            awaitPaneVisible: awaitPaneVisible,
             origin: origin,
             recents: recents ?? makeRecents(),
             selections: selections ?? makeSelections())
     }
 
-    /// The `.started` state a default-recorder submit lands in: the recorder's
-    /// fixture pane on the submitting Host.
+    /// The `.started` state a default-recorder agent submit lands in: the
+    /// recorder's fixture pane on the submitting Host.
     private func started(on host: Host, paneID: String = "w1:pnew") -> StartAgentStore.State {
-        .started(ConsoleAgent.ID(hostID: host.id, paneID: paneID))
+        .started(ConsoleLaunchIdentity(hostID: host.id, paneID: paneID))
+    }
+
+    /// The `.started` state a default-recorder shell submit lands in: the
+    /// recorder's fixture shell pane on the submitting Host.
+    private func shellStarted(on host: Host, paneID: String = "w1:p-shell")
+        -> StartAgentStore.State
+    {
+        .started(ConsoleLaunchIdentity(hostID: host.id, paneID: paneID, isAgent: false))
     }
 
     private func waitUntil(
@@ -1397,5 +1427,293 @@ struct StartAgentStoreTests {
             selections: selections,
             recorder: StartRecorder())
         #expect(store.selectedHostID == originHost.id)
+    }
+
+    // MARK: Default Shell launches
+
+    @Test func shellSelectionSubmitsWithoutAgentDetection() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        // No workspaces reported: the shell still cannot launch until a
+        // destination exists, but no agent detection is required.
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [] },
+            recorder: recorder)
+        await store.discoverAgents()
+        #expect(store.availableAgentKinds.isEmpty)
+
+        store.selectedLaunchIsShell = true
+        #expect(store.canSubmit)
+        await store.submit()
+
+        #expect(store.state == shellStarted(on: host))
+        #expect(recorder.params.isEmpty, "no agent.start may fire for a shell launch")
+        #expect(recorder.shellParams.count == 1)
+        #expect(recorder.shellParams.first?.name == nil)
+        #expect(recorder.shellParams.first?.workspaceID == "w1")
+        #expect(recorder.destinations == [.existingWorkspace])
+    }
+
+    @Test func shellLaunchInheritsTheOriginDirectory() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            origin: StartAgentStore.LaunchOrigin(
+                hostID: host.id, workspaceID: "w1", cwd: "/Users/dev/proj/api"),
+            recorder: recorder)
+        store.selectedLaunchIsShell = true
+
+        await store.submit()
+
+        #expect(store.state == shellStarted(on: host))
+        #expect(recorder.shellParams.first?.workspaceID == "w1")
+        #expect(recorder.shellParams.first?.cwd == "/Users/dev/proj/api")
+        #expect(recorder.destinations == [.existingWorkspace])
+    }
+
+    @Test func shellLaunchInANewWorktreeForwardsTheSpec() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.selectedLaunchIsShell = true
+        store.startsInNewWorktree = true
+        store.worktreeBranch = " task/fix "
+        store.worktreeBase = "origin/main"
+
+        await store.submit()
+
+        #expect(store.state == shellStarted(on: host))
+        #expect(
+            recorder.destinations
+                == [.newWorktree(WorktreeSpec(branch: "task/fix", base: "origin/main"))])
+        #expect(recorder.shellParams.first?.workspaceID == "w1")
+    }
+
+    @Test func shellLaunchInANewWorkspaceResolvesHomeAndRemembersIt() async {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        let selections = makeSelections()
+        let recorder = StartRecorder()
+        recorder.shellResult = ShellLaunchResult(
+            paneID: "nw1:p-shell", tabID: "nw1:t-shell", terminalID: "term-shell",
+            workspaceID: "nw1")
+        let store = makeStore(
+            hosts: [host], recents: recents, selections: selections, recorder: recorder)
+        await store.discoverAgents()
+        store.selectedLaunchIsShell = true
+        store.launchTarget = .newWorkspace
+        store.newWorkspaceDirectory = "/src/app"
+
+        await store.submit()
+
+        #expect(store.state == shellStarted(on: host, paneID: "nw1:p-shell"))
+        #expect(recorder.shellParams.first?.workspaceID == nil)
+        #expect(
+            recorder.destinations
+                == [.newWorkspace(NewWorkspaceSpec(directory: "/src/app", label: nil))])
+        #expect(selections.lastSelectionWasShell)
+        #expect(recents.workspaceID(for: host.id) == "nw1")
+    }
+
+    @Test func shellFailureSurfacesShellCopyAndRemembersNothing() async {
+        let host = Host.fixture()
+        let recents = makeRecents()
+        let selections = makeSelections()
+        let recorder = StartRecorder()
+        recorder.error = HerdrAPIError(code: "400", message: "no such workspace")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recents: recents,
+            selections: selections,
+            recorder: recorder)
+        store.selectedLaunchIsShell = true
+
+        await store.submit()
+
+        #expect(store.state == .failed("herdr rejected the command: no such workspace"))
+        #expect(selections.lastHostID == nil)
+        #expect(!selections.lastSelectionWasShell)
+        #expect(recents.workspaceID(for: host.id) == nil)
+    }
+
+    @Test func shellSubmitWaitsForTheTerminalInventory() async throws {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let visibilityGate = ScriptedTransportCallGate()
+        final class Seen {
+            var waits: [(String, Host.ID)] = []
+        }
+        let seen = Seen()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            awaitPaneVisible: { paneID, hostID in
+                seen.waits.append((paneID, hostID))
+                await visibilityGate.waitUntilOpen()
+            },
+            recorder: recorder)
+        store.selectedLaunchIsShell = true
+
+        let submit = Task { await store.submit() }
+        try await waitUntil("the terminal visibility wait should begin") {
+            await visibilityGate.entryCount == 1
+        }
+        #expect(store.state == .starting)
+
+        await visibilityGate.open()
+        await submit.value
+
+        #expect(store.state == shellStarted(on: host))
+        #expect(seen.waits.count == 1)
+        #expect(seen.waits.first?.0 == "w1:p-shell")
+        #expect(seen.waits.first?.1 == host.id)
+    }
+
+    @Test func shellTabNameFallsBackToDefaultShellSkippingTakenLabels() async {
+        #expect(StartAgentStore.defaultShellName(taken: []) == "Default Shell")
+        #expect(StartAgentStore.defaultShellName(taken: ["Default Shell"]) == "Default Shell 2")
+        #expect(
+            StartAgentStore.defaultShellName(taken: ["Default Shell", "Default Shell 2"])
+                == "Default Shell 3")
+    }
+
+    @Test func anExplicitShellTabNameIsSentVerbatim() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.selectedLaunchIsShell = true
+        store.name = "  ops box  "
+
+        await store.submit()
+
+        #expect(store.state == shellStarted(on: host))
+        #expect(recorder.shellParams.first?.name == "ops box")
+    }
+
+    @Test func shellTabNamesSkipTheAgentNameRule() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.selectedLaunchIsShell = true
+        store.name = "Ops Box"
+
+        // A tab label is not an agent name: herdr's lowercase rule does not
+        // govern it, so spaces and capitals launch fine.
+        #expect(store.nameErrorMessage == nil)
+        #expect(store.canSubmit)
+        await store.submit()
+        #expect(store.state == shellStarted(on: host))
+        #expect(recorder.shellParams.first?.name == "Ops Box")
+    }
+
+    /// The Arguments field disappears under Default Shell; text typed for a
+    /// kind before the switch must not block (or leak into) the launch.
+    @Test func staleInvalidArgumentsDoNotBlockAShellSubmit() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        await store.discoverAgents()
+        store.arguments = "'unclosed"
+        #expect(!store.canSubmit, "invalid arguments block an agent launch")
+        store.selectedLaunchIsShell = true
+        #expect(store.canSubmit)
+
+        await store.submit()
+
+        #expect(store.state == shellStarted(on: host))
+        #expect(recorder.params.isEmpty, "the agent path must never fire for a shell launch")
+        #expect(recorder.shellParams.count == 1)
+    }
+
+    /// A failed probe must not leave the picker claiming an Agent is
+    /// selected while Start is disabled for no visible reason.
+    @Test func failedDetectionLeavesThePickerUnselected() async {
+        let host = Host.fixture()
+        let store = makeStore(
+            hosts: [host],
+            agentKinds: { _ in throw TransportError.timedOut },
+            recorder: StartRecorder())
+
+        await store.discoverAgents()
+
+        #expect(store.agentDiscoveryState == .failed("Agent detection timed out."))
+        #expect(store.launchSelection.wrappedValue == nil)
+        #expect(!store.canSubmit)
+    }
+
+    @Test func rememberedShellSelectionPreselectsShellOnReopen() async {
+        let host = Host.fixture(address: "a.example")
+        let selections = makeSelections()
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            selections: selections,
+            recorder: recorder)
+        store.selectedLaunchIsShell = true
+        await store.submit()
+        #expect(store.state == shellStarted(on: host))
+
+        // A fresh store over the same defaults suite restores the Host and
+        // preselects Default Shell once detection lands, even though kinds
+        // are available.
+        let reopened = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.claude] },
+            selections: selections,
+            recorder: StartRecorder())
+        #expect(reopened.selectedHostID == host.id)
+        await reopened.discoverAgents()
+        #expect(reopened.selectedLaunchIsShell)
+
+        // An agent submit after the shell flips the memory back.
+        let afterAgent = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.claude] },
+            selections: selections,
+            recorder: StartRecorder())
+        afterAgent.selectedLaunchIsShell = false
+        afterAgent.selectedAgentKind = .claude
+        afterAgent.name = "reviewer"
+        await afterAgent.submit()
+        #expect(selections.lastAgentKind == .claude)
+        #expect(!selections.lastSelectionWasShell)
+    }
+
+    @Test func switchingHostResetsTheShellSelection() async {
+        let hostA = Host.fixture(address: "a.example")
+        let hostB = Host.fixture(address: "b.example")
+        let store = makeStore(
+            hosts: [hostA, hostB],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: StartRecorder())
+        store.selectedHostID = hostA.id
+        await store.discoverAgents()
+        store.selectedLaunchIsShell = true
+
+        store.selectedHostID = hostB.id
+        await store.discoverAgents()
+
+        #expect(!store.selectedLaunchIsShell)
+        #expect(store.selectedAgentKind == .claude, "the pick resets to the first kind")
     }
 }

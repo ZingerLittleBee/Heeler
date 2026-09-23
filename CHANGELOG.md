@@ -9,6 +9,14 @@ Entries reference the issue that motivated them.
 
 ### Added
 
+- The new-agent sheet's Agent picker offers **Default Shell**: a plain
+  terminal running the Host's default shell, with no AI agent. It launches
+  through the same flow as an Agent — an existing Workspace, a new worktree,
+  or a new Workspace at a browsed directory — but creates only the fresh
+  tab and its shell pane, exactly the shell an SSH login lands in. The
+  sheet remembers the last choice (Default Shell or an Agent kind) the same
+  way it already remembered the Host, and the opened launch lands in the
+  full interactive Shell Terminal.
 - The Agent terminal shows the session's model, prompt size (as a share of
   the model's context window, `11.0%`, once omp on the Host has named it),
   and spend in a strip above the terminal. These are the figures the Agent's own status line

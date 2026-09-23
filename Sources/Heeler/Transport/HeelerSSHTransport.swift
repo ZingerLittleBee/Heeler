@@ -879,6 +879,92 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    // Plain-shell launches from the new-agent flow: the same
+    // tab.create / worktree.create / workspace.create choreography as the
+    // agent variants, minus `agent.start`. herdr's root panes already run
+    // the Host's default shell, so the created pane is the shell an SSH
+    // login would land in; it surfaces through the terminal inventory.
+
+    func startShellTerminal(
+        _ launch: ShellLaunchRequest
+    ) async throws -> ShellLaunchResult {
+        guard let workspaceID = launch.workspaceID else {
+            throw TransportError.channelFailed(
+                detail: "A shell launch needs a workspace.")
+        }
+        guard let cwd = launch.cwd else {
+            throw TransportError.channelFailed(
+                detail: "A shell launch needs a concrete directory.")
+        }
+        let created = try await request(
+            method: "tab.create",
+            params: TabCreateParams(
+                cwd: cwd,
+                focus: false,
+                label: launch.name,
+                workspaceID: workspaceID),
+            decoding: TabCreatedResponse.self)
+        return ShellLaunchResult(
+            paneID: created.rootPane.paneID,
+            tabID: created.rootPane.tabID,
+            terminalID: created.rootPane.terminalID,
+            workspaceID: workspaceID)
+    }
+
+    func startShellTerminalInNewWorktree(
+        _ launch: ShellLaunchRequest,
+        worktree: WorktreeSpec
+    ) async throws -> ShellLaunchResult {
+        guard let workspaceID = launch.workspaceID else {
+            throw TransportError.channelFailed(
+                detail: "A shell launch needs a workspace.")
+        }
+        let created = try await request(
+            method: "worktree.create",
+            params: WorktreeCreateParams(
+                base: worktree.base,
+                branch: worktree.branch,
+                focus: false,
+                label: launch.name,
+                workspaceID: workspaceID),
+            decoding: WorktreeCreatedResponse.self)
+        // Same tab-label gap as the worktree agent variant: the label lands
+        // on the Workspace, so rename the tab to match. Best-effort, and
+        // only when the form supplied a tab name.
+        if let label = launch.name {
+            try? await renameTab(
+                TabRenameParams(label: label, tabID: created.tab.tabID))
+        }
+        return ShellLaunchResult(
+            paneID: created.rootPane.paneID,
+            tabID: created.rootPane.tabID,
+            terminalID: created.rootPane.terminalID,
+            workspaceID: created.workspace.workspaceID)
+    }
+
+    func startShellTerminalInNewWorkspace(
+        _ launch: ShellLaunchRequest,
+        workspace: NewWorkspaceSpec
+    ) async throws -> ShellLaunchResult {
+        let created = try await request(
+            method: "workspace.create",
+            params: WorkspaceCreateParams(
+                cwd: workspace.directory,
+                focus: false,
+                label: workspace.label),
+            decoding: WorkspaceCreatedResponse.self)
+        // workspace.create labels the Workspace, not its first tab. Best-effort.
+        if let label = launch.name {
+            try? await renameTab(
+                TabRenameParams(label: label, tabID: created.tab.tabID))
+        }
+        return ShellLaunchResult(
+            paneID: created.rootPane.paneID,
+            tabID: created.rootPane.tabID,
+            terminalID: created.rootPane.terminalID,
+            workspaceID: created.workspace.workspaceID)
+    }
+
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
         try await request(
             method: "worktree.list",

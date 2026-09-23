@@ -80,7 +80,9 @@ _Avoid_: window, tile
 **Workspace**:
 herdr's unit that groups tabs and panes around one working directory. New
 Agent can start in an existing Workspace, a new Worktree of one, or a new
-Workspace opened at a remote directory. The id is an opaque string.
+Workspace opened at a remote directory — or land a Default Shell in them:
+the sheet's plain-shell choice, which creates the same fresh tab without
+starting an agent on it. The id is an opaque string.
 _Avoid_: project, folder, window
 
 **Worktree**:
@@ -186,7 +188,9 @@ terminal pane view
 **Workspace Terminal**:
 A Pane listed with its Host, Workspace, Tab title and current directory.
 Includes Agent panes, which open Agent detail, and ordinary panes, which open
-Shell Terminal. The detail drawer includes every Tab in the current Workspace
+Shell Terminal — whether made by Open Terminal's New Terminal button or by
+the new-agent sheet's Default Shell choice. The detail drawer includes every
+Tab in the current Workspace
 with a New Terminal button pinned below them that opens a fresh shell tab in
 the current pane's directory, and its handle, like the message-jump buttons,
 is long-pressed to slide it along the terminal's edge and rests where it was

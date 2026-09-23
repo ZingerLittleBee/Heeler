@@ -545,6 +545,51 @@ final actor ScriptedTransport: Transport {
                 kind: request.kind, title: request.name))
     }
 
+    // MARK: shell launches (#12)
+
+    private(set) var shellStarts: [ShellLaunchRequest] = []
+    private(set) var shellDestinations: [StartAgentStore.LaunchDestination] = []
+    private var shellLaunchFailure: (any Error)?
+    private var shellLaunchResult = ShellLaunchResult(
+        paneID: "w1:p-shell", tabID: "w1:t-shell", terminalID: "term-shell",
+        workspaceID: "w1")
+
+    /// Scripts the `ShellLaunchResult` shell starts return; without it the
+    /// fake synthesizes the default shell pane above.
+    func setShellLaunchResult(_ result: ShellLaunchResult) {
+        shellLaunchResult = result
+    }
+
+    /// Makes every subsequent shell launch throw `failure`.
+    func setShellLaunchFailure(_ failure: (any Error)?) {
+        shellLaunchFailure = failure
+    }
+
+    private func recordShellStart(
+        _ request: ShellLaunchRequest, _ destination: StartAgentStore.LaunchDestination
+    ) throws -> ShellLaunchResult {
+        shellStarts.append(request)
+        shellDestinations.append(destination)
+        if let shellLaunchFailure { throw shellLaunchFailure }
+        return shellLaunchResult
+    }
+
+    func startShellTerminal(_ request: ShellLaunchRequest) async throws -> ShellLaunchResult {
+        try recordShellStart(request, .existingWorkspace)
+    }
+
+    func startShellTerminalInNewWorktree(
+        _ request: ShellLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> ShellLaunchResult {
+        try recordShellStart(request, .newWorktree(worktree))
+    }
+
+    func startShellTerminalInNewWorkspace(
+        _ request: ShellLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> ShellLaunchResult {
+        try recordShellStart(request, .newWorkspace(workspace))
+    }
+
     func closePane(_ params: PaneTarget) async throws {
         if let closeFailure { throw closeFailure }
         closedPanes.append(params)

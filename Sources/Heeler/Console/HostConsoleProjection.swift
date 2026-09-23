@@ -362,6 +362,40 @@ final class HostConsoleProjection {
         return agent
     }
 
+    /// Plain-shell launches refresh the terminal inventory instead of the
+    /// Agent list: no agent exists, so the new pane only reaches the Console
+    /// through `terminalsByPane`.
+    @discardableResult
+    func startShellTerminal(_ request: ShellLaunchRequest) async throws -> ShellLaunchResult {
+        let result = try await session.withTransport { transport in
+            try await transport.startShellTerminal(request)
+        }
+        await refreshTerminalInventory()
+        return result
+    }
+
+    @discardableResult
+    func startShellTerminalInNewWorktree(
+        _ request: ShellLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> ShellLaunchResult {
+        let result = try await session.withTransport { transport in
+            try await transport.startShellTerminalInNewWorktree(request, worktree: worktree)
+        }
+        await refreshTerminalInventory()
+        return result
+    }
+
+    @discardableResult
+    func startShellTerminalInNewWorkspace(
+        _ request: ShellLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> ShellLaunchResult {
+        let result = try await session.withTransport { transport in
+            try await transport.startShellTerminalInNewWorkspace(request, workspace: workspace)
+        }
+        await refreshTerminalInventory()
+        return result
+    }
+
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
         try await session.withTransport { transport in
             try await transport.availableAgentKinds()

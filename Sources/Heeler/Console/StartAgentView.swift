@@ -1,22 +1,23 @@
 import SwiftUI
 
 /// The new-agent sheet (#12, User Story 8): pick a Host and a launch target
-/// (an existing Workspace or a new one at a remote directory), type an
-/// installed Agent and its native arguments, and dispatch it through the
-/// Transport launch flow. On success the sheet dismisses and hands the
-/// started Agent's identity to `onStarted`; the owner opens it, so a fresh
-/// launch lands in its terminal instead of back on the list.
+/// (an existing Workspace or a new one at a remote directory), choose
+/// Default Shell or an installed Agent with its native arguments, and
+/// dispatch it through the Transport launch flow. On success the sheet
+/// dismisses and hands the launched pane's identity to `onStarted`; the
+/// owner opens it, so a fresh launch lands in its terminal instead of back
+/// on the list.
 struct StartAgentView: View {
     @State private var store: StartAgentStore
     @State private var directoryBrowser: RemoteDirectoryBrowser?
-    private let onStarted: (ConsoleAgent.ID) -> Void
+    private let onStarted: (ConsoleLaunchIdentity) -> Void
     private let console: ConsoleStore
     @Environment(\.dismiss) private var dismiss
 
     init(
         hosts: [Host], console: ConsoleStore,
         origin: StartAgentStore.LaunchOrigin? = nil,
-        onStarted: @escaping (ConsoleAgent.ID) -> Void
+        onStarted: @escaping (ConsoleLaunchIdentity) -> Void
     ) {
         self.onStarted = onStarted
         self.console = console
@@ -44,7 +45,20 @@ struct StartAgentView: View {
                             params, workspace: workspace, on: hostID)
                     }
                 },
+                startShell: { params, destination, hostID in
+                    switch destination {
+                    case .existingWorkspace:
+                        try await console.startShellTerminal(params, on: hostID)
+                    case .newWorktree(let worktree):
+                        try await console.startShellTerminalInNewWorktree(
+                            params, worktree: worktree, on: hostID)
+                    case .newWorkspace(let workspace):
+                        try await console.startShellTerminalInNewWorkspace(
+                            params, workspace: workspace, on: hostID)
+                    }
+                },
                 awaitAgentVisible: { await console.waitForAgent($0) },
+                awaitPaneVisible: { await console.waitForPane($0, on: $1) },
                 origin: origin))
     }
 
@@ -151,6 +165,14 @@ struct StartAgentView: View {
                 }
 
                 Section {
+                    Picker("Agent", selection: store.launchSelection) {
+                        Text("Default Shell")
+                            .tag(StartAgentStore.LaunchSelection?.some(.shell))
+                        ForEach(store.availableAgentKinds) { kind in
+                            Text("\(kind.displayName) (\(kind.executable))")
+                                .tag(StartAgentStore.LaunchSelection?.some(.agent(kind)))
+                        }
+                    }
                     switch store.agentDiscoveryState {
                     case .idle:
                         Text("Select a Host to detect installed Agents.")
@@ -160,67 +182,87 @@ struct StartAgentView: View {
                             ProgressView()
                             Text("Detecting installed Agents…")
                         }
-                    case .loaded where store.availableAgentKinds.isEmpty:
+                    case .loaded where store.availableAgentKinds.isEmpty && !store.selectedLaunchIsShell:
                         ContentUnavailableView(
                             "No Agents Found",
                             systemImage: "magnifyingglass",
                             description: Text(
-                                "Install a supported Agent CLI on this Host, then try again."))
+                                "Install a supported Agent CLI on this Host, then try again. Or choose Default Shell."))
                         Button("Detect Again", systemImage: "arrow.clockwise") {
                             Task { await store.discoverAgents() }
                         }
                     case .loaded:
-                        Picker("Agent", selection: $store.selectedAgentKind) {
-                            ForEach(store.availableAgentKinds) { kind in
-                                Text("\(kind.displayName) (\(kind.executable))")
-                                    .tag(SupportedAgentKind?.some(kind))
+                        if !store.selectedLaunchIsShell {
+                            Button("Detect Again", systemImage: "arrow.clockwise") {
+                                Task { await store.discoverAgents() }
                             }
                         }
-                        Button("Detect Again", systemImage: "arrow.clockwise") {
-                            Task { await store.discoverAgents() }
-                        }
                     case .failed(let message):
-                        Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
-                        Button("Retry", systemImage: "arrow.clockwise") {
-                            Task { await store.discoverAgents() }
+                        if !store.selectedLaunchIsShell {
+                            Label(message, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.red)
+                            Button("Retry", systemImage: "arrow.clockwise") {
+                                Task { await store.discoverAgents() }
+                            }
                         }
                     }
                 } header: {
                     Text("Agent")
                 } footer: {
-                    Text("Agents installed and launchable from this Host's PATH.")
-                }
-
-                Section {
-                    TextField(store.defaultAgentName ?? "e.g. reviewer", text: $store.name)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("Agent Name")
-                } footer: {
-                    if let message = store.nameErrorMessage {
-                        Text(message)
-                            .foregroundStyle(.red)
-                    } else if let defaultName = store.defaultAgentName {
-                        Text("Optional. Empty names the agent \(Text(defaultName).monospaced()).")
+                    if store.selectedLaunchIsShell {
+                        Text("Opens a plain terminal running the Host's default shell, no AI agent.")
                     } else {
-                        Text("Optional. Empty names the agent after its kind.")
+                        Text("Agents installed and launchable from this Host's PATH.")
                     }
                 }
 
-                Section {
-                    AgentArgumentsField(
-                        text: $store.arguments,
-                        placeholder: #"e.g. --model "gpt 5" --continue"#)
-                } header: {
-                    Text("Arguments")
-                } footer: {
-                    if let message = store.argumentErrorMessage {
-                        Text(message)
-                            .foregroundStyle(.red)
-                    } else {
-                        Text("Optional. Quotes and backslash escapes are supported.")
+                if store.selectedLaunchIsShell {
+                    Section {
+                        TextField(
+                            store.defaultShellName ?? "Default Shell",
+                            text: $store.name)
+                            .autocorrectionDisabled()
+                    } header: {
+                        Text("Tab Name")
+                    } footer: {
+                        if let message = store.nameErrorMessage {
+                            Text(message)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text("Optional. Names the tab in the Host's tab bar.")
+                        }
+                    }
+                } else {
+                    Section {
+                        TextField(store.defaultAgentName ?? "e.g. reviewer", text: $store.name)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    } header: {
+                        Text("Agent Name")
+                    } footer: {
+                        if let message = store.nameErrorMessage {
+                            Text(message)
+                                .foregroundStyle(.red)
+                        } else if let defaultName = store.defaultAgentName {
+                            Text("Optional. Empty names the agent \(Text(defaultName).monospaced()).")
+                        } else {
+                            Text("Optional. Empty names the agent after its kind.")
+                        }
+                    }
+
+                    Section {
+                        AgentArgumentsField(
+                            text: $store.arguments,
+                            placeholder: #"e.g. --model "gpt 5" --continue"#)
+                    } header: {
+                        Text("Arguments")
+                    } footer: {
+                        if let message = store.argumentErrorMessage {
+                            Text(message)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text("Optional. Quotes and backslash escapes are supported.")
+                        }
                     }
                 }
 
@@ -250,9 +292,9 @@ struct StartAgentView: View {
                 }
             }
             .onChange(of: store.state) {
-                if case .started(let id) = store.state {
+                if case .started(let launched) = store.state {
                     dismiss()
-                    onStarted(id)
+                    onStarted(launched)
                 }
             }
             .task(id: store.selectedHostID) {

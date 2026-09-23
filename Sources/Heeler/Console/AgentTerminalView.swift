@@ -544,7 +544,14 @@ struct AgentTerminalView: View {
                     hostID: agent.hostID,
                     workspaceID: agent.agent.workspaceID,
                     cwd: agent.agent.cwd),
-                onStarted: { switchToAgent($0) })
+                onStarted: { launched in
+                    if let id = launched.agentID {
+                        switchToAgent(id)
+                    }
+                    // A plain shell pane has no Agent row; the origin
+                    // screen keeps its place and the shell opens from the
+                    // Workspace drawer's Terminals list.
+                })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))

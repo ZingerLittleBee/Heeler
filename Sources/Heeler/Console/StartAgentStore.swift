@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 /// The new-agent flow's form logic (#12, User Story 8): pick a Host, pick a
 /// launch target (an existing Workspace, or a new one at a remote directory),
@@ -11,6 +12,28 @@ import Observation
 ///
 /// Kept off the SSH types (standing repo rule): it talks to injected closures
 /// over the `ConsoleStore`, so it is testable against a scripted transport.
+
+/// The launched pane's Console identity. An Agent row keys off host + pane;
+/// a plain shell pane additionally says so, because the Console routes it to
+/// the terminal surface rather than Agent detail.
+struct ConsoleLaunchIdentity: Equatable, Sendable {
+    let hostID: Host.ID
+    let paneID: String
+    let isAgent: Bool
+
+    init(hostID: Host.ID, paneID: String, isAgent: Bool = true) {
+        self.hostID = hostID
+        self.paneID = paneID
+        self.isAgent = isAgent
+    }
+
+    /// The identity an Agent launch produces; the Console opens Agent detail
+    /// for it.
+    var agentID: ConsoleAgent.ID? {
+        isAgent ? ConsoleAgent.ID(hostID: hostID, paneID: paneID) : nil
+    }
+}
+
 @MainActor
 @Observable
 final class StartAgentStore {
@@ -21,9 +44,10 @@ final class StartAgentStore {
         case starting
         /// The last start failed; the message is user-facing.
         case failed(String)
-        /// The start succeeded; the payload is the started Agent's Console
-        /// identity, which the owner opens after the screen dismisses.
-        case started(ConsoleAgent.ID)
+        /// The launch succeeded; the payload is the launched pane's Console
+        /// identity — an Agent's, or a plain shell pane's — which the owner
+        /// opens after the screen dismisses.
+        case started(ConsoleLaunchIdentity)
     }
 
     enum AgentDiscoveryState: Equatable {
@@ -57,6 +81,21 @@ final class StartAgentStore {
         case existingWorkspace
         case newWorktree(WorktreeSpec)
         case newWorkspace(NewWorkspaceSpec)
+    }
+
+    /// What the "Agent" picker selects: a plain shell or a detected Agent
+    /// kind.
+    enum LaunchSelection: Hashable {
+        case shell
+        case agent(SupportedAgentKind)
+    }
+
+    /// What `submit()` assembled from the form: one Transport variant and
+    /// the launch it targets. A plain shell dispatches the shell variants
+    /// (no `agent.start` follows); an Agent dispatches the agent ones.
+    struct Dispatch: Equatable, Sendable {
+        let destination: LaunchDestination
+        let launch: LaunchSelection
     }
 
     enum ArgumentError: Error, Equatable {
@@ -95,6 +134,7 @@ final class StartAgentStore {
                 pickedWorkspaceID = nil
                 availableAgentKinds = []
                 selectedAgentKind = nil
+                selectedLaunchIsShell = false
                 agentDiscoveryState = .idle
                 launchTarget = .existingWorkspace
                 newWorkspaceDirectory = ""
@@ -145,6 +185,10 @@ final class StartAgentStore {
     var name: String = ""
     /// The canonical kind selected from the Host availability probe.
     var selectedAgentKind: SupportedAgentKind?
+    /// Whether the "Agent" picker currently targets a plain shell rather
+    /// than a detected Agent kind. Shell needs no detection, so the picker
+    /// offers it even while the probe is loading, failed, or empty.
+    var selectedLaunchIsShell = false
     /// Optional native arguments, parsed into argv without invoking a shell.
     /// The editor disables smart punctuation at the UIKit input-trait layer;
     /// parsing still normalizes any smart characters supplied by paste or a
@@ -218,11 +262,19 @@ final class StartAgentStore {
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
+    /// Dispatches a plain-shell launch through the matching Transport shell
+    /// variant. Separate from `start` so the shell path never needs the
+    /// Agent-only closure's signature.
+    private let startShell: (ShellLaunchRequest, LaunchDestination, Host.ID) async throws ->
+        ShellLaunchResult
     /// Suspends (bounded) until the started Agent is visible in the Console.
     /// The row the owner navigates to exists only after the post-start resync
     /// lands; waiting here keeps the opened detail from flashing its
     /// missing-Agent placeholder over a launch that just succeeded.
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
+    /// The shell launch's counterpart: waits until the Host's terminal
+    /// inventory reports the created pane, for the same reason.
+    private let awaitPaneVisible: (String, Host.ID) async -> Void
     @ObservationIgnored private let recents: RecentWorkspaceStore
     @ObservationIgnored private let selections: RecentSelectionsStore
     /// In-flight guard flipped synchronously before the first await, so a
@@ -237,7 +289,10 @@ final class StartAgentStore {
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
         remoteHome: @escaping (Host.ID) async throws -> String,
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
+        startShell: ((ShellLaunchRequest, LaunchDestination, Host.ID) async throws ->
+            ShellLaunchResult)? = nil,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
+        awaitPaneVisible: ((String, Host.ID) async -> Void)? = nil,
         origin: LaunchOrigin? = nil,
         recents: RecentWorkspaceStore = RecentWorkspaceStore(),
         selections: RecentSelectionsStore = RecentSelectionsStore()
@@ -249,7 +304,14 @@ final class StartAgentStore {
         self.discoverAgentKinds = discoverAgentKinds
         self.remoteHome = remoteHome
         self.start = start
+        self.startShell =
+            startShell
+            ?? { _, _, _ in
+                throw TransportError.channelFailed(
+                    detail: "This flow cannot launch shells.")
+            }
         self.awaitAgentVisible = awaitAgentVisible
+        self.awaitPaneVisible = awaitPaneVisible ?? { _, _ in }
         self.recents = recents
         self.selections = selections
         // Pre-select when there is no choice to make; with several Hosts, the
@@ -290,10 +352,13 @@ final class StartAgentStore {
     }
 
     /// User-facing name feedback; nil while the field is empty (empty means
-    /// "use the generated default").
+    /// "use the generated default"). A shell launch's name is a tab label,
+    /// not an agent name: herdr's agent-name rule does not govern it, so
+    /// any non-empty label is accepted.
     var nameErrorMessage: String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        if selectedLaunchIsShell { return nil }
         return AgentName.validationError(trimmed)
     }
 
@@ -303,6 +368,14 @@ final class StartAgentStore {
     var defaultAgentName: String? {
         guard let selectedHostID, let kind = selectedAgentKind else { return nil }
         return Self.defaultAgentName(for: kind, taken: existingAgentNames(selectedHostID))
+    }
+
+    /// The tab label a plain-shell launch falls back to while the field is
+    /// empty: "Default Shell", then "Default Shell 2", "Default Shell 3", …
+    /// skipping tab labels already live on the Host.
+    var defaultShellName: String? {
+        guard let selectedHostID else { return nil }
+        return Self.defaultShellName(taken: existingAgentNames(selectedHostID))
     }
 
     /// User-facing branch feedback; nil while the toggle is off or the field
@@ -318,11 +391,11 @@ final class StartAgentStore {
     var canSubmit: Bool {
         selectedHostID != nil && hasLaunchTarget
             && nameErrorMessage == nil
-            && selectedAgentKind != nil
-            && parsedArguments.isSuccess
             && worktreeBranchErrorMessage == nil
-            && agentDiscoveryState == .loaded
             && state != .starting
+            && (selectedLaunchIsShell
+                || (parsedArguments.isSuccess && selectedAgentKind != nil
+                    && agentDiscoveryState == .loaded))
     }
 
     /// Existing Workspace and origin launches need a reported Workspace;
@@ -360,8 +433,12 @@ final class StartAgentStore {
             let kinds = try await discoverAgentKinds(hostID)
             guard selectedHostID == hostID else { return }
             availableAgentKinds = kinds
-            selectedAgentKind =
-                kinds.first(where: { $0 == selections.lastAgentKind }) ?? kinds.first
+            if selections.lastSelectionWasShell {
+                selectedLaunchIsShell = true
+            } else {
+                selectedAgentKind =
+                    kinds.first(where: { $0 == selections.lastAgentKind }) ?? kinds.first
+            }
             agentDiscoveryState = .loaded
         } catch is CancellationError {
             guard selectedHostID == hostID else { return }
@@ -372,23 +449,29 @@ final class StartAgentStore {
         }
     }
 
-    /// Dispatches the command via `agent.start`. Incomplete forms are ignored;
-    /// on success the state flips to `.started` carrying the new Agent's
-    /// Console identity for the screen to dismiss and open.
+    /// Dispatches the assembled launch — an `agent.start` for a detected
+    /// Agent kind, or a plain shell (the same fresh pane, no `agent.start`)
+    /// for "Default Shell". Incomplete forms are ignored; on success the
+    /// state flips to `.started` carrying the new Console identity for the
+    /// screen to dismiss and open.
     func submit() async {
         guard
             !isStarting,
             let hostID = selectedHostID,
-            let kind = selectedAgentKind,
-            case .success(let arguments) = parsedArguments,
             worktreeBranchErrorMessage == nil,
             nameErrorMessage == nil
         else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let agentName =
-            trimmedName.isEmpty
-            ? Self.defaultAgentName(for: kind, taken: existingAgentNames(hostID))
-            : trimmedName
+        // Agent launches need parseable arguments; a shell launch carries
+        // none, so stale text left in the hidden Arguments field must not
+        // block it.
+        let launchArguments: [String]
+        if selectedLaunchIsShell {
+            launchArguments = []
+        } else {
+            guard case .success(let arguments) = parsedArguments else { return }
+            launchArguments = arguments
+        }
         isStarting = true
         defer { isStarting = false }
         // A name-only New Workspace launch has no browsed directory: fall
@@ -422,66 +505,130 @@ final class StartAgentStore {
                 return
             }
         }
-        guard let destination = launchDestination else { return }
+        guard let dispatch = launchDispatch else { return }
         state = .starting
         let workspaceID: String?
-        switch destination {
+        switch dispatch.destination {
         case .newWorkspace:
             workspaceID = nil
         case .existingWorkspace, .newWorktree:
             workspaceID = selectedWorkspaceID
         }
-        let request = AgentLaunchRequest(
-            kind: kind.rawValue,
-            name: agentName,
-            arguments: arguments,
-            workspaceID: workspaceID,
-            cwd: origin?.cwd)
-        do {
-            let agent = try await start(request, destination, hostID)
-            selections.remember(hostID: hostID, kind: kind)
-            if case .newWorkspace = destination {
-                recents.remember(agent.workspaceID, for: hostID)
-            } else if let workspaceID {
-                recents.remember(workspaceID, for: hostID)
+        switch dispatch.launch {
+        case .agent(let kind):
+            let agentName =
+                trimmedName.isEmpty
+                ? Self.defaultAgentName(for: kind, taken: existingAgentNames(hostID))
+                : trimmedName
+            let request = AgentLaunchRequest(
+                kind: kind.rawValue,
+                name: agentName,
+                arguments: launchArguments,
+                workspaceID: workspaceID,
+                cwd: origin?.cwd)
+            do {
+                let agent = try await start(request, dispatch.destination, hostID)
+                selections.remember(hostID: hostID, kind: kind)
+                if case .newWorkspace = dispatch.destination {
+                    recents.remember(agent.workspaceID, for: hostID)
+                } else if let workspaceID {
+                    recents.remember(workspaceID, for: hostID)
+                }
+                let startedID = ConsoleLaunchIdentity(hostID: hostID, paneID: agent.paneID)
+                // The wait is bounded; on timeout the owner still navigates and
+                // the row catches up with the next resync.
+                await awaitAgentVisible(startedID.agentID ?? ConsoleAgent.ID(
+                    hostID: hostID, paneID: agent.paneID))
+                state = .started(startedID)
+            } catch {
+                state = .failed(Self.message(for: error, launchedKind: kind))
             }
-            let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
-            // The wait is bounded; on timeout the owner still navigates and
-            // the row catches up with the next resync.
-            await awaitAgentVisible(startedID)
-            state = .started(startedID)
-        } catch {
-            state = .failed(Self.message(for: error, launchedKind: kind))
+        case .shell:
+            // A tab label is cosmetic on a shell pane: nil lets herdr apply
+            // its default rather than minting a unique agent-style name.
+            let shellName = Self.nonEmptyTrimmed(trimmedName)
+            let request = ShellLaunchRequest(
+                name: shellName,
+                workspaceID: workspaceID,
+                cwd: origin?.cwd)
+            do {
+                let result = try await startShell(request, dispatch.destination, hostID)
+                selections.rememberShell(hostID: hostID)
+                if case .newWorkspace = dispatch.destination {
+                    recents.remember(result.workspaceID, for: hostID)
+                } else if let workspaceID {
+                    recents.remember(workspaceID, for: hostID)
+                }
+                // The wait is bounded; on timeout the owner still navigates
+                // and the terminal row catches up with the next resync.
+                await awaitPaneVisible(result.paneID, hostID)
+                state = .started(
+                    ConsoleLaunchIdentity(
+                        hostID: hostID, paneID: result.paneID, isAgent: false))
+            } catch {
+                state = .failed(Self.message(for: error, launchedKind: nil))
+            }
         }
     }
 
     /// Assembles the Transport variant from the current form. Nil when the
     /// chosen target is incomplete, so `submit()` is a no-op rather than
     /// inventing a Workspace id.
-    private var launchDestination: LaunchDestination? {
+    private var launchDispatch: Dispatch? {
+        let destination: LaunchDestination
         if origin != nil {
             guard selectedWorkspaceID != nil else { return nil }
-            return .existingWorkspace
-        }
-        switch launchTarget {
-        case .existingWorkspace:
-            guard selectedWorkspaceID != nil else { return nil }
-            if offersWorktree && startsInNewWorktree {
-                return .newWorktree(
-                    WorktreeSpec(
-                        branch: Self.nonEmptyTrimmed(worktreeBranch),
-                        base: Self.nonEmptyTrimmed(worktreeBase)))
+            destination = .existingWorkspace
+        } else {
+            switch launchTarget {
+            case .existingWorkspace:
+                guard selectedWorkspaceID != nil else { return nil }
+                if offersWorktree && startsInNewWorktree {
+                    destination = .newWorktree(
+                        WorktreeSpec(
+                            branch: Self.nonEmptyTrimmed(worktreeBranch),
+                            base: Self.nonEmptyTrimmed(worktreeBase)))
+                } else {
+                    destination = .existingWorkspace
+                }
+            case .newWorkspace:
+                guard let directory = Self.nonEmptyTrimmed(newWorkspaceDirectory) else {
+                    return nil
+                }
+                destination = .newWorkspace(
+                    NewWorkspaceSpec(
+                        directory: directory,
+                        label: Self.nonEmptyTrimmed(newWorkspaceLabel)))
             }
-            return .existingWorkspace
-        case .newWorkspace:
-            guard let directory = Self.nonEmptyTrimmed(newWorkspaceDirectory) else {
-                return nil
-            }
-            return .newWorkspace(
-                NewWorkspaceSpec(
-                    directory: directory,
-                    label: Self.nonEmptyTrimmed(newWorkspaceLabel)))
         }
+        if selectedLaunchIsShell {
+            return Dispatch(destination: destination, launch: .shell)
+        }
+        guard let kind = selectedAgentKind else { return nil }
+        return Dispatch(destination: destination, launch: .agent(kind))
+    }
+
+    /// The SwiftUI binding behind the "Agent" picker. Optional on purpose:
+    /// a nil selection (detection failed or found nothing, and the user has
+    /// not chosen Default Shell) must read as "nothing chosen" rather than
+    /// pretending an Agent kind is picked while Start stays disabled.
+    var launchSelection: Binding<LaunchSelection?> {
+        Binding(
+            get: { [self] in
+                if selectedLaunchIsShell { return .shell }
+                return selectedAgentKind.map(LaunchSelection.agent)
+            },
+            set: { [self] selection in
+                switch selection {
+                case .shell:
+                    selectedLaunchIsShell = true
+                case .agent(let kind):
+                    selectedLaunchIsShell = false
+                    selectedAgentKind = kind
+                case nil:
+                    break
+                }
+            })
     }
 
     /// Parses a familiar shell-like argument string into argv without ever
@@ -582,6 +729,20 @@ final class StartAgentStore {
         return "\(kind.rawValue)-\(suffix)"
     }
 
+    /// The fallback for an empty name field on a shell launch: "Default
+    /// Shell", then "Default Shell 2", "Default Shell 3", … skipping names
+    /// already carried by Agent tabs on the Host (an Agent's tab is labeled
+    /// with its name), so the suggested label never reads as a second
+    /// Agent. Tab labels are their own namespace on the wire — the dedup is
+    /// purely against visual confusion.
+    static func defaultShellName(taken: Set<String>) -> String {
+        let base = "Default Shell"
+        guard taken.contains(base) else { return base }
+        var suffix = 2
+        while taken.contains("\(base) \(suffix)") { suffix += 1 }
+        return "\(base) \(suffix)"
+    }
+
     /// Normalizes smart punctuation that arrives through paste or a
     /// third-party keyboard. The editor itself disables these substitutions;
     /// this is a defensive parse-boundary fallback, never an edit-time write.
@@ -651,7 +812,7 @@ final class StartAgentStore {
     }
 
     private static func message(
-        for error: any Error, launchedKind: SupportedAgentKind
+        for error: any Error, launchedKind: SupportedAgentKind?
     ) -> String {
         switch error {
         case TransportError.sshUnreachable:
@@ -676,7 +837,11 @@ final class StartAgentStore {
         case let apiError as HerdrAPIError:
             "herdr rejected the command: \(apiError.message)"
         default:
-            "Starting the agent failed: \(error)"
+            // A shell launch has no agent to blame: the failure is the Host
+            // refusing the tab or workspace itself.
+            launchedKind == nil
+                ? "Starting the shell failed: \(error)"
+                : "Starting the agent failed: \(error)"
         }
     }
 }

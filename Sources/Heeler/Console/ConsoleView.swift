@@ -187,10 +187,22 @@ struct ConsoleView: View {
         }
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
-            StartAgentView(hosts: hosts.hosts, console: console) { id in
+            StartAgentView(hosts: hosts.hosts, console: console) { launched in
                 // A fresh launch lands in its own terminal, exactly
-                // as tapping the new row would.
-                notificationRouter.path = [id]
+                // as tapping the new row would. A plain shell has no
+                // Console row: the terminal inventory owns it instead, and
+                // the store's bounded wait has normally landed it by now.
+                // A pane the inventory still lacks opens nowhere rather
+                // than a terminal addressed by a fabricated id; the row
+                // shows up in the Console when the next snapshot lands.
+                if let agentID = launched.agentID {
+                    selectedTerminal = nil
+                    notificationRouter.path = [agentID]
+                } else if let terminal = console.terminals.first(where: {
+                    $0.hostID == launched.hostID && $0.paneID == launched.paneID
+                }) {
+                    selectTerminal(terminal)
+                }
             }
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(

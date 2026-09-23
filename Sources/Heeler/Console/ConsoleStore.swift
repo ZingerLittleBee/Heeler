@@ -631,6 +631,34 @@ struct MoshProbeOutcome: Equatable {
             request, workspace: workspace)
     }
 
+    @discardableResult
+    func startShellTerminal(
+        _ request: ShellLaunchRequest,
+        on hostID: Host.ID
+    ) async throws -> ShellLaunchResult {
+        try await projection(for: hostID).startShellTerminal(request)
+    }
+
+    @discardableResult
+    func startShellTerminalInNewWorktree(
+        _ request: ShellLaunchRequest,
+        worktree: WorktreeSpec,
+        on hostID: Host.ID
+    ) async throws -> ShellLaunchResult {
+        try await projection(for: hostID).startShellTerminalInNewWorktree(
+            request, worktree: worktree)
+    }
+
+    @discardableResult
+    func startShellTerminalInNewWorkspace(
+        _ request: ShellLaunchRequest,
+        workspace: NewWorkspaceSpec,
+        on hostID: Host.ID
+    ) async throws -> ShellLaunchResult {
+        try await projection(for: hostID).startShellTerminalInNewWorkspace(
+            request, workspace: workspace)
+    }
+
     /// Suspends until `id` is reported by its Host's sync machinery, or the
     /// timeout elapses. The new-agent flow (#12) opens the started Agent's
     /// terminal, and the row it navigates to exists only once the post-start
@@ -640,6 +668,23 @@ struct MoshProbeOutcome: Equatable {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
         while !agents.contains(where: { $0.id == id }) {
+            guard clock.now < deadline,
+                (try? await Task.sleep(for: .milliseconds(50))) != nil
+            else { return }
+        }
+    }
+
+    /// Suspends until the Host's terminal inventory reports `paneID`, or the
+    /// timeout elapses. The plain-shell launch flow opens the created
+    /// terminal, and the row it navigates to exists only once the inventory
+    /// refresh lands — waiting keeps the detail column from flashing its
+    /// placeholder over a launch that just succeeded.
+    func waitForPane(_ paneID: String, on hostID: Host.ID, timeout: Duration = .seconds(5))
+        async
+    {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !terminals.contains(where: { $0.hostID == hostID && $0.paneID == paneID }) {
             guard clock.now < deadline,
                 (try? await Task.sleep(for: .milliseconds(50))) != nil
             else { return }

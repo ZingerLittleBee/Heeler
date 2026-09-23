@@ -86,6 +86,31 @@ protocol Transport: Sendable {
         _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
     ) async throws -> Agent
 
+    /// Launches a plain shell in the chosen Workspace (`tab.create` only —
+    /// the root pane already runs the Host's default shell, so no
+    /// `agent.start` follows). The concrete directory is mandatory so herdr
+    /// cannot inherit an unrelated focused Pane's cwd; a nil directory
+    /// launches nothing.
+    func startShellTerminal(
+        _ request: ShellLaunchRequest
+    ) async throws -> ShellLaunchResult
+
+    /// Launches a plain shell in a fresh git worktree: `worktree.create`
+    /// resolves the repository from the source workspace's cwd (a non-git
+    /// cwd fails with `not_git_worktree`) and returns a root pane already
+    /// running a shell. `request.workspaceID` is the *source* workspace.
+    func startShellTerminalInNewWorktree(
+        _ request: ShellLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> ShellLaunchResult
+
+    /// Launches a plain shell in a freshly created Workspace:
+    /// `workspace.create` opens the remote directory as its own Workspace
+    /// (no existing Workspace required) and returns a root pane already
+    /// running a shell. `request.workspaceID` is unused.
+    func startShellTerminalInNewWorkspace(
+        _ request: ShellLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> ShellLaunchResult
+
     /// Closes a Pane (`pane.close`): the Agent detail screen's destructive
     /// close action (#13, User Story 9 — a Done agent must not be destroyed
     /// by a stray swipe, so the UI gates this behind an explicit
@@ -289,6 +314,27 @@ extension Transport {
             detail: "This transport cannot create shell terminals.")
     }
 
+    func startShellTerminal(
+        _ request: ShellLaunchRequest
+    ) async throws -> ShellLaunchResult {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot launch shells.")
+    }
+
+    func startShellTerminalInNewWorktree(
+        _ request: ShellLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> ShellLaunchResult {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot launch shells.")
+    }
+
+    func startShellTerminalInNewWorkspace(
+        _ request: ShellLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> ShellLaunchResult {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot launch shells.")
+    }
+
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
         []
     }
@@ -460,6 +506,27 @@ struct AgentLaunchRequest: Sendable, Equatable {
     }
 }
 
+/// App-domain request for launching a plain shell from the new-agent flow:
+/// the chosen launch destination's own fresh pane, running the Host's
+/// default shell — no agent is started on it. Identical to
+/// `AgentLaunchRequest` minus the agent-only fields, so the form can offer
+/// both under one "Agent" picker.
+struct ShellLaunchRequest: Sendable, Equatable {
+    /// Optional tab label; nil lets herdr apply its default.
+    let name: String?
+    let workspaceID: String?
+    /// Working directory for the fresh tab, carried when the launch starts
+    /// from another agent's screen and should land in the same place. Nil
+    /// lets herdr fall back to the workspace's own directory.
+    let cwd: String?
+
+    init(name: String? = nil, workspaceID: String? = nil, cwd: String? = nil) {
+        self.name = name
+        self.workspaceID = workspaceID
+        self.cwd = cwd
+    }
+}
+
 /// The one-shot API request behind Agent Detail's Open Terminal action.
 /// `cwd` is concrete by construction; callers disable the action when they
 /// cannot resolve one honestly.
@@ -485,6 +552,24 @@ struct ShellTerminalIdentity: Sendable, Equatable, Hashable {
         self.paneID = paneID
         self.tabID = tabID
         self.terminalID = terminalID
+    }
+}
+
+/// What a plain-shell launch lands in: the created tab's root pane joined
+/// with the Workspace it belongs to (its own when the launch made one). The
+/// Pane is an ordinary shell — the Console surfaces it through the
+/// terminal inventory, not the Agent list.
+struct ShellLaunchResult: Sendable, Equatable {
+    let paneID: String
+    let tabID: String
+    let terminalID: String
+    let workspaceID: String
+
+    init(paneID: String, tabID: String, terminalID: String, workspaceID: String) {
+        self.paneID = paneID
+        self.tabID = tabID
+        self.terminalID = terminalID
+        self.workspaceID = workspaceID
     }
 }
 
