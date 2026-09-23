@@ -30,6 +30,12 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Starting an Agent with "Start in a new worktree" no longer names the new
+  worktree Workspace after the Agent. herdr creates a worktree as its own
+  Workspace (grouped with the source one), and Heeler was passing the Agent's
+  name as that Workspace's label; the label is now omitted so herdr names the
+  Workspace after its branch — its own generated one when no branch was given
+  — and the Agent's name lands only on the worktree's Tab.
 - The mosh-backed Agent terminal now renders as you type. libmoshios wrote
   every rendered frame diff into the fully buffered `f_out` stdio stream
   without ever flushing it, so the iPhone's terminal surface received

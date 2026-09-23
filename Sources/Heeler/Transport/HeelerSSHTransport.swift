@@ -828,17 +828,21 @@ actor HeelerSSHTransport: Transport {
         _ launch: AgentLaunchRequest,
         worktree: WorktreeSpec
     ) async throws -> Agent {
+        // No label: herdr names the new worktree Workspace after its branch
+        // (or its generated `worktree/<words>` branch), which is the honest
+        // identity for a checkout. The agent's name belongs on the Tab, set
+        // by the rename below.
         let created = try await request(
             method: "worktree.create",
             params: WorktreeCreateParams(
                 base: worktree.base,
                 branch: worktree.branch,
                 focus: false,
-                label: launch.name,
                 workspaceID: launch.workspaceID),
             decoding: WorktreeCreatedResponse.self)
-        // Same tab-label gap as the New Workspace path: the worktree label
-        // lands on the Workspace, so rename the tab to the agent's name.
+        // The worktree's new Workspace is branch-named, so give the Tab the
+        // agent's name. Best-effort: a cosmetic rename must never fail a
+        // start that already succeeded.
         try? await renameTab(
             TabRenameParams(label: launch.name, tabID: created.tab.tabID))
         do {

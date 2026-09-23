@@ -740,10 +740,20 @@ struct HeelerSSHTransportBehaviorE2ETests {
         }
 
         let recorded = try await Self.recordedRequests(from: transport, token: token)
-        try #require(recorded.count == 3)
-        #expect(recorded[0].hasPrefix("worktree.create "))
-        #expect(recorded[1].hasPrefix("agent.start "))
-        #expect(recorded[2] == #"worktree.remove {"workspace_id":"workspace:\#(token)"}"#)
+        try #require(recorded.count == 4)
+        // No label: herdr names the new worktree Workspace after its branch,
+        // so the agent's name must appear only on the later tab.rename — a
+        // label here rebranded the whole Workspace after the agent.
+        #expect(
+            recorded[0]
+                == #"worktree.create {"base":"main","branch":"task/\#(token)","focus":false,"workspace_id":"workspace-1"}"#)
+        #expect(
+            recorded[1]
+                == #"tab.rename {"label":"fixture","tab_id":"tab:\#(token)"}"#)
+        #expect(
+            recorded[2]
+                == #"agent.start {"kind":"codex","name":"fixture","pane_id":"pane:\#(token)"}"#)
+        #expect(recorded[3] == #"worktree.remove {"workspace_id":"workspace:\#(token)"}"#)
     }
 
     /// New Workspace (#230) creates the Workspace first, then starts in its
@@ -764,11 +774,18 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(agent.paneID == "pane:\(token)")
         #expect(agent.workspaceID == "workspace:\(token)")
         let recorded = try await Self.recordedRequests(from: transport, token: token)
-        try #require(recorded.count == 2)
+        try #require(recorded.count == 3)
         #expect(
             recorded[0]
                 == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false,"label":"App"}"#)
-        #expect(recorded[1].hasPrefix("agent.start "))
+        // The fresh Workspace's tab carries the agent's name, not the
+        // Workspace itself.
+        #expect(
+            recorded[1]
+                == #"tab.rename {"label":"fixture","tab_id":"tab:\#(token)"}"#)
+        #expect(
+            recorded[2]
+                == #"agent.start {"kind":"codex","name":"fixture","pane_id":"pane:\#(token)"}"#)
         #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
     }
 
@@ -789,12 +806,17 @@ struct HeelerSSHTransportBehaviorE2ETests {
         }
 
         let recorded = try await Self.recordedRequests(from: transport, token: token)
-        try #require(recorded.count == 3)
+        try #require(recorded.count == 4)
         #expect(
             recorded[0]
                 == #"workspace.create {"cwd":"/fixture/\#(token)","focus":false}"#)
-        #expect(recorded[1].hasPrefix("agent.start "))
-        #expect(recorded[2] == #"workspace.close {"workspace_id":"workspace:\#(token)"}"#)
+        #expect(
+            recorded[1]
+                == #"tab.rename {"label":"fixture","tab_id":"tab:\#(token)"}"#)
+        #expect(
+            recorded[2]
+                == #"agent.start {"kind":"codex","name":"fixture","pane_id":"pane:\#(token)"}"#)
+        #expect(recorded[3] == #"workspace.close {"workspace_id":"workspace:\#(token)"}"#)
         #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
     }
 
@@ -817,9 +839,10 @@ struct HeelerSSHTransportBehaviorE2ETests {
         }
 
         let recorded = try await Self.recordedRequests(from: transport, token: token)
-        try #require(recorded.count == 2)
+        try #require(recorded.count == 3)
         #expect(recorded[0].hasPrefix("workspace.create "))
-        #expect(recorded[1].hasPrefix("agent.start "))
+        #expect(recorded[1] == #"tab.rename {"label":"fixture","tab_id":"tab:\#(token)"}"#)
+        #expect(recorded[2].hasPrefix("agent.start "))
         #expect(!recorded.contains { $0.hasPrefix("workspace.close ") })
         #expect(!recorded.contains { $0.hasPrefix("tab.create ") })
     }
@@ -912,9 +935,10 @@ struct HeelerSSHTransportBehaviorE2ETests {
                 cwd: "/fixture/\(token)"))
 
         let recorded = try await Self.recordedRequests(from: transport, token: token)
+        // tab.create names the tab after the agent at creation time.
         #expect(
             recorded.first
-                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"workspace_id":"workspace-1"}"#
+                == #"tab.create {"cwd":"/fixture/\#(token)","focus":false,"label":"fixture","workspace_id":"workspace-1"}"#
         )
     }
 
