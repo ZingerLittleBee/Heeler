@@ -50,7 +50,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=47
+expected_cases=49
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -1163,9 +1163,10 @@ reason=""
 record_case "an empty secret leaves the transcript untouched" "$reason" 0
 
 # The expect script is lifted out of create_password_user as shipped, then only
-# its spawn target and deadline are redirected: the stand-in sysadminctl is a
-# shell script, and the 30s deadline becomes 5s so the timeout path is cheap
-# while a loaded machine still starts a stand-in well inside the deadline.
+# its spawn target and deadlines are redirected: the stand-in sysadminctl is a
+# shell script, the 30s prompt deadline becomes 5s and the 120s completion
+# deadline 8s, so the timeout paths are cheap while a loaded machine still
+# starts a stand-in well inside them.
 sysadminctl_expect="$work/sysadminctl.exp"
 awk '/^create_password_user\(\) \($/ { in_function = 1 }
      in_function && /<<'"'"'EXPECT'"'"'$/ { inside = 1; next }
@@ -1173,13 +1174,15 @@ awk '/^create_password_user\(\) \($/ { in_function = 1 }
      inside { print }' "$gate_script" > "$sysadminctl_expect"
 [[ -s "$sysadminctl_expect" ]] \
     || die "no sysadminctl expect script inside create_password_user"
-perl -0pi -e 's/spawn \/usr\/bin\/sudo -n \/usr\/sbin\/sysadminctl \\\n(?:    [^\n]*\\\n)*    -password -\n/spawn \$env(HEELER_FAKE_SYSADMINCTL)\n/; s/^set timeout 30$/set timeout 5/m' \
+perl -0pi -e 's/spawn \/usr\/bin\/sudo -n \/usr\/sbin\/sysadminctl \\\n(?:    [^\n]*\\\n)*    -password -\n/spawn \$env(HEELER_FAKE_SYSADMINCTL)\n/; s/^set timeout 30$/set timeout 5/m; s/^set completion_timeout 120$/set completion_timeout 8/m' \
     "$sysadminctl_expect"
 # shellcheck disable=SC2016
 grep -qF 'spawn $env(HEELER_FAKE_SYSADMINCTL)' "$sysadminctl_expect" \
     || die "could not redirect the sysadminctl spawn in the lifted expect script"
 grep -qF 'set timeout 5' "$sysadminctl_expect" \
     || die "could not shorten the sysadminctl deadline in the lifted expect script"
+grep -qF 'set completion_timeout 8' "$sysadminctl_expect" \
+    || die "could not shorten the sysadminctl completion deadline in the lifted expect script"
 sysadminctl_transcript="$work/sysadminctl.log"
 # Runs the lifted script against one stand-in; prints its output then STATUS=.
 run_sysadminctl_expect() {
@@ -1206,6 +1209,12 @@ write_stand_in "$work/sysadminctl-noprompt.sh" \
     'echo "Password is required!"; exit 3'
 write_stand_in "$work/sysadminctl-hang.sh" \
     'echo "thinking"; sleep 30'
+# Outlives the 5s prompt deadline after the password, as a loaded runner's
+# account creation does, but finishes inside the 8s completion deadline.
+write_stand_in "$work/sysadminctl-slow.sh" \
+    'printf "User password:"; read -r pw; echo "Creating user record"; sleep 6; exit 0'
+write_stand_in "$work/sysadminctl-hang-after-password.sh" \
+    'printf "User password:"; read -r pw; echo "Creating user record"; sleep 30'
 # shellcheck disable=SC2016
 write_stand_in "$work/sysadminctl-ok.sh" \
     'printf "User password:"; read -r pw; printf "\nread %s bytes\n" "${#pw}"; exit 0'
@@ -1247,6 +1256,29 @@ elif ! printf '%s\n' "$expect_output" \
     reason="the deadline was not reported: $expect_output"
 fi
 record_case "a sysadminctl that hangs is reported as timed out" \
+    "$reason" "$expect_status"
+
+rm -f "$sysadminctl_transcript"
+expect_output=$(run_sysadminctl_expect "$work/sysadminctl-slow.sh")
+expect_status=$(printf '%s\n' "$expect_output" | sed -n 's/^STATUS=//p')
+reason=""
+if [[ "$expect_status" != 0 ]]; then
+    reason="status $expect_status: $expect_output"
+fi
+record_case "a sysadminctl slower than the prompt deadline still completes" \
+    "$reason" "$expect_status"
+
+rm -f "$sysadminctl_transcript"
+expect_output=$(run_sysadminctl_expect "$work/sysadminctl-hang-after-password.sh")
+expect_status=$(printf '%s\n' "$expect_output" | sed -n 's/^STATUS=//p')
+reason=""
+if [[ "$expect_status" != 1 ]]; then
+    reason="status $expect_status, expected 1"
+elif ! printf '%s\n' "$expect_output" \
+    | grep -qF 'sysadminctl timed out after 8s (password sent: 1)'; then
+    reason="the completion deadline was not reported: $expect_output"
+fi
+record_case "a sysadminctl that hangs after the password hits the completion deadline" \
     "$reason" "$expect_status"
 
 rm -f "$sysadminctl_transcript"
