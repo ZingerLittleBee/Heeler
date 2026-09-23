@@ -29,18 +29,14 @@ func bridgeWriteToClosedPeerReportsPeerClosed() throws {
 // one indistinguishable in a CI log, so the errno has to survive the throw.
 @Test("a bridge write to an invalid descriptor surfaces its errno")
 func bridgeWriteToInvalidDescriptorSurfacesErrno() throws {
-    let transport = try DirectTCPIPByteTransport()
-    let innerDescriptor = try transport.takeDescriptor()
-    let pumpDescriptor = try transport.takePumpDescriptor()
-    Darwin.close(innerDescriptor)
-    Darwin.close(pumpDescriptor)
-
-    // Both ends are closed, so the descriptor is no longer a socket at all.
-    // EPIPE would be reported as `peerClosed` instead, which is the branch the
-    // test above covers.
+    // -1 is never a descriptor, so the write fails with EBADF. A closed
+    // descriptor number is not safe here: tests run in parallel, another one
+    // can be handed the same number between the close and the write, and the
+    // write then succeeds into that test's socket. EPIPE would be reported as
+    // `peerClosed` instead, which is the branch the test above covers.
     #expect(throws: SessionDriver.BridgeWriteFailure(code: EBADF)) {
         _ = try SessionDriver.writeBridge(
             Data("pending outer bytes".utf8),
-            descriptor: pumpDescriptor)
+            descriptor: -1)
     }
 }
