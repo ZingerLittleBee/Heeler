@@ -147,7 +147,7 @@ upload: ## Upload the existing archive to App Store Connect (TestFlight)
 testflight: archive upload ## Archive and upload in one go
 
 bump: ## Increment CURRENT_PROJECT_VERSION in project.yml (app + extension stay in lockstep)
-	@CUR=$$(awk -F'"' '/CURRENT_PROJECT_VERSION/ { print $$2; exit }' project.yml); \
+	@CUR=$$(awk -F'"' '/CURRENT_PROJECT_VERSION: "/ && $$2 ~ /^[0-9]+$$/ { print $$2; exit }' project.yml); \
 	NEW=$$((CUR + 1)); \
 	sed -i '' -E "s/CURRENT_PROJECT_VERSION: \"[0-9]+\"/CURRENT_PROJECT_VERSION: \"$$NEW\"/g" project.yml; \
 	echo "CURRENT_PROJECT_VERSION: $$CUR -> $$NEW"
