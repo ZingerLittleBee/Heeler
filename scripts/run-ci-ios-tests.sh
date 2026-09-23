@@ -1968,7 +1968,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 97 6 0 \
+run_suite SharedFixtureE2ETests 98 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
