@@ -115,6 +115,12 @@ enum AgentActivityContentBuilder {
     /// Pinned eligible agents first, by pin-list index (most recent = 0);
     /// the rest keep status rank then pane-id byte order. Unknown or
     /// ineligible pin ids are simply not in `agents`.
+    ///
+    /// The Live Activity's attention rank is Blocked > Done > Working — the
+    /// opposite of the Console's `consoleSortBucket` for done/working —
+    /// because a finished result is actionable here while a working agent is
+    /// not. The shared plugin vectors pin this order for both
+    /// implementations; do not swap in the Console buckets.
     private static func sorted(
         _ agents: [ConsoleAgent], pinnedPaneIDs: [String]
     ) -> [ConsoleAgent] {
@@ -131,10 +137,23 @@ enum AgentActivityContentBuilder {
             case (nil, nil):
                 break
             }
-            let left = lhs.agent.status.consoleSortBucket
-            let right = rhs.agent.status.consoleSortBucket
+            let left = activityRank(lhs.agent.status)
+            let right = activityRank(rhs.agent.status)
             if left != right { return left < right }
             return lhs.agent.paneID.utf8.lexicographicallyPrecedes(rhs.agent.paneID.utf8)
+        }
+    }
+
+    /// Blocked first (waiting on the user's reply), then Done (a result
+    /// waiting to be read), then Working (merely busy). Unknown statuses
+    /// share the bottom bucket — a status this build cannot interpret is not
+    /// actionable, so it must not outrank one it can.
+    private static func activityRank(_ status: AgentStatus) -> Int {
+        switch status {
+        case .blocked: 0
+        case .done: 1
+        case .working: 2
+        default: 3
         }
     }
 
