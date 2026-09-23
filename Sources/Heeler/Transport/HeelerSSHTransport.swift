@@ -955,9 +955,11 @@ actor HeelerSSHTransport: Transport {
     private func waitOutRegistration(paneID: String) async throws {
         let deadline = ContinuousClock.now + Self.registrationBudget
         while true {
-            let agents = try await listAgents()
+            let agents = try await request(
+                method: "agent.list",
+                decoding: AgentListResponse.self).agents
             if let agent = agents.first(where: { $0.paneID == paneID }),
-                agent.agentSession != nil
+                agent.agentSession != nil, agent.launchPending != true
             {
                 return
             }
@@ -967,7 +969,6 @@ actor HeelerSSHTransport: Transport {
             try await Task.sleep(for: Self.registrationPollDelay)
         }
     }
-
     private static let shellReadinessBudget: Duration = .seconds(30)
     private static let shellReadinessRetryDelay: Duration = .milliseconds(500)
     private static let registrationBudget: Duration = .seconds(10)

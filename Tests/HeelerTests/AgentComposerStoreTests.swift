@@ -320,10 +320,13 @@ struct AgentComposerStoreTests {
         #expect(await transport.agentPromptParams.count > 1)
     }
 
-    /// A stuck fresh launch is un-stuck by pane activity: after the second
-    /// refusal, each retry nudges the live Attach PTY with space+backspace —
-    /// a redraw that cannot submit, delete, or alter the remote input line.
-    @Test func persistentNotReadyNudgesTheLiveAttachWithSpaceBackspace() async throws {
+    /// A stuck fresh launch never clears herdr's pending flag on its own;
+    /// the only observed cure is a submitted prompt (idle→working). With the
+    /// Attach live, the composer retries inside the budget — nudging the PTY
+    /// with space+backspace after the second refusal — and on exhaustion
+    /// submits the draft through the PTY itself: the agent receives the
+    /// message and the transition retires the stuck flag.
+    @Test func persistentNotReadyWithLiveAttachSubmitsTheDraftThroughThePTY() async throws {
         let transport = ScriptedTransport()
         await transport.setAgentPromptFailure(
             HerdrAPIError(
@@ -344,9 +347,12 @@ struct AgentComposerStoreTests {
 
         let result = await store.send()
 
-        #expect(result == .failed)
+        #expect(result == .deliveredViaAttach)
+        #expect(store.draft.isEmpty)
         #expect(writes.contains(Data([0x20, 0x7F])))
-        #expect(!writes.contains { $0.contains(0x0D) })
+        #expect(writes.contains(Data("Stuck launch".utf8)))
+        #expect(writes.contains(Data([0x0D])))
+        #expect(await transport.agentPromptParams.count > 1)
     }
 
     /// With no live Attach there is nothing to nudge; the retry loop still

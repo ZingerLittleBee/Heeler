@@ -391,6 +391,14 @@ final class AgentComposerStore: ComposerDraftOperations {
             if Self.isAgentBlocked(error) {
                 return deliverThroughAttach(id, text: text)
             }
+            // A stuck fresh launch never clears herdr's launch handshake,
+            // so the prompt API refuses for minutes; the only observed cure
+            // is a submitted prompt causing a status transition. With the
+            // Attach live, submit the message through the PTY itself — the
+            // agent receives it, and the transition retires the stuck flag.
+            if Self.isAgentNotReady(error), attachInput != nil {
+                return deliverThroughAttach(id, text: text, submit: true)
+            }
             return fail(id, message: Self.message(for: error))
         }
     }
@@ -434,17 +442,26 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
     }
 
-    /// Types the draft into the live Attach PTY without submitting. Matches
-    /// tools-keyboard writes: UTF-8 bytes, no bracketed paste, no Enter.
-    /// Those bytes already cross `TerminalInputController`'s writer, which
-    /// indexes them; do not also `record(submitted:)` here.
-    private func deliverThroughAttach(_ id: Message.ID, text: String) -> SendResult {
+    /// Types the draft into the live Attach PTY, optionally submitting it.
+    /// Matches tools-keyboard writes: UTF-8 bytes, no bracketed paste. With
+    /// `submit` false — the blocked-agent path — nothing is submitted: those
+    /// bytes already cross `TerminalInputController`'s writer, which indexes
+    /// them; do not also `record(submitted:)` there. With `submit` true —
+    /// the stuck-launch fallback — a carriage return follows the text, so a
+    /// booting agent actually receives the message and its idle→working
+    /// transition retires herdr's pending launch flag.
+    private func deliverThroughAttach(
+        _ id: Message.ID, text: String, submit: Bool = false
+    ) -> SendResult {
         guard !Self.containsDropPlaceholder(text) else { return .ignored }
         guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
         guard let attachInput, attachInput.insertComposerDraft(text) else {
             return fail(id, message: Self.missingAttachMessage)
+        }
+        if submit {
+            attachInput.send(Data([0x0D]))
         }
         guard let deliveredIndex = messages.firstIndex(where: { $0.id == id }) else {
             return .ignored
