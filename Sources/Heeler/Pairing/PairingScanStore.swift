@@ -201,6 +201,15 @@ final class PairingScanStore {
                     + "device is on the same network or VPN as the computer, then try again "
                     + "with the same code.",
                 canRetry: true)
+        case .tailscaleSSH(let addresses, let port):
+            PairingFailure(
+                step: .reach,
+                message: "Tailscale SSH answers port \(port) at "
+                    + "\(addresses.joined(separator: ", ")), not OpenSSH, so this device "
+                    + "cannot be enrolled there. On the computer, set ssh_port in the pairing "
+                    + "plugin's pair.json to a port OpenSSH listens on, then generate a new "
+                    + "Pairing Code.",
+                canRetry: false)
         case .bootstrapRejected:
             PairingFailure(
                 step: .authenticate,
@@ -232,6 +241,14 @@ final class PairingScanStore {
                 step: .enroll,
                 message: "The Host refused Enrollment (\(code)). Update the app and the pairing "
                     + "plugin so they match, then generate a new Pairing Code.",
+                canRetry: false)
+        case .enrollmentUnanswered:
+            PairingFailure(
+                step: .enroll,
+                message: "The Host accepted this Pairing Code, but its pairing command ended "
+                    + "without answering. Check that the pairing plugin is installed and that "
+                    + "OpenSSH, not another SSH server, answers this port, then generate a new "
+                    + "Pairing Code.",
                 canRetry: false)
         case .enrollmentFailed:
             PairingFailure(

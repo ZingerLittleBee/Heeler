@@ -254,12 +254,14 @@ struct PairingScanStoreTests {
 
     @Test(arguments: [
         PairingCeremonyError.hostUnreachable(detail: "x"),
+        .tailscaleSSH(addresses: ["100.64.0.1"], port: 22),
         .bootstrapRejected,
         .enrollmentRefused(.unknownPairing),
         .enrollmentRefused(.expired),
         .enrollmentRefused(.invalidKey),
         .enrollmentRefused(.noInput),
         .enrollmentRefused(.unrecognized(code: "quota_exceeded")),
+        .enrollmentUnanswered,
         .enrollmentFailed(detail: "x"),
         .verificationFailed(detail: "x"),
     ])
@@ -281,12 +283,14 @@ struct PairingScanStoreTests {
 
     @Test(arguments: [
         (PairingCeremonyError.hostUnreachable(detail: "x"), true, "same network"),
+        (.tailscaleSSH(addresses: ["100.64.0.1"], port: 22), false, "ssh_port in the pairing"),
         (.bootstrapRejected, false, "Generate a new Pairing Code"),
         (.enrollmentRefused(.unknownPairing), false, "Generate a new Pairing Code"),
         (.enrollmentRefused(.expired), false, "expired"),
         (.enrollmentRefused(.invalidKey), true, "Try again"),
         (.enrollmentRefused(.noInput), true, "Try again"),
         (.enrollmentRefused(.unrecognized(code: "quota_exceeded")), false, "quota_exceeded"),
+        (.enrollmentUnanswered, false, "pairing command ended without answering"),
         (.enrollmentFailed(detail: "x"), true, "Try again"),
         (.verificationFailed(detail: "x"), true, "Try again"),
     ])

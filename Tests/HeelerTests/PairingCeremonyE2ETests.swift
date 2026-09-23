@@ -169,6 +169,44 @@ struct PairingCeremonyE2ETests {
         #expect(steps.withLock { $0 } == [.reach])
     }
 
+    /// The local OpenSSH stands in for Tailscale SSH through the injected
+    /// recognizer. The Pairing Code pins a key nothing presents and carries a
+    /// Bootstrap seed no authorized_keys line accepts, so reporting
+    /// `tailscaleSSH` rather than `hostUnreachable` or `bootstrapRejected`
+    /// proves the candidate was refused before its pin was compared or any
+    /// authentication was attempted.
+    @Test func tailscaleSSHIsRefusedBeforePinOrAuthentication() async throws {
+        let environment = try #require(PairingE2EEnvironment.current)
+        let seen = Mutex<[String?]>([])
+        var connector = Self.connector
+        connector.identifiesTailscaleSSH = { identification in
+            seen.withLock { $0.append(identification) }
+            return true
+        }
+        let code = PairingCode(
+            addresses: [environment.base.host],
+            port: environment.base.port,
+            username: environment.base.username,
+            hostKeyFingerprint: HostKeyFingerprint(digest: Data(repeating: 7, count: 32)),
+            bootstrap: .init(
+                seed: Curve25519.Signing.PrivateKey().rawRepresentation,
+                expiresAt: Date(timeIntervalSinceNow: 120)))
+        let steps = Mutex<[PairingStep]>([])
+
+        await #expect(
+            throws: PairingCeremonyError.tailscaleSSH(
+                addresses: [environment.base.host], port: environment.base.port)
+        ) {
+            _ = try await connector.pair(code: code, deviceKey: DeviceKey(privateKey: .init())) {
+                step in steps.withLock { $0.append(step) }
+            }
+        }
+        #expect(steps.withLock { $0 } == [.reach])
+        let identifications = seen.withLock { $0 }
+        #expect(identifications.count == 1)
+        #expect(identifications.first??.hasPrefix("SSH-2.0-OpenSSH") == true)
+    }
+
     /// A pin that matches nothing: the ceremony must never authenticate
     /// against a host whose key differs from the Pairing Code's fingerprint
     /// (that host is not ours), and the failure reads as unreachable.
@@ -295,6 +333,38 @@ struct PairingCeremonyE2ETests {
                     detail: "the Enrollment exchange timed out")
             ) {
                 _ = try await connector.pair(
+                    code: code,
+                    deviceKey: DeviceKey(privateKey: .init())) { _ in }
+            }
+        }
+    }
+
+    @Test func silentEntrypointExitIsReportedAsUnanswered() async throws {
+        let environment = try #require(PairingE2EEnvironment.current)
+        try await AuthorizedKeysTestLock.shared.withLock {
+            let pinned = try await Self.discoverHostKeyFingerprint(environment.base)
+            let staged = try StagedPairing(
+                environment: environment,
+                ttlSeconds: 120,
+                forcedCommand: .exitWithoutAnswering)
+            defer { staged.cleanUp() }
+            let snapshot = AuthorizedKeysSnapshot(path: environment.authorizedKeysPath)
+            defer {
+                snapshot.restore()
+                #expect(snapshot.isRestoredByteExact)
+            }
+            try await snapshot.append(
+                line: staged.authorizedKeysLine,
+                environment: environment)
+            let code = PairingCode(
+                addresses: [environment.base.host],
+                port: environment.base.port,
+                username: environment.base.username,
+                hostKeyFingerprint: pinned,
+                bootstrap: .init(seed: staged.seed, expiresAt: staged.expiresAt))
+
+            await #expect(throws: PairingCeremonyError.enrollmentUnanswered) {
+                _ = try await Self.connector.pair(
                     code: code,
                     deviceKey: DeviceKey(privateKey: .init())) { _ in }
             }
@@ -586,6 +656,7 @@ private struct StagedPairing {
     enum ForcedCommand {
         case plugin
         case hang
+        case exitWithoutAnswering
         case acceptWithoutEnrollment(fingerprint: String)
         case oversizedResponse
     }
@@ -666,6 +737,13 @@ private struct StagedPairing {
                 localDirectory: stateDir,
                 remoteDirectory: remoteStateDir,
                 contents: "#!/bin/sh\nsleep 30\n")
+        case .exitWithoutAnswering:
+            // What a Host whose SSH server skipped the forced command looks
+            // like from the phone: the command ran and exited, silent (#358).
+            command = try Self.writeForcedCommandScript(
+                localDirectory: stateDir,
+                remoteDirectory: remoteStateDir,
+                contents: "#!/bin/sh\nexit 127\n")
         case .acceptWithoutEnrollment(let fingerprint):
             command = try Self.writeForcedCommandScript(
                 localDirectory: stateDir,
