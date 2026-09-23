@@ -925,16 +925,16 @@ actor HeelerSSHTransport: Transport {
         }
         let created = try await request(
             method: "worktree.create",
+            // No label, like the worktree agent variant: herdr names the new
+            // worktree Workspace after its branch, and the shell's name is a
+            // Tab label, applied by the rename below.
             params: WorktreeCreateParams(
                 base: worktree.base,
                 branch: worktree.branch,
                 focus: false,
-                label: launch.name,
                 workspaceID: workspaceID),
             decoding: WorktreeCreatedResponse.self)
-        // Same tab-label gap as the worktree agent variant: the label lands
-        // on the Workspace, so rename the tab to match. Best-effort, and
-        // only when the form supplied a tab name.
+        // Best-effort, and only when the form supplied a tab name.
         if let label = launch.name {
             try? await renameTab(
                 TabRenameParams(label: label, tabID: created.tab.tabID))
