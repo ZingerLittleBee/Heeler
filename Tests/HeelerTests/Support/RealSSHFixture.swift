@@ -55,6 +55,13 @@ enum RealSSHFixture {
     /// libssh2 code into the xcodebuild log beside the test (#343).
     private static let diagnosticsSink = SSHDiagnostics.addSink(SSHDiagnostics.printingSink())
 
+    /// Deadline for connecting and authenticating against a fixture sshd when
+    /// setup is not what a test measures. sshd execs a fresh `sshd-session`
+    /// and `sshd-auth` for every connection, and on a loaded CI runner that
+    /// alone has taken ten seconds before the server's KEXINIT went out,
+    /// failing healthy connections at a 5s bound.
+    static let setupTimeout: Duration = .seconds(30)
+
     /// The Ed25519 Device Key the fixture authorizes.
     ///
     /// The fixture script generates a fresh seed per run and passes it in the
