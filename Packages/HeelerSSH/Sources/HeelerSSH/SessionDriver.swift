@@ -111,6 +111,10 @@ actor SessionDriver {
     /// covers genuine post-negotiation transport loss, which is equally
     /// transient.
     private(set) var handshakeFailedInKeyExchange = false
+    /// The identification string the server sent during the handshake
+    /// (RFC 4253 section 4.2, without the trailing CR LF), such as
+    /// `SSH-2.0-OpenSSH_9.9`. Nil until a handshake completes.
+    private(set) var serverIdentification: String?
     private var nextStreamLocalChannelID: UInt64 = 0
     private struct StreamLocalChannelState {
         let channel: OpaquePointer
@@ -2546,6 +2550,9 @@ actor SessionDriver {
             handshakeFailedInKeyExchange =
                 handshakeResult == LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE
             throw mapSessionError(handshakeResult)
+        }
+        serverIdentification = libssh2_session_banner_get(createdSession).map {
+            String(cString: $0)
         }
         return try extractHostKey(createdSession)
     }
