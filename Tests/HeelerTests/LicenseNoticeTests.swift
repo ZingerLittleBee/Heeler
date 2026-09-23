@@ -25,6 +25,8 @@ struct LicenseNoticeInventoryTests {
         "libssh2",
         "libssh2-bcrypt_pbkdf",
         "libssh2-cipher-chachapoly",
+        "mosh",
+        "protobuf",
     ]
 
     @Test func inventoryNamesEveryRequiredComponentExactlyOnce() throws {
@@ -90,6 +92,25 @@ struct LicenseNoticeInventoryTests {
         #expect(chacha.text.contains("appear in all copies"))
         try assertMatchesArtifactNotice(
             named: "libssh2-cipher-chachapoly-BSD-2-Clause.txt", text: chacha.text)
+
+        // The mosh stack rides Packages/HeelerMosh/Artifacts, so its anchors
+        // live beside that artifact rather than HeelerSSH's.
+        let mosh = try #require(byID["mosh"])
+        #expect(mosh.license == "GPL-3.0-or-later")
+        #expect(mosh.version == "1.3.2")
+        #expect(mosh.text.contains("GNU GENERAL PUBLIC LICENSE"))
+        #expect(mosh.text.contains("Version 3, 29 June 2007"))
+        #expect(mosh.text.contains("App Store services"))
+        try assertMatchesArtifactNotice(
+            named: "mosh-GPL-3.0.txt", package: "HeelerMosh", text: mosh.text)
+
+        let protobuf = try #require(byID["protobuf"])
+        #expect(protobuf.license == "BSD-3-Clause")
+        #expect(protobuf.version == "2.6.1")
+        #expect(protobuf.text.contains("Copyright 2008, Google Inc."))
+        #expect(protobuf.text.contains("Redistribution and use in source and binary forms"))
+        try assertMatchesArtifactNotice(
+            named: "protobuf-BSD-3-Clause.txt", package: "HeelerMosh", text: protobuf.text)
     }
 
     @Test func ghosttyStackAndFontNoticesShipVerbatim() throws {
@@ -299,15 +320,17 @@ struct LicenseNoticeInventoryTests {
         return directory
     }
 
-    private func assertMatchesArtifactNotice(named fileName: String, text: String) throws {
-        let url = artifactNoticeURL(named: fileName)
+    private func assertMatchesArtifactNotice(
+        named fileName: String, package: String = "HeelerSSH", text: String
+    ) throws {
+        let url = artifactNoticeURL(named: fileName, package: package)
         let artifact = try String(contentsOf: url, encoding: .utf8)
         #expect(artifact == text)
     }
 
-    private func artifactNoticeURL(named fileName: String) -> URL {
+    private func artifactNoticeURL(named fileName: String, package: String) -> URL {
         repositoryRoot
-            .appendingPathComponent("Packages/HeelerSSH/Artifacts/Notices", isDirectory: true)
+            .appendingPathComponent("Packages/\(package)/Artifacts/Notices", isDirectory: true)
             .appendingPathComponent(fileName)
     }
 

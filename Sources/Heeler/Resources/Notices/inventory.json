@@ -11,7 +11,8 @@
     },
     "projectPackages": {
       "GhosttyTerminal": ["libghostty-spm", "Ghostty", "GhosttyTheme"],
-      "HeelerSSH": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly", "OpenSSL"]
+      "HeelerSSH": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly", "OpenSSL"],
+      "HeelerMosh": ["mosh", "protobuf"]
     },
     "bundledFontFamilies": {
       "IBMPlexMono": ["IBMPlexMono"],
@@ -98,6 +99,22 @@
       "source": "libssh2 c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f/src/cipher-chachapoly.c",
       "spdx": "BSD-2-Clause",
       "notice": "libssh2-cipher-chachapoly-BSD-2-Clause.txt"
+    },
+    {
+      "id": "mosh",
+      "displayName": "mosh (libmoshios iOS port)",
+      "version": "1.3.2",
+      "source": "Packages/HeelerMosh/Artifacts (mosh 1.3.2 via the Blink iOS port, built by Packages/HeelerMosh/Scripts/build-native.sh; carries mosh's COPYING.iOS App Store commitment)",
+      "spdx": "GPL-3.0-or-later",
+      "notice": "mosh-GPL-3.0.txt"
+    },
+    {
+      "id": "protobuf",
+      "displayName": "Protobuf (libprotobuf)",
+      "version": "2.6.1",
+      "source": "Packages/HeelerMosh/Artifacts (protobuf 2.6.1 built by Packages/HeelerMosh/Scripts/build-native.sh)",
+      "spdx": "BSD-3-Clause",
+      "notice": "protobuf-BSD-3-Clause.txt"
     }
   ]
 }
