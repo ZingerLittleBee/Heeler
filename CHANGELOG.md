@@ -15,7 +15,7 @@ Entries reference the issue that motivated them.
   answer, or run the enrollment command under an `accept` policy and blame a
   network hiccup; it now stops before authenticating. A pairing command
   that ends without answering is reported as such rather than as a network
-  hiccup. (#358)
+  hiccup. (#358; PR #376)
 
 ## [0.1.10] - 2026-09-23
 
