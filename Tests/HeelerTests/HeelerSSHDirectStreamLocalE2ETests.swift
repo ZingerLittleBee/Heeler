@@ -228,13 +228,15 @@ private struct DirectStreamLocalTestEnvironment: Decodable, Sendable {
 
     func deviceKeyConnection(to endpoint: SSHEndpoint) async throws -> SSHConnection {
         let deviceKey = DeviceKey(privateKey: try RealSSHFixture.deviceKey(seed: deviceKeySeed))
-        let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(5))
+        let connection = try await SSHConnection.connect(
+            to: endpoint,
+            timeout: RealSSHFixture.setupTimeout)
         do {
             try await connection.authenticate(
                 username: username,
                 publicKey: deviceKey.publicKeyBlob,
                 signer: { data in try deviceKey.privateKey.signature(for: data) },
-                timeout: .seconds(5))
+                timeout: RealSSHFixture.setupTimeout)
             return connection
         } catch {
             try? await connection.close(timeout: .seconds(2))

@@ -24,7 +24,7 @@ struct SessionDriverE2ETests {
 
         _ = try await driver.handshake(
             endpoint: environment.postQuantumEndpoint,
-            timeout: .seconds(5))
+            timeout: SessionDriverTestEnvironment.setupTimeout)
         try await driver.close(timeout: .seconds(2))
     }
 
@@ -35,7 +35,7 @@ struct SessionDriverE2ETests {
 
         _ = try await driver.handshake(
             endpoint: environment.curve25519Endpoint,
-            timeout: .seconds(5))
+            timeout: SessionDriverTestEnvironment.setupTimeout)
         try await driver.close(timeout: .seconds(2))
     }
 
@@ -44,7 +44,7 @@ struct SessionDriverE2ETests {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let connection = try await SSHConnection.connect(
             to: SSHEndpoint(host: "localhost", port: environment.endpoint.port),
-            timeout: .seconds(10))
+            timeout: SessionDriverTestEnvironment.setupTimeout)
 
         try await environment.authenticate(connection)
         let result = try await connection.execute(
@@ -103,13 +103,13 @@ struct SessionDriverE2ETests {
             let driver = SessionDriver()
             _ = try await driver.handshake(
                 endpoint: environment.endpoint,
-                timeout: .seconds(5))
+                timeout: SessionDriverTestEnvironment.setupTimeout)
             let privateKey = environment.privateKey
             try await driver.authenticate(
                 username: environment.username,
                 publicKey: environment.publicKeyBlob,
                 signer: { try privateKey.signature(for: $0) },
-                timeout: .seconds(5))
+                timeout: SessionDriverTestEnvironment.setupTimeout)
 
             await #expect(throws: SSHError.self) {
                 _ = try await driver.execute(
@@ -2805,6 +2805,13 @@ private struct SessionDriverTestEnvironment: Sendable {
         ProcessInfo.processInfo.environment["HEELER_SSH_E2E_REQUIRED"] == "1"
     }
 
+    /// Deadline for connecting, handshaking, and authenticating against the
+    /// fixture when setup is not what a test measures. sshd execs a fresh
+    /// `sshd-session` and `sshd-auth` for every connection, and on a loaded CI
+    /// runner that alone has taken ten seconds before the server's KEXINIT went
+    /// out, failing healthy handshakes at the old 5s bound.
+    static let setupTimeout: Duration = .seconds(30)
+
     /// The fixture's forwarded herdr socket, needed by the stream-local path.
     static let streamLocalSocketPath: String? =
         ProcessInfo.processInfo.environment["HEELER_SSH_E2E_STREAMLOCAL_SOCKET"]
@@ -2853,7 +2860,7 @@ private struct SessionDriverTestEnvironment: Sendable {
     func connect() async throws -> SSHConnection {
         let connection = try await SSHConnection.connect(
             to: endpoint,
-            timeout: .seconds(10))
+            timeout: Self.setupTimeout)
         try await authenticate(connection)
         return connection
     }
@@ -2864,6 +2871,6 @@ private struct SessionDriverTestEnvironment: Sendable {
             username: username,
             publicKey: publicKeyBlob,
             signer: { try privateKey.signature(for: $0) },
-            timeout: .seconds(10))
+            timeout: Self.setupTimeout)
     }
 }

@@ -640,8 +640,9 @@ struct AgentDirectInputTests {
                 UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                     x: 0, y: 500, width: 402, height: 370)
             ])
-        try await Task.sleep(for: .milliseconds(70))
-        #expect(inset.height == 336)
+        // The show is coalesced for 60ms, and on a loaded runner the update can
+        // land after any fixed sleep, so poll for it.
+        try #require(await Self.eventually { inset.height == 336 })
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
         #expect(inset.lastPresentedHeight == 336)
@@ -702,8 +703,9 @@ struct AgentDirectInputTests {
                 UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                     x: 0, y: 500, width: 402, height: 370)
             ])
-        try await Task.sleep(for: .milliseconds(70))
-        #expect(inset.height == 336)
+        // The show is coalesced for 60ms, and on a loaded runner the update can
+        // land after any fixed sleep, so poll for it.
+        try #require(await Self.eventually { inset.height == 336 })
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
         #expect(inset.height == 0)
         #expect(inset.lastPresentedHeight == 336)

@@ -765,8 +765,15 @@ create_password_user() (
     # log_user 0 keeps the transcript off the job log; -a records it anyway so a
     # failure can show what sysadminctl said. Each exit path names its reason on
     # stderr, which the calling shell leaves connected to the job log.
+    #
+    # The prompt arrives within seconds, but writing the account record after
+    # the password can take well over 30s on a loaded runner: four CI runs
+    # timed out there, one of them after sysadminctl had already printed
+    # "Creating user record…". So the wait for completion gets its own, longer
+    # deadline instead of sharing the prompt's.
     if /usr/bin/expect <<'EXPECT'
 set timeout 30
+set completion_timeout 120
 log_user 0
 log_file -a -noappend $env(HEELER_SYSADMINCTL_LOG)
 
@@ -794,6 +801,7 @@ expect {
         catch {exec stty -echo < $spawn_out(slave,name)}
         send -- "$password\r"
         set sent_password 1
+        set timeout $completion_timeout
         exp_continue
     }
     timeout {
