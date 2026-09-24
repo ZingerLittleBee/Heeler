@@ -448,6 +448,12 @@ final class ConsoleStore {
         try await projection(for: hostID).createShellTerminal(request)
     }
 
+    func createShellWorkspace(
+        _ workspace: NewWorkspaceSpec, tabLabel: String?, on hostID: Host.ID
+    ) async throws -> ShellTerminalIdentity {
+        try await projection(for: hostID).createShellWorkspace(workspace, tabLabel: tabLabel)
+    }
+
     func recallShellTerminal(
         forWorkspaceID workspaceID: String, on hostID: Host.ID
     ) -> ShellTerminalIdentity? {
@@ -509,6 +515,28 @@ final class ConsoleStore {
         }
     }
 
+    /// Suspends until a shell created on `hostID` is in the terminal
+    /// inventory, or the timeout elapses; nil then. Creation already
+    /// refreshes the inventory, so this only covers a snapshot that lands
+    /// late, which would otherwise open a terminal with no row behind it.
+    func waitForTerminal(
+        _ identity: ShellTerminalIdentity, on hostID: Host.ID,
+        timeout: Duration = .seconds(5)
+    ) async -> ConsoleTerminal? {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while true {
+            if let terminal = terminals.first(where: {
+                $0.hostID == hostID && $0.terminalID == identity.terminalID
+            }) {
+                return terminal
+            }
+            guard clock.now < deadline,
+                (try? await Task.sleep(for: .milliseconds(50))) != nil
+            else { return nil }
+        }
+    }
+
     func closePane(_ paneID: String, on hostID: Host.ID) async throws {
         try await projection(for: hostID).closePane(paneID)
     }
@@ -551,6 +579,59 @@ final class ConsoleStore {
             pins.removePin(hostID: hostID, paneID: paneID)
         }
         rebuild()
+    }
+
+    /// Whether a Terminals row's close takes the shell's whole tab: only when
+    /// no other pane, Agent or shell, shares it.
+    func closesTab(of terminal: ConsoleTerminal) -> Bool {
+        Self.closesTab(of: terminal, terminals: terminals, agents: agents)
+    }
+
+    /// Whether that close also ends the Workspace: herdr closes a Workspace
+    /// with its last tab.
+    func closesWorkspaceWithTab(of terminal: ConsoleTerminal) -> Bool {
+        Self.closesWorkspaceWithTab(of: terminal, terminals: terminals, agents: agents)
+    }
+
+    nonisolated static func closesTab(
+        of terminal: ConsoleTerminal, terminals: [ConsoleTerminal], agents: [ConsoleAgent]
+    ) -> Bool {
+        let panes = Set(
+            terminals.filter { $0.hostID == terminal.hostID && $0.tabID == terminal.tabID }
+                .map(\.paneID)
+                + agents.filter { $0.hostID == terminal.hostID && $0.agent.tabID == terminal.tabID }
+                .map(\.agent.paneID))
+        return panes.subtracting([terminal.paneID]).isEmpty
+    }
+
+    nonisolated static func closesWorkspaceWithTab(
+        of terminal: ConsoleTerminal, terminals: [ConsoleTerminal], agents: [ConsoleAgent]
+    ) -> Bool {
+        guard closesTab(of: terminal, terminals: terminals, agents: agents) else { return false }
+        let tabs = Set(
+            terminals.filter {
+                $0.hostID == terminal.hostID && $0.workspaceID == terminal.workspaceID
+            }.map(\.tabID)
+                + agents.filter {
+                    $0.hostID == terminal.hostID && $0.agent.workspaceID == terminal.workspaceID
+                }.map(\.agent.tabID))
+        return tabs.subtracting([terminal.tabID]).isEmpty
+    }
+
+    /// Closes a shell from its Terminals row: its pane beside others, else
+    /// its tab. A retained connection to it is dropped rather than left to
+    /// expire against a pane that no longer exists.
+    func closeTerminal(_ terminal: ConsoleTerminal) async throws {
+        let projection = try projection(for: terminal.hostID)
+        if closesTab(of: terminal) {
+            try await projection.closeTab(terminal.tabID)
+        } else {
+            try await projection.closePane(terminal.paneID)
+        }
+        await terminalConnections.remove(
+            hostID: terminal.hostID,
+            identity: ShellTerminalIdentity(
+                paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID))
     }
 
     /// User-facing copy for a failed `tab.close`. `TransportError` is not a

@@ -55,6 +55,15 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
         return cwd == home ? "~" : "~\(cwd.dropFirst(home.count))"
     }
 
+    /// Search tab matching: trimmed, case-insensitive substring over what a
+    /// Terminals row and its menu show. An empty query matches everything.
+    func matchesSearch(_ query: String) -> Bool {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return true }
+        return [hostName, workspaceLabel, tabLabel, paneLabel, title, cwd]
+            .contains { $0?.range(of: needle, options: .caseInsensitive) != nil }
+    }
+
     private func nonempty(_ value: String?) -> String? {
         value.flatMap { $0.isEmpty ? nil : $0 }
     }

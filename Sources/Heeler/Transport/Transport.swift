@@ -62,6 +62,14 @@ protocol Transport: Sendable {
         _ request: ShellTerminalCreationRequest
     ) async throws -> ShellTerminalIdentity
 
+    /// Opens a new Workspace at a remote directory and returns its root
+    /// pane, which `workspace.create` already starts as the user's shell, so
+    /// no `tab.create` follows. `tabLabel` renames that first tab; nil keeps
+    /// herdr's default.
+    func createShellWorkspace(
+        _ workspace: NewWorkspaceSpec, tabLabel: String?
+    ) async throws -> ShellTerminalIdentity
+
     /// Starts a new Agent in a fresh git worktree (#97): `worktree.create`
     /// resolves the repository from the source workspace's cwd (a non-git cwd
     /// fails with `not_git_worktree`) and returns a new workspace whose root
@@ -260,6 +268,13 @@ extension Transport {
             detail: "This transport cannot create shell terminals.")
     }
 
+    func createShellWorkspace(
+        _ workspace: NewWorkspaceSpec, tabLabel: String?
+    ) async throws -> ShellTerminalIdentity {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot create shell terminals.")
+    }
+
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
         []
     }
@@ -441,16 +456,19 @@ struct AgentLaunchRequest: Sendable, Equatable {
     var resolvedTabLabel: String { tabLabel ?? name }
 }
 
-/// The one-shot API request behind Agent Detail's Open Terminal action.
-/// `cwd` is concrete by construction; callers disable the action when they
-/// cannot resolve one honestly.
+/// The one-shot API request behind Open Terminal and New Terminal. `cwd` is
+/// concrete by construction; callers disable the action when they cannot
+/// resolve one honestly. `label` names the new tab; nil keeps herdr's
+/// positional default.
 struct ShellTerminalCreationRequest: Sendable, Equatable {
     let workspaceID: String
     let cwd: String
+    let label: String?
 
-    init(workspaceID: String, cwd: String) {
+    init(workspaceID: String, cwd: String, label: String? = nil) {
         self.workspaceID = workspaceID
         self.cwd = cwd
+        self.label = label
     }
 }
 

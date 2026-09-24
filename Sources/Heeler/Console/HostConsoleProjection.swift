@@ -239,6 +239,16 @@ final class HostConsoleProjection {
         return identity
     }
 
+    func createShellWorkspace(
+        _ workspace: NewWorkspaceSpec, tabLabel: String?
+    ) async throws -> ShellTerminalIdentity {
+        let identity = try await session.withTransport { transport in
+            try await transport.createShellWorkspace(workspace, tabLabel: tabLabel)
+        }
+        await refreshTerminalInventory()
+        return identity
+    }
+
     /// A successful create must stay successful even if discovery needs retry.
     func refreshTerminalInventory() async {
         await refreshSidebarMetadata()
@@ -806,8 +816,12 @@ final class HostConsoleProjection {
         latestPaneChanges.removeAll(keepingCapacity: true)
         terminalsByPane = nextTerminals
         workspacesByID = workspaceByID
-        workspaces = snapshot.workspaces
-            .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
+        workspaces = snapshot.workspaces.enumerated()
+            .map { order, workspace in
+                ConsoleWorkspace(
+                    id: workspace.workspaceID, label: workspace.label, order: order,
+                    checkoutPath: workspace.worktree?.checkoutPath)
+            }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
         pruneReceiptsReintroducedByCurrentSnapshot(
             requestGeneration: requestGeneration)
