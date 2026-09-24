@@ -445,6 +445,7 @@
         func closePane(_ params: PaneTarget) async throws {}
         func closeTab(_ params: TabTarget) async throws {}
         func focusAgent(_ target: AgentTarget) async throws {}
+        func renamePane(_ params: PaneRenameParams) async throws {}
         func renameAgent(_ params: AgentRenameParams) async throws {}
         func renameWorkspace(_ params: WorkspaceRenameParams) async throws {}
 

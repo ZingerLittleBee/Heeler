@@ -26,6 +26,13 @@ struct RenameStoreTests {
         RenameStore.workspace(currentLabel: current, rename: rename)
     }
 
+    private func paneStore(
+        current: String = "sidecar logs",
+        rename: @escaping (String?) async throws -> Void = { _ in }
+    ) -> RenameStore {
+        RenameStore(subject: .pane, currentValue: current, rename: rename)
+    }
+
     @Test func invalidAgentInputSurfacesTheRuleAndBlocksSubmit() {
         let store = agentStore()
         store.input = "Not Valid"
@@ -81,6 +88,37 @@ struct RenameStoreTests {
         await store.submit()
 
         #expect(store.state == .editing)
+    }
+
+    // MARK: Pane labels (#290): herdr's own pane name. Free text — the server
+    // is not documented to restrict its shape — and an omitted label falls
+    // back to the layout's own chain, so an empty input is the clear.
+
+    @Test func paneLabelsAreFreeTextAndSkipTheAgentNameRule() async {
+        let recorder = RenameRecorder()
+        let store = paneStore { value in recorder.record(value) }
+        store.input = " Sidecar Logs!! "
+
+        #expect(store.validationMessage == nil)
+        #expect(store.canSubmit)
+        #expect(store.clearHint == "Leave empty to clear the pane label.")
+        await store.submit()
+
+        #expect(store.state == .renamed)
+        #expect(recorder.values == ["Sidecar Logs!!"])
+    }
+
+    @Test func emptyPaneLabelMeansClearAndStaysSubmittable() async {
+        let recorder = RenameRecorder()
+        let store = paneStore { value in recorder.record(value) }
+        store.input = "   "
+
+        #expect(store.validationMessage == nil)
+        #expect(store.canSubmit)
+        await store.submit()
+
+        #expect(store.state == .renamed)
+        #expect(recorder.values == [nil])
     }
 
     // MARK: Submission

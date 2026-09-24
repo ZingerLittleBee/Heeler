@@ -588,6 +588,22 @@ struct PaneReadResult: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/PaneRenameParams`.
+struct PaneRenameParams: Codable, Equatable, Sendable {
+    let label: String?
+    let paneID: String
+
+    init(paneID: String, label: String? = nil) {
+        self.paneID = paneID
+        self.label = label
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label
+        case paneID = "pane_id"
+    }
+}
+
 /// herdr schema `$defs/PaneScrollInfo`.
 struct PaneScrollInfo: Codable, Equatable, Sendable {
     let maxOffsetFromBottom: Int

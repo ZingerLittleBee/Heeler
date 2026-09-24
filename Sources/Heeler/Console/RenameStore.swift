@@ -2,10 +2,10 @@ import Foundation
 import Observation
 
 /// The Console rename actions' form logic (#98): one store per presented
-/// rename sheet, covering both `agent.rename` and `workspace.rename`. The
-/// new name lands in the Console through the store's normal snapshot/delta
-/// machinery — this store only fires the RPC and reports its outcome; the
-/// sheet dismisses itself on `.renamed`.
+/// rename sheet, covering `agent.rename`, `pane.rename` (#290), and
+/// `workspace.rename`. The new name lands in the Console through the store's
+/// normal snapshot/delta machinery — this store only fires the RPC and
+/// reports its outcome; the sheet dismisses itself on `.renamed`.
 ///
 /// Kept off the SSH types (standing repo rule): it talks to an injected
 /// closure over the `ConsoleStore`, so it is testable against a scripted
@@ -25,18 +25,34 @@ final class RenameStore {
     }
 
     /// What is being renamed; drives validation and the form copy. The rules
-    /// mirror what the server enforces, verified live against herdr 0.7.5.
+    /// mirror what the server enforces — verified live against herdr 0.7.5 for
+    /// the agent and workspace cases, schema-derived for the pane label.
     enum Subject: Equatable {
         /// `agent.rename`: the server requires `^[a-z][a-z0-9_-]{0,31}$`
         /// (rejecting violations with `invalid_agent_name`) and treats an
         /// omitted name as "clear back to the detected kind" — so an empty
         /// input is a valid submit meaning "clear".
         case agent(detectedKind: String)
+        /// `pane.rename` (#290): the pane label is the session's name in
+        /// herdr, so it follows the Pane to every attached client. Free text —
+        /// the server is not documented to restrict its shape — and an
+        /// omitted label clears it, returning the row to the
+        /// workspace/tab/kind chain.
+        case pane
         /// `workspace.rename`: the server accepts any label, including an
         /// empty one. An empty submit is withheld client-side anyway: it
         /// would silently blank the Console's grouping label, which is only
         /// ever a mistake from a phone keyboard.
         case workspace
+    }
+
+    /// Whether the empty input is a valid "clear" spelling rather than a
+    /// mistake: the server treats an omitted name for agents and an omitted
+    /// label for panes as "go back to the derived name". Workspace labels are
+    /// only ever set, so an empty one is withheld.
+    private var isClearable: Bool {
+        if case .agent = subject { return true }
+        return subject == .pane
     }
 
     let subject: Subject
@@ -62,37 +78,36 @@ final class RenameStore {
     }
 
     /// What a submit sends: the trimmed input, with emptiness normalized to
-    /// nil (the agent "clear" spelling; unsubmittable for workspaces).
+    /// nil for the subjects where an omitted value clears (the agent and pane
+    /// "clear" spellings).
     var submittedValue: String? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
     /// The form-footer validation error; nil while the input is submittable.
+    /// Only agent names carry a server-enforced shape rule.
     var validationMessage: String? {
-        switch subject {
-        case .agent:
-            guard let value = submittedValue else { return nil }
-            return AgentName.validationError(value)
-        case .workspace:
-            return nil
-        }
+        guard case .agent = subject, let value = submittedValue else { return nil }
+        return AgentName.validationError(value)
     }
 
-    /// The clear-semantics hint for the agent form; nil for workspaces.
+    /// The clear-semantics hint; nil for the subjects where an empty input
+    /// cannot be submitted at all.
     var clearHint: String? {
-        guard case .agent(let detectedKind) = subject else { return nil }
-        return "Leave empty to fall back to the detected kind (\(detectedKind))."
+        switch subject {
+        case .agent(let detectedKind):
+            "Leave empty to fall back to the detected kind (\(detectedKind))."
+        case .pane:
+            "Leave empty to clear the pane label."
+        case .workspace:
+            nil
+        }
     }
 
     var canSubmit: Bool {
         guard state != .renaming, validationMessage == nil else { return false }
-        switch subject {
-        case .agent:
-            return true
-        case .workspace:
-            return submittedValue != nil
-        }
+        return isClearable || submittedValue != nil
     }
 
     /// Whether the sheet may be dismissed without abandoning an in-flight
