@@ -189,16 +189,36 @@ struct WorkspaceTerminalDetailView: View {
                 isPresented: { isSelected() },
                 runTerminal: console.terminalRunner(for: terminal.hostID))
             guard !Task.isCancelled else {
+                retryAfterSpuriousDisappear()
                 return
             }
             entry = selected
         } catch is CancellationError {
+            retryAfterSpuriousDisappear()
             return
         } catch {
             failure = error.localizedDescription
             // Nothing is coming to take the keyboard; a later open must
             // start with it down.
             keyboardHandoff?.cancelShellTerminal()
+        }
+    }
+
+    /// SwiftUI can hand this screen an onDisappear it never follows with an
+    /// onAppear (seen when a new shell opens right after Back to Console),
+    /// cancelling the load while the screen stays up. The router, not
+    /// SwiftUI, says whether it is still shown; if so, load again.
+    private func retryAfterSpuriousDisappear() {
+        Task { @MainActor in
+            await Task.yield()
+            guard isSelected(), entry == nil, failure == nil else { return }
+            // `.task` does not restart for a screen SwiftUI thinks is gone,
+            // so this load runs outside it.
+            await load()
+            if entry != nil, !isSelected() {
+                console.terminalConnections.release(
+                    hostID: terminal.hostID, identity: identity, ownerID: ownerID)
+            }
         }
     }
 
