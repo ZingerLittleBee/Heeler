@@ -22,6 +22,8 @@ struct TerminalListView: View {
     @State private var pendingClose: ConsoleTerminal?
     @State private var closeFailure: String?
 
+    private static let byHostMargin: CGFloat = 8
+
     private var projection: TerminalListProjection {
         presentation.projection(hosts: hosts, console: console)
     }
@@ -89,6 +91,9 @@ struct TerminalListView: View {
                         }
                     } header: {
                         TerminalHostHeader(group: group) { toggle(group.hostID) }
+                            // Back out the narrow margin so the Host lines
+                            // up with the Agents tab's Host headers.
+                            .padding(.leading, -Self.byHostMargin)
                     }
                     if !group.isCollapsed {
                         ForEach(group.workspaces) { workspace in
@@ -99,9 +104,10 @@ struct TerminalListView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
-            // Cards already sit inside a Host section, so By Host runs them
-            // edge to edge, its content aligned with the Agents list's.
-            .contentMargins(.horizontal, 0, for: .scrollContent)
+            // Cards already sit inside a Host section, so By Host spends
+            // less width on side margins than By Workspace. A zero margin
+            // would square the cards off, so they keep a narrow one.
+            .contentMargins(.horizontal, Self.byHostMargin, for: .scrollContent)
         }
     }
 
