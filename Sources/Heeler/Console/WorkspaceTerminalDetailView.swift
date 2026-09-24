@@ -40,8 +40,13 @@ struct WorkspaceTerminalDetailView: View {
     var body: some View {
         Group {
             if isMissing {
-                ContentUnavailableView("Terminal Closed", systemImage: "terminal",
-                    description: Text("This pane is no longer available on the Host."))
+                ContentUnavailableView {
+                    Label("Terminal Closed", systemImage: "terminal")
+                } description: {
+                    Text("This pane is no longer available on the Host.")
+                } actions: {
+                    Button("Back to Console") { onBack() }
+                }
             } else if let entry, console.terminalConnections.entries[poolKey] === entry {
                 ShellTerminalView(
                     store: entry.store,
@@ -66,6 +71,7 @@ struct WorkspaceTerminalDetailView: View {
                     Text(failure)
                 } actions: {
                     Button("Try Again") { retryID += 1 }
+                    Button("Back to Console") { onBack() }
                 }
             } else {
                 ProgressView("Opening Terminal…")
@@ -78,6 +84,10 @@ struct WorkspaceTerminalDetailView: View {
                     }
             }
         }
+        // The terminal draws its own Back. Hidden here, not only on the
+        // terminal, so no state before it (the first frames of a push show
+        // Opening Terminal even for a pooled connection) flashes the bar's.
+        .navigationBarBackButtonHidden(true)
         .task(id: LoadIdentity(
             identity: identity,
             generation: console.hostConnectionGenerations[terminal.hostID],
