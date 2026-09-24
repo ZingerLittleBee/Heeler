@@ -251,7 +251,9 @@ struct ConsoleView: View {
                             \.detailTopChromeInset,
                             horizontalSizeClass == .regular ? detailTopInset : 0)
                         .background {
-                            NavigationBarTopReader { detailTopInset = $0 }
+                            if horizontalSizeClass == .regular {
+                                NavigationBarTopReader { detailTopInset = $0 }
+                            }
                         }
                 }
             }
