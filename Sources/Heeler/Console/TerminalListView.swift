@@ -99,6 +99,9 @@ struct TerminalListView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
+            // Cards already sit inside a Host section, so By Host spends
+            // less width on side margins than By Workspace.
+            .contentMargins(.horizontal, 8, for: .scrollContent)
         }
     }
 
