@@ -715,9 +715,12 @@ struct ConsoleView: View {
                 description: Text("Titles, Workspaces, tabs, and directories on your Hosts."))
         } else {
             let agents = filteredAgents.filter { $0.matchesAgentSearch(query) }
-            let terminals = TerminalListProjection(hosts: hosts.hosts, console: console)
+            let terminalCards = TerminalListProjection(hosts: hosts.hosts, console: console)
                 .workspaces(filteredHostID: hostFilter, searchQuery: query)
-                .flatMap(\.terminals)
+            let terminals = terminalCards.flatMap(\.terminals)
+            // Search drops non-matching shells, so a Tab is named whenever its
+            // Workspace keeps several matches.
+            let sharedWorkspaces = Set(terminalCards.filter { $0.terminals.count > 1 }.map(\.id))
             if agents.isEmpty && terminals.isEmpty {
                 ContentUnavailableView.search(text: query)
             } else {
@@ -733,7 +736,12 @@ struct ConsoleView: View {
                         Section {
                             ForEach(terminals) { terminal in
                                 NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
-                                    TerminalRowView(terminal: terminal, showsWorkspace: true)
+                                    TerminalRowView(
+                                        terminal: terminal, showsWorkspace: true,
+                                        showsTab: sharedWorkspaces.contains(
+                                            TerminalWorkspaceGroup.ID(
+                                                hostID: terminal.hostID,
+                                                workspaceID: terminal.workspaceID)))
                                 }
                                 .hoverEffect(.highlight)
                             }

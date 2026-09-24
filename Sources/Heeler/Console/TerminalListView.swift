@@ -122,7 +122,9 @@ struct TerminalListView: View {
                 if workspace.terminals.isEmpty {
                     newTerminalRow(workspace)
                 } else {
-                    ForEach(workspace.terminals) { terminalRow($0) }
+                    ForEach(workspace.terminals) {
+                        terminalRow($0, showsTab: workspace.terminals.count > 1)
+                    }
                 }
             }
         } header: {
@@ -137,14 +139,14 @@ struct TerminalListView: View {
         }
     }
 
-    private func terminalRow(_ terminal: ConsoleTerminal) -> some View {
+    private func terminalRow(_ terminal: ConsoleTerminal, showsTab: Bool) -> some View {
         NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
-            TerminalRowView(terminal: terminal)
+            TerminalRowView(terminal: terminal, showsTab: showsTab)
         }
         .hoverEffect(.highlight)
         .contextMenu {
             Section(
-                "Tab \u{201C}\(terminal.displayTabTitle)\u{201D} · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
+                "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
             ) {
                 if terminal.cwd.hasPrefix("/") {
                     Button("New Terminal Here", systemImage: "plus.rectangle") {
@@ -198,7 +200,7 @@ struct TerminalListView: View {
         let label = HStack(spacing: 8) {
             Image(systemName: issue.systemImage)
                 .foregroundStyle(issueTint(issue))
-            Text(issue.message.replacingOccurrences(of: "Loading Agents", with: "Loading Terminals"))
+            Text(issue.message)
                 .font(.footnote)
                 .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
                 .lineLimit(2)
@@ -272,13 +274,13 @@ struct TerminalListView: View {
 
     // MARK: Closing
 
-    private func closeScope(for terminal: ConsoleTerminal) -> String {
-        if console.closesWorkspaceWithTab(of: terminal) { return "Workspace" }
-        return console.closesTab(of: terminal) ? "Tab" : "Pane"
+    private func closeScope(for terminal: ConsoleTerminal) -> TerminalCloseScope {
+        if console.closesWorkspaceWithTab(of: terminal) { return .workspace }
+        return console.closesTab(of: terminal) ? .tab : .pane
     }
 
     private func closeLabel(for terminal: ConsoleTerminal) -> String {
-        "Close \(closeScope(for: terminal))"
+        "Close \(closeScope(for: terminal).rawValue)"
     }
 
     private var closeTitle: String {
@@ -286,15 +288,7 @@ struct TerminalListView: View {
     }
 
     private func closeMessage(for terminal: ConsoleTerminal) -> String {
-        let name = terminal.displayTitle
-        if console.closesWorkspaceWithTab(of: terminal) {
-            let workspace = terminal.workspaceLabel ?? "this workspace"
-            return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
-        }
-        if console.closesTab(of: terminal) {
-            return "Closes the tab running \(name)."
-        }
-        return "Closes the pane running \(name). The tab's other panes stay open."
+        closeScope(for: terminal).message(for: terminal)
     }
 
     private func confirmClose() {
@@ -316,27 +310,29 @@ struct TerminalListView: View {
     }
 }
 
-/// One shell row: the terminal's title (usually its foreground command) in
-/// the terminal's own monospaced face over its current directory.
+/// One shell row: its named Tab or terminal title in the terminal's own
+/// monospaced face over its current directory (see `TerminalRowPresentation`).
 struct TerminalRowView: View {
     let terminal: ConsoleTerminal
     /// Search results mix Workspaces, so each row names its own.
     var showsWorkspace = false
+    /// Set when the row shares its card with other shells.
+    var showsTab = false
 
-    private var subtitle: String {
-        let path = terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd
-        guard showsWorkspace else { return path }
-        return "\(terminal.workspaceLabel ?? terminal.hostName) · \(path)"
+    private var presentation: TerminalRowPresentation {
+        TerminalRowPresentation(
+            terminal: terminal, showsWorkspace: showsWorkspace, showsTab: showsTab)
     }
 
     var body: some View {
+        let presentation = presentation
         HStack(spacing: 12) {
             TerminalTile(systemImage: "terminal", tint: .secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text(terminal.displayTitle)
+                Text(presentation.title)
                     .font(.subheadline.monospaced().weight(.medium))
                     .lineLimit(1)
-                Text(subtitle)
+                Text(presentation.subtitle)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -345,9 +341,9 @@ struct TerminalRowView: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(terminal.displayTitle)
+        .accessibilityLabel(presentation.title)
         .accessibilityValue(
-            "\(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd), tab \(terminal.displayTabTitle)"
+            "\(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd), \(terminal.displayTabTitle)"
         )
     }
 }

@@ -214,3 +214,69 @@ struct TerminalListPresentationStoreTests {
         #expect(expanded.collapsedHosts.isEmpty)
     }
 }
+
+@Suite("Terminal row presentation")
+struct TerminalRowPresentationTests {
+    private let host = Host.fixture(name: "studio", username: "dev")
+
+    private func shell(
+        tabLabel: String? = "2", tabPosition: Int? = 2, paneLabel: String? = nil,
+        cwd: String = "/home/dev/app", title: String = "~/app"
+    ) -> ConsoleTerminal {
+        ConsoleTerminal(
+            hostID: host.id, hostName: host.displayName, hostUsername: host.username,
+            pane: PaneInfo(
+                agentStatus: .idle, focused: false, paneID: "w1:p2", revision: 1,
+                tabID: "w1:t2", terminalID: "t2", workspaceID: "w1", cwd: cwd,
+                label: paneLabel, terminalTitleStripped: title),
+            workspaceLabel: "api", tabLabel: tabLabel, workspaceOrder: 0,
+            tabPosition: tabPosition, snapshotOrder: 0, snapshotAgentKind: nil)
+    }
+
+    @Test func herdrsNumberedLabelIsNotANameButACustomOneIs() {
+        #expect(shell().customTabLabel == nil)
+        #expect(shell().displayTabTitle == "Tab 2")
+        #expect(shell(tabLabel: " logs ").customTabLabel == "logs")
+        #expect(shell(tabLabel: "logs").displayTabTitle == "Tab \u{201C}logs\u{201D}")
+        // herdr renumbers default labels, so a number off its position was typed.
+        #expect(shell(tabLabel: "3").customTabLabel == "3")
+        #expect(shell(tabLabel: nil, tabPosition: nil).displayTabTitle == "Tab w1:t2")
+    }
+
+    @Test func namedTabLeadsTheRowAndIsNotRepeated() {
+        let row = TerminalRowPresentation(terminal: shell(tabLabel: "logs"), showsTab: true)
+        #expect(row.title == "logs")
+        #expect(row.subtitle == "~/app")
+    }
+
+    @Test func unnamedShellsInOneCardAreToldApartByTab() {
+        let row = TerminalRowPresentation(terminal: shell(), showsTab: true)
+        #expect(row.title == "~/app")
+        #expect(row.subtitle == "Tab 2 · ~/app")
+        #expect(TerminalRowPresentation(terminal: shell()).subtitle == "~/app")
+    }
+
+    @Test func paneLabelOutranksTheTabNameWhichMovesToTheSubtitle() {
+        let row = TerminalRowPresentation(
+            terminal: shell(tabLabel: "logs", paneLabel: "tail"), showsWorkspace: true,
+            showsTab: true)
+        #expect(row.title == "tail")
+        #expect(row.subtitle == "api · Tab \u{201C}logs\u{201D} · ~/app")
+    }
+
+    @Test func closeMessagesNameTheTabAndWorkspace() {
+        #expect(TerminalCloseScope.tab.message(for: shell()) == "Closes Tab 2 in api.")
+        #expect(
+            TerminalCloseScope.pane.message(for: shell(tabLabel: "logs"))
+                == "Closes this pane of Tab \u{201C}logs\u{201D} in api. The tab's other panes stay open.")
+        #expect(TerminalCloseScope.workspace.message(for: shell()).contains("workspace api"))
+    }
+
+    @Test func terminalsIssueRowWaitsForTerminals() throws {
+        let row = try #require(
+            ConsoleHostStatusPresentation(
+                host: host, status: .connected, isAwaitingSnapshot: true, syncError: nil,
+                inventoryNoun: "Terminals"))
+        #expect(row.message == "Loading Terminals from studio…")
+    }
+}

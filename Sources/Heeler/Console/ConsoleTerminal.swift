@@ -36,12 +36,19 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
     var displayTitle: String {
         nonempty(paneLabel) ?? title ?? nonempty(tabLabel) ?? "Terminal"
     }
-    /// The Tab as the user labelled it, else its position, else its id.
+    /// The Tab's label when the user named it. herdr's default label is the
+    /// Tab's position, which it renumbers as Tabs close, so a label equal to
+    /// the position reads as unnamed, as `ConsoleAgent.showsTabLabel` does.
+    var customTabLabel: String? {
+        guard let label = nonempty(tabLabel?.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { return nil }
+        return tabPosition.map { label == String($0) } == true ? nil : label
+    }
+    /// The Tab as the user named it, else its position, else its id.
     var displayTabTitle: String {
-        if let label = nonempty(tabLabel?.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            return label
-        }
-        return tabPosition.map { "Tab \($0)" } ?? "Tab \(tabID)"
+        if let customTabLabel { return "Tab \u{201C}\(customTabLabel)\u{201D}" }
+        if let tabPosition { return "Tab \(tabPosition)" }
+        return nonempty(tabLabel).map { "Tab \($0)" } ?? "Tab \(tabID)"
     }
     /// Foreground cwd follows `cd`; launch cwd remains the fallback.
     var cwd: String { nonempty(pane.foregroundCwd) ?? nonempty(pane.cwd) ?? "" }

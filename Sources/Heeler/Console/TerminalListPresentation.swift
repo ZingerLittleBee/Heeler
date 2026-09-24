@@ -80,6 +80,47 @@ struct TerminalHostGroup: Identifiable, Equatable {
     var terminalCount: Int { workspaces.reduce(0) { $0 + $1.terminals.count } }
 }
 
+/// What one shell row shows. An idle shell's terminal title is its
+/// directory, so shells side by side in one directory would read alike: a
+/// Tab the user named leads the row, and a card holding several shells
+/// names each row's Tab beside its path.
+struct TerminalRowPresentation: Equatable {
+    let title: String
+    let subtitle: String
+
+    init(terminal: ConsoleTerminal, showsWorkspace: Bool = false, showsTab: Bool = false) {
+        let namedTitle = terminal.paneLabel.flatMap { $0.isEmpty ? nil : $0 }
+        title = namedTitle ?? terminal.customTabLabel ?? terminal.displayTitle
+        let titleIsTab = namedTitle == nil && terminal.customTabLabel != nil
+        var parts: [String] = []
+        if showsWorkspace { parts.append(terminal.workspaceLabel ?? terminal.hostName) }
+        if showsTab && !titleIsTab { parts.append(terminal.displayTabTitle) }
+        parts.append(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd)
+        subtitle = parts.joined(separator: " · ")
+    }
+}
+
+/// How far closing one shell reaches, widest first.
+enum TerminalCloseScope: String, Equatable {
+    case workspace = "Workspace"
+    case tab = "Tab"
+    case pane = "Pane"
+
+    /// Names the Tab and Workspace being closed, since rows in one directory
+    /// can share a title.
+    func message(for terminal: ConsoleTerminal) -> String {
+        let workspace = terminal.workspaceLabel ?? "this Workspace"
+        switch self {
+        case .workspace:
+            return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
+        case .tab:
+            return "Closes \(terminal.displayTabTitle) in \(workspace)."
+        case .pane:
+            return "Closes this pane of \(terminal.displayTabTitle) in \(workspace). The tab's other panes stay open."
+        }
+    }
+}
+
 /// Projects the Console's terminal inventory into Workspace cards. Pure, so
 /// ordering, grouping, and search stay testable without hosting a List.
 struct TerminalListProjection {
@@ -182,7 +223,8 @@ struct TerminalListProjection {
             status: hostStatuses[host.id],
             standingFailure: hostStandingFailures[host.id],
             isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
-            syncError: hostSyncErrors[host.id])
+            syncError: hostSyncErrors[host.id],
+            inventoryNoun: "Terminals")
     }
 
     private func readinessText(for host: Host, isEmpty: Bool) -> String {

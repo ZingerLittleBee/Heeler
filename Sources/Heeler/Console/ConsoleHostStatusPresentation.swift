@@ -4,6 +4,7 @@ import Foundation
 ///
 /// Quiet rows (Paused, Connecting, Loading Agents) are informational and
 /// do not navigate to Host settings. Failed and reconnecting rows still do.
+/// `inventoryNoun` names what the loading row waits for on its list.
 struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     enum Severity: Equatable {
         case informational
@@ -26,7 +27,8 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         status: EventsSessionStatus?,
         standingFailure: TransportError? = nil,
         isAwaitingSnapshot: Bool = false,
-        syncError: String?
+        syncError: String?,
+        inventoryNoun: String = "Agents"
     ) {
         hostID = host.id
         hostName = host.displayName
@@ -59,7 +61,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
                 (message, systemImage, severity, navigates) = Self.syncError(
                     syncError, hostName: host.displayName)
             } else if isAwaitingSnapshot {
-                message = "Loading Agents from \(host.displayName)…"
+                message = "Loading \(inventoryNoun) from \(host.displayName)…"
                 systemImage = "hourglass"
                 severity = .informational
                 navigates = false
