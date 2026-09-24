@@ -33,4 +33,16 @@ struct ConsoleEmptyDetailPresentationTests {
         #expect(ConsoleEmptyDetailPresentation.Action.showAgents.systemImage == "sidebar.left")
         #expect(ConsoleEmptyDetailPresentation.Action.showAgents.shortcutHint == nil)
     }
+
+    @Test func terminalsTabWordsTheSameActionsForShells() {
+        let presentation = ConsoleEmptyDetailPresentation(hasHosts: true, listsTerminals: true)
+        #expect(presentation.title == "No Terminal Selected")
+        #expect(presentation.systemImage == "terminal")
+        #expect(presentation.actions.map(presentation.title(for:))
+            == ["Show Terminals", "New Terminal", "Hosts"])
+        #expect(presentation.shortcutHint(for: .newAgent) == nil)
+        #expect(presentation.shortcutHint(for: .hosts) == "⌘⇧H")
+        #expect(ConsoleEmptyDetailPresentation(hasHosts: false, listsTerminals: true).message
+            == "Add a Host to open its terminals.")
+    }
 }

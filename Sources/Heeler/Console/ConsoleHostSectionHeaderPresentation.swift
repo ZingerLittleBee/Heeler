@@ -45,21 +45,36 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
     /// Honest short readiness: connected-empty is distinct from connecting,
     /// loading, failed, and reconnecting.
     static func readinessText(for section: ConsoleHostSection) -> String {
-        switch section.connectionStatus {
+        readinessText(
+            connectionStatus: section.connectionStatus,
+            isAwaitingSnapshot: section.isAwaitingSnapshot,
+            statusSeverity: section.statusPresentation?.severity,
+            isEmpty: section.agents.isEmpty,
+            inventoryNoun: "Agents")
+    }
+
+    /// The same readiness for any Host-scoped inventory; the Terminals tab
+    /// passes its own noun.
+    static func readinessText(
+        connectionStatus: EventsSessionStatus?,
+        isAwaitingSnapshot: Bool,
+        statusSeverity: ConsoleHostStatusPresentation.Severity?,
+        isEmpty: Bool,
+        inventoryNoun: String
+    ) -> String {
+        switch connectionStatus {
         case .connected:
-            if section.isAwaitingSnapshot {
-                return "Loading Agents…"
+            if isAwaitingSnapshot {
+                return "Loading \(inventoryNoun)…"
             }
-            if section.statusPresentation != nil {
+            if statusSeverity != nil {
                 return "Sync issue"
             }
-            return section.agents.isEmpty ? "No Agents" : "Connected"
+            return isEmpty ? "No \(inventoryNoun)" : "Connected"
         case .reconnecting:
             return "Reconnecting…"
         case .connecting:
-            if let presentation = section.statusPresentation,
-                presentation.severity != .informational
-            {
+            if let statusSeverity, statusSeverity != .informational {
                 return "Unavailable"
             }
             return "Connecting…"
@@ -68,7 +83,7 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
         case .suspended:
             return "Paused"
         case nil:
-            if section.statusPresentation != nil {
+            if statusSeverity != nil {
                 return "Unavailable"
             }
             return "Connecting…"

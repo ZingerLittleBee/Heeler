@@ -28,18 +28,46 @@ struct ConsoleEmptyDetailPresentation: Equatable {
         }
     }
 
-    let title = "No Agent Selected"
-    let systemImage = "rectangle.on.rectangle"
+    let title: String
+    let systemImage: String
     let message: String
     let canStartAgent: Bool
     let actions: [Action]
+    /// The Terminals tab asks for a shell instead: the same actions, worded
+    /// for terminals, with `.newAgent` opening New Terminal.
+    let listsTerminals: Bool
 
-    init(hasHosts: Bool, showsAgentsAction: Bool = true) {
+    init(hasHosts: Bool, showsAgentsAction: Bool = true, listsTerminals: Bool = false) {
         actions = showsAgentsAction ? Action.allCases : [.newAgent, .hosts]
         canStartAgent = hasHosts
-        message = hasHosts
-            ? "Choose an Agent or start a new one to view its live terminal."
-            : "Add a Host to start an Agent and view its live terminal."
+        self.listsTerminals = listsTerminals
+        if listsTerminals {
+            title = "No Terminal Selected"
+            systemImage = "terminal"
+            message = hasHosts
+                ? "Choose a terminal or open a new one."
+                : "Add a Host to open its terminals."
+        } else {
+            title = "No Agent Selected"
+            systemImage = "rectangle.on.rectangle"
+            message = hasHosts
+                ? "Choose an Agent or start a new one to view its live terminal."
+                : "Add a Host to start an Agent and view its live terminal."
+        }
+    }
+
+    func title(for action: Action) -> String {
+        guard listsTerminals else { return action.title }
+        switch action {
+        case .showAgents: return "Show Terminals"
+        case .newAgent: return "New Terminal"
+        case .hosts: return action.title
+        }
+    }
+
+    /// ⌘N stays New Agent everywhere, so it is not advertised on New Terminal.
+    func shortcutHint(for action: Action) -> String? {
+        listsTerminals && action == .newAgent ? nil : action.shortcutHint
     }
 
     func isEnabled(_ action: Action) -> Bool {
@@ -62,8 +90,8 @@ struct ConsoleEmptyDetailView: View {
                     perform(action)
                 } label: {
                     HStack {
-                        Label(action.title, systemImage: action.systemImage)
-                        if let hint = action.shortcutHint {
+                        Label(presentation.title(for: action), systemImage: action.systemImage)
+                        if let hint = presentation.shortcutHint(for: action) {
                             Text(hint)
                                 .font(.caption.monospaced())
                                 .foregroundStyle(.secondary)

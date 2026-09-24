@@ -153,4 +153,18 @@ struct ConsoleListPresentationRoutingTests {
         #expect(ConsoleListPresentationMode.flat.title == "All Agents")
         #expect(ConsoleListPresentationMode.grouped.title == "By Host")
     }
+
+    @Test func readinessNamesTheInventoryItDescribes() {
+        func readiness(_ status: EventsSessionStatus?, awaiting: Bool = false) -> String {
+            ConsoleHostSectionHeaderPresentation.readinessText(
+                connectionStatus: status, isAwaitingSnapshot: awaiting, statusSeverity: nil,
+                isEmpty: true, inventoryNoun: "Terminals")
+        }
+        #expect(readiness(.connected) == "No Terminals")
+        #expect(readiness(.connected, awaiting: true) == "Loading Terminals…")
+        #expect(
+            ConsoleHostSectionHeaderPresentation.readinessText(
+                connectionStatus: .connecting, isAwaitingSnapshot: false, statusSeverity: .critical,
+                isEmpty: true, inventoryNoun: "Terminals") == "Unavailable")
+    }
 }

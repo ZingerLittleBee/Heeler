@@ -93,7 +93,7 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:
-The native dashboard surface: Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, plus the Agent detail screen. Grouping is independent of Agent ordering and Pin priority.
+The native dashboard surface, split into Agents, Terminals, and Search tabs that share one Host filter. Agents lists Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, opening Agent detail; grouping is independent of Agent ordering and Pin priority. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Search finds both at once. The Console reopens the tab it last showed.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
@@ -191,7 +191,8 @@ with a New Terminal button pinned below them that opens a fresh shell tab in
 the current pane's directory, and its handle, like the message-jump buttons,
 is long-pressed to slide it along the terminal's edge and rests where it was
 left;
-the Console's Terminals view groups the same inventory by Host and Workspace.
+the Console's Terminals tab shows the ordinary panes of the same inventory as
+Workspace cards, By Workspace or By Host, with New Terminal on each card.
 Discovery is independent of loading: only selecting a terminal opens its PTY.
 _Avoid_: SSH session, tab (a Tab can contain several Workspace Terminals)
 
