@@ -94,6 +94,7 @@ struct NewTerminalView: View {
                 Section {
                     TextField("Tab name (optional)", text: $store.tabLabel)
                         .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                 } header: {
                     Text("Tab")
                 } footer: {
