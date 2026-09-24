@@ -198,6 +198,15 @@
                             id: "mobile", label: "iOS App", repo: "heeler",
                             isLinkedWorktree: true),
                         workspace(id: "docs", label: "Product Docs", repo: "docs-site"),
+                    ],
+                    shells: [
+                        shell(
+                            paneID: "mobile:p5", workspaceID: "mobile", tab: 2,
+                            label: "landing", title: "npm run dev",
+                            cwd: "/Users/developer/workspace/heeler/landing"),
+                        shell(
+                            paneID: "mobile:p6", workspaceID: "mobile", tab: 3,
+                            title: "zsh", cwd: "/Users/developer/workspace/heeler"),
                     ]),
                 paneSnippets: [
                     "mobile:p1": "Running AttachViewTests… 24 passed",
@@ -208,6 +217,8 @@
                     "mobile:p1": terminalOutput,
                     "docs:p2": terminalOutput,
                     "mobile:p4": terminalOutput,
+                    "terminal:mobile:p5": devServerOutput,
+                    "terminal:mobile:p6": shellPromptOutput,
                 ]),
             buildHostID: DemoHostProfile(
                 snapshot: snapshot(
@@ -226,6 +237,15 @@
                     workspaces: [
                         workspace(id: "checkout", label: "Checkout", repo: "storefront"),
                         workspace(id: "api", label: "Payments API", repo: "payments-api"),
+                    ],
+                    shells: [
+                        shell(
+                            paneID: "api:p8", workspaceID: "api", tab: 2,
+                            label: "logs", title: "tail -f webhooks.log",
+                            cwd: "/var/log/payments"),
+                        shell(
+                            paneID: "api:p9", workspaceID: "api", tab: 3,
+                            title: "htop", cwd: "/home/builder"),
                     ]),
                 paneSnippets: [
                     "checkout:p3": "Run the targeted UI test before commit?",
@@ -234,6 +254,8 @@
                 terminalOutputs: [
                     "checkout:p3": terminalOutput,
                     "api:p7": terminalOutput,
+                    "terminal:api:p8": shellPromptOutput,
+                    "terminal:api:p9": shellPromptOutput,
                 ]),
         ]
 
@@ -256,6 +278,25 @@
             \r
             \u{001B}[33m────────────────────────────\u{001B}[0m\r
             \u{001B}[1;33m› Run the UI test before commit?\u{001B}[0m
+            """
+
+        static let devServerOutput = """
+            \u{001B}[2J\u{001B}[Hdeveloper@studio ~/workspace/heeler/landing % npm run dev\r
+            \r
+            \u{001B}[2m> heeler-landing@0.0.0 dev\u{001B}[0m\r
+            \u{001B}[2m> astro dev\u{001B}[0m\r
+            \r
+            \u{001B}[32m astro  v5.14.1 ready in 412 ms\u{001B}[0m\r
+            \r
+            ┃ Local    http://localhost:4321/\r
+            ┃ Network  use --host to expose\r
+            \r
+            \u{001B}[2m14:02:11 watching for file changes...\u{001B}[0m\r
+            \u{001B}[2m14:02:38 [200] / 18ms\u{001B}[0m
+            """
+
+        static let shellPromptOutput = """
+            \u{001B}[2J\u{001B}[H\u{001B}[32m➜\u{001B}[0m  \u{001B}[36m~\u{001B}[0m\u{0020}
             """
 
         static func makeDefaults() -> UserDefaults {
@@ -290,14 +331,15 @@
         }
 
         private static func snapshot(
-            agents: [AgentInfo], workspaces: [WorkspaceInfo]
+            agents: [AgentInfo], workspaces: [WorkspaceInfo],
+            shells: [(pane: PaneInfo, tab: TabInfo)] = []
         ) -> SessionSnapshot {
             SessionSnapshot(
                 agents: agents,
                 layouts: [],
-                panes: [],
+                panes: shells.map(\.pane),
                 protocolVersion: 17,
-                tabs: [],
+                tabs: shells.map(\.tab),
                 version: "0.7.5-demo",
                 workspaces: workspaces)
         }
@@ -323,6 +365,39 @@
                 cwd: cwd,
                 name: name,
                 terminalTitleStripped: title)
+        }
+
+        /// A plain shell pane alone in its own tab, as `tab.create` leaves it.
+        private static func shell(
+            paneID: String,
+            workspaceID: String,
+            tab: Int,
+            label: String? = nil,
+            title: String,
+            cwd: String
+        ) -> (pane: PaneInfo, tab: TabInfo) {
+            let tabID = "\(workspaceID):t\(tab)"
+            return (
+                PaneInfo(
+                    agentStatus: .unknown,
+                    focused: false,
+                    paneID: paneID,
+                    revision: 1,
+                    tabID: tabID,
+                    terminalID: "terminal:\(paneID)",
+                    workspaceID: workspaceID,
+                    cwd: cwd,
+                    foregroundCwd: cwd,
+                    terminalTitleStripped: title),
+                TabInfo(
+                    agentStatus: .unknown,
+                    focused: false,
+                    label: label ?? String(tab),
+                    number: tab,
+                    paneCount: 1,
+                    tabID: tabID,
+                    workspaceID: workspaceID)
+            )
         }
 
         private static func workspace(
@@ -360,7 +435,10 @@
         private let profile: DemoHostProfile
         private var isClosed = false
         private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
-        private var terminalContinuation: AsyncThrowingStream<Data, any Error>.Continuation?
+        /// Like the SSH transport, each target admits one live channel.
+        private var terminalContinuations: [
+            TerminalAttachTarget: AsyncThrowingStream<Data, any Error>.Continuation
+        ] = [:]
 
         init(profile: DemoHostProfile) {
             self.profile = profile
@@ -462,20 +540,21 @@
         func attachTerminal(
             _ request: TerminalAttachRequest
         ) async throws -> TerminalAttachSession {
-            guard terminalContinuation == nil else {
+            let target = request.target
+            guard terminalContinuations[target] == nil else {
                 throw TransportError.terminalChannelAlreadyOpen
             }
             let (output, continuation) = AsyncThrowingStream<Data, any Error>.makeStream()
             let input = TerminalAttachInputQueue()
-            terminalContinuation = continuation
+            terminalContinuations[target] = continuation
             continuation.yield(
                 Data(
-                    (profile.terminalOutputs[request.target.identifier]
+                    (profile.terminalOutputs[target.identifier]
                         ?? DemoScreenshotFixture.terminalOutput)
                         .utf8)
             )
             return TerminalAttachSession(output: { output }, input: input) {
-                await self.endTerminal()
+                await self.endTerminal(target)
             }
         }
 
@@ -484,7 +563,10 @@
         func close() async throws {
             isClosed = true
             endEvents()
-            endTerminal()
+            for continuation in terminalContinuations.values {
+                continuation.finish()
+            }
+            terminalContinuations.removeAll()
         }
 
         private func endEvents() {
@@ -492,9 +574,8 @@
             eventContinuation = nil
         }
 
-        private func endTerminal() {
-            terminalContinuation?.finish()
-            terminalContinuation = nil
+        private func endTerminal(_ target: TerminalAttachTarget) {
+            terminalContinuations.removeValue(forKey: target)?.finish()
         }
     }
 
