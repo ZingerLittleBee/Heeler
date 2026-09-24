@@ -19,7 +19,7 @@ Entries reference the issue that motivated them.
   Terminal picks a Host, an existing or new Workspace, and an optional tab
   name. Swipe a terminal to close it after confirming, or long-press it to
   open another in its Workspace or copy its path. Search now finds Agents
-  and Terminals together. (#316)
+  and Terminals together. (#316; PR #377)
 
 ### Fixed
 
