@@ -434,7 +434,9 @@ private struct TerminalWorkspaceHeader: View {
     }
 }
 
-/// By Host section header, matching the Agents tab's collapsible Host header.
+/// By Host section header, styled as `ConsoleHostSectionHeaderView` so the
+/// Agents and Terminals tabs show a Host the same way. Hierarchical styles,
+/// not fixed colors, so both take the section header's tint.
 private struct TerminalHostHeader: View {
     let group: TerminalHostGroup
     let onToggle: () -> Void
@@ -444,30 +446,30 @@ private struct TerminalHostHeader: View {
             HStack(spacing: 8) {
                 Image(systemName: group.isCollapsed ? "chevron.right" : "chevron.down")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(.secondary)
                     .frame(width: 12, alignment: .center)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(group.hostName)
-                        .font(.headline)
-                        .foregroundStyle(Color.primary)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                     Text(group.readinessText)
                         .font(.caption)
-                        .foregroundStyle(Color.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {
                     Text(group.terminalCount == 1 ? "1 terminal" : "\(group.terminalCount) terminals")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.secondary)
+                        .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
                         .background(.fill.tertiary, in: Capsule())
                 }
             }
             .contentShape(Rectangle())
-            .padding(.top, 8)
+            .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
         .textCase(nil)
