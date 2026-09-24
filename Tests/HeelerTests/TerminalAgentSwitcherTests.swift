@@ -724,36 +724,43 @@ struct TerminalAgentSwitcherTests {
     @MainActor
     @Test func theShellTerminalHandoffIsUnkeyedOneShotAndCancellable() {
         let handoff = TerminalKeyboardHandoff()
-        #expect(!handoff.consumeShellTerminal())
+        #expect(handoff.consumeShellTerminal() == nil)
 
         handoff.armShellTerminal()
-        #expect(handoff.consumeShellTerminal())
-        #expect(!handoff.consumeShellTerminal(), "spent on the first screen")
+        #expect(handoff.consumeShellTerminal() == .text)
+        #expect(handoff.consumeShellTerminal() == nil, "spent on the first screen")
 
         handoff.armShellTerminal()
         handoff.cancelShellTerminal()
-        #expect(!handoff.consumeShellTerminal(), "a failed creation must not raise a later open")
+        #expect(handoff.consumeShellTerminal() == nil, "a failed creation must not raise a later open")
 
         // Independent of the Agent-keyed intent.
         let agent = ConsoleAgent.ID(hostID: UUID(), paneID: "w1:pA")
         handoff.arm(for: agent)
-        #expect(!handoff.consumeShellTerminal())
+        #expect(handoff.consumeShellTerminal() == nil)
         #expect(handoff.consume(agent))
     }
 
+    /// Open Terminal / New Terminal from Direct Input's tools dock must hand
+    /// the shell the tools dock, exactly like an Agent switch, not raise the
+    /// iOS keyboard in its place.
+    @MainActor
+    @Test func theShellTerminalHandoffCarriesItsKeyboardMode() {
+        let handoff = TerminalKeyboardHandoff()
+        handoff.armShellTerminal(mode: .controls)
+        #expect(handoff.consumeShellTerminal() == .controls)
+    }
+
     /// The screen being left reads `isArmed` to keep first responder until
-    /// the destination claims the keyboard; a stand-in for a Shell Terminal
-    /// still being connected reads the Shell-specific intent.
+    /// the destination claims the keyboard.
     @MainActor
     @Test func anArmedHandoffIsVisibleUntilItIsConsumedOrCancelled() {
         let handoff = TerminalKeyboardHandoff()
         let agent = ConsoleAgent.ID(hostID: UUID(), paneID: "w1:pA")
         #expect(!handoff.isArmed)
-        #expect(!handoff.isShellTerminalArmed)
 
         handoff.arm(for: agent)
         #expect(handoff.isArmed)
-        #expect(!handoff.isShellTerminalArmed)
         _ = handoff.consume(agent)
         #expect(!handoff.isArmed)
 
@@ -763,10 +770,8 @@ struct TerminalAgentSwitcherTests {
 
         handoff.armShellTerminal()
         #expect(handoff.isArmed)
-        #expect(handoff.isShellTerminalArmed)
         _ = handoff.consumeShellTerminal()
         #expect(!handoff.isArmed)
-        #expect(!handoff.isShellTerminalArmed)
 
         handoff.armShellTerminal()
         handoff.cancelShellTerminal()

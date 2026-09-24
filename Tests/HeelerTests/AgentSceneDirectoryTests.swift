@@ -359,7 +359,7 @@ struct AgentSceneDirectoryTests {
         directory.sceneDidBecomeActive(sceneID: second)
         #expect(
             directory.terminalAccess(sceneID: first, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
 
         secondWindow.sceneWindowState = .disconnected
         directory.takeOverTerminal(sceneID: first, hostID: hostID)
@@ -398,7 +398,7 @@ struct AgentSceneDirectoryTests {
         #expect(directory.terminalAccess(sceneID: first, hostID: hostID) == .holds)
         #expect(
             directory.terminalAccess(sceneID: second, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 
     /// Interaction in the window already worked in is not a move: it must
@@ -436,7 +436,7 @@ struct AgentSceneDirectoryTests {
         #expect(directory.terminalAccess(sceneID: second, hostID: hostID) == .holds)
         #expect(
             directory.terminalAccess(sceneID: first, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 
     /// Open in New Window onto another Agent of the same Host lands the user
@@ -457,10 +457,10 @@ struct AgentSceneDirectoryTests {
         #expect(directory.terminalAccess(sceneID: opened, hostID: hostID) == .holds)
         #expect(
             directory.terminalAccess(sceneID: first, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
         #expect(
             directory.terminalAccess(sceneID: second, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 
     @Test func aSharedHostIsLiveOnlyInTheKeyWindow() {
@@ -470,14 +470,14 @@ struct AgentSceneDirectoryTests {
         #expect(directory.terminalAccess(sceneID: second, hostID: hostID) == .holds)
         #expect(
             directory.terminalAccess(sceneID: first, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
 
         directory.sceneDidBecomeActive(sceneID: first)
 
         #expect(directory.terminalAccess(sceneID: first, hostID: hostID) == .holds)
         #expect(
             directory.terminalAccess(sceneID: second, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 
     @Test func takeOverHandsTheChannelToTheTappedWindow() {
@@ -490,7 +490,7 @@ struct AgentSceneDirectoryTests {
         #expect(routing.terminalAccess(for: hostID) == .holds)
         #expect(
             directory.terminalAccess(sceneID: second, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 
     @Test func closingTheHoldingWindowHandsItsHostOn() {
@@ -500,20 +500,6 @@ struct AgentSceneDirectoryTests {
         directory.unregister(sceneID: second)
 
         #expect(directory.terminalAccess(sceneID: first, hostID: hostID) == .holds)
-    }
-
-    @Test func aShellTerminalKeepsItsWindowLive() {
-        let directory = AgentSceneDirectory()
-        let (first, second) = makeSharedHostWindows(directory)
-        directory.shellTerminalDidChange(sceneID: second, agent: target("w1:p2").agentID)
-
-        directory.sceneDidBecomeActive(sceneID: first)
-        directory.takeOverTerminal(sceneID: first, hostID: hostID)
-
-        #expect(directory.terminalAccess(sceneID: second, hostID: hostID) == .holds)
-        #expect(
-            directory.terminalAccess(sceneID: first, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: false))
     }
 
     /// A deep link that lands an Agent of the shared Host in the key window
@@ -537,7 +523,7 @@ struct AgentSceneDirectoryTests {
         #expect(directory.terminalAccess(sceneID: second, hostID: hostID) == .holds)
         #expect(
             directory.terminalAccess(sceneID: first, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 
     /// A window on an Agent the Console no longer lists has no terminal to

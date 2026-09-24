@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Shared Agent Status + Host telemetry caption used by Composer and Direct
 /// Input. One presentation keeps accessibility and visual treatment aligned.
+/// A shell row passes `.shellTerminal` and reads "● Shell".
 struct AgentDetailStatusChrome: View {
     let status: AgentStatus
     let hostTelemetry: HostTelemetryPresentation?
@@ -35,7 +36,7 @@ struct AgentDetailStatusChrome: View {
         .font(.caption2.weight(.medium))
         .foregroundStyle(Color(status.inkUIColor))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Agent status")
+        .accessibilityLabel(status == .shellTerminal ? "Terminal" : "Agent status")
         .accessibilityValue(status.rawValue.capitalized)
     }
 

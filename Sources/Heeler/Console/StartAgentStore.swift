@@ -7,32 +7,12 @@ import SwiftUI
 /// detect and select an installed Agent, parse its native arguments, and
 /// dispatch it via the Transport launch flow. The started pane surfaces in
 /// the Console through the store's normal snapshot/delta machinery; on
-/// success the store reports the started Agent's Console identity so the
-/// owning screen can open it right away.
+/// success the store reports the started row's Console identity — an
+/// Agent's, or a plain shell's, which is just another row — so the owning
+/// screen can open it right away.
 ///
 /// Kept off the SSH types (standing repo rule): it talks to injected closures
 /// over the `ConsoleStore`, so it is testable against a scripted transport.
-
-/// The launched pane's Console identity. An Agent row keys off host + pane;
-/// a plain shell pane additionally says so, because the Console routes it to
-/// the terminal surface rather than Agent detail.
-struct ConsoleLaunchIdentity: Equatable, Sendable {
-    let hostID: Host.ID
-    let paneID: String
-    let isAgent: Bool
-
-    init(hostID: Host.ID, paneID: String, isAgent: Bool = true) {
-        self.hostID = hostID
-        self.paneID = paneID
-        self.isAgent = isAgent
-    }
-
-    /// The identity an Agent launch produces; the Console opens Agent detail
-    /// for it.
-    var agentID: ConsoleAgent.ID? {
-        isAgent ? ConsoleAgent.ID(hostID: hostID, paneID: paneID) : nil
-    }
-}
 
 @MainActor
 @Observable
@@ -44,10 +24,10 @@ final class StartAgentStore {
         case starting
         /// The last start failed; the message is user-facing.
         case failed(String)
-        /// The launch succeeded; the payload is the launched pane's Console
-        /// identity — an Agent's, or a plain shell pane's — which the owner
+        /// The launch succeeded; the payload is the launched row's Console
+        /// identity — an Agent's or a plain shell's alike — which the owner
         /// opens after the screen dismisses.
-        case started(ConsoleLaunchIdentity)
+        case started(ConsoleAgent.ID)
     }
 
     enum AgentDiscoveryState: Equatable {
@@ -267,14 +247,12 @@ final class StartAgentStore {
     /// Agent-only closure's signature.
     private let startShell: (ShellLaunchRequest, LaunchDestination, Host.ID) async throws ->
         ShellLaunchResult
-    /// Suspends (bounded) until the started Agent is visible in the Console.
-    /// The row the owner navigates to exists only after the post-start resync
-    /// lands; waiting here keeps the opened detail from flashing its
-    /// missing-Agent placeholder over a launch that just succeeded.
+    /// Suspends (bounded) until the started row is visible in the Console —
+    /// an Agent's or a plain shell's alike. The row the owner navigates to
+    /// exists only after the post-start resync lands; waiting here keeps the
+    /// opened detail from flashing its missing-Agent placeholder over a
+    /// launch that just succeeded.
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
-    /// The shell launch's counterpart: waits until the Host's terminal
-    /// inventory reports the created pane, for the same reason.
-    private let awaitPaneVisible: (String, Host.ID) async -> Void
     @ObservationIgnored private let recents: RecentWorkspaceStore
     @ObservationIgnored private let selections: RecentSelectionsStore
     /// In-flight guard flipped synchronously before the first await, so a
@@ -292,7 +270,6 @@ final class StartAgentStore {
         startShell: ((ShellLaunchRequest, LaunchDestination, Host.ID) async throws ->
             ShellLaunchResult)? = nil,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
-        awaitPaneVisible: ((String, Host.ID) async -> Void)? = nil,
         origin: LaunchOrigin? = nil,
         recents: RecentWorkspaceStore = RecentWorkspaceStore(),
         selections: RecentSelectionsStore = RecentSelectionsStore()
@@ -311,7 +288,6 @@ final class StartAgentStore {
                     detail: "This flow cannot launch shells.")
             }
         self.awaitAgentVisible = awaitAgentVisible
-        self.awaitPaneVisible = awaitPaneVisible ?? { _, _ in }
         self.recents = recents
         self.selections = selections
         // Pre-select when there is no choice to make; with several Hosts, the
@@ -534,11 +510,10 @@ final class StartAgentStore {
                 } else if let workspaceID {
                     recents.remember(workspaceID, for: hostID)
                 }
-                let startedID = ConsoleLaunchIdentity(hostID: hostID, paneID: agent.paneID)
+                let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
                 // The wait is bounded; on timeout the owner still navigates and
                 // the row catches up with the next resync.
-                await awaitAgentVisible(startedID.agentID ?? ConsoleAgent.ID(
-                    hostID: hostID, paneID: agent.paneID))
+                await awaitAgentVisible(startedID)
                 state = .started(startedID)
             } catch {
                 state = .failed(Self.message(for: error, launchedKind: kind))
@@ -559,12 +534,11 @@ final class StartAgentStore {
                 } else if let workspaceID {
                     recents.remember(workspaceID, for: hostID)
                 }
+                let startedID = ConsoleAgent.ID(hostID: hostID, paneID: result.paneID)
                 // The wait is bounded; on timeout the owner still navigates
-                // and the terminal row catches up with the next resync.
-                await awaitPaneVisible(result.paneID, hostID)
-                state = .started(
-                    ConsoleLaunchIdentity(
-                        hostID: hostID, paneID: result.paneID, isAgent: false))
+                // and the shell row catches up with the next resync.
+                await awaitAgentVisible(startedID)
+                state = .started(startedID)
             } catch {
                 state = .failed(Self.message(for: error, launchedKind: nil))
             }

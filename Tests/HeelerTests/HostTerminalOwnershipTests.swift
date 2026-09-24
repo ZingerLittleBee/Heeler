@@ -12,11 +12,8 @@ struct HostTerminalOwnershipTests {
     private let first = UUID()
     private let second = UUID()
 
-    private func claim(
-        _ sceneID: UUID, on hostID: UUID? = nil, shell: Bool = false
-    ) -> HostTerminalClaim {
-        HostTerminalClaim(
-            sceneID: sceneID, hostID: hostID ?? self.hostID, isShellTerminal: shell)
+    private func claim(_ sceneID: UUID, on hostID: UUID? = nil) -> HostTerminalClaim {
+        HostTerminalClaim(sceneID: sceneID, hostID: hostID ?? self.hostID)
     }
 
     @Test func aLoneWindowHoldsItsHost() {
@@ -50,7 +47,7 @@ struct HostTerminalOwnershipTests {
         #expect(ownership.access(sceneID: second, hostID: hostID, claims: claims) == .holds)
         #expect(
             ownership.access(sceneID: first, hostID: hostID, claims: claims)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 
     @Test func becomingKeyHandsTheChannelOver() {
@@ -78,7 +75,7 @@ struct HostTerminalOwnershipTests {
         #expect(ownership.holders[hostID] == first)
         #expect(
             ownership.access(sceneID: second, hostID: hostID, claims: claims)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 
     /// The key window turning to a Host another window holds is the user
@@ -131,41 +128,6 @@ struct HostTerminalOwnershipTests {
         let tookOver = ownership.takeOver(hostID: hostID, sceneID: second, claims: claims)
         #expect(!tookOver)
         #expect(ownership.holders[hostID] == first)
-    }
-
-    /// A Shell Terminal has no rejoin path to hand over, so its window keeps
-    /// the Host and the waiting window is told it cannot take it.
-    @Test func aShellTerminalWindowKeepsItsHost() {
-        var ownership = HostTerminalOwnership()
-        let claims = [claim(first, shell: true), claim(second)]
-        ownership.reconcile(claims: [claim(first, shell: true)], keySceneID: first)
-
-        ownership.reconcile(claims: claims, keySceneID: second)
-
-        #expect(ownership.holders[hostID] == first)
-        #expect(
-            ownership.access(sceneID: second, hostID: hostID, claims: claims)
-                == .liveInAnotherWindow(canTakeOver: false))
-        let tookOver = ownership.takeOver(hostID: hostID, sceneID: second, claims: claims)
-        #expect(!tookOver)
-        #expect(ownership.holders[hostID] == first)
-    }
-
-    /// The Shell Terminal closes back to the Agent: the window still holds
-    /// the Host, but a key edge elsewhere can now take it.
-    @Test func closingTheShellTerminalMakesTheHostTransferableAgain() {
-        var ownership = HostTerminalOwnership()
-        ownership.reconcile(claims: [claim(first, shell: true), claim(second)], keySceneID: first)
-
-        let claims = [claim(first), claim(second)]
-        ownership.reconcile(claims: claims, keySceneID: first)
-        #expect(ownership.holders[hostID] == first)
-        #expect(
-            ownership.access(sceneID: second, hostID: hostID, claims: claims)
-                == .liveInAnotherWindow(canTakeOver: true))
-
-        ownership.reconcile(claims: claims, keySceneID: second)
-        #expect(ownership.holders[hostID] == second)
     }
 
     /// The holder closes or navigates away: the waiting window gets the

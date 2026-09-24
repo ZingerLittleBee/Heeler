@@ -2,7 +2,8 @@ import Foundation
 import Observation
 
 /// The Console rename actions' form logic (#98): one store per presented
-/// rename sheet, covering both `agent.rename` and `workspace.rename`. The
+/// rename sheet, covering `agent.rename`, `workspace.rename` and a shell
+/// row's `tab.rename`. The
 /// new name lands in the Console through the store's normal snapshot/delta
 /// machinery — this store only fires the RPC and reports its outcome; the
 /// sheet dismisses itself on `.renamed`.
@@ -37,6 +38,10 @@ final class RenameStore {
         /// would silently blank the Console's grouping label, which is only
         /// ever a mistake from a phone keyboard.
         case workspace
+        /// `tab.rename`: a shell row's name is its tab label. Like a
+        /// workspace label any non-empty text is accepted, and an empty one
+        /// is withheld so a shell never loses the name the Console shows.
+        case tab
     }
 
     let subject: Subject
@@ -74,7 +79,7 @@ final class RenameStore {
         case .agent:
             guard let value = submittedValue else { return nil }
             return AgentName.validationError(value)
-        case .workspace:
+        case .workspace, .tab:
             return nil
         }
     }
@@ -90,7 +95,7 @@ final class RenameStore {
         switch subject {
         case .agent:
             return true
-        case .workspace:
+        case .workspace, .tab:
             return submittedValue != nil
         }
     }
@@ -124,9 +129,26 @@ final class RenameStore {
         currentLabel: String,
         rename: @escaping (String) async throws -> Void
     ) -> RenameStore {
-        RenameStore(subject: .workspace, currentValue: currentLabel) { value in
+        labelled(.workspace, currentLabel: currentLabel, rename: rename)
+    }
+
+    /// A shell row's tab rename store, withholding empty labels exactly like
+    /// ``workspace(currentLabel:rename:)``.
+    static func tab(
+        currentLabel: String,
+        rename: @escaping (String) async throws -> Void
+    ) -> RenameStore {
+        labelled(.tab, currentLabel: currentLabel, rename: rename)
+    }
+
+    private static func labelled(
+        _ subject: Subject,
+        currentLabel: String,
+        rename: @escaping (String) async throws -> Void
+    ) -> RenameStore {
+        RenameStore(subject: subject, currentValue: currentLabel) { value in
             guard let value else {
-                assertionFailure("workspace rename submitted without a label")
+                assertionFailure("label rename submitted without a label")
                 throw TransportError.cancelled
             }
             try await rename(value)

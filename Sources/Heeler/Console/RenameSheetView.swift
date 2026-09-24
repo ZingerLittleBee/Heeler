@@ -68,6 +68,7 @@ struct RenameSheetView: View {
         switch store.subject {
         case .agent: "e.g. reviewer"
         case .workspace: "Workspace label"
+        case .tab: "Tab label"
         }
     }
 }

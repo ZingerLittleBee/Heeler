@@ -13,10 +13,27 @@ Entries reference the issue that motivated them.
   terminal running the Host's default shell, with no AI agent. It launches
   through the same flow as an Agent — an existing Workspace, a new worktree,
   or a new Workspace at a browsed directory — but creates only the fresh
-  tab and its shell pane, exactly the shell an SSH login lands in. The
-  sheet remembers the last choice (Default Shell or an Agent kind) the same
-  way it already remembered the Host, and the opened launch lands in the
-  full interactive Shell Terminal.
+  tab and its shell pane, exactly the shell an SSH login lands in. Starting
+  one in an existing Workspace needs no browsed directory: the shell opens
+  where that Workspace's focused pane is. The sheet remembers the last choice
+  (Default Shell or an Agent kind) the same way it already remembered the
+  Host, and the launch opens straight into the shell. Default Shell panes
+  carry `HEELER_SHELL=1` in their environment, so a shell rc that
+  auto-launches an agent in fresh panes can skip that hook when the plain
+  shell was asked for.
+- Plain shells appear in the Console and behave like any Agent. Every plain
+  shell pane is a row in the flat, By Host, and By Host, By Workspace lists,
+  found by search, and it takes the same swipe-to-close, Pin, move to another
+  Workspace, and rename (its Tab name) as an Agent row. Opening one shows the
+  same screen as an Agent, with the Composer — Send runs the command — or
+  Direct Input under the same app-wide setting, the same shortcut row,
+  switcher and tools keyboard, and "Shell" where an Agent shows its status.
+  Opening a shell takes over its terminal from another attached client, as
+  opening an Agent does. Shells never raise banners or Live Activities. The
+  Workspace drawer, Open Terminal and New Terminal open shells on this same
+  screen, and the shells Open Terminal and New Terminal create carry
+  `HEELER_SHELL=1` like Default Shell's. Live in Another Window now always
+  offers Take Over Here, shell or Agent.
 - The Agent terminal shows the session's model, prompt size (as a share of
   the model's context window, `11.0%`, once omp on the Host has named it),
   and spend in a strip above the terminal. These are the figures the Agent's own status line
@@ -73,7 +90,9 @@ Entries reference the issue that motivated them.
   action-required failure, or visibly reconnecting. A caller that reaches the
   degraded transport before the session notices also gets one redial-and-retry
   instead of a phantom "The Host is not connected." — the case the launch
-  window kept producing. (#368)
+  window kept producing — except a Composer send, which could run a shell
+  command or submit a prompt twice, so it is marked failed for you to resend.
+  (#368)
 
 - Typing into an Agent with Direct Input no longer sends a word twice. The
   iOS keyboard no longer offers autocorrect or QuickType suggestions there or

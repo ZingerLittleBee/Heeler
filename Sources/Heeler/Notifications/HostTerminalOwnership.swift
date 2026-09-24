@@ -5,9 +5,8 @@ enum HostTerminalAccess: Equatable, Sendable {
     /// This window holds the channel, nothing else wants it, or this window
     /// does not claim that Host and so has nothing to hand over.
     case holds
-    /// Another window of the app holds it. `canTakeOver` is false while that
-    /// window shows a Shell Terminal, which has no rejoin path to hand over.
-    case liveInAnotherWindow(canTakeOver: Bool)
+    /// Another window of the app holds it; Take Over moves it here.
+    case liveInAnotherWindow
 }
 
 /// One window's claim on a Host's terminal channel: the Agent detail it has
@@ -15,14 +14,11 @@ enum HostTerminalAccess: Equatable, Sendable {
 struct HostTerminalClaim: Equatable, Sendable {
     let sceneID: UUID
     let hostID: Host.ID
-    /// The window shows a Shell Terminal (or is opening one) for its Agent
-    /// rather than the Agent's Attach.
-    let isShellTerminal: Bool
 }
 
 /// Which window owns each Host's interactive Agent presentation, as a pure
-/// decision over window claims. ADR 0017 allows retained idle terminals and
-/// separate shell viewers alongside it; those use the shared retention budget.
+/// decision over window claims. ADR 0017 allows retained idle terminals
+/// alongside it; those use the shared retention budget.
 ///
 /// Only one window actively presents an Agent on a given Host. Other loaded
 /// Agents may retain their idle PTYs until expiry or eviction. "Key window" here
@@ -37,7 +33,6 @@ struct HostTerminalClaim: Equatable, Sendable {
 ///   moves into another window.
 /// - A Host whose holder stops claiming it passes to the key window if that
 ///   window claims it, else to the first-connected window that does.
-/// - A holder showing a Shell Terminal is never handed away.
 ///
 /// Hosts claimed by one window only are unaffected: that window holds. A
 /// window that does not claim a Host (not on one of its Agents, or not yet
@@ -69,9 +64,7 @@ struct HostTerminalOwnership: Equatable, Sendable {
             let current = holders[hostID].flatMap { holder in
                 claims.first { $0.sceneID == holder && $0.hostID == hostID }
             }
-            if let keyClaim, keyClaim.hostID == hostID, isKeyEdge,
-                current?.isShellTerminal != true
-            {
+            if let keyClaim, keyClaim.hostID == hostID, isKeyEdge {
                 next[hostID] = keyClaim.sceneID
             } else if let current {
                 next[hostID] = current.sceneID
@@ -85,21 +78,13 @@ struct HostTerminalOwnership: Equatable, Sendable {
     }
 
     /// Moves `hostID`'s channel to `sceneID` on the user's explicit request.
-    /// False when that window does not claim the Host or the holder shows a
-    /// Shell Terminal.
+    /// False when that window does not claim the Host.
     @discardableResult
     mutating func takeOver(
         hostID: Host.ID, sceneID: UUID, claims: [HostTerminalClaim]
     ) -> Bool {
         guard claims.contains(where: { $0.sceneID == sceneID && $0.hostID == hostID })
         else { return false }
-        if let holder = holders[hostID], holder != sceneID,
-            claims.contains(where: {
-                $0.sceneID == holder && $0.hostID == hostID && $0.isShellTerminal
-            })
-        {
-            return false
-        }
         holders[hostID] = sceneID
         return true
     }
@@ -109,10 +94,8 @@ struct HostTerminalOwnership: Equatable, Sendable {
     ) -> HostTerminalAccess {
         guard claims.contains(where: { $0.sceneID == sceneID && $0.hostID == hostID }),
             let holder = holders[hostID], holder != sceneID,
-            let holderClaim = claims.first(where: {
-                $0.sceneID == holder && $0.hostID == hostID
-            })
+            claims.contains(where: { $0.sceneID == holder && $0.hostID == hostID })
         else { return .holds }
-        return .liveInAnotherWindow(canTakeOver: !holderClaim.isShellTerminal)
+        return .liveInAnotherWindow
     }
 }

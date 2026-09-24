@@ -341,7 +341,14 @@ actor EventsSession {
     /// run-loop exit path — a `.reconnecting`/`.failed` announcement, or
     /// windDown — releases that wait with the real failure, so a suspended,
     /// stopped, or user-retryable Host still fails loudly and at once.
+    ///
+    /// `retryOnLinkFailure: false` is for calls that must not be replayed:
+    /// a link failure cannot say whether herdr already received the request,
+    /// so resending a submitted shell command or Agent prompt could run it
+    /// twice. Such a call still distrusts the dead link (the next call rides
+    /// the replacement) but surfaces the failure for a deliberate resend.
     func withTransport<Value: Sendable>(
+        retryOnLinkFailure: Bool = true,
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
         let transport = try await awaitUsableTransport()
@@ -382,6 +389,9 @@ actor EventsSession {
                 // announce with its real cause.
                 resubscribeRequested = true
                 await liveStream?.end()
+            }
+            guard retryOnLinkFailure else {
+                throw error
             }
             let replacement = try await awaitUsableTransport()
             do {

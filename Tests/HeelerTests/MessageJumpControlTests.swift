@@ -744,7 +744,7 @@ struct MessageJumpAgentTerminalWiringTests {
         composer: AgentComposerStore
     ) async throws -> AgentAttachStore {
         let owner = AgentAttachStore(
-            target: "w1:p1",
+            target: .agentPane("w1:p1"),
             paneTitle: "Claude",
             transportGeneration: 1,
             isOnStage: { true },

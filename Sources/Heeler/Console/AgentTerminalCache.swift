@@ -1,13 +1,17 @@
 import Foundation
 
 /// Agent attaches share the Host's bounded LRU retention budget with shells.
-/// Entries are lazy: listing or constructing a detail never opens a PTY.
+/// Entries are lazy: listing or constructing a detail never opens a PTY. A
+/// shell row is cached like an Agent's, attached by terminal id; an entry
+/// never survives its row changing between shell and Agent, whose Composer
+/// delivery and staging differ.
 @MainActor
 final class AgentTerminalCache {
     @MainActor
     final class Entry {
         let agentID: ConsoleAgent.ID
         let terminalID: String
+        let target: TerminalAttachTarget
         let attach: AgentAttachStore
         let surfaceRetention = TerminalSurfaceRetention()
         fileprivate let lifetime: Lifetime
@@ -16,11 +20,12 @@ final class AgentTerminalCache {
         var isRetained: Bool { lifetime.retained }
 
         fileprivate init(
-            agentID: ConsoleAgent.ID, terminalID: String,
+            agentID: ConsoleAgent.ID, terminalID: String, target: TerminalAttachTarget,
             attach: AgentAttachStore, lifetime: Lifetime, ownerID: UUID
         ) {
             self.agentID = agentID
             self.terminalID = terminalID
+            self.target = target
             self.attach = attach
             self.lifetime = lifetime
             self.presentationOwnerID = ownerID
@@ -56,6 +61,7 @@ final class AgentTerminalCache {
         isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry {
         if let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
+            current.target == agent.attachTarget,
             !current.lifetime.visible || current.presentationOwnerID == ownerID
         {
             current.presentationOwnerID = ownerID
@@ -68,7 +74,7 @@ final class AgentTerminalCache {
         let lifetime = Lifetime()
         lifetime.isPresented = isPresented
         let attach = AgentAttachStore(
-            target: agent.agent.paneID,
+            target: agent.attachTarget,
             paneTitle: AgentTerminalView.displayTitle(for: agent),
             transportGeneration: console.hostConnectionGenerations[agent.hostID],
             isOnStage: { lifetime.retained },
@@ -92,7 +98,7 @@ final class AgentTerminalCache {
                 await console.invalidateMosh(for: agent.hostID)
             })
         let entry = Entry(
-            agentID: agent.id, terminalID: agent.agent.terminalID,
+            agentID: agent.id, terminalID: agent.agent.terminalID, target: agent.attachTarget,
             attach: attach, lifetime: lifetime, ownerID: ownerID)
         entries[agent.id] = entry
         return entry
@@ -189,6 +195,7 @@ final class AgentTerminalCache {
             guard isCurrent() else { return }
             if !agents.contains(where: {
                 $0.id == entry.agentID && $0.agent.terminalID == entry.terminalID
+                    && $0.attachTarget == entry.target
             }) {
                 await evict(entry).value
             }

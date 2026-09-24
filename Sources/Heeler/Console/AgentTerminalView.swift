@@ -322,7 +322,7 @@ struct AgentTerminalView: View {
         self.workspaceDrawer = workspaceDrawer
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
-                target: agent.agent.paneID,
+                target: agent.attachTarget,
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: isOnStage,
@@ -415,9 +415,9 @@ struct AgentTerminalView: View {
         screen.scrollControl = messageJump.scrollControl
         // Agent input is natural-language authored text in both Composer and
         // Direct Input. Matching traits lets UIKit retain one Apple keyboard
-        // context across the responder transfer; Shell terminals keep the
-        // command-oriented defaults.
-        screen.textInputStyle = .naturalLanguage
+        // context across the responder transfer; a shell row keeps the
+        // command-oriented defaults, matching its Composer.
+        screen.textInputStyle = agent.isShell ? .terminal : .naturalLanguage
         screen.initialKeyboardMode = usesDirectToolsKeyboard ? .controls : .text
         // Keep the destination terminal enabled until Composer-to-Direct has
         // fully settled. The reverse handoff must disable this outgoing
@@ -544,14 +544,7 @@ struct AgentTerminalView: View {
                     hostID: agent.hostID,
                     workspaceID: agent.agent.workspaceID,
                     cwd: agent.agent.cwd),
-                onStarted: { launched in
-                    if let id = launched.agentID {
-                        switchToAgent(id)
-                    }
-                    // A plain shell pane has no Agent row; the origin
-                    // screen keeps its place and the shell opens from the
-                    // Workspace drawer's Terminals list.
-                })
+                onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))
@@ -591,14 +584,8 @@ struct AgentTerminalView: View {
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
-                title: "Rename Agent",
-                store: RenameStore(
-                    subject: .agent(detectedKind: agent.agent.kind),
-                    currentValue: agent.agent.name ?? ""
-                ) { [console, agent] name in
-                    try await console.renameAgent(
-                        agent.agent.paneID, name: name, on: agent.hostID)
-                })
+                title: agent.isShell ? "Rename Shell" : "Rename Agent",
+                store: renameStore)
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))
@@ -908,6 +895,25 @@ struct AgentTerminalView: View {
             softwareKeyboardDismissed: keyboardInset.isSoftwareKeyboardDismissed)
     }
 
+    /// Rename names what the row shows. An Agent's name is `agent.rename`'s;
+    /// a shell has no Agent to rename (`agent.rename` refuses it), so its
+    /// name is its tab label, renamed through `tab.rename`.
+    private var renameStore: RenameStore {
+        if agent.isShell {
+            return RenameStore.tab(
+                currentLabel: agent.agent.name ?? ""
+            ) { [console, agent] label in
+                try await console.renameTab(agent.agent.tabID, label: label, on: agent.hostID)
+            }
+        }
+        return RenameStore(
+            subject: .agent(detectedKind: agent.agent.kind),
+            currentValue: agent.agent.name ?? ""
+        ) { [console, agent] name in
+            try await console.renameAgent(agent.agent.paneID, name: name, on: agent.hostID)
+        }
+    }
+
     private var composerActions: AgentComposerActions {
         AgentComposerActions(
             canBegin: attach.staging.canBegin,
@@ -1065,15 +1071,7 @@ struct AgentTerminalView: View {
     private func prepareComposerKeyboardPresentation(
         _ presentation: AgentComposerKeyboardPresentation
     ) {
-        switch presentation {
-        case .tools:
-            keyboardInset.pauseHeightCapture()
-        case .hidden:
-            keyboardInset.resumeHeightCapture()
-        case .system:
-            keyboardInset.resumeHeightCapture()
-            keyboardInset.expectSoftwareKeyboard()
-        }
+        keyboardInset.prepare(for: presentation)
     }
 
     @ViewBuilder
@@ -1531,33 +1529,36 @@ struct AgentTerminalView: View {
             : keyboardInset.height > 0
     }
 
-    private func armAgentKeyboardHandoffIfKeyboardIsUp(for id: ConsoleAgent.ID) {
-        guard id != agent.id, keyboardIsUpForHandoff else { return }
-        keyboardHandoff.arm(
-            for: id, mode: isDirectInput && usesDirectToolsKeyboard ? .controls : .text)
+    /// The keyboard a destination inherits: Direct Input's tools dock stays a
+    /// tools dock, everything else hands over the text keyboard.
+    private var keyboardHandoffMode: TerminalKeyboardMode {
+        isDirectInput && usesDirectToolsKeyboard ? .controls : .text
     }
 
-    /// A Shell Terminal opened from here comes up with the keyboard in the
-    /// state this screen leaves it: up stays up, down stays down.
+    private func armAgentKeyboardHandoffIfKeyboardIsUp(for id: ConsoleAgent.ID) {
+        guard id != agent.id, keyboardIsUpForHandoff else { return }
+        keyboardHandoff.arm(for: id, mode: keyboardHandoffMode)
+    }
+
+    /// A shell opened from here before its row is known — Open Terminal's
+    /// chooser or a New Terminal still being created — comes up with the
+    /// keyboard in the state this screen leaves it: up stays up, down stays
+    /// down. Agent detail re-arms it for the row once the row is resolved.
     private func armShellTerminalKeyboardHandoffIfKeyboardIsUp() {
         if keyboardIsUpForHandoff {
-            keyboardHandoff.armShellTerminal()
+            keyboardHandoff.armShellTerminal(mode: keyboardHandoffMode)
         } else {
             keyboardHandoff.cancelShellTerminal()
         }
     }
 
-    /// The drawer's routes rebuild this screen or replace it with a Shell
-    /// Terminal; each captures the keyboard state before it leaves.
+    /// The drawer's routes rebuild this screen for another row; each
+    /// captures the keyboard state before it leaves.
     private func keyboardCarryingDrawer(_ drawer: WorkspaceTerminalDrawer) -> WorkspaceTerminalDrawer {
         var carrying = drawer
         let onSelect = drawer.onSelect
         carrying.onSelect = { target in
-            if let agentID = target.agentID {
-                armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
-            } else {
-                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
-            }
+            armAgentKeyboardHandoffIfKeyboardIsUp(for: target.rowID)
             onSelect(target)
         }
         if let onNewTerminal = drawer.onNewTerminal {
@@ -1669,12 +1670,10 @@ struct AgentTerminalView: View {
                 message: away.message,
                 palette: themePalette
             ) {
-                if away.showsTakeOver {
-                    Button(LiveInAnotherWindowPresentation.takeOverTitle) {
-                        sceneRouting?.takeOverTerminal(for: agent.hostID)
-                    }
-                    .buttonStyle(.borderedProminent)
+                Button(LiveInAnotherWindowPresentation.takeOverTitle) {
+                    sceneRouting?.takeOverTerminal(for: agent.hostID)
                 }
+                .buttonStyle(.borderedProminent)
             }
         } else if let presentation = TerminalStatusPresentation(status: attach.terminalStatus) {
             switch presentation.kind {

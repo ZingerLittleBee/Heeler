@@ -10,14 +10,14 @@ import SwiftUI
 struct StartAgentView: View {
     @State private var store: StartAgentStore
     @State private var directoryBrowser: RemoteDirectoryBrowser?
-    private let onStarted: (ConsoleLaunchIdentity) -> Void
+    private let onStarted: (ConsoleAgent.ID) -> Void
     private let console: ConsoleStore
     @Environment(\.dismiss) private var dismiss
 
     init(
         hosts: [Host], console: ConsoleStore,
         origin: StartAgentStore.LaunchOrigin? = nil,
-        onStarted: @escaping (ConsoleLaunchIdentity) -> Void
+        onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
         self.onStarted = onStarted
         self.console = console
@@ -58,7 +58,6 @@ struct StartAgentView: View {
                     }
                 },
                 awaitAgentVisible: { await console.waitForAgent($0) },
-                awaitPaneVisible: { await console.waitForPane($0, on: $1) },
                 origin: origin))
     }
 

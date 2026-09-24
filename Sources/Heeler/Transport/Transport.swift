@@ -45,6 +45,13 @@ protocol Transport: Sendable {
     /// herdr's own spellings, shared with `pane.send_keys` / `pane.send_input`.
     func sendAgentKeys(_ params: AgentSendKeysParams) async throws
 
+    /// Types into any Pane's PTY through `pane.send_input`: `text` is
+    /// inserted without submitting unless `keys` follow it, and
+    /// `{text, keys: ["enter"]}` is an atomic type-and-submit (verified live
+    /// on 0.8.0). Unlike `agent.prompt` this works on an ordinary shell, so
+    /// it is the shell row Composer's delivery path.
+    func sendPaneInput(_ params: PaneSendInputParams) async throws
+
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
     /// work from the road). Creates a fresh herdr tab in the chosen workspace,
     /// starts the requested agent in its root pane, and returns the Agent once
@@ -88,9 +95,8 @@ protocol Transport: Sendable {
 
     /// Launches a plain shell in the chosen Workspace (`tab.create` only —
     /// the root pane already runs the Host's default shell, so no
-    /// `agent.start` follows). The concrete directory is mandatory so herdr
-    /// cannot inherit an unrelated focused Pane's cwd; a nil directory
-    /// launches nothing.
+    /// `agent.start` follows). As with `startAgent`, a nil directory lets
+    /// herdr use the chosen Workspace's focused pane cwd.
     func startShellTerminal(
         _ request: ShellLaunchRequest
     ) async throws -> ShellLaunchResult
@@ -777,6 +783,16 @@ struct Agent: Sendable, Equatable {
     /// otherwise the detected kind.
     var displayName: String { name ?? kind }
 
+    /// The `kind` of a plain herdr shell tab with no Agent in it. herdr has
+    /// no agent entry for such a pane; the Console projects one so a shell is
+    /// just another row — to herdr it is just another tab.
+    static let shellKind = "shell"
+
+    /// A projected plain shell, not a detected Agent: it attaches through
+    /// `terminal attach`, receives input through `pane.send_input`, and has
+    /// no Agent-only API (`agent.prompt`, `agent.read`, `agent.rename`).
+    var isShell: Bool { kind == Self.shellKind }
+
     init(
         terminalID: String, kind: String, title: String, status: AgentStatus,
         workspaceID: String, tabID: String, paneID: String, cwd: String, revision: Int,
@@ -1001,4 +1017,15 @@ struct HerdrAPIError: Error, Sendable, Equatable {
     /// without pinning the code's JSON type.
     let code: String
     let message: String
+}
+
+extension PaneSendInputParams {
+    /// True when this input submits what it types — Enter in `keys`, or a
+    /// line break in `text`, which the PTY treats the same way. A shell runs
+    /// a submitted command on receipt, so a submitting send must never be
+    /// replayed after a link failure that cannot say whether herdr got it.
+    var submitsInput: Bool {
+        if keys?.contains("enter") == true { return true }
+        return text?.contains(where: \.isNewline) == true
+    }
 }

@@ -124,9 +124,10 @@ final class HeelerAppModel {
 
         // The banner store diffs the Agent list for foreground Blocked/Done
         // transitions (#77); both it and the Live Activities take the
-        // current list as their baseline before the Hosts connect.
-        bannerStore.agentsDidChange(console.agents)
-        liveActivities.agentsDidChange(console.agents)
+        // current list as their baseline before the Hosts connect. Shell
+        // rows have no Agent Status, so neither ever sees them.
+        bannerStore.agentsDidChange(console.agents.excludingShells)
+        liveActivities.agentsDidChange(console.agents.excludingShells)
 
         Task {
             console.setHosts(hostStore.hosts)
@@ -184,9 +185,12 @@ final class HeelerAppModel {
             notificationPreferences.setHosts(hosts)
             liveActivities.layoutsDidChange()
         }
-        observe({ console.agents }) { [weak self] agents in
-            self?.bannerStore.agentsDidChange(agents)
-            self?.liveActivities.agentsDidChange(agents)
+        // Shells have no Agent Status, and their titles change constantly:
+        // observing the shell-free list keeps that churn from restarting the
+        // Live Activity settle timer.
+        observe({ console.agents.excludingShells }) { [weak self] statusAgents in
+            self?.bannerStore.agentsDidChange(statusAgents)
+            self?.liveActivities.agentsDidChange(statusAgents)
         }
         observe({ console.rowLayouts.hostLayouts }) { [weak self] _ in
             self?.liveActivities.layoutsDidChange()

@@ -7,6 +7,13 @@ status: accepted
 ADR 0017 supersedes this decision's always-create target selection and single
 Host terminal lifetime. The direct terminal attach transport remains in use.
 
+_2026-09-24:_ ADR 0018 supersedes the separate Shell Terminal surface: plain
+shell panes are now Console rows projected as Agents of kind `shell` and open
+Agent detail, with its Composer and Direct Input, like any Agent. What
+remains of this ADR is the direct terminal attach transport — a shell row
+attaches with `herdr terminal attach` because `agent attach` refuses a plain
+pane — and the herdr facts and rejected options below.
+
 Agent detail gains **Open Terminal** (#231): one tap creates one fresh herdr
 tab in the Agent's launch directory — `tab.create` with the Agent's workspace
 id, a concrete `cwd`, and `focus: false` — and opens the returned root pane's

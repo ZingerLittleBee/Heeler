@@ -511,29 +511,88 @@ struct EventsSessionSubscriptionsTests {
             reconnectPolicy: ReconnectPolicy(
                 initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
             keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
 
         await session.resume()
+        // `resume()` returns with the activation underway, not with `first`
+        // installed. Killing the link any earlier lets the run loop's own
+        // connect ping hit it: the probe is then either released with that
+        // reconnect's cause or handed the replacement outright, and never
+        // reaches the retry this test is about.
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
 
         // The degraded link its events reader has not reported yet.
         await first.setConnectionAlive(false)
-        await first.failPing(
-            atCall: 1, with: TransportError.sshUnreachable(detail: "dead link"))
 
         let probe = Task {
             try await session.withTransport { transport in
                 try await transport.ping().version
             }
         }
-        // Let the first attempt fail on the dead transport and the retry
-        // queue behind the redial.
-        try await Task.sleep(for: .milliseconds(50))
-        // Force the redial the way the real session's own traffic would: a
-        // subscription change ends the stream and the run loop reconnects,
-        // releasing the queued retry.
-        await session.updateSubscriptions(updated)
-        try await Task.sleep(for: .milliseconds(50))
+        // With no keepalive and no subscription change, only the failed
+        // first attempt can end `first`'s stream, so the redial reaching the
+        // closed gate proves the call failed on `first` and handed the
+        // connection back to the run loop. The retry cannot find anything
+        // installed until the gate opens.
+        try await waitUntil("the failed call should force a redial") {
+            await connectGate.entryCount == 1
+        }
         await connectGate.open()
         #expect(try await probe.value == "replacement")
+        // The replacement was silent: no `.reconnecting` before its `.connected`.
+        #expect(await updates.next() == .status(.connected))
+
+        await session.end()
+    }
+
+    /// A link failure cannot say whether herdr already received the request.
+    /// An idempotent call still rides the one retry, but input that submits
+    /// is never replayed — the shell may already have run the command — so
+    /// the failure surfaces for a deliberate resend instead.
+    @Test func aSubmittingPaneInputIsNeverReplayedAfterALinkFailure() async throws {
+        let first = ScriptedTransport()
+        let second = ScriptedTransport()
+        let third = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, second, third])
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        // Live stream installed: the failed call can end it to force the redial.
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        // Typing without Enter is safe to replay: the swallowed first
+        // attempt is retried once on the replacement.
+        let typed = PaneSendInputParams(paneID: "w1:p1", text: "git st")
+        #expect(!typed.submitsInput)
+        await first.setConnectionAlive(false)
+        await first.failPaneInput(
+            atCall: 1, with: .sshUnreachable(detail: "dead link"))
+        try await session.withTransport(retryOnLinkFailure: !typed.submitsInput) {
+            try await $0.sendPaneInput(typed)
+        }
+        #expect(await first.paneInputParams == [typed])
+        #expect(await second.paneInputParams == [typed])
+
+        // The same failure on a submitting send: herdr may have run it, so
+        // it is attempted exactly once and the failure propagates.
+        let submit = PaneSendInputParams(paneID: "w1:p1", keys: ["enter"], text: "git push")
+        #expect(submit.submitsInput)
+        await second.setConnectionAlive(false)
+        await second.failPaneInput(atCall: 2, with: .timedOut)
+        await #expect(throws: TransportError.timedOut) {
+            try await session.withTransport(retryOnLinkFailure: !submit.submitsInput) {
+                try await $0.sendPaneInput(submit)
+            }
+        }
+        #expect(await second.paneInputParams == [typed, submit])
+        #expect(await third.paneInputParams.isEmpty)
 
         await session.end()
     }

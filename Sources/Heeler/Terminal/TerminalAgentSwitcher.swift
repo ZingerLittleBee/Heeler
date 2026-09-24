@@ -23,6 +23,16 @@ extension TerminalAgentSwitcherItem {
     }
 }
 
+extension AgentStatus {
+    /// Presentation only, never on the wire: the status a projected shell row
+    /// (`Agent.shellKind`) carries where an Agent carries its Agent Status —
+    /// its Console badge, switcher chip and the status line above its input
+    /// chrome. It falls into the palette's muted default and the bottom sort
+    /// bucket, like Unknown, counts toward no Host status total, and reads
+    /// "Shell".
+    static let shellTerminal = AgentStatus(rawValue: "shell")
+}
+
 /// What an Agent surface hands its switcher: the Agents to offer, the one
 /// currently on screen, where a tap goes, and where a Pin / Unpin goes.
 struct TerminalAgentSwitcher {
@@ -65,36 +75,34 @@ final class TerminalKeyboardHandoff {
         return true
     }
 
-    private var shellTerminalArmed = false
+    private var shellTerminalMode: TerminalKeyboardMode?
 
     /// Whether a screen is about to take the keyboard over. The screen being
     /// left must then keep first responder until that screen claims it,
     /// instead of dismissing on its way out: a dismissal starts UIKit's hide
     /// animation, and the next claim can only re-present the keyboard after
     /// it has fully dropped.
-    var isArmed: Bool { armedID != nil || shellTerminalArmed }
+    var isArmed: Bool { armedID != nil || shellTerminalMode != nil }
 
-    /// Whether the next Shell Terminal screen takes the keyboard over; read
-    /// by the screen that stands in for it while its connection is prepared.
-    var isShellTerminalArmed: Bool { shellTerminalArmed }
-
-    /// The keyboard is up and a Shell Terminal is about to be presented. Not
-    /// keyed by identity: the destination is often unknown when the intent
-    /// is captured (New Terminal creates it first; Open Terminal may ask
-    /// which one), so the next Shell Terminal screen to come up takes it.
-    func armShellTerminal() {
-        shellTerminalArmed = true
+    /// The keyboard is up and a shell row is about to be opened. Not keyed
+    /// by identity: the destination is often unknown when the intent is
+    /// captured (New Terminal creates it first; Open Terminal may ask which
+    /// one), so Agent detail re-arms it for the row once the row is resolved,
+    /// in the same mode — a tools dock stays a tools dock.
+    func armShellTerminal(mode: TerminalKeyboardMode = .text) {
+        shellTerminalMode = mode
     }
 
-    /// The Shell Terminal never came up (creation failed), so the intent
-    /// must not raise the keyboard on an unrelated later open.
+    /// No shell row came up (creation failed or was cancelled), so the
+    /// intent must not raise the keyboard on an unrelated later open.
     func cancelShellTerminal() {
-        shellTerminalArmed = false
+        shellTerminalMode = nil
     }
 
-    func consumeShellTerminal() -> Bool {
-        defer { shellTerminalArmed = false }
-        return shellTerminalArmed
+    /// The mode the shell handoff was armed in, or nil when none was armed.
+    func consumeShellTerminal() -> TerminalKeyboardMode? {
+        defer { shellTerminalMode = nil }
+        return shellTerminalMode
     }
 }
 

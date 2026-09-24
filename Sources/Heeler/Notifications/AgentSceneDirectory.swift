@@ -153,8 +153,6 @@ final class AgentSceneDirectory {
         let window: (any AgentSceneWindow)?
         let activate: @MainActor () -> Void
         var activationOrder: UInt64 = 0
-        /// The Agent whose detail shows a Shell Terminal in this window.
-        var shellTerminalAgent: ConsoleAgent.ID?
     }
 
     @ObservationIgnored private var entries: [UUID: Entry] = [:]
@@ -229,15 +227,6 @@ final class AgentSceneDirectory {
         reconcileTerminalOwnership()
     }
 
-    /// Whether a window's Agent detail shows a Shell Terminal, and for which
-    /// Agent. A holder showing one keeps its Host's channel.
-    func shellTerminalDidChange(sceneID: UUID, agent: ConsoleAgent.ID?) {
-        guard entries[sceneID] != nil, entries[sceneID]?.shellTerminalAgent != agent
-        else { return }
-        entries[sceneID]?.shellTerminalAgent = agent
-        reconcileTerminalOwnership()
-    }
-
     func terminalAccess(sceneID: UUID, hostID: Host.ID) -> HostTerminalAccess {
         terminalOwnership.access(sceneID: sceneID, hostID: hostID, claims: terminalClaims)
     }
@@ -259,9 +248,7 @@ final class AgentSceneDirectory {
             guard let entry = liveEntry(id), let agent = entry.router.path.last,
                 entry.router.isKnownAgent(agent)
             else { return nil }
-            return HostTerminalClaim(
-                sceneID: id, hostID: agent.hostID,
-                isShellTerminal: entry.shellTerminalAgent == agent)
+            return HostTerminalClaim(sceneID: id, hostID: agent.hostID)
         }
         var ownership = terminalOwnership
         ownership.reconcile(claims: claims, keySceneID: AgentDeepLinkPolicy.keyScene(in: scenes))
@@ -358,11 +345,6 @@ struct AgentSceneRouting: Equatable {
     @MainActor
     func takeOverTerminal(for hostID: Host.ID) {
         directory.takeOverTerminal(sceneID: sceneID, hostID: hostID)
-    }
-
-    @MainActor
-    func shellTerminalDidChange(agent: ConsoleAgent.ID?) {
-        directory.shellTerminalDidChange(sceneID: sceneID, agent: agent)
     }
 }
 

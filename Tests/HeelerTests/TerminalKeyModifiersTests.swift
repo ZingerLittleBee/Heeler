@@ -183,44 +183,16 @@ struct TerminalKeyModifiersTests {
         #expect(!fixture.terminal.isFirstResponder)
     }
 
-    @Test func shellKeysRequireLocalInputAndFollowTerminalReplacement() async throws {
-        let fixture = try await Fixture.make()
-        defer { fixture.close() }
-        fixture.terminal.setLocalInputEnabled(false)
-        fixture.control.toggleModifier(.control)
-        fixture.control.sendTerminalKey(.character("c"))
-        #expect(fixture.control.pendingModifiers == .control)
-        #expect(try await fixture.drain().isEmpty)
-        fixture.terminal.setLocalInputEnabled(true)
-        fixture.control.sendTerminalKey(.character("c"))
-        #expect(fixture.control.pendingModifiers.isEmpty)
-        #expect(try await fixture.drain() == Data([3]))
-
-        let replacement = try await Fixture.make()
-        defer { replacement.close() }
-        replacement.terminal.setLocalInputEnabled(true)
-        fixture.control.terminal = replacement.terminal
-        fixture.control.toggleModifier(.shift)
-        fixture.control.sendTerminalKey(.character("a"))
-        #expect(try await replacement.drain() == Data("A".utf8))
-        #expect(try await fixture.drain().isEmpty)
-        #expect(fixture.control.pendingModifiers.isEmpty)
-    }
-
     @Test func missingTerminalOrSurfaceRetainsPendingModifiers() {
         let control = TerminalKeyboardControl()
         control.toggleModifier(.shift)
         control.sendQuickKey(.character("a"))
-        #expect(control.pendingModifiers == .shift)
-        control.sendTerminalKey(.character("a"))
         #expect(control.pendingModifiers == .shift)
 
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         terminal.setLocalInputEnabled(true)
         control.terminal = terminal
         control.sendQuickKey(.character("a"))
-        #expect(control.pendingModifiers == .shift)
-        control.sendTerminalKey(.character("a"))
         #expect(control.pendingModifiers == .shift)
     }
 

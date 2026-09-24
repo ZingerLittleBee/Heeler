@@ -87,7 +87,6 @@ struct StartAgentStoreTests {
         },
         remoteHome: @escaping (Host.ID) async throws -> String = { _ in "/home/you" },
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void = { _ in },
-        awaitPaneVisible: @escaping (String, Host.ID) async -> Void = { _, _ in },
         origin: StartAgentStore.LaunchOrigin? = nil,
         recents: RecentWorkspaceStore? = nil,
         selections: RecentSelectionsStore? = nil,
@@ -105,7 +104,6 @@ struct StartAgentStoreTests {
                 try await recorder.recordShell(params, destination, hostID)
             },
             awaitAgentVisible: awaitAgentVisible,
-            awaitPaneVisible: awaitPaneVisible,
             origin: origin,
             recents: recents ?? makeRecents(),
             selections: selections ?? makeSelections())
@@ -114,15 +112,16 @@ struct StartAgentStoreTests {
     /// The `.started` state a default-recorder agent submit lands in: the
     /// recorder's fixture pane on the submitting Host.
     private func started(on host: Host, paneID: String = "w1:pnew") -> StartAgentStore.State {
-        .started(ConsoleLaunchIdentity(hostID: host.id, paneID: paneID))
+        .started(ConsoleAgent.ID(hostID: host.id, paneID: paneID))
     }
 
     /// The `.started` state a default-recorder shell submit lands in: the
-    /// recorder's fixture shell pane on the submitting Host.
+    /// recorder's fixture shell pane on the submitting Host — a row identity
+    /// exactly like an Agent's.
     private func shellStarted(on host: Host, paneID: String = "w1:p-shell")
         -> StartAgentStore.State
     {
-        .started(ConsoleLaunchIdentity(hostID: host.id, paneID: paneID, isAgent: false))
+        .started(ConsoleAgent.ID(hostID: host.id, paneID: paneID))
     }
 
     private func waitUntil(
@@ -1544,26 +1543,26 @@ struct StartAgentStoreTests {
         #expect(recents.workspaceID(for: host.id) == nil)
     }
 
-    @Test func shellSubmitWaitsForTheTerminalInventory() async throws {
+    @Test func shellSubmitWaitsForItsConsoleRow() async throws {
         let host = Host.fixture()
         let recorder = StartRecorder()
         let visibilityGate = ScriptedTransportCallGate()
         final class Seen {
-            var waits: [(String, Host.ID)] = []
+            var waits: [ConsoleAgent.ID] = []
         }
         let seen = Seen()
         let store = makeStore(
             hosts: [host],
             workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
-            awaitPaneVisible: { paneID, hostID in
-                seen.waits.append((paneID, hostID))
+            awaitAgentVisible: { id in
+                seen.waits.append(id)
                 await visibilityGate.waitUntilOpen()
             },
             recorder: recorder)
         store.selectedLaunchIsShell = true
 
         let submit = Task { await store.submit() }
-        try await waitUntil("the terminal visibility wait should begin") {
+        try await waitUntil("the row visibility wait should begin") {
             await visibilityGate.entryCount == 1
         }
         #expect(store.state == .starting)
@@ -1572,9 +1571,7 @@ struct StartAgentStoreTests {
         await submit.value
 
         #expect(store.state == shellStarted(on: host))
-        #expect(seen.waits.count == 1)
-        #expect(seen.waits.first?.0 == "w1:p-shell")
-        #expect(seen.waits.first?.1 == host.id)
+        #expect(seen.waits == [ConsoleAgent.ID(hostID: host.id, paneID: "w1:p-shell")])
     }
 
     @Test func shellTabNameFallsBackToDefaultShellSkippingTakenLabels() async {

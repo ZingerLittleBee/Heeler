@@ -362,9 +362,9 @@ final class HostConsoleProjection {
         return agent
     }
 
-    /// Plain-shell launches refresh the terminal inventory instead of the
-    /// Agent list: no agent exists, so the new pane only reaches the Console
-    /// through `terminalsByPane`.
+    /// Plain-shell launches refresh the whole projection: no agent exists,
+    /// so the new pane reaches the Console as a shell row projected from the
+    /// snapshot's panes.
     @discardableResult
     func startShellTerminal(_ request: ShellLaunchRequest) async throws -> ShellLaunchResult {
         let result = try await session.withTransport { transport in
@@ -431,25 +431,6 @@ final class HostConsoleProjection {
         }
         scheduleResync()
         return response
-    }
-
-    /// Whether a Pane is still alive on the Host, probed with a minimal
-    /// `pane.read`. A server rejection means the Pane is gone (closed on the
-    /// desktop, or the server restarted and lost every tab); a transport
-    /// failure proves nothing and is rethrown so the caller does not mistake
-    /// an outage for a missing Pane.
-    func paneExists(_ paneID: String) async throws -> Bool {
-        do {
-            _ = try await session.withTransport { transport in
-                try await transport.readPane(
-                    PaneReadParams(paneID: paneID, source: .visible, lines: 1))
-            }
-            return true
-        } catch is HerdrAPIError {
-            return false
-        } catch TransportError.apiRejected {
-            return false
-        }
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
@@ -665,6 +646,20 @@ final class HostConsoleProjection {
         scheduleResync()
     }
 
+    /// Renames a tab (`tab.rename`): a shell row's name is its tab label,
+    /// and `agent.rename` refuses a pane with no Agent. `tab.renamed` is a
+    /// membership event already; the post-RPC resync just lands it sooner.
+    func renameTab(_ tabID: String, label: String) async throws {
+        try await session.withTransport { transport in
+            guard let ssh = transport as? HeelerSSHTransport else {
+                throw TransportError.sshUnreachable(
+                    detail: "This Host cannot rename tabs.")
+            }
+            _ = try await ssh.renameTab(TabRenameParams(label: label, tabID: tabID))
+        }
+        scheduleResync()
+    }
+
     private func handle(_ update: EventsSessionUpdate) {
         guard !hasEnded else { return }
         switch update {
@@ -765,8 +760,12 @@ final class HostConsoleProjection {
                 preservingStatusChangesAfter: statusRevisionBeforeSnapshot,
                 preservingPaneChangesAfter: paneRevisionBeforeSnapshot,
                 requestGeneration: requestGeneration)
+            // Only Agents report Agent Status; a shell becoming an Agent
+            // arrives through the global `pane.agent_detected` resync.
             await session.updateSubscriptions(
-                Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
+                Self.subscriptions(
+                    paneIDs: agentsByPane.values.lazy.filter { !$0.isShell }.map(\.agent.paneID),
+                    protocolVersion: snapshot.protocolVersion))
             refreshSnippets()
         } catch {
             guard
@@ -860,7 +859,6 @@ final class HostConsoleProjection {
         }
         latestStatusChanges.removeAll(keepingCapacity: true)
         isAwaitingSnapshot = false
-        agentsByPane = nextAgents
         let workspacePositions = Dictionary(
             snapshot.workspaces.enumerated().map { ($0.element.workspaceID, $0.offset) }
         ) { first, _ in first }
@@ -880,14 +878,39 @@ final class HostConsoleProjection {
             let tab = tabByID[pane.tabID].flatMap {
                 $0.workspaceID == pane.workspaceID ? $0 : nil
             }
+            let workspace = workspaceByID[pane.workspaceID]
+            let tabPosition = tab.flatMap { tabPositions[$0.tabID] }
             nextTerminals[pane.paneID] = ConsoleTerminal(
                 hostID: host.id, hostName: host.displayName, hostUsername: host.username,
-                pane: pane, workspaceLabel: workspaceByID[pane.workspaceID]?.label,
+                pane: pane, workspaceLabel: workspace?.label,
                 tabLabel: tab?.label,
                 workspaceOrder: workspacePositions[pane.workspaceID] ?? Int.max,
-                tabPosition: tab.flatMap { tabPositions[$0.tabID] }, snapshotOrder: order,
-                snapshotAgentKind: nextAgents[pane.paneID]?.agent.kind)
+                tabPosition: tabPosition, snapshotOrder: order,
+                snapshotAgentKind: nextAgents[pane.paneID].flatMap {
+                    $0.isShell ? nil : $0.agent.kind
+                })
+            // A pane with no Agent is a plain shell tab: to herdr just another
+            // tab, so it is just another row. An Agent appearing on it later
+            // replaces this row under the same ID, and an Agent exiting back
+            // to its shell becomes this row again.
+            guard nextAgents[pane.paneID] == nil else { continue }
+            nextAgents[pane.paneID] = ConsoleAgent(
+                hostID: host.id,
+                hostName: host.displayName,
+                agent: Agent(
+                    shellPane: pane,
+                    name: Self.shellName(tabLabel: tab?.label, tabPosition: tabPosition)),
+                workspaceLabel: workspace?.label,
+                repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
+                lastOutputSnippet: agentsByPane[pane.paneID]?.lastOutputSnippet,
+                hostUsername: host.username,
+                tabLabel: tab?.label,
+                tabPosition: tabPosition,
+                workspaceTabCount: max(workspace?.tabCount ?? 0, tabCounts[pane.workspaceID] ?? 0),
+                snapshotOrder: snapshot.agents.count + order,
+                paneLabel: pane.label)
         }
+        agentsByPane = nextAgents
         latestPaneChanges.removeAll(keepingCapacity: true)
         terminalsByPane = nextTerminals
         workspacesByID = workspaceByID
@@ -952,15 +975,32 @@ final class HostConsoleProjection {
         if resyncTask != nil {
             latestPaneChanges[pane.paneID] = (paneChangeRevision, pane)
         }
-        guard var terminal = terminalsByPane[pane.paneID],
+        var changed = false
+        if var terminal = terminalsByPane[pane.paneID],
             terminal.terminalID == pane.terminalID,
             terminal.workspaceID == pane.workspaceID,
             terminal.tabID == pane.tabID
-        else { return }
-        terminal.pane = pane
-        guard terminal != terminalsByPane[pane.paneID] else { return }
-        terminalsByPane[pane.paneID] = terminal
-        publish()
+        {
+            terminal.pane = pane
+            if terminal != terminalsByPane[pane.paneID] {
+                terminalsByPane[pane.paneID] = terminal
+                changed = true
+            }
+        }
+        // A shell row's title and cwd are its pane's, so they follow the same
+        // delta. Agent rows keep theirs from the snapshot's agent entry.
+        if var row = agentsByPane[pane.paneID], row.isShell,
+            row.agent.terminalID == pane.terminalID,
+            row.agent.workspaceID == pane.workspaceID,
+            row.agent.tabID == pane.tabID
+        {
+            row.agent = Agent(shellPane: pane, name: row.agent.name)
+            if row != agentsByPane[pane.paneID] {
+                agentsByPane[pane.paneID] = row
+                changed = true
+            }
+        }
+        if changed { publish() }
     }
 
     private func applyStatusChange(_ data: JSONValue) -> AgentStatus? {
@@ -971,7 +1011,10 @@ final class HostConsoleProjection {
         let status = AgentStatus(rawValue: rawStatus)
         statusChangeRevision &+= 1
         latestStatusChanges[paneID] = (statusChangeRevision, status)
-        guard var row = agentsByPane[paneID] else { return status }
+        // A shell row has no Agent Status to fold. A status event on its pane
+        // means an Agent started there; the resync it triggers replaces the
+        // shell row with the Agent's.
+        guard var row = agentsByPane[paneID], !row.isShell else { return status }
         row.agent.status = status
         agentsByPane[paneID] = row
         publish()
@@ -1020,6 +1063,18 @@ final class HostConsoleProjection {
     private func publish() {
         guard !hasEnded else { return }
         onChange()
+    }
+
+    /// A shell row's name is its tab's label when the user (or a Default
+    /// Shell launch) set one. herdr's automatic label is the tab's position,
+    /// which names nothing, so that falls back to the `shell` kind.
+    static func shellName(tabLabel: String?, tabPosition: Int?) -> String? {
+        guard
+            let label = tabLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !label.isEmpty,
+            label != tabPosition.map(String.init)
+        else { return nil }
+        return label
     }
 
     private static let snippetReadLines = 6

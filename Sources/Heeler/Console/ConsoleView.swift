@@ -3,9 +3,8 @@ import UniformTypeIdentifiers
 
 /// The Console home screen (#8): Agents across every Host, shown either as
 /// the flat status-sorted list or grouped by Host with collapsible sections
-/// (#245). Host management (#14) lives behind the toolbar button. A Workspace
-/// terminal selected from Agent detail's drawer shows in the detail column
-/// without a row of its own here.
+/// (#245). Host management (#14) lives behind the toolbar button. A plain
+/// shell tab is a row like any Agent's and opens the same Agent detail.
 struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
@@ -25,9 +24,6 @@ struct ConsoleView: View {
     /// Scene phase widened by the background grace period; an Attach screen
     /// pauses its work on real suspensions only.
     let activity: AppActivityCoordinator
-    /// A Workspace terminal chosen from Agent detail's drawer. It shares the
-    /// detail column with the router's Agent path; only one is ever set.
-    @State private var selectedTerminal: ConsoleTerminal?
     @State private var hostSheet: HostSheet?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
@@ -188,21 +184,10 @@ struct ConsoleView: View {
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
             StartAgentView(hosts: hosts.hosts, console: console) { launched in
-                // A fresh launch lands in its own terminal, exactly
-                // as tapping the new row would. A plain shell has no
-                // Console row: the terminal inventory owns it instead, and
-                // the store's bounded wait has normally landed it by now.
-                // A pane the inventory still lacks opens nowhere rather
-                // than a terminal addressed by a fabricated id; the row
-                // shows up in the Console when the next snapshot lands.
-                if let agentID = launched.agentID {
-                    selectedTerminal = nil
-                    notificationRouter.path = [agentID]
-                } else if let terminal = console.terminals.first(where: {
-                    $0.hostID == launched.hostID && $0.paneID == launched.paneID
-                }) {
-                    selectTerminal(terminal)
-                }
+                // A fresh launch lands in its own terminal, exactly as
+                // tapping the new row would — an Agent and a plain shell
+                // alike, since both are rows.
+                notificationRouter.path = [launched]
             }
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
@@ -245,7 +230,6 @@ struct ConsoleView: View {
         // clearing here is a no-op for it.
         .onChange(of: notificationRouter.path) { _, path in
             guard !path.isEmpty else { return }
-            selectedTerminal = nil
             hostSheet = nil
             isStartingAgent = false
             isShowingSettings = false
@@ -266,9 +250,7 @@ struct ConsoleView: View {
             registry: commandRegistry,
             context: {
                 .init(
-                    selection: notificationRouter.path.last ?? selectedTerminal.map {
-                        ConsoleAgent.ID(hostID: $0.hostID, paneID: $0.paneID)
-                    },
+                    selection: notificationRouter.path.last,
                     agents: listPresentation.mode == .flat
                         ? filteredAgents.map(\.id)
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
@@ -295,53 +277,26 @@ struct ConsoleView: View {
             closeAgent: { clearSelection() })
     }
 
-    /// The sidebar selection as a projection of the router's path, or of the
-    /// drawer terminal on stage. Setting it (a row tap, or the collapsed
-    /// stack popping) writes the path back, so user navigation and deep
-    /// links keep one source of truth. A drawer terminal has no row, but it
-    /// must still be *a* selection: on iPhone the split view shows the
-    /// detail column only while this is non-nil, so clearing it to present
-    /// a terminal would pop straight back to the Agent list.
-    private var selectedItem: Binding<ConsoleSelection?> {
+    /// The sidebar selection as a projection of the router's path. Setting
+    /// it (a row tap, or the collapsed stack popping) writes the path back,
+    /// so user navigation and deep links keep one source of truth.
+    private var selectedItem: Binding<ConsoleAgent.ID?> {
         Binding(
-            get: {
-                if let id = notificationRouter.path.last { return .agent(id) }
-                return selectedTerminal.map { .terminal($0.id) }
-            },
+            get: { notificationRouter.path.last },
             set: { selection in
-                switch selection {
-                case .agent(let id): selectAgent(id)
-                case .terminal(let id):
-                    if let terminal = console.terminals.first(where: { $0.id == id }) {
-                        selectTerminal(terminal)
-                    }
-                case nil: clearSelection()
-                }
+                if let selection { selectAgent(selection) } else { clearSelection() }
             })
     }
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
         changeSelection {
-            selectedTerminal = nil
             notificationRouter.path = [id]
-        }
-    }
-
-    private func selectTerminal(_ terminal: ConsoleTerminal) {
-        if let agentID = terminal.agentID {
-            selectAgent(agentID)
-        } else {
-            changeSelection {
-                notificationRouter.path = []
-                selectedTerminal = terminal
-            }
         }
     }
 
     private func clearSelection() {
         changeSelection {
             notificationRouter.path = []
-            selectedTerminal = nil
         }
     }
 
@@ -361,10 +316,6 @@ struct ConsoleView: View {
     /// The split view owns the window's status-bar appearance on iPhone. A
     /// pushed terminal cannot reliably override it from the detail subtree.
     private var terminalStatusBarColorScheme: ColorScheme? {
-        if selectedTerminal != nil {
-            return terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme)
-        }
         guard let id = notificationRouter.path.last else { return nil }
         let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
@@ -406,13 +357,14 @@ struct ConsoleView: View {
                             sceneRouting?.terminalAccess(for: id.hostID) ?? .holds
                         }),
                     onSwitch: { selectAgent($0) },
-                    onClosed: { clearSelection() },
-                    onSelectTerminal: { selectTerminal($0) }
+                    onClosed: { clearSelection() }
                 )
                 // Selecting another Agent must tear down the previous terminal
                 // pipeline; without the explicit identity the detail column
-                // would reuse the old view's state.
-                .id(id)
+                // would reuse the old view's state. A shell that starts an
+                // Agent (or an Agent that exits to its shell) keeps its row
+                // identity but not its Composer delivery, so that rebuilds too.
+                .id(AgentDetailIdentity(agentID: id, isShell: agent.isShell))
             } else {
                 // The Agent is gone from the list, but not necessarily
                 // because its pane went: a failed Host empties the list the
@@ -425,22 +377,6 @@ struct ConsoleView: View {
                     agentID: id, console: console, hosts: hosts)
                 missingAgentSurface(presentation)
             }
-        } else if let selectedTerminal {
-            WorkspaceTerminalDetailView(
-                terminal: console.terminals.first(where: { $0.id == selectedTerminal.id })
-                    ?? selectedTerminal,
-                console: console,
-                settings: terminal,
-                activity: activity,
-                onSelectAgent: { selectAgent($0) },
-                onSelectTerminal: { selectTerminal($0) },
-                isSelected: {
-                    self.selectedTerminal?.id == selectedTerminal.id
-                        && notificationRouter.path.isEmpty
-                },
-                keyboardHandoff: keyboardHandoff,
-                onBack: { clearSelection() })
-                .id(selectedTerminal.id)
         } else {
             ConsoleEmptyDetailView(
                 presentation: ConsoleEmptyDetailPresentation(
@@ -680,7 +616,7 @@ struct ConsoleView: View {
     }
 
     private func agentRow(_ agent: ConsoleAgent) -> some View {
-        NavigationLink(value: ConsoleSelection.agent(agent.id)) {
+        NavigationLink(value: agent.id) {
             AgentCardView(
                 agent: agent,
                 layout: console.rowLayout(for: agent.hostID),
@@ -1196,8 +1132,8 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                if !agents.isEmpty {
-                    ConsoleWorkspaceStatusDots(statuses: agents.map(\.agent.status))
+                if !agentStatuses.isEmpty {
+                    ConsoleWorkspaceStatusDots(statuses: agentStatuses)
                         .accessibilityHidden(true)
                 }
             }
@@ -1214,6 +1150,11 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
                 ? "Expands this workspace group."
                 : "Collapses this workspace group.")
         .accessibilityAddTraits(.isHeader)
+    }
+
+    /// One dot per Agent Status; a shell row has none to show.
+    private var agentStatuses: [AgentStatus] {
+        agents.excludingShells.map(\.agent.status)
     }
 }
 
@@ -1423,13 +1364,12 @@ private struct ConsoleHostStatusCountPills: View {
     }
 }
 
-/// What the Console sidebar's split-view selection can hold. Only Agents
-/// have rows; a terminal chosen from Agent detail's Workspace drawer takes
-/// the `terminal` case so the detail column stays presented on iPhone
-/// (see `ConsoleView.selectedItem`).
-enum ConsoleSelection: Hashable {
-    case agent(ConsoleAgent.ID)
-    case terminal(ConsoleTerminal.ID)
+/// The detail column's view identity: the selected row, and whether it is a
+/// shell. The row keeps its identity when its shell starts an Agent, but the
+/// detail's Composer, Attach target and Agent-only actions do not carry over.
+private struct AgentDetailIdentity: Hashable {
+    let agentID: ConsoleAgent.ID
+    let isShell: Bool
 }
 
 /// Value-typed drag payload for Console row drag-to-workspace moves

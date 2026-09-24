@@ -27,9 +27,9 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
     var paneLabel: String? { pane.label }
     var agentKind: String? { nonempty(pane.agent) ?? nonempty(snapshotAgentKind) }
     var isAgent: Bool { snapshotAgentKind != nil || agentKind != nil }
-    var agentID: ConsoleAgent.ID? {
-        isAgent ? ConsoleAgent.ID(hostID: hostID, paneID: paneID) : nil
-    }
+    /// Every terminal Pane is a Console row — an Agent's, or a plain
+    /// shell's — under the same identity, so any terminal opens by it.
+    var rowID: ConsoleAgent.ID { ConsoleAgent.ID(hostID: hostID, paneID: paneID) }
     var title: String? {
         nonempty(pane.terminalTitleStripped) ?? nonempty(pane.title)
     }

@@ -778,6 +778,13 @@ actor HeelerSSHTransport: Transport {
             decoding: OkResponse.self)
     }
 
+    func sendPaneInput(_ params: PaneSendInputParams) async throws {
+        _ = try await request(
+            method: "pane.send_input",
+            params: params,
+            decoding: OkResponse.self)
+    }
+
     /// Renames a tab. Best-effort at launch sites: the reply is `tab_info`
     /// (probed live against herdr 0.9), so a cosmetic rename must never fail
     /// a start that already succeeded.
@@ -795,6 +802,7 @@ actor HeelerSSHTransport: Transport {
             method: "tab.create",
             params: TabCreateParams(
                 cwd: creation.cwd,
+                env: Self.shellLaunchEnvironment,
                 focus: false,
                 workspaceID: creation.workspaceID),
             decoding: TabCreatedResponse.self)
@@ -888,6 +896,13 @@ actor HeelerSSHTransport: Transport {
     // agent variants, minus `agent.start`. herdr's root panes already run
     // the Host's default shell, so the created pane is the shell an SSH
     // login would land in; it surfaces through the terminal inventory.
+    //
+    // Every shell pane is created with `shellLaunchEnvironment`, so a Host's
+    // rc can tell a requested plain shell from an ordinary fresh pane and
+    // skip agent auto-launch hooks there.
+
+    /// Environment marking a pane Heeler created as a plain shell.
+    static let shellLaunchEnvironment = ["HEELER_SHELL": "1"]
 
     func startShellTerminal(
         _ launch: ShellLaunchRequest
@@ -896,14 +911,14 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.channelFailed(
                 detail: "A shell launch needs a workspace.")
         }
-        guard let cwd = launch.cwd else {
-            throw TransportError.channelFailed(
-                detail: "A shell launch needs a concrete directory.")
-        }
+        // Like `startAgent`, an absent cwd is left to herdr: with a
+        // workspace id, `tab.create` resolves it to that Workspace's
+        // focused pane cwd, never another Workspace's.
         let created = try await request(
             method: "tab.create",
             params: TabCreateParams(
-                cwd: cwd,
+                cwd: launch.cwd,
+                env: Self.shellLaunchEnvironment,
                 focus: false,
                 label: launch.name,
                 workspaceID: workspaceID),
@@ -927,22 +942,38 @@ actor HeelerSSHTransport: Transport {
             method: "worktree.create",
             // No label, like the worktree agent variant: herdr names the new
             // worktree Workspace after its branch, and the shell's name is a
-            // Tab label, applied by the rename below.
+            // Tab label, carried by the marked shell tab below.
             params: WorktreeCreateParams(
                 base: worktree.base,
                 branch: worktree.branch,
                 focus: false,
                 workspaceID: workspaceID),
             decoding: WorktreeCreatedResponse.self)
-        // Best-effort, and only when the form supplied a tab name.
-        if let label = launch.name {
-            try? await renameTab(
-                TabRenameParams(label: label, tabID: created.tab.tabID))
+        // worktree.create takes no env, and its root pane's shell has
+        // already started unmarked. Open the marked shell as a second tab at
+        // the checkout, then close the unmarked root tab.
+        let shell: TabCreatedResponse
+        do {
+            shell = try await request(
+                method: "tab.create",
+                params: TabCreateParams(
+                    cwd: created.worktree.path,
+                    env: Self.shellLaunchEnvironment,
+                    focus: false,
+                    label: launch.name,
+                    workspaceID: created.workspace.workspaceID),
+                decoding: TabCreatedResponse.self)
+        } catch let error as HerdrAPIError {
+            try? await removeCreatedWorktree(workspaceID: created.workspace.workspaceID)
+            throw error
         }
+        // Best-effort: a lingering root tab must not fail a launch whose
+        // shell already exists.
+        try? await closeTab(TabTarget(tabID: created.tab.tabID))
         return ShellLaunchResult(
-            paneID: created.rootPane.paneID,
-            tabID: created.rootPane.tabID,
-            terminalID: created.rootPane.terminalID,
+            paneID: shell.rootPane.paneID,
+            tabID: shell.rootPane.tabID,
+            terminalID: shell.rootPane.terminalID,
             workspaceID: created.workspace.workspaceID)
     }
 
@@ -954,6 +985,7 @@ actor HeelerSSHTransport: Transport {
             method: "workspace.create",
             params: WorkspaceCreateParams(
                 cwd: workspace.directory,
+                env: Self.shellLaunchEnvironment,
                 focus: false,
                 label: workspace.label),
             decoding: WorkspaceCreatedResponse.self)

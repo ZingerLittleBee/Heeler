@@ -13,8 +13,8 @@ struct WorkspaceTerminalDrawer: View {
     let selectedPaneID: String
     let edgeDock: EdgeDockSettings
     var palette: TerminalThemePalette = .system
-    /// `var` so a host can wrap it: Agent detail and the Shell Terminal
-    /// capture the keyboard state before a route leaves their screen.
+    /// `var` so a host can wrap it: Agent detail captures the keyboard state
+    /// before a route leaves its screen.
     var onSelect: (ConsoleTerminal) -> Void
     /// Opens a fresh shell tab in the Workspace; nil hides the New Terminal
     /// button (no launch directory to open it in).

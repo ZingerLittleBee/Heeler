@@ -62,19 +62,12 @@ final class ConsoleStore {
     @ObservationIgnored private var composerStores: [
         ConsoleAgent.ID: AgentComposerStore
     ] = [:]
-    /// The shell tab this app created per Workspace, so Open Terminal
-    /// reattaches to it instead of accumulating a new tab per visit.
-    /// In-memory on purpose: tabs die with the herdr server, and reuse
-    /// verifies liveness before attaching, so persistence would only add
-    /// stale state. Deliberately kept across reconnects — tabs survive them.
-    @ObservationIgnored private var shellTerminals: [
-        ShellTerminalKey: ShellTerminalIdentity
+    /// Shell row Composers, kept apart from Agent Composers: a shell Pane
+    /// that later runs an Agent must not inherit a `pane.send_input`
+    /// delivery, nor an Agent Composer lose its `agent.prompt` one.
+    @ObservationIgnored private var shellComposerStores: [
+        ConsoleAgent.ID: AgentComposerStore
     ] = [:]
-
-    private struct ShellTerminalKey: Hashable {
-        let hostID: Host.ID
-        let workspaceID: String
-    }
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let snapshotRetryDelay: Duration
@@ -89,7 +82,6 @@ final class ConsoleStore {
     let pins: PinnedAgentsStore
     let rowLayouts: AgentRowLayoutStore
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
-    let terminalConnections: TerminalConnectionPool
     let agentTerminals: AgentTerminalCache
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
@@ -101,9 +93,7 @@ final class ConsoleStore {
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory()
     ) {
-        let terminalBudget = TerminalRetentionBudget()
-        terminalConnections = TerminalConnectionPool(budget: terminalBudget)
-        agentTerminals = AgentTerminalCache(budget: terminalBudget)
+        agentTerminals = AgentTerminalCache()
         self.snapshotRetryDelay = snapshotRetryDelay
         self.pins = pins
         self.rowLayouts = rowLayouts
@@ -122,6 +112,7 @@ final class ConsoleStore {
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
+        shellComposerStores = shellComposerStores.filter { incoming[$0.key.hostID] != nil }
         for (id, projection) in projections where incoming[id] != projection.host {
             sidebarSnapshots.invalidate(id)
             terminalSnapshotRevisions[id] = nil
@@ -129,10 +120,7 @@ final class ConsoleStore {
             moshStates[id] = nil
             moshProbedGenerations[id] = nil
             moshProbeClaims[id] = nil
-            Task {
-                await terminalConnections.removeHost(id)
-                await agentTerminals.removeHost(id)
-            }
+            Task { await agentTerminals.removeHost(id) }
             projection.end()
             projections[id] = nil
         }
@@ -193,7 +181,6 @@ final class ConsoleStore {
     func suspend() async {
         await enqueueLifecycleTransition { [self] in
             isActive = false
-            await terminalConnections.suspend()
             await agentTerminals.suspend()
             sidebarSnapshots.invalidateAll()
             rebuild()
@@ -524,19 +511,35 @@ struct MoshProbeOutcome: Equatable {
 
     /// Composer's one-shot delivery source. Prompts borrow the Host's current
     /// Console connection rather than dialing a parallel connection or holding
-    /// an RPC open for Agent completion.
+    /// an RPC open for Agent completion. Never replayed after a link
+    /// failure: herdr may already have delivered it, so the Composer shows
+    /// the failure and the user resends deliberately.
     func promptAgent(_ params: AgentPromptParams, on hostID: Host.ID) async throws -> Agent {
-        try await projection(for: hostID).session.withTransport { transport in
+        try await projection(for: hostID).session.withTransport(retryOnLinkFailure: false) {
+            transport in
             try await transport.promptAgent(params)
         }
     }
 
-    /// One Composer per selected Agent for the lifetime of its Host catalog
+    /// One Composer per selected row for the lifetime of its Host catalog
     /// entry. The Console detail may be replaced by a reconnect placeholder;
-    /// retaining the store here keeps its entirely local draft intact.
+    /// retaining the store here keeps its entirely local draft intact. A
+    /// shell row gets the `pane.send_input` Composer; an Agent the
+    /// `agent.prompt` one.
     func composerStore(for agent: ConsoleAgent) -> AgentComposerStore {
-        if let existing = composerStores[agent.id] { return existing }
         let hostID = agent.hostID
+        if agent.isShell {
+            if let existing = shellComposerStores[agent.id] { return existing }
+            // Send types the draft and Enter in one atomic `pane.send_input`.
+            let store = AgentComposerStore(shellPaneID: agent.agent.paneID) {
+                [weak self] params in
+                guard let self else { throw TransportError.cancelled }
+                try await self.sendPaneInput(params, on: hostID)
+            }
+            shellComposerStores[agent.id] = store
+            return store
+        }
+        if let existing = composerStores[agent.id] { return existing }
         let store = AgentComposerStore(
             target: agent.agent.paneID,
             initialStatus: agent.agent.status,
@@ -547,6 +550,18 @@ struct MoshProbeOutcome: Equatable {
         }
         composerStores[agent.id] = store
         return store
+    }
+
+    /// Shell row Composer delivery. `pane.send_input` works on any Pane,
+    /// where `agent.prompt` refuses a plain shell; like prompts it borrows
+    /// the Host's current Console connection. Input that submits is never
+    /// replayed after a link failure — the shell may already have run it.
+    func sendPaneInput(_ params: PaneSendInputParams, on hostID: Host.ID) async throws {
+        try await projection(for: hostID).session.withTransport(
+            retryOnLinkFailure: !params.submitsInput
+        ) { transport in
+            try await transport.sendPaneInput(params)
+        }
     }
 
     /// A latest-value view of the existing `pane.agent_status_changed`
@@ -583,33 +598,6 @@ struct MoshProbeOutcome: Equatable {
         on hostID: Host.ID
     ) async throws -> ShellTerminalIdentity {
         try await projection(for: hostID).createShellTerminal(request)
-    }
-
-    func recallShellTerminal(
-        forWorkspaceID workspaceID: String, on hostID: Host.ID
-    ) -> ShellTerminalIdentity? {
-        shellTerminals[ShellTerminalKey(hostID: hostID, workspaceID: workspaceID)]
-    }
-
-    func rememberShellTerminal(
-        _ identity: ShellTerminalIdentity,
-        forWorkspaceID workspaceID: String,
-        on hostID: Host.ID
-    ) {
-        shellTerminals[ShellTerminalKey(hostID: hostID, workspaceID: workspaceID)] =
-            identity
-    }
-
-    func forgetShellTerminal(
-        forWorkspaceID workspaceID: String, on hostID: Host.ID
-    ) {
-        shellTerminals[ShellTerminalKey(hostID: hostID, workspaceID: workspaceID)] = nil
-    }
-
-    func shellTerminalStillExists(
-        _ identity: ShellTerminalIdentity, on hostID: Host.ID
-    ) async throws -> Bool {
-        try await projection(for: hostID).paneExists(identity.paneID)
     }
 
     @discardableResult
@@ -668,23 +656,6 @@ struct MoshProbeOutcome: Equatable {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
         while !agents.contains(where: { $0.id == id }) {
-            guard clock.now < deadline,
-                (try? await Task.sleep(for: .milliseconds(50))) != nil
-            else { return }
-        }
-    }
-
-    /// Suspends until the Host's terminal inventory reports `paneID`, or the
-    /// timeout elapses. The plain-shell launch flow opens the created
-    /// terminal, and the row it navigates to exists only once the inventory
-    /// refresh lands — waiting keeps the detail column from flashing its
-    /// placeholder over a launch that just succeeded.
-    func waitForPane(_ paneID: String, on hostID: Host.ID, timeout: Duration = .seconds(5))
-        async
-    {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
-        while !terminals.contains(where: { $0.hostID == hostID && $0.paneID == paneID }) {
             guard clock.now < deadline,
                 (try? await Task.sleep(for: .milliseconds(50))) != nil
             else { return }
@@ -780,6 +751,11 @@ struct MoshProbeOutcome: Equatable {
         _ workspaceID: String, label: String, on hostID: Host.ID
     ) async throws {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
+    }
+
+    /// A shell row's rename: its name is its tab label (`tab.rename`).
+    func renameTab(_ tabID: String, label: String, on hostID: Host.ID) async throws {
+        try await projection(for: hostID).renameTab(tabID, label: label)
     }
 
     private func startProjection(for host: Host) {
@@ -885,8 +861,6 @@ struct MoshProbeOutcome: Equatable {
                         return projections[hostID] === projection
                             && projection.transportGeneration == generation
                     }
-                    await terminalConnections.transportGenerationDidChange(
-                        generation, for: hostID, isCurrent: isCurrent)
                     await agentTerminals.transportGenerationDidChange(
                         generation, for: hostID, isCurrent: isCurrent)
                 }
@@ -932,11 +906,6 @@ struct MoshProbeOutcome: Equatable {
                 terminalSnapshotRevisions[hostID] != projection.sidebarRevision
             else { continue }
             terminalSnapshotRevisions[hostID] = projection.sidebarRevision
-            let identities = Set(
-                projection.terminalsByPane.values.filter { !$0.isAgent }.map {
-                    ShellTerminalIdentity(
-                        paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
-                })
             let revision = projection.sidebarRevision
             let agents = Array(projection.agentsByPane.values)
             let isCurrent: @MainActor () -> Bool = { [weak self, weak projection] in
@@ -945,8 +914,6 @@ struct MoshProbeOutcome: Equatable {
                     && projection.status == .connected && projection.sidebarRevision == revision
             }
             Task {
-                await terminalConnections.reconcile(
-                    hostID: hostID, identities: identities, isCurrent: isCurrent)
                 await agentTerminals.reconcile(hostID: hostID, agents: agents, isCurrent: isCurrent)
             }
         }

@@ -27,11 +27,52 @@ struct ConsoleTerminalInventoryTests {
         let local = store.terminals(on: first.id, workspaceID: "w1")
         #expect(local.map(\.paneID) == ["agent", "shell", "other-tab"])
         #expect(local.map(\.tabLabel) == ["Main", "Main", "Logs"])
-        #expect(local.first?.agentID == ConsoleAgent.ID(hostID: first.id, paneID: "agent"))
+        #expect(local.first?.isAgent == true)
+        #expect(local.first?.rowID == ConsoleAgent.ID(hostID: first.id, paneID: "agent"))
         #expect(local.dropFirst().allSatisfy { !$0.isAgent })
         #expect(Set(store.terminals.map(\.id)).count == 8)
         #expect(local.last?.workspaceLabel == "Project")
         #expect(local.last?.cwd == "/home/user/project")
+    }
+
+    @Test func aPaneWithNoAgentIsAShellRowUntilAnAgentStartsInIt() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: snapshot(panes: [pane("shell")]))
+        let store = makeStore([host.id: transport])
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        let id = ConsoleAgent.ID(hostID: host.id, paneID: "shell")
+        try await waitUntil { store.agents.contains { $0.id == id } }
+
+        let shell = try #require(store.agents.first { $0.id == id })
+        #expect(shell.isShell)
+        #expect(shell.agent.status == .shellTerminal)
+        #expect(shell.agent.terminalID == "terminal_shell")
+        #expect(shell.attachTarget == .terminal("terminal_shell"))
+        // Its name is the tab's label, the way a Default Shell launch names it.
+        #expect(shell.agent.displayName == "Main")
+
+        // An Agent starting in the pane replaces the row under the same id.
+        await transport.setSnapshot(
+            snapshot(panes: [pane("shell", agent: "claude")], agents: [.fixture(paneID: "shell")]))
+        #expect(
+            await transport.emit(
+                HerdrEvent(kind: GlobalEventKind.paneAgentDetected.kind, data: .object([:])))
+                == true)
+        try await waitUntil { store.agents.first { $0.id == id }?.isShell == false }
+        let agent = try #require(store.agents.first { $0.id == id })
+        #expect(agent.agent.kind == "claude")
+        #expect(agent.attachTarget == .agentPane("shell"))
+        #expect(store.agents.count { $0.id == id } == 1)
+
+        // And the Agent exiting back to its shell makes it a shell row again.
+        await transport.setSnapshot(snapshot(panes: [pane("shell")]))
+        #expect(
+            await transport.emit(
+                HerdrEvent(kind: GlobalEventKind.paneExited.kind, data: .object([:])))
+                == true)
+        try await waitUntil { store.agents.first { $0.id == id }?.isShell == true }
     }
 
     @Test func shellPaneCreationAndClosureConvergeFromLifecycleEvents() async throws {

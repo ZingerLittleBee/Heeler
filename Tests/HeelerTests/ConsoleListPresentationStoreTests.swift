@@ -265,6 +265,42 @@ struct ConsoleListPresentationStoreTests {
         #expect(sections[0].workspaceGroups.isEmpty)
     }
 
+    @Test func hostWithOnlyAShellPaneListsItAsARowInGroupedModes() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        let shell = ConsoleAgent(
+            hostID: host.id,
+            hostName: host.displayName,
+            agent: Agent(
+                shellPane: PaneInfo(
+                    agentStatus: .unknown, focused: false, paneID: "w1:p1", revision: 1,
+                    tabID: "w1:t1", terminalID: "term-1", workspaceID: "w1",
+                    cwd: "/srv/app"),
+                name: "Default Shell"),
+            workspaceLabel: "Scratch",
+            repositoryCheckout: nil)
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let byHost = try #require(
+            store.sections(
+                hosts: [host], agents: [shell], hostStatuses: [host.id: .connected]
+            ).first)
+        #expect(byHost.agents.map(\.id) == [shell.id])
+        // A shell is a row, so its Host is not an empty one.
+        #expect(ConsoleHostSectionHeaderPresentation.readinessText(for: byHost) == "Connected")
+        // It has no Agent Status to count.
+        #expect(byHost.statusCounts.items.isEmpty)
+
+        let byWorkspace = try #require(
+            store.sectionsByHostThenWorkspace(
+                hosts: [host], agents: [shell],
+                workspacesByHost: [host.id: [ConsoleWorkspace(id: "w1", label: "Scratch")]]
+            ).first)
+        #expect(byWorkspace.workspaceGroups.map(\.label) == ["Scratch"])
+        #expect(byWorkspace.workspaceGroups[0].agents.map(\.id) == [shell.id])
+    }
+
     @Test func byHostWorkspaceGroupsDefaultToCollapsedAndExpansionPersists() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

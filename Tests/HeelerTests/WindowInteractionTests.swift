@@ -102,7 +102,7 @@ struct WindowInteractionTests {
         directory.sceneDidBecomeActive(sceneID: holding)
         try #require(
             directory.terminalAccess(sceneID: waiting, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
 
         let reference = WindowReference()
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 400))
@@ -117,6 +117,6 @@ struct WindowInteractionTests {
         #expect(directory.terminalAccess(sceneID: waiting, hostID: hostID) == .holds)
         #expect(
             directory.terminalAccess(sceneID: holding, hostID: hostID)
-                == .liveInAnotherWindow(canTakeOver: true))
+                == .liveInAnotherWindow)
     }
 }

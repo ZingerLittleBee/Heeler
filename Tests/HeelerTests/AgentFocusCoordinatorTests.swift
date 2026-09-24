@@ -10,15 +10,14 @@ struct AgentFocusCoordinatorTests {
 
     private func state(
         status: AgentStatus? = .done, active: Bool = true,
-        onStage: Bool = true, shell: Bool = false, ready: Bool = true,
+        onStage: Bool = true, ready: Bool = true,
         generation: UInt64? = 1, agentID: ConsoleAgent.ID? = nil,
         terminalID: String = "terminal-A"
     ) -> AgentFocusCoordinator.ViewingState {
         .init(
             agentID: agentID ?? id, terminalID: terminalID,
             transportGeneration: generation, status: status,
-            isHostReady: ready, isSceneActive: active, isOnStage: onStage,
-            showsShellTerminal: shell)
+            isHostReady: ready, isSceneActive: active, isOnStage: onStage)
     }
 
     @Test func initialDoneCoalescesUntilAnotherCompletion() async throws {
@@ -44,7 +43,7 @@ struct AgentFocusCoordinatorTests {
     @Test func inactiveInvisibleShellUnavailableAndNonDoneNeverSend() {
         let coordinator = AgentFocusCoordinator()
         let ineligible = [
-            state(active: false), state(onStage: false), state(shell: true),
+            state(active: false), state(onStage: false),
             state(ready: false), state(generation: nil), state(status: nil),
             state(status: .working), state(status: .idle), state(status: .blocked),
         ]
@@ -62,16 +61,16 @@ struct AgentFocusCoordinatorTests {
         #expect(!coordinator.isInFlight)
         coordinator.update(state(), focus: focus)
         try await waitUntil { !coordinator.isInFlight }
-        for away in [state(active: false), state(onStage: false), state(shell: true)] {
+        for away in [state(active: false), state(onStage: false)] {
             coordinator.update(away, focus: focus)
             coordinator.update(state(), focus: focus)
             try await waitUntil { !coordinator.isInFlight }
         }
-        #expect(calls == 4)
+        #expect(calls == 3)
         coordinator.leave()
         coordinator.update(state(), focus: focus)
         try await waitUntil { !coordinator.isInFlight }
-        #expect(calls == 5)
+        #expect(calls == 4)
     }
 
     @Test func failureReportsOnceAndRetriesOnlyAfterReentry() async throws {
@@ -128,7 +127,7 @@ struct AgentFocusCoordinatorTests {
 
     @Test func losingEligibilityCancelsAnAwaitingCallWithoutRetrying() async throws {
         for away in [
-            state(active: false), state(onStage: false), state(shell: true),
+            state(active: false), state(onStage: false),
             state(ready: false), state(status: .working), state(status: nil),
         ] {
             let gate = ScriptedTransportCallGate()

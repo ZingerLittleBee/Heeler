@@ -12,11 +12,10 @@ struct LiveInAnotherWindowPresentationTests {
 
     @Test func anotherWindowsAttachOffersTakeOver() throws {
         let presentation = try #require(
-            LiveInAnotherWindowPresentation(access: .liveInAnotherWindow(canTakeOver: true)))
+            LiveInAnotherWindowPresentation(access: .liveInAnotherWindow))
 
         #expect(presentation.title == "Live in Another Window")
         #expect(presentation.message.contains("input continues there"))
-        #expect(presentation.showsTakeOver)
         #expect(LiveInAnotherWindowPresentation.takeOverTitle == "Take Over Here")
     }
 
@@ -24,17 +23,8 @@ struct LiveInAnotherWindowPresentationTests {
     /// deliberate handoff.
     @Test func itIsNotTheConnectingState() throws {
         let presentation = try #require(
-            LiveInAnotherWindowPresentation(access: .liveInAnotherWindow(canTakeOver: true)))
+            LiveInAnotherWindowPresentation(access: .liveInAnotherWindow))
 
         #expect(presentation.title != TerminalStatusPresentation.connecting.title)
-    }
-
-    @Test func anotherWindowsShellTerminalCannotBeTakenOver() throws {
-        let presentation = try #require(
-            LiveInAnotherWindowPresentation(access: .liveInAnotherWindow(canTakeOver: false)))
-
-        #expect(!presentation.showsTakeOver)
-        #expect(presentation.message.contains("Shell Terminal"))
-        #expect(presentation.message.contains("input continues there"))
     }
 }

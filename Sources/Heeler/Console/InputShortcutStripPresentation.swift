@@ -13,11 +13,6 @@ enum InputShortcutStripItem: Hashable, Sendable {
 /// without a hardware keyboard: the scrolling key row with Enter and More
 /// pinned at the trailing edge. The view must not recompute this inline.
 struct InputShortcutStripPresentation: Equatable, Sendable {
-    enum SizeClass: Equatable, Sendable, CaseIterable {
-        case compact
-        case regular
-    }
-
     /// Keys that scroll horizontally.
     let leadingItems: [InputShortcutStripItem]
     /// Pinned trailing keys (Enter + More).
@@ -67,12 +62,6 @@ enum InputChromeLayout {
     /// so a short description still reads as a card, not a 370 pt iPhone well.
     static let skillPreviewMaxWidth: CGFloat = 420
 
-    static let shellAccessoryButtonWidth: CGFloat = 44
-    /// Compact Text/Keys segmented control. Unchanged from the iPhone row.
-    static let compactModePickerMaxWidth: CGFloat = 184
-    /// Regular Text/Keys control. Grows for iPad but does not span the row.
-    static let regularModePickerMaxWidth: CGFloat = 360
-
     /// Page-dot cluster on the Agent tools pager.
     static let keyboardPageIndicatorWidth: CGFloat = 15
 
@@ -102,15 +91,6 @@ enum InputChromeLayout {
             pasteVisualWidth
         case .more:
             compactMoreWidth
-        }
-    }
-
-    static func modePickerMaxWidth(
-        for sizeClass: InputShortcutStripPresentation.SizeClass
-    ) -> CGFloat {
-        switch sizeClass {
-        case .compact: compactModePickerMaxWidth
-        case .regular: regularModePickerMaxWidth
         }
     }
 }

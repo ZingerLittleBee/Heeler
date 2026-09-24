@@ -16,10 +16,13 @@ final actor ScriptedTransport: Transport {
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
     private(set) var agentPromptParams: [AgentPromptParams] = []
+    /// Every `pane.send_input` received, in order; the Shell Terminal
+    /// Composer delivers through it.
+    private(set) var paneInputParams: [PaneSendInputParams] = []
+    private var paneInputFailures: [Int: TransportError] = [:]
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
-    private(set) var shellTerminalCreations: [ShellTerminalCreationRequest] = []
     /// Every worktree launch received, in order; the new-worktree flow (#97)
     /// asserts on the request/spec pairs it forwarded.
     private(set) var worktreeStarts: [(request: AgentLaunchRequest, worktree: WorktreeSpec)] = []
@@ -57,12 +60,6 @@ final actor ScriptedTransport: Transport {
     private var renameFailure: TransportError?
     private var startFailure: TransportError?
     private var startedAgent: AgentInfo?
-    private var shellTerminalIdentity = ShellTerminalIdentity(
-        paneID: "w1:p-shell",
-        tabID: "w1:t-shell",
-        terminalID: "term-shell")
-    private var shellTerminalCreationFailure: (any Error)?
-    private var nextShellTerminalCreationGate: ScriptedTransportCallGate?
     private(set) var snapshotFetchCount = 0
     /// Records acknowledgement readiness at each snapshot's request boundary.
     private(set) var snapshotHadLiveSubscription: [Bool] = []
@@ -200,19 +197,6 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `startAgent` throw `failure`.
     func setStartFailure(_ failure: TransportError?) {
         startFailure = failure
-    }
-
-    func configureShellTerminalCreation(
-        identity: ShellTerminalIdentity = ShellTerminalIdentity(
-            paneID: "w1:p-shell",
-            tabID: "w1:t-shell",
-            terminalID: "term-shell"),
-        failure: (any Error)? = nil,
-        gate: ScriptedTransportCallGate? = nil
-    ) {
-        shellTerminalIdentity = identity
-        shellTerminalCreationFailure = failure
-        nextShellTerminalCreationGate = gate
     }
 
     func setAvailableAgentKinds(
@@ -395,6 +379,13 @@ final actor ScriptedTransport: Transport {
         pingFailures[ordinal] = failure
     }
 
+    /// Makes the `ordinal`-th `pane.send_input` on this transport throw
+    /// `failure` after recording it — a request the link swallowed, so herdr
+    /// may or may not have acted on it.
+    func failPaneInput(atCall ordinal: Int, with failure: TransportError) {
+        paneInputFailures[ordinal] = failure
+    }
+
     /// Parks the next `ping` on `gate`, after counting it, so a test can hold
     /// one Host's liveness proof in flight while inspecting another's.
     func gateNextPing(using gate: ScriptedTransportCallGate) {
@@ -505,6 +496,11 @@ final actor ScriptedTransport: Transport {
     }
 
     func sendAgentKeys(_: AgentSendKeysParams) async throws {}
+
+    func sendPaneInput(_ params: PaneSendInputParams) async throws {
+        paneInputParams.append(params)
+        if let failure = paneInputFailures[paneInputParams.count] { throw failure }
+    }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         agentStarts.append(request)
@@ -719,12 +715,7 @@ final actor ScriptedTransport: Transport {
     func createShellTerminal(
         _ request: ShellTerminalCreationRequest
     ) async throws -> ShellTerminalIdentity {
-        shellTerminalCreations.append(request)
-        let gate = nextShellTerminalCreationGate
-        nextShellTerminalCreationGate = nil
-        await gate?.waitUntilOpen()
-        if let shellTerminalCreationFailure { throw shellTerminalCreationFailure }
-        return shellTerminalIdentity
+        ShellTerminalIdentity(paneID: "w1:p-shell", tabID: "w1:t-shell", terminalID: "term-shell")
     }
 
     func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {

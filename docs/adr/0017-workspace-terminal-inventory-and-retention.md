@@ -4,6 +4,11 @@ status: accepted
 
 # Workspace terminals share a bounded attach lifetime
 
+_2026-09-24:_ ADR 0018 supersedes the routing of ordinary panes to a Shell
+Terminal and the no-takeover attach for existing shells; shells are Console
+rows that open Agent detail and attach like Agents. The shared five-per-Host
+retention budget remains.
+
 Issue #333 makes every Pane discoverable as a Workspace Terminal, including
 panes running Agents. Agent detail has a Workspace drawer docked to the
 terminal's trailing edge: a handle that expands in place, so navigation

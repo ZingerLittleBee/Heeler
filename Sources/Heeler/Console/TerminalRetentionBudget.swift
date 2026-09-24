@@ -1,7 +1,7 @@
 import Foundation
 
-/// One Host-wide retention budget shared by Agent and ordinary-terminal
-/// owners. Reclaiming a slot waits for its PTY teardown before admission.
+/// One Host-wide retention budget for retained terminals, Agent and shell
+/// rows alike. Reclaiming a slot waits for its PTY teardown before admission.
 @MainActor
 final class TerminalRetentionBudget {
     struct Key: Hashable {

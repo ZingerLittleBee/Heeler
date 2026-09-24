@@ -67,7 +67,10 @@ final class AgentAttachStore {
         case left
     }
 
-    private let target: String
+    /// What the Attach resolves: an Agent's pane (`agent attach`), or a
+    /// plain shell's terminal (`terminal attach`, which `agent attach`
+    /// refuses for a pane with no Agent — ADR 0015).
+    private let target: TerminalAttachTarget
     private let runTerminal: TerminalSessionRunner
     private let linkIndex: AttachLinkIndex
     /// Invalidates mosh for the store's Host, wired from the Console. The
@@ -126,7 +129,7 @@ final class AgentAttachStore {
     #endif
 
     init(
-        target: String,
+        target: TerminalAttachTarget,
         paneTitle: String,
         transportGeneration: UInt64?,
         isOnStage: @escaping () -> Bool,
@@ -515,7 +518,11 @@ final class AgentAttachStore {
     /// re-selects mosh now that the Host's probe proved it. No-op for a
     /// session already on mosh or not live.
     func upgradeToMoshIfNeeded() {
-        guard lastSessionFlavor == .ssh, terminal.status == .live else { return }
+        // A shell's `terminal attach` always rides SSH (`MoshTransportChoice`);
+        // restarting it would only reconnect over SSH again.
+        guard case .agentPane = target,
+            lastSessionFlavor == .ssh, terminal.status == .live
+        else { return }
         terminal.upgradeToMosh()
     }
 
@@ -732,7 +739,7 @@ final class AgentAttachStore {
     }
 
     private static func makeTerminal(
-        target: String,
+        target: TerminalAttachTarget,
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,

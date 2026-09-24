@@ -398,13 +398,13 @@ struct ConsoleCommandRegistryTests {
     }
 
     @Test func sheetStillCoversCommandsAfterAnotherWindowTakesTheHost() {
-        // Window A shows this Agent; window B shows another Agent on the same
-        // Host with a Shell Terminal open, so A cannot take the channel back.
+        // Window A shows this Agent; window B, the key window, shows another
+        // Agent on the same Host and so holds the channel.
         let windowA = UUID()
         let windowB = UUID()
         let claims = [
-            HostTerminalClaim(sceneID: windowA, hostID: agent.hostID, isShellTerminal: false),
-            HostTerminalClaim(sceneID: windowB, hostID: agent.hostID, isShellTerminal: true),
+            HostTerminalClaim(sceneID: windowA, hostID: agent.hostID),
+            HostTerminalClaim(sceneID: windowB, hostID: agent.hostID),
         ]
         var reconciled = HostTerminalOwnership()
         reconciled.reconcile(claims: claims, keySceneID: windowB)
@@ -415,7 +415,7 @@ struct ConsoleCommandRegistryTests {
             terminalAccess: {
                 ownership.access(sceneID: windowA, hostID: hostID, claims: claims)
             })
-        #expect(stage.terminalAccess() == .liveInAnotherWindow(canTakeOver: false))
+        #expect(stage.terminalAccess() == .liveInAnotherWindow)
         #expect(!stage.isOnStage())
 
         // A's Rename sheet is still presenting over its visible detail.

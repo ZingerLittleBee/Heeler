@@ -16,10 +16,11 @@ extension ComposerDraftOperations {
     func resumeDroppedImagesAfterRejoin() {}
 }
 
-/// Owns Agent detail's local draft and delivery state. Draft edits do not
-/// touch Transport. Send delivers through one `agent.prompt` RPC, except
+/// Owns a detail's local draft and delivery state. Draft edits do not touch
+/// Transport. An Agent's Send delivers through one `agent.prompt` RPC, except
 /// when Agent Status is Blocked: then it inserts into the live Attach PTY
-/// without Enter.
+/// without Enter. A shell row's Send is one atomic `pane.send_input`
+/// type-and-submit.
 @MainActor
 @Observable
 final class AgentComposerStore: ComposerDraftOperations {
@@ -54,7 +55,17 @@ final class AgentComposerStore: ComposerDraftOperations {
         case ignored
         case deliveredViaPrompt
         case deliveredViaAttach
+        case deliveredViaPaneInput
         case failed
+    }
+
+    /// Where Send delivers. `agent.prompt` refuses a plain shell, so a shell
+    /// row types through `pane.send_input` instead. Agent-only behavior —
+    /// status progress, the registration-window retry, the Blocked Attach
+    /// insert — has no shell meaning and never runs for `.paneInput`.
+    private enum Delivery {
+        case agentPrompt(@Sendable (AgentPromptParams) async throws -> Agent)
+        case paneInput(@Sendable (PaneSendInputParams) async throws -> Void)
     }
 
     private(set) var messages: [Message] = []
@@ -72,7 +83,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// smaller values so the wait itself stays under test.
     private let agentNotReadyRetryDelay: Duration
     private let agentNotReadyRetryBudget: Duration
-    private let prompt: @Sendable (AgentPromptParams) async throws -> Agent
+    private let delivery: Delivery
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var statusTask: Task<Void, Never>?
     /// The detail screen's live Attach writer. Weak: Composer outlives any
@@ -123,7 +134,31 @@ final class AgentComposerStore: ComposerDraftOperations {
         self.statusUpdates = statusUpdates
         self.agentNotReadyRetryDelay = agentNotReadyRetryDelay
         self.agentNotReadyRetryBudget = agentNotReadyRetryBudget
-        self.prompt = prompt
+        delivery = .agentPrompt(prompt)
+    }
+
+    /// A shell row's Composer. There is no Agent Status to follow and no
+    /// Agent launch to wait out: Send is one `pane.send_input` carrying the
+    /// draft and Enter, which the shell executes. Staging (picker, drops)
+    /// rides the detail's Attach exactly as it does for an Agent.
+    init(
+        shellPaneID: String,
+        sendInput: @escaping @Sendable (PaneSendInputParams) async throws -> Void
+    ) {
+        target = shellPaneID
+        agentStatus = .shellTerminal
+        statusUpdates = nil
+        agentNotReadyRetryDelay = Self.defaultAgentNotReadyRetryDelay
+        agentNotReadyRetryBudget = Self.defaultAgentNotReadyRetryBudget
+        delivery = .paneInput(sendInput)
+    }
+
+    /// Whether Send prompts an Agent (`agent.prompt`) rather than typing into
+    /// a shell (`pane.send_input`). The Composer's copy and input traits
+    /// follow it: an Agent takes natural language, a shell takes commands.
+    var deliversToAgent: Bool {
+        if case .agentPrompt = delivery { return true }
+        return false
     }
 
     /// The shell-readiness wait in `HeelerSSHTransport.startAgentAwaitingShell`
@@ -150,9 +185,10 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     /// VoiceOver hint for the Send button. Pending drops disable Send.
     var sendAccessibilityHint: String {
-        hasPendingDroppedImages
-            ? "Waiting for image…"
-            : "Delivers the complete draft to the Agent"
+        if hasPendingDroppedImages { return "Waiting for image…" }
+        return deliversToAgent
+            ? "Delivers the complete draft to the Agent"
+            : "Runs the complete draft in the terminal"
     }
 
     var pendingDropPlaceholders: [String] {
@@ -307,7 +343,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             agentWasWorkingAtSend: agentStatus == .working,
             statusRevisionAtSend: statusRevision,
             observedWorkingAfterSend: false,
-            tracksAgentProgress: true,
+            tracksAgentProgress: deliversToAgent,
             state: .sending)
         draft = ""
         draftSelection = NSRange(location: 0, length: 0)
@@ -322,7 +358,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         messages[index].agentWasWorkingAtSend = agentStatus == .working
         messages[index].statusRevisionAtSend = statusRevision
         messages[index].observedWorkingAfterSend = false
-        messages[index].tracksAgentProgress = true
+        messages[index].tracksAgentProgress = deliversToAgent
         messages[index].state = .sending
         return await deliver(id)
     }
@@ -370,6 +406,48 @@ final class AgentComposerStore: ComposerDraftOperations {
         if Self.containsDropPlaceholder(text) {
             return .ignored
         }
+        switch delivery {
+        case .paneInput(let sendInput):
+            return await deliverThroughPaneInput(id, text: text, sendInput: sendInput)
+        case .agentPrompt(let prompt):
+            return await deliverThroughPrompt(id, text: text, prompt: prompt)
+        }
+    }
+
+    /// Types the draft and Enter into the shell in one request, so a partial
+    /// failure cannot leave text typed but unsubmitted. Matches the Attach
+    /// insert's scalar policy: a draft cannot smuggle terminal controls.
+    private func deliverThroughPaneInput(
+        _ id: Message.ID,
+        text: String,
+        sendInput: @Sendable (PaneSendInputParams) async throws -> Void
+    ) async -> SendResult {
+        guard TerminalTextSafety.containsOnlySafeScalars(text) else {
+            return fail(id, message: Self.unsafeTextMessage)
+        }
+        let input = attachInput
+        let generation = input?.liveGeneration
+        do {
+            try await sendInput(PaneSendInputParams(paneID: target, keys: ["enter"], text: text))
+        } catch {
+            return fail(id, message: Self.message(for: error))
+        }
+        guard let deliveredIndex = messages.firstIndex(where: { $0.id == id }) else {
+            return .ignored
+        }
+        messages[deliveredIndex].state = .delivered(.acknowledged)
+        // Message jump indexes what Send submitted, for a shell as for an Agent.
+        if let input, let generation {
+            input.recordSubmitted(text, generation: generation)
+        }
+        return .deliveredViaPaneInput
+    }
+
+    private func deliverThroughPrompt(
+        _ id: Message.ID,
+        text: String,
+        prompt: @Sendable (AgentPromptParams) async throws -> Agent
+    ) async -> SendResult {
         if agentStatus == .blocked {
             return deliverThroughAttach(id, text: text)
         }
@@ -377,7 +455,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         let generation = input?.liveGeneration
         do {
             _ = try await promptWaitingOutLaunch(
-                AgentPromptParams(target: target, text: text))
+                AgentPromptParams(target: target, text: text), prompt: prompt)
             guard let acknowledgedIndex = messages.firstIndex(where: { $0.id == id }) else {
                 return .ignored
             }
@@ -420,7 +498,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// anything. A target that never comes up still fails at the budget's
     /// end with herdr's refusal.
     private func promptWaitingOutLaunch(
-        _ params: AgentPromptParams
+        _ params: AgentPromptParams,
+        prompt: @Sendable (AgentPromptParams) async throws -> Agent
     ) async throws -> Agent {
         let deadline = ContinuousClock.now + agentNotReadyRetryBudget
         var refusals = 0

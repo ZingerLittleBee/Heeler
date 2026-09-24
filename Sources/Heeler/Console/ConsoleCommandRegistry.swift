@@ -32,8 +32,8 @@ final class ConsoleCommandRegistry {
 
     private(set) var terminal: Terminal?
     private(set) var composer: Composer?
-    /// The wrapper and Shell Terminal can both present. Neither may overwrite
-    /// or remove the other surface's coverage when its own presentation ends.
+    /// Keyed by token, so several surfaces may present at once. None may
+    /// overwrite or remove another's coverage when its own presentation ends.
     private(set) var detailPresentations: [UUID: DetailPresentation] = [:]
 
     func register(_ terminal: Terminal) { self.terminal = terminal }
@@ -132,7 +132,7 @@ struct ConsoleCommandTarget {
         terminal: ConsoleCommandRegistry.Terminal?
     ) -> Bool {
         // Coverage belongs to the selected detail. Attach must also be on stage;
-        // the wrapper and Shell Terminal have independent presentation tokens.
+        // every detail presentation has its own token.
         guard !context.isCovered, terminal?.isPresenting != true,
             !registry.isDetailPresenting(for: context.selection)
         else { return false }
@@ -197,8 +197,8 @@ struct ConsoleCommandTarget {
     }
 }
 
-/// Covers presentations outside the Attach surface, including the detail's
-/// wrapper alerts and Shell Terminal. Stores values only, with no action captures.
+/// Covers presentations outside the Attach surface, such as the detail's
+/// wrapper alerts. Stores values only, with no action captures.
 struct ConsoleDetailPresentationRegistration: ViewModifier {
     let agentID: ConsoleAgent.ID
     let isPresenting: Bool

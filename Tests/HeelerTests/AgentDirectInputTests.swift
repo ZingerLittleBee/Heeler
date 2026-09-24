@@ -336,9 +336,6 @@ struct AgentDirectInputTests {
         let terminal = try #require(Self.terminals(in: controller.view).first)
         #expect(!terminal.isLocalInputEnabled)
         terminal.requestKeyboard()
-        let keyboard = TerminalKeyboardControl()
-        keyboard.terminal = terminal
-        keyboard.sendTerminalKey(.enter)
         await Task.yield()
         #expect(!terminal.isFirstResponder)
         #expect(
@@ -1541,7 +1538,7 @@ struct AgentDirectInputTests {
         composer: AgentComposerStore
     ) async throws -> AgentAttachStore {
         let owner = AgentAttachStore(
-            target: "w1:p1",
+            target: .agentPane("w1:p1"),
             paneTitle: "Claude",
             transportGeneration: 1,
             isOnStage: { true },

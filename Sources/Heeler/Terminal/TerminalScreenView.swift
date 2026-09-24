@@ -118,13 +118,6 @@ final class TerminalKeyboardControl {
         }
     }
 
-    /// Open Terminal uses the same key encoding while retaining the Shell's
-    /// local-input gate. A blocked key must not consume pending modifiers.
-    func sendTerminalKey(_ key: AgentQuickKey) {
-        guard let terminal, terminal.isLocalInputEnabled else { return }
-        sendQuickKey(key)
-    }
-
     /// Stops inertial remote scroll, matching `sendQuickKey`'s reliable-input
     /// side effect, for routes that do not go through Ghostty `sendInput`.
     func noteReliableInputBegan() {
@@ -961,8 +954,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             with: NSRange(location: range.location, length: range.length))
     }
 
-    /// Nothing rides the keyboard any more: the input row lives in the app
-    /// (see `ShellTerminalView`), where a keyboard-mode switch cannot tear it
+    /// Nothing rides the keyboard any more: the input chrome lives in the app
+    /// (see `AgentDirectInputChrome`), where a keyboard-mode switch cannot tear it
     /// down, and where UIKit's candidate-row teardown cannot move it.
     override var inputAccessoryView: UIView? {
         nil

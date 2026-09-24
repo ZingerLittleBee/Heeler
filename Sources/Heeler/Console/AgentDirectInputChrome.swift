@@ -16,9 +16,10 @@ struct AgentDirectInputChromeContext {
     }
 
     struct Interactions {
-        /// Switcher `onSelect` is `AgentTerminalView.switchToAgent`, the sole
-        /// production owner of Direct Input keyboard-claim arming.
+        /// Switcher `onSelect` is the screen's switch, the sole production
+        /// owner of Direct Input keyboard-claim arming.
         let switcher: TerminalAgentSwitcher
+        /// What More offers: the row's Agent actions.
         let actions: AgentComposerActions
         let toggleKeyboard: () -> Void
         let switchKeyboard: (() -> Void)?
@@ -33,8 +34,8 @@ struct AgentDirectInputChromeContext {
     let interactions: Interactions
 }
 
-/// Compact Agent-detail chrome for Direct Input: status, a persistent shortcut
-/// row, and the Agent switcher.
+/// Compact Direct Input chrome for Agent detail (an Agent's or a shell row's):
+/// status, a persistent shortcut row, and the switcher.
 /// Bottom-up order: system keyboard, switcher, shortcut row, status. The
 /// shortcut row sits immediately above the persistent Agent strip. App content
 /// rather than a keyboard accessory, so UIKit's candidate-row teardown cannot

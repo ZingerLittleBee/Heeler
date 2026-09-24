@@ -38,6 +38,17 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
 
     var id: ID { ID(hostID: hostID, paneID: agent.paneID) }
 
+    /// A plain shell tab projected as a row (`Agent.isShell`). Everything
+    /// keyed on a ConsoleAgent — rows, pins, moves, close, switcher — applies
+    /// to it unchanged; only Agent-only API calls are gated on this.
+    var isShell: Bool { agent.isShell }
+
+    /// What an Attach resolves for this row. `agent attach` refuses a pane
+    /// with no Agent, so a shell attaches by terminal id (ADR 0015).
+    var attachTarget: TerminalAttachTarget {
+        isShell ? .terminal(agent.terminalID) : .agentPane(agent.paneID)
+    }
+
     /// The one Agent whose session file `AgentSessionUsage` knows how to
     /// fold. Another Agent that came to report a path would only have its
     /// file downloaded and parsed for nothing.
@@ -157,6 +168,59 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     }
 }
 
+extension Agent {
+    /// A plain shell pane as a Console row's Agent (`Agent.shellKind`). It
+    /// carries the pane's own identity — terminal, pane, tab, Workspace —
+    /// and its terminal title. The cwd follows the shell's `cd`, falling
+    /// back to its launch directory. Status is `.shellTerminal`: neutral,
+    /// presentation only, in the bottom sort bucket.
+    init(shellPane pane: PaneInfo, name: String?) {
+        let foregroundCwd = pane.foregroundCwd.flatMap { $0.isEmpty ? nil : $0 }
+        self.init(
+            terminalID: pane.terminalID,
+            kind: Agent.shellKind,
+            title: TerminalTitleGlyphs.strip(
+                pane.terminalTitleStripped ?? pane.terminalTitle ?? ""),
+            status: .shellTerminal,
+            workspaceID: pane.workspaceID,
+            tabID: pane.tabID,
+            paneID: pane.paneID,
+            cwd: foregroundCwd ?? pane.cwd ?? "",
+            revision: pane.revision,
+            name: name,
+            terminalTitle: pane.terminalTitle,
+            terminalTitleStripped: pane.terminalTitleStripped,
+            paneTitle: pane.title)
+    }
+}
+
+extension ConsoleAgent {
+    /// A shell must open in a directory tied to the selected row. A missing
+    /// directory disables Open Terminal and New Terminal instead of letting
+    /// herdr inherit some other focused Pane's cwd.
+    var shellTerminalCreationRequest: ShellTerminalCreationRequest? {
+        if Self.isAbsoluteNonEmptyPath(agent.cwd) {
+            return ShellTerminalCreationRequest(
+                workspaceID: agent.workspaceID,
+                cwd: agent.cwd)
+        }
+        if isLinkedWorktree,
+            let checkoutPath,
+            Self.isAbsoluteNonEmptyPath(checkoutPath)
+        {
+            return ShellTerminalCreationRequest(
+                workspaceID: agent.workspaceID,
+                cwd: checkoutPath)
+        }
+        return nil
+    }
+
+    private static func isAbsoluteNonEmptyPath(_ value: String) -> Bool {
+        value.hasPrefix("/")
+            && !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 /// The snapshot's exact git checkout identity for one workspace. Workspace
 /// ids are reusable slots, so destructive actions match this tuple too.
 struct RepositoryCheckout: Sendable, Equatable, Hashable {
@@ -219,6 +283,11 @@ extension AgentStatus {
 }
 
 extension [ConsoleAgent] {
+    /// The rows with an Agent Status: everything but projected shells.
+    /// Status-driven surfaces — notifications, Live Activities, Host status
+    /// counts — read this; row surfaces read every row.
+    var excludingShells: [ConsoleAgent] { filter { !$0.isShell } }
+
     /// Pins always lead by recency. Every Host shares one default attention
     /// order: Blocked > Working > Done > Idle buckets, newest activity first
     /// inside each bucket (the `stateChangeSeq` comment at the comparator).

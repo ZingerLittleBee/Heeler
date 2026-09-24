@@ -235,6 +235,27 @@ struct AgentComposerStoreTests {
         #expect(await transport.agentPromptParams.count == 1)
     }
 
+    /// herdr refuses `agent.prompt` on a plain shell, so a shell row's
+    /// Send types the draft and Enter in one atomic `pane.send_input`.
+    @Test func shellComposerSendRunsTheDraftThroughPaneInput() async throws {
+        let transport = ScriptedTransport()
+        let store = AgentComposerStore(shellPaneID: "w1:p-shell") { params in
+            try await transport.sendPaneInput(params)
+        }
+        store.replaceDraft(with: "git status")
+
+        let result = await store.send()
+
+        #expect(result == .deliveredViaPaneInput)
+        #expect(store.draft.isEmpty)
+        #expect(store.messages.map(\.state) == [.delivered(.acknowledged)])
+        #expect(
+            await transport.paneInputParams == [
+                PaneSendInputParams(paneID: "w1:p-shell", keys: ["enter"], text: "git status")
+            ])
+        #expect(await transport.agentPromptParams.isEmpty)
+    }
+
     /// herdr 0.8.0+ answers `agent.start` while the pane's agent is still
     /// booting, so the first prompt of a freshly started Agent is rejected
     /// with `agent_not_ready` ("agent wX:pY is not an active named agent")
@@ -1290,7 +1311,7 @@ struct AgentComposerStoreTests {
     @Test func attachStoreBindsDroppedImagesOntoStagingBegin() throws {
         let store = Self.draftOnlyStore()
         let attach = AgentAttachStore(
-            target: "w1:p1",
+            target: .agentPane("w1:p1"),
             paneTitle: "pane",
             transportGeneration: nil,
             isOnStage: { true },
@@ -1507,7 +1528,7 @@ struct AgentComposerStoreTests {
         let jpeg = try Self.tinyJPEGData()
         let store = Self.draftOnlyStore()
         let attach = AgentAttachStore(
-            target: "w1:p1",
+            target: .agentPane("w1:p1"),
             paneTitle: "pane",
             transportGeneration: nil,
             isOnStage: { true },
@@ -1547,7 +1568,7 @@ struct AgentComposerStoreTests {
         let jpeg = try Self.tinyJPEGData()
         let store = Self.draftOnlyStore()
         let attach = AgentAttachStore(
-            target: "w1:p1",
+            target: .agentPane("w1:p1"),
             paneTitle: "pane",
             transportGeneration: nil,
             isOnStage: { true },

@@ -45,7 +45,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running inside a herdr pane, as reported by herdr's detection. The primary object of the app.
+A coding agent process (claude, codex, ...) running inside a herdr pane, as reported by herdr's detection. The primary object of the app. The Console also projects each plain shell Pane as an Agent of kind `shell` (see Shell), so everything said of Agent rows and Agent detail applies to shells unless it names Agent Status or an Agent-only herdr call.
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -95,7 +95,7 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:
-The native dashboard surface: Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, plus the Agent detail screen. Grouping is independent of Agent ordering and Pin priority.
+The native dashboard surface: Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, plus the Agent detail screen. Its rows include Shells: plain shell Panes (such as Default Shell launches) listed as ordinary Agent rows under the same Host filter, search, Host/Workspace grouping, Pins, moves and row actions, sorted in the bottom status bucket. Grouping is independent of Agent ordering and Pin priority.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
@@ -121,7 +121,7 @@ nothing.
 _Avoid_: extra row, custom row
 
 **Pin**:
-A user-chosen Console marker on an Agent's pane slot (`hostID` + `paneID`).
+A user-chosen Console marker on a row's pane slot (`hostID` + `paneID`), Agent or Shell.
 Pinned agents float to the top of the Console list and the Live Activity
 by recency. Pins persist locally and are never pruned, so a pane id that
 returns after a herdr restart stays pinned.
@@ -137,26 +137,33 @@ more; delivery is a separate,
 explicit act.
 Authored delivery is one `agent.prompt` request, except when Agent Status is
 Blocked: Send then inserts the draft into Attach without Enter, and the tools
-keyboard submits or cancels. Delivered means the Host accepted the text into
+keyboard submits or cancels. On a Shell, Send is one `pane.send_input`
+carrying the draft and Enter, because herdr refuses `agent.prompt` on an
+ordinary shell; there is no Agent Status, Blocked insert or launch wait.
+Delivered means the Host accepted the text into
 the pane — whether the Agent queues or acts on it is the Agent's business,
-and the Composer never claims otherwise.
-Composer remains the default authored-input path on Agent detail. Direct Input
-is an explicit, opt-in alternative that hides the Composer card without
-clearing or submitting the draft.
+and the Composer never claims otherwise. A delivery that fails on a dropped
+link is never resent automatically, since herdr may already have run it; the
+user resends deliberately.
+Composer remains the default authored-input path on Agent detail, for Agents
+and Shells alike. Direct Input is an explicit, opt-in alternative that hides
+the Composer card without clearing or submitting the draft.
 _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
 
 **Attach**:
-The realtime PTY stream behind Agent detail, Agent-specific. In Composer mode
-it is display-only: libghostty renders the complete TUI, owns local scrollback,
-and reports its grid size so the remote PTY resizes with the view, while
-authored input belongs to Composer. Direct Input is the scoped exception that
-lets the system keyboard type that same Attach PTY.
-Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
-which case Composer Send inserts the draft into Attach without Enter and the
-tools keyboard submits or cancels. Only Composer's explicit tools-keyboard
-controls (and Direct Input's shortcut row / system Return) send terminal
-control sequences. The directly interactive surface on an ordinary shell is
-the Shell Terminal, never unqualified "Attach".
+The realtime PTY stream behind Agent detail, for an Agent or a Shell. In
+Composer mode it is display-only: libghostty renders the complete TUI, owns
+local scrollback, and reports its grid size so the remote PTY resizes with the
+view, while authored input belongs to Composer. Direct Input is the scoped
+exception that lets the system keyboard type that same Attach PTY.
+An Agent attaches with `herdr agent attach`; a Shell attaches by terminal id
+with `herdr terminal attach`, because `agent attach` refuses a plain pane.
+An Agent's delivery is one `agent.prompt` request, except when Agent Status is
+Blocked, in which case Composer Send inserts the draft into Attach without
+Enter and the tools keyboard submits or cancels; a Shell's is one
+`pane.send_input` carrying the draft and Enter (see Composer). Only Composer's
+explicit tools-keyboard controls (and Direct Input's shortcut row / system
+Return) send terminal control sequences.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Attach Link**:
@@ -165,48 +172,46 @@ available after scrolling or reconnecting, but is forgotten when the user
 leaves the detail; a later session discovers whatever its terminal shows anew.
 _Avoid_: recent link, visible link, link history
 
-**Shell Terminal**:
-The full interactive terminal on an ordinary shell Pane, opened by Agent
-detail's edge-docked Workspace drawer, the Console's Terminals list, or Open
-Terminal. Open Terminal prefers an existing shell in the Workspace and creates
-a tab in the Agent's launch directory only as a fallback or explicit choice.
-Existing shells use direct terminal attach without takeover; Take Over is an
-explicit action when another client owns the terminal. libghostty renders it, and direct keyboard
-input and PTY resize go straight to the remote terminal — no Composer, no
-Agent semantics, no notification routing. It replaces Agent detail while open.
-Like Agent detail it has no title bar: the terminal runs up to the status bar,
-and Back and Close Terminal sit behind the More button on its always-present
-input row, headed by the terminal's title.
-Loaded terminals share a limit of five connections per Host, retained for five
-minutes after leaving the view. The least recently viewed idle terminal is
-detached when another needs its slot; remote panes stay alive. Its Keys mode reuses the
-full Terminal keyboard from Agent tools, including characters, modifiers,
-symbols, and function keys, inside the measured iOS keyboard footprint.
-_Avoid_: Attach (that's the Agent-specific display surface), shell console,
-terminal pane view
+**Shell**:
+An ordinary shell Pane as a Console row: an Agent of kind `shell` with no
+herdr Agent behind it. It uses the Agent row, Agent detail, Composer and
+Direct Input unchanged; the only differences are the herdr calls an Agent-only
+API forces — Attach by `terminal attach`, Composer Send by `pane.send_input`,
+rename by `tab.rename` (its name is its Tab label). It has no Agent Status:
+its badge, switcher chip and status line read "Shell", and it is excluded from
+Agent Notifications, Live Activities and status totals. Agent detail's Open
+Terminal opens an existing Shell in the Workspace (offering a choice when
+there are several) and creates a tab in the Agent's launch directory only as
+a fallback or via New Terminal. Shells share the per-Host limit of five
+retained terminal connections with Agents; remote panes stay alive when one is
+detached. An Agent starting on the Pane replaces its Shell row under the same
+id, and an Agent exiting back to its shell becomes the Shell row again.
+_Avoid_: Shell Terminal (the retired separate screen), shell console, terminal
+pane view
 
 **Workspace Terminal**:
 A Pane listed with its Host, Workspace, Tab title and current directory.
-Includes Agent panes, which open Agent detail, and ordinary panes, which open
-Shell Terminal — whether made by Open Terminal's New Terminal button or by
-the new-agent sheet's Default Shell choice. The detail drawer includes every
+Includes Agent panes and ordinary panes; selecting either opens that row's
+Agent detail — a Shell's whether made by Open Terminal's New Terminal button
+or by the new-agent sheet's Default Shell choice. The detail drawer includes every
 Tab in the current Workspace
 with a New Terminal button pinned below them that opens a fresh shell tab in
 the current pane's directory, and its handle, like the message-jump buttons,
 is long-pressed to slide it along the terminal's edge and rests where it was
 left;
-the Console's Terminals view groups the same inventory by Host and Workspace.
+the Console lists the ordinary panes among its rows as Shells.
 Discovery is independent of loading: only selecting a terminal opens its PTY.
 _Avoid_: SSH session, tab (a Tab can contain several Workspace Terminals)
 
 **Direct Input**:
-The opt-in Agent-detail mode that hides the Composer card and routes the
-system keyboard plus a compact app-owned shortcut row (Esc, Tab, Shift-Tab,
-Enter) into the live Attach PTY. Its tools keyboard also exposes Skills and
-Snippets, inserting their text into Attach without adding Enter. The draft
-stays in `AgentComposerStore` untouched. Mode preference is app-wide, default off. Distinct from Shell
-Terminal (ordinary shell, no Agent semantics) and from Terminal Keyboard (the
-iOS/tools swap under Composer).
+The opt-in mode that hides the Composer card and routes the system keyboard
+into the live Attach PTY of an Agent or a Shell — with a
+compact app-owned shortcut row (Esc, Tab, Shift-Tab, arrows, Backspace,
+Enter) above the switcher strip. Its tools keyboard also exposes Snippets (and
+Skills, for Agents that have them), inserting their text into the PTY without
+adding Enter. The draft stays in `AgentComposerStore` untouched. Mode
+preference is app-wide, default off. Distinct from
+Terminal Keyboard (the iOS/tools swap under Composer).
 _Avoid_: Keys mode, terminal mode, raw input, Attach mode
 
 **Terminal Keyboard**:

@@ -2652,7 +2652,7 @@ struct AgentAttachStoreTests {
             Agent(.fixture(paneID: target))
         }
         return AgentAttachStore(
-            target: target,
+            target: .agentPane(target),
             paneTitle: "Agent",
             transportGeneration: generation,
             isOnStage: isOnStage,
@@ -3025,7 +3025,7 @@ struct AgentAttachStoreForegroundTests {
             Agent(.fixture(paneID: "w1:p1"))
         }
         return AgentAttachStore(
-            target: "w1:p1",
+            target: .agentPane("w1:p1"),
             paneTitle: "pane",
             transportGeneration: 1,
             isOnStage: isOnStage,

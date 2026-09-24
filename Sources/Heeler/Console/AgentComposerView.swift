@@ -13,6 +13,23 @@ enum AgentComposerKeyboardPresentation: Equatable {
     }
 }
 
+extension TerminalKeyboardInset {
+    /// Readies the inset for a Composer keyboard presentation: the tools dock
+    /// freezes the last complete measurement, the system keyboard is expected
+    /// before its first frame arrives.
+    func prepare(for presentation: AgentComposerKeyboardPresentation) {
+        switch presentation {
+        case .tools:
+            pauseHeightCapture()
+        case .hidden:
+            resumeHeightCapture()
+        case .system:
+            resumeHeightCapture()
+            expectSoftwareKeyboard()
+        }
+    }
+}
+
 struct AgentComposerKeyboardLayout: Equatable {
     /// Used only when `lastPresentedHeight` is still zero. Any positive
     /// measurement is the tools footprint as-is, even when it is shorter
@@ -89,12 +106,16 @@ struct AgentComposerLinkPresentation: Equatable {
 }
 
 /// The native, local-first input surface beneath the live terminal. Drafting
-/// stays on device; Send emits one `agent.prompt` request except when Agent
-/// Status is Blocked, in which case it inserts the draft into Attach without
-/// Enter and presents the tools keyboard. Explicit tool-keyboard controls
-/// send terminal sequences through Attach.
+/// stays on device; for an Agent, Send emits one `agent.prompt` request
+/// except when Agent Status is Blocked, in which case it inserts the draft
+/// into Attach without Enter and presents the tools keyboard. For a shell
+/// row, Send is one `pane.send_input` type-and-submit; copy and input traits
+/// follow the store's delivery (`AgentComposerStore.deliversToAgent`).
+/// Explicit tool-keyboard controls send terminal sequences through the live
+/// terminal.
 struct AgentComposerView: View {
     let store: AgentComposerStore
+    /// A shell row passes `.shellTerminal`.
     let status: AgentStatus
     /// Read-only projection of the Host's own connection telemetry; nil
     /// whenever there is nothing proven to show.
@@ -113,6 +134,7 @@ struct AgentComposerView: View {
     /// without it. See `AgentDetailView.prepareRetainedAgent`.
     var inheritsKeyboardHandoff = true
     let keyboardHeight: CGFloat
+    /// Add stages attachments; More carries the row actions.
     let actions: AgentComposerActions
     /// Anchors the Attach Links list to the link chip that opens it.
     let attachLinksPopover: AttachLinksPopover
@@ -173,13 +195,19 @@ struct AgentComposerView: View {
                                 selectedRange: store.draftSelection,
                                 onEdit: { store.applyEditorDraft($0, selection: $1) },
                                 isFocused: $isInputFocused,
+                                accessibilityLabel: store.deliversToAgent
+                                    ? "Message the Agent" : "Command for the terminal",
+                                // Matches the terminal Direct Input types into, so
+                                // the responder handoff keeps one keyboard context:
+                                // Agent input is natural language, a shell's commands.
+                                textInputStyle: store.deliversToAgent ? .naturalLanguage : .terminal,
                                 keyboardPresentation: keyboardPresentation,
                                 keyboardHandoffID: keyboardHandoffID,
                                 isKeyboardHandoffCurrent: isKeyboardHandoffCurrent,
                                 onFirstResponderRequest: onFirstResponderRequest,
                                 onKeyboardHandoffSettled: onKeyboardHandoffSettled)
                             if store.draft.isEmpty {
-                                Text("Message Agent")
+                                Text(store.deliversToAgent ? "Message Agent" : "Command")
                                     .foregroundStyle(.tertiary)
                                     .padding(.top, 8)
                                     .allowsHitTesting(false)
@@ -241,7 +269,9 @@ struct AgentComposerView: View {
                             .frame(minWidth: 44, minHeight: 44)
                             .accessibilityHint("Opens Agent actions")
 
-                            if let links = linkPresentation {
+                            if let links = AgentComposerLinkPresentation(
+                                count: actions.attachLinkCount)
+                            {
                                 Button {
                                     actions.showAttachLinks()
                                 } label: {
@@ -318,10 +348,7 @@ struct AgentComposerView: View {
             hasDraft: { store.canSend },
             send: { await deliverDraft { await store.send() } }))
         .onAppear {
-            guard inheritsKeyboardHandoff,
-                  let selectedID = switcher.selectedID,
-                  keyboardHandoff.consume(selectedID)
-            else { return }
+            guard inheritsKeyboardHandoff, claimsInheritedKeyboard() else { return }
             setKeyboardPresentation(.system)
             isInputFocused = true
         }
@@ -432,8 +459,9 @@ struct AgentComposerView: View {
         return (message.id, detail)
     }
 
-    private var linkPresentation: AgentComposerLinkPresentation? {
-        AgentComposerLinkPresentation(count: actions.attachLinkCount)
+    private func claimsInheritedKeyboard() -> Bool {
+        guard let selectedID = switcher.selectedID else { return false }
+        return keyboardHandoff.consume(selectedID)
     }
 
     private var secondaryActionTint: Color {
@@ -605,6 +633,8 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     let selectedRange: NSRange
     let onEdit: (String, NSRange) -> Void
     @Binding var isFocused: Bool
+    let accessibilityLabel: String
+    let textInputStyle: TerminalTextInputStyle
     let keyboardPresentation: AgentComposerKeyboardPresentation
     let keyboardHandoffID: UUID?
     let isKeyboardHandoffCurrent: (UUID) -> Bool
@@ -626,8 +656,15 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         // Correction traits are pinned in AgentComposerUITextView's
         // initializers, identical to the terminal's — matching traits
         // keep one keyboard context across the Direct Input responder
-        // transfer (de36399).
-        textView.accessibilityLabel = "Message the Agent"
+        // transfer (de36399). The style-dependent ones follow the target's
+        // terminal the same way `HeelerTerminalView` applies them: a shell
+        // command is never capitalized and gets no assistant bar groups.
+        if textInputStyle == .terminal {
+            textView.autocapitalizationType = .none
+            textView.inputAssistantItem.leadingBarButtonGroups = []
+            textView.inputAssistantItem.trailingBarButtonGroups = []
+        }
+        textView.accessibilityLabel = accessibilityLabel
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         return textView
     }
