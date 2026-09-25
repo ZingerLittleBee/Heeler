@@ -32,7 +32,9 @@ Entries reference the issue that motivated them.
   Host stops on a failure, which also dims its name. A connected Host shows
   the glyph alone. The disclosure chevron moves to the trailing edge, an
   expanded Host in the Agents tab states its condition as the Terminals tab
-  does, and the Hosts list marks each state with its own icon.
+  does, and the Hosts list marks each state with its own icon. A Host that
+  is reconnecting or cannot connect no longer expands: tapping it opens a
+  sheet with the failure, a Retry button, and Edit for its settings.
   (#316; PR #377)
 
 ### Fixed

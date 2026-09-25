@@ -261,6 +261,7 @@
 		8D9ED28E1DB5A72B471CBD45 /* AppAppearanceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAEAF21DF91A1BCE4C9F79A3 /* AppAppearanceSettings.swift */; };
 		8DF7095F918DBDA5B76F24F1 /* HeelerSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 13CFA5F5C15E83F411CC03BA /* HeelerSSH */; };
 		8E205B2A9767D2C9538C6D39 /* HerdrHostPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7D28071688F3A69201EEE7 /* HerdrHostPath.swift */; };
+		8E236CBD551AF9130B943B01 /* HostConnectionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39FDAE57C6482EB8A38B46FA /* HostConnectionDetailView.swift */; };
 		8E440AFCE2BF426ECD8E0A86 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D2BCB4E4038F510852F71C /* SecretStore.swift */; };
 		8EB4F2396CC905928797A622 /* AgentName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4692E780178FDFA1CF9537B1 /* AgentName.swift */; };
 		8F91EAC7F32AA058E7F23394 /* TerminalKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247FF74AD248F26A072EA263 /* TerminalKeyboard.swift */; };
@@ -581,6 +582,7 @@
 		381B00805D3CDEEE94DAE35B /* RenameStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameStore.swift; sourceTree = "<group>"; };
 		39AB9600ADA84D3C0E461B8C /* WorkspaceTerminalDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceTerminalDetailView.swift; sourceTree = "<group>"; };
 		39AD641EA732307D72698216 /* EventsSessionSubscriptionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionSubscriptionsTests.swift; sourceTree = "<group>"; };
+		39FDAE57C6482EB8A38B46FA /* HostConnectionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostConnectionDetailView.swift; sourceTree = "<group>"; };
 		3A383F050585E92B29A100E2 /* AgentModelProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentModelProbe.swift; sourceTree = "<group>"; };
 		3A62B60BB8431BE061FAA21B /* AgentActivityLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityLinkTests.swift; sourceTree = "<group>"; };
 		3A84F06EC2D4448E5DF72D76 /* TerminalTitleGlyphsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTitleGlyphsTests.swift; sourceTree = "<group>"; };
@@ -1298,6 +1300,7 @@
 				4D3494B1280AF198398C5AA4 /* EdgeDockLift.swift */,
 				2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */,
 				9517F69576219D0D12778081 /* HerdrSidebarSnapshotStore.swift */,
+				39FDAE57C6482EB8A38B46FA /* HostConnectionDetailView.swift */,
 				88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */,
 				6CAC72199BF308E484F37439 /* HostTelemetryPresentation.swift */,
 				5A001C1028C859D6281E1642 /* InputShortcutStripPresentation.swift */,
@@ -1897,6 +1900,7 @@
 				C7453CB760A1AFD53C7BA595 /* HerdrSidebarSnapshotStore.swift in Sources */,
 				BB26A50348D73A7852417D5B /* HerdrWire.swift in Sources */,
 				E89FDBBF01AA72A922ED0F03 /* Host.swift in Sources */,
+				8E236CBD551AF9130B943B01 /* HostConnectionDetailView.swift in Sources */,
 				5BFCE188EA8080664FE28D77 /* HostConnectionTone.swift in Sources */,
 				91BF879F537B1B0DD0B5E78B /* HostConsoleProjection.swift in Sources */,
 				FE387FB6FB6CC68E066B23AE /* HostCredentialsProvider.swift in Sources */,

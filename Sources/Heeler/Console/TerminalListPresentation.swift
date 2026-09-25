@@ -81,6 +81,8 @@ struct TerminalHostGroup: Identifiable, Equatable {
     let hostName: String
     let readiness: HostReadiness
     let issue: ConsoleHostStatusPresentation?
+    /// A failing Host opens its connection sheet instead of expanding.
+    let opensConnectionDetail: Bool
     let workspaces: [TerminalWorkspaceGroup]
     let isCollapsed: Bool
 
@@ -160,6 +162,9 @@ struct TerminalListProjection {
                 hostName: host.displayName,
                 readiness: readiness(for: host, isEmpty: workspaces.isEmpty),
                 issue: issue(for: host),
+                opensConnectionDetail: HostConnectionDetailPresentation(
+                    host: host, status: hostStatuses[host.id],
+                    standingFailure: hostStandingFailures[host.id]) != nil,
                 workspaces: workspaces,
                 isCollapsed: collapsedHosts.contains(host.id))
         }

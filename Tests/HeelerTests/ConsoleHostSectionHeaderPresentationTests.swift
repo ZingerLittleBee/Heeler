@@ -105,6 +105,19 @@ struct ConsoleHostSectionHeaderPresentationTests {
         #expect(HostReadiness(text: "Unavailable", tone: .unavailable).dimsName)
     }
 
+    @Test func aFailingHostOpensItsSheetInsteadOfExpanding() {
+        let failing = ConsoleHostSectionHeaderPresentation(
+            section: section(status: .failed(.authenticationFailed), isCollapsed: false),
+            opensConnectionDetail: true)
+        #expect(failing.isCollapsed)
+        #expect(failing.disclosureSystemImage == "chevron.right")
+        #expect(failing.accessibilityHint == "Shows why this Host can't connect.")
+        let healthy = ConsoleHostSectionHeaderPresentation(
+            section: section(status: .connected, isCollapsed: false))
+        #expect(!healthy.isCollapsed)
+        #expect(healthy.accessibilityHint == "Collapses this Host.")
+    }
+
     @Test func statusPillsAreCollapsedOnlyButVoiceOverKeepsTheBreakdown() {
         let counts = ConsoleHostAgentStatusCounts(blocked: 1, working: 2, done: 3)
         let expanded = ConsoleHostSectionHeaderPresentation(
@@ -197,5 +210,51 @@ struct ConsoleListPresentationRoutingTests {
                 connectionStatus: .connecting, isAwaitingSnapshot: false, statusSeverity: .critical,
                 isEmpty: true, inventoryNoun: "Terminals")
                 == HostReadiness(text: "Unavailable", tone: .unavailable))
+    }
+}
+
+@Suite("Host connection detail presentation")
+struct HostConnectionDetailPresentationTests {
+    private let host = Host.fixture(name: "studio", address: "10.0.0.2", username: "dev")
+
+    @Test func onlyAFailingHostHasASheet() {
+        #expect(HostConnectionDetailPresentation(host: host, status: .connected, standingFailure: nil) == nil)
+        #expect(HostConnectionDetailPresentation(host: host, status: .connecting, standingFailure: nil) == nil)
+        #expect(HostConnectionDetailPresentation(host: host, status: .suspended, standingFailure: nil) == nil)
+        #expect(HostConnectionDetailPresentation(host: host, status: nil, standingFailure: nil) == nil)
+    }
+
+    @Test func aStoppedHostShowsTheWholePresentation() throws {
+        let failure = TransportError.sshUnreachable(detail: "connection refused")
+        let detail = try #require(
+            HostConnectionDetailPresentation(host: host, status: .failed(failure), standingFailure: nil))
+        #expect(detail.title == "Can't Connect")
+        #expect(detail.tone == .unavailable)
+        #expect(detail.address == "dev@10.0.0.2")
+        #expect(detail.summary == failure.presentation.summary)
+        #expect(detail.detail == "connection refused")
+        #expect(detail.recoverySuggestion == failure.presentation.recoverySuggestion)
+        #expect(detail.recoverySuggestion != nil)
+        #expect(!detail.isRetrying)
+        #expect(!detail.isDialing)
+    }
+
+    @Test func runningRecoveryWithholdsTheSuggestion() throws {
+        let failure = TransportError.sshUnreachable(detail: "timed out")
+        let reconnecting = try #require(
+            HostConnectionDetailPresentation(
+                host: host,
+                status: .reconnecting(attempt: 3, delay: .seconds(4), failure: failure),
+                standingFailure: nil))
+        #expect(reconnecting.title == "Reconnecting")
+        #expect(reconnecting.attempt == "Attempt 3")
+        #expect(reconnecting.recoverySuggestion == nil)
+        #expect(!reconnecting.isDialing)
+
+        let retrying = try #require(
+            HostConnectionDetailPresentation(host: host, status: .connecting, standingFailure: failure))
+        #expect(retrying.title == "Can't Connect")
+        #expect(retrying.recoverySuggestion == nil)
+        #expect(retrying.isDialing)
     }
 }

@@ -49,6 +49,7 @@ struct ConsoleView: View {
     @State private var hostsTabRequest: HostsTabRequest?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
+    @State private var connectionDetailRequest: ConnectionDetailRequest?
     /// Hosts whose Host-detail Reconnect request is in flight, including the
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -153,6 +154,26 @@ struct ConsoleView: View {
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))
+        }
+        .sheet(item: $connectionDetailRequest) { request in
+            if let host = hosts.hosts.first(where: { $0.id == request.id }),
+                let detail = connectionDetail(for: request.id)
+            {
+                HostConnectionDetailView(
+                    presentation: detail,
+                    host: host,
+                    catalog: hosts,
+                    isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id)
+                ) {
+                    Task { await reconnectHost(host.id) }
+                }
+            }
+        }
+        // Once the Host connects again (or leaves the catalog) the sheet has
+        // nothing left to explain.
+        .onChange(of: connectionDetailRequest.flatMap { connectionDetail(for: $0.id) }) {
+            _, detail in
+            if detail == nil { connectionDetailRequest = nil }
         }
         .sheet(isPresented: $isShowingSettings) {
             SettingsView(
@@ -303,7 +324,7 @@ struct ConsoleView: View {
                     filteredHostID: hostFilter,
                     selection: selectedItem,
                     onOpen: { selectTerminal($0) },
-                    onOpenHost: { presentHosts($0) },
+                    onOpenHost: { openHostIssue($0) },
                     onNewTerminal: { isStartingTerminal = true })
             }
         case .hosts:
@@ -423,7 +444,7 @@ struct ConsoleView: View {
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
                     isSearchFocused: isSearchFocused,
                     isCovered: isHostsTabSelected || isStartingAgent || isStartingTerminal
-                        || isShowingSettings,
+                        || isShowingSettings || connectionDetailRequest != nil,
                     inputMode: inputMode.mode)
             },
             navigate: { id in
@@ -775,7 +796,7 @@ struct ConsoleView: View {
     @ViewBuilder
     private var flatAgentListRows: some View {
         ForEach(visibleHostIssues) { issue in
-            ConsoleHostIssueRow(issue: issue) { presentHosts($0) }
+            ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
         }
         ForEach(filteredAgents) { agent in
             agentRow(agent)
@@ -785,22 +806,28 @@ struct ConsoleView: View {
     @ViewBuilder
     private var groupedAgentListRows: some View {
         ForEach(hostSections) { section in
+            let opensDetail = connectionDetail(for: section.hostID) != nil
             Section {
-                // As in the Terminals tab: an expanded Host with a condition
-                // says what it is before any Agents it still lists.
-                if !section.isCollapsed, let issue = section.statusPresentation {
-                    ConsoleHostIssueRow(issue: issue) { presentHosts($0) }
-                }
-                if !section.isCollapsed {
+                if !section.isCollapsed && !opensDetail {
+                    // As in the Terminals tab: an expanded Host with a
+                    // condition says what it is before any Agents it lists.
+                    if let issue = section.statusPresentation {
+                        ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
+                    }
                     ForEach(section.agents) { agent in
                         agentRow(agent)
                     }
                 }
             } header: {
                 ConsoleHostSectionHeaderView(
-                    presentation: ConsoleHostSectionHeaderPresentation(section: section)
+                    presentation: ConsoleHostSectionHeaderPresentation(
+                        section: section, opensConnectionDetail: opensDetail)
                 ) {
-                    toggleHostSection(section.hostID)
+                    if opensDetail {
+                        openHostIssue(section.hostID)
+                    } else {
+                        toggleHostSection(section.hostID)
+                    }
                 }
                 .textCase(nil)
             }
@@ -1023,6 +1050,28 @@ struct ConsoleView: View {
                 standingFailure: console.hostStandingFailures[host.id],
                 isAwaitingSnapshot: console.hostsAwaitingSnapshot.contains(host.id),
                 syncError: console.hostSyncErrors[host.id])
+        }
+    }
+
+    private struct ConnectionDetailRequest: Identifiable {
+        let id: Host.ID
+    }
+
+    private func connectionDetail(for id: Host.ID) -> HostConnectionDetailPresentation? {
+        guard let host = hosts.hosts.first(where: { $0.id == id }) else { return nil }
+        return HostConnectionDetailPresentation(
+            host: host,
+            status: console.hostStatuses[id],
+            standingFailure: console.hostStandingFailures[id])
+    }
+
+    /// A Host that cannot connect explains itself in a sheet; any other Host
+    /// condition opens the Host in the Hosts tab.
+    private func openHostIssue(_ id: Host.ID) {
+        if connectionDetail(for: id) != nil {
+            connectionDetailRequest = ConnectionDetailRequest(id: id)
+        } else {
+            presentHosts(id)
         }
     }
 

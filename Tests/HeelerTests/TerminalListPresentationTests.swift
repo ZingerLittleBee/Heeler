@@ -167,6 +167,16 @@ struct TerminalListProjectionTests {
         #expect(last.isCollapsed)
     }
 
+    @Test func onlyFailingHostsOpenTheConnectionSheet() {
+        let live = Host.fixture(name: "live")
+        let stopped = Host.fixture(name: "stopped")
+        let groups = projection(
+            hosts: [live, stopped],
+            statuses: [live.id: .connected, stopped.id: .failed(.authenticationFailed)]
+        ).hostGroups()
+        #expect(groups.map(\.opensConnectionDetail) == [false, true])
+    }
+
     @Test func connectedHostWithoutShellsReadsNoTerminals() {
         let host = Host.fixture()
         let group = projection(hosts: [host], statuses: [host.id: .connected]).hostGroups().first

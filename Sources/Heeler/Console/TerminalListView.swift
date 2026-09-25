@@ -92,18 +92,26 @@ struct TerminalListView: View {
             List(selection: $selection) {
                 ForEach(groups) { group in
                     Section {
-                        if let issue = group.issue, !group.isCollapsed {
+                        if let issue = group.issue, !group.isCollapsed,
+                            !group.opensConnectionDetail
+                        {
                             ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
                         }
                     } header: {
-                        TerminalHostHeader(group: group) { toggle(group.hostID) }
+                        TerminalHostHeader(group: group) {
+                            if group.opensConnectionDetail {
+                                onOpenHost(group.hostID)
+                            } else {
+                                toggle(group.hostID)
+                            }
+                        }
                             // Back out the card margin and match the plain
                             // list's header rhythm, so a Host sits exactly
                             // where it does in the Agents tab.
                             .padding(.horizontal, -Self.byHostCardMargin)
                             .padding(.bottom, Self.byHostHeaderExtraHeight)
                     }
-                    if !group.isCollapsed {
+                    if !group.isCollapsed && !group.opensConnectionDetail {
                         ForEach(group.workspaces) { workspace in
                             workspaceSection(
                                 workspace, showsHost: false,
@@ -428,7 +436,7 @@ private struct TerminalHostHeader: View {
                         .padding(.vertical, 2)
                         .background(.fill.tertiary, in: Capsule())
                 }
-                Image(systemName: group.isCollapsed ? "chevron.right" : "chevron.down")
+                Image(systemName: isFolded ? "chevron.right" : "chevron.down")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 12, alignment: .center)
@@ -440,8 +448,15 @@ private struct TerminalHostHeader: View {
         .textCase(nil)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(group.hostName), \(group.readiness.text)")
-        .accessibilityValue(group.isCollapsed ? "Collapsed" : "Expanded")
-        .accessibilityHint(group.isCollapsed ? "Expands this Host." : "Collapses this Host.")
+        .accessibilityValue(
+            group.opensConnectionDetail ? "" : group.isCollapsed ? "Collapsed" : "Expanded")
+        .accessibilityHint(
+            group.opensConnectionDetail
+                ? "Shows why this Host can't connect."
+                : group.isCollapsed ? "Expands this Host." : "Collapses this Host.")
         .accessibilityAddTraits(.isHeader)
     }
+
+    /// A failing Host never expands; its chevron points at the sheet.
+    private var isFolded: Bool { group.isCollapsed || group.opensConnectionDetail }
 }

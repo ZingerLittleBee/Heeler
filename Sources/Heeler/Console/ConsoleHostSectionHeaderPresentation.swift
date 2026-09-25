@@ -30,21 +30,28 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
     let accessibilityLabel: String
     let accessibilityValue: String
     let accessibilityHint: String
+    /// A failing Host opens its connection sheet instead of expanding: it
+    /// has no inventory to show.
+    let opensConnectionDetail: Bool
 
-    init(section: ConsoleHostSection) {
+    init(section: ConsoleHostSection, opensConnectionDetail: Bool = false) {
         hostDisplayName = section.hostDisplayName
         readiness = Self.readiness(for: section)
-        isCollapsed = section.isCollapsed
+        self.opensConnectionDetail = opensConnectionDetail
+        isCollapsed = section.isCollapsed || opensConnectionDetail
         let projectedStatusItems = section.statusCounts.items
         statusItems = projectedStatusItems
         showsStatusPills = section.isCollapsed && !projectedStatusItems.isEmpty
         statusText = Self.statusText(items: projectedStatusItems)
-        disclosureSystemImage = section.isCollapsed ? "chevron.right" : "chevron.down"
-        accessibilityValue = section.isCollapsed ? "Collapsed" : "Expanded"
+        disclosureSystemImage = isCollapsed ? "chevron.right" : "chevron.down"
+        accessibilityValue =
+            opensConnectionDetail ? "" : section.isCollapsed ? "Collapsed" : "Expanded"
         accessibilityHint =
-            section.isCollapsed
-            ? "Expands this Host."
-            : "Collapses this Host."
+            opensConnectionDetail
+            ? "Shows why this Host can't connect."
+            : section.isCollapsed
+                ? "Expands this Host."
+                : "Collapses this Host."
 
         var labelParts = [section.hostDisplayName, readiness.text]
         if let statusText {
