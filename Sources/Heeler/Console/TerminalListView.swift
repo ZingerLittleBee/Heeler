@@ -22,13 +22,19 @@ struct TerminalListView: View {
     @State private var pendingClose: ConsoleTerminal?
     @State private var closeFailure: String?
 
-    /// By Host's side margins. Cards are inset to the width of their
-    /// Workspace headers, which keep the narrower header margin.
-    private static let byHostCardMargin: CGFloat = 24
-    private static let byHostHeaderMargin: CGFloat = 8
+    /// By Host's side margins. Cards span the width of the Host rows, and
+    /// Workspace headers line up with the cards' edges.
+    private static let byHostCardMargin: CGFloat = 16
+    private static let byHostHeaderMargin: CGFloat = 0
     /// What the Agents tab's plain-list Host headers add over this grouped
     /// list's compact section spacing.
     private static let byHostHeaderExtraHeight: CGFloat = 16
+    /// Between Workspace cards; the header's own 44-point row already
+    /// separates collapsed ones.
+    private static let workspaceSpacing: CGFloat = 0
+    /// Taken off the grouped list's own header padding, above and below, so
+    /// collapsed Workspaces stack like rows; the 44-point target stays.
+    private static let workspaceHeaderTrim: CGFloat = 7
 
     private var projection: TerminalListProjection {
         presentation.projection(hosts: hosts, console: console)
@@ -109,8 +115,11 @@ struct TerminalListView: View {
                             // list's header rhythm, so a Host sits exactly
                             // where it does in the Agents tab.
                             .padding(.horizontal, -Self.byHostCardMargin)
-                            .padding(.bottom, Self.byHostHeaderExtraHeight)
+                            // Only when another Host follows: an expanded
+                            // Host keeps its Workspaces close.
+                            .padding(.bottom, isFolded(group) ? Self.byHostHeaderExtraHeight : 0)
                     }
+                    .listSectionSpacing(isFolded(group) ? .compact : .custom(0))
                     if !group.isCollapsed && !group.opensConnectionDetail {
                         ForEach(group.workspaces) { workspace in
                             workspaceSection(
@@ -157,7 +166,13 @@ struct TerminalListView: View {
                 showsHost: showsHost,
                 onToggle: { toggle(workspace.id) })
                 .padding(.horizontal, -headerOutset)
+                .padding(.vertical, -Self.workspaceHeaderTrim)
         }
+        .listSectionSpacing(.custom(Self.workspaceSpacing))
+    }
+
+    private func isFolded(_ group: TerminalHostGroup) -> Bool {
+        group.isCollapsed || group.opensConnectionDetail
     }
 
     private func terminalRow(_ terminal: ConsoleTerminal, showsTab: Bool) -> some View {
@@ -391,7 +406,9 @@ private struct TerminalWorkspaceHeader: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Color.secondary)
                     .rotationEffect(.degrees(workspace.isCollapsed ? 0 : 90))
-                    .frame(width: 44, height: 44)
+                    // The Host header's chevron width, so both line up; the
+                    // whole row is the tap target.
+                    .frame(width: 12)
             }
             .lineLimit(1)
             .contentShape(Rectangle())
