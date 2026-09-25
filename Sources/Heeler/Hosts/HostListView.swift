@@ -309,16 +309,9 @@ private struct HostRow: View {
 /// a Transport Error Presentation — even on `.failed`, where they say
 /// "Unavailable". See Transport Error Presentation in `CONTEXT.md`.
 struct HostConnectionPresentation: Equatable {
-    enum Tone: Equatable {
-        case connected
-        case pending
-        case warning
-        case unavailable
-    }
-
     let title: String
     let accessibilityLabel: String
-    let tone: Tone
+    let tone: HostConnectionTone
 
     init(
         status: EventsSessionStatus?,
@@ -357,7 +350,7 @@ struct HostConnectionPresentation: Equatable {
         case .suspended:
             title = "Paused"
             accessibilityLabel = "Connection paused"
-            tone = .pending
+            tone = .paused
         case nil:
             title = "Connecting…"
             accessibilityLabel = "Connecting"
@@ -370,28 +363,9 @@ private struct HostConnectionIndicator: View {
     let presentation: HostConnectionPresentation
 
     var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 7))
-                .foregroundStyle(tint)
-                .accessibilityHidden(true)
-            Text(presentation.title)
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(presentation.accessibilityLabel)
-    }
-
-    private var tint: Color {
-        switch presentation.tone {
-        case .connected: .green
-        case .pending: .secondary
-        case .warning: .orange
-        case .unavailable: .red
-        }
+        HostConnectionStatusLabel(text: presentation.title, tone: presentation.tone)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(presentation.accessibilityLabel)
     }
 }
 

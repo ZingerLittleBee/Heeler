@@ -451,10 +451,8 @@ private struct TerminalHostHeader: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(group.readinessText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    HostConnectionStatusLabel(
+                        text: group.readiness.text, tone: group.readiness.tone)
                 }
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {
@@ -472,7 +470,7 @@ private struct TerminalHostHeader: View {
         .buttonStyle(.plain)
         .textCase(nil)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(group.hostName), \(group.readinessText)")
+        .accessibilityLabel("\(group.hostName), \(group.readiness.text)")
         .accessibilityValue(group.isCollapsed ? "Collapsed" : "Expanded")
         .accessibilityHint(group.isCollapsed ? "Expands this Host." : "Collapses this Host.")
         .accessibilityAddTraits(.isHeader)

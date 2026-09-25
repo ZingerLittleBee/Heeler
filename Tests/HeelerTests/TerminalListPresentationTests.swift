@@ -157,12 +157,12 @@ struct TerminalListProjectionTests {
         ).hostGroups()
         #expect(groups.map(\.hostName) == ["connected", "paused"])
         let first = try #require(groups.first)
-        #expect(first.readinessText == "Connected")
+        #expect(first.readiness.text == "Connected")
         #expect(first.issue == nil)
         #expect(first.terminalCount == 1)
         #expect(!first.isCollapsed)
         let last = try #require(groups.last)
-        #expect(last.readinessText == "Paused")
+        #expect(last.readiness.text == "Paused")
         #expect(last.issue != nil)
         #expect(last.isCollapsed)
     }
@@ -170,7 +170,7 @@ struct TerminalListProjectionTests {
     @Test func connectedHostWithoutShellsReadsNoTerminals() {
         let host = Host.fixture()
         let group = projection(hosts: [host], statuses: [host.id: .connected]).hostGroups().first
-        #expect(group?.readinessText == "No Terminals")
+        #expect(group?.readiness.text == "No Terminals")
     }
 }
 

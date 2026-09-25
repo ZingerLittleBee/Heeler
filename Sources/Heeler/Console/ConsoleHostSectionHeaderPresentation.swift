@@ -1,5 +1,11 @@
 import Foundation
 
+/// A Host header's short readiness and the tone its status dot wears.
+struct HostReadiness: Equatable {
+    let text: String
+    let tone: HostConnectionTone
+}
+
 /// Pure presentation values for one Console Host-section header (#245).
 ///
 /// Built from a projected `ConsoleHostSection` so VoiceOver labels, readiness
@@ -8,7 +14,7 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
     let hostDisplayName: String
     /// Short connection / Agent Inventory readiness, aligned with Host-list
     /// chip language rather than the longer flat-list issue sentences.
-    let readinessText: String
+    let readiness: HostReadiness
     let isCollapsed: Bool
     let statusItems: [ConsoleHostAgentStatusCount]
     /// Visual status pills only while collapsed; VoiceOver still hears the
@@ -22,7 +28,7 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
 
     init(section: ConsoleHostSection) {
         hostDisplayName = section.hostDisplayName
-        readinessText = Self.readinessText(for: section)
+        readiness = Self.readiness(for: section)
         isCollapsed = section.isCollapsed
         let projectedStatusItems = section.statusCounts.items
         statusItems = projectedStatusItems
@@ -35,7 +41,7 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
             ? "Expands this Host."
             : "Collapses this Host."
 
-        var labelParts = [section.hostDisplayName, readinessText]
+        var labelParts = [section.hostDisplayName, readiness.text]
         if let statusText {
             labelParts.append(statusText)
         }
@@ -44,8 +50,8 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
 
     /// Honest short readiness: connected-empty is distinct from connecting,
     /// loading, failed, and reconnecting.
-    static func readinessText(for section: ConsoleHostSection) -> String {
-        readinessText(
+    static func readiness(for section: ConsoleHostSection) -> HostReadiness {
+        readiness(
             connectionStatus: section.connectionStatus,
             isAwaitingSnapshot: section.isAwaitingSnapshot,
             statusSeverity: section.statusPresentation?.severity,
@@ -55,38 +61,39 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
 
     /// The same readiness for any Host-scoped inventory; the Terminals tab
     /// passes its own noun.
-    static func readinessText(
+    static func readiness(
         connectionStatus: EventsSessionStatus?,
         isAwaitingSnapshot: Bool,
         statusSeverity: ConsoleHostStatusPresentation.Severity?,
         isEmpty: Bool,
         inventoryNoun: String
-    ) -> String {
+    ) -> HostReadiness {
         switch connectionStatus {
         case .connected:
             if isAwaitingSnapshot {
-                return "Loading \(inventoryNoun)…"
+                return HostReadiness(text: "Loading \(inventoryNoun)…", tone: .connected)
             }
             if statusSeverity != nil {
-                return "Sync issue"
+                return HostReadiness(text: "Sync issue", tone: .warning)
             }
-            return isEmpty ? "No \(inventoryNoun)" : "Connected"
+            return HostReadiness(
+                text: isEmpty ? "No \(inventoryNoun)" : "Connected", tone: .connected)
         case .reconnecting:
-            return "Reconnecting…"
+            return HostReadiness(text: "Reconnecting…", tone: .warning)
         case .connecting:
             if let statusSeverity, statusSeverity != .informational {
-                return "Unavailable"
+                return HostReadiness(text: "Unavailable", tone: .unavailable)
             }
-            return "Connecting…"
+            return HostReadiness(text: "Connecting…", tone: .pending)
         case .failed, .ended:
-            return "Unavailable"
+            return HostReadiness(text: "Unavailable", tone: .unavailable)
         case .suspended:
-            return "Paused"
+            return HostReadiness(text: "Paused", tone: .paused)
         case nil:
             if statusSeverity != nil {
-                return "Unavailable"
+                return HostReadiness(text: "Unavailable", tone: .unavailable)
             }
-            return "Connecting…"
+            return HostReadiness(text: "Connecting…", tone: .pending)
         }
     }
 

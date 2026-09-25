@@ -57,6 +57,14 @@ struct HostListViewTests {
             ).title == "Unavailable")
     }
 
+    @Test func pausedHostHoldsStillInsteadOfLookingPending() {
+        let presentation = HostConnectionPresentation(status: .suspended, latency: nil)
+        #expect(presentation.tone == .paused)
+        #expect(!presentation.tone.isInProgress)
+        #expect(HostConnectionTone.pending.isInProgress)
+        #expect(HostConnectionTone.warning.isInProgress)
+    }
+
     @Test func nilStatusIsTheConstructionWindowAndSaysConnecting() {
         let presentation = HostConnectionPresentation(status: nil, latency: nil)
         #expect(presentation.title == "Connecting…")

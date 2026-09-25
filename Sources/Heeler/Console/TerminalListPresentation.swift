@@ -79,7 +79,7 @@ struct TerminalWorkspaceGroup: Identifiable, Equatable {
 struct TerminalHostGroup: Identifiable, Equatable {
     let hostID: Host.ID
     let hostName: String
-    let readinessText: String
+    let readiness: HostReadiness
     let issue: ConsoleHostStatusPresentation?
     let workspaces: [TerminalWorkspaceGroup]
     let isCollapsed: Bool
@@ -158,7 +158,7 @@ struct TerminalListProjection {
             return TerminalHostGroup(
                 hostID: host.id,
                 hostName: host.displayName,
-                readinessText: readinessText(for: host, isEmpty: workspaces.isEmpty),
+                readiness: readiness(for: host, isEmpty: workspaces.isEmpty),
                 issue: issue(for: host),
                 workspaces: workspaces,
                 isCollapsed: collapsedHosts.contains(host.id))
@@ -235,8 +235,8 @@ struct TerminalListProjection {
             inventoryNoun: "Terminals")
     }
 
-    private func readinessText(for host: Host, isEmpty: Bool) -> String {
-        ConsoleHostSectionHeaderPresentation.readinessText(
+    private func readiness(for host: Host, isEmpty: Bool) -> HostReadiness {
+        ConsoleHostSectionHeaderPresentation.readiness(
             connectionStatus: hostStatuses[host.id],
             isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
             statusSeverity: issue(for: host)?.severity,

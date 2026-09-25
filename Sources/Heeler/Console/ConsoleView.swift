@@ -1243,10 +1243,8 @@ private struct ConsoleHostSectionHeaderView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(presentation.readinessText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    HostConnectionStatusLabel(
+                        text: presentation.readiness.text, tone: presentation.readiness.tone)
                 }
                 Spacer(minLength: 0)
                 if presentation.showsStatusPills {

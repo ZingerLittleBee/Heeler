@@ -22,6 +22,14 @@ Entries reference the issue that motivated them.
   copy its path. Search now finds Agents and Terminals together.
   (#316; PR #377)
 
+### Changed
+
+- A Host's connection state reads at a glance: Host headers in the Agents
+  and Terminals tabs carry the same status dot as the Hosts list, green
+  when connected, pulsing while connecting or reconnecting, and red with
+  red text once a Host stops on a failure. Reconnecting and sync issues
+  are orange. (#316; PR #377)
+
 ### Fixed
 
 - Pairing names Tailscale SSH when it answers the Pairing Code's port

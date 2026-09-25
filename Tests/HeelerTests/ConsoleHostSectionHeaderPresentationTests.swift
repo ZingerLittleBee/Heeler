@@ -38,11 +38,11 @@ struct ConsoleHostSectionHeaderPresentationTests {
     @Test func readinessDistinguishesConnectedEmptyFromLoadingAndFailed() throws {
         let empty = ConsoleHostSectionHeaderPresentation(
             section: section(status: .connected))
-        #expect(empty.readinessText == "No Agents")
+        #expect(empty.readiness.text == "No Agents")
 
         let loading = ConsoleHostSectionHeaderPresentation(
             section: section(status: .connected, isAwaitingSnapshot: true))
-        #expect(loading.readinessText == "Loading Agents…")
+        #expect(loading.readiness.text == "Loading Agents…")
 
         let failure = TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock")
         let failedPresentation = try #require(
@@ -52,28 +52,50 @@ struct ConsoleHostSectionHeaderPresentationTests {
             section: section(
                 status: .failed(failure),
                 statusPresentation: failedPresentation))
-        #expect(failed.readinessText == "Unavailable")
+        #expect(failed.readiness.text == "Unavailable")
 
         let connected = ConsoleHostSectionHeaderPresentation(
             section: section(
                 status: .connected,
                 agents: [consoleAgent(paneID: "p1", status: .working)]))
-        #expect(connected.readinessText == "Connected")
+        #expect(connected.readiness.text == "Connected")
     }
 
     @Test func readinessMatchesHostChipLanguageForPendingStates() {
         #expect(
             ConsoleHostSectionHeaderPresentation(
-                section: section(status: .connecting)).readinessText == "Connecting…")
+                section: section(status: .connecting)).readiness.text == "Connecting…")
         #expect(
             ConsoleHostSectionHeaderPresentation(
                 section: section(
                     status: .reconnecting(
                         attempt: 1, delay: .seconds(1), failure: .timedOut))
-            ).readinessText == "Reconnecting…")
+            ).readiness.text == "Reconnecting…")
         #expect(
             ConsoleHostSectionHeaderPresentation(
-                section: section(status: .suspended)).readinessText == "Paused")
+                section: section(status: .suspended)).readiness.text == "Paused")
+    }
+
+    @Test func readinessToneSeparatesHealthyWorkingAndStoppedHosts() {
+        func tone(
+            _ status: EventsSessionStatus?,
+            severity: ConsoleHostStatusPresentation.Severity? = nil,
+            awaiting: Bool = false
+        ) -> HostConnectionTone {
+            ConsoleHostSectionHeaderPresentation.readiness(
+                connectionStatus: status, isAwaitingSnapshot: awaiting, statusSeverity: severity,
+                isEmpty: false, inventoryNoun: "Agents"
+            ).tone
+        }
+        #expect(tone(.connected) == .connected)
+        #expect(tone(.connected, awaiting: true) == .connected)
+        #expect(tone(.connected, severity: .warning) == .warning)
+        #expect(tone(.connecting) == .pending)
+        #expect(tone(nil) == .pending)
+        #expect(tone(.reconnecting(attempt: 3, delay: .seconds(4), failure: .timedOut)) == .warning)
+        #expect(tone(.failed(.authenticationFailed)) == .unavailable)
+        #expect(tone(.connecting, severity: .critical) == .unavailable)
+        #expect(tone(.suspended) == .paused)
     }
 
     @Test func statusPillsAreCollapsedOnlyButVoiceOverKeepsTheBreakdown() {
@@ -156,15 +178,17 @@ struct ConsoleListPresentationRoutingTests {
 
     @Test func readinessNamesTheInventoryItDescribes() {
         func readiness(_ status: EventsSessionStatus?, awaiting: Bool = false) -> String {
-            ConsoleHostSectionHeaderPresentation.readinessText(
+            ConsoleHostSectionHeaderPresentation.readiness(
                 connectionStatus: status, isAwaitingSnapshot: awaiting, statusSeverity: nil,
-                isEmpty: true, inventoryNoun: "Terminals")
+                isEmpty: true, inventoryNoun: "Terminals"
+            ).text
         }
         #expect(readiness(.connected) == "No Terminals")
         #expect(readiness(.connected, awaiting: true) == "Loading Terminals…")
         #expect(
-            ConsoleHostSectionHeaderPresentation.readinessText(
+            ConsoleHostSectionHeaderPresentation.readiness(
                 connectionStatus: .connecting, isAwaitingSnapshot: false, statusSeverity: .critical,
-                isEmpty: true, inventoryNoun: "Terminals") == "Unavailable")
+                isEmpty: true, inventoryNoun: "Terminals")
+                == HostReadiness(text: "Unavailable", tone: .unavailable))
     }
 }
