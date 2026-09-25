@@ -1546,8 +1546,8 @@ struct TerminalAttachTests {
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 554, width: 440, height: 436)])
-        try await Task.sleep(for: .milliseconds(120))
-        #expect(inset.height == 402)
+        // Past the presentation's coalescing window, however slow the runner.
+        try #require(await Self.eventually { inset.height == 402 })
         #expect(inset.lastPresentedHeight == 402)
 
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
@@ -2717,7 +2717,9 @@ struct TerminalAttachTests {
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: frame])
 
-        try await Task.sleep(for: .milliseconds(200))
+        // Until the observer has seen the final height, not a fixed wait: a
+        // busy runner can hold the coalesced apply past any fixed sleep.
+        try #require(await Self.eventually { observedHeights.last == 402 })
         #expect(inset.height == 402)
         #expect(observedHeights == [402], "the terminal resized more than once: \(observedHeights)")
     }
