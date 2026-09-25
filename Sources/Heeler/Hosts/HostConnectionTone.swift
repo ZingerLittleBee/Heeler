@@ -29,11 +29,14 @@ enum HostConnectionTone: Equatable, CaseIterable {
     }
 }
 
-/// The server glyph leading a Console Host header. A badge on its corner
+/// The server glyph leading a Host's row or header. A badge on its corner
 /// carries the connection state, cut out of the glyph so it reads on any
-/// background; a connected Host shows the glyph alone.
+/// background: a green dot once connected, a spinning arc while
+/// reconnecting.
 struct HostStatusGlyph: View {
     let tone: HostConnectionTone
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let badgeSize: CGFloat = 8
     /// Clear ring between badge and glyph.
@@ -49,15 +52,13 @@ struct HostStatusGlyph: View {
             .mask {
                 Rectangle()
                     .overlay(alignment: .bottomTrailing) {
-                        if tone != .connected {
-                            let cutout = Self.badgeSize + Self.cutoutRing * 2
-                            Circle()
-                                .frame(width: cutout, height: cutout)
-                                .offset(
-                                    x: Self.overhang + Self.cutoutRing,
-                                    y: Self.overhang + Self.cutoutRing)
-                                .blendMode(.destinationOut)
-                        }
+                        let cutout = Self.badgeSize + Self.cutoutRing * 2
+                        Circle()
+                            .frame(width: cutout, height: cutout)
+                            .offset(
+                                x: Self.overhang + Self.cutoutRing,
+                                y: Self.overhang + Self.cutoutRing)
+                            .blendMode(.destinationOut)
                     }
                     .compositingGroup()
             }
@@ -72,12 +73,26 @@ struct HostStatusGlyph: View {
     @ViewBuilder
     private var badge: some View {
         switch tone {
-        case .connected:
-            EmptyView()
+        case .reconnecting:
+            // Driven by the clock rather than a repeating animation, which
+            // leaks into a List's row insertions and removals.
+            TimelineView(.animation(paused: reduceMotion)) { context in
+                // Inset by half the line so the arc stays inside the badge.
+                Circle()
+                    .inset(by: 0.75)
+                    .trim(from: 0, to: 0.7)
+                    .stroke(tone.tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .rotationEffect(
+                        .degrees(
+                            reduceMotion
+                                ? 0
+                                : context.date.timeIntervalSinceReferenceDate
+                                    .truncatingRemainder(dividingBy: 1) * 360))
+            }
         case .pending:
             // Still dialing: an open ring, not yet a state.
             Circle().strokeBorder(tone.tint, style: StrokeStyle(lineWidth: 1.5, dash: [2, 1.6]))
-        case .paused, .reconnecting, .warning, .unavailable:
+        case .connected, .paused, .warning, .unavailable:
             Circle().fill(tone.tint)
         }
     }

@@ -27,10 +27,10 @@ Entries reference the issue that motivated them.
 
 - A Host's connection state reads at a glance: Host headers in the Agents
   and Terminals tabs lead with a server glyph instead of a line of text, and
-  a badge on its corner marks any state worth noticing: an open ring while
-  connecting, orange while reconnecting or out of sync, and red once the
-  Host stops on a failure, which also dims its name. A connected Host shows
-  the glyph alone. The disclosure chevron moves to the trailing edge, an
+  a badge on its corner marks the state: green once connected, an open ring
+  while connecting, a spinning orange arc while reconnecting, orange when out
+  of sync, and red once the Host stops on a failure, which also dims its
+  name. The disclosure chevron moves to the trailing edge, an
   expanded Host in the Agents tab states its condition as the Terminals tab
   does, and the Hosts list groups Hosts by what they need, each group
   collapsible: Can't Connect first, naming each problem beside a Retry
