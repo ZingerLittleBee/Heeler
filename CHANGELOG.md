@@ -29,8 +29,10 @@ Entries reference the issue that motivated them.
   a badge on its corner marks any state worth noticing: an open ring while
   connecting, orange while reconnecting or out of sync, and red once the
   Host stops on a failure, which also dims its name. A connected Host shows
-  the glyph alone. The disclosure chevron moves to the trailing edge, and
-  the Hosts list marks each state with its own icon. (#316; PR #377)
+  the glyph alone. The disclosure chevron moves to the trailing edge, an
+  expanded Host in the Agents tab states its condition as the Terminals tab
+  does, and the Hosts list marks each state with its own icon.
+  (#316; PR #377)
 
 ### Fixed
 

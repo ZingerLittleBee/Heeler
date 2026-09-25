@@ -154,12 +154,13 @@ enum ConsoleAgentsSurface: Equatable {
 
 /// Where Host connection/readiness issues appear for a presentation mode.
 ///
-/// Grouped mode folds those conditions into section headers so the same
-/// failure or loading message is not also listed as a top-of-list row.
+/// Grouped mode moves those conditions into their Host's section, as the
+/// header's badge and, while expanded, a row, rather than listing them again
+/// at the top.
 enum ConsoleHostIssuePlacement: Equatable {
     /// Flat list: global Host-issue rows above the Agent cards.
     case flatIssueRows
-    /// Grouped list: Host readiness lives on each section header only.
+    /// Grouped list: Host readiness lives in each Host's own section.
     case sectionHeaders
 
     init(mode: ConsoleListPresentationMode) {

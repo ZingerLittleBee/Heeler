@@ -136,6 +136,7 @@
 		49924070055C376D1C0E2A8E /* ComposerDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = D663C74D9F4453BB34CA7A36 /* ComposerDrop.swift */; };
 		4AF54D36B8F0639880713FD1 /* AgentActivityLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E303FCB86A19CCBBF79E15A /* AgentActivityLink.swift */; };
 		4B05BA1966251828850D2AFF /* HeelerSSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE62169C67E1ED1082DB98B9 /* HeelerSSHTransport.swift */; };
+		4B4AE725A29A4F1E3AA0B29D /* ConsoleHostIssueRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0735F123FB93D94251790AEE /* ConsoleHostIssueRow.swift */; };
 		4B96E8FA101EACD53D343F25 /* WorkspaceTerminalDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AB9600ADA84D3C0E461B8C /* WorkspaceTerminalDetailView.swift */; };
 		4B995E2ED3260FCC86175FF4 /* SSHChannelAdmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86642A7BA9C1F1E3456D64E3 /* SSHChannelAdmission.swift */; };
 		4CB81788CD628171F46111D3 /* RenameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381B00805D3CDEEE94DAE35B /* RenameStore.swift */; };
@@ -499,6 +500,7 @@
 		0443F1688BCEC3474F278889 /* HostStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostStoreTests.swift; sourceTree = "<group>"; };
 		05AD61D4FA60884234EA856C /* TerminalInputControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputControllerTests.swift; sourceTree = "<group>"; };
 		069388B06CE04D1F3CC24740 /* TestWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWindow.swift; sourceTree = "<group>"; };
+		0735F123FB93D94251790AEE /* ConsoleHostIssueRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleHostIssueRow.swift; sourceTree = "<group>"; };
 		07528112F1EC851708049E85 /* TerminalAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAttachTests.swift; sourceTree = "<group>"; };
 		078D357A959644457EA59E43 /* NotificationRegistrationCeremonyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationCeremonyTests.swift; sourceTree = "<group>"; };
 		085125625EA4A6D291517AEE /* WindowInteractionRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowInteractionRecognizer.swift; sourceTree = "<group>"; };
@@ -1283,6 +1285,7 @@
 				2F6451A20326DC01EDBFE50D /* ConsoleCommandRegistry.swift */,
 				5E8A1BCBBB2322E297472810 /* ConsoleCommands.swift */,
 				0014CA92DE868782F085801C /* ConsoleEmptyDetailPresentation.swift */,
+				0735F123FB93D94251790AEE /* ConsoleHostIssueRow.swift */,
 				C85214981DECFA178F08F06F /* ConsoleHostSectionHeaderPresentation.swift */,
 				530D32C2D59D0DD128053804 /* ConsoleHostStatusPresentation.swift */,
 				76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */,
@@ -1865,6 +1868,7 @@
 				6D436E6E24D655DD87ED9364 /* ConsoleCommandRegistry.swift in Sources */,
 				5B37D1E817912A0327B2C7D1 /* ConsoleCommands.swift in Sources */,
 				07CBD5263A4A6B8912B86673 /* ConsoleEmptyDetailPresentation.swift in Sources */,
+				4B4AE725A29A4F1E3AA0B29D /* ConsoleHostIssueRow.swift in Sources */,
 				ED78C30BC1FC7F679D392EDF /* ConsoleHostSectionHeaderPresentation.swift in Sources */,
 				7B1292E9A9C6175D1272755D /* ConsoleHostStatusPresentation.swift in Sources */,
 				E118CE5CB81C21030F23BC84 /* ConsoleListPresentationStore.swift in Sources */,

@@ -26,6 +26,9 @@ struct TerminalListView: View {
     /// Workspace headers, which keep the narrower header margin.
     private static let byHostCardMargin: CGFloat = 24
     private static let byHostHeaderMargin: CGFloat = 8
+    /// What the Agents tab's plain-list Host headers add over this grouped
+    /// list's compact section spacing.
+    private static let byHostHeaderExtraHeight: CGFloat = 16
 
     private var projection: TerminalListProjection {
         presentation.projection(hosts: hosts, console: console)
@@ -68,7 +71,7 @@ struct TerminalListView: View {
             List(selection: $selection) {
                 if !issues.isEmpty {
                     Section {
-                        ForEach(issues) { issueRow($0) }
+                        ForEach(issues) { ConsoleHostIssueRow(issue: $0, onOpenHost: onOpenHost) }
                     }
                 }
                 ForEach(workspaces) { workspace in
@@ -90,13 +93,15 @@ struct TerminalListView: View {
                 ForEach(groups) { group in
                     Section {
                         if let issue = group.issue, !group.isCollapsed {
-                            issueRow(issue)
+                            ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
                         }
                     } header: {
                         TerminalHostHeader(group: group) { toggle(group.hostID) }
-                            // Back out the card margin so the Host lines up
-                            // with the Agents tab's Host headers.
-                            .padding(.leading, -Self.byHostCardMargin)
+                            // Back out the card margin and match the plain
+                            // list's header rhythm, so a Host sits exactly
+                            // where it does in the Agents tab.
+                            .padding(.horizontal, -Self.byHostCardMargin)
+                            .padding(.bottom, Self.byHostHeaderExtraHeight)
                     }
                     if !group.isCollapsed {
                         ForEach(group.workspaces) { workspace in
@@ -208,39 +213,6 @@ struct TerminalListView: View {
         .foregroundStyle(.secondary)
         .disabled(creating.contains(workspace.id))
         .hoverEffect(.highlight)
-    }
-
-    @ViewBuilder
-    private func issueRow(_ issue: ConsoleHostStatusPresentation) -> some View {
-        let label = HStack(spacing: 8) {
-            Image(systemName: issue.systemImage)
-                .foregroundStyle(issueTint(issue))
-            Text(issue.message)
-                .font(.footnote)
-                .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
-                .lineLimit(2)
-            Spacer(minLength: 0)
-            if issue.navigates {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        if issue.navigates {
-            Button { onOpenHost(issue.hostID) } label: { label }
-                .buttonStyle(.plain)
-                .accessibilityHint("Opens this Host's settings.")
-        } else {
-            label
-        }
-    }
-
-    private func issueTint(_ issue: ConsoleHostStatusPresentation) -> Color {
-        switch issue.severity {
-        case .critical: .red
-        case .warning: .orange
-        case .informational: .secondary
-        }
     }
 
     private func toggle(_ id: TerminalWorkspaceGroup.ID) {

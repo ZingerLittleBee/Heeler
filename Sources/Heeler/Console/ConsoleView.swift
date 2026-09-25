@@ -767,15 +767,7 @@ struct ConsoleView: View {
     @ViewBuilder
     private var flatAgentListRows: some View {
         ForEach(visibleHostIssues) { issue in
-            if issue.navigates {
-                Button { presentHosts(issue.hostID) } label: {
-                    hostIssueRow(issue, showsChevron: true)
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Opens this Host's settings.")
-            } else {
-                hostIssueRow(issue, showsChevron: false)
-            }
+            ConsoleHostIssueRow(issue: issue) { presentHosts($0) }
         }
         ForEach(filteredAgents) { agent in
             agentRow(agent)
@@ -786,6 +778,11 @@ struct ConsoleView: View {
     private var groupedAgentListRows: some View {
         ForEach(hostSections) { section in
             Section {
+                // As in the Terminals tab: an expanded Host with a condition
+                // says what it is before any Agents it still lists.
+                if !section.isCollapsed, let issue = section.statusPresentation {
+                    ConsoleHostIssueRow(issue: issue) { presentHosts($0) }
+                }
                 if !section.isCollapsed {
                     ForEach(section.agents) { agent in
                         agentRow(agent)
@@ -1015,33 +1012,6 @@ struct ConsoleView: View {
                 standingFailure: console.hostStandingFailures[host.id],
                 isAwaitingSnapshot: console.hostsAwaitingSnapshot.contains(host.id),
                 syncError: console.hostSyncErrors[host.id])
-        }
-    }
-
-    private func hostIssueRow(
-        _ issue: ConsoleHostStatusPresentation, showsChevron: Bool
-    ) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: issue.systemImage)
-                .foregroundStyle(hostIssueTint(issue))
-            Text(issue.message)
-                .font(.footnote)
-                .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-            if showsChevron {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private func hostIssueTint(_ issue: ConsoleHostStatusPresentation) -> Color {
-        switch issue.severity {
-        case .critical: .red
-        case .warning: .orange
-        case .informational: .secondary
         }
     }
 
