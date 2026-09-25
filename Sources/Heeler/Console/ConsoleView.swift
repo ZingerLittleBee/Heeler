@@ -107,7 +107,10 @@ struct ConsoleView: View {
                     standingFailures: console.hostStandingFailures,
                     latencies: console.hostLatencies,
                     manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
-                    retryConnection: { await reconnectHost($0) })
+                    retryConnection: { await reconnectHost($0) },
+                    origin: hostsTabRequest?.origin.map { origin in
+                        HostListOrigin(title: origin.title) { selectedTab.wrappedValue = origin }
+                    })
                 .id(hostsTabRequest?.id)
             }
             // The system search tab: on iPhone it turns the tab bar into the
@@ -197,6 +200,11 @@ struct ConsoleView: View {
         }
         // A filter pointing at a removed Host would silently hide every
         // Agent; fall back to All Hosts instead.
+        // A Host opened on request belongs to that one visit: once the user
+        // leaves the Hosts tab, it reopens on its list.
+        .onChange(of: isHostsTabSelected) { _, isSelected in
+            if !isSelected { hostsTabRequest = nil }
+        }
         .onChange(of: hosts.hosts) { _, hosts in
             if let hostFilter, !hosts.contains(where: { $0.id == hostFilter }) {
                 self.hostFilter = nil
@@ -1000,6 +1008,9 @@ struct ConsoleView: View {
     private struct HostsTabRequest {
         let id = UUID()
         let hostID: Host.ID
+        /// The tab the Host was opened from; its back button returns there.
+        /// Nil when opened from the Hosts tab itself.
+        let origin: ConsoleTab?
     }
 
     /// One actionable status per Host. A disconnected session takes priority;
@@ -1017,7 +1028,10 @@ struct ConsoleView: View {
 
     /// Switches to the Hosts tab, on one Host's detail when `id` is given.
     private func presentHosts(_ id: Host.ID? = nil) {
-        if let id { hostsTabRequest = HostsTabRequest(hostID: id) }
+        if let id {
+            hostsTabRequest = HostsTabRequest(
+                hostID: id, origin: currentTab == .hosts ? nil : currentTab)
+        }
         isSearchTabSelected = false
         isHostsTabSelected = true
     }

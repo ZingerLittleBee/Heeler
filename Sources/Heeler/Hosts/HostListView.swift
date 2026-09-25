@@ -73,6 +73,9 @@ struct HostListView: View {
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
     private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
+    /// Where `initialHostID` was opened from. Its detail's back button goes
+    /// back there instead of to this list.
+    private let origin: HostListOrigin?
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
     @State private var isScanningToPair = false
@@ -90,7 +93,8 @@ struct HostListView: View {
         standingFailures: [Host.ID: TransportError] = [:],
         latencies: [Host.ID: Duration] = [:],
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
-        retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil
+        retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
+        origin: HostListOrigin? = nil
     ) {
         self.store = store
         self.initialHostID = initialHostID
@@ -99,6 +103,7 @@ struct HostListView: View {
         self.latencies = latencies
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
+        self.origin = origin
         _removal = State(initialValue: HostRemovalStore(store: store))
     }
 
@@ -167,6 +172,7 @@ struct HostListView: View {
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id))
                         .id(host)
+                        .modifier(ReturnToOrigin(origin: returnOrigin(for: id)))
                 } else {
                     ContentUnavailableView("Host removed", systemImage: "server.rack")
                 }
@@ -255,6 +261,12 @@ struct HostListView: View {
         removal.requestRemoval(offsets.map { store.hosts[$0].id })
     }
 
+    /// Only the detail opened on request, still the first thing pushed.
+    private func returnOrigin(for id: Host.ID) -> HostListOrigin? {
+        guard id == initialHostID, path.first == id else { return nil }
+        return origin
+    }
+
     private func navigateToPendingOnboardingHostIfNeeded() {
         guard let id = pendingOnboardingHostID else { return }
         pendingOnboardingHostID = nil
@@ -266,6 +278,36 @@ struct HostListView: View {
     ) -> (@MainActor @Sendable () async -> Void)? {
         guard let retryConnection else { return nil }
         return { await retryConnection(id) }
+    }
+}
+
+/// The screen that opened a Host's detail from outside the Hosts list.
+struct HostListOrigin {
+    /// Names the destination for VoiceOver, e.g. "Agents".
+    let title: String
+    let goBack: () -> Void
+}
+
+/// Swaps the back button for one that returns to `origin`, so opening a Host
+/// from somewhere else and backing out lands where the user started.
+private struct ReturnToOrigin: ViewModifier {
+    let origin: HostListOrigin?
+
+    func body(content: Content) -> some View {
+        if let origin {
+            content
+                .navigationBarBackButtonHidden(true)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: origin.goBack) {
+                            Image(systemName: "chevron.backward")
+                        }
+                        .accessibilityLabel("Back to \(origin.title)")
+                    }
+                }
+        } else {
+            content
+        }
     }
 }
 
