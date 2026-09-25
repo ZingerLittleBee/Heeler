@@ -742,14 +742,15 @@ struct ConsoleView: View {
     @ViewBuilder
     private var flatAgentListRows: some View {
         if !visibleHostIssues.isEmpty {
-            // Gray on the plain list's white, where the Terminals tab's
-            // white card would vanish.
-            ConsoleHostIssueList(
-                issues: visibleHostIssues, fill: Color(uiColor: .secondarySystemBackground)
-            ) { openHostIssue($0) }
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+            // On the Agent rows' edges; the list's own separator sets it
+            // apart from the first Agent.
+            ConsoleHostIssueList(issues: visibleHostIssues) { openHostIssue($0) }
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowBackground(Color.clear)
+                // Under the title nothing needs a rule; below, it runs from
+                // the edge the Agent rows' rules do.
+                .listRowSeparator(.hidden, edges: .top)
+                .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
         ForEach(filteredAgents) { agent in
             agentRow(agent)

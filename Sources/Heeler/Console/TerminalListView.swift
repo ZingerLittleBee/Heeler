@@ -76,11 +76,12 @@ struct TerminalListView: View {
             List(selection: $selection) {
                 if !issues.isEmpty {
                     Section {
-                        // The card draws itself, as in the Agents tab.
-                        ConsoleHostIssueList(
-                            issues: issues, fill: ListCard.fill, onOpenHost: onOpenHost)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                        // Off the cards, on the page: inset to the card
+                        // content, so its tile lines up with the Workspace
+                        // names and its chevron with theirs.
+                        ConsoleHostIssueList(issues: issues, onOpenHost: onOpenHost)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                            .listRowBackground(Color.clear)
                     }
                 }
                 ForEach(workspaces) { workspace in

@@ -43,20 +43,16 @@ struct ConsoleHostIssueRow: View {
     }
 }
 
-/// The flat lists' Host conditions (#316), as one card atop the list in
-/// both tabs: one compact row per Host, and behind a single summary once
-/// there are several, so unreachable Hosts cannot push the inventory off
-/// screen. The card draws itself, so it reads the same in the Agents tab's
-/// plain list and the Terminals tab's grouped one; callers clear the row's
-/// background and inset it. The full sentence is what VoiceOver reads; the
-/// connection sheet shows it too.
+/// The flat lists' Host conditions (#316), atop the list in both tabs:
+/// one compact row per Host, and behind a single summary once there are
+/// several, so unreachable Hosts cannot push the inventory off screen. It
+/// sits on the page itself, not on a card, so it never reads as one of the
+/// Terminals tab's Workspace cards; callers clear the row's background and
+/// inset it to their content. The full sentence is what VoiceOver reads;
+/// the connection sheet shows it too.
 struct ConsoleHostIssueList: View {
     let issues: [ConsoleHostStatusPresentation]
-    /// The page's own card color, so the card reads as one of its cards.
-    let fill: Color
     let onOpenHost: (Host.ID) -> Void
-
-    static let cornerRadius: CGFloat = 20
     /// The leading column every row shares, as wide as a terminal row's
     /// tile, and the gap after it: all text starts on one edge.
     static let iconColumn: CGFloat = 30
@@ -83,8 +79,6 @@ struct ConsoleHostIssueList: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .background(fill, in: RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
     }
 
     private func summaryRow(_ summary: ConsoleHostIssueSummary) -> some View {
