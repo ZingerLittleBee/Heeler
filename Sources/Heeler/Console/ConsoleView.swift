@@ -399,7 +399,7 @@ struct ConsoleView: View {
                 Menu {
                     Picker("Terminal presentation", selection: terminalPresentationBinding) {
                         ForEach(TerminalListPresentationMode.allCases) { mode in
-                            Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                            Text(mode.title).tag(mode)
                         }
                     }
                 } label: {
