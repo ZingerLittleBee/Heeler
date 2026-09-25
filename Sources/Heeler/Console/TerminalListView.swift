@@ -98,6 +98,7 @@ struct TerminalListView: View {
                         if !isFolded(group) {
                             if let issue = group.issue {
                                 ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
+                                    .modifier(TerminalCardRow(isFirst: true, isLast: true))
                             }
                             ForEach(group.workspaces) { workspaceRows($0) }
                         }
