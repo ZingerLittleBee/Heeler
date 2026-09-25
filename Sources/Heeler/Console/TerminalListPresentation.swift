@@ -1,11 +1,14 @@
 import Foundation
 import Observation
 
-/// The Console's bottom tabs (#316). Search is the system search tab: it
-/// searches Agents and Terminals together rather than filtering either list.
+/// The Console's bottom tabs (#316). Hosts is Host management, the screen
+/// the toolbar's Hosts button used to present. Search is the system search
+/// tab: it searches Agents and Terminals together rather than filtering
+/// either list.
 enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
     case agents
     case terminals
+    case hosts
     case search
 
     var id: Self { self }
@@ -14,9 +17,14 @@ enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .agents: "Agents"
         case .terminals: "Terminals"
+        case .hosts: "Hosts"
         case .search: "Search"
         }
     }
+
+    /// Agents and Terminals are the lists the Console reopens on; Hosts and
+    /// Search sit on top of the remembered one.
+    var isList: Bool { self == .agents || self == .terminals }
 }
 
 /// The Terminals tab's two groupings. By Workspace flattens every Host's

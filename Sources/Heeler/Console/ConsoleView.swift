@@ -36,13 +36,17 @@ struct ConsoleView: View {
     /// relaunch that restored no scene state, starts.
     @AppStorage("console.last-list-tab") private var lastListTab: ConsoleTab = .agents
     @State private var isSearchTabSelected = false
+    @State private var isHostsTabSelected = false
     @State private var isStartingTerminal = false
     @State private var terminalPresentation = TerminalListPresentationStore()
     /// Where the detail column's navigation bar starts, in window
     /// coordinates. In regular width that is just below the floating tab
     /// bar; see `detailTopChromeInset`.
     @State private var detailTopInset: CGFloat = 0
-    @State private var hostSheet: HostSheet?
+    /// A request to open the Hosts tab on one Host's detail. Each request
+    /// rebuilds the tab so it lands there even when that Host is already
+    /// on its stack.
+    @State private var hostsTabRequest: HostsTabRequest?
     @State private var isStartingAgent = false
     @State private var isShowingSettings = false
     /// Hosts whose Host-detail Reconnect request is in flight, including the
@@ -94,6 +98,18 @@ struct ConsoleView: View {
             Tab(ConsoleTab.terminals.title, systemImage: "terminal", value: ConsoleTab.terminals) {
                 splitView(for: .terminals)
             }
+            Tab(ConsoleTab.hosts.title, systemImage: "server.rack", value: ConsoleTab.hosts) {
+                // HostListView brings its own NavigationStack.
+                HostListView(
+                    store: hosts,
+                    initialHostID: hostsTabRequest?.hostID,
+                    connectionStatuses: console.hostStatuses,
+                    standingFailures: console.hostStandingFailures,
+                    latencies: console.hostLatencies,
+                    manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
+                    retryConnection: { await reconnectHost($0) })
+                .id(hostsTabRequest?.id)
+            }
             // The system search tab: on iPhone it turns the tab bar into the
             // search field, which only works when `searchable` sits inside
             // this tab rather than around the TabView.
@@ -102,20 +118,6 @@ struct ConsoleView: View {
             }
         }
         // The detail's actions can present these even while the sidebar is hidden.
-        .sheet(item: $hostSheet) { destination in
-            // HostListView brings its own NavigationStack.
-            HostListView(
-                store: hosts,
-                initialHostID: destination.hostID,
-                connectionStatuses: console.hostStatuses,
-                standingFailures: console.hostStandingFailures,
-                latencies: console.hostLatencies,
-                manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
-                retryConnection: { await reconnectHost($0) })
-            .modifier(ConsoleSheetPresentationModifier(
-                presentation: ConsoleSheetPresentation(
-                    horizontalSizeClass: horizontalSizeClass)))
-        }
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
             StartAgentView(hosts: hosts.hosts, console: console) { id in
@@ -187,7 +189,8 @@ struct ConsoleView: View {
         .onChange(of: notificationRouter.path) { _, path in
             guard !path.isEmpty else { return }
             selectedTerminal = nil
-            hostSheet = nil
+            // Hosts has no detail column; the Agent shows on its list tab.
+            isHostsTabSelected = false
             isStartingAgent = false
             isStartingTerminal = false
             isShowingSettings = false
@@ -208,11 +211,13 @@ struct ConsoleView: View {
         Binding(
             get: {
                 if isSearchTabSelected { return .search }
+                if isHostsTabSelected { return .hosts }
                 return ConsoleTab(rawValue: sceneListTab) ?? lastListTab
             },
             set: { tab in
                 isSearchTabSelected = tab == .search
-                guard tab != .search else { return }
+                isHostsTabSelected = tab == .hosts
+                guard tab.isList else { return }
                 sceneListTab = tab.rawValue
                 lastListTab = tab
             })
@@ -293,6 +298,9 @@ struct ConsoleView: View {
                     onOpenHost: { presentHosts($0) },
                     onNewTerminal: { isStartingTerminal = true })
             }
+        case .hosts:
+            // The Hosts tab shows HostListView, not a split view.
+            EmptyView()
         case .search:
             searchResults
                 .searchable(
@@ -364,12 +372,6 @@ struct ConsoleView: View {
             }
         }
         ToolbarItem(placement: .primaryAction) {
-            Button("Hosts", systemImage: "server.rack") {
-                presentHosts()
-            }
-            .hoverEffect(.highlight)
-        }
-        ToolbarItem(placement: .primaryAction) {
             Button("Settings", systemImage: "gearshape") {
                 isShowingSettings = true
             }
@@ -412,7 +414,7 @@ struct ConsoleView: View {
                         ? filteredAgents.map(\.id)
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
                     isSearchFocused: isSearchFocused,
-                    isCovered: hostSheet != nil || isStartingAgent || isStartingTerminal
+                    isCovered: isHostsTabSelected || isStartingAgent || isStartingTerminal
                         || isShowingSettings,
                     inputMode: inputMode.mode)
             },
@@ -998,9 +1000,9 @@ struct ConsoleView: View {
         hosts.hosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
     }
 
-    private struct HostSheet: Identifiable {
+    private struct HostsTabRequest {
         let id = UUID()
-        let hostID: Host.ID?
+        let hostID: Host.ID
     }
 
     /// One actionable status per Host. A disconnected session takes priority;
@@ -1043,8 +1045,11 @@ struct ConsoleView: View {
         }
     }
 
+    /// Switches to the Hosts tab, on one Host's detail when `id` is given.
     private func presentHosts(_ id: Host.ID? = nil) {
-        hostSheet = HostSheet(hostID: id)
+        if let id { hostsTabRequest = HostsTabRequest(hostID: id) }
+        isSearchTabSelected = false
+        isHostsTabSelected = true
     }
 
     private func reconnectHost(_ id: Host.ID) async {
