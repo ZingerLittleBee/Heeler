@@ -18,7 +18,8 @@ enum HostConnectionTone: Equatable, CaseIterable {
 
     var systemImage: String {
         switch self {
-        case .connected: "circle.fill"
+        // Not a plain dot: Agent status already speaks in colored dots.
+        case .connected: "checkmark.circle.fill"
         case .pending: "circle.dotted"
         case .paused: "pause.circle.fill"
         case .reconnecting: "arrow.triangle.2.circlepath"
@@ -45,9 +46,7 @@ struct HostConnectionStatusIcon: View {
 
     var body: some View {
         Image(systemName: tone.systemImage)
-            // The plain dot reads as the quiet default; glyphs need the
-            // extra size to stay legible.
-            .font(.system(size: tone == .connected ? 7 : 10, weight: .semibold))
+            .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(tone.tint)
             .frame(width: 12, height: 12)
             .accessibilityHidden(true)
