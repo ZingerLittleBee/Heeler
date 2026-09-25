@@ -24,13 +24,13 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- Hosts that stopped on a failure leave the Agents and Terminals lists and
-  gather at the bottom under Can't Connect, each with the reason it stopped
-  and a Retry button; tapping one opens it in the Hosts tab. The remaining
-  Host headers stay grayscale: a Host that is connecting, reconnecting, or
-  paused dims its name and says so in a short word on the right, and a
-  connected Host shows nothing extra. The Hosts list marks each state with
-  its own icon shape as well as color. (#316; PR #377)
+- A Host's connection state reads at a glance: Host headers in the Agents
+  and Terminals tabs lead with a server glyph instead of a line of text, and
+  a badge on its corner marks any state worth noticing: an open ring while
+  connecting, orange while reconnecting or out of sync, and red once the
+  Host stops on a failure, which also dims its name. A connected Host shows
+  the glyph alone. The disclosure chevron moves to the trailing edge, and
+  the Hosts list marks each state with its own icon. (#316; PR #377)
 
 ### Fixed
 

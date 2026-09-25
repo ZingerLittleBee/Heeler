@@ -152,9 +152,8 @@ struct TerminalListProjection {
         visibleHosts(filteredHostID).flatMap { workspaces(on: $0, searchQuery: searchQuery) }
     }
 
-    /// Every Host but those in `unreachableHosts`, which close the list.
     func hostGroups(filteredHostID: Host.ID? = nil) -> [TerminalHostGroup] {
-        reachableHosts(filteredHostID).map { host in
+        visibleHosts(filteredHostID).map { host in
             let workspaces = workspaces(on: host, searchQuery: "")
             return TerminalHostGroup(
                 hostID: host.id,
@@ -169,20 +168,7 @@ struct TerminalListProjection {
     /// Host problems in catalog order, for the By Workspace presentation,
     /// which has no Host headers to carry them.
     func issues(filteredHostID: Host.ID? = nil) -> [ConsoleHostStatusPresentation] {
-        reachableHosts(filteredHostID).compactMap(issue(for:))
-    }
-
-    /// Hosts stopped on a failure, listed apart below every presentation.
-    func unreachableHosts(filteredHostID: Host.ID? = nil) -> [UnreachableHost] {
-        UnreachableHost.list(
-            hosts: visibleHosts(filteredHostID),
-            statuses: hostStatuses,
-            standingFailures: hostStandingFailures)
-    }
-
-    private func reachableHosts(_ filteredHostID: Host.ID?) -> [Host] {
-        let unreachable = Set(unreachableHosts(filteredHostID: filteredHostID).map(\.hostID))
-        return visibleHosts(filteredHostID).filter { !unreachable.contains($0.id) }
+        visibleHosts(filteredHostID).compactMap(issue(for:))
     }
 
     private func visibleHosts(_ filteredHostID: Host.ID?) -> [Host] {

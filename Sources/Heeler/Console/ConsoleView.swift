@@ -296,7 +296,6 @@ struct ConsoleView: View {
                     selection: selectedItem,
                     onOpen: { selectTerminal($0) },
                     onOpenHost: { presentHosts($0) },
-                    onRetryHost: { id in Task { await reconnectHost(id) } },
                     onNewTerminal: { isStartingTerminal = true })
             }
         case .hosts:
@@ -688,12 +687,6 @@ struct ConsoleView: View {
                 } else {
                     groupedAgentListRows
                 }
-                if !unreachableHosts.isEmpty {
-                    UnreachableHostsSection(
-                        hosts: unreachableHosts,
-                        onOpen: { presentHosts($0) },
-                        onRetry: { id in Task { await reconnectHost(id) } })
-                }
             }
             .listStyle(.plain)
         }
@@ -957,28 +950,16 @@ struct ConsoleView: View {
             hostCount: hosts.hosts.count,
             filteredHostName: hostFilter == nil ? nil : filteredHostName,
             filteredAgentCount: filteredAgents.count,
-            visibleIssueCount: visibleHostIssues.count + unreachableHosts.count,
+            visibleIssueCount: visibleHostIssues.count,
             presentationMode: listPresentation.mode,
-            projectedSectionCount: hostSections.count + unreachableHosts.count,
+            projectedSectionCount: hostSections.count,
             searchQuery: "")
     }
 
-    /// One section per Host, less those in the closing Can't Connect
-    /// section: a stopped Host is listed there alone.
     private var hostSections: [ConsoleHostSection] {
-        let unreachable = Set(unreachableHosts.map(\.hostID))
-        return listPresentation.sections(
+        listPresentation.sections(
             hosts: hosts.hosts,
             console: console,
-            filteredHostID: hostFilter
-        ).filter { !unreachable.contains($0.hostID) }
-    }
-
-    private var unreachableHosts: [UnreachableHost] {
-        UnreachableHost.list(
-            hosts: hosts.hosts,
-            statuses: console.hostStatuses,
-            standingFailures: console.hostStandingFailures,
             filteredHostID: hostFilter)
     }
 
@@ -1011,10 +992,8 @@ struct ConsoleView: View {
     /// Host issues shown in the list: all of them, or the filtered Host's
     /// only — a filtered Console should not nag about other machines.
     private var visibleHostIssues: [ConsoleHostStatusPresentation] {
-        let unreachable = Set(unreachableHosts.map(\.hostID))
-        return hostIssues.filter {
-            (hostFilter == nil || $0.hostID == hostFilter) && !unreachable.contains($0.hostID)
-        }
+        guard let hostFilter else { return hostIssues }
+        return hostIssues.filter { $0.hostID == hostFilter }
     }
 
     private var filteredHostName: String {
@@ -1254,11 +1233,7 @@ private struct ConsoleHostSectionHeaderView: View {
     var body: some View {
         Button(action: onToggle) {
             HStack(spacing: 8) {
-                Image(systemName: presentation.disclosureSystemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 12, alignment: .center)
-                    .accessibilityHidden(true)
+                HostStatusGlyph(tone: presentation.readiness.tone)
                 Text(presentation.hostDisplayName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(presentation.readiness.dimsName ? .secondary : .primary)
@@ -1268,7 +1243,11 @@ private struct ConsoleHostSectionHeaderView: View {
                     ConsoleHostStatusCountPills(items: presentation.statusItems)
                         .accessibilityHidden(true)
                 }
-                HostReadinessText(readiness: presentation.readiness)
+                Image(systemName: presentation.disclosureSystemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12, alignment: .center)
+                    .accessibilityHidden(true)
             }
             .contentShape(Rectangle())
             .padding(.vertical, 4)

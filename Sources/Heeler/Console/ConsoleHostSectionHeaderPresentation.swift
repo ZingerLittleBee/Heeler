@@ -1,23 +1,14 @@
 import Foundation
 
-/// A Host header's short readiness. Headers stay grayscale: a Host that
-/// cannot show its inventory dims its name, and the text says why. Hosts
-/// that stopped on a failure leave the list for `UnreachableHostsSection`.
+/// A Host header's short readiness and the tone of the badge on its server
+/// glyph (`HostStatusGlyph`). The header shows only the glyph; the text is
+/// what VoiceOver reads.
 struct HostReadiness: Equatable {
     let text: String
     let tone: HostConnectionTone
 
-    /// A healthy Host is the quiet default; only a state worth noticing
-    /// earns header text.
-    var showsStatus: Bool { tone != .connected }
-
-    /// Nothing from this Host can be listed right now.
-    var dimsName: Bool {
-        switch tone {
-        case .pending, .paused, .reconnecting, .unavailable: true
-        case .connected, .warning: false
-        }
-    }
+    /// A Host stopped on a failure recedes until the user acts on it.
+    var dimsName: Bool { tone == .unavailable }
 }
 
 /// Pure presentation values for one Console Host-section header (#245).

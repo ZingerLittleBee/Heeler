@@ -14,7 +14,6 @@ struct TerminalListView: View {
     /// Opens a terminal the list just created.
     let onOpen: (ConsoleTerminal) -> Void
     let onOpenHost: (Host.ID) -> Void
-    let onRetryHost: (Host.ID) -> Void
     let onNewTerminal: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -63,8 +62,7 @@ struct TerminalListView: View {
     private var byWorkspace: some View {
         let workspaces = projection.workspaces(filteredHostID: filteredHostID)
         let issues = projection.issues(filteredHostID: filteredHostID)
-        let unreachable = projection.unreachableHosts(filteredHostID: filteredHostID)
-        if workspaces.isEmpty && issues.isEmpty && unreachable.isEmpty {
+        if workspaces.isEmpty && issues.isEmpty {
             emptyState
         } else {
             List(selection: $selection) {
@@ -76,7 +74,6 @@ struct TerminalListView: View {
                 ForEach(workspaces) { workspace in
                     workspaceSection(workspace, showsHost: true)
                 }
-                unreachableSection(unreachable)
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
@@ -86,8 +83,7 @@ struct TerminalListView: View {
     @ViewBuilder
     private var byHost: some View {
         let groups = projection.hostGroups(filteredHostID: filteredHostID)
-        let unreachable = projection.unreachableHosts(filteredHostID: filteredHostID)
-        if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) && unreachable.isEmpty {
+        if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) {
             emptyState
         } else {
             List(selection: $selection) {
@@ -110,18 +106,10 @@ struct TerminalListView: View {
                         }
                     }
                 }
-                unreachableSection(unreachable)
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
             .contentMargins(.horizontal, Self.byHostCardMargin, for: .scrollContent)
-        }
-    }
-
-    @ViewBuilder
-    private func unreachableSection(_ hosts: [UnreachableHost]) -> some View {
-        if !hosts.isEmpty {
-            UnreachableHostsSection(hosts: hosts, onOpen: onOpenHost, onRetry: onRetryHost)
         }
     }
 
@@ -454,10 +442,7 @@ private struct TerminalHostHeader: View {
     var body: some View {
         Button(action: onToggle) {
             HStack(spacing: 8) {
-                Image(systemName: group.isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 12, alignment: .center)
+                HostStatusGlyph(tone: group.readiness.tone)
                 Text(group.hostName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(group.readiness.dimsName ? .secondary : .primary)
@@ -471,7 +456,10 @@ private struct TerminalHostHeader: View {
                         .padding(.vertical, 2)
                         .background(.fill.tertiary, in: Capsule())
                 }
-                HostReadinessText(readiness: group.readiness)
+                Image(systemName: group.isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12, alignment: .center)
             }
             .contentShape(Rectangle())
             .padding(.vertical, 4)
