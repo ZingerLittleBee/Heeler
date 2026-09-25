@@ -107,11 +107,17 @@ struct HostConnectionDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    retryButton
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 8)
+            }
+            // Pinned: however long the failure's detail, the one action
+            // stays in reach.
+            .safeAreaInset(edge: .bottom) {
+                retryButton
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
             }
             .navigationTitle(presentation.hostName)
             .navigationBarTitleDisplayMode(.inline)
