@@ -115,9 +115,11 @@ struct TerminalListView: View {
                             // list's header rhythm, so a Host sits exactly
                             // where it does in the Agents tab.
                             .padding(.horizontal, -Self.byHostCardMargin)
-                            // Only when another Host follows: an expanded
-                            // Host keeps its Workspaces close.
-                            .padding(.bottom, isFolded(group) ? Self.byHostHeaderExtraHeight : 0)
+                            // Above every Host but the first, never below:
+                            // an expanded Host keeps its Workspaces close, and
+                            // toggling it leaves its own header's height alone.
+                            .padding(
+                                .top, group.id == groups.first?.id ? 0 : Self.byHostHeaderExtraHeight)
                     }
                     .listSectionSpacing(isFolded(group) ? .compact : .custom(0))
                     if !group.isCollapsed && !group.opensConnectionDetail {
