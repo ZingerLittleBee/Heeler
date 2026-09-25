@@ -61,14 +61,16 @@ final class HostRemovalStore {
     }
 }
 
-/// Host management (#14): the catalog of Hosts with add/edit/remove, each
-/// row leading into that Host's onboarding checklist.
+/// Host management (#14): the catalog of Hosts with add/edit/remove, one
+/// card per Host (#316) leading into that Host's onboarding checklist.
 struct HostListView: View {
     let store: HostStore
     private let initialHostID: Host.ID?
     private let connectionStatuses: [Host.ID: EventsSessionStatus]
     private let standingFailures: [Host.ID: TransportError]
     private let latencies: [Host.ID: Duration]
+    /// Only Hosts whose inventory is known; see `HostInventory.known`.
+    private let inventories: [Host.ID: HostInventory]
     /// Hosts whose Host-detail Reconnect request is in flight. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
@@ -78,6 +80,7 @@ struct HostListView: View {
     private let origin: HostListOrigin?
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
+    @State private var editingHost: Host?
     @State private var isScanningToPair = false
     @State private var manualFallbackRequested = false
     /// Stashed while a Host form / Pairing scan sheet dismisses; navigation
@@ -92,6 +95,7 @@ struct HostListView: View {
         connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
         standingFailures: [Host.ID: TransportError] = [:],
         latencies: [Host.ID: Duration] = [:],
+        inventories: [Host.ID: HostInventory] = [:],
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         origin: HostListOrigin? = nil
@@ -101,6 +105,7 @@ struct HostListView: View {
         self.connectionStatuses = connectionStatuses
         self.standingFailures = standingFailures
         self.latencies = latencies
+        self.inventories = inventories
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
         self.origin = origin
@@ -135,16 +140,10 @@ struct HostListView: View {
                 } else {
                     List {
                         ForEach(store.hosts) { host in
-                            NavigationLink(value: host.id) {
-                                HostRow(
-                                    host: host,
-                                    connectionStatus: connectionStatuses[host.id],
-                                    standingFailure: standingFailures[host.id],
-                                    latency: latencies[host.id])
-                            }
+                            Section { card(for: host) }
                         }
-                        .onDelete(perform: removeHosts)
                     }
+                    .listSectionSpacing(12)
                 }
             }
             .navigationTitle("Hosts")
@@ -209,6 +208,9 @@ struct HostListView: View {
                     manualFallbackRequested = true
                 }
             }
+            .sheet(item: $editingHost) { host in
+                HostFormView(store: store, editing: host)
+            }
             .alert(
                 removal.pendingRequest?.title ?? "Remove Host?",
                 isPresented: removalConfirmationPresented,
@@ -257,8 +259,39 @@ struct HostListView: View {
             set: { if !$0 { removal.cancelRemoval() } })
     }
 
-    private func removeHosts(at offsets: IndexSet) {
-        removal.requestRemoval(offsets.map { store.hosts[$0].id })
+    private func card(for host: Host) -> some View {
+        let retry = retryAction(for: host.id)
+        return HostCard(
+            host: host,
+            presentation: HostCardPresentation(
+                host: host,
+                status: connectionStatuses[host.id],
+                standingFailure: standingFailures[host.id],
+                latency: latencies[host.id],
+                inventory: inventories[host.id],
+                canRetry: retry != nil),
+            isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id),
+            onOpen: { path.append(host.id) },
+            onRetry: { if let retry { Task { await retry() } } },
+            onEdit: { editingHost = host }
+        )
+        .listRowBackground(ListCard.fill)
+        // Every removal asks first. No `.destructive` role: List would
+        // animate the card out while the confirmation is still up.
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button {
+                removal.requestRemoval([host.id])
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+            .tint(.red)
+        }
+        .contextMenu {
+            Button("Edit", systemImage: "pencil") { editingHost = host }
+            Button("Remove Host", systemImage: "trash", role: .destructive) {
+                removal.requestRemoval([host.id])
+            }
+        }
     }
 
     /// Only the detail opened on request, still the first thing pushed.
@@ -311,45 +344,216 @@ private struct ReturnToOrigin: ViewModifier {
     }
 }
 
-private struct HostRow: View {
-    let host: Host
-    let connectionStatus: EventsSessionStatus?
-    let standingFailure: TransportError?
-    let latency: Duration?
+/// What a Host holds, counted only once its inventory is known: while a
+/// Host connects or loads, none is not the same as unknown (see Agent
+/// Inventory in `CONTEXT.md`).
+struct HostInventory: Equatable {
+    let agents: Int
+    let terminals: Int
 
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(host.displayName)
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            HostConnectionIndicator(
-                presentation: HostConnectionPresentation(
-                    status: connectionStatus,
-                    standingFailure: standingFailure,
-                    latency: latency))
+    static func known(
+        statuses: [Host.ID: EventsSessionStatus],
+        awaitingSnapshot: Set<Host.ID>,
+        agents: [ConsoleAgent],
+        terminals: [ConsoleTerminal]
+    ) -> [Host.ID: HostInventory] {
+        var inventories: [Host.ID: HostInventory] = [:]
+        for (id, status) in statuses {
+            guard case .connected = status, !awaitingSnapshot.contains(id) else { continue }
+            inventories[id] = HostInventory(
+                agents: agents.count { $0.hostID == id },
+                terminals: terminals.count { $0.hostID == id })
         }
-        .padding(.vertical, 2)
+        return inventories
     }
 
-    private var subtitle: String {
-        var text = "\(host.username)@\(host.address)"
-        if host.port != 22 { text += ":\(host.port)" }
+    var agentsText: String { agents == 1 ? "1 Agent" : "\(agents) Agents" }
+    var terminalsText: String { terminals == 1 ? "1 Terminal" : "\(terminals) Terminals" }
+}
+
+/// One Host card on the Hosts list (#316). A Host with a connection problem
+/// says what it is in the connection sheet's words and rules, and offers
+/// Retry once nothing else will: stopped, or dialing the user's own retry.
+struct HostCardPresentation: Equatable {
+    enum Content: Equatable {
+        /// Connected; nil while the inventory is still unknown.
+        case inventory(HostInventory?)
+        case problem(HostConnectionDetailPresentation)
+        /// Paused, or connecting with nothing to explain.
+        case quiet
+    }
+
+    let status: String
+    let tone: HostConnectionTone
+    let address: String
+    let content: Content
+    let offersRetry: Bool
+
+    init(
+        host: Host,
+        status: EventsSessionStatus?,
+        standingFailure: TransportError?,
+        latency: Duration?,
+        inventory: HostInventory?,
+        canRetry: Bool = true
+    ) {
+        var address = "\(host.username)@\(host.address)"
+        if host.port != 22 { address += ":\(host.port)" }
         if case .namedSession(let session) = host.socketLocation {
-            text += " · session \(session)"
+            address += " · session \(session)"
         }
-        return text
+        self.address = address
+        if let problem = HostConnectionDetailPresentation(
+            host: host, status: status, standingFailure: standingFailure)
+        {
+            self.status = problem.title
+            tone = problem.tone
+            content = .problem(problem)
+            let isStopped = if case .failed = status { true } else { false }
+            offersRetry = canRetry && (isStopped || problem.isDialing)
+        } else {
+            let chip = HostConnectionPresentation(
+                status: status, standingFailure: standingFailure, latency: latency)
+            self.status = chip.title
+            tone = chip.tone
+            content = if case .connected = status { .inventory(inventory) } else { .quiet }
+            offersRetry = false
+        }
     }
 }
 
-/// The status chip on a Host row. Chips render Host Connection Status, never
-/// a Transport Error Presentation — even on `.failed`, where they say
-/// "Unavailable". See Transport Error Presentation in `CONTEXT.md`.
+private struct HostCard: View {
+    let host: Host
+    let presentation: HostCardPresentation
+    let isRetryInFlight: Bool
+    let onOpen: () -> Void
+    let onRetry: () -> Void
+    let onEdit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // The actions below stay out of this button, so they never
+            // open the Host by accident.
+            Button(action: onOpen) {
+                summary
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this Host.")
+            if presentation.offersRetry {
+                actions
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var summary: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                HostStatusGlyph(tone: presentation.tone)
+                Text(host.displayName)
+                    .font(.headline)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                HostStatusPill(text: presentation.status, tone: presentation.tone)
+            }
+            Text(presentation.address)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch presentation.content {
+        case .inventory(let inventory?):
+            HStack(spacing: 8) {
+                countPill(inventory.agentsText)
+                countPill(inventory.terminalsText)
+            }
+            .padding(.top, 2)
+        case .problem(let problem):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(problem.summary)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(problem.isDialing ? .secondary : .primary)
+                    if let attempt = problem.attempt {
+                        Text(attempt)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let detail = problem.detail {
+                    Text(detail)
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                if let suggestion = problem.recoverySuggestion {
+                    Text(suggestion)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, 2)
+        case .inventory(nil), .quiet:
+            EmptyView()
+        }
+    }
+
+    private func countPill(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.fill.tertiary, in: Capsule())
+    }
+
+    private var actions: some View {
+        let busy = isRetryInFlight || isDialing
+        return HStack(spacing: 10) {
+            Button(action: onRetry) {
+                Text(busy ? "Connecting…" : "Retry")
+                    // An overlay, not a sibling: the spinner would grow the
+                    // button, as in the connection sheet.
+                    .overlay(alignment: .leading) {
+                        if busy {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                                .offset(x: -24)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .allowsHitTesting(!busy)
+            .accessibilityAddTraits(busy ? .updatesFrequently : [])
+            Button(action: onEdit) {
+                Text("Edit").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(.secondary)
+        }
+        .buttonBorderShape(.capsule)
+    }
+
+    private var isDialing: Bool {
+        if case .problem(let problem) = presentation.content { return problem.isDialing }
+        return false
+    }
+}
+
+/// A Host card's status pill while the Host has no connection problem to
+/// explain; a problem takes `HostConnectionDetailPresentation`'s title
+/// instead (see `HostCardPresentation`). The pill itself renders Host
+/// Connection Status, never a Transport Error Presentation.
 struct HostConnectionPresentation: Equatable {
     let title: String
     let accessibilityLabel: String
@@ -398,16 +602,6 @@ struct HostConnectionPresentation: Equatable {
             accessibilityLabel = "Connecting"
             tone = .pending
         }
-    }
-}
-
-private struct HostConnectionIndicator: View {
-    let presentation: HostConnectionPresentation
-
-    var body: some View {
-        HostConnectionStatusLabel(text: presentation.title, tone: presentation.tone)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(presentation.accessibilityLabel)
     }
 }
 

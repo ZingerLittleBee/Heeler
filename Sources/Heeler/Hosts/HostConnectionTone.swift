@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// How a Host's connection reads at a glance, shared by the Hosts list and
-/// the Console's Host headers so one state never wears two icons. Each tone
-/// has its own shape as well as its own color, so it survives without color.
+/// How a Host's connection reads at a glance, shared by the Hosts cards and
+/// the Console's Host headers so one state never wears two looks. Wherever
+/// color alone would tell two tones apart, text says the state too: the
+/// cards' status pill, and the headers' VoiceOver readiness.
 enum HostConnectionTone: Equatable, CaseIterable {
     case connected
     /// Connecting for the first time; no failure seen yet.
@@ -16,18 +17,6 @@ enum HostConnectionTone: Equatable, CaseIterable {
     /// Stopped on a failure only the user can fix, until a retry.
     case unavailable
 
-    var systemImage: String {
-        switch self {
-        // Not a plain dot: Agent status already speaks in colored dots.
-        case .connected: "checkmark.circle.fill"
-        case .pending: "circle.dotted"
-        case .paused: "pause.circle.fill"
-        case .reconnecting: "arrow.triangle.2.circlepath"
-        case .warning: "exclamationmark.triangle.fill"
-        case .unavailable: "exclamationmark.circle.fill"
-        }
-    }
-
     /// Muted system colors: a list of Hosts is mostly icons, and full
     /// strength glares on a dark background.
     var tint: Color {
@@ -40,33 +29,43 @@ enum HostConnectionTone: Equatable, CaseIterable {
     }
 }
 
-/// A Host's status icon alone, sized to sit beside a caption or a name.
-struct HostConnectionStatusIcon: View {
-    let tone: HostConnectionTone
-
-    var body: some View {
-        Image(systemName: tone.systemImage)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(tone.tint)
-            .frame(width: 12, height: 12)
-            .accessibilityHidden(true)
-    }
-}
-
-/// A status icon and its short text, as a Host row shows it.
-struct HostConnectionStatusLabel: View {
+/// A Host's state in a few words on a tinted capsule, as a Host card
+/// states it beside the Host's name.
+struct HostStatusPill: View {
     let text: String
     let tone: HostConnectionTone
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
-        HStack(spacing: 4) {
-            HostConnectionStatusIcon(tone: tone)
-            Text(text)
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(foreground)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(background, in: Capsule())
+    }
+
+    private var hue: Color? {
+        switch tone {
+        case .connected: .green
+        case .reconnecting, .warning: .orange
+        case .unavailable: .red
+        case .pending, .paused: nil
         }
+    }
+
+    /// Full-strength hues are too light to read as text on a light card.
+    private var foreground: Color {
+        guard let hue else { return .secondary }
+        return colorScheme == .dark ? hue : hue.mix(with: .black, by: 0.3)
+    }
+
+    private var background: AnyShapeStyle {
+        guard let hue else { return AnyShapeStyle(.fill.tertiary) }
+        return AnyShapeStyle(hue.opacity(0.14))
     }
 }
 

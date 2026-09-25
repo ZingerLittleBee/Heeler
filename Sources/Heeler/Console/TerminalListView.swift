@@ -71,7 +71,7 @@ struct TerminalListView: View {
                 if !issues.isEmpty {
                     Section {
                         ConsoleHostIssueList(issues: issues, onOpenHost: onOpenHost)
-                            .listRowBackground(TerminalCardRow.fill)
+                            .listRowBackground(ListCard.fill)
                     }
                 }
                 ForEach(workspaces) { workspace in
@@ -161,12 +161,12 @@ struct TerminalListView: View {
             if !workspace.isCollapsed {
                 ForEach(workspace.terminals) {
                     terminalRow($0, showsTab: workspace.terminals.count > 1)
-                        .listRowBackground(TerminalCardRow.fill)
+                        .listRowBackground(ListCard.fill)
                 }
                 // Every card ends in New Terminal, clear of the header's
                 // collapse control: a mistap there would open a real tab.
                 newTerminalRow(workspace)
-                    .listRowBackground(TerminalCardRow.fill)
+                    .listRowBackground(ListCard.fill)
             }
         } header: {
             TerminalWorkspaceHeader(
@@ -381,14 +381,8 @@ struct TerminalTile: View {
     }
 }
 
-/// One row of a By Host Workspace card. The plain list that lets Host
-/// headers pin has no cards of its own, so each row draws its slice: the
-/// first rounds the top, the last the bottom, and the rest a separator.
-private struct TerminalCardRow: ViewModifier {
-    /// From the screen edge to the card, as the Host header's inset.
-    static let margin: CGFloat = 16
-    private static let padding: CGFloat = 16
-    private static let radius: CGFloat = 20
+/// The card color of the Terminals and Hosts lists.
+enum ListCard {
     /// Grouped cards, toned down in light mode: full white glares against
     /// the grouped background there. Dark mode keeps the system card.
     static let fill = Color(
@@ -397,6 +391,16 @@ private struct TerminalCardRow: ViewModifier {
                 ? .secondarySystemGroupedBackground
                 : UIColor.white.withAlphaComponent(0.65)
         })
+}
+
+/// One row of a By Host Workspace card. The plain list that lets Host
+/// headers pin has no cards of its own, so each row draws its slice: the
+/// first rounds the top, the last the bottom, and the rest a separator.
+private struct TerminalCardRow: ViewModifier {
+    /// From the screen edge to the card, as the Host header's inset.
+    static let margin: CGFloat = 16
+    private static let padding: CGFloat = 16
+    private static let radius: CGFloat = 20
     /// From the card's edge to a row's title, past the 30-point tile.
     private static let separatorInset: CGFloat = 16 + 30 + 12
 
@@ -419,7 +423,7 @@ private struct TerminalCardRow: ViewModifier {
                     bottomTrailingRadius: bottom, topTrailingRadius: top,
                     style: .continuous
                 )
-                .fill(Self.fill)
+                .fill(ListCard.fill)
                 .overlay(alignment: .bottom) {
                     if !isLast {
                         Rectangle()

@@ -308,7 +308,7 @@ Host re-proved on a foreground return is Connecting, and every status-derived
 surface keeps presenting the Standing Failure until the activation answers,
 except that a Reconnect Request may temporarily suppress the Host detail footer
 while its button shows request progress. The failure remains stored and
-continues to render on Agent detail, the Console, and the Hosts chip.
+continues to render on Agent detail, the Console, and the Host's card.
 Only a failure that reached Failed becomes standing. A retryable failure inside
 a recovery cycle does not, because nothing stopped and Reconnecting already
 says what happened.
@@ -334,8 +334,8 @@ automatic recovery is running, no surface shows the Recovery Suggestion — an
 instruction misstates who has to act and invites a restart that discards the
 attempt already running — so Reconnecting shows the Summary, and, where the
 surface is about one Host's connection health rather than about the Agents, the
-Detail with it. Hosts sheet rows are chips rather than prose and sit outside
-this term. A first-hop failure is presented against the Jump Host; where no
+Detail with it. A Host card on the Hosts list is about that Host's connection
+health, so it follows the same rule as the Console's connection sheet. A first-hop failure is presented against the Jump Host; where no
 Jump-Host-directed text exists, the Suggestion is dropped rather than aimed at
 the wrong machine.
 This replaces Connection Guidance, whose name promised an instruction that the

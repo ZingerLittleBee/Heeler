@@ -112,6 +112,11 @@ struct ConsoleView: View {
                     connectionStatuses: console.hostStatuses,
                     standingFailures: console.hostStandingFailures,
                     latencies: console.hostLatencies,
+                    inventories: HostInventory.known(
+                        statuses: console.hostStatuses,
+                        awaitingSnapshot: console.hostsAwaitingSnapshot,
+                        agents: console.agents,
+                        terminals: console.terminals),
                     manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
                     retryConnection: { await reconnectHost($0) },
                     origin: hostsTabRequest?.origin.map { origin in
