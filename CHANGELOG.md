@@ -34,8 +34,10 @@ Entries reference the issue that motivated them.
   expanded Host in the Agents tab states its condition as the Terminals tab
   does, and the Hosts list marks each state with its own icon. A Host that
   is reconnecting or cannot connect no longer expands: tapping it opens a
-  sheet with the failure, a Retry button, and Edit for its settings.
-  (#316; PR #377)
+  sheet with the failure, a Retry button, and Edit for its settings. In
+  the flat Agents list and the By Workspace terminals, each Host with a
+  problem takes one short line, and several fold into a single row that
+  counts them and expands on tap. (#316; PR #377)
 
 ### Fixed
 

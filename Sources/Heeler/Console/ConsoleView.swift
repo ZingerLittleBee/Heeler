@@ -798,9 +798,7 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var flatAgentListRows: some View {
-        ForEach(visibleHostIssues) { issue in
-            ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
-        }
+        ConsoleHostIssueList(issues: visibleHostIssues) { openHostIssue($0) }
         ForEach(filteredAgents) { agent in
             agentRow(agent)
         }

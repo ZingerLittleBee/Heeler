@@ -18,6 +18,10 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     let systemImage: String
     let severity: Severity
     let navigates: Bool
+    /// The badge on the Host's server glyph, as on its section header.
+    let tone: HostConnectionTone
+    /// A few words for a compact row: "Reconnecting…", "Can't connect".
+    let status: String
 
     var id: Host.ID { hostID }
     var isCritical: Bool { severity == .critical }
@@ -38,33 +42,40 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
             systemImage = "pause.circle"
             severity = .informational
             navigates = false
+            (tone, self.status) = (.paused, "Paused")
         case .connecting:
             if let standingFailure {
                 (message, systemImage, severity, navigates) = Self.failed(
                     standingFailure, hostName: host.displayName)
+                (tone, self.status) = Self.cannotConnect
             } else {
                 message = "Connecting to \(host.displayName)…"
                 systemImage = "dot.radiowaves.left.and.right"
                 severity = .informational
                 navigates = false
+                (tone, self.status) = (.pending, "Connecting…")
             }
         case .reconnecting(_, _, let failure):
             message = "Reconnecting to \(host.displayName): \(failure.presentation.summary)"
             systemImage = "wifi.exclamationmark"
             severity = .warning
             navigates = true
+            (tone, self.status) = (.reconnecting, "Reconnecting…")
         case .failed(let failure):
             (message, systemImage, severity, navigates) = Self.failed(
                 failure, hostName: host.displayName)
+            (tone, self.status) = Self.cannotConnect
         case .connected:
             if let syncError {
                 (message, systemImage, severity, navigates) = Self.syncError(
                     syncError, hostName: host.displayName)
+                (tone, self.status) = Self.syncIssue
             } else if isAwaitingSnapshot {
                 message = "Loading \(inventoryNoun) from \(host.displayName)…"
                 systemImage = "hourglass"
                 severity = .informational
                 navigates = false
+                (tone, self.status) = (.pending, "Loading \(inventoryNoun)…")
             } else {
                 return nil
             }
@@ -72,11 +83,15 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
             if let syncError {
                 (message, systemImage, severity, navigates) = Self.syncError(
                     syncError, hostName: host.displayName)
+                (tone, self.status) = Self.syncIssue
             } else {
                 return nil
             }
         }
     }
+
+    private static let cannotConnect: (HostConnectionTone, String) = (.unavailable, "Can't connect")
+    private static let syncIssue: (HostConnectionTone, String) = (.warning, "Sync issue")
 
     private static func failed(
         _ failure: TransportError, hostName: String
@@ -99,6 +114,46 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
             .warning,
             true
         )
+    }
+}
+
+/// Several Host conditions folded into one row for the flat lists, so a
+/// handful of unreachable Hosts cannot push the inventory off screen.
+/// Absent for fewer than two: one condition shows as its own row.
+struct ConsoleHostIssueSummary: Equatable {
+    let title: String
+    let detail: String
+    /// The most serious badge among the Hosts.
+    let tone: HostConnectionTone
+
+    init?(issues: [ConsoleHostStatusPresentation]) {
+        guard issues.count > 1 else { return nil }
+        title = "\(issues.count) Hosts"
+        // One count per status, in the order the worst first appears.
+        let ranked = issues.sorted { Self.rank($0.tone) > Self.rank($1.tone) }
+        var counts: [(status: String, count: Int)] = []
+        for issue in ranked {
+            // "Reconnecting…" counts as "3 reconnecting".
+            let status = issue.status.lowercased().replacingOccurrences(of: "…", with: "")
+            if let index = counts.firstIndex(where: { $0.status == status }) {
+                counts[index].count += 1
+            } else {
+                counts.append((status, 1))
+            }
+        }
+        detail = counts.map { "\($0.count) \($0.status)" }.joined(separator: " · ")
+        tone = ranked.first?.tone ?? .pending
+    }
+
+    private static func rank(_ tone: HostConnectionTone) -> Int {
+        switch tone {
+        case .unavailable: 5
+        case .warning: 4
+        case .reconnecting: 3
+        case .pending: 2
+        case .paused: 1
+        case .connected: 0
+        }
     }
 }
 

@@ -70,7 +70,8 @@ struct TerminalListView: View {
             List(selection: $selection) {
                 if !issues.isEmpty {
                     Section {
-                        ForEach(issues) { ConsoleHostIssueRow(issue: $0, onOpenHost: onOpenHost) }
+                        ConsoleHostIssueList(issues: issues, onOpenHost: onOpenHost)
+                            .listRowBackground(TerminalCardRow.fill)
                     }
                 }
                 ForEach(workspaces) { workspace in
