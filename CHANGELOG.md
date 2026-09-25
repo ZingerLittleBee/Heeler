@@ -14,9 +14,8 @@ Entries reference the issue that motivated them.
   lists every Host's shell panes as one collapsible card per Workspace,
   By Workspace or By Host, sharing the Agents tab's Host filter. A shell
   in a named tab is listed by that name, and shells sharing a card show
-  their tab beside the path. A card's
-  `+` opens a new shell tab in that Workspace, and the toolbar's New
-  Terminal picks a Host, an existing or new Workspace, and an optional tab
+  their tab beside the path. Each card ends in a New Terminal row that
+  opens a shell tab in that Workspace, and the toolbar's New Terminal picks a Host, an existing or new Workspace, and an optional tab
   name. Swipe a terminal to close it after confirming, or long-press it to
   open another in its Workspace or copy its path. Search now finds Agents
   and Terminals together. (#316; PR #377)
