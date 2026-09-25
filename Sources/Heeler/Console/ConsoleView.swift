@@ -1242,12 +1242,14 @@ private struct ConsoleHostSectionHeaderView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                HostConnectionStatusIcon(tone: presentation.readiness.tone)
                 Spacer(minLength: 0)
                 if presentation.showsStatusPills {
                     ConsoleHostStatusCountPills(items: presentation.statusItems)
                         .accessibilityHidden(true)
                 }
+                // Trailing, so every Host's status lines up in one column
+                // whatever the length of its name.
+                HostConnectionStatusIcon(tone: presentation.readiness.tone)
             }
             .contentShape(Rectangle())
             .padding(.vertical, 4)

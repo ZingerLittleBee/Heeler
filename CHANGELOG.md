@@ -25,7 +25,7 @@ Entries reference the issue that motivated them.
 ### Changed
 
 - A Host's connection state reads at a glance: Host headers in the Agents
-  and Terminals tabs show a status icon beside the Host's name instead of a
+  and Terminals tabs show a status icon at their trailing edge instead of a
   line of text, and the Hosts list uses the same icons. Each state has its
   own shape as well as color: a green checkmark when connected, a dotted circle
   while connecting, orange arrows while reconnecting, and a red exclamation

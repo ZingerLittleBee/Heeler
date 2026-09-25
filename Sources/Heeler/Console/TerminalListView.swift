@@ -450,7 +450,6 @@ private struct TerminalHostHeader: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                HostConnectionStatusIcon(tone: group.readiness.tone)
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {
                     Text(group.terminalCount == 1 ? "1 terminal" : "\(group.terminalCount) terminals")
@@ -460,6 +459,7 @@ private struct TerminalHostHeader: View {
                         .padding(.vertical, 2)
                         .background(.fill.tertiary, in: Capsule())
                 }
+                HostConnectionStatusIcon(tone: group.readiness.tone)
             }
             .contentShape(Rectangle())
             .padding(.vertical, 4)
