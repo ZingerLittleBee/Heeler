@@ -77,77 +77,93 @@ struct HostConnectionDetailView: View {
     let isRetryInFlight: Bool
     let onRetry: () -> Void
 
-    @State private var isEditing = false
-
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 10) {
-                        HostStatusGlyph(tone: presentation.tone)
-                        Text(presentation.title)
-                            .font(.headline)
-                        if let attempt = presentation.attempt {
-                            Text(attempt)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    Text(
-                        presentation.isDialing
-                            ? "Connecting to \(presentation.address)…" : presentation.address
-                    )
-                    .font(.subheadline.monospaced())
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    VStack(alignment: .leading, spacing: 6) {
-                        if presentation.isDialing {
-                            Text("Previous attempt")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .textCase(.uppercase)
-                        }
-                        Text(presentation.summary)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(presentation.isDialing ? .secondary : .primary)
-                        if let detail = presentation.detail {
-                            Text(detail)
-                                .font(.footnote.monospaced())
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                        if let suggestion = presentation.recoverySuggestion {
-                            Text(suggestion)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-            }
-            // Pinned: however long the failure's detail, the one action
-            // stays in reach.
-            .safeAreaInset(edge: .bottom) {
-                retryButton
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-            }
-            .navigationTitle(presentation.hostName)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Edit") { isEditing = true }
-                }
-            }
-            .sheet(isPresented: $isEditing) {
-                HostFormView(store: catalog, editing: host)
-            }
+            HostConnectionDetailContent(
+                presentation: presentation, host: host, catalog: catalog,
+                isRetryInFlight: isRetryInFlight, onRetry: onRetry)
         }
         .presentationDetents([.fraction(0.6), .large])
         .presentationDragIndicator(.visible)
+    }
+}
+
+/// One failing Host's failure and Retry Now, inside a navigation stack: its
+/// own sheet's root, or pushed from the sheet listing several Hosts.
+struct HostConnectionDetailContent: View {
+    let presentation: HostConnectionDetailPresentation
+    let host: Host
+    let catalog: HostStore
+    let isRetryInFlight: Bool
+    let onRetry: () -> Void
+
+    @State private var isEditing = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 10) {
+                    HostStatusGlyph(tone: presentation.tone)
+                    Text(presentation.title)
+                        .font(.headline)
+                    if let attempt = presentation.attempt {
+                        Text(attempt)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text(
+                    presentation.isDialing
+                        ? "Connecting to \(presentation.address)…" : presentation.address
+                )
+                .font(.subheadline.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 6) {
+                    if presentation.isDialing {
+                        Text("Previous attempt")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .textCase(.uppercase)
+                    }
+                    Text(presentation.summary)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(presentation.isDialing ? .secondary : .primary)
+                    if let detail = presentation.detail {
+                        Text(detail)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    if let suggestion = presentation.recoverySuggestion {
+                        Text(suggestion)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+        }
+        // Pinned: however long the failure's detail, the one action
+        // stays in reach.
+        .safeAreaInset(edge: .bottom) {
+            retryButton
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+        }
+        .navigationTitle(presentation.hostName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Edit") { isEditing = true }
+            }
+        }
+        .sheet(isPresented: $isEditing) {
+            HostFormView(store: catalog, editing: host)
+        }
     }
 
     @ViewBuilder

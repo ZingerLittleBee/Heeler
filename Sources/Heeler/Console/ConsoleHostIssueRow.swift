@@ -44,8 +44,9 @@ struct ConsoleHostIssueRow: View {
 }
 
 /// The flat lists' Host conditions (#316), atop the list in both tabs:
-/// one compact row per Host, and behind a single summary once there are
-/// several, so unreachable Hosts cannot push the inventory off screen. It
+/// one compact row for a single Host, and a summary once there are several,
+/// so unreachable Hosts cannot push the inventory off screen. The summary
+/// opens the Hosts in a bottom sheet rather than expanding in the list. It
 /// sits on the page itself, not on a card, so it never reads as one of the
 /// Terminals tab's Workspace cards; callers clear the row's background and
 /// inset it to their content. The full sentence is what VoiceOver reads;
@@ -53,38 +54,23 @@ struct ConsoleHostIssueRow: View {
 struct ConsoleHostIssueList: View {
     let issues: [ConsoleHostStatusPresentation]
     let onOpenHost: (Host.ID) -> Void
+    /// Presents `ConsoleHostIssuesSheet` for the summary.
+    let onShowAll: () -> Void
     /// The leading column every row shares, as wide as a terminal row's
     /// tile, and the gap after it: all text starts on one edge.
     static let iconColumn: CGFloat = 30
     static let iconGap: CGFloat = 12
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.displayScale) private var displayScale
-    @State private var isExpanded = false
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let summary = ConsoleHostIssueSummary(issues: issues) {
-                summaryRow(summary)
-                if isExpanded {
-                    ForEach(issues) { issue in
-                        separator
-                        ConsoleHostIssueCompactRow(issue: issue, onOpenHost: onOpenHost)
-                    }
-                }
-            } else {
-                ForEach(Array(issues.enumerated()), id: \.element.id) { index, issue in
-                    if index > 0 { separator }
-                    ConsoleHostIssueCompactRow(issue: issue, onOpenHost: onOpenHost)
-                }
-            }
+        if let summary = ConsoleHostIssueSummary(issues: issues) {
+            summaryRow(summary)
+        } else if let issue = issues.first {
+            ConsoleHostIssueCompactRow(issue: issue, onOpenHost: onOpenHost)
         }
     }
 
     private func summaryRow(_ summary: ConsoleHostIssueSummary) -> some View {
-        Button {
-            withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
-        } label: {
+        Button(action: onShowAll) {
             HStack(spacing: Self.iconGap) {
                 // A tile as on terminal rows, centered on the text beside it;
                 // its color is the worst state's, so no badge is needed.
@@ -111,7 +97,6 @@ struct ConsoleHostIssueList: View {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     .frame(width: 12)
             }
             .padding(.vertical, 12)
@@ -121,15 +106,77 @@ struct ConsoleHostIssueList: View {
         .hoverEffect(.highlight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(summary.title), \(summary.detail)")
-        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-        .accessibilityHint(isExpanded ? "Hides these Hosts." : "Lists these Hosts.")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Lists these Hosts.")
+    }
+}
+
+/// The Hosts behind the flat lists' summary, in a bottom sheet. A Host that
+/// cannot connect pushes the connection detail its own row would open; any
+/// other navigable condition opens the Host in the Hosts tab.
+struct ConsoleHostIssuesSheet<Detail: View>: View {
+    let issues: [ConsoleHostStatusPresentation]
+    /// Hosts the connection detail explains, which push it.
+    let explained: Set<Host.ID>
+    let onOpenHost: (Host.ID) -> Void
+    @ViewBuilder let detail: (Host.ID) -> Detail
+
+    @State private var path: [Host.ID] = []
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List(issues) { issue in
+                if explained.contains(issue.hostID) {
+                    NavigationLink(value: issue.hostID) { row(issue) }
+                } else if issue.navigates {
+                    Button { onOpenHost(issue.hostID) } label: {
+                        HStack {
+                            row(issue)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens this Host in the Hosts tab.")
+                } else {
+                    row(issue)
+                }
+            }
+            // Rows start under the title, not a section header's gap below.
+            .contentMargins(.top, 4, for: .scrollContent)
+            .navigationTitle(ConsoleHostIssueSummary(issues: issues)?.title ?? "Hosts")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: Host.ID.self) { detail($0) }
+        }
+        .presentationDetents([.fraction(0.6), .large])
+        .presentationDragIndicator(.visible)
+        // A Host that connects again has nothing left to explain.
+        .onChange(of: explained) { _, explained in
+            path.removeAll { !explained.contains($0) }
+        }
     }
 
-    private var separator: some View {
-        Rectangle()
-            .fill(Color(uiColor: .separator))
-            .frame(height: 1 / displayScale)
-            .padding(.leading, Self.iconColumn + Self.iconGap)
+    private func row(_ issue: ConsoleHostStatusPresentation) -> some View {
+        HStack(spacing: ConsoleHostIssueList.iconGap) {
+            HostStatusGlyph(tone: issue.tone)
+            VStack(alignment: .leading, spacing: 2) {
+                // Full strength: every Host here has a problem, so the
+                // list's dimming of not-ready names would only gray them all.
+                Text(issue.hostName)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                Text(issue.status)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(issue.message)
     }
 }
 

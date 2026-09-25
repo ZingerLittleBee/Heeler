@@ -50,6 +50,10 @@ struct ConsoleView: View {
     @State private var hostsTabRequest: HostsTabRequest?
     @State private var isStartingAgent = false
     @State private var connectionDetailRequest: ConnectionDetailRequest?
+    /// The flat lists' summary opened: every Host problem in one sheet.
+    @State private var isShowingHostIssues = false
+    /// Per Host, the failure its pushed detail showed at Retry Now.
+    @State private var hostIssuesLastFailures: [Host.ID: TransportError] = [:]
     /// Hosts whose Host-detail Reconnect request is in flight, including the
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -190,6 +194,16 @@ struct ConsoleView: View {
                     Task { await reconnectHost(host.id) }
                 }
             }
+        }
+        .sheet(isPresented: $isShowingHostIssues) {
+            hostIssuesSheet
+        }
+        // Retries answered, the Host no longer failing, drop what they saw.
+        .onChange(of: hostIssuesSheetExplained) { _, explained in
+            hostIssuesLastFailures = hostIssuesLastFailures.filter { explained.contains($0.key) }
+        }
+        .onChange(of: filteredHostIssues.isEmpty) { _, isEmpty in
+            if isEmpty { isShowingHostIssues = false }
         }
         // Once the Host connects again (or leaves the catalog) the sheet has
         // nothing left to explain.
@@ -340,6 +354,7 @@ struct ConsoleView: View {
                     selection: selectedItem,
                     onOpen: { selectTerminal($0) },
                     onOpenHost: { openHostIssue($0) },
+                    onShowHostIssues: { isShowingHostIssues = true },
                     onNewTerminal: { isStartingTerminal = true })
                 .searchable(
                     text: $terminalSearchText, isPresented: $isTerminalSearchPresented,
@@ -744,7 +759,9 @@ struct ConsoleView: View {
         if !visibleHostIssues.isEmpty {
             // On the Agent rows' edges; the list's own separator sets it
             // apart from the first Agent.
-            ConsoleHostIssueList(issues: visibleHostIssues) { openHostIssue($0) }
+            ConsoleHostIssueList(
+                issues: visibleHostIssues, onOpenHost: { openHostIssue($0) },
+                onShowAll: { isShowingHostIssues = true })
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                 .listRowBackground(Color.clear)
                 // Under the title nothing needs a rule; below, it runs from
@@ -985,6 +1002,12 @@ struct ConsoleView: View {
         guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return []
         }
+        return filteredHostIssues
+    }
+
+    /// Every Host problem under the Host filter, as the flat lists show
+    /// them outside a search, and as their summary's sheet lists them.
+    private var filteredHostIssues: [ConsoleHostStatusPresentation] {
         guard let hostFilter else { return hostIssues }
         return hostIssues.filter { $0.hostID == hostFilter }
     }
@@ -1012,6 +1035,41 @@ struct ConsoleView: View {
                 isAwaitingSnapshot: console.hostsAwaitingSnapshot.contains(host.id),
                 syncError: console.hostSyncErrors[host.id])
         }
+    }
+
+    private var hostIssuesSheet: some View {
+        ConsoleHostIssuesSheet(
+            issues: filteredHostIssues,
+            explained: hostIssuesSheetExplained,
+            onOpenHost: { id in
+                isShowingHostIssues = false
+                presentHosts(id)
+            }
+        ) { id in
+            if let host = hosts.hosts.first(where: { $0.id == id }),
+                let detail = hostIssuesSheetDetail(for: id)
+            {
+                HostConnectionDetailContent(
+                    presentation: detail,
+                    host: host,
+                    catalog: hosts,
+                    isRetryInFlight: manualReconnectInFlightHostIDs.contains(id)
+                ) {
+                    // As in the single Host's sheet: stays through the dial.
+                    hostIssuesLastFailures[id] = detail.failure
+                    Task { await reconnectHost(id) }
+                }
+            }
+        }
+    }
+
+    private var hostIssuesSheetExplained: Set<Host.ID> {
+        Set(filteredHostIssues.map(\.hostID).filter { hostIssuesSheetDetail(for: $0) != nil })
+    }
+
+    private func hostIssuesSheetDetail(for id: Host.ID) -> HostConnectionDetailPresentation? {
+        connectionDetail(
+            for: ConnectionDetailRequest(id: id, lastFailure: hostIssuesLastFailures[id]))
     }
 
     private struct ConnectionDetailRequest: Identifiable {

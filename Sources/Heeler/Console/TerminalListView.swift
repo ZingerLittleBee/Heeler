@@ -16,6 +16,8 @@ struct TerminalListView: View {
     /// Opens a terminal the list just created.
     let onOpen: (ConsoleTerminal) -> Void
     let onOpenHost: (Host.ID) -> Void
+    /// Lists every Host problem in a sheet, from the By Workspace summary.
+    let onShowHostIssues: () -> Void
     let onNewTerminal: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -79,7 +81,9 @@ struct TerminalListView: View {
                         // Off the cards, on the page: inset to the card
                         // content, so its tile lines up with the Workspace
                         // names and its chevron with theirs.
-                        ConsoleHostIssueList(issues: issues, onOpenHost: onOpenHost)
+                        ConsoleHostIssueList(
+                            issues: issues, onOpenHost: onOpenHost,
+                            onShowAll: onShowHostIssues)
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                             .listRowBackground(Color.clear)
                     }

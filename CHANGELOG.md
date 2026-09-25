@@ -36,8 +36,9 @@ Entries reference the issue that motivated them.
 - A Host that is reconnecting or cannot connect no longer expands: tapping
   it opens a sheet with the failure, a Retry button, and Edit for its
   settings. In the flat Agents list and the By Workspace terminals, Hosts
-  with a problem gather atop the list: a short line each, or, for several, a
-  summary that counts them by state and expands on tap. (#316; PR #377)
+  with a problem gather atop the list: one Host as a short line, several as
+  a summary that counts them by state and opens them in a sheet, where each
+  failing Host shows its failure and Retry Now. (#316; PR #377)
 - The Hosts list groups Hosts by what they need, each group collapsible:
   Can't Connect first, naming each problem beside a refresh button that
   retries, then Hosts still trying, then connected ones with their latency.
