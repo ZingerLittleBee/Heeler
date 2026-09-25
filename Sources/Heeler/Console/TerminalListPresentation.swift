@@ -42,6 +42,8 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
         }
     }
 
+    /// Beside the title in the picker, and alone on the toolbar button so
+    /// it shows the current choice.
     var systemImage: String {
         switch self {
         case .byWorkspace: "rectangle.3.group"

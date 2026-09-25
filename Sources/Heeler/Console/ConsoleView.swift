@@ -379,15 +379,11 @@ struct ConsoleView: View {
                 Menu {
                     Picker("Presentation", selection: presentationModeBinding) {
                         ForEach(ConsoleListPresentationMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                            Label(mode.title, systemImage: mode.systemImage).tag(mode)
                         }
                     }
                 } label: {
-                    Label(
-                        "Presentation",
-                        systemImage: listPresentation.mode == .grouped
-                            ? "list.bullet.rectangle"
-                            : "list.bullet")
+                    Label("Presentation", systemImage: listPresentation.mode.systemImage)
                 }
                 .hoverEffect(.highlight)
                 .accessibilityLabel("Agent list presentation")
@@ -403,11 +399,7 @@ struct ConsoleView: View {
                         }
                     }
                 } label: {
-                    Label(
-                        "Presentation",
-                        systemImage: terminalPresentation.mode == .byWorkspace
-                            ? "list.bullet.rectangle"
-                            : "list.bullet")
+                    Label("Presentation", systemImage: terminalPresentation.mode.systemImage)
                 }
                 .hoverEffect(.highlight)
                 .accessibilityLabel("Terminal list presentation")

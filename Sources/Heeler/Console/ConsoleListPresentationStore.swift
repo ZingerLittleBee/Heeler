@@ -17,6 +17,15 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
         case .grouped: "By Host"
         }
     }
+
+    /// Beside the title in the picker, and alone on the toolbar button so
+    /// it shows the current choice.
+    var systemImage: String {
+        switch self {
+        case .flat: "list.bullet"
+        case .grouped: "server.rack"
+        }
+    }
 }
 
 /// One Host section projected from the Host catalog and the Console's
