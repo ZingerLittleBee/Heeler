@@ -123,11 +123,13 @@ struct TerminalListView: View {
     @ViewBuilder
     private func workspaceRows(_ workspace: TerminalWorkspaceGroup) -> some View {
         TerminalWorkspaceHeader(
-            workspace: workspace, showsHost: false, onToggle: { toggle(workspace.id) }
+            workspace: workspace, showsHost: false, isNested: true,
+            onToggle: { toggle(workspace.id) }
         )
+        // Indented to the card's content, under the Host header's name.
         .listRowInsets(
             EdgeInsets(
-                top: 4, leading: TerminalCardRow.margin, bottom: 0,
+                top: 4, leading: TerminalCardRow.contentInset, bottom: 0,
                 trailing: TerminalCardRow.margin))
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
@@ -401,6 +403,8 @@ private struct TerminalCardRow: ViewModifier {
     /// From the screen edge to the card, as the Host header's inset.
     static let margin: CGFloat = 16
     private static let padding: CGFloat = 16
+    /// From the screen edge to a row's content.
+    static let contentInset = margin + padding
     private static let radius: CGFloat = 20
     /// From the card's edge to a row's title, past the 30-point tile.
     private static let separatorInset: CGFloat = 16 + 30 + 12
@@ -415,8 +419,8 @@ private struct TerminalCardRow: ViewModifier {
         content
             .listRowInsets(
                 EdgeInsets(
-                    top: 12, leading: Self.margin + Self.padding, bottom: 12,
-                    trailing: Self.margin + Self.padding))
+                    top: 12, leading: Self.contentInset, bottom: 12,
+                    trailing: Self.contentInset))
             .listRowSeparator(.hidden)
             .listRowBackground(
                 UnevenRoundedRectangle(
@@ -443,6 +447,9 @@ private struct TerminalCardRow: ViewModifier {
 private struct TerminalWorkspaceHeader: View {
     let workspace: TerminalWorkspaceGroup
     let showsHost: Bool
+    /// Under a Host header, a level below it: a quieter title, so the two
+    /// headers never read as peers.
+    var isNested = false
     let onToggle: () -> Void
 
     private var detail: String? {
@@ -458,8 +465,8 @@ private struct TerminalWorkspaceHeader: View {
         Button(action: onToggle) {
             HStack(spacing: 6) {
                 Text(workspace.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.primary)
+                    .font(.subheadline.weight(isNested ? .medium : .semibold))
+                    .foregroundStyle(isNested ? Color.secondary : Color.primary)
                 if let detail {
                     Text(detail)
                         .font(.subheadline)
