@@ -96,8 +96,13 @@ struct ConsoleView: View {
             Tab(ConsoleTab.agents.title, systemImage: "sparkles", value: ConsoleTab.agents) {
                 splitView(for: .agents)
             }
-            Tab(ConsoleTab.terminals.title, systemImage: "terminal", value: ConsoleTab.terminals) {
+            Tab(value: ConsoleTab.terminals) {
                 splitView(for: .terminals)
+            } label: {
+                // The tab bar fills symbols; filled, this one is a solid
+                // block beside the other tabs' line icons.
+                Label(ConsoleTab.terminals.title, systemImage: "terminal")
+                    .environment(\.symbolVariants, .none)
             }
             Tab(ConsoleTab.hosts.title, systemImage: "server.rack", value: ConsoleTab.hosts) {
                 // HostListView brings its own NavigationStack.
