@@ -104,77 +104,68 @@ struct HostListViewTests {
     }
 }
 
-@Suite("Host card presentation")
-struct HostCardPresentationTests {
+@Suite("Host row presentation")
+struct HostRowPresentationTests {
     private let host = Host.fixture(name: "studio")
 
-    private func card(
+    private func row(
         _ status: EventsSessionStatus?, standingFailure: TransportError? = nil,
-        inventory: HostInventory? = nil, canRetry: Bool = true
-    ) -> HostCardPresentation {
-        HostCardPresentation(
+        canRetry: Bool = true
+    ) -> HostRowPresentation {
+        HostRowPresentation(
             host: host, status: status, standingFailure: standingFailure,
-            latency: .milliseconds(148), inventory: inventory, canRetry: canRetry)
+            latency: .milliseconds(148), canRetry: canRetry)
     }
 
-    @Test func aConnectedHostShowsLatencyAndWhatItHolds() {
-        let inventory = HostInventory(agents: 1, terminals: 13)
-        let connected = card(.connected, inventory: inventory)
-        #expect(connected.status == "148 ms")
-        #expect(connected.tone == .connected)
-        #expect(connected.content == .inventory(inventory))
-        #expect(!connected.offersRetry)
-        #expect(inventory.agentsText == "1 Agent")
-        #expect(inventory.terminalsText == "13 Terminals")
+    @Test func hostsGroupByWhatTheyNeedFromTheUser() {
+        #expect(row(.failed(.timedOut)).group == .cannotConnect)
+        #expect(row(.connecting, standingFailure: .timedOut).group == .cannotConnect)
+        #expect(row(.reconnecting(attempt: 2, delay: .seconds(2), failure: .timedOut)).group == .trying)
+        #expect(row(.connecting).group == .trying)
+        #expect(row(nil).group == .trying)
+        #expect(row(.connected).group == .connected)
+        #expect(row(.suspended).group == .notConnected)
+        #expect(HostHealthGroup.allCases.sorted() == [.cannotConnect, .trying, .connected, .notConnected])
     }
 
-    @Test func aProblemTakesTheConnectionSheetsWords() {
-        let stopped = card(.failed(.authenticationFailed))
-        #expect(stopped.status == "Can't Connect")
+    @Test func aStoppedHostNamesItsProblemBesideRetry() {
+        let stopped = row(.failed(.authenticationFailed))
+        #expect(stopped.detail == TransportError.authenticationFailed.presentation.summary)
+        #expect(stopped.isProblem)
+        #expect(stopped.offersRetry)
         #expect(stopped.tone == .unavailable)
-        guard case .problem(let problem) = stopped.content else {
-            Issue.record("A stopped Host explains itself")
-            return
-        }
-        #expect(problem.recoverySuggestion != nil)
-
-        let recovering = card(.reconnecting(attempt: 4, delay: .seconds(8), failure: .timedOut))
-        #expect(recovering.status == "Reconnecting")
-        guard case .problem(let running) = recovering.content else {
-            Issue.record("A reconnecting Host explains itself")
-            return
-        }
-        #expect(running.recoverySuggestion == nil)
+        #expect(!row(.failed(.timedOut), canRetry: false).offersRetry)
     }
 
-    @Test func retryIsOfferedOnlyOnceNothingElseWillTry() {
-        #expect(card(.failed(.timedOut)).offersRetry)
-        #expect(card(.connecting, standingFailure: .timedOut).offersRetry)
-        #expect(!card(.reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)).offersRetry)
-        #expect(!card(.connecting).offersRetry)
-        #expect(!card(.failed(.timedOut), canRetry: false).offersRetry)
+    @Test func theUsersOwnRetryStaysInPlaceWhileItDials() {
+        let dialing = row(.connecting, standingFailure: .timedOut)
+        #expect(dialing.isDialing)
+        #expect(dialing.offersRetry)
+        #expect(!dialing.isProblem)
     }
 
-    @Test func quietStatesStateThemselvesAndNothingMore() {
-        #expect(card(.suspended).content == .quiet)
-        #expect(card(.suspended).status == "Paused")
-        #expect(card(.connecting).content == .quiet)
-        #expect(card(nil).status == "Connecting…")
+    @Test func recoveryStatesItsAttemptWithoutRetry() {
+        let recovering = row(.reconnecting(attempt: 4, delay: .seconds(8), failure: .timedOut))
+        #expect(recovering.detail == "\(TransportError.timedOut.presentation.summary) · Attempt 4")
+        #expect(!recovering.offersRetry)
+        #expect(row(.connecting).detail == "Connecting…")
     }
 
-    @Test func onlyAKnownInventoryIsCounted() {
-        let live = Host.fixture(name: "live")
-        let loading = Host.fixture(name: "loading")
-        let down = Host.fixture(name: "down")
-        let agent = ConsoleAgent(
-            hostID: live.id, hostName: live.displayName,
-            agent: Agent(.fixture(paneID: "w1:p1")),
-            workspaceLabel: nil, repositoryCheckout: nil)
-        let inventories = HostInventory.known(
-            statuses: [live.id: .connected, loading.id: .connected, down.id: .failed(.timedOut)],
-            awaitingSnapshot: [loading.id],
-            agents: [agent],
-            terminals: [])
-        #expect(inventories == [live.id: HostInventory(agents: 1, terminals: 0)])
+    @Test func aConnectedHostShowsItsAddressAndLatency() {
+        let connected = row(.connected)
+        #expect(connected.detail == "\(host.username)@\(host.address)")
+        #expect(connected.trailing == "148 ms")
+        #expect(row(.failed(.timedOut)).trailing == nil)
+    }
+
+    @Test func onlyNonEmptyGroupsShowInOrder() {
+        let entries = [
+            HostListEntry(host: Host.fixture(name: "a"), presentation: row(.connected)),
+            HostListEntry(host: Host.fixture(name: "b"), presentation: row(.failed(.timedOut))),
+            HostListEntry(host: Host.fixture(name: "c"), presentation: row(.connected)),
+        ]
+        let sections = HostListEntry.grouped(entries)
+        #expect(sections.map(\.group) == [.cannotConnect, .connected])
+        #expect(sections.last?.entries.map(\.host.displayName) == ["a", "c"])
     }
 }

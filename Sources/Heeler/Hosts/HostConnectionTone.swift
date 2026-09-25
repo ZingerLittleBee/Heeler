@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// How a Host's connection reads at a glance, shared by the Hosts cards and
+/// How a Host's connection reads at a glance, shared by the Hosts list and
 /// the Console's Host headers so one state never wears two looks. Wherever
 /// color alone would tell two tones apart, text says the state too: the
-/// cards' status pill, and the headers' VoiceOver readiness.
+/// Hosts rows' groups and details, and the headers' VoiceOver readiness.
 enum HostConnectionTone: Equatable, CaseIterable {
     case connected
     /// Connecting for the first time; no failure seen yet.
@@ -26,46 +26,6 @@ enum HostConnectionTone: Equatable, CaseIterable {
         case .reconnecting, .warning: .orange.opacity(0.7)
         case .unavailable: .red.opacity(0.7)
         }
-    }
-}
-
-/// A Host's state in a few words on a tinted capsule, as a Host card
-/// states it beside the Host's name.
-struct HostStatusPill: View {
-    let text: String
-    let tone: HostConnectionTone
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .monospacedDigit()
-            .foregroundStyle(foreground)
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(background, in: Capsule())
-    }
-
-    private var hue: Color? {
-        switch tone {
-        case .connected: .green
-        case .reconnecting, .warning: .orange
-        case .unavailable: .red
-        case .pending, .paused: nil
-        }
-    }
-
-    /// Full-strength hues are too light to read as text on a light card.
-    private var foreground: Color {
-        guard let hue else { return .secondary }
-        return colorScheme == .dark ? hue : hue.mix(with: .black, by: 0.3)
-    }
-
-    private var background: AnyShapeStyle {
-        guard let hue else { return AnyShapeStyle(.fill.tertiary) }
-        return AnyShapeStyle(hue.opacity(0.14))
     }
 }
 

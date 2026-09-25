@@ -32,9 +32,10 @@ Entries reference the issue that motivated them.
   Host stops on a failure, which also dims its name. A connected Host shows
   the glyph alone. The disclosure chevron moves to the trailing edge, an
   expanded Host in the Agents tab states its condition as the Terminals tab
-  does, and the Hosts list becomes one card per Host: its latency and what
-  it holds while connected, or its connection problem in the connection
-  sheet's words, with Retry and Edit on the card once it stops. A Host that
+  does, and the Hosts list groups Hosts by what they need, each group
+  collapsible: Can't Connect first, naming each problem beside a Retry
+  button, then Hosts still trying, then connected ones with their latency.
+  A Host that
   is reconnecting or cannot connect no longer expands: tapping it opens a
   sheet with the failure, a Retry button, and Edit for its settings. In
   the flat Agents list and the By Workspace terminals, each Host with a
