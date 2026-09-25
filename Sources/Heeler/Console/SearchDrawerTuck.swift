@@ -17,6 +17,11 @@ private struct SearchDrawerTucker: UIViewRepresentable {
     func updateUIView(_ view: TuckerView, context: Context) {}
 
     final class TuckerView: UIView {
+        /// Search fields already tucked. Once per field, not per list: a
+        /// list rebuilt later (a search ending, a presentation switch) must
+        /// not hide a field the user pulled down, nor scroll against the
+        /// bar's own animation.
+        private static let tuckedFields = NSHashTable<UISearchController>.weakObjects()
         private var hasTucked = false
 
         override func didMoveToWindow() {
@@ -35,7 +40,9 @@ private struct SearchDrawerTucker: UIViewRepresentable {
                 let scrollView = Self.firstScrollView(in: controller.view)
             else { return }
             hasTucked = true
-            // A list rebuilt mid-search keeps its field in view.
+            guard !Self.tuckedFields.contains(searchController) else { return }
+            Self.tuckedFields.add(searchController)
+            // A list first shown mid-search keeps its field in view.
             guard !searchController.isActive else { return }
             let top = -scrollView.adjustedContentInset.top
             // Only from the top: a list already scrolled has hidden it.
