@@ -222,13 +222,13 @@ struct ConsoleView: View {
             isStartingTerminal = false
             isShowingSettings = false
         }
-        // A filter pointing at a removed Host would silently hide every
-        // Agent; fall back to All Hosts instead.
         // A Host opened on request belongs to that one visit: once the user
         // leaves the Hosts tab, it reopens on its list.
         .onChange(of: isHostsTabSelected) { _, isSelected in
             if !isSelected { hostsTabRequest = nil }
         }
+        // A filter pointing at a removed Host would silently hide every
+        // Agent; fall back to All Hosts instead.
         .onChange(of: hosts.hosts) { _, hosts in
             if let hostFilter, !hosts.contains(where: { $0.id == hostFilter }) {
                 self.hostFilter = nil
@@ -1281,7 +1281,7 @@ private struct ConsoleHostSectionHeaderView: View {
                 HostStatusGlyph(tone: presentation.readiness.tone)
                 Text(presentation.hostDisplayName)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(presentation.readiness.dimsName ? .secondary : .primary)
+                    .foregroundStyle(presentation.readiness.nameEmphasis.color)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if presentation.showsStatusPills {

@@ -7,8 +7,19 @@ struct HostReadiness: Equatable {
     let text: String
     let tone: HostConnectionTone
 
-    /// A Host stopped on a failure recedes until the user acts on it.
-    var dimsName: Bool { tone == .unavailable }
+    /// A reachable Host reads at full strength, one still trying recedes,
+    /// and one stopped on a failure recedes further until the user acts.
+    var nameEmphasis: HostNameEmphasis {
+        switch tone {
+        case .connected, .warning: .full
+        case .pending, .paused, .reconnecting: .receded
+        case .unavailable: .dimmed
+        }
+    }
+}
+
+enum HostNameEmphasis: Equatable {
+    case full, receded, dimmed
 }
 
 /// Pure presentation values for one Console Host-section header (#245).

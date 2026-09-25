@@ -123,3 +123,16 @@ struct HostStatusGlyph: View {
         }
     }
 }
+
+extension HostNameEmphasis {
+    /// Absolute colors, not hierarchical styles: a section header resolves
+    /// `.primary` against its own gray, which left a connected Host's name
+    /// as gray as a reconnecting one's.
+    var color: Color {
+        switch self {
+        case .full: Color.primary
+        case .receded: Color.secondary
+        case .dimmed: Color(uiColor: .tertiaryLabel)
+        }
+    }
+}

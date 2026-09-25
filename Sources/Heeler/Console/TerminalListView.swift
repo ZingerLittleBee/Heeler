@@ -444,7 +444,7 @@ private struct TerminalHostHeader: View {
                 HostStatusGlyph(tone: group.readiness.tone)
                 Text(group.hostName)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(group.readiness.dimsName ? .secondary : .primary)
+                    .foregroundStyle(group.readiness.nameEmphasis.color)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {

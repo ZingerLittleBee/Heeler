@@ -99,10 +99,12 @@ struct ConsoleHostSectionHeaderPresentationTests {
         #expect(tone(.suspended) == .paused)
     }
 
-    @Test func onlyAStoppedHostDimsItsName() {
-        #expect(!HostReadiness(text: "Connected", tone: .connected).dimsName)
-        #expect(!HostReadiness(text: "Reconnecting…", tone: .reconnecting).dimsName)
-        #expect(HostReadiness(text: "Unavailable", tone: .unavailable).dimsName)
+    @Test func aHostNameRecedesAsItsConnectionFails() {
+        #expect(HostReadiness(text: "Connected", tone: .connected).nameEmphasis == .full)
+        #expect(HostReadiness(text: "Sync issue", tone: .warning).nameEmphasis == .full)
+        #expect(HostReadiness(text: "Reconnecting…", tone: .reconnecting).nameEmphasis == .receded)
+        #expect(HostReadiness(text: "Connecting…", tone: .pending).nameEmphasis == .receded)
+        #expect(HostReadiness(text: "Unavailable", tone: .unavailable).nameEmphasis == .dimmed)
     }
 
     @Test func aFailingHostOpensItsSheetInsteadOfExpanding() {
