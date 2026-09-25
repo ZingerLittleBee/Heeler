@@ -915,7 +915,11 @@ final class HostConsoleProjection {
         terminalsByPane = nextTerminals
         workspacesByID = workspaceByID
         workspaces = snapshot.workspaces
-            .map { ConsoleWorkspace(id: $0.workspaceID, label: $0.label) }
+            .map {
+                ConsoleWorkspace(
+                    id: $0.workspaceID, label: $0.label,
+                    checkout: $0.worktree.map(RepositoryCheckout.init))
+            }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
         pruneReceiptsReintroducedByCurrentSnapshot(
             requestGeneration: requestGeneration)

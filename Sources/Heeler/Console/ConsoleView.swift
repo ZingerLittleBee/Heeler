@@ -572,31 +572,14 @@ struct ConsoleView: View {
 
     /// "By Host, By Workspace": the same Host section as the "By Host" mode,
     /// with each collapsed Host's Agents sub-grouped under workspace headers.
+    /// A repository's linked-worktree workspaces render as indented child
+    /// groups under that repo's main-checkout workspace, matching herdr's
+    /// sidebar tree.
     private func hostWorkspaceSection(_ section: ConsoleHostWorkspaceSection) -> some View {
         Section {
             if !section.host.isCollapsed {
                 ForEach(section.workspaceGroups) { group in
-                    Section {
-                        if !group.isCollapsed {
-                            ForEach(group.agents) { agent in
-                                agentRow(agent)
-                            }
-                        }
-                    } header: {
-                        ConsoleWorkspaceGroupHeaderView(
-                            label: group.label,
-                            isCollapsed: group.isCollapsed,
-                            agents: group.agents,
-                            onMove: moveTarget(
-                                hostID: section.host.hostID,
-                                workspaceLabel: group.label)
-                        ) {
-                            toggleWorkspaceGroup(
-                                hostID: section.host.hostID,
-                                workspaceLabel: group.label)
-                        }
-                        .textCase(nil)
-                    }
+                    workspaceGroupRows(group, hostID: section.host.hostID, indentationLevel: 0)
                 }
             }
         } header: {
@@ -610,6 +593,48 @@ struct ConsoleView: View {
                 }
             ) {
                 toggleHostSection(section.host.hostID)
+            }
+            .textCase(nil)
+        }
+    }
+
+    /// One workspace group's header and rows, with its linked-worktree child
+    /// groups indented one level below. Indentation shifts the header text
+    /// and rows; the chevron stays put so the tree reads like herdr's.
+    @ViewBuilder
+    private func workspaceGroupRows(
+        _ group: ConsoleWorkspaceGroup, hostID: Host.ID, indentationLevel: Int
+    ) -> some View {
+        Section {
+            if !group.isCollapsed {
+                ForEach(group.agents) { agent in
+                    agentRow(agent)
+                        .padding(.leading, CGFloat(indentationLevel) * 16)
+                }
+            }
+            if !group.isCollapsed {
+                ForEach(group.worktrees) { worktree in
+                    // AnyView: the recursion (worktree → its own children)
+                    // cannot be expressed as an opaque return type.
+                    AnyView(
+                        workspaceGroupRows(
+                            worktree, hostID: hostID,
+                            indentationLevel: indentationLevel + 1))
+                }
+            }
+        } header: {
+            ConsoleWorkspaceGroupHeaderView(
+                label: group.label,
+                isCollapsed: group.isCollapsed,
+                agents: group.agents + group.worktrees.flatMap(\.agents),
+                isWorktreeChild: indentationLevel > 0,
+                onMove: moveTarget(
+                    hostID: hostID,
+                    group: group)
+            ) {
+                toggleWorkspaceGroup(
+                    hostID: hostID,
+                    workspaceLabel: group.label)
             }
             .textCase(nil)
         }
@@ -706,14 +731,15 @@ struct ConsoleView: View {
             .filter { $0.id != agent.agent.workspaceID }
     }
 
-    /// Resolves a "By Host, By Workspace" group header's workspace label to
-    /// a drop target. Groups are label-keyed, so a label the Host's snapshot
-    /// no longer reports (e.g. "Unassigned") yields nil — no drop target.
+    /// Resolves a "By Host, By Workspace" group header's workspace to a drop
+    /// target. Group labels map back to the Host's snapshot workspaces; a
+    /// label the snapshot no longer reports (e.g. "Unassigned") yields nil —
+    /// no drop target.
     private func moveTarget(
-        hostID: Host.ID, workspaceLabel: String
+        hostID: Host.ID, group: ConsoleWorkspaceGroup
     ) -> ((ConsoleAgentDragPayload) -> Void)? {
         guard let workspace = console.workspacesByHost[hostID]?.first(where: {
-            $0.label == workspaceLabel
+            $0.label == group.label
         }) else { return nil }
         return { payload in
             guard let agent = console.agents.first(where: {
@@ -1113,6 +1139,9 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
     /// dot row — a compact echo of herdr's sidebar colours at the group
     /// level, so a collapsed group still shows who needs attention.
     let agents: [ConsoleAgent]
+    /// True for a linked-worktree child group: indented under its repo's
+    /// main workspace, echoing herdr's sidebar tree.
+    var isWorktreeChild: Bool = false
     /// Drop target for a dragged Agent row. Nil when this Host reports no
     /// workspace matching the group's label (e.g. the "Unassigned" bucket),
     /// in which case no drop destination is installed.
@@ -1127,6 +1156,12 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
                     .foregroundStyle(.tertiary)
                     .frame(width: 10, alignment: .center)
                     .accessibilityHidden(true)
+                if isWorktreeChild {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
                 Text(label)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -1139,6 +1174,7 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
             }
             .contentShape(Rectangle())
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, isWorktreeChild ? 16 : 0)
         }
         .buttonStyle(.plain)
         .modifier(ConsoleWorkspaceDropDestination(onMove: onMove))

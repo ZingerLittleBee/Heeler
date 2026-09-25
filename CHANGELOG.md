@@ -47,6 +47,11 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- In the "By Host, By Workspace" index, a worktree Workspace no longer
+  appears as its own top-level group. Linked worktrees of a repository now
+  nest — indented, with a turn marker — under that repo's main-checkout
+  Workspace, the way herdr's own sidebar groups them, and collapse state
+  stays independent for the parent and each child. (refs #364)
 - Starting an Agent with "Start in a new worktree" no longer names the new
   worktree Workspace after the Agent. herdr creates a worktree as its own
   Workspace (grouped with the source one), and Heeler was passing the Agent's

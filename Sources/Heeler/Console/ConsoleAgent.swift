@@ -260,6 +260,17 @@ struct RepositoryCheckout: Sendable, Equatable, Hashable {
 struct ConsoleWorkspace: Identifiable, Hashable, Sendable {
     let id: String
     let label: String
+    /// The workspace's git checkout identity from the snapshot, when reported.
+    /// Linked worktrees share their repo's `repoKey` with the main checkout's
+    /// workspace, which is how the index nests them under it (herdr's sidebar
+    /// grouping).
+    let checkout: RepositoryCheckout?
+
+    init(id: String, label: String, checkout: RepositoryCheckout? = nil) {
+        self.id = id
+        self.label = label
+        self.checkout = checkout
+    }
 }
 
 extension AgentStatus {

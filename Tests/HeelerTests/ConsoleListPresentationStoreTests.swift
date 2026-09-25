@@ -227,6 +227,119 @@ struct ConsoleListPresentationStoreTests {
         #expect(beta.workspaceGroups[1].agents.map(\.agent.paneID) == ["b-pay-1"])
     }
 
+    @Test func linkedWorktreeWorkspacesNestUnderTheirReposMainWorkspace() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        // Live snapshot shape: one repo (Heeler) with the main checkout's
+        // workspace and two linked-worktree workspaces.
+        let heeler = RepositoryCheckout(
+            repoKey: "/src/Heeler/.git", repoName: "Heeler", repoRoot: "/src/Heeler",
+            checkoutPath: "/src/Heeler", isLinkedWorktree: false)
+        let testflightCheckout = RepositoryCheckout(
+            repoKey: heeler.repoKey, repoName: "Heeler", repoRoot: "/src/Heeler",
+            checkoutPath: "/src/Heeler/testflight", isLinkedWorktree: true)
+        let indexCheckout = RepositoryCheckout(
+            repoKey: heeler.repoKey, repoName: "Heeler", repoRoot: "/src/Heeler",
+            checkoutPath: "/src/Heeler/index-worktree", isLinkedWorktree: true)
+        let workspaces = [
+            ConsoleWorkspace(id: "w11", label: "Waycar", checkout: heeler),
+            ConsoleWorkspace(id: "w1D", label: "testflight", checkout: testflightCheckout),
+            ConsoleWorkspace(id: "w1E", label: "index-worktree", checkout: indexCheckout),
+        ]
+        let agents = [
+            consoleAgent(
+                host: host, paneID: "a-index", status: .working,
+                workspaceLabel: "index-worktree"),
+            consoleAgent(host: host, paneID: "a-main", status: .idle, workspaceLabel: "Waycar"),
+            consoleAgent(
+                host: host, paneID: "a-tf", status: .blocked, workspaceLabel: "testflight"),
+        ]
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let sections = store.sectionsByHostThenWorkspace(
+            hosts: [host], agents: agents, workspacesByHost: [host.id: workspaces])
+
+        let groups = sections[0].workspaceGroups
+        // Worktree workspaces are children of the main-checkout workspace,
+        // not sibling top-level groups.
+        #expect(groups.map(\.label) == ["Waycar"])
+        #expect(groups[0].agents.map(\.agent.paneID) == ["a-main"])
+        #expect(groups[0].worktrees.map(\.label) == ["testflight", "index-worktree"])
+        #expect(groups[0].worktrees[0].agents.map(\.agent.paneID) == ["a-tf"])
+        #expect(groups[0].worktrees[1].agents.map(\.agent.paneID) == ["a-index"])
+
+        // Parent and children collapse independently (host defaults: all
+        // collapsed).
+        #expect(groups[0].isCollapsed)
+        #expect(groups[0].worktrees.map(\.isCollapsed) == [true, true])
+        store.setExpanded(true, for: host.id, workspaceLabel: "index-worktree")
+        let reexpanded = store.sectionsByHostThenWorkspace(
+            hosts: [host], agents: agents, workspacesByHost: [host.id: workspaces])
+        #expect(reexpanded[0].workspaceGroups[0].isCollapsed)
+        #expect(reexpanded[0].workspaceGroups[0].worktrees.map(\.isCollapsed) == [true, false])
+    }
+
+    @Test func worktreeWithoutAMainCheckoutWorkspaceStaysTopLevel() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        // Only the linked worktree is known to the Host (its main checkout
+        // workspace is closed): no parent to nest under.
+        let checkout = RepositoryCheckout(
+            repoKey: "/src/Heeler/.git", repoName: "Heeler", repoRoot: "/src/Heeler",
+            checkoutPath: "/src/Heeler/index-worktree", isLinkedWorktree: true)
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(
+                    host: host, paneID: "a-1", status: .working,
+                    workspaceLabel: "index-worktree"),
+            ],
+            workspacesByHost: [host.id: [
+                ConsoleWorkspace(id: "w1E", label: "index-worktree", checkout: checkout),
+            ]])
+
+        let groups = sections[0].workspaceGroups
+        #expect(groups.map(\.label) == ["index-worktree"])
+        #expect(groups[0].worktrees.isEmpty)
+        #expect(groups[0].agents.map(\.agent.paneID) == ["a-1"])
+    }
+
+    @Test func agentlessMainWorkspaceStillParentsItsWorktrees() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        let checkout = RepositoryCheckout(
+            repoKey: "/src/Heeler/.git", repoName: "Heeler", repoRoot: "/src/Heeler",
+            checkoutPath: "/src/Heeler", isLinkedWorktree: false)
+        let worktreeCheckout = RepositoryCheckout(
+            repoKey: "/src/Heeler/.git", repoName: "Heeler", repoRoot: "/src/Heeler",
+            checkoutPath: "/src/Heeler/testflight", isLinkedWorktree: true)
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(
+                    host: host, paneID: "a-tf", status: .working,
+                    workspaceLabel: "testflight"),
+            ],
+            workspacesByHost: [host.id: [
+                ConsoleWorkspace(id: "w11", label: "Waycar", checkout: checkout),
+                ConsoleWorkspace(id: "w1D", label: "testflight", checkout: worktreeCheckout),
+            ]])
+
+        let groups = sections[0].workspaceGroups
+        // The main workspace has no Agents of its own but still parents its
+        // worktree so the tree stays rooted at the repo.
+        #expect(groups.map(\.label) == ["Waycar"])
+        #expect(groups[0].agents.isEmpty)
+        #expect(groups[0].worktrees.map(\.label) == ["testflight"])
+    }
+
     @Test func unknownWorkspaceAgentsFallIntoTheFinalBucket() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

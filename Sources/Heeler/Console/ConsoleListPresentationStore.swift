@@ -30,6 +30,10 @@ struct ConsoleWorkspaceGroup: Identifiable, Equatable {
 
     let label: String
     let agents: [ConsoleAgent]
+    /// Linked-worktree workspaces of this group's repository, each carrying
+    /// the Agents whose workspace label matches that worktree workspace.
+    /// Empty for everything but a repository's main-checkout workspace.
+    var worktrees: [ConsoleWorkspaceGroup] = []
     /// Resolved by the store's projection: workspace groups start collapsed
     /// unless the user expanded this host+workspace pair. The Host-level
     /// collapse is carried by the section itself and hides whole groups.
@@ -312,16 +316,24 @@ final class ConsoleListPresentationStore {
             for index in groups.indices {
                 groups[index].isCollapsed = !isExpanded(
                     section.hostID, workspaceLabel: groups[index].label)
+                for worktreeIndex in groups[index].worktrees.indices {
+                    groups[index].worktrees[worktreeIndex].isCollapsed = !isExpanded(
+                        section.hostID,
+                        workspaceLabel: groups[index].worktrees[worktreeIndex].label)
+                }
             }
             return ConsoleHostWorkspaceSection(host: section, workspaceGroups: groups)
         }
     }
 
-    /// Groups one Host's Agents by workspace label. Buckets follow the
-    /// Host's known workspace order; a label the snapshot no longer reports
-    /// keeps first-appearance order among the Agents, and Agents with no
-    /// workspace label fall under "Unassigned" last. Within a bucket the
-    /// incoming (already-sorted) Agent order is preserved untouched.
+    /// Groups one Host's Agents by workspace label, nesting the worktree
+    /// workspaces of a repository under that repo's main-checkout workspace
+    /// (herdr's sidebar grouping: a linked worktree is a child of the repo,
+    /// not a sibling workspace). Buckets follow the Host's known workspace
+    /// order; a label the snapshot no longer reports keeps first-appearance
+    /// order among the Agents, and Agents with no workspace label fall under
+    /// "Unassigned" last. Within a bucket the incoming (already-sorted) Agent
+    /// order is preserved untouched.
     static func workspaceGroups(
         for agents: [ConsoleAgent],
         workspaces: [ConsoleWorkspace]
@@ -340,13 +352,49 @@ final class ConsoleListPresentationStore {
             agentsByLabel[label, default: []].append(agent)
         }
 
-        var projectedLabels = Set<String>()
+        // herdr nests a repository's linked-worktree workspaces under the
+        // repo's main-checkout workspace (the one reporting
+        // `is_linked_worktree == false`), like its sidebar tree. A parent
+        // with neither Agents nor agented worktree workspaces stays hidden,
+        // and a worktree whose repo has no main-checkout workspace on the
+        // Host stays a top-level group.
+        var mainWorkspaceByRepo: [String: ConsoleWorkspace] = [:]
+        for workspace in workspaces {
+            guard let checkout = workspace.checkout, !checkout.isLinkedWorktree else { continue }
+            mainWorkspaceByRepo[checkout.repoKey] = workspace
+        }
+        let agentedWorktreeRepos: Set<String> = Set(
+            workspaces.compactMap { workspace in
+                guard let checkout = workspace.checkout, checkout.isLinkedWorktree,
+                    agentsByLabel[workspace.label] != nil
+                else { return nil }
+                return checkout.repoKey
+            })
+
         var groups: [ConsoleWorkspaceGroup] = []
-        for workspace in workspaces where agentsByLabel[workspace.label] != nil {
+        var parentIndexesByLabel: [String: Int] = [:]
+        for workspace in workspaces {
+            guard let checkout = workspace.checkout, !checkout.isLinkedWorktree else { continue }
+            let hasAgents = !(agentsByLabel[workspace.label] ?? []).isEmpty
+            guard hasAgents || agentedWorktreeRepos.contains(checkout.repoKey) else { continue }
+            parentIndexesByLabel[workspace.label] = groups.count
             groups.append(
                 ConsoleWorkspaceGroup(
-                    label: workspace.label,
-                    agents: agentsByLabel[workspace.label] ?? []))
+                    label: workspace.label, agents: agentsByLabel[workspace.label] ?? []))
+        }
+
+        var projectedLabels = Set<String>(parentIndexesByLabel.keys)
+        for workspace in workspaces {
+            guard let agents = agentsByLabel[workspace.label], !agents.isEmpty else { continue }
+            if let checkout = workspace.checkout, checkout.isLinkedWorktree,
+                let main = mainWorkspaceByRepo[checkout.repoKey],
+                let parentIndex = parentIndexesByLabel[main.label]
+            {
+                groups[parentIndex].worktrees.append(
+                    ConsoleWorkspaceGroup(label: workspace.label, agents: agents))
+            } else if parentIndexesByLabel[workspace.label] == nil {
+                groups.append(ConsoleWorkspaceGroup(label: workspace.label, agents: agents))
+            }
             projectedLabels.insert(workspace.label)
         }
         for label in labelOrder where !projectedLabels.contains(label) {
