@@ -154,14 +154,18 @@ struct HostConnectionDetailView: View {
     private var retryButton: some View {
         let busy = isRetryInFlight || presentation.isDialing
         Button(action: onRetry) {
-            HStack(spacing: 8) {
-                if busy {
-                    ProgressView()
-                        .tint(.white)
+            Text(busy ? "Connecting…" : "Retry Now")
+                // An overlay, not a sibling: the spinner is taller than the
+                // label and would grow the button.
+                .overlay(alignment: .leading) {
+                    if busy {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                            .offset(x: -26)
+                    }
                 }
-                Text(busy ? "Connecting…" : "Retry Now")
-            }
-            .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
