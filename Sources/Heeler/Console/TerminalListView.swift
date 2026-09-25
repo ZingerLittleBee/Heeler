@@ -29,9 +29,10 @@ struct TerminalListView: View {
     /// Between Workspace cards; the header's own 44-point row already
     /// separates collapsed ones.
     private static let workspaceSpacing: CGFloat = 0
-    /// Taken off the grouped list's own header padding, above and below, so
-    /// collapsed Workspaces stack like rows; the 44-point target stays.
-    private static let workspaceHeaderTrim: CGFloat = 7
+    /// Above and below a Workspace header in place of the grouped list's
+    /// own header padding, so collapsed Workspaces stack like rows; the
+    /// 44-point target stays.
+    private static let workspaceHeaderPadding: CGFloat = 3
 
     private var projection: TerminalListProjection {
         presentation.projection(hosts: hosts, console: console)
@@ -78,13 +79,12 @@ struct TerminalListView: View {
             List(selection: $selection) {
                 if !issues.isEmpty {
                     Section {
-                        // Off the cards, on the page: inset to the card
-                        // content, so its tile lines up with the Workspace
-                        // names and its chevron with theirs.
+                        // Off the cards, on the page: out to the cards'
+                        // edges, as the Workspace headers and the title.
                         ConsoleHostIssueList(
                             issues: issues, onOpenHost: onOpenHost,
                             onShowAll: onShowHostIssues)
-                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                            .listRowInsets(EdgeInsets())
                             .listRowBackground(Color.clear)
                     }
                 }
@@ -203,7 +203,12 @@ struct TerminalListView: View {
                 workspace: workspace,
                 showsHost: showsHost,
                 onToggle: { toggle(workspace.id) })
-                .padding(.vertical, -Self.workspaceHeaderTrim)
+                // Out to the cards' edges, under the title, rather than
+                // indented to the rows' content.
+                .listRowInsets(
+                    EdgeInsets(
+                        top: Self.workspaceHeaderPadding, leading: 0,
+                        bottom: Self.workspaceHeaderPadding, trailing: 0))
         }
         .listSectionSpacing(.custom(Self.workspaceSpacing))
     }
