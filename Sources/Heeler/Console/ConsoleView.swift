@@ -762,7 +762,7 @@ struct ConsoleView: View {
             ConsoleHostIssueList(
                 issues: visibleHostIssues, onOpenHost: { openHostIssue($0) },
                 onShowAll: { isShowingHostIssues = true })
-                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .modifier(ListRowVerticalInsetsRemoved())
                 .listRowBackground(Color.clear)
                 // Under the title nothing needs a rule; below, it runs from
                 // the edge the Agent rows' rules do.
@@ -1117,6 +1117,19 @@ struct ConsoleView: View {
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
         manualReconnectInFlightHostIDs.remove(id)
+    }
+}
+
+/// Drops a row's vertical insets and keeps the list's own side margins, so
+/// the row's edges and chevron meet the Agent rows' at every width: the
+/// margins are 20 points on the widest iPhones, not 16.
+private struct ListRowVerticalInsetsRemoved: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.listRowInsets(.vertical, 0)
+        } else {
+            content.listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        }
     }
 }
 
