@@ -357,7 +357,10 @@ final class ConsoleListPresentationStore {
         // `is_linked_worktree == false`), like its sidebar tree. A parent
         // with neither Agents nor agented worktree workspaces stays hidden,
         // and a worktree whose repo has no main-checkout workspace on the
-        // Host stays a top-level group.
+        // Host stays a top-level group. Parents are keyed by workspace id,
+        // not label: herdr's rename RPC makes labels freely collidable, and
+        // a same-label main workspace must not capture another repo's
+        // worktree children.
         var mainWorkspaceByRepo: [String: ConsoleWorkspace] = [:]
         for workspace in workspaces {
             guard let checkout = workspace.checkout, !checkout.isLinkedWorktree else { continue }
@@ -372,27 +375,27 @@ final class ConsoleListPresentationStore {
             })
 
         var groups: [ConsoleWorkspaceGroup] = []
-        var parentIndexesByLabel: [String: Int] = [:]
+        var parentIndexByID: [String: Int] = [:]
         for workspace in workspaces {
             guard let checkout = workspace.checkout, !checkout.isLinkedWorktree else { continue }
             let hasAgents = !(agentsByLabel[workspace.label] ?? []).isEmpty
             guard hasAgents || agentedWorktreeRepos.contains(checkout.repoKey) else { continue }
-            parentIndexesByLabel[workspace.label] = groups.count
+            parentIndexByID[workspace.id] = groups.count
             groups.append(
                 ConsoleWorkspaceGroup(
                     label: workspace.label, agents: agentsByLabel[workspace.label] ?? []))
         }
 
-        var projectedLabels = Set<String>(parentIndexesByLabel.keys)
+        var projectedLabels = Set<String>(groups.map(\.label))
         for workspace in workspaces {
             guard let agents = agentsByLabel[workspace.label], !agents.isEmpty else { continue }
             if let checkout = workspace.checkout, checkout.isLinkedWorktree,
                 let main = mainWorkspaceByRepo[checkout.repoKey],
-                let parentIndex = parentIndexesByLabel[main.label]
+                let parentIndex = parentIndexByID[main.id]
             {
                 groups[parentIndex].worktrees.append(
                     ConsoleWorkspaceGroup(label: workspace.label, agents: agents))
-            } else if parentIndexesByLabel[workspace.label] == nil {
+            } else if !groups.contains(where: { $0.label == workspace.label }) {
                 groups.append(ConsoleWorkspaceGroup(label: workspace.label, agents: agents))
             }
             projectedLabels.insert(workspace.label)

@@ -755,16 +755,32 @@ struct ConsoleView: View {
     /// re-keys the pane during the move and reports the new id in the reply.
     private func moveAgent(_ agent: ConsoleAgent, to workspace: ConsoleWorkspace) {
         let hostID = agent.hostID
+        // A linked-worktree destination renders only under its repo's
+        // expanded main-checkout group, so reveal that parent too — or the
+        // moved Agent lands hidden inside a collapsed subtree.
+        var expandLabels = [workspace.label]
+        if workspace.checkout?.isLinkedWorktree == true {
+            let main = (console.workspacesByHost[hostID] ?? []).first {
+                $0.checkout?.repoKey == workspace.checkout?.repoKey
+                    && $0.checkout?.isLinkedWorktree == false
+            }
+            if let main {
+                expandLabels.insert(main.label, at: 0)
+            }
+        }
         Task {
             do {
                 let response = try await console.moveAgent(
                     agent, toWorkspaceID: workspace.id, on: hostID)
-                if reduceMotion {
-                    listPresentation.setExpanded(true, for: hostID, workspaceLabel: workspace.label)
-                } else {
-                    withAnimation(.snappy) {
+                for label in expandLabels {
+                    if reduceMotion {
                         listPresentation.setExpanded(
-                            true, for: hostID, workspaceLabel: workspace.label)
+                            true, for: hostID, workspaceLabel: label)
+                    } else {
+                        withAnimation(.snappy) {
+                            listPresentation.setExpanded(
+                                true, for: hostID, workspaceLabel: label)
+                        }
                     }
                 }
                 guard let response,
@@ -1172,9 +1188,9 @@ private struct ConsoleWorkspaceGroupHeaderView: View {
                         .accessibilityHidden(true)
                 }
             }
+            .padding(.leading, isWorktreeChild ? 16 : 0)
             .contentShape(Rectangle())
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, isWorktreeChild ? 16 : 0)
         }
         .buttonStyle(.plain)
         .modifier(ConsoleWorkspaceDropDestination(onMove: onMove))

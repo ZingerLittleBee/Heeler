@@ -280,6 +280,44 @@ struct ConsoleListPresentationStoreTests {
         #expect(reexpanded[0].workspaceGroups[0].worktrees.map(\.isCollapsed) == [true, false])
     }
 
+    @Test func sameLabelMainWorkspaceOnAnotherRepoCannotCaptureWorktrees() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "alpha")
+        // Two repos both have a main-checkout workspace labeled "main"; the
+        // second repo's worktree must nest under ITS repo's workspace,
+        // keyed by workspace id, never by colliding label.
+        let firstMain = RepositoryCheckout(
+            repoKey: "/src/first/.git", repoName: "first", repoRoot: "/src/first",
+            checkoutPath: "/src/first", isLinkedWorktree: false)
+        let secondMain = RepositoryCheckout(
+            repoKey: "/src/second/.git", repoName: "second", repoRoot: "/src/second",
+            checkoutPath: "/src/second", isLinkedWorktree: false)
+        let secondWorktree = RepositoryCheckout(
+            repoKey: "/src/second/.git", repoName: "second", repoRoot: "/src/second",
+            checkoutPath: "/src/second/wt", isLinkedWorktree: true)
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let sections = store.sectionsByHostThenWorkspace(
+            hosts: [host],
+            agents: [
+                consoleAgent(host: host, paneID: "a-1", status: .working, workspaceLabel: "main"),
+                consoleAgent(host: host, paneID: "a-2", status: .working, workspaceLabel: "wt"),
+            ],
+            workspacesByHost: [host.id: [
+                ConsoleWorkspace(id: "wA", label: "main", checkout: firstMain),
+                ConsoleWorkspace(id: "wB", label: "main", checkout: secondMain),
+                ConsoleWorkspace(id: "wC", label: "wt", checkout: secondWorktree),
+            ]])
+
+        let groups = sections[0].workspaceGroups
+        #expect(groups.map(\.label) == ["main", "main"])
+        #expect(groups[0].worktrees.isEmpty)
+        #expect(groups[1].worktrees.map(\.label) == ["wt"])
+        #expect(groups[1].worktrees[0].agents.map(\.agent.paneID) == ["a-2"])
+        #expect(groups[0].agents.map(\.agent.paneID) == ["a-1"])
+    }
+
     @Test func worktreeWithoutAMainCheckoutWorkspaceStaysTopLevel() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
