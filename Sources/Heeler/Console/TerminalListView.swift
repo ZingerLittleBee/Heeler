@@ -22,7 +22,10 @@ struct TerminalListView: View {
     @State private var pendingClose: ConsoleTerminal?
     @State private var closeFailure: String?
 
-    private static let byHostMargin: CGFloat = 8
+    /// By Host's side margins. Cards are inset to the width of their
+    /// Workspace headers, which keep the narrower header margin.
+    private static let byHostCardMargin: CGFloat = 24
+    private static let byHostHeaderMargin: CGFloat = 8
 
     private var projection: TerminalListProjection {
         presentation.projection(hosts: hosts, console: console)
@@ -91,23 +94,22 @@ struct TerminalListView: View {
                         }
                     } header: {
                         TerminalHostHeader(group: group) { toggle(group.hostID) }
-                            // Back out the narrow margin so the Host lines
-                            // up with the Agents tab's Host headers.
-                            .padding(.leading, -Self.byHostMargin)
+                            // Back out the card margin so the Host lines up
+                            // with the Agents tab's Host headers.
+                            .padding(.leading, -Self.byHostCardMargin)
                     }
                     if !group.isCollapsed {
                         ForEach(group.workspaces) { workspace in
-                            workspaceSection(workspace, showsHost: false)
+                            workspaceSection(
+                                workspace, showsHost: false,
+                                headerOutset: Self.byHostCardMargin - Self.byHostHeaderMargin)
                         }
                     }
                 }
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
-            // Cards already sit inside a Host section, so By Host spends
-            // less width on side margins than By Workspace. A zero margin
-            // would square the cards off, so they keep a narrow one.
-            .contentMargins(.horizontal, Self.byHostMargin, for: .scrollContent)
+            .contentMargins(.horizontal, Self.byHostCardMargin, for: .scrollContent)
         }
     }
 
@@ -123,8 +125,9 @@ struct TerminalListView: View {
         }
     }
 
+    /// `headerOutset` widens the header past the card on both sides.
     private func workspaceSection(
-        _ workspace: TerminalWorkspaceGroup, showsHost: Bool
+        _ workspace: TerminalWorkspaceGroup, showsHost: Bool, headerOutset: CGFloat = 0
     ) -> some View {
         Section {
             if !workspace.isCollapsed {
@@ -140,6 +143,7 @@ struct TerminalListView: View {
                 workspace: workspace,
                 showsHost: showsHost,
                 onToggle: { toggle(workspace.id) })
+                .padding(.horizontal, -headerOutset)
         }
     }
 
