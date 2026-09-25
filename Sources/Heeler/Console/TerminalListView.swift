@@ -446,14 +446,11 @@ private struct TerminalHostHeader: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 12, alignment: .center)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(group.hostName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    HostConnectionStatusLabel(
-                        text: group.readiness.text, tone: group.readiness.tone)
-                }
+                Text(group.hostName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                HostConnectionStatusIcon(tone: group.readiness.tone)
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {
                     Text(group.terminalCount == 1 ? "1 terminal" : "\(group.terminalCount) terminals")

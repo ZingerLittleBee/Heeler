@@ -332,7 +332,7 @@ struct HostConnectionPresentation: Equatable {
         case .reconnecting:
             title = "Reconnecting…"
             accessibilityLabel = "Reconnecting"
-            tone = .warning
+            tone = .reconnecting
         case .connecting:
             if standingFailure != nil {
                 title = "Unavailable"

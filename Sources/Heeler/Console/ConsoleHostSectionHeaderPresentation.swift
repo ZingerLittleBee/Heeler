@@ -1,6 +1,7 @@
 import Foundation
 
-/// A Host header's short readiness and the tone its status dot wears.
+/// A Host header's short readiness and the tone of its status icon. The
+/// header shows only the icon; the text is what VoiceOver reads.
 struct HostReadiness: Equatable {
     let text: String
     let tone: HostConnectionTone
@@ -71,7 +72,7 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
         switch connectionStatus {
         case .connected:
             if isAwaitingSnapshot {
-                return HostReadiness(text: "Loading \(inventoryNoun)…", tone: .connected)
+                return HostReadiness(text: "Loading \(inventoryNoun)…", tone: .pending)
             }
             if statusSeverity != nil {
                 return HostReadiness(text: "Sync issue", tone: .warning)
@@ -79,7 +80,7 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
             return HostReadiness(
                 text: isEmpty ? "No \(inventoryNoun)" : "Connected", tone: .connected)
         case .reconnecting:
-            return HostReadiness(text: "Reconnecting…", tone: .warning)
+            return HostReadiness(text: "Reconnecting…", tone: .reconnecting)
         case .connecting:
             if let statusSeverity, statusSeverity != .informational {
                 return HostReadiness(text: "Unavailable", tone: .unavailable)

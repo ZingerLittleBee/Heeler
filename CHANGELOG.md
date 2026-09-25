@@ -25,10 +25,11 @@ Entries reference the issue that motivated them.
 ### Changed
 
 - A Host's connection state reads at a glance: Host headers in the Agents
-  and Terminals tabs carry the same status dot as the Hosts list, green
-  when connected, pulsing while connecting or reconnecting, and red with
-  red text once a Host stops on a failure. Reconnecting and sync issues
-  are orange. (#316; PR #377)
+  and Terminals tabs show a status icon beside the Host's name instead of a
+  line of text, and the Hosts list uses the same icons. Each state has its
+  own shape as well as color: a green dot when connected, a dotted circle
+  while connecting, orange arrows while reconnecting, and a red exclamation
+  mark once a Host stops on a failure. (#316; PR #377)
 
 ### Fixed
 

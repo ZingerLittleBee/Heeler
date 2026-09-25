@@ -1238,14 +1238,11 @@ private struct ConsoleHostSectionHeaderView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 12, alignment: .center)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(presentation.hostDisplayName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    HostConnectionStatusLabel(
-                        text: presentation.readiness.text, tone: presentation.readiness.tone)
-                }
+                Text(presentation.hostDisplayName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                HostConnectionStatusIcon(tone: presentation.readiness.tone)
                 Spacer(minLength: 0)
                 if presentation.showsStatusPills {
                     ConsoleHostStatusCountPills(items: presentation.statusItems)

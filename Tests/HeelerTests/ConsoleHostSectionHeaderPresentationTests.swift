@@ -88,11 +88,12 @@ struct ConsoleHostSectionHeaderPresentationTests {
             ).tone
         }
         #expect(tone(.connected) == .connected)
-        #expect(tone(.connected, awaiting: true) == .connected)
+        #expect(tone(.connected, awaiting: true) == .pending)
         #expect(tone(.connected, severity: .warning) == .warning)
         #expect(tone(.connecting) == .pending)
         #expect(tone(nil) == .pending)
-        #expect(tone(.reconnecting(attempt: 3, delay: .seconds(4), failure: .timedOut)) == .warning)
+        #expect(
+            tone(.reconnecting(attempt: 3, delay: .seconds(4), failure: .timedOut)) == .reconnecting)
         #expect(tone(.failed(.authenticationFailed)) == .unavailable)
         #expect(tone(.connecting, severity: .critical) == .unavailable)
         #expect(tone(.suspended) == .paused)

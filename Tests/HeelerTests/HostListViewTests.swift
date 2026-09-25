@@ -57,12 +57,20 @@ struct HostListViewTests {
             ).title == "Unavailable")
     }
 
-    @Test func pausedHostHoldsStillInsteadOfLookingPending() {
-        let presentation = HostConnectionPresentation(status: .suspended, latency: nil)
-        #expect(presentation.tone == .paused)
-        #expect(!presentation.tone.isInProgress)
-        #expect(HostConnectionTone.pending.isInProgress)
-        #expect(HostConnectionTone.warning.isInProgress)
+    @Test func pausedAndReconnectingHostsHaveTheirOwnTones() {
+        #expect(HostConnectionPresentation(status: .suspended, latency: nil).tone == .paused)
+        #expect(
+            HostConnectionPresentation(
+                status: .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut),
+                latency: nil
+            ).tone == .reconnecting)
+    }
+
+    /// Headers show the icon alone, so no two states may share a shape and
+    /// differ only by color.
+    @Test func everyToneHasItsOwnIcon() {
+        let images = HostConnectionTone.allCases.map(\.systemImage)
+        #expect(Set(images).count == images.count)
     }
 
     @Test func nilStatusIsTheConstructionWindowAndSaysConnecting() {
