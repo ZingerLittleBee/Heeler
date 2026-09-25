@@ -583,18 +583,22 @@ private struct HostRetryButton: View {
     var body: some View {
         Button(action: action) {
             // Hidden, not removed, while busy: the button keeps its size.
-            Text("Retry")
+            // Small and light: a stopped Host's reason is the row's point,
+            // and three prominent buttons in a row shout over it.
+            Image(systemName: "arrow.clockwise")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.tint)
                 .opacity(isBusy ? 0 : 1)
                 .overlay {
                     if isBusy { ProgressView().controlSize(.small) }
                 }
+                .frame(width: 30, height: 30)
+                .background(.fill.tertiary, in: Circle())
+                // The full 44-point target around the smaller circle.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
-        // Small and light: a stopped Host's reason is the row's point, and
-        // three prominent buttons in a row shout over it.
-        .font(.subheadline.weight(.medium))
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.small)
+        .buttonStyle(.borderless)
         .allowsHitTesting(!isBusy)
         .accessibilityLabel(isBusy ? "Connecting" : "Retry")
         .accessibilityAddTraits(isBusy ? .updatesFrequently : [])
