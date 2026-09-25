@@ -459,7 +459,9 @@ private struct TerminalHostHeader: View {
                         .padding(.vertical, 2)
                         .background(.fill.tertiary, in: Capsule())
                 }
-                HostConnectionStatusIcon(tone: group.readiness.tone)
+                if group.readiness.showsIcon {
+                    HostConnectionStatusIcon(tone: group.readiness.tone)
+                }
             }
             .contentShape(Rectangle())
             .padding(.vertical, 4)

@@ -99,6 +99,12 @@ struct ConsoleHostSectionHeaderPresentationTests {
         #expect(tone(.suspended) == .paused)
     }
 
+    @Test func onlyAHostWorthNoticingShowsAHeaderIcon() {
+        #expect(!HostReadiness(text: "Connected", tone: .connected).showsIcon)
+        #expect(HostReadiness(text: "Loading Agents…", tone: .pending).showsIcon)
+        #expect(HostReadiness(text: "Unavailable", tone: .unavailable).showsIcon)
+    }
+
     @Test func statusPillsAreCollapsedOnlyButVoiceOverKeepsTheBreakdown() {
         let counts = ConsoleHostAgentStatusCounts(blocked: 1, working: 2, done: 3)
         let expanded = ConsoleHostSectionHeaderPresentation(

@@ -5,6 +5,10 @@ import Foundation
 struct HostReadiness: Equatable {
     let text: String
     let tone: HostConnectionTone
+
+    /// A healthy Host is the quiet default; only a state worth noticing
+    /// earns a header icon.
+    var showsIcon: Bool { tone != .connected }
 }
 
 /// Pure presentation values for one Console Host-section header (#245).

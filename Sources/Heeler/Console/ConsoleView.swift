@@ -1249,7 +1249,9 @@ private struct ConsoleHostSectionHeaderView: View {
                 }
                 // Trailing, so every Host's status lines up in one column
                 // whatever the length of its name.
-                HostConnectionStatusIcon(tone: presentation.readiness.tone)
+                if presentation.readiness.showsIcon {
+                    HostConnectionStatusIcon(tone: presentation.readiness.tone)
+                }
             }
             .contentShape(Rectangle())
             .padding(.vertical, 4)
