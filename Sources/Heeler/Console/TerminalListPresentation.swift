@@ -41,6 +41,13 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
         case .byHost: "By Host"
         }
     }
+
+    var systemImage: String {
+        switch self {
+        case .byWorkspace: "rectangle.3.group"
+        case .byHost: "server.rack"
+        }
+    }
 }
 
 /// One Workspace card: its ordinary shell panes, in tab order, then New
