@@ -94,9 +94,10 @@ struct ConsoleHostIssueList: View {
                     }
                 }
                 Spacer(minLength: 0)
+                // The list's own disclosure color, as on the rows below.
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
                     .frame(width: 12)
             }
             .padding(.vertical, 12)
@@ -215,7 +216,7 @@ struct ConsoleHostIssueCompactRow: View {
             // Every row keeps the chevron's width, so statuses line up.
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
                 .frame(width: 12)
                 .opacity(issue.navigates ? 1 : 0)
         }
