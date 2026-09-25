@@ -171,17 +171,11 @@ final class ConsoleListPresentationStore {
                 standingFailure: hostStandingFailures[host.id],
                 isAwaitingSnapshot: isAwaitingSnapshot,
                 syncError: hostSyncErrors[host.id])
-            // While searching, an empty section leaves the list only while its
-            // Host is nominal (#292). A reconnecting or failed Host reports
-            // itself through its status row alone, so that row outranks the
-            // empty-section tidy-up and holds the section open; an absent
-            // presentation, or one carrying informational text only (paused,
-            // connecting, loading Agents), still leaves. Without a query every
-            // catalog Host stays visible, including empty ones.
-            if !trimmedQuery.isEmpty && hostAgents.isEmpty {
-                guard let severity = statusPresentation?.severity, severity != .informational
-                else { return nil }
-            }
+            // While searching, a section without a match leaves the list
+            // whatever its Host's state (#292, #316): a query asks for Agents,
+            // and Hosts that cannot answer only bury the matches. Without a
+            // query every catalog Host stays visible, including empty ones.
+            if !trimmedQuery.isEmpty && hostAgents.isEmpty { return nil }
             return ConsoleHostSection(
                 hostID: host.id,
                 hostDisplayName: host.displayName,
@@ -189,7 +183,8 @@ final class ConsoleListPresentationStore {
                 isAwaitingSnapshot: isAwaitingSnapshot,
                 statusPresentation: statusPresentation,
                 agents: hostAgents,
-                isCollapsed: isCollapsed(host.id),
+                // A match is never hidden behind a collapsed Host.
+                isCollapsed: trimmedQuery.isEmpty && isCollapsed(host.id),
                 statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))
         }
     }

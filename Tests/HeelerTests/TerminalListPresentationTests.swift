@@ -167,7 +167,7 @@ struct TerminalListProjectionTests {
         #expect(last.isCollapsed)
     }
 
-    @Test func hostSearchKeepsMatchesAndHostsWithProblemsOpen() throws {
+    @Test func hostSearchKeepsOnlyHostsWithMatchesOpen() throws {
         let match = Host.fixture(name: "match")
         let quiet = Host.fixture(name: "quiet")
         let paused = Host.fixture(name: "paused")
@@ -184,9 +184,8 @@ struct TerminalListProjectionTests {
             ],
             collapsedHosts: [match.id]
         ).hostGroups(searchQuery: "api")
-        // A paused Host's note is informational and leaves with no match; a
-        // failure stays to explain the missing results.
-        #expect(groups.map(\.hostName) == ["match", "failed"])
+        // Paused or failed, a Host without a match leaves too.
+        #expect(groups.map(\.hostName) == ["match"])
         let first = try #require(groups.first)
         #expect(!first.isCollapsed)
         #expect(first.workspaces.flatMap(\.terminals).map(\.paneID) == ["hit"])

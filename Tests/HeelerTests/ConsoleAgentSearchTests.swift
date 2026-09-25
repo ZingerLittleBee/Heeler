@@ -135,30 +135,9 @@ struct ConsoleAgentSearchTests {
         #expect(unqueried.map(\.hostID) == [hostA.id, hostB.id])
     }
 
-    /// An empty section survives a search only because its Host is
-    /// reconnecting: the section's status row is where the Console reports
-    /// that, so it must not be tidied away with the other empty sections.
-    @Test func reconnectingHostKeepsItsSectionWhileSearching() throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        let store = ConsoleListPresentationStore(defaults: defaults)
-        let hostA = Host.fixture(name: "studio")
-        let hostB = Host.fixture(name: "laptop")
-        let agents = [makeAgent(host: hostA, paneID: "w1:p1", title: "Alpha work")]
-
-        let whileSearching = store.sections(
-            hosts: [hostA, hostB], agents: agents,
-            hostStatuses: [
-                hostB.id: .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)
-            ],
-            searchQuery: "alpha")
-
-        #expect(whileSearching.map(\.hostID) == [hostA.id, hostB.id])
-        #expect(whileSearching.last?.agents.isEmpty == true)
-        #expect(whileSearching.last?.statusPresentation?.severity == .warning)
-    }
-
-    @Test func failedHostKeepsItsSectionWhileSearching() throws {
+    /// A Host with a problem leaves a search it has no match for, as a
+    /// nominal one does: its status row would only bury the matches.
+    @Test func hostsWithProblemsAndNoMatchLeaveWhileSearching() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let store = ConsoleListPresentationStore(defaults: defaults)
@@ -170,19 +149,25 @@ struct ConsoleAgentSearchTests {
         let whileSearching = store.sections(
             hosts: [hostA, hostB, hostC], agents: agents,
             hostStatuses: [
-                hostB.id: .failed(.authenticationFailed),
-                hostC.id: .failed(
-                    .hostKeyMismatch(
-                        known: HostKeyFingerprint(digest: Data(repeating: 1, count: 32)),
-                        presented: HostKeyFingerprint(digest: Data(repeating: 2, count: 32)))),
+                hostB.id: .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut),
+                hostC.id: .failed(.authenticationFailed),
             ],
             searchQuery: "alpha")
 
-        #expect(whileSearching.map(\.hostID) == [hostA.id, hostB.id, hostC.id])
-        let warned = try #require(whileSearching.first { $0.hostID == hostB.id })
-        let critical = try #require(whileSearching.first { $0.hostID == hostC.id })
-        #expect(warned.statusPresentation?.severity == .warning)
-        #expect(critical.statusPresentation?.severity == .critical)
+        #expect(whileSearching.map(\.hostID) == [hostA.id])
+    }
+
+    @Test func searchOpensACollapsedHostWithAMatch() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        let host = Host.fixture(name: "studio")
+        let agents = [makeAgent(host: host, paneID: "w1:p1", title: "Alpha work")]
+        store.toggleCollapsed(host.id)
+
+        #expect(store.sections(hosts: [host], agents: agents).first?.isCollapsed == true)
+        let whileSearching = store.sections(hosts: [host], agents: agents, searchQuery: "alpha")
+        #expect(whileSearching.first?.isCollapsed == false)
     }
 
     /// Nominal Hosts — no status row at all, or one that only reports a

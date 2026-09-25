@@ -153,24 +153,21 @@ struct TerminalListProjection {
         visibleHosts(filteredHostID).flatMap { workspaces(on: $0, searchQuery: searchQuery) }
     }
 
-    /// A query drops Hosts without a match unless they have a problem to
-    /// report, as the Agents list does (#292), and opens every Host so no
-    /// match hides behind a collapsed one.
+    /// A query drops Hosts without a match, whatever their state, as the
+    /// Agents list does, and opens every Host so no match hides behind a
+    /// collapsed one.
     func hostGroups(filteredHostID: Host.ID? = nil, searchQuery: String = "")
         -> [TerminalHostGroup]
     {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return visibleHosts(filteredHostID).compactMap { host in
             let workspaces = workspaces(on: host, searchQuery: searchQuery)
-            let issue = issue(for: host)
-            if isSearching && workspaces.isEmpty {
-                guard let severity = issue?.severity, severity != .informational else { return nil }
-            }
+            if isSearching && workspaces.isEmpty { return nil }
             return TerminalHostGroup(
                 hostID: host.id,
                 hostName: host.displayName,
                 readiness: readiness(for: host, isEmpty: workspaces.isEmpty),
-                issue: issue,
+                issue: issue(for: host),
                 opensConnectionDetail: HostConnectionDetailPresentation(
                     host: host, status: hostStatuses[host.id],
                     standingFailure: hostStandingFailures[host.id]) != nil,

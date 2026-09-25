@@ -977,8 +977,12 @@ struct ConsoleView: View {
     }
 
     /// Host issues shown in the list: all of them, or the filtered Host's
-    /// only — a filtered Console should not nag about other machines.
+    /// only — a filtered Console should not nag about other machines — and
+    /// none while searching, where they would only bury the matches.
     private var visibleHostIssues: [ConsoleHostStatusPresentation] {
+        guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
         guard let hostFilter else { return hostIssues }
         return hostIssues.filter { $0.hostID == hostFilter }
     }

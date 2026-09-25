@@ -66,7 +66,10 @@ struct TerminalListView: View {
     private var byWorkspace: some View {
         let workspaces = projection.workspaces(
             filteredHostID: filteredHostID, searchQuery: searchQuery)
-        let issues = projection.issues(filteredHostID: filteredHostID)
+        // Host problems only bury a search's matches.
+        let issues =
+            searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? projection.issues(filteredHostID: filteredHostID) : []
         if workspaces.isEmpty && issues.isEmpty {
             emptyState
         } else {
