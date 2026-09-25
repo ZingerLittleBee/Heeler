@@ -93,7 +93,7 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:
-The native dashboard surface: Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, plus the Agent detail screen. Grouping is independent of Agent ordering and Pin priority.
+The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, and each hides its own search field until pulled down. Agents lists Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, opening Agent detail; grouping is independent of Agent ordering and Pin priority. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
@@ -191,7 +191,8 @@ with a New Terminal button pinned below them that opens a fresh shell tab in
 the current pane's directory, and its handle, like the message-jump buttons,
 is long-pressed to slide it along the terminal's edge and rests where it was
 left;
-the Console's Terminals view groups the same inventory by Host and Workspace.
+the Console's Terminals tab shows the ordinary panes of the same inventory as
+Workspace cards, By Workspace or By Host, with New Terminal on each card.
 Discovery is independent of loading: only selecting a terminal opens its PTY.
 _Avoid_: SSH session, tab (a Tab can contain several Workspace Terminals)
 
@@ -307,7 +308,7 @@ Host re-proved on a foreground return is Connecting, and every status-derived
 surface keeps presenting the Standing Failure until the activation answers,
 except that a Reconnect Request may temporarily suppress the Host detail footer
 while its button shows request progress. The failure remains stored and
-continues to render on Agent detail, the Console, and the Hosts chip.
+continues to render on Agent detail, the Console, and the Hosts list.
 Only a failure that reached Failed becomes standing. A retryable failure inside
 a recovery cycle does not, because nothing stopped and Reconnecting already
 says what happened.
@@ -333,8 +334,8 @@ automatic recovery is running, no surface shows the Recovery Suggestion — an
 instruction misstates who has to act and invites a restart that discards the
 attempt already running — so Reconnecting shows the Summary, and, where the
 surface is about one Host's connection health rather than about the Agents, the
-Detail with it. Hosts sheet rows are chips rather than prose and sit outside
-this term. A first-hop failure is presented against the Jump Host; where no
+Detail with it. A Hosts list row names a problem by its Summary alone, beside
+Retry once the Host stops; Host detail, one tap away, shows the rest. A first-hop failure is presented against the Jump Host; where no
 Jump-Host-directed text exists, the Suggestion is dropped rather than aimed at
 the wrong machine.
 This replaces Connection Guidance, whose name promised an instruction that the

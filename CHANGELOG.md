@@ -7,6 +7,47 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- The Console has Agents, Terminals, Hosts, and Settings tabs, a bottom tab
+  bar on iPhone and a top one on iPad, and reopens the list tab last shown.
+  Hosts and Settings replace the toolbar's Hosts and Settings buttons, and a
+  Host opened from a Host problem in another tab goes back to that tab.
+  Terminals lists every Host's shell panes as one collapsible card per
+  Workspace, By Workspace or By Host, sharing the Agents tab's Host filter.
+  A shell in a named tab is listed by that name, and shells sharing a card
+  show their tab beside the path. Each card ends in a New Terminal row that
+  opens a shell tab in that Workspace, and the toolbar's New Terminal picks
+  a Host, an existing or new Workspace, and an optional tab name. Swipe a
+  terminal to close it after confirming, or long-press it to open another in
+  its Workspace or copy its path. Pull the Terminals list down to search it
+  by Host, Workspace, tab, title, or directory. (#316; PR #377)
+
+### Changed
+
+- A Host's connection state reads at a glance: Host headers in the Agents
+  and Terminals tabs lead with a server glyph instead of a line of text, and
+  a badge on its corner marks the state: green once connected, an open ring
+  while connecting, a spinning orange arc while reconnecting, orange when
+  out of sync, and red once the Host stops on a failure, which also dims its
+  name. The disclosure chevron moves to the trailing edge, and an expanded
+  Host in the Agents tab states its condition as the Terminals tab does.
+  (#316; PR #377)
+- A Host that is reconnecting or cannot connect no longer expands: tapping
+  it opens a sheet with the failure, a Retry button, and Edit for its
+  settings. In the flat Agents list and the By Workspace terminals, Hosts
+  with a problem gather atop the list: one Host as a short line, several as
+  a summary that counts them by state and opens them in a sheet, where each
+  failing Host shows its failure and Retry Now. (#316; PR #377)
+- The Hosts list groups Hosts by what they need, each group collapsible:
+  Can't Connect first, naming each problem beside a refresh button that
+  retries, then Hosts still trying, then connected ones with their latency.
+  (#316; PR #377)
+- Agents search hides under the list's title until you pull the list down,
+  and matches an Agent's Host and kind too. While searching, a Host without
+  a match leaves the list even when it has a connection problem, and a
+  collapsed Host opens to show its matches. (#316; PR #377)
+
 ### Fixed
 
 - Pairing names Tailscale SSH when it answers the Pairing Code's port

@@ -634,7 +634,7 @@ final class StartAgentStore {
 
     /// User-facing copy for a failed home-directory probe: the same
     /// TransportError arms the launch path maps, with the probe's subject.
-    private static func homeProbeMessage(for error: any Error) -> String {
+    static func homeProbeMessage(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
             "The Host is not connected, so its home directory could not be resolved."

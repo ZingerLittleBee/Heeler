@@ -50,6 +50,7 @@ struct ShellTerminalView: View {
     @Environment(\.detailCrossfade) private var detailCrossfade
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
+    @Environment(\.detailTopChromeInset) private var topChromeInset
 
     /// The status bar height of the window this terminal is in; see
     /// `AgentTerminalView.statusBarInset`.
@@ -227,7 +228,7 @@ struct ShellTerminalView: View {
             // No title bar, as on Agent detail: the navigation bar stays
             // only as the owner of the status bar appearance, and this inset
             // keeps terminal output below the system clock.
-            .padding(.top, statusBarInset)
+            .padding(.top, max(statusBarInset, topChromeInset))
             .background {
                 // Keyboard geometry and the status bar inset follow this
                 // view's own window, not whichever window of the app is key.

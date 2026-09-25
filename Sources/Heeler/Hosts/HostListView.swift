@@ -61,8 +61,9 @@ final class HostRemovalStore {
     }
 }
 
-/// Host management (#14): the catalog of Hosts with add/edit/remove, each
-/// row leading into that Host's onboarding checklist.
+/// Host management (#14): the catalog of Hosts with add/edit/remove, grouped
+/// by what each needs from the user (#316), every row leading into that
+/// Host's onboarding checklist.
 struct HostListView: View {
     let store: HostStore
     private let initialHostID: Host.ID?
@@ -73,8 +74,15 @@ struct HostListView: View {
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
     private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
+    /// Where `initialHostID` was opened from. Its detail's back button goes
+    /// back there instead of to this list.
+    private let origin: HostListOrigin?
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
+    @State private var editingHost: Host?
+    /// State, not `@AppStorage`: a defaults write lands outside the toggle's
+    /// animation, so the group would snap shut.
+    @State private var collapsedGroups: Set<HostHealthGroup>
     @State private var isScanningToPair = false
     @State private var manualFallbackRequested = false
     /// Stashed while a Host form / Pairing scan sheet dismisses; navigation
@@ -82,6 +90,7 @@ struct HostListView: View {
     /// (#359).
     @State private var pendingOnboardingHostID: Host.ID?
     @State private var path: [Host.ID] = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         store: HostStore,
@@ -90,7 +99,8 @@ struct HostListView: View {
         standingFailures: [Host.ID: TransportError] = [:],
         latencies: [Host.ID: Duration] = [:],
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
-        retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil
+        retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
+        origin: HostListOrigin? = nil
     ) {
         self.store = store
         self.initialHostID = initialHostID
@@ -99,7 +109,9 @@ struct HostListView: View {
         self.latencies = latencies
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
+        self.origin = origin
         _removal = State(initialValue: HostRemovalStore(store: store))
+        _collapsedGroups = State(initialValue: HostHealthGroup.collapsed(in: .standard))
     }
 
     var body: some View {
@@ -129,16 +141,19 @@ struct HostListView: View {
                     }
                 } else {
                     List {
-                        ForEach(store.hosts) { host in
-                            NavigationLink(value: host.id) {
-                                HostRow(
-                                    host: host,
-                                    connectionStatus: connectionStatuses[host.id],
-                                    standingFailure: standingFailures[host.id],
-                                    latency: latencies[host.id])
+                        ForEach(HostListEntry.grouped(entries)) { section in
+                            let isCollapsed = isCollapsed(section.group)
+                            Section {
+                                if !isCollapsed {
+                                    ForEach(section.entries) { row(for: $0) }
+                                }
+                            } header: {
+                                HostGroupHeader(
+                                    group: section.group, count: section.entries.count,
+                                    isCollapsed: isCollapsed
+                                ) { toggle(section.group) }
                             }
                         }
-                        .onDelete(perform: removeHosts)
                     }
                 }
             }
@@ -167,6 +182,7 @@ struct HostListView: View {
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id))
                         .id(host)
+                        .modifier(ReturnToOrigin(origin: returnOrigin(for: id)))
                 } else {
                     ContentUnavailableView("Host removed", systemImage: "server.rack")
                 }
@@ -202,6 +218,9 @@ struct HostListView: View {
                 } onAddManually: {
                     manualFallbackRequested = true
                 }
+            }
+            .sheet(item: $editingHost) { host in
+                HostFormView(store: store, editing: host)
             }
             .alert(
                 removal.pendingRequest?.title ?? "Remove Host?",
@@ -251,8 +270,80 @@ struct HostListView: View {
             set: { if !$0 { removal.cancelRemoval() } })
     }
 
-    private func removeHosts(at offsets: IndexSet) {
-        removal.requestRemoval(offsets.map { store.hosts[$0].id })
+    private var entries: [HostListEntry] {
+        store.hosts.map { host in
+            HostListEntry(
+                host: host,
+                presentation: HostRowPresentation(
+                    host: host,
+                    status: connectionStatuses[host.id],
+                    standingFailure: standingFailures[host.id],
+                    latency: latencies[host.id],
+                    canRetry: retryConnection != nil))
+        }
+    }
+
+    private func isCollapsed(_ group: HostHealthGroup) -> Bool {
+        collapsedGroups.contains(group)
+    }
+
+    private func toggle(_ group: HostHealthGroup) {
+        withAnimation(reduceMotion ? nil : .snappy) {
+            if !collapsedGroups.insert(group).inserted { collapsedGroups.remove(group) }
+        }
+        HostHealthGroup.save(collapsedGroups, in: .standard)
+    }
+
+    @ViewBuilder
+    private func row(for entry: HostListEntry) -> some View {
+        let host = entry.host
+        Group {
+            if entry.presentation.offersRetry {
+                // A Retry row opens the Host from everything but its button,
+                // which a whole-row link would swallow.
+                HStack(spacing: 12) {
+                    Button { path.append(host.id) } label: {
+                        HostRowLabel(host: host, presentation: entry.presentation)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens this Host.")
+                    HostRetryButton(
+                        isBusy: entry.presentation.isDialing
+                            || manualReconnectInFlightHostIDs.contains(host.id)
+                    ) {
+                        if let retry = retryAction(for: host.id) { Task { await retry() } }
+                    }
+                }
+            } else {
+                NavigationLink(value: host.id) {
+                    HostRowLabel(host: host, presentation: entry.presentation)
+                }
+            }
+        }
+        .listRowBackground(ListCard.fill)
+        // Every removal asks first. No `.destructive` role: List would
+        // animate the row out while the confirmation is still up.
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button {
+                removal.requestRemoval([host.id])
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+            .tint(.red)
+        }
+        .contextMenu {
+            Button("Edit", systemImage: "pencil") { editingHost = host }
+            Button("Remove Host", systemImage: "trash", role: .destructive) {
+                removal.requestRemoval([host.id])
+            }
+        }
+    }
+
+    /// Only the detail opened on request, still the first thing pushed.
+    private func returnOrigin(for id: Host.ID) -> HostListOrigin? {
+        guard id == initialHostID, path.first == id else { return nil }
+        return origin
     }
 
     private func navigateToPendingOnboardingHostIfNeeded() {
@@ -269,56 +360,271 @@ struct HostListView: View {
     }
 }
 
-private struct HostRow: View {
-    let host: Host
-    let connectionStatus: EventsSessionStatus?
-    let standingFailure: TransportError?
-    let latency: Duration?
+/// The screen that opened a Host's detail from outside the Hosts list.
+struct HostListOrigin {
+    /// Names the destination for VoiceOver, e.g. "Agents".
+    let title: String
+    let goBack: () -> Void
+}
 
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(host.displayName)
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            HostConnectionIndicator(
-                presentation: HostConnectionPresentation(
-                    status: connectionStatus,
-                    standingFailure: standingFailure,
-                    latency: latency))
-        }
-        .padding(.vertical, 2)
-    }
+/// Swaps the back button for one that returns to `origin`, so opening a Host
+/// from somewhere else and backing out lands where the user started.
+private struct ReturnToOrigin: ViewModifier {
+    let origin: HostListOrigin?
 
-    private var subtitle: String {
-        var text = "\(host.username)@\(host.address)"
-        if host.port != 22 { text += ":\(host.port)" }
-        if case .namedSession(let session) = host.socketLocation {
-            text += " · session \(session)"
+    func body(content: Content) -> some View {
+        if let origin {
+            content
+                .navigationBarBackButtonHidden(true)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: origin.goBack) {
+                            Image(systemName: "chevron.backward")
+                        }
+                        .accessibilityLabel("Back to \(origin.title)")
+                    }
+                }
+        } else {
+            content
         }
-        return text
     }
 }
 
-/// The status chip on a Host row. Chips render Host Connection Status, never
-/// a Transport Error Presentation — even on `.failed`, where they say
-/// "Unavailable". See Transport Error Presentation in `CONTEXT.md`.
-struct HostConnectionPresentation: Equatable {
-    enum Tone: Equatable {
-        case connected
-        case pending
-        case warning
-        case unavailable
+/// The Hosts list's groups (#316), by what each Host needs from the user and
+/// in that order: a stopped Host first, next to its Retry.
+enum HostHealthGroup: Int, CaseIterable, Comparable {
+    case cannotConnect
+    case trying
+    case connected
+    /// Paused while the app is in the background, or retired.
+    case notConnected
+
+    var title: String {
+        switch self {
+        case .cannotConnect: "Can't Connect"
+        case .trying: "Trying"
+        case .connected: "Connected"
+        case .notConnected: "Not Connected"
+        }
     }
 
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+
+    private static let collapsedKey = "host-list.collapsed-groups"
+
+    static func collapsed(in defaults: UserDefaults) -> Set<Self> {
+        Set((defaults.array(forKey: collapsedKey) as? [Int] ?? []).compactMap(Self.init(rawValue:)))
+    }
+
+    static func save(_ collapsed: Set<Self>, in defaults: UserDefaults) {
+        defaults.set(collapsed.map(\.rawValue).sorted(), forKey: collapsedKey)
+    }
+}
+
+/// One Host on the Hosts list, with how its row reads.
+struct HostListEntry: Identifiable, Equatable {
+    let host: Host
+    let presentation: HostRowPresentation
+
+    var id: Host.ID { host.id }
+
+    struct Section: Identifiable, Equatable {
+        let group: HostHealthGroup
+        let entries: [HostListEntry]
+
+        var id: HostHealthGroup { group }
+    }
+
+    /// Non-empty groups in `HostHealthGroup` order, catalog order within.
+    static func grouped(_ entries: [HostListEntry]) -> [Section] {
+        HostHealthGroup.allCases.compactMap { group in
+            let members = entries.filter { $0.presentation.group == group }
+            return members.isEmpty ? nil : Section(group: group, entries: members)
+        }
+    }
+}
+
+/// A group's header: its name and count, collapsing the group on tap.
+private struct HostGroupHeader: View {
+    let group: HostHealthGroup
+    let count: Int
+    let isCollapsed: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 6) {
+                Text(group.title)
+                Text(count, format: .number)
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .frame(width: 12)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(group.title), \(count) \(count == 1 ? "Host" : "Hosts")")
+        .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
+        .accessibilityHint(isCollapsed ? "Shows these Hosts." : "Hides these Hosts.")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// One Hosts list row. A problem is named by its Summary alone; Host
+/// detail, a tap away, shows the whole Transport Error Presentation.
+struct HostRowPresentation: Equatable {
+    let group: HostHealthGroup
+    let tone: HostConnectionTone
+    /// Under the name: the address while connected, otherwise the state.
+    let detail: String
+    /// A stopped Host's reason reads in red.
+    let isProblem: Bool
+    /// Latency while connected.
+    let trailing: String?
+    let offersRetry: Bool
+    /// The user's own retry is dialing: the row stays in Can't Connect with
+    /// its button busy, rather than jumping away under the finger.
+    let isDialing: Bool
+
+    init(
+        host: Host,
+        status: EventsSessionStatus?,
+        standingFailure: TransportError?,
+        latency: Duration?,
+        canRetry: Bool = true
+    ) {
+        let problem = HostConnectionDetailPresentation(
+            host: host, status: status, standingFailure: standingFailure)
+        let chip = HostConnectionPresentation(
+            status: status, standingFailure: standingFailure, latency: latency)
+        tone = problem?.tone ?? chip.tone
+        isDialing = problem?.isDialing ?? false
+        trailing = if case .connected = status { chip.title } else { nil }
+        switch status {
+        case .failed:
+            group = .cannotConnect
+            detail = problem?.summary ?? chip.title
+            isProblem = true
+            offersRetry = canRetry
+        case .connecting where problem != nil:
+            group = .cannotConnect
+            detail = problem?.summary ?? chip.title
+            isProblem = false
+            offersRetry = canRetry
+        case .reconnecting:
+            group = .trying
+            detail = [problem?.summary, problem?.attempt].compactMap { $0 }.joined(separator: " · ")
+            isProblem = false
+            offersRetry = false
+        case .connecting, nil:
+            group = .trying
+            detail = chip.title
+            isProblem = false
+            offersRetry = false
+        case .connected:
+            group = .connected
+            var address = "\(host.username)@\(host.address)"
+            if host.port != 22 { address += ":\(host.port)" }
+            if case .namedSession(let session) = host.socketLocation {
+                address += " · session \(session)"
+            }
+            detail = address
+            isProblem = false
+            offersRetry = false
+        case .suspended, .ended:
+            group = .notConnected
+            detail = chip.title
+            isProblem = false
+            offersRetry = false
+        }
+    }
+}
+
+private struct HostRowLabel: View {
+    let host: Host
+    let presentation: HostRowPresentation
+
+    var body: some View {
+        HStack(spacing: 12) {
+            HostStatusGlyph(tone: presentation.tone)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(host.displayName)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(presentation.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(presentation.isProblem ? Color.red : Color.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if let trailing = presentation.trailing {
+                Text(trailing)
+                    .font(.subheadline)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Retry on a stopped Host's row: the same Reconnect Request as Host
+/// detail's button, busy while it dials.
+private struct HostRetryButton: View {
+    let isBusy: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            // Hidden, not removed, while busy: the button keeps its size.
+            // Small and light: a stopped Host's reason is the row's point,
+            // and three prominent buttons in a row shout over it.
+            Image(systemName: "arrow.clockwise")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Self.glyph)
+                .opacity(isBusy ? 0 : 1)
+                .overlay {
+                    if isBusy { ProgressView().controlSize(.small) }
+                }
+                .frame(width: 30, height: 30)
+                // Gray on gray: the stopped Host's red reason stays the one
+                // color in the row.
+                .background(Self.disc, in: Circle())
+                // The full 44-point target around the smaller circle.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .allowsHitTesting(!isBusy)
+        .accessibilityLabel(isBusy ? "Connecting" : "Retry")
+        .accessibilityAddTraits(isBusy ? .updatesFrequently : [])
+    }
+
+    // On the light card the dark palette's pairing reads as disabled: the
+    // disc is too heavy and the glyph too faint on it. Light mode lightens
+    // the disc and darkens the glyph.
+    private static let glyph = Color(uiColor: UIColor {
+        $0.userInterfaceStyle == .dark ? .secondaryLabel : UIColor.label.withAlphaComponent(0.6)
+    })
+    private static let disc = Color(uiColor: UIColor {
+        $0.userInterfaceStyle == .dark ? .tertiarySystemFill : .quaternarySystemFill
+    })
+}
+
+/// A Host's connection state in a word or two: a connected Host's latency,
+/// or the state `HostRowPresentation` falls back on when there is no
+/// problem to name. It renders Host Connection Status, never a Transport
+/// Error Presentation.
+struct HostConnectionPresentation: Equatable {
     let title: String
     let accessibilityLabel: String
-    let tone: Tone
+    let tone: HostConnectionTone
 
     init(
         status: EventsSessionStatus?,
@@ -339,7 +645,7 @@ struct HostConnectionPresentation: Equatable {
         case .reconnecting:
             title = "Reconnecting…"
             accessibilityLabel = "Reconnecting"
-            tone = .warning
+            tone = .reconnecting
         case .connecting:
             if standingFailure != nil {
                 title = "Unavailable"
@@ -357,40 +663,11 @@ struct HostConnectionPresentation: Equatable {
         case .suspended:
             title = "Paused"
             accessibilityLabel = "Connection paused"
-            tone = .pending
+            tone = .paused
         case nil:
             title = "Connecting…"
             accessibilityLabel = "Connecting"
             tone = .pending
-        }
-    }
-}
-
-private struct HostConnectionIndicator: View {
-    let presentation: HostConnectionPresentation
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 7))
-                .foregroundStyle(tint)
-                .accessibilityHidden(true)
-            Text(presentation.title)
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(presentation.accessibilityLabel)
-    }
-
-    private var tint: Color {
-        switch presentation.tone {
-        case .connected: .green
-        case .pending: .secondary
-        case .warning: .orange
-        case .unavailable: .red
         }
     }
 }

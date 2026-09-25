@@ -21,6 +21,10 @@ struct SidebarConsoleIntegrationTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         let agent = try #require(store.agents.first)
+        // The Console reopens its last tab; the rows under test are on Agents.
+        let lastTab = UserDefaults.standard.object(forKey: "console.last-list-tab")
+        UserDefaults.standard.removeObject(forKey: "console.last-list-tab")
+        defer { UserDefaults.standard.set(lastTab, forKey: "console.last-list-tab") }
         let view = ConsoleView(
             hosts: composition.hosts, console: store,
             terminal: TerminalSettings(

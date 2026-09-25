@@ -40,8 +40,13 @@ struct WorkspaceTerminalDetailView: View {
     var body: some View {
         Group {
             if isMissing {
-                ContentUnavailableView("Terminal Closed", systemImage: "terminal",
-                    description: Text("This pane is no longer available on the Host."))
+                ContentUnavailableView {
+                    Label("Terminal Closed", systemImage: "terminal")
+                } description: {
+                    Text("This pane is no longer available on the Host.")
+                } actions: {
+                    Button("Back to Console") { onBack() }
+                }
             } else if let entry, console.terminalConnections.entries[poolKey] === entry {
                 ShellTerminalView(
                     store: entry.store,
@@ -66,6 +71,7 @@ struct WorkspaceTerminalDetailView: View {
                     Text(failure)
                 } actions: {
                     Button("Try Again") { retryID += 1 }
+                    Button("Back to Console") { onBack() }
                 }
             } else {
                 ProgressView("Opening Terminal…")
@@ -78,6 +84,10 @@ struct WorkspaceTerminalDetailView: View {
                     }
             }
         }
+        // The terminal draws its own Back. Hidden here, not only on the
+        // terminal, so no state before it (the first frames of a push show
+        // Opening Terminal even for a pooled connection) flashes the bar's.
+        .navigationBarBackButtonHidden(true)
         .task(id: LoadIdentity(
             identity: identity,
             generation: console.hostConnectionGenerations[terminal.hostID],
@@ -189,16 +199,36 @@ struct WorkspaceTerminalDetailView: View {
                 isPresented: { isSelected() },
                 runTerminal: console.terminalRunner(for: terminal.hostID))
             guard !Task.isCancelled else {
+                retryAfterSpuriousDisappear()
                 return
             }
             entry = selected
         } catch is CancellationError {
+            retryAfterSpuriousDisappear()
             return
         } catch {
             failure = error.localizedDescription
             // Nothing is coming to take the keyboard; a later open must
             // start with it down.
             keyboardHandoff?.cancelShellTerminal()
+        }
+    }
+
+    /// SwiftUI can hand this screen an onDisappear it never follows with an
+    /// onAppear (seen when a new shell opens right after Back to Console),
+    /// cancelling the load while the screen stays up. The router, not
+    /// SwiftUI, says whether it is still shown; if so, load again.
+    private func retryAfterSpuriousDisappear() {
+        Task { @MainActor in
+            await Task.yield()
+            guard isSelected(), entry == nil, failure == nil else { return }
+            // `.task` does not restart for a screen SwiftUI thinks is gone,
+            // so this load runs outside it.
+            await load()
+            if entry != nil, !isSelected() {
+                console.terminalConnections.release(
+                    hostID: terminal.hostID, identity: identity, ownerID: ownerID)
+            }
         }
     }
 

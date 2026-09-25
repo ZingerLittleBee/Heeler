@@ -38,11 +38,11 @@ struct ConsoleHostSectionHeaderPresentationTests {
     @Test func readinessDistinguishesConnectedEmptyFromLoadingAndFailed() throws {
         let empty = ConsoleHostSectionHeaderPresentation(
             section: section(status: .connected))
-        #expect(empty.readinessText == "No Agents")
+        #expect(empty.readiness.text == "No Agents")
 
         let loading = ConsoleHostSectionHeaderPresentation(
             section: section(status: .connected, isAwaitingSnapshot: true))
-        #expect(loading.readinessText == "Loading Agents…")
+        #expect(loading.readiness.text == "Loading Agents…")
 
         let failure = TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock")
         let failedPresentation = try #require(
@@ -52,28 +52,72 @@ struct ConsoleHostSectionHeaderPresentationTests {
             section: section(
                 status: .failed(failure),
                 statusPresentation: failedPresentation))
-        #expect(failed.readinessText == "Unavailable")
+        #expect(failed.readiness.text == "Unavailable")
 
         let connected = ConsoleHostSectionHeaderPresentation(
             section: section(
                 status: .connected,
                 agents: [consoleAgent(paneID: "p1", status: .working)]))
-        #expect(connected.readinessText == "Connected")
+        #expect(connected.readiness.text == "Connected")
     }
 
     @Test func readinessMatchesHostChipLanguageForPendingStates() {
         #expect(
             ConsoleHostSectionHeaderPresentation(
-                section: section(status: .connecting)).readinessText == "Connecting…")
+                section: section(status: .connecting)).readiness.text == "Connecting…")
         #expect(
             ConsoleHostSectionHeaderPresentation(
                 section: section(
                     status: .reconnecting(
                         attempt: 1, delay: .seconds(1), failure: .timedOut))
-            ).readinessText == "Reconnecting…")
+            ).readiness.text == "Reconnecting…")
         #expect(
             ConsoleHostSectionHeaderPresentation(
-                section: section(status: .suspended)).readinessText == "Paused")
+                section: section(status: .suspended)).readiness.text == "Paused")
+    }
+
+    @Test func readinessToneSeparatesHealthyWorkingAndStoppedHosts() {
+        func tone(
+            _ status: EventsSessionStatus?,
+            severity: ConsoleHostStatusPresentation.Severity? = nil,
+            awaiting: Bool = false
+        ) -> HostConnectionTone {
+            ConsoleHostSectionHeaderPresentation.readiness(
+                connectionStatus: status, isAwaitingSnapshot: awaiting, statusSeverity: severity,
+                isEmpty: false, inventoryNoun: "Agents"
+            ).tone
+        }
+        #expect(tone(.connected) == .connected)
+        #expect(tone(.connected, awaiting: true) == .pending)
+        #expect(tone(.connected, severity: .warning) == .warning)
+        #expect(tone(.connecting) == .pending)
+        #expect(tone(nil) == .pending)
+        #expect(
+            tone(.reconnecting(attempt: 3, delay: .seconds(4), failure: .timedOut)) == .reconnecting)
+        #expect(tone(.failed(.authenticationFailed)) == .unavailable)
+        #expect(tone(.connecting, severity: .critical) == .unavailable)
+        #expect(tone(.suspended) == .paused)
+    }
+
+    @Test func aHostNameRecedesAsItsConnectionFails() {
+        #expect(HostReadiness(text: "Connected", tone: .connected).nameEmphasis == .full)
+        #expect(HostReadiness(text: "Sync issue", tone: .warning).nameEmphasis == .full)
+        #expect(HostReadiness(text: "Reconnecting…", tone: .reconnecting).nameEmphasis == .receded)
+        #expect(HostReadiness(text: "Connecting…", tone: .pending).nameEmphasis == .receded)
+        #expect(HostReadiness(text: "Unavailable", tone: .unavailable).nameEmphasis == .dimmed)
+    }
+
+    @Test func aFailingHostOpensItsSheetInsteadOfExpanding() {
+        let failing = ConsoleHostSectionHeaderPresentation(
+            section: section(status: .failed(.authenticationFailed), isCollapsed: false),
+            opensConnectionDetail: true)
+        #expect(failing.isCollapsed)
+        #expect(failing.disclosureSystemImage == "chevron.right")
+        #expect(failing.accessibilityHint == "Shows why this Host can't connect.")
+        let healthy = ConsoleHostSectionHeaderPresentation(
+            section: section(status: .connected, isCollapsed: false))
+        #expect(!healthy.isCollapsed)
+        #expect(healthy.accessibilityHint == "Collapses this Host.")
     }
 
     @Test func statusPillsAreCollapsedOnlyButVoiceOverKeepsTheBreakdown() {
@@ -152,5 +196,82 @@ struct ConsoleListPresentationRoutingTests {
     @Test func presentationModeTitlesAreStableForTheSwitcher() {
         #expect(ConsoleListPresentationMode.flat.title == "All Agents")
         #expect(ConsoleListPresentationMode.grouped.title == "By Host")
+    }
+
+    @Test func readinessNamesTheInventoryItDescribes() {
+        func readiness(_ status: EventsSessionStatus?, awaiting: Bool = false) -> String {
+            ConsoleHostSectionHeaderPresentation.readiness(
+                connectionStatus: status, isAwaitingSnapshot: awaiting, statusSeverity: nil,
+                isEmpty: true, inventoryNoun: "Terminals"
+            ).text
+        }
+        #expect(readiness(.connected) == "No Terminals")
+        #expect(readiness(.connected, awaiting: true) == "Loading Terminals…")
+        #expect(
+            ConsoleHostSectionHeaderPresentation.readiness(
+                connectionStatus: .connecting, isAwaitingSnapshot: false, statusSeverity: .critical,
+                isEmpty: true, inventoryNoun: "Terminals")
+                == HostReadiness(text: "Unavailable", tone: .unavailable))
+    }
+}
+
+@Suite("Host connection detail presentation")
+struct HostConnectionDetailPresentationTests {
+    private let host = Host.fixture(name: "studio", address: "10.0.0.2", username: "dev")
+
+    @Test func onlyAFailingHostHasASheet() {
+        #expect(HostConnectionDetailPresentation(host: host, status: .connected, standingFailure: nil) == nil)
+        #expect(HostConnectionDetailPresentation(host: host, status: .connecting, standingFailure: nil) == nil)
+        #expect(HostConnectionDetailPresentation(host: host, status: .suspended, standingFailure: nil) == nil)
+        #expect(HostConnectionDetailPresentation(host: host, status: nil, standingFailure: nil) == nil)
+    }
+
+    @Test func aStoppedHostShowsTheWholePresentation() throws {
+        let failure = TransportError.sshUnreachable(detail: "connection refused")
+        let detail = try #require(
+            HostConnectionDetailPresentation(host: host, status: .failed(failure), standingFailure: nil))
+        #expect(detail.title == "Can't Connect")
+        #expect(detail.tone == .unavailable)
+        #expect(detail.address == "dev@10.0.0.2")
+        #expect(detail.summary == failure.presentation.summary)
+        #expect(detail.detail == "connection refused")
+        #expect(detail.recoverySuggestion == failure.presentation.recoverySuggestion)
+        #expect(detail.recoverySuggestion != nil)
+        #expect(!detail.isDialing)
+    }
+
+    @Test func runningRecoveryWithholdsTheSuggestion() throws {
+        let failure = TransportError.sshUnreachable(detail: "timed out")
+        let reconnecting = try #require(
+            HostConnectionDetailPresentation(
+                host: host,
+                status: .reconnecting(attempt: 3, delay: .seconds(4), failure: failure),
+                standingFailure: nil))
+        #expect(reconnecting.title == "Reconnecting")
+        #expect(reconnecting.attempt == "Attempt 3")
+        #expect(reconnecting.recoverySuggestion == nil)
+        #expect(!reconnecting.isDialing)
+
+        let retrying = try #require(
+            HostConnectionDetailPresentation(host: host, status: .connecting, standingFailure: failure))
+        #expect(retrying.title == "Connecting…")
+        #expect(retrying.tone == .pending)
+        #expect(retrying.recoverySuggestion == nil)
+        #expect(retrying.isDialing)
+    }
+
+    /// A reconnecting Host's Retry Now dials with no standing failure; the
+    /// sheet's remembered failure is what keeps it showing the attempt.
+    @Test func theSheetsOwnRetryKeepsItOpenWhileDialing() throws {
+        let failure = TransportError.timedOut
+        #expect(HostConnectionDetailPresentation(host: host, status: .connecting, standingFailure: nil) == nil)
+        let dialing = try #require(
+            HostConnectionDetailPresentation(
+                host: host, status: .connecting, standingFailure: nil, lastFailure: failure))
+        #expect(dialing.isDialing)
+        #expect(dialing.summary == failure.presentation.summary)
+        #expect(
+            HostConnectionDetailPresentation(
+                host: host, status: .connected, standingFailure: nil, lastFailure: failure) == nil)
     }
 }

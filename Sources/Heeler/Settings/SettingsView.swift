@@ -39,7 +39,7 @@ enum SettingsAgentListDestination: String, Sendable {
     }
 }
 
-/// The settings sheet root: a shallow menu into Agent fields, appearance and notifications.
+/// The Settings tab's root: a shallow menu into Agent fields, appearance and notifications.
 /// Keeping it a menu means the per-Host notification rows can grow without
 /// pushing the appearance controls out of reach, and vice versa.
 struct SettingsView: View {
@@ -53,7 +53,6 @@ struct SettingsView: View {
     let hosts: [Host]
 
     static let agentListDestination = SettingsAgentListDestination.fields
-    @Environment(\.dismiss) private var dismiss
 
     static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/Heeler")
 
@@ -144,12 +143,6 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
         }
     }
 

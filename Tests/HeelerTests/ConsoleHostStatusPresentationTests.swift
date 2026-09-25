@@ -214,4 +214,71 @@ struct ConsoleHostStatusPresentationTests {
                 filteredAgentCount: 1,
                 visibleIssueCount: 1) == .rows)
     }
+
+    @Test func eachConditionHasACompactStatusAndBadge() throws {
+        func issue(
+            _ status: EventsSessionStatus?, standingFailure: TransportError? = nil,
+            awaiting: Bool = false, syncError: String? = nil
+        ) throws -> (HostConnectionTone, String) {
+            let presentation = try #require(
+                ConsoleHostStatusPresentation(
+                    host: host, status: status, standingFailure: standingFailure,
+                    isAwaitingSnapshot: awaiting, syncError: syncError))
+            return (presentation.tone, presentation.status)
+        }
+        #expect(try issue(.suspended) == (.paused, "Paused"))
+        #expect(try issue(.connecting) == (.pending, "Connecting…"))
+        #expect(try issue(.connecting, standingFailure: .timedOut) == (.unavailable, "Can't connect"))
+        #expect(
+            try issue(.reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut))
+                == (.reconnecting, "Reconnecting…"))
+        #expect(try issue(.failed(.authenticationFailed)) == (.unavailable, "Can't connect"))
+        #expect(try issue(.connected, awaiting: true) == (.pending, "Loading Agents…"))
+        #expect(try issue(.connected, syncError: "boom") == (.warning, "Sync issue"))
+    }
+}
+
+@Suite("Console host issue summary")
+struct ConsoleHostIssueSummaryTests {
+    private func issue(_ name: String, _ status: EventsSessionStatus)
+        -> ConsoleHostStatusPresentation?
+    {
+        ConsoleHostStatusPresentation(
+            host: Host.fixture(name: name), status: status, syncError: nil)
+    }
+
+    @Test func aSingleConditionKeepsItsOwnRow() {
+        let one = [issue("a", .failed(.timedOut))].compactMap { $0 }
+        #expect(ConsoleHostIssueSummary(issues: one) == nil)
+        #expect(ConsoleHostIssueSummary(issues: []) == nil)
+    }
+
+    @Test func severalConditionsFoldIntoCountsWorstFirst() throws {
+        let reconnecting = EventsSessionStatus.reconnecting(
+            attempt: 1, delay: .seconds(1), failure: .timedOut)
+        let issues = [
+            issue("a", reconnecting), issue("b", .failed(.timedOut)),
+            issue("c", reconnecting), issue("d", .failed(.authenticationFailed)),
+        ].compactMap { $0 }
+        let summary = try #require(ConsoleHostIssueSummary(issues: issues))
+        #expect(summary.title == "4 Hosts not connected")
+        #expect(
+            summary.counts == [
+                .init(tone: .unavailable, text: "2 can't connect"),
+                .init(tone: .reconnecting, text: "2 reconnecting"),
+            ])
+        #expect(summary.detail == "2 can't connect, 2 reconnecting")
+        #expect(summary.tone == .unavailable)
+    }
+
+    /// A connected Host that is loading or out of sync is not "not
+    /// connected", so the title says less.
+    @Test func aConnectedHostMakesTheTitleNotReady() throws {
+        let loading = ConsoleHostStatusPresentation(
+            host: Host.fixture(name: "b"), status: .connected, isAwaitingSnapshot: true,
+            syncError: nil)
+        let issues = [issue("a", .failed(.timedOut)), loading].compactMap { $0 }
+        let summary = try #require(ConsoleHostIssueSummary(issues: issues))
+        #expect(summary.title == "2 Hosts not ready")
+    }
 }

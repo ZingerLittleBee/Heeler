@@ -124,13 +124,16 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     }
 
     /// Client-side Agents search (#292): a trimmed, case-insensitive
-    /// substring match over the working directory and the title/visible
-    /// text. An empty query matches every agent.
+    /// substring match over what an Agent row shows: its Host, working
+    /// directory, kind, and title/visible text. An empty query matches every
+    /// agent.
     func matchesAgentSearch(_ query: String) -> Bool {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return true }
         let candidates: [String?] = [
+            hostName,
             agent.cwd,
+            agent.kind,
             workspaceLabel,
             tabLabel,
             paneLabel,
@@ -196,11 +199,24 @@ struct RepositoryCheckout: Sendable, Equatable, Hashable {
 }
 
 /// A workspace known for a Host from its latest session snapshot, offered as
-/// a target in the new-agent flow (#12). Identity is herdr's opaque
-/// `workspace_id`; the label is what the picker shows.
+/// a target in the new-agent and new-terminal flows (#12, #316). Identity is
+/// herdr's opaque `workspace_id`; the label is what the picker shows.
 struct ConsoleWorkspace: Identifiable, Hashable, Sendable {
     let id: String
     let label: String
+    /// Position in the snapshot's workspace list, which is herdr's sidebar
+    /// order; the Terminals list keeps it, the pickers sort by label.
+    let order: Int
+    /// The snapshot's checkout path, when the workspace reported git
+    /// metadata: the one directory the Workspace itself vouches for.
+    let checkoutPath: String?
+
+    init(id: String, label: String, order: Int = Int.max, checkoutPath: String? = nil) {
+        self.id = id
+        self.label = label
+        self.order = order
+        self.checkoutPath = checkoutPath
+    }
 }
 
 extension AgentStatus {

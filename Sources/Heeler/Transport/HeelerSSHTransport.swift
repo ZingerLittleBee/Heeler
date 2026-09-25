@@ -790,8 +790,31 @@ actor HeelerSSHTransport: Transport {
             params: TabCreateParams(
                 cwd: creation.cwd,
                 focus: false,
+                label: creation.label,
                 workspaceID: creation.workspaceID),
             decoding: TabCreatedResponse.self)
+        return ShellTerminalIdentity(
+            paneID: created.rootPane.paneID,
+            tabID: created.rootPane.tabID,
+            terminalID: created.rootPane.terminalID)
+    }
+
+    func createShellWorkspace(
+        _ workspace: NewWorkspaceSpec, tabLabel: String?
+    ) async throws -> ShellTerminalIdentity {
+        let created = try await request(
+            method: "workspace.create",
+            params: WorkspaceCreateParams(
+                cwd: workspace.directory,
+                focus: false,
+                label: workspace.label),
+            decoding: WorkspaceCreatedResponse.self)
+        if let tabLabel {
+            // Cosmetic: the shell is already usable, so a failed rename must
+            // not fail a create that succeeded.
+            try? await renameTab(
+                TabRenameParams(label: tabLabel, tabID: created.tab.tabID))
+        }
         return ShellTerminalIdentity(
             paneID: created.rootPane.paneID,
             tabID: created.rootPane.tabID,
