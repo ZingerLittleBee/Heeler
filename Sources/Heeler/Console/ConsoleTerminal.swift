@@ -62,7 +62,7 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
         return cwd == home ? "~" : "~\(cwd.dropFirst(home.count))"
     }
 
-    /// Search tab matching: trimmed, case-insensitive substring over what a
+    /// Terminals search matching: trimmed, case-insensitive substring over what a
     /// Terminals row and its menu show. An empty query matches everything.
     func matchesSearch(_ query: String) -> Bool {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)

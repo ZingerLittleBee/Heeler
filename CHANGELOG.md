@@ -9,20 +9,20 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- The Console has Agents, Terminals, Hosts, Settings, and Search tabs, a
-  bottom tab bar on iPhone and a top one on iPad, and reopens the list tab
-  last shown. Hosts and Settings replace the toolbar's Hosts and Settings
-  buttons, and a Host opened from a Host
-  problem in another tab goes back to that tab. Terminals lists every Host's
-  shell panes as one collapsible card per Workspace, By Workspace or By
-  Host, sharing the Agents tab's Host filter. A shell in a named tab is
-  listed by that name, and shells sharing a card show their tab beside the
-  path. Each card ends in a New Terminal row that opens a shell tab in that
-  Workspace, and the toolbar's New Terminal picks a Host, an existing or
-  new Workspace, and an optional tab name. Swipe a terminal to close it
-  after confirming, or long-press it to open another in its Workspace or
-  copy its path. Search now finds Agents and Terminals together.
-  (#316; PR #377)
+- The Console has Agents, Terminals, Hosts, and Settings tabs, a bottom tab
+  bar on iPhone and a top one on iPad, and reopens the list tab last shown.
+  Hosts and Settings replace the toolbar's Hosts and Settings buttons, and a
+  Host opened from a Host problem in another tab goes back to that tab.
+  Terminals lists every Host's shell panes as one collapsible card per
+  Workspace, By Workspace or By Host, sharing the Agents tab's Host filter.
+  A shell in a named tab is listed by that name, and shells sharing a card
+  show their tab beside the path. Each card ends in a New Terminal row that
+  opens a shell tab in that Workspace, and the toolbar's New Terminal picks
+  a Host, an existing or new Workspace, and an optional tab name. Swipe a
+  terminal to close it after confirming, or long-press it to open another in
+  its Workspace or copy its path. Pull either list down to reveal its search
+  field; Terminals search matches Host, Workspace, tab, title, and
+  directory. (#316; PR #377)
 
 ### Changed
 

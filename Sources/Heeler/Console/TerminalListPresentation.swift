@@ -3,14 +3,12 @@ import Observation
 
 /// The Console's bottom tabs (#316). Hosts is Host management, the screen
 /// the toolbar's Hosts button used to present, and Settings the sheet its
-/// gear used to. Search is the system search tab: it searches Agents and
-/// Terminals together rather than filtering either list.
+/// gear used to. Agents and Terminals each search their own list.
 enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
     case agents
     case terminals
     case hosts
     case settings
-    case search
 
     var id: Self { self }
 
@@ -20,12 +18,11 @@ enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
         case .terminals: "Terminals"
         case .hosts: "Hosts"
         case .settings: "Settings"
-        case .search: "Search"
         }
     }
 
-    /// Agents and Terminals are the lists the Console reopens on; Hosts,
-    /// Settings, and Search sit on top of the remembered one.
+    /// Agents and Terminals are the lists the Console reopens on; Hosts and
+    /// Settings sit on top of the remembered one.
     var isList: Bool { self == .agents || self == .terminals }
 }
 
@@ -156,19 +153,29 @@ struct TerminalListProjection {
         visibleHosts(filteredHostID).flatMap { workspaces(on: $0, searchQuery: searchQuery) }
     }
 
-    func hostGroups(filteredHostID: Host.ID? = nil) -> [TerminalHostGroup] {
-        visibleHosts(filteredHostID).map { host in
-            let workspaces = workspaces(on: host, searchQuery: "")
+    /// A query drops Hosts without a match unless they have a problem to
+    /// report, as the Agents list does (#292), and opens every Host so no
+    /// match hides behind a collapsed one.
+    func hostGroups(filteredHostID: Host.ID? = nil, searchQuery: String = "")
+        -> [TerminalHostGroup]
+    {
+        let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return visibleHosts(filteredHostID).compactMap { host in
+            let workspaces = workspaces(on: host, searchQuery: searchQuery)
+            let issue = issue(for: host)
+            if isSearching && workspaces.isEmpty {
+                guard let severity = issue?.severity, severity != .informational else { return nil }
+            }
             return TerminalHostGroup(
                 hostID: host.id,
                 hostName: host.displayName,
                 readiness: readiness(for: host, isEmpty: workspaces.isEmpty),
-                issue: issue(for: host),
+                issue: issue,
                 opensConnectionDetail: HostConnectionDetailPresentation(
                     host: host, status: hostStatuses[host.id],
                     standingFailure: hostStandingFailures[host.id]) != nil,
                 workspaces: workspaces,
-                isCollapsed: collapsedHosts.contains(host.id))
+                isCollapsed: !isSearching && collapsedHosts.contains(host.id))
         }
     }
 

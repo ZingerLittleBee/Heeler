@@ -30,12 +30,12 @@ struct ConsoleView: View {
     /// only one is ever set.
     @State private var selectedTerminal: ConsoleTerminal?
     /// Agents or Terminals, per window; empty until this window picks one.
-    /// Search is tracked apart so it is never the tab a window comes back to.
+    /// Hosts and Settings are tracked apart so neither is the tab a window
+    /// comes back to.
     @SceneStorage("console.list-tab") private var sceneListTab = ""
     /// The last list tab any window picked: where a new window, or a
     /// relaunch that restored no scene state, starts.
     @AppStorage("console.last-list-tab") private var lastListTab: ConsoleTab = .agents
-    @State private var isSearchTabSelected = false
     @State private var isHostsTabSelected = false
     @State private var isSettingsTabSelected = false
     @State private var isStartingTerminal = false
@@ -57,11 +57,14 @@ struct ConsoleView: View {
     /// Narrows the Agent list to one Host; nil shows every Host. This is a
     /// filter in both presentations, not a second grouping mechanism.
     @State private var hostFilter: Host.ID?
-    /// The Search tab's query (#292, #316): Agents and Terminals together,
-    /// after `hostFilter`.
-    @State private var searchText = ""
-    @State private var isSearchPresented = false
-    @FocusState private var isSearchFocused: Bool
+    /// Each list's own search (#292, #316), after `hostFilter`. The field
+    /// hides under the title until the list is pulled down.
+    @State private var agentSearchText = ""
+    @State private var terminalSearchText = ""
+    @State private var isAgentSearchPresented = false
+    @State private var isTerminalSearchPresented = false
+    /// The list whose search field has focus.
+    @FocusState private var focusedSearch: ConsoleTab?
     @State private var commandRegistry = ConsoleCommandRegistry()
     /// Row-level `tab.close` failure text; non-nil shows the error alert.
     @State private var tabCloseError: String?
@@ -136,12 +139,6 @@ struct ConsoleView: View {
                 Label(ConsoleTab.settings.title, systemImage: "gearshape")
                     .environment(\.symbolVariants, .none)
             }
-            // The system search tab: on iPhone it turns the tab bar into the
-            // search field, which only works when `searchable` sits inside
-            // this tab rather than around the TabView.
-            Tab(value: ConsoleTab.search, role: .search) {
-                splitView(for: .search)
-            }
         }
         // The detail's actions can present these even while the sidebar is hidden.
         .sheet(isPresented: $isStartingAgent) {
@@ -155,7 +152,7 @@ struct ConsoleView: View {
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))
         }
-        // Agent rows close from the Agents and Search tabs alike.
+        // An Agent row asks here before closing its tab.
         .alert(tabCloseDialogTitle, isPresented: tabCloseDialogPresented) {
             Button(tabCloseConfirmLabel, role: .destructive) { confirmTabClose() }
             Button("Cancel", role: .cancel) { pendingTabClose = nil }
@@ -251,13 +248,11 @@ struct ConsoleView: View {
     private var selectedTab: Binding<ConsoleTab> {
         Binding(
             get: {
-                if isSearchTabSelected { return .search }
                 if isHostsTabSelected { return .hosts }
                 if isSettingsTabSelected { return .settings }
                 return ConsoleTab(rawValue: sceneListTab) ?? lastListTab
             },
             set: { tab in
-                isSearchTabSelected = tab == .search
                 isHostsTabSelected = tab == .hosts
                 isSettingsTabSelected = tab == .settings
                 guard tab.isList else { return }
@@ -327,6 +322,11 @@ struct ConsoleView: View {
         switch tab {
         case .agents:
             content
+                .searchable(
+                    text: $agentSearchText, isPresented: $isAgentSearchPresented,
+                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    prompt: "Search Agents")
+                .searchFocused($focusedSearch, equals: .agents)
         case .terminals:
             if hosts.hosts.isEmpty {
                 noHostsView
@@ -336,20 +336,20 @@ struct ConsoleView: View {
                     console: console,
                     presentation: terminalPresentation,
                     filteredHostID: hostFilter,
+                    searchQuery: terminalSearchText,
                     selection: selectedItem,
                     onOpen: { selectTerminal($0) },
                     onOpenHost: { openHostIssue($0) },
                     onNewTerminal: { isStartingTerminal = true })
+                .searchable(
+                    text: $terminalSearchText, isPresented: $isTerminalSearchPresented,
+                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    prompt: "Search Terminals")
+                .searchFocused($focusedSearch, equals: .terminals)
             }
         case .hosts, .settings:
             // These tabs show their own screens, not a split view.
             EmptyView()
-        case .search:
-            searchResults
-                .searchable(
-                    text: $searchText, isPresented: $isSearchPresented,
-                    prompt: "Agents and Terminals")
-                .searchFocused($isSearchFocused)
         }
     }
 
@@ -450,7 +450,7 @@ struct ConsoleView: View {
                     agents: listPresentation.mode == .flat
                         ? filteredAgents.map(\.id)
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
-                    isSearchFocused: isSearchFocused,
+                    isSearchFocused: focusedSearch != nil,
                     isCovered: isHostsTabSelected || isSettingsTabSelected || isStartingAgent
                         || isStartingTerminal || connectionDetailRequest != nil,
                     inputMode: inputMode.mode)
@@ -465,9 +465,15 @@ struct ConsoleView: View {
                 notificationRouter.path = [id]
             },
             focusSearch: {
-                selectedTab.wrappedValue = .search
-                isSearchPresented = true
-                isSearchFocused = true
+                // Hosts and Settings have no search; ⌘F lands on Agents.
+                let tab: ConsoleTab = currentTab == .terminals ? .terminals : .agents
+                selectedTab.wrappedValue = tab
+                if tab == .terminals {
+                    isTerminalSearchPresented = true
+                } else {
+                    isAgentSearchPresented = true
+                }
+                focusedSearch = tab
             },
             newAgent: { isStartingAgent = true },
             settings: { selectedTab.wrappedValue = .settings },
@@ -715,8 +721,7 @@ struct ConsoleView: View {
                     .hoverEffect(.highlight)
             }
         case .noSearchResults:
-            // Search moved to its own tab; the Agents list never filters.
-            EmptyView()
+            ContentUnavailableView.search(text: agentSearchText)
         case .rows:
             List(selection: selectedItem) {
                 if listPresentation.mode == .flat {
@@ -726,6 +731,7 @@ struct ConsoleView: View {
                 }
             }
             .listStyle(.plain)
+            .searchDrawerStartsTucked()
         }
     }
 
@@ -739,66 +745,6 @@ struct ConsoleView: View {
                 .buttonStyle(.borderedProminent)
                 .hoverEffect(.highlight)
         }
-    }
-
-    /// The Search tab: Agents and ordinary shells matching one query, each
-    /// under its own heading, with the Host filter still applied.
-    @ViewBuilder
-    private var searchResults: some View {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if hosts.hosts.isEmpty {
-            noHostsView
-        } else if query.isEmpty {
-            ContentUnavailableView(
-                "Search Agents and Terminals", systemImage: "magnifyingglass",
-                description: Text("Titles, Workspaces, tabs, and directories on your Hosts."))
-        } else {
-            let agents = filteredAgents.filter { $0.matchesAgentSearch(query) }
-            let terminalCards = TerminalListProjection(hosts: hosts.hosts, console: console)
-                .workspaces(filteredHostID: hostFilter, searchQuery: query)
-            let terminals = terminalCards.flatMap(\.terminals)
-            // Search drops non-matching shells, so a Tab is named whenever its
-            // Workspace keeps several matches.
-            let sharedWorkspaces = Set(terminalCards.filter { $0.terminals.count > 1 }.map(\.id))
-            if agents.isEmpty && terminals.isEmpty {
-                ContentUnavailableView.search(text: query)
-            } else {
-                List(selection: selectedItem) {
-                    if !agents.isEmpty {
-                        Section {
-                            ForEach(agents) { agentRow($0) }
-                        } header: {
-                            searchResultsHeader("Agents")
-                        }
-                    }
-                    if !terminals.isEmpty {
-                        Section {
-                            ForEach(terminals) { terminal in
-                                NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
-                                    TerminalRowView(
-                                        terminal: terminal, showsWorkspace: true,
-                                        showsTab: sharedWorkspaces.contains(
-                                            TerminalWorkspaceGroup.ID(
-                                                hostID: terminal.hostID,
-                                                workspaceID: terminal.workspaceID)))
-                                }
-                                .hoverEffect(.highlight)
-                            }
-                        } header: {
-                            searchResultsHeader("Terminals")
-                        }
-                    }
-                }
-                .listStyle(.insetGrouped)
-            }
-        }
-    }
-
-    private func searchResultsHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.headline)
-            .foregroundStyle(Color.primary)
-            .textCase(nil)
     }
 
     @ViewBuilder
@@ -991,14 +937,15 @@ struct ConsoleView: View {
             visibleIssueCount: visibleHostIssues.count,
             presentationMode: listPresentation.mode,
             projectedSectionCount: hostSections.count,
-            searchQuery: "")
+            searchQuery: agentSearchText)
     }
 
     private var hostSections: [ConsoleHostSection] {
         listPresentation.sections(
             hosts: hosts.hosts,
             console: console,
-            filteredHostID: hostFilter)
+            filteredHostID: hostFilter,
+            searchQuery: agentSearchText)
     }
 
     private var presentationModeBinding: Binding<ConsoleListPresentationMode> {
@@ -1024,7 +971,9 @@ struct ConsoleView: View {
         } else {
             hostFiltered = console.agents
         }
-        return hostFiltered
+        let needle = agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return hostFiltered }
+        return hostFiltered.filter { $0.matchesAgentSearch(needle) }
     }
 
     /// Host issues shown in the list: all of them, or the filtered Host's

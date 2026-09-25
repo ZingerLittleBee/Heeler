@@ -10,6 +10,8 @@ struct TerminalListView: View {
     let console: ConsoleStore
     let presentation: TerminalListPresentationStore
     let filteredHostID: Host.ID?
+    /// Keeps matching shells only, in either presentation.
+    var searchQuery = ""
     @Binding var selection: ConsoleSelection?
     /// Opens a terminal the list just created.
     let onOpen: (ConsoleTerminal) -> Void
@@ -62,7 +64,8 @@ struct TerminalListView: View {
 
     @ViewBuilder
     private var byWorkspace: some View {
-        let workspaces = projection.workspaces(filteredHostID: filteredHostID)
+        let workspaces = projection.workspaces(
+            filteredHostID: filteredHostID, searchQuery: searchQuery)
         let issues = projection.issues(filteredHostID: filteredHostID)
         if workspaces.isEmpty && issues.isEmpty {
             emptyState
@@ -80,12 +83,14 @@ struct TerminalListView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
+            .searchDrawerStartsTucked()
         }
     }
 
     @ViewBuilder
     private var byHost: some View {
-        let groups = projection.hostGroups(filteredHostID: filteredHostID)
+        let groups = projection.hostGroups(
+            filteredHostID: filteredHostID, searchQuery: searchQuery)
         if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) {
             emptyState
         } else {
@@ -116,6 +121,7 @@ struct TerminalListView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Color(uiColor: .systemGroupedBackground))
+            .searchDrawerStartsTucked()
         }
     }
 
@@ -145,7 +151,17 @@ struct TerminalListView: View {
         }
     }
 
+    @ViewBuilder
     private var emptyState: some View {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            ContentUnavailableView.search(text: query)
+        } else {
+            noTerminals
+        }
+    }
+
+    private var noTerminals: some View {
         ContentUnavailableView {
             Label("No Terminals", systemImage: "terminal")
         } description: {
