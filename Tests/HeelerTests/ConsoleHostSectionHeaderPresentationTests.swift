@@ -235,7 +235,6 @@ struct HostConnectionDetailPresentationTests {
         #expect(detail.detail == "connection refused")
         #expect(detail.recoverySuggestion == failure.presentation.recoverySuggestion)
         #expect(detail.recoverySuggestion != nil)
-        #expect(!detail.isRetrying)
         #expect(!detail.isDialing)
     }
 
@@ -253,8 +252,24 @@ struct HostConnectionDetailPresentationTests {
 
         let retrying = try #require(
             HostConnectionDetailPresentation(host: host, status: .connecting, standingFailure: failure))
-        #expect(retrying.title == "Can't Connect")
+        #expect(retrying.title == "Connecting…")
+        #expect(retrying.tone == .pending)
         #expect(retrying.recoverySuggestion == nil)
         #expect(retrying.isDialing)
+    }
+
+    /// A reconnecting Host's Retry Now dials with no standing failure; the
+    /// sheet's remembered failure is what keeps it showing the attempt.
+    @Test func theSheetsOwnRetryKeepsItOpenWhileDialing() throws {
+        let failure = TransportError.timedOut
+        #expect(HostConnectionDetailPresentation(host: host, status: .connecting, standingFailure: nil) == nil)
+        let dialing = try #require(
+            HostConnectionDetailPresentation(
+                host: host, status: .connecting, standingFailure: nil, lastFailure: failure))
+        #expect(dialing.isDialing)
+        #expect(dialing.summary == failure.presentation.summary)
+        #expect(
+            HostConnectionDetailPresentation(
+                host: host, status: .connected, standingFailure: nil, lastFailure: failure) == nil)
     }
 }

@@ -157,7 +157,7 @@ struct ConsoleView: View {
         }
         .sheet(item: $connectionDetailRequest) { request in
             if let host = hosts.hosts.first(where: { $0.id == request.id }),
-                let detail = connectionDetail(for: request.id)
+                let detail = connectionDetail(for: request)
             {
                 HostConnectionDetailView(
                     presentation: detail,
@@ -165,13 +165,16 @@ struct ConsoleView: View {
                     catalog: hosts,
                     isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id)
                 ) {
+                    // Holds the sheet open through the retry's dial, which a
+                    // reconnecting Host makes without a standing failure.
+                    connectionDetailRequest?.lastFailure = detail.failure
                     Task { await reconnectHost(host.id) }
                 }
             }
         }
         // Once the Host connects again (or leaves the catalog) the sheet has
         // nothing left to explain.
-        .onChange(of: connectionDetailRequest.flatMap { connectionDetail(for: $0.id) }) {
+        .onChange(of: connectionDetailRequest.flatMap { connectionDetail(for: $0) }) {
             _, detail in
             if detail == nil { connectionDetailRequest = nil }
         }
@@ -1055,14 +1058,23 @@ struct ConsoleView: View {
 
     private struct ConnectionDetailRequest: Identifiable {
         let id: Host.ID
+        /// The failure shown when the sheet's Retry Now was tapped.
+        var lastFailure: TransportError?
     }
 
     private func connectionDetail(for id: Host.ID) -> HostConnectionDetailPresentation? {
-        guard let host = hosts.hosts.first(where: { $0.id == id }) else { return nil }
+        connectionDetail(for: ConnectionDetailRequest(id: id))
+    }
+
+    private func connectionDetail(
+        for request: ConnectionDetailRequest
+    ) -> HostConnectionDetailPresentation? {
+        guard let host = hosts.hosts.first(where: { $0.id == request.id }) else { return nil }
         return HostConnectionDetailPresentation(
             host: host,
-            status: console.hostStatuses[id],
-            standingFailure: console.hostStandingFailures[id])
+            status: console.hostStatuses[request.id],
+            standingFailure: console.hostStandingFailures[request.id],
+            lastFailure: request.lastFailure)
     }
 
     /// A Host that cannot connect explains itself in a sheet; any other Host

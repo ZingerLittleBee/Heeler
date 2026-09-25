@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Why one Host cannot connect, for the Console's connection sheet. Exists
-/// only while the Host is reconnecting or stopped on a failure; its
-/// inventory is empty then, so the sheet replaces expanding the Host.
+/// only while the Host is reconnecting, stopped on a failure, or dialing a
+/// retry after one; its inventory is empty then, so the sheet replaces
+/// expanding the Host.
 struct HostConnectionDetailPresentation: Equatable {
     let hostID: Host.ID
     let hostName: String
@@ -11,19 +12,25 @@ struct HostConnectionDetailPresentation: Equatable {
     let tone: HostConnectionTone
     /// "Attempt 3" while automatic recovery runs.
     let attempt: String?
+    /// The failure shown; while dialing, the one the retry answers.
+    let failure: TransportError
     let summary: String
     let detail: String?
     /// Only once nothing but the user can change the outcome; see Transport
     /// Error Presentation in `CONTEXT.md`.
     let recoverySuggestion: String?
-    /// Automatic recovery or a requested retry is under way.
-    let isRetrying: Bool
-    /// A requested retry after a stop is dialing right now; automatic
-    /// recovery instead spends most of its time waiting out a backoff, which
-    /// Retry Now cuts short.
+    /// A connection attempt is dialing right now. Automatic recovery instead
+    /// spends most of its time waiting out a backoff, which Retry Now cuts
+    /// short.
     let isDialing: Bool
 
-    init?(host: Host, status: EventsSessionStatus?, standingFailure: TransportError?) {
+    /// `lastFailure` is what the sheet saw before its own Retry Now: a
+    /// reconnecting Host's retry dials without a standing failure, and the
+    /// sheet must stay to show it.
+    init?(
+        host: Host, status: EventsSessionStatus?, standingFailure: TransportError?,
+        lastFailure: TransportError? = nil
+    ) {
         let failure: TransportError
         switch status {
         case .reconnecting(let attempt, _, let retrying):
@@ -31,22 +38,19 @@ struct HostConnectionDetailPresentation: Equatable {
             title = "Reconnecting"
             tone = .reconnecting
             self.attempt = "Attempt \(attempt)"
-            isRetrying = true
             isDialing = false
         case .failed(let stopped):
             failure = stopped
             title = "Can't Connect"
             tone = .unavailable
             attempt = nil
-            isRetrying = false
             isDialing = false
         case .connecting:
-            guard let standingFailure else { return nil }
-            failure = standingFailure
-            title = "Can't Connect"
-            tone = .unavailable
+            guard let previous = standingFailure ?? lastFailure else { return nil }
+            failure = previous
+            title = "Connecting…"
+            tone = .pending
             attempt = nil
-            isRetrying = true
             isDialing = true
         default:
             return nil
@@ -56,10 +60,12 @@ struct HostConnectionDetailPresentation: Equatable {
         var address = "\(host.username)@\(host.address)"
         if host.port != 22 { address += ":\(host.port)" }
         self.address = address
+        self.failure = failure
         let presentation = failure.presentation
         summary = presentation.summary
         detail = presentation.detail
-        recoverySuggestion = isRetrying ? nil : presentation.recoverySuggestion
+        let isStopped = if case .failed = status { true } else { false }
+        recoverySuggestion = isStopped ? presentation.recoverySuggestion : nil
     }
 }
 
@@ -88,13 +94,23 @@ struct HostConnectionDetailView: View {
                         }
                         Spacer(minLength: 0)
                     }
-                    Text(presentation.address)
-                        .font(.subheadline.monospaced())
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                    Text(
+                        presentation.isDialing
+                            ? "Connecting to \(presentation.address)…" : presentation.address
+                    )
+                    .font(.subheadline.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
                     VStack(alignment: .leading, spacing: 6) {
+                        if presentation.isDialing {
+                            Text("Previous attempt")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .textCase(.uppercase)
+                        }
                         Text(presentation.summary)
                             .font(.body.weight(.semibold))
+                            .foregroundStyle(presentation.isDialing ? .secondary : .primary)
                         if let detail = presentation.detail {
                             Text(detail)
                                 .font(.footnote.monospaced())
@@ -139,13 +155,19 @@ struct HostConnectionDetailView: View {
         let busy = isRetryInFlight || presentation.isDialing
         Button(action: onRetry) {
             HStack(spacing: 8) {
-                if busy { ProgressView() }
+                if busy {
+                    ProgressView()
+                        .tint(.white)
+                }
                 Text(busy ? "Connecting…" : "Retry Now")
             }
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
-        .disabled(isRetryInFlight)
+        // Busy keeps the prominent look rather than a disabled gray, so the
+        // spinner reads as work under way.
+        .allowsHitTesting(!busy)
+        .accessibilityAddTraits(busy ? .updatesFrequently : [])
     }
 }
