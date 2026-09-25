@@ -185,16 +185,23 @@ struct TerminalListView: View {
                 onNewTerminal()
             }
         } label: {
+            // A quiet secondary action: the card's shells stay the focus.
+            // The plus keeps the tile column so the label lines up with
+            // the rows' titles.
             HStack(spacing: 12) {
-                TerminalTile(systemImage: "plus", tint: .accentColor)
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .medium))
+                    .frame(width: 30)
+                    .accessibilityHidden(true)
                 Text("New Terminal")
-                    .foregroundStyle(Color.accentColor)
+                    .font(.subheadline)
                 Spacer(minLength: 0)
                 if creating.contains(workspace.id) {
                     ProgressView()
                 }
             }
         }
+        .foregroundStyle(.secondary)
         .disabled(creating.contains(workspace.id))
         .hoverEffect(.highlight)
     }
