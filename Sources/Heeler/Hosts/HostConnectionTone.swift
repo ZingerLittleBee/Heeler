@@ -27,12 +27,14 @@ enum HostConnectionTone: Equatable, CaseIterable {
         }
     }
 
+    /// Muted system colors: a list of Hosts is mostly icons, and full
+    /// strength glares on a dark background.
     var tint: Color {
         switch self {
-        case .connected: .green
+        case .connected: .green.opacity(0.7)
         case .pending, .paused: .secondary
-        case .reconnecting, .warning: .orange
-        case .unavailable: .red
+        case .reconnecting, .warning: .orange.opacity(0.7)
+        case .unavailable: .red.opacity(0.7)
         }
     }
 }
