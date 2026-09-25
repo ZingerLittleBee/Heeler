@@ -20,28 +20,32 @@ Entries reference the issue that motivated them.
   opens a shell tab in that Workspace, and the toolbar's New Terminal picks
   a Host, an existing or new Workspace, and an optional tab name. Swipe a
   terminal to close it after confirming, or long-press it to open another in
-  its Workspace or copy its path. Pull either list down to reveal its search
-  field, which matches a row's Host, Workspace, tab, title, and directory,
-  and an Agent's kind. (#316; PR #377)
+  its Workspace or copy its path. Pull the Terminals list down to search it
+  by Host, Workspace, tab, title, or directory. (#316; PR #377)
 
 ### Changed
 
 - A Host's connection state reads at a glance: Host headers in the Agents
   and Terminals tabs lead with a server glyph instead of a line of text, and
   a badge on its corner marks the state: green once connected, an open ring
-  while connecting, a spinning orange arc while reconnecting, orange when out
-  of sync, and red once the Host stops on a failure, which also dims its
-  name. The disclosure chevron moves to the trailing edge, an
-  expanded Host in the Agents tab states its condition as the Terminals tab
-  does, and the Hosts list groups Hosts by what they need, each group
-  collapsible: Can't Connect first, naming each problem beside a Retry
-  button, then Hosts still trying, then connected ones with their latency.
-  A Host that
-  is reconnecting or cannot connect no longer expands: tapping it opens a
-  sheet with the failure, a Retry button, and Edit for its settings. In
-  the flat Agents list and the By Workspace terminals, each Host with a
-  problem takes one short line, and several fold into a single row that
-  counts them and expands on tap. (#316; PR #377)
+  while connecting, a spinning orange arc while reconnecting, orange when
+  out of sync, and red once the Host stops on a failure, which also dims its
+  name. The disclosure chevron moves to the trailing edge, and an expanded
+  Host in the Agents tab states its condition as the Terminals tab does.
+  (#316; PR #377)
+- A Host that is reconnecting or cannot connect no longer expands: tapping
+  it opens a sheet with the failure, a Retry button, and Edit for its
+  settings. In the flat Agents list and the By Workspace terminals, each
+  Host with a problem takes one short line, and several fold into a single
+  row that counts them and expands on tap. (#316; PR #377)
+- The Hosts list groups Hosts by what they need, each group collapsible:
+  Can't Connect first, naming each problem beside a refresh button that
+  retries, then Hosts still trying, then connected ones with their latency.
+  (#316; PR #377)
+- Agents search hides under the list's title until you pull the list down,
+  and matches an Agent's Host and kind too. While searching, a Host without
+  a match leaves the list even when it has a connection problem, and a
+  collapsed Host opens to show its matches. (#316; PR #377)
 
 ### Fixed
 
