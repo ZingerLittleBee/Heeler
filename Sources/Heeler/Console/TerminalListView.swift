@@ -160,10 +160,12 @@ struct TerminalListView: View {
             if !workspace.isCollapsed {
                 ForEach(workspace.terminals) {
                     terminalRow($0, showsTab: workspace.terminals.count > 1)
+                        .listRowBackground(TerminalCardRow.fill)
                 }
                 // Every card ends in New Terminal, clear of the header's
                 // collapse control: a mistap there would open a real tab.
                 newTerminalRow(workspace)
+                    .listRowBackground(TerminalCardRow.fill)
             }
         } header: {
             TerminalWorkspaceHeader(
@@ -386,6 +388,14 @@ private struct TerminalCardRow: ViewModifier {
     static let margin: CGFloat = 16
     private static let padding: CGFloat = 16
     private static let radius: CGFloat = 20
+    /// Grouped cards, toned down in light mode: full white glares against
+    /// the grouped background there. Dark mode keeps the system card.
+    static let fill = Color(
+        uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? .secondarySystemGroupedBackground
+                : UIColor.white.withAlphaComponent(0.65)
+        })
     /// From the card's edge to a row's title, past the 30-point tile.
     private static let separatorInset: CGFloat = 16 + 30 + 12
 
@@ -408,7 +418,7 @@ private struct TerminalCardRow: ViewModifier {
                     bottomTrailingRadius: bottom, topTrailingRadius: top,
                     style: .continuous
                 )
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .fill(Self.fill)
                 .overlay(alignment: .bottom) {
                     if !isLast {
                         Rectangle()
