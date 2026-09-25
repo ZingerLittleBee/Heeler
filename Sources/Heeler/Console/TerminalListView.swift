@@ -22,13 +22,6 @@ struct TerminalListView: View {
     @State private var pendingClose: ConsoleTerminal?
     @State private var closeFailure: String?
 
-    /// By Host's side margins. Cards span the width of the Host rows, and
-    /// Workspace headers line up with the cards' edges.
-    private static let byHostCardMargin: CGFloat = 16
-    private static let byHostHeaderMargin: CGFloat = 0
-    /// What the Agents tab's plain-list Host headers add over this grouped
-    /// list's compact section spacing.
-    private static let byHostHeaderExtraHeight: CGFloat = 16
     /// Between Workspace cards; the header's own 44-point row already
     /// separates collapsed ones.
     private static let workspaceSpacing: CGFloat = 0
@@ -95,13 +88,17 @@ struct TerminalListView: View {
         if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) {
             emptyState
         } else {
+            // A plain list, as in the Agents tab, so each Host's header pins
+            // while its Workspaces scroll under it. Workspaces are rows of the
+            // Host's section, drawn as cards by `TerminalCardRow`.
             List(selection: $selection) {
                 ForEach(groups) { group in
                     Section {
-                        if let issue = group.issue, !group.isCollapsed,
-                            !group.opensConnectionDetail
-                        {
-                            ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
+                        if !isFolded(group) {
+                            if let issue = group.issue {
+                                ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
+                            }
+                            ForEach(group.workspaces) { workspaceRows($0) }
                         }
                     } header: {
                         TerminalHostHeader(group: group) {
@@ -111,29 +108,36 @@ struct TerminalListView: View {
                                 toggle(group.hostID)
                             }
                         }
-                            // Back out the card margin and match the plain
-                            // list's header rhythm, so a Host sits exactly
-                            // where it does in the Agents tab.
-                            .padding(.horizontal, -Self.byHostCardMargin)
-                            // Above every Host but the first, never below:
-                            // an expanded Host keeps its Workspaces close, and
-                            // toggling it leaves its own header's height alone.
-                            .padding(
-                                .top, group.id == groups.first?.id ? 0 : Self.byHostHeaderExtraHeight)
-                    }
-                    .listSectionSpacing(isFolded(group) ? .compact : .custom(0))
-                    if !group.isCollapsed && !group.opensConnectionDetail {
-                        ForEach(group.workspaces) { workspace in
-                            workspaceSection(
-                                workspace, showsHost: false,
-                                headerOutset: Self.byHostCardMargin - Self.byHostHeaderMargin)
-                        }
                     }
                 }
             }
-            .listStyle(.insetGrouped)
-            .listSectionSpacing(.compact)
-            .contentMargins(.horizontal, Self.byHostCardMargin, for: .scrollContent)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
+        }
+    }
+
+    /// One By Host Workspace: its header, then its card's rows.
+    @ViewBuilder
+    private func workspaceRows(_ workspace: TerminalWorkspaceGroup) -> some View {
+        TerminalWorkspaceHeader(
+            workspace: workspace, showsHost: false, onToggle: { toggle(workspace.id) }
+        )
+        .listRowInsets(
+            EdgeInsets(
+                top: 4, leading: TerminalCardRow.margin, bottom: 0,
+                trailing: TerminalCardRow.margin))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .selectionDisabled()
+        if !workspace.isCollapsed {
+            let terminals = workspace.terminals
+            ForEach(Array(terminals.enumerated()), id: \.element.id) { index, terminal in
+                terminalRow(terminal, showsTab: terminals.count > 1)
+                    .modifier(TerminalCardRow(isFirst: index == 0, isLast: false))
+            }
+            newTerminalRow(workspace)
+                .modifier(TerminalCardRow(isFirst: terminals.isEmpty, isLast: true))
         }
     }
 
@@ -149,9 +153,8 @@ struct TerminalListView: View {
         }
     }
 
-    /// `headerOutset` widens the header past the card on both sides.
     private func workspaceSection(
-        _ workspace: TerminalWorkspaceGroup, showsHost: Bool, headerOutset: CGFloat = 0
+        _ workspace: TerminalWorkspaceGroup, showsHost: Bool
     ) -> some View {
         Section {
             if !workspace.isCollapsed {
@@ -167,7 +170,6 @@ struct TerminalListView: View {
                 workspace: workspace,
                 showsHost: showsHost,
                 onToggle: { toggle(workspace.id) })
-                .padding(.horizontal, -headerOutset)
                 .padding(.vertical, -Self.workspaceHeaderTrim)
         }
         .listSectionSpacing(.custom(Self.workspaceSpacing))
@@ -373,6 +375,50 @@ struct TerminalTile: View {
                 tint == .secondary ? AnyShapeStyle(.fill.tertiary) : AnyShapeStyle(tint.opacity(0.16)),
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .accessibilityHidden(true)
+    }
+}
+
+/// One row of a By Host Workspace card. The plain list that lets Host
+/// headers pin has no cards of its own, so each row draws its slice: the
+/// first rounds the top, the last the bottom, and the rest a separator.
+private struct TerminalCardRow: ViewModifier {
+    /// From the screen edge to the card, as the Host header's inset.
+    static let margin: CGFloat = 16
+    private static let padding: CGFloat = 16
+    private static let radius: CGFloat = 20
+    /// From the card's edge to a row's title, past the 30-point tile.
+    private static let separatorInset: CGFloat = 16 + 30 + 12
+
+    let isFirst: Bool
+    let isLast: Bool
+    @Environment(\.displayScale) private var displayScale
+
+    func body(content: Content) -> some View {
+        let top = isFirst ? Self.radius : 0
+        let bottom = isLast ? Self.radius : 0
+        content
+            .listRowInsets(
+                EdgeInsets(
+                    top: 12, leading: Self.margin + Self.padding, bottom: 12,
+                    trailing: Self.margin + Self.padding))
+            .listRowSeparator(.hidden)
+            .listRowBackground(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: top, bottomLeadingRadius: bottom,
+                    bottomTrailingRadius: bottom, topTrailingRadius: top,
+                    style: .continuous
+                )
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .overlay(alignment: .bottom) {
+                    if !isLast {
+                        Rectangle()
+                            .fill(Color(uiColor: .separator))
+                            .frame(height: 1 / displayScale)
+                            .padding(.leading, Self.separatorInset)
+                            .padding(.trailing, Self.padding)
+                    }
+                }
+                .padding(.horizontal, Self.margin))
     }
 }
 
