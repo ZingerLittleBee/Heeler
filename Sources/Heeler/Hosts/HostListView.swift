@@ -593,7 +593,8 @@ private struct HostRetryButton: View {
                     if isBusy { ProgressView().controlSize(.small) }
                 }
                 .frame(width: 30, height: 30)
-                .background(.fill.tertiary, in: Circle())
+                // The icon's own hue, faint: a gray disc fights the blue.
+                .background(.tint.opacity(0.12), in: Circle())
                 // The full 44-point target around the smaller circle.
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
