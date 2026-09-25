@@ -37,6 +37,7 @@ struct ConsoleView: View {
     @AppStorage("console.last-list-tab") private var lastListTab: ConsoleTab = .agents
     @State private var isSearchTabSelected = false
     @State private var isHostsTabSelected = false
+    @State private var isSettingsTabSelected = false
     @State private var isStartingTerminal = false
     @State private var terminalPresentation = TerminalListPresentationStore()
     /// Where the detail column's navigation bar starts, in window
@@ -48,7 +49,6 @@ struct ConsoleView: View {
     /// on its stack.
     @State private var hostsTabRequest: HostsTabRequest?
     @State private var isStartingAgent = false
-    @State private var isShowingSettings = false
     @State private var connectionDetailRequest: ConnectionDetailRequest?
     /// Hosts whose Host-detail Reconnect request is in flight, including the
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
@@ -119,6 +119,23 @@ struct ConsoleView: View {
                     })
                 .id(hostsTabRequest?.id)
             }
+            Tab(value: ConsoleTab.settings) {
+                // SettingsView brings its own NavigationStack.
+                SettingsView(
+                    terminal: terminal,
+                    appearance: appearance,
+                    pushRegistration: pushRegistration,
+                    notificationPreferences: notificationPreferences,
+                    relaySettings: relaySettings,
+                    liveActivities: liveActivities,
+                    console: console,
+                    hosts: hosts.hosts)
+            } label: {
+                // Outlined, as Terminals is: filled, the gear is the heaviest
+                // icon in the bar.
+                Label(ConsoleTab.settings.title, systemImage: "gearshape")
+                    .environment(\.symbolVariants, .none)
+            }
             // The system search tab: on iPhone it turns the tab bar into the
             // search field, which only works when `searchable` sits inside
             // this tab rather than around the TabView.
@@ -183,20 +200,6 @@ struct ConsoleView: View {
             _, detail in
             if detail == nil { connectionDetailRequest = nil }
         }
-        .sheet(isPresented: $isShowingSettings) {
-            SettingsView(
-                terminal: terminal,
-                appearance: appearance,
-                pushRegistration: pushRegistration,
-                notificationPreferences: notificationPreferences,
-                relaySettings: relaySettings,
-                liveActivities: liveActivities,
-                console: console,
-                hosts: hosts.hosts)
-            .modifier(ConsoleSheetPresentationModifier(
-                presentation: ConsoleSheetPresentation(
-                    horizontalSizeClass: horizontalSizeClass)))
-        }
         .modifier(
             ConsoleStatusBarModifier(
                 scheme: terminalStatusBarColorScheme
@@ -221,11 +224,12 @@ struct ConsoleView: View {
         .onChange(of: notificationRouter.path) { _, path in
             guard !path.isEmpty else { return }
             selectedTerminal = nil
-            // Hosts has no detail column; the Agent shows on its list tab.
+            // Hosts and Settings have no detail column; the Agent shows on
+            // its list tab.
             isHostsTabSelected = false
+            isSettingsTabSelected = false
             isStartingAgent = false
             isStartingTerminal = false
-            isShowingSettings = false
         }
         // A Host opened on request belongs to that one visit: once the user
         // leaves the Hosts tab, it reopens on its list.
@@ -249,11 +253,13 @@ struct ConsoleView: View {
             get: {
                 if isSearchTabSelected { return .search }
                 if isHostsTabSelected { return .hosts }
+                if isSettingsTabSelected { return .settings }
                 return ConsoleTab(rawValue: sceneListTab) ?? lastListTab
             },
             set: { tab in
                 isSearchTabSelected = tab == .search
                 isHostsTabSelected = tab == .hosts
+                isSettingsTabSelected = tab == .settings
                 guard tab.isList else { return }
                 sceneListTab = tab.rawValue
                 lastListTab = tab
@@ -335,8 +341,8 @@ struct ConsoleView: View {
                     onOpenHost: { openHostIssue($0) },
                     onNewTerminal: { isStartingTerminal = true })
             }
-        case .hosts:
-            // The Hosts tab shows HostListView, not a split view.
+        case .hosts, .settings:
+            // These tabs show their own screens, not a split view.
             EmptyView()
         case .search:
             searchResults
@@ -408,12 +414,6 @@ struct ConsoleView: View {
                 .accessibilityValue(terminalPresentation.mode.title)
             }
         }
-        ToolbarItem(placement: .primaryAction) {
-            Button("Settings", systemImage: "gearshape") {
-                isShowingSettings = true
-            }
-            .hoverEffect(.highlight)
-        }
         if !hosts.hosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 if tab == .terminals {
@@ -451,8 +451,8 @@ struct ConsoleView: View {
                         ? filteredAgents.map(\.id)
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
                     isSearchFocused: isSearchFocused,
-                    isCovered: isHostsTabSelected || isStartingAgent || isStartingTerminal
-                        || isShowingSettings || connectionDetailRequest != nil,
+                    isCovered: isHostsTabSelected || isSettingsTabSelected || isStartingAgent
+                        || isStartingTerminal || connectionDetailRequest != nil,
                     inputMode: inputMode.mode)
             },
             navigate: { id in
@@ -465,12 +465,12 @@ struct ConsoleView: View {
                 notificationRouter.path = [id]
             },
             focusSearch: {
-                isSearchTabSelected = true
+                selectedTab.wrappedValue = .search
                 isSearchPresented = true
                 isSearchFocused = true
             },
             newAgent: { isStartingAgent = true },
-            settings: { isShowingSettings = true },
+            settings: { selectedTab.wrappedValue = .settings },
             hosts: { presentHosts() },
             closeAgent: { clearSelection() })
     }
@@ -1096,8 +1096,7 @@ struct ConsoleView: View {
             hostsTabRequest = HostsTabRequest(
                 hostID: id, origin: currentTab == .hosts ? nil : currentTab)
         }
-        isSearchTabSelected = false
-        isHostsTabSelected = true
+        selectedTab.wrappedValue = .hosts
     }
 
     private func reconnectHost(_ id: Host.ID) async {

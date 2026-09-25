@@ -93,7 +93,7 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Console**:
-The native dashboard surface, split into Agents, Terminals, Hosts, and Search tabs; the lists and Search share one Host filter. Agents lists Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, opening Agent detail; grouping is independent of Agent ordering and Pin priority. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. Search finds Agents and Terminals at once. The Console reopens the list tab it last showed.
+The native dashboard surface, split into Agents, Terminals, Hosts, Settings, and Search tabs; the lists and Search share one Host filter. Agents lists Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, opening Agent detail; grouping is independent of Agent ordering and Pin priority. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. Search finds Agents and Terminals at once. The Console reopens the list tab it last showed.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
