@@ -130,7 +130,7 @@ struct HostConnectionDetailView: View {
                 HostFormView(store: catalog, editing: host)
             }
         }
-        .presentationDetents([.fraction(0.45), .large])
+        .presentationDetents([.fraction(0.6), .large])
         .presentationDragIndicator(.visible)
     }
 
