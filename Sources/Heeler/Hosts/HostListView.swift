@@ -587,7 +587,7 @@ private struct HostRetryButton: View {
             // and three prominent buttons in a row shout over it.
             Image(systemName: "arrow.clockwise")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(Self.glyph)
                 .opacity(isBusy ? 0 : 1)
                 .overlay {
                     if isBusy { ProgressView().controlSize(.small) }
@@ -595,7 +595,7 @@ private struct HostRetryButton: View {
                 .frame(width: 30, height: 30)
                 // Gray on gray: the stopped Host's red reason stays the one
                 // color in the row.
-                .background(.fill.tertiary, in: Circle())
+                .background(Self.disc, in: Circle())
                 // The full 44-point target around the smaller circle.
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -605,6 +605,16 @@ private struct HostRetryButton: View {
         .accessibilityLabel(isBusy ? "Connecting" : "Retry")
         .accessibilityAddTraits(isBusy ? .updatesFrequently : [])
     }
+
+    // On the light card the dark palette's pairing reads as disabled: the
+    // disc is too heavy and the glyph too faint on it. Light mode lightens
+    // the disc and darkens the glyph.
+    private static let glyph = Color(uiColor: UIColor {
+        $0.userInterfaceStyle == .dark ? .secondaryLabel : UIColor.label.withAlphaComponent(0.6)
+    })
+    private static let disc = Color(uiColor: UIColor {
+        $0.userInterfaceStyle == .dark ? .tertiarySystemFill : .quaternarySystemFill
+    })
 }
 
 /// A Host's connection state in a word or two: a connected Host's latency,
