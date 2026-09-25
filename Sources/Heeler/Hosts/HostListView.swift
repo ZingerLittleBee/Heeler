@@ -587,14 +587,15 @@ private struct HostRetryButton: View {
             // and three prominent buttons in a row shout over it.
             Image(systemName: "arrow.clockwise")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.tint)
+                .foregroundStyle(Color.secondary)
                 .opacity(isBusy ? 0 : 1)
                 .overlay {
                     if isBusy { ProgressView().controlSize(.small) }
                 }
                 .frame(width: 30, height: 30)
-                // The icon's own hue, faint: a gray disc fights the blue.
-                .background(.tint.opacity(0.12), in: Circle())
+                // Gray on gray: the stopped Host's red reason stays the one
+                // color in the row.
+                .background(.fill.tertiary, in: Circle())
                 // The full 44-point target around the smaller circle.
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
