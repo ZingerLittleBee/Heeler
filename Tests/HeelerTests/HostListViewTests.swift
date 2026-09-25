@@ -168,4 +168,11 @@ struct HostRowPresentationTests {
         #expect(sections.map(\.group) == [.cannotConnect, .connected])
         #expect(sections.last?.entries.map(\.host.displayName) == ["a", "c"])
     }
+
+    @Test func collapsedGroupsSurviveARelaunch() throws {
+        let defaults = try #require(UserDefaults(suiteName: "HostHealthGroupTests-\(UUID())"))
+        #expect(HostHealthGroup.collapsed(in: defaults).isEmpty)
+        HostHealthGroup.save([.connected, .cannotConnect], in: defaults)
+        #expect(HostHealthGroup.collapsed(in: defaults) == [.connected, .cannotConnect])
+    }
 }

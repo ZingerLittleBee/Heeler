@@ -80,8 +80,9 @@ struct HostListView: View {
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
     @State private var editingHost: Host?
-    /// Collapsed `HostHealthGroup` raw values, comma-separated.
-    @AppStorage("host-list.collapsed-groups") private var collapsedGroups = ""
+    /// State, not `@AppStorage`: a defaults write lands outside the toggle's
+    /// animation, so the group would snap shut.
+    @State private var collapsedGroups: Set<HostHealthGroup>
     @State private var isScanningToPair = false
     @State private var manualFallbackRequested = false
     /// Stashed while a Host form / Pairing scan sheet dismisses; navigation
@@ -110,6 +111,7 @@ struct HostListView: View {
         self.retryConnection = retryConnection
         self.origin = origin
         _removal = State(initialValue: HostRemovalStore(store: store))
+        _collapsedGroups = State(initialValue: HostHealthGroup.collapsed(in: .standard))
     }
 
     var body: some View {
@@ -282,15 +284,14 @@ struct HostListView: View {
     }
 
     private func isCollapsed(_ group: HostHealthGroup) -> Bool {
-        collapsedGroups.split(separator: ",").contains { Int($0) == group.rawValue }
+        collapsedGroups.contains(group)
     }
 
     private func toggle(_ group: HostHealthGroup) {
-        var collapsed = Set(collapsedGroups.split(separator: ",").compactMap { Int($0) })
-        if !collapsed.insert(group.rawValue).inserted { collapsed.remove(group.rawValue) }
         withAnimation(reduceMotion ? nil : .snappy) {
-            collapsedGroups = collapsed.sorted().map(String.init).joined(separator: ",")
+            if !collapsedGroups.insert(group).inserted { collapsedGroups.remove(group) }
         }
+        HostHealthGroup.save(collapsedGroups, in: .standard)
     }
 
     @ViewBuilder
@@ -408,6 +409,16 @@ enum HostHealthGroup: Int, CaseIterable, Comparable {
     }
 
     static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+
+    private static let collapsedKey = "host-list.collapsed-groups"
+
+    static func collapsed(in defaults: UserDefaults) -> Set<Self> {
+        Set((defaults.array(forKey: collapsedKey) as? [Int] ?? []).compactMap(Self.init(rawValue:)))
+    }
+
+    static func save(_ collapsed: Set<Self>, in defaults: UserDefaults) {
+        defaults.set(collapsed.map(\.rawValue).sorted(), forKey: collapsedKey)
+    }
 }
 
 /// One Host on the Hosts list, with how its row reads.
@@ -578,9 +589,12 @@ private struct HostRetryButton: View {
                     if isBusy { ProgressView().controlSize(.small) }
                 }
         }
+        // Small and light: a stopped Host's reason is the row's point, and
+        // three prominent buttons in a row shout over it.
+        .font(.subheadline.weight(.medium))
         .buttonStyle(.bordered)
         .buttonBorderShape(.capsule)
-        .fontWeight(.semibold)
+        .controlSize(.small)
         .allowsHitTesting(!isBusy)
         .accessibilityLabel(isBusy ? "Connecting" : "Retry")
         .accessibilityAddTraits(isBusy ? .updatesFrequently : [])
