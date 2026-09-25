@@ -124,13 +124,16 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     }
 
     /// Client-side Agents search (#292): a trimmed, case-insensitive
-    /// substring match over the working directory and the title/visible
-    /// text. An empty query matches every agent.
+    /// substring match over what an Agent row shows: its Host, working
+    /// directory, kind, and title/visible text. An empty query matches every
+    /// agent.
     func matchesAgentSearch(_ query: String) -> Bool {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return true }
         let candidates: [String?] = [
+            hostName,
             agent.cwd,
+            agent.kind,
             workspaceLabel,
             tabLabel,
             paneLabel,

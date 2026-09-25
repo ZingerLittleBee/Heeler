@@ -55,6 +55,17 @@ struct ConsoleAgentSearchTests {
         #expect(!agent.matchesAgentSearch("definitely-absent"))
     }
 
+    /// The row prints its Host and kind, so both find it; a custom name
+    /// does not hide the kind.
+    @Test func matchesHostNameAndKind() {
+        let host = Host.fixture(name: "studio-mac")
+        let named = makeAgent(host: host, paneID: "w1:p1", name: "reviewer")
+        #expect(named.matchesAgentSearch("STUDIO"))
+        #expect(named.matchesAgentSearch("codex"))
+        #expect(named.matchesAgentSearch("reviewer"))
+        #expect(!named.matchesAgentSearch("laptop"))
+    }
+
     @Test func matchesEachTitleAndVisibleTextField() {
         let host = Host.fixture(name: "studio")
         let marker = "QuarryQuartz"

@@ -21,8 +21,8 @@ Entries reference the issue that motivated them.
   a Host, an existing or new Workspace, and an optional tab name. Swipe a
   terminal to close it after confirming, or long-press it to open another in
   its Workspace or copy its path. Pull either list down to reveal its search
-  field; Terminals search matches Host, Workspace, tab, title, and
-  directory. (#316; PR #377)
+  field, which matches a row's Host, Workspace, tab, title, and directory,
+  and an Agent's kind. (#316; PR #377)
 
 ### Changed
 
