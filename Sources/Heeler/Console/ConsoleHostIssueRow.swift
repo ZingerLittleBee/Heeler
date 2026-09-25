@@ -57,8 +57,10 @@ struct ConsoleHostIssueList: View {
     let onOpenHost: (Host.ID) -> Void
 
     static let cornerRadius: CGFloat = 20
-    /// Past the glyph and its gap, where a row's text starts.
-    private static let textInset: CGFloat = 28
+    /// The leading column every row shares, as wide as a terminal row's
+    /// tile, and the gap after it: all text starts on one edge.
+    static let iconColumn: CGFloat = 30
+    static let iconGap: CGFloat = 12
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
@@ -89,25 +91,25 @@ struct ConsoleHostIssueList: View {
         Button {
             withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
         } label: {
-            HStack(spacing: 8) {
-                HStack(alignment: .top, spacing: 8) {
-                    HostStatusGlyph(tone: summary.tone)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(summary.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.primary)
-                        // Chips wrap whole, never splitting "1 connecting".
-                        ChipWrap(spacing: 12, lineSpacing: 4) {
-                            ForEach(summary.counts, id: \.text) { count in
-                                HStack(spacing: 5) {
-                                    Circle()
-                                        .fill(count.tone.tint)
-                                        .frame(width: 6, height: 6)
-                                    Text(count.text)
-                                }
-                                .font(.footnote)
-                                .foregroundStyle(Color.secondary)
+            HStack(spacing: Self.iconGap) {
+                // A tile as on terminal rows, centered on the text beside it;
+                // its color is the worst state's, so no badge is needed.
+                TerminalTile(systemImage: "server.rack", tint: summary.tone.tint)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(summary.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                    // Chips wrap whole, never splitting "1 connecting".
+                    ChipWrap(spacing: 12, lineSpacing: 2) {
+                        ForEach(summary.counts, id: \.text) { count in
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(count.tone.tint)
+                                    .frame(width: 6, height: 6)
+                                Text(count.text)
                             }
+                            .font(.footnote)
+                            .foregroundStyle(Color.secondary)
                         }
                     }
                 }
@@ -118,7 +120,7 @@ struct ConsoleHostIssueList: View {
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     .frame(width: 12)
             }
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -133,7 +135,7 @@ struct ConsoleHostIssueList: View {
         Rectangle()
             .fill(Color(uiColor: .separator))
             .frame(height: 1 / displayScale)
-            .padding(.leading, Self.textInset)
+            .padding(.leading, Self.iconColumn + Self.iconGap)
     }
 }
 
@@ -155,8 +157,11 @@ struct ConsoleHostIssueCompactRow: View {
     }
 
     private var label: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: ConsoleHostIssueList.iconGap) {
+            // In the summary tile's column, so names start where its title
+            // does.
             HostStatusGlyph(tone: issue.tone)
+                .frame(width: ConsoleHostIssueList.iconColumn)
             Text(issue.hostName)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(HostReadiness(text: issue.status, tone: issue.tone).nameEmphasis.color)
