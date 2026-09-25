@@ -24,12 +24,13 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- A Host's connection state reads at a glance: Host headers in the Agents
-  and Terminals tabs drop their line of text and show a status icon at the
-  trailing edge only when a Host needs noticing, and the Hosts list uses
-  the same icons. Each state has its own shape as well as color: a dotted
-  circle while connecting, orange arrows while reconnecting, and a red
-  exclamation mark once a Host stops on a failure. (#316; PR #377)
+- Hosts that stopped on a failure leave the Agents and Terminals lists and
+  gather at the bottom under Can't Connect, each with the reason it stopped
+  and a Retry button; tapping one opens it in the Hosts tab. The remaining
+  Host headers stay grayscale: a Host that is connecting, reconnecting, or
+  paused dims its name and says so in a short word on the right, and a
+  connected Host shows nothing extra. The Hosts list marks each state with
+  its own icon shape as well as color. (#316; PR #377)
 
 ### Fixed
 

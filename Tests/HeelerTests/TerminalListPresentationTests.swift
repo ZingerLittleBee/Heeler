@@ -33,13 +33,15 @@ struct TerminalListProjectionTests {
         hosts: [Host], terminals: [ConsoleTerminal] = [],
         workspaces: [Host.ID: [ConsoleWorkspace]] = [:], agents: [ConsoleAgent] = [],
         statuses: [Host.ID: EventsSessionStatus] = [:],
+        standingFailures: [Host.ID: TransportError] = [:],
         awaiting: Set<Host.ID> = [],
         collapsedWorkspaces: Set<TerminalWorkspaceGroup.ID> = [],
         collapsedHosts: Set<Host.ID> = []
     ) -> TerminalListProjection {
         TerminalListProjection(
             hosts: hosts, terminals: terminals, workspacesByHost: workspaces, agents: agents,
-            hostStatuses: statuses, hostStandingFailures: [:], hostsAwaitingSnapshot: awaiting,
+            hostStatuses: statuses, hostStandingFailures: standingFailures,
+            hostsAwaitingSnapshot: awaiting,
             hostSyncErrors: [:], collapsedWorkspaces: collapsedWorkspaces,
             collapsedHosts: collapsedHosts)
     }
@@ -165,6 +167,31 @@ struct TerminalListProjectionTests {
         #expect(last.readiness.text == "Paused")
         #expect(last.issue != nil)
         #expect(last.isCollapsed)
+    }
+
+    @Test func stoppedHostsLeaveBothPresentationsForTheClosingList() {
+        let live = Host.fixture(name: "live")
+        let stopped = Host.fixture(name: "stopped")
+        let retrying = Host.fixture(name: "retrying")
+        let list = projection(
+            hosts: [live, stopped, retrying],
+            statuses: [
+                live.id: .reconnecting(attempt: 2, delay: .seconds(2), failure: .timedOut),
+                stopped.id: .failed(.authenticationFailed),
+                retrying.id: .connecting,
+            ],
+            standingFailures: [retrying.id: .streamLocalOpenFailed(path: "/s")])
+        #expect(list.hostGroups().map(\.hostName) == ["live"])
+        #expect(list.issues().map(\.hostName) == ["live"])
+        let unreachable = list.unreachableHosts()
+        #expect(unreachable.map(\.hostName) == ["stopped", "retrying"])
+        // Stopped: the whole presentation. Retrying: no Recovery Suggestion.
+        #expect(unreachable.map(\.reason) == [
+            TransportError.authenticationFailed.presentation.message,
+            TransportError.streamLocalOpenFailed(path: "/s").presentation.explanation,
+        ])
+        #expect(unreachable.map(\.isRetrying) == [false, true])
+        #expect(list.unreachableHosts(filteredHostID: live.id).isEmpty)
     }
 
     @Test func connectedHostWithoutShellsReadsNoTerminals() {

@@ -296,6 +296,7 @@ struct ConsoleView: View {
                     selection: selectedItem,
                     onOpen: { selectTerminal($0) },
                     onOpenHost: { presentHosts($0) },
+                    onRetryHost: { id in Task { await reconnectHost(id) } },
                     onNewTerminal: { isStartingTerminal = true })
             }
         case .hosts:
@@ -687,6 +688,12 @@ struct ConsoleView: View {
                 } else {
                     groupedAgentListRows
                 }
+                if !unreachableHosts.isEmpty {
+                    UnreachableHostsSection(
+                        hosts: unreachableHosts,
+                        onOpen: { presentHosts($0) },
+                        onRetry: { id in Task { await reconnectHost(id) } })
+                }
             }
             .listStyle(.plain)
         }
@@ -950,16 +957,28 @@ struct ConsoleView: View {
             hostCount: hosts.hosts.count,
             filteredHostName: hostFilter == nil ? nil : filteredHostName,
             filteredAgentCount: filteredAgents.count,
-            visibleIssueCount: visibleHostIssues.count,
+            visibleIssueCount: visibleHostIssues.count + unreachableHosts.count,
             presentationMode: listPresentation.mode,
-            projectedSectionCount: hostSections.count,
+            projectedSectionCount: hostSections.count + unreachableHosts.count,
             searchQuery: "")
     }
 
+    /// One section per Host, less those in the closing Can't Connect
+    /// section: a stopped Host is listed there alone.
     private var hostSections: [ConsoleHostSection] {
-        listPresentation.sections(
+        let unreachable = Set(unreachableHosts.map(\.hostID))
+        return listPresentation.sections(
             hosts: hosts.hosts,
             console: console,
+            filteredHostID: hostFilter
+        ).filter { !unreachable.contains($0.hostID) }
+    }
+
+    private var unreachableHosts: [UnreachableHost] {
+        UnreachableHost.list(
+            hosts: hosts.hosts,
+            statuses: console.hostStatuses,
+            standingFailures: console.hostStandingFailures,
             filteredHostID: hostFilter)
     }
 
@@ -992,8 +1011,10 @@ struct ConsoleView: View {
     /// Host issues shown in the list: all of them, or the filtered Host's
     /// only — a filtered Console should not nag about other machines.
     private var visibleHostIssues: [ConsoleHostStatusPresentation] {
-        guard let hostFilter else { return hostIssues }
-        return hostIssues.filter { $0.hostID == hostFilter }
+        let unreachable = Set(unreachableHosts.map(\.hostID))
+        return hostIssues.filter {
+            (hostFilter == nil || $0.hostID == hostFilter) && !unreachable.contains($0.hostID)
+        }
     }
 
     private var filteredHostName: String {
@@ -1240,18 +1261,14 @@ private struct ConsoleHostSectionHeaderView: View {
                     .accessibilityHidden(true)
                 Text(presentation.hostDisplayName)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(presentation.readiness.dimsName ? .secondary : .primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if presentation.showsStatusPills {
                     ConsoleHostStatusCountPills(items: presentation.statusItems)
                         .accessibilityHidden(true)
                 }
-                // Trailing, so every Host's status lines up in one column
-                // whatever the length of its name.
-                if presentation.readiness.showsIcon {
-                    HostConnectionStatusIcon(tone: presentation.readiness.tone)
-                }
+                HostReadinessText(readiness: presentation.readiness)
             }
             .contentShape(Rectangle())
             .padding(.vertical, 4)

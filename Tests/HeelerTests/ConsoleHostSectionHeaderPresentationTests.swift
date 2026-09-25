@@ -99,10 +99,18 @@ struct ConsoleHostSectionHeaderPresentationTests {
         #expect(tone(.suspended) == .paused)
     }
 
-    @Test func onlyAHostWorthNoticingShowsAHeaderIcon() {
-        #expect(!HostReadiness(text: "Connected", tone: .connected).showsIcon)
-        #expect(HostReadiness(text: "Loading Agents…", tone: .pending).showsIcon)
-        #expect(HostReadiness(text: "Unavailable", tone: .unavailable).showsIcon)
+    @Test func onlyAHostWorthNoticingShowsHeaderStatus() {
+        #expect(!HostReadiness(text: "Connected", tone: .connected).showsStatus)
+        #expect(HostReadiness(text: "Loading Agents…", tone: .pending).showsStatus)
+        #expect(HostReadiness(text: "Sync issue", tone: .warning).showsStatus)
+    }
+
+    @Test func aHostThatCannotListAnythingDimsItsName() {
+        #expect(!HostReadiness(text: "Connected", tone: .connected).dimsName)
+        #expect(!HostReadiness(text: "Sync issue", tone: .warning).dimsName)
+        #expect(HostReadiness(text: "Connecting…", tone: .pending).dimsName)
+        #expect(HostReadiness(text: "Reconnecting…", tone: .reconnecting).dimsName)
+        #expect(HostReadiness(text: "Paused", tone: .paused).dimsName)
     }
 
     @Test func statusPillsAreCollapsedOnlyButVoiceOverKeepsTheBreakdown() {
