@@ -741,7 +741,16 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var flatAgentListRows: some View {
-        ConsoleHostIssueList(issues: visibleHostIssues) { openHostIssue($0) }
+        if !visibleHostIssues.isEmpty {
+            // Gray on the plain list's white, where the Terminals tab's
+            // white card would vanish.
+            ConsoleHostIssueList(
+                issues: visibleHostIssues, fill: Color(uiColor: .secondarySystemBackground)
+            ) { openHostIssue($0) }
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
         ForEach(filteredAgents) { agent in
             agentRow(agent)
         }

@@ -22,6 +22,9 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     let tone: HostConnectionTone
     /// A few words for a compact row: "Reconnecting…", "Can't connect".
     let status: String
+    /// Connected but loading or out of sync, rather than without a
+    /// connection at all.
+    let isConnected: Bool
 
     var id: Host.ID { hostID }
     var isCritical: Bool { severity == .critical }
@@ -36,6 +39,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     ) {
         hostID = host.id
         hostName = host.displayName
+        isConnected = if case .connected = status { true } else { false }
         switch status {
         case .suspended:
             message = "Connection to \(host.displayName) is paused."
@@ -121,27 +125,40 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
 /// handful of unreachable Hosts cannot push the inventory off screen.
 /// Absent for fewer than two: one condition shows as its own row.
 struct ConsoleHostIssueSummary: Equatable {
+    /// Hosts sharing one status, shown as a chip with its tone's dot.
+    struct Count: Equatable {
+        let tone: HostConnectionTone
+        /// "3 reconnecting"
+        let text: String
+    }
+
     let title: String
-    let detail: String
+    let counts: [Count]
     /// The most serious badge among the Hosts.
     let tone: HostConnectionTone
 
+    /// The counts in a sentence, for VoiceOver.
+    var detail: String { counts.map(\.text).joined(separator: ", ") }
+
     init?(issues: [ConsoleHostStatusPresentation]) {
         guard issues.count > 1 else { return nil }
-        title = "\(issues.count) Hosts"
+        // Loading or out of sync is not "not connected"; say less then.
+        title =
+            issues.contains(where: \.isConnected)
+            ? "\(issues.count) Hosts not ready" : "\(issues.count) Hosts not connected"
         // One count per status, in the order the worst first appears.
         let ranked = issues.sorted { Self.rank($0.tone) > Self.rank($1.tone) }
-        var counts: [(status: String, count: Int)] = []
+        var grouped: [(tone: HostConnectionTone, status: String, count: Int)] = []
         for issue in ranked {
             // "Reconnecting…" counts as "3 reconnecting".
             let status = issue.status.lowercased().replacingOccurrences(of: "…", with: "")
-            if let index = counts.firstIndex(where: { $0.status == status }) {
-                counts[index].count += 1
+            if let index = grouped.firstIndex(where: { $0.status == status }) {
+                grouped[index].count += 1
             } else {
-                counts.append((status, 1))
+                grouped.append((issue.tone, status, 1))
             }
         }
-        detail = counts.map { "\($0.count) \($0.status)" }.joined(separator: " · ")
+        counts = grouped.map { Count(tone: $0.tone, text: "\($0.count) \($0.status)") }
         tone = ranked.first?.tone ?? .pending
     }
 

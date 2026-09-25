@@ -261,8 +261,24 @@ struct ConsoleHostIssueSummaryTests {
             issue("c", reconnecting), issue("d", .failed(.authenticationFailed)),
         ].compactMap { $0 }
         let summary = try #require(ConsoleHostIssueSummary(issues: issues))
-        #expect(summary.title == "4 Hosts")
-        #expect(summary.detail == "2 can't connect · 2 reconnecting")
+        #expect(summary.title == "4 Hosts not connected")
+        #expect(
+            summary.counts == [
+                .init(tone: .unavailable, text: "2 can't connect"),
+                .init(tone: .reconnecting, text: "2 reconnecting"),
+            ])
+        #expect(summary.detail == "2 can't connect, 2 reconnecting")
         #expect(summary.tone == .unavailable)
+    }
+
+    /// A connected Host that is loading or out of sync is not "not
+    /// connected", so the title says less.
+    @Test func aConnectedHostMakesTheTitleNotReady() throws {
+        let loading = ConsoleHostStatusPresentation(
+            host: Host.fixture(name: "b"), status: .connected, isAwaitingSnapshot: true,
+            syncError: nil)
+        let issues = [issue("a", .failed(.timedOut)), loading].compactMap { $0 }
+        let summary = try #require(ConsoleHostIssueSummary(issues: issues))
+        #expect(summary.title == "2 Hosts not ready")
     }
 }

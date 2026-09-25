@@ -76,8 +76,11 @@ struct TerminalListView: View {
             List(selection: $selection) {
                 if !issues.isEmpty {
                     Section {
-                        ConsoleHostIssueList(issues: issues, onOpenHost: onOpenHost)
-                            .listRowBackground(ListCard.fill)
+                        // The card draws itself, as in the Agents tab.
+                        ConsoleHostIssueList(
+                            issues: issues, fill: ListCard.fill, onOpenHost: onOpenHost)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                     }
                 }
                 ForEach(workspaces) { workspace in
