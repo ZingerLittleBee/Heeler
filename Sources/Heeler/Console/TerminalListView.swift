@@ -128,23 +128,18 @@ struct TerminalListView: View {
     ) -> some View {
         Section {
             if !workspace.isCollapsed {
-                if workspace.terminals.isEmpty {
-                    newTerminalRow(workspace)
-                } else {
-                    ForEach(workspace.terminals) {
-                        terminalRow($0, showsTab: workspace.terminals.count > 1)
-                    }
+                ForEach(workspace.terminals) {
+                    terminalRow($0, showsTab: workspace.terminals.count > 1)
                 }
+                // Every card ends in New Terminal, clear of the header's
+                // collapse control: a mistap there would open a real tab.
+                newTerminalRow(workspace)
             }
         } header: {
             TerminalWorkspaceHeader(
                 workspace: workspace,
                 showsHost: showsHost,
-                isCreating: creating.contains(workspace.id),
-                onToggle: { toggle(workspace.id) },
-                onCreate: workspace.directory.map { directory in
-                    { create(in: workspace, cwd: directory) }
-                })
+                onToggle: { toggle(workspace.id) })
         }
     }
 
@@ -373,14 +368,12 @@ struct TerminalTile: View {
     }
 }
 
-/// A Workspace card's header: name, a quiet Host, and a plain + that opens
-/// a new shell tab in the Workspace. Tapping the name collapses the card.
+/// A Workspace card's header: name, a quiet Host, and the chevron that
+/// collapses the card. New Terminal lives in the card itself.
 private struct TerminalWorkspaceHeader: View {
     let workspace: TerminalWorkspaceGroup
     let showsHost: Bool
-    let isCreating: Bool
     let onToggle: () -> Void
-    let onCreate: (() -> Void)?
 
     private var detail: String? {
         var parts: [String] = []
@@ -390,51 +383,39 @@ private struct TerminalWorkspaceHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Button(action: onToggle) {
-                HStack(spacing: 6) {
-                    Text(workspace.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.primary)
-                    if let detail {
-                        Text(detail)
-                            .font(.subheadline)
-                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                    }
-                    Image(systemName: workspace.isCollapsed ? "chevron.right" : "chevron.down")
-                        .font(.caption2.weight(.bold))
+        // Collapsing is the header's frequent action, so the whole row
+        // toggles and the chevron takes the trailing, thumb-side slot.
+        Button(action: onToggle) {
+            HStack(spacing: 6) {
+                Text(workspace.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.primary)
+                if let detail {
+                    Text(detail)
+                        .font(.subheadline)
                         .foregroundStyle(Color(uiColor: .tertiaryLabel))
                 }
-                .lineLimit(1)
-                .contentShape(Rectangle())
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.secondary)
+                    .rotationEffect(.degrees(workspace.isCollapsed ? 0 : 90))
+                    .frame(width: 44, height: 44)
             }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(
-                showsHost ? "\(workspace.title), \(workspace.hostName)" : workspace.title)
-            .accessibilityValue(
-                "\(workspace.terminals.count) terminals, \(workspace.isCollapsed ? "Collapsed" : "Expanded")"
-            )
-            .accessibilityHint(
-                workspace.isCollapsed ? "Expands this Workspace." : "Collapses this Workspace.")
-            .accessibilityAddTraits(.isHeader)
-            Spacer(minLength: 0)
-            if let onCreate {
-                Group {
-                    if isCreating {
-                        ProgressView()
-                    } else {
-                        Button("New Terminal in \(workspace.title)", systemImage: "plus", action: onCreate)
-                            .labelStyle(.iconOnly)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(Color.secondary)
-                            .buttonStyle(.plain)
-                            .hoverEffect(.highlight)
-                    }
-                }
-                .frame(width: 44, height: 44)
-            }
+            .lineLimit(1)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            showsHost ? "\(workspace.title), \(workspace.hostName)" : workspace.title)
+        .accessibilityValue(
+            "\(workspace.terminals.count) terminals, \(workspace.isCollapsed ? "Collapsed" : "Expanded")"
+        )
+        .accessibilityHint(
+            workspace.isCollapsed ? "Expands this Workspace." : "Collapses this Workspace.")
+        .accessibilityAddTraits(.isHeader)
         .textCase(nil)
         .frame(minHeight: 44)
     }

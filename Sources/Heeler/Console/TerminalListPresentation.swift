@@ -43,9 +43,9 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
     }
 }
 
-/// One Workspace card: its ordinary shell panes, in tab order. Agent panes
-/// stay on the Agents tab, so a Workspace running only Agents has no rows and
-/// offers New Terminal instead.
+/// One Workspace card: its ordinary shell panes, in tab order, then New
+/// Terminal. Agent panes stay on the Agents tab, so a Workspace running only
+/// Agents holds New Terminal alone.
 struct TerminalWorkspaceGroup: Identifiable, Equatable {
     /// Workspace ids are opaque and scoped to their Host.
     struct ID: Hashable, Sendable {
