@@ -126,7 +126,7 @@ This one command:
 1. replaces any duplicate or unrestricted occurrence of the key on the VPS
    Jump account with a forwarding-only entry;
 2. replaces any duplicate or unrestricted occurrence on the target Mac with
-   an exec-capable but non-forwarding entry;
+   an exec-capable entry that disables agent and X11 forwarding;
 3. preserves unrelated authorized keys on both systems;
 4. enforces the expected file ownership and permissions.
 
@@ -251,12 +251,12 @@ Jump account and the Mac account.
 
 **Run on: macOS**
 
-Replace `DEVICE_PUBLIC_KEY` with the complete public-key line copied from Herdr
-Mobile:
+Replace `DEVICE_PUBLIC_KEY` with the complete public-key line copied from
+Heeler:
 
 ```bash
 DEVICE_KEY='DEVICE_PUBLIC_KEY'
-DEVICE_ENTRY="no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc $DEVICE_KEY"
+DEVICE_ENTRY="no-agent-forwarding,no-X11-forwarding,no-user-rc $DEVICE_KEY"
 
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
@@ -266,7 +266,13 @@ chmod 600 ~/.ssh/authorized_keys
 ```
 
 These options keep the PTY, exec, and SFTP features Heeler needs while
-disabling agent, TCP, and X11 forwarding.
+disabling agent and X11 forwarding.
+
+Do not add `no-port-forwarding` here. OpenSSH applies it to stream-local
+forwarding as well as TCP, and Heeler reaches the herdr API socket through
+`direct-streamlocal` channels (ADR 0011). With that option, preflight fails at
+the herdr socket even though SSH authentication succeeds. It would add little
+protection anyway, because this key can already run commands on the Mac.
 
 Checkpoint:
 
@@ -658,7 +664,17 @@ Authentication: Device Key
 Jump Host address: VPS_PUBLIC_IP
 Jump Host port: VPS_SSH_PORT
 Jump Host user: herdr-jump
+
+herdr Session: leave blank
 ```
+
+The Jump Host port and user fields appear only after Jump Host address is
+filled in. If Jump Host user is left blank, Heeler reuses the Host user, and
+the VPS rejects it as an unknown account.
+
+Leave herdr Session blank to use the default session at
+`~/.config/herdr/herdr.sock`. Any value, including `default`, selects
+`~/.config/herdr/sessions/<name>/herdr.sock`.
 
 Run preflight.
 

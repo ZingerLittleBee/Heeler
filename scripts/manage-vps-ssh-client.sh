@@ -128,7 +128,7 @@ if [[ -e "$authorized_keys" && ! -f "$authorized_keys" ]]; then
   die "authorized_keys is not a regular file: $authorized_keys"
 fi
 
-local_entry="no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc ${key_input}"
+local_entry="no-agent-forwarding,no-X11-forwarding,no-user-rc ${key_input}"
 local_candidate="$(mktemp "${ssh_dir}/authorized_keys.candidate.XXXXXX")"
 local_source='/dev/null'
 if [[ -f "$authorized_keys" ]]; then
