@@ -179,12 +179,15 @@ The same Device Key public line must be authorized:
 Authorizing the key on only one hop results in a password prompt or an
 authentication failure on the other hop.
 
-On the Mac, keep PTY, exec, and SFTP available for Heeler while disabling
-capabilities the app does not need:
+On the Mac, keep PTY, exec, SFTP, and stream-local forwarding available for
+Heeler while disabling capabilities the app does not need:
 
 ```text
-no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc DEVICE_PUBLIC_KEY
+no-agent-forwarding,no-X11-forwarding,no-user-rc DEVICE_PUBLIC_KEY
 ```
+
+Do not add `no-port-forwarding`: OpenSSH also applies it to the
+`direct-streamlocal` channels Heeler uses to reach the herdr API socket.
 
 Append that line to `~/.ssh/authorized_keys`, then enforce:
 

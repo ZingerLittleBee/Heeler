@@ -128,7 +128,7 @@ printf '%s\n' "$public_key" \
 
 [[ "$(grep -c "$key_blob" "${target_home}/.ssh/authorized_keys")" == '1' ]]
 [[ "$(grep -c "$key_blob" "${remote_home}/.ssh/authorized_keys")" == '1' ]]
-grep -q "^no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc ${key_type} ${key_blob}" \
+grep -q "^no-agent-forwarding,no-X11-forwarding,no-user-rc ${key_type} ${key_blob}" \
   "${target_home}/.ssh/authorized_keys"
 grep -q "^restrict,port-forwarding,permitopen=\"127.0.0.1:2222\" ${key_type} ${key_blob}" \
   "${remote_home}/.ssh/authorized_keys"
