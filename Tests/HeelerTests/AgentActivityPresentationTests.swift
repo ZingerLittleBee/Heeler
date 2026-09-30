@@ -286,6 +286,23 @@ struct AgentActivityPresentationTests {
         #expect(four.lockScreenTrailingCaption(isStale: false) == "+1 more")
     }
 
+    /// The island clips its expanded content short of the 160 pt limit, which
+    /// used to cut the overflow caption in half under two three-row Agents.
+    @MainActor
+    @Test func expandedIslandRowsStayInsideTheHeightTheIslandLeavesThem() throws {
+        for count in [1, 2, 3, 5] {
+            let presentation = configuredPresentation(agentCount: count)
+            let rows = AgentActivityIslandRows(presentation: presentation, hostID: "host")
+                .frame(width: 335)
+            #expect(
+                try renderedSize(rows).height <= AgentActivityIslandMetrics.rowsHeightBudget + 0.5,
+                "\(count) agents")
+        }
+        let three = configuredPresentation(agentCount: 3)
+        #expect(three.expandedAgents.count == 2)
+        #expect(three.overflowCount == 1)
+    }
+
     @Test func threeRowCardsUseTheComfortableTargetHeight() {
         var agent = agentDetail(paneID: "w1:p1")
         agent.rows = [[.init(text: "1")], [.init(text: "2")], [.init(text: "3")]]
@@ -385,9 +402,14 @@ struct AgentActivityPresentationTests {
 
     @MainActor
     private func renderedWidth(_ view: some View) throws -> CGFloat {
+        try renderedSize(view).width
+    }
+
+    @MainActor
+    private func renderedSize(_ view: some View) throws -> CGSize {
         let renderer = ImageRenderer(content: view.environment(\.colorScheme, .dark))
         renderer.scale = 2
-        return try #require(renderer.uiImage).size.width
+        return try #require(renderer.uiImage).size
     }
 
     private func rgba(_ color: UIColor, _ style: UIUserInterfaceStyle) -> [Int] {

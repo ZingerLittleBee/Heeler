@@ -40,14 +40,18 @@ enum AgentActivityPresentation: Equatable, Sendable {
     }
 
     /// Rows drawn in the expanded Dynamic Island, under its status header:
-    /// as many of the first `rowLimit` Agents as the 160 pt height allows.
+    /// as many of the first `rowLimit` Agents as fit, with the overflow
+    /// caption when some are left out, in the height the island leaves them.
     var expandedAgents: [AgentActivityDetails.AgentDetail] {
+        let metrics = AgentActivityIslandMetrics.self
         let candidates = Array(agents.prefix(AgentActivityCopy.rowLimit))
         for shown in stride(from: candidates.count, through: 1, by: -1) {
             let prefix = Array(candidates.prefix(shown))
-            let rowHeight = prefix.reduce(0) { $0 + AgentActivityRowMetrics.minimumHeight(for: $1) }
-            let captionHeight = counts.total > shown ? 12 : 0
-            if rowHeight + CGFloat(captionHeight + 24 + shown * 4) <= 160 { return prefix }
+            let rowHeight = prefix.reduce(0) { $0 + metrics.rowHeight(for: $1) }
+            let lines = CGFloat(counts.total > shown ? shown + 1 : shown)
+            let captionHeight = counts.total > shown ? metrics.overflowCaptionHeight : 0
+            let height = rowHeight + captionHeight + (lines - 1) * metrics.rowSpacing
+            if height <= metrics.rowsHeightBudget { return prefix }
         }
         return Array(candidates.prefix(1))
     }

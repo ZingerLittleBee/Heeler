@@ -248,6 +248,28 @@ enum AgentActivityIslandMetrics {
     /// Shared by the expanded leading and trailing regions so their contents
     /// sit on one center line beside the camera.
     static let headerHeight: CGFloat = 20
+    static let rowSpacing: CGFloat = 2
+    /// Line heights of the `.caption` first line and `.caption2` later lines.
+    static let rowFirstLineHeight: CGFloat = 16
+    static let rowLineHeight: CGFloat = 13
+    static let overflowCaptionHeight: CGFloat = 12
+    /// Height the expanded island leaves for the rows and their overflow
+    /// caption. Measured on an iPhone 17 Pro simulator (iOS 27): the rows
+    /// start 46 pt below the island's top edge (system inset, header, and the
+    /// gap under it) and the system clips content 13 pt above the bottom
+    /// edge, which sits at most 160 pt down. A smaller bottom content margin
+    /// shortens the island without moving that clip.
+    static let rowsHeightBudget: CGFloat = 100
+
+    /// A row's text height. The island has no room for the lock screen's
+    /// padded 44 pt cards, so rows hug their lines; a one-line row still
+    /// keeps the dense target as its pitch.
+    static func rowHeight(for agent: AgentActivityDetails.AgentDetail) -> CGFloat {
+        let lines = AgentActivityFields.rows(for: agent).count
+        return max(
+            AgentActivityRowMetrics.denseMinimumHeight - rowSpacing,
+            rowFirstLineHeight + CGFloat(max(0, lines - 1)) * rowLineHeight)
+    }
 }
 
 /// Status shapes, so the tally never relies on color alone: an exclamation
@@ -408,13 +430,13 @@ struct AgentActivityIslandRows: View {
     let hostID: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: AgentActivityIslandMetrics.rowSpacing) {
             ForEach(presentation.expandedAgents, id: \.paneID) { agent in
                 AgentActivityLinkedRow(
                     hostID: hostID,
                     agent: agent,
                     surface: .island,
-                    minimumHeight: AgentActivityRowMetrics.minimumHeight(for: agent))
+                    minimumHeight: AgentActivityIslandMetrics.rowHeight(for: agent))
             }
             if presentation.overflowCount > 0 {
                 Text("+\(presentation.overflowCount) more")
@@ -424,6 +446,7 @@ struct AgentActivityIslandRows: View {
                         .leading,
                         AgentActivityIslandMetrics.markerColumn
                             + AgentActivityIslandMetrics.markerSpacing)
+                    .frame(height: AgentActivityIslandMetrics.overflowCaptionHeight)
             }
         }
     }
@@ -507,7 +530,9 @@ private struct AgentActivityLinkedRow: View {
             hostID: hostID,
             agent: agent,
             surface: surface,
-            minimumHeight: max(minimumHeight, AgentActivityRowMetrics.minimumHeight(for: agent))
+            minimumHeight: surface == .island
+                ? minimumHeight
+                : max(minimumHeight, AgentActivityRowMetrics.minimumHeight(for: agent))
         ) {
             AgentActivityRowView(agent: agent, surface: surface)
         }
@@ -616,7 +641,7 @@ struct AgentActivityRowView: View {
                 }
             }
         }
-        .padding(.vertical, agent.rows == nil ? 0 : 1)
+        .padding(.vertical, agent.rows == nil || surface == .island ? 0 : 1)
         .layoutPriority(1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
