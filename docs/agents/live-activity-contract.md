@@ -96,12 +96,14 @@ Decrypted plaintext (canonical form):
   `title` and legacy `name` fields, then `rows`, then send `agents: []`;
   workspace/kind identity remains after rows are dropped; counts always fit.
 
-The widget renders the configured rows beside each Agent's colored status dot.
+The widget renders the configured rows beside each Agent's status marker: a
+colored dot on the Lock Screen, a status glyph in the Dynamic Island.
 It preserves field colors, bold and dim styles. When `rows` is absent it uses
 workspace and friendly Agent kind as the legacy identity. Agent order remains
 unchanged. The lock-screen list fits as many complete Agent entries as the
 banner budget allows, followed by "+N more" when needed. The compact Dynamic
-Island continues to use status counts; the expanded view uses configured rows.
+Island shows status counts as glyph-and-count tokens in attention order
+(blocked, done, working); the expanded view uses configured rows.
 The envelope's `host` is not a separate heading, but a configured `host` field
 can display the per-device Host name.
 

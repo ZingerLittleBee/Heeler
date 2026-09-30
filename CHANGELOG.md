@@ -7,6 +7,15 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Changed
+
+- The Dynamic Island says what its numbers mean: each status is a glyph with
+  its count, an exclamation mark for Blocked, a check mark for Done, and an
+  open ring for Working. The most urgent status sits left of the camera and
+  the others sit right, so one status no longer shows the same number on both
+  sides. Expanded, the island leads with that status spelled out and marks
+  each Agent with the same glyph.
+
 ## [0.1.11] - 2026-09-28
 
 ### Added

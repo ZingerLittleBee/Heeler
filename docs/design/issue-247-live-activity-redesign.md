@@ -11,6 +11,16 @@ Scope: widget UI in `Sources/HeelerWidgets/AgentLiveActivityWidget.swift`, Lock 
 > identical leading alignment, and no row background. ADR 0014 and
 > `docs/agents/live-activity-contract.md` are authoritative; the system-color,
 > link, lifecycle, and row-budget decisions below still apply.
+>
+> The Dynamic Island section is superseded too. Compact and minimal no longer
+> draw a count capsule beside the total, which showed one number twice when
+> every Agent shared a status. Each status is now a token, a glyph plus its
+> count: the most urgent status leads, the rest trail, and a lone status
+> splits into its glyph and its count across the camera. The expanded island
+> spells out the most urgent status in the leading region, puts the other
+> tokens in the trailing region, and marks every row with its status glyph in
+> place of the count chips. The island's surface, Mocha inks, attention order,
+> key line, and link decisions below still apply.
 
 This is not a one-line color swap. Light Mode is broken because the banner is a branded dark slab that ignores the system appearance, and the status inks were authored only for that slab. The redesign keeps Heeler's herdr-aligned status language and the existing aggregate list, and makes the Lock Screen presentation native, calm, information-dense, and legible in both appearances.
 

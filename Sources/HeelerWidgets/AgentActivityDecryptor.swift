@@ -39,13 +39,9 @@ enum AgentActivityPresentation: Equatable, Sendable {
         agents.first
     }
 
-    /// Rows drawn below the headline (the headline consumes the first
-    /// agent).
-    var secondaryAgents: [AgentActivityDetails.AgentDetail] {
-        Array(expandedAgents.dropFirst())
-    }
-
-    private var expandedAgents: [AgentActivityDetails.AgentDetail] {
+    /// Rows drawn in the expanded Dynamic Island, under its status header:
+    /// as many of the first `rowLimit` Agents as the 160 pt height allows.
+    var expandedAgents: [AgentActivityDetails.AgentDetail] {
         let candidates = Array(agents.prefix(AgentActivityCopy.rowLimit))
         for shown in stride(from: candidates.count, through: 1, by: -1) {
             let prefix = Array(candidates.prefix(shown))
@@ -56,11 +52,11 @@ enum AgentActivityPresentation: Equatable, Sendable {
         return Array(candidates.prefix(1))
     }
 
-    /// Remaining eligible agents beyond the headline and drawn rows, using
-    /// the full inventory in `counts` (the envelope list is capped at 5).
-    /// Zero in counts-only: there is nothing to overflow from.
+    /// Remaining eligible agents beyond the expanded rows, using the full
+    /// inventory in `counts` (the envelope list is capped at 5). Zero in
+    /// counts-only: there is nothing to overflow from.
     var overflowCount: Int {
-        let shown = (primaryAgent == nil ? 0 : 1) + secondaryAgents.count
+        let shown = expandedAgents.count
         guard shown > 0 else { return 0 }
         return max(0, counts.total - shown)
     }
@@ -189,8 +185,8 @@ enum AgentActivityDecryptor {
 
 enum AgentActivityCopy {
     static let genericAppName = "Heeler"
-    // Governs the Dynamic Island expanded rows (headline + rowLimit - 1);
-    // the lock screen sizes itself via `lockScreenAgents` instead.
+    // Governs the Dynamic Island expanded rows; the lock screen sizes itself
+    // via `lockScreenAgents` instead.
     static let rowLimit = 3
 }
 
@@ -207,11 +203,13 @@ extension AgentActivityAttributes.ContentState.Counts {
         return items
     }
 
-    /// First non-zero count in attention order: blocked, done, working.
-    var attentionStatusItem: (status: String, count: Int)? {
-        if blocked > 0 { return ("blocked", blocked) }
-        if done > 0 { return ("done", done) }
-        if working > 0 { return ("working", working) }
-        return nil
+    /// Non-zero counts in attention order: blocked, done, working. The
+    /// Dynamic Island leads with the first and trails with the rest.
+    var attentionItems: [(status: String, count: Int)] {
+        var items: [(String, Int)] = []
+        if blocked > 0 { items.append(("blocked", blocked)) }
+        if done > 0 { items.append(("done", done)) }
+        if working > 0 { items.append(("working", working)) }
+        return items
     }
 }
