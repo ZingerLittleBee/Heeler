@@ -14,7 +14,7 @@ Entries reference the issue that motivated them.
   open ring for Working. The most urgent status sits left of the camera and
   the others sit right, so one status no longer shows the same number on both
   sides. Expanded, the island leads with that status spelled out and marks
-  each Agent with the same glyph.
+  each Agent with the same glyph. (#398)
 
 ## [0.1.11] - 2026-09-28
 
