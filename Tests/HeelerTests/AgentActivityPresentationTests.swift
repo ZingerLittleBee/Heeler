@@ -303,6 +303,18 @@ struct AgentActivityPresentationTests {
         #expect(three.overflowCount == 1)
     }
 
+    /// Larger text sizes grew the rows while the island stayed 160 pt tall.
+    @MainActor
+    @Test func expandedIslandRowsIgnoreLargerDynamicTypeSizes() throws {
+        let rows = AgentActivityIslandRows(
+            presentation: configuredPresentation(agentCount: 3), hostID: "host"
+        )
+        .frame(width: 335)
+        let standard = try renderedSize(rows.environment(\.dynamicTypeSize, .large))
+        let enlarged = try renderedSize(rows.environment(\.dynamicTypeSize, .accessibility3))
+        #expect(enlarged.height == standard.height)
+    }
+
     @Test func threeRowCardsUseTheComfortableTargetHeight() {
         var agent = agentDetail(paneID: "w1:p1")
         agent.rows = [[.init(text: "1")], [.init(text: "2")], [.init(text: "3")]]

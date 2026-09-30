@@ -221,6 +221,8 @@ enum AgentActivityIsland {
         } minimal: {
             AgentActivityMinimal(counts: counts)
         }
+        .contentMargins(
+            [.leading, .trailing], AgentActivityIslandMetrics.expandedSideMargin, for: .expanded)
         .keylineTint(islandKeylineTint(counts: counts))
         .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
     }
@@ -248,6 +250,11 @@ enum AgentActivityIslandMetrics {
     /// Shared by the expanded leading and trailing regions so their contents
     /// sit on one center line beside the camera.
     static let headerHeight: CGFloat = 20
+    /// The system clips expanded content to the island's shape inset about
+    /// 15 pt, whose 27 pt corners cut into the default 18 pt side margins: the
+    /// header glyph lost its top-left edge and the last trailing digit its
+    /// right half. Measured on an iPhone 17 Pro simulator (iOS 27).
+    static let expandedSideMargin: CGFloat = 25
     static let rowSpacing: CGFloat = 2
     /// Line heights of the `.caption` first line and `.caption2` later lines.
     static let rowFirstLineHeight: CGFloat = 16
@@ -269,6 +276,15 @@ enum AgentActivityIslandMetrics {
         return max(
             AgentActivityRowMetrics.denseMinimumHeight - rowSpacing,
             rowFirstLineHeight + CGFloat(max(0, lines - 1)) * rowLineHeight)
+    }
+}
+
+extension View {
+    /// The expanded island cannot grow past 160 pt, and its glyphs and row
+    /// budget are sized for the default text size, so larger Dynamic Type
+    /// sizes stop there instead of pushing rows under the clip.
+    func islandTypeSize() -> some View {
+        dynamicTypeSize(...DynamicTypeSize.large)
     }
 }
 
@@ -379,6 +395,7 @@ struct AgentActivityIslandTrailingTokens: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(AgentActivityNarration.countsLabel(rest))
+            .islandTypeSize()
         }
     }
 }
@@ -420,6 +437,7 @@ struct AgentActivityIslandHeadline: View {
             )
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(top.count) \(top.status)")
+            .islandTypeSize()
         }
     }
 }
@@ -449,6 +467,7 @@ struct AgentActivityIslandRows: View {
                     .frame(height: AgentActivityIslandMetrics.overflowCaptionHeight)
             }
         }
+        .islandTypeSize()
     }
 }
 
