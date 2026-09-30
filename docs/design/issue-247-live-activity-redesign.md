@@ -21,11 +21,6 @@ Scope: widget UI in `Sources/HeelerWidgets/AgentLiveActivityWidget.swift`, Lock 
 > tokens in the trailing region, and marks every row with its status glyph in
 > place of the count chips. The island's surface, Mocha inks, attention order,
 > key line, and link decisions below still apply.
->
-> Mocks of that change, with placeholder Agents:
-> [compact before](images/dynamic-island-compact-before.png),
-> [compact after](images/dynamic-island-compact-after.png),
-> [minimal and expanded after](images/dynamic-island-expanded-after.png).
 
 This is not a one-line color swap. Light Mode is broken because the banner is a branded dark slab that ignores the system appearance, and the status inks were authored only for that slab. The redesign keeps Heeler's herdr-aligned status language and the existing aggregate list, and makes the Lock Screen presentation native, calm, information-dense, and legible in both appearances.
 
