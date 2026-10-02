@@ -42,6 +42,28 @@ def xcode26_parameter_report() -> dict:
                       "duration": "0.000094s", "durationInSeconds": 9.393692016601562e-05}]}]}]}]}]}
 
 
+def xcode26_data_collision_report() -> dict:
+    """Keep the native Xcode 26.6 collision from run 37059893453's raw report."""
+    identity = "AttachUserMessageIndexTests/controlSequencesDoNotLandInTheIndexedText(_:)"
+    url = "test://com.apple.xcode/Heeler/HeelerTests/" + identity
+    return {"testNodes": [{"nodeType": "Unit test bundle", "name": "HeelerTests", "children": [
+        {"name": "controlSequencesDoNotLandInTheIndexedText(_:)", "nodeType": "Test Case",
+         "nodeIdentifier": identity, "nodeIdentifierURL": url, "result": "Passed", "children": [
+             {"name": "3 bytes", "nodeType": "Arguments", "result": "Passed", "children": [
+                 {"name": "Repetition 1", "nodeIdentifier": "0", "nodeType": "Repetition", "result": "Passed"},
+                 {"name": "Repetition 2", "nodeIdentifier": "0", "nodeType": "Repetition", "result": "Passed"}]},
+             {"name": "6 bytes", "nodeType": "Arguments", "result": "Passed"}]}]}]}
+
+
+def byte_array_parameter_report() -> dict:
+    """Model complete array display values; native byte-array rendering is checked by CI."""
+    report = xcode26_data_collision_report()
+    report["testNodes"][0]["children"][0]["children"] = [
+        {"name": name, "nodeType": "Arguments", "result": "Passed"}
+        for name in ("[27, 91, 68]", "[27, 91, 49, 59, 50, 67]", "[27, 79, 65]")]
+    return report
+
+
 def method(suite: str, number: int, result: str = "Passed", target: str = "HeelerTests") -> dict:
     identity = f"{target}/{suite}/test{number}()"
     return {"identity": identity, "result": result, "cases": [{"identity": identity, "result": result}]}
@@ -137,6 +159,17 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True, package=True)
+
+    def test_byte_array_argument_union_detects_a_missing_case(self):
+        previous = records("serial")
+        parameterized = evidence.test_cases(byte_array_parameter_report())[0]
+        self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
+        previous[-1]["tests"][0] = copy.deepcopy(parameterized)
+        write_records(self.baseline, previous)
+        self.assertEqual(self.check(baseline=True)["passed_cases"], 909)
+        self.values[-1]["tests"][0]["cases"].pop()
+        with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
+            self.check(baseline=True)
 
     def test_skipped_argument_is_rejected_even_when_its_method_and_summary_pass(self):
         self.values[-1]["tests"][0]["cases"][1]["result"] = "Skipped"
@@ -262,6 +295,18 @@ class ResultTreeTests(unittest.TestCase):
         for child in node["children"]:
             child.update(duration="12s", durationInSeconds=12.0)
         self.assertEqual(tests, evidence.test_cases(report))
+
+    def test_native_xcode26_grouped_data_repetitions_remain_ambiguous(self):
+        with self.assertRaisesRegex(ValueError, "Duplicate argument/test execution"):
+            evidence.test_cases(xcode26_data_collision_report())
+
+    def test_three_byte_arrays_keep_their_complete_distinct_case_identity(self):
+        test = evidence.test_cases(byte_array_parameter_report())[0]
+        prefix = "HeelerTests/AttachUserMessageIndexTests/controlSequencesDoNotLandInTheIndexedText(_:)"
+        self.assertEqual([case["identity"] for case in test["cases"]], [
+            prefix + "?xcresult-argument-name=%5B27%2C%2091%2C%2068%5D",
+            prefix + "?xcresult-argument-name=%5B27%2C%2091%2C%2049%2C%2059%2C%2050%2C%2067%5D",
+            prefix + "?xcresult-argument-name=%5B27%2C%2079%2C%2065%5D"])
 
     def test_argument_names_bind_structurally_when_argument_urls_are_absent(self):
         report = xcode26_parameter_report()
