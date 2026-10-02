@@ -93,12 +93,12 @@ wrapped_calls=$(grep -cE '^[[:space:]]*(HEELER_CI_TEST_PHASE=[^ ]+ )?run_xcodebu
     echo "expected 5 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
     exit 1
 }
-[[ "$(grep -c 'timeout-minutes: 35' "$workflow")" == 1 ]] || {
-    echo "the iOS job must retain its 35-minute deadline" >&2
+[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 50 || 35 }}" "$workflow")" == 1 ]] || {
+    echo "the iOS job must use 35 minutes normally and 50 for the serial benchmark" >&2
     exit 1
 }
-[[ "$(grep -c 'timeout-minutes: 32' "$workflow")" == 1 ]] || {
-    echo "the Build and test step must retain its 32-minute deadline" >&2
+[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 45 || 32 }}" "$workflow")" == 1 ]] || {
+    echo "the Build and test step must use 32 minutes normally and 45 for the serial benchmark" >&2
     exit 1
 }
 
