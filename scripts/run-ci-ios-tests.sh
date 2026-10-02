@@ -70,6 +70,13 @@ fi
 # stops it being written in the first place.
 export PYTHONDONTWRITEBYTECODE=1
 
+# Use the job's selected Python for every fixture instead of a Developer tool shim.
+fixture_python="$(command -v python3)"
+"$fixture_python" - <<'PYRUNTIME'
+import sys
+print(f"==> Fixture Python: {sys.executable} (Python {sys.version.split()[0]})", flush=True)
+PYRUNTIME
+
 # Fixture ports are a contiguous block that a run claims at startup rather than
 # thirteen fixed numbers every run shares. Fixed numbers made this script a
 # machine-wide mutex: whichever run started second failed its port preflight and
@@ -1454,7 +1461,7 @@ ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_jump_target_ed25519"
 # A throwaway Device Key per run. The suites receive its seed in the fixture
 # configuration, so no key committed to this repository ever authorizes a login.
 ssh-keygen -q -t ed25519 -N '' -C heeler-ci-device-key -f "$fixture_dir/device_key"
-device_key_seed="$(/usr/bin/python3 \
+device_key_seed="$("$fixture_python" \
     scripts/fixtures/openssh-ed25519-seed.py "$fixture_dir/device_key")"
 cp "$fixture_dir/device_key.pub" "$fixture_dir/authorized_keys"
 
@@ -1655,7 +1662,7 @@ streamlocal_count_file="$fixture_home/.heeler-ci/streamlocal-count"
 ln -s \
     "$streamlocal_socket" \
     "$fixture_home/.config/herdr/sessions/fixture/herdr.sock"
-/usr/bin/python3 scripts/fixtures/fake-herdr-streamlocal.py \
+"$fixture_python" scripts/fixtures/fake-herdr-streamlocal.py \
     --socket "$streamlocal_socket" \
     --stale-socket "$streamlocal_stale_socket" \
     --stale-socket "$streamlocal_wake_failure_socket" \
@@ -1668,7 +1675,7 @@ fake_herdr_pid=$!
 # points its Host at this port and steers latency, bandwidth, fragmentation
 # and abrupt severance through the control port. Deterministic by construction
 # — every knob is a fixed duration or a byte count.
-/usr/bin/python3 scripts/fixtures/weak-network-proxy.py \
+"$fixture_python" scripts/fixtures/weak-network-proxy.py \
     --listen-port "$weak_network_port" \
     --control-port "$weak_network_control_port" \
     --target-host 127.0.0.1 \
@@ -1786,7 +1793,7 @@ elif [[ "$ci_lane" == "app" && "$ci_app_shard" != transport ]]; then
     echo "==> Twelve of the thirteen mandatory behaviours still run." >&2
 fi
 
-/usr/bin/python3 -u -c '
+"$fixture_python" -u -c '
 import socket
 import sys
 

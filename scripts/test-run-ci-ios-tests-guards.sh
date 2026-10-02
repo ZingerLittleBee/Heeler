@@ -123,6 +123,30 @@ grep -qF 'HEELER_CI_LANE: package' "$repo_root/.github/workflows/ci.yml" \
     || die "workflow has no package-only job"
 grep -qF 'HEELER_CI_LANE: app' "$repo_root/.github/workflows/ci.yml" \
     || die "workflow does not pin the app-only job"
+# All fixture processes must use the explicitly selected job runtime.
+if grep -qF '/usr/bin/python3' "$gate_script"; then
+    die "fixtures must not invoke the Apple Developer tool Python shim"
+fi
+# shellcheck disable=SC2016
+grep -qF 'fixture_python="$(command -v python3)"' "$gate_script" \
+    || die "gate must resolve the selected Python runtime once"
+grep -qF 'Fixture Python: {sys.executable} (Python {sys.version.split()[0]})' "$gate_script" \
+    || die "gate must report the fixture Python executable and version"
+# shellcheck disable=SC2016
+fixture_python_calls=$(grep -cE '^device_key_seed=.*fixture_python|^"\$fixture_python" (scripts/fixtures/|-u -c)' "$gate_script")
+[[ "$fixture_python_calls" == 4 ]] \
+    || die "gate has $fixture_python_calls selected Python fixture calls, expected 4"
+for worker_job in app-tests heelerssh-package-e2e; do
+    awk -v job="$worker_job" '
+        $0 == "  " job ":" { in_job = 1; next }
+        in_job && /^  [[:alnum:]_-]+:/ { in_job = 0 }
+        in_job && /uses: actions\/checkout@v5/ { checkout = 1 }
+        in_job && /uses: actions\/setup-python@v6/ { selected = checkout }
+        in_job && /python-version: .3\.12./ && selected { pinned = 1 }
+        END { exit pinned ? 0 : 1 }
+    ' "$repo_root/.github/workflows/ci.yml" \
+        || die "$worker_job must select Python 3.12 after checkout"
+done
 # shellcheck disable=SC2016
 grep -qF '"KexAlgorithms curve25519-sha256" >> "$modern_config"' "$gate_script" \
     || die "shared modern fixture does not pin the Curve25519 baseline"

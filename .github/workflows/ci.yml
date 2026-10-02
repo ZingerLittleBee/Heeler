@@ -116,6 +116,9 @@ jobs:
       HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1200'
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -218,6 +221,9 @@ jobs:
       HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
       # Same rationale as the app job: avoid a critical-path CoreSimulator
       # cold-start; package-lane boot overlaps with build-for-testing.
