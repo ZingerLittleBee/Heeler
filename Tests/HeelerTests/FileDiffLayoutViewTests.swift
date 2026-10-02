@@ -145,22 +145,25 @@ struct FileDiffLayoutViewTests {
         })
         var captured: Int?
         var stable = 0
-        var didScroll = false
-        try #require(await ChangesViewTests.eventually(timeout: .seconds(8)) {
+        var requestedOffsetY: CGFloat?
+        let initialScrollSettled = try await ChangesViewTests.eventually(timeout: .seconds(8)) {
             controller.view.layoutIfNeeded()
             guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
-            let travel = max(0, scroll.contentSize.height - scroll.bounds.height)
-            let y = min(CGFloat(3200), travel * 0.35)
-            if !didScroll {
+            if requestedOffsetY == nil {
+                let travel = max(0, scroll.contentSize.height - scroll.bounds.height)
                 guard travel > 400 else { return false }
-                didScroll = true
+                let y = min(CGFloat(3200), travel * 0.35)
+                requestedOffsetY = y
                 // An animated offset settles through the scroll view's own
                 // delegate, which is what updates `scrollPosition`. A direct
                 // write plus a manual delegate call does not.
                 scroll.setContentOffset(CGPoint(x: 0, y: y), animated: true)
                 return false
             }
-            guard !scroll.isDragging, !scroll.isDecelerating, abs(scroll.contentOffset.y - y) < 2 else {
+            guard let requestedOffsetY,
+                !scroll.isDragging, !scroll.isDecelerating,
+                abs(scroll.contentOffset.y - requestedOffsetY) < 2
+            else {
                 return false
             }
             guard let top = Self.topLineID(in: controller.view, viewport: scroll), top >= 40 else {
@@ -175,7 +178,17 @@ struct FileDiffLayoutViewTests {
                 stable = 1
             }
             return stable >= 3
-        })
+        }
+        let observedScroll = Self.diffScrollView(in: controller.view)
+        let observedTop = observedScroll.flatMap { Self.topLineID(in: controller.view, viewport: $0) }
+        try #require(
+            initialScrollSettled,
+            """
+            initial scroll target \(String(describing: requestedOffsetY)) actual offset \(String(describing: observedScroll?.contentOffset.y))
+            content height \(String(describing: observedScroll?.contentSize.height)) bounds height \(String(describing: observedScroll?.bounds.height))
+            top \(String(describing: observedTop)) stable \(stable)
+            dragging \(String(describing: observedScroll?.isDragging)) decelerating \(String(describing: observedScroll?.isDecelerating))
+            """)
         let expected = try #require(captured)
 
         settings.select(.unified)
