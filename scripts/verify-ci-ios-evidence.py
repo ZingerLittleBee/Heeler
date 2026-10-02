@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 
 SCHEMA = 1
@@ -130,11 +130,21 @@ def test_cases(report: object) -> list[dict]:
     def executions(node: dict, identity: str, argument: str | None = None) -> list[dict]:
         if node["nodeType"] == "Arguments":
             url = node.get("nodeIdentifierURL")
-            require(isinstance(url, str) and bool(urlsplit(url).query)
+            require(isinstance(url, str)
                     and unquote(urlsplit(url).path).endswith("/" + identity),
                     "Parameterized case has no argument URL identity")
-            # Keep the complete query: parameter identity must survive baseline comparisons.
-            argument = identity + "?" + urlsplit(url).query
+            query = urlsplit(url).query
+            if query:
+                # Xcode 27 identifies argument cases in the complete URL query.
+                argument = identity + "?" + query
+            else:
+                # Xcode 26.6 repeats the method URL and puts the complete argument
+                # display value in name. Preserve it losslessly, including quotes;
+                # duplicate names still fail rather than inventing ordinal IDs.
+                name = node.get("name")
+                require(isinstance(name, str) and bool(name),
+                        "Parameterized case has no argument name identity")
+                argument = identity + "?xcresult-argument-name=" + quote(name, safe="")
         runs = [child for child in children(node) if child["nodeType"] in RUN_NODES]
         if runs:
             result = []

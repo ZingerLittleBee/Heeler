@@ -25,6 +25,23 @@ SHA = "a" * 40
 METADATA = {"xcode_version": "Xcode 26.6\nBuild version 17F113", "sdk_version": "26.5", "architecture": "arm64"}
 
 
+def xcode26_parameter_report() -> dict:
+    """Keep the real argument subtree from native Xcode 26.6 run 37056503090."""
+    identity = "DNSServiceAddressResolverTests/numericAddressesPreserveFamilyAndPort(_:)"
+    url = "test://com.apple.xcode/HeelerSSH/HeelerSSHTests/" + identity
+    return {"testNodes": [{"name": "HeelerSSH", "nodeType": "Test Plan", "result": "Passed", "children": [
+        {"name": "HeelerSSHTests", "nodeType": "Unit test bundle", "result": "Passed", "children": [
+            {"name": "DNS resolution lifecycle", "nodeType": "Test Suite", "result": "Passed", "children": [
+                {"name": "numericAddressesPreserveFamilyAndPort(_:)", "nodeType": "Test Case",
+                 "nodeIdentifier": identity, "nodeIdentifierURL": url, "result": "Passed",
+                 "duration": "0.00015s", "durationInSeconds": 0.00015342235565185547,
+                 "children": [
+                     {"name": '"::1"', "nodeType": "Arguments", "nodeIdentifierURL": url, "result": "Passed",
+                      "duration": "0.00021s", "durationInSeconds": 0.0002129077911376953},
+                     {"name": '"127.0.0.1"', "nodeType": "Arguments", "nodeIdentifierURL": url, "result": "Passed",
+                      "duration": "0.000094s", "durationInSeconds": 9.393692016601562e-05}]}]}]}]}]}
+
+
 def method(suite: str, number: int, result: str = "Passed", target: str = "HeelerTests") -> dict:
     identity = f"{target}/{suite}/test{number}()"
     return {"identity": identity, "result": result, "cases": [{"identity": identity, "result": result}]}
@@ -108,6 +125,18 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["tests"][0]["cases"].pop()
         with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
             self.check(baseline=True)
+
+    def test_xcode26_package_argument_union_detects_a_missing_case(self):
+        self.values = records(package=True)
+        previous = records("serial", package=True)
+        parameterized = evidence.test_cases(xcode26_parameter_report())[0]
+        self.values[-1]["tests"][0] = copy.deepcopy(parameterized)
+        previous[-1]["tests"][0] = copy.deepcopy(parameterized)
+        write_records(self.baseline, previous)
+        self.assertEqual(self.check(baseline=True, package=True)["passed_cases"], 979)
+        self.values[-1]["tests"][0]["cases"].pop()
+        with self.assertRaisesRegex(ValueError, "parameterized-case union differs"):
+            self.check(baseline=True, package=True)
 
     def test_skipped_argument_is_rejected_even_when_its_method_and_summary_pass(self):
         self.values[-1]["tests"][0]["cases"][1]["result"] = "Skipped"
@@ -221,6 +250,30 @@ class ResultTreeTests(unittest.TestCase):
         tests = evidence.test_cases(self.report())
         self.assertEqual([case["identity"] for case in tests[0]["cases"]],
                          ["HeelerTests/Suite/check(value:)?args=first", "HeelerTests/Suite/check(value:)?args=second"])
+
+    def test_xcode26_argument_names_are_lossless_and_independent_of_timing(self):
+        report = xcode26_parameter_report()
+        tests = evidence.test_cases(report)
+        identity = "HeelerSSHTests/DNSServiceAddressResolverTests/numericAddressesPreserveFamilyAndPort(_:)"
+        self.assertEqual([case["identity"] for case in tests[0]["cases"]],
+                         [identity + "?xcresult-argument-name=%22%3A%3A1%22",
+                          identity + "?xcresult-argument-name=%22127.0.0.1%22"])
+        node = report["testNodes"][0]["children"][0]["children"][0]["children"][0]
+        for child in node["children"]:
+            child.update(duration="12s", durationInSeconds=12.0)
+        self.assertEqual(tests, evidence.test_cases(report))
+
+    def test_xcode26_argument_skips_missing_names_and_duplicate_names_fail(self):
+        for scenario in ("skip", "missing-name", "empty-name", "duplicate-name", "wrong-method"):
+            with self.subTest(scenario=scenario):
+                report = xcode26_parameter_report()
+                cases = report["testNodes"][0]["children"][0]["children"][0]["children"][0]["children"]
+                if scenario == "skip": cases[0]["result"] = "Skipped"
+                if scenario == "missing-name": cases[0].pop("name")
+                if scenario == "empty-name": cases[0]["name"] = ""
+                if scenario == "duplicate-name": cases[1]["name"] = cases[0]["name"]
+                if scenario == "wrong-method": cases[0]["nodeIdentifierURL"] += "different"
+                with self.assertRaises(ValueError): evidence.test_cases(report)
 
     def test_partial_arguments_unknown_nodes_and_missing_argument_identity_fail(self):
         for kind in ("Skipped", "Failed", "unknown-node", "missing-url", "duplicate"):
