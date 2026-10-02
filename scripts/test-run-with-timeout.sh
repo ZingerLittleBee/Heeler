@@ -75,11 +75,20 @@ if kill -0 "$stalled_pid" 2>/dev/null; then
     exit 1
 fi
 
-if grep -qE '^[[:space:]]*xcodebuild ' "$gate_script"; then
-    echo "run-ci-ios-tests.sh contains an xcodebuild call outside the watchdog" >&2
+# The only raw call belongs to the owned background helper, still under the
+# command watchdog. All joined/retried/test actions use the parent function.
+[[ "$(grep -cE '^[[:space:]]*xcodebuild ' "$gate_script")" == 1 ]] || {
+    echo "expected exactly one owned background xcodebuild call" >&2
     exit 1
-fi
-wrapped_calls=$(grep -cE '^[[:space:]]*run_xcodebuild "' "$gate_script")
+}
+awk '
+    /^start_background_build\(\) \{/ { inside = 1 }
+    inside && /run-with-timeout.py/ { watchdog = 1 }
+    inside && /^[[:space:]]*xcodebuild / { raw = 1 }
+    inside && /^}$/ { exit (watchdog && raw) ? 0 : 1 }
+    END { exit (watchdog && raw) ? 0 : 1 }
+' "$gate_script" || { echo "background build bypasses its watchdog" >&2; exit 1; }
+wrapped_calls=$(grep -cE '^[[:space:]]*(HEELER_CI_TEST_PHASE=[^ ]+ )?run_xcodebuild "' "$gate_script")
 [[ "$wrapped_calls" == 5 ]] || {
     echo "expected 5 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
     exit 1
@@ -164,7 +173,7 @@ awk '
     echo "package lane must overlap simulator boot with build-for-testing" >&2
     exit 1
 }
-[[ "$(grep -cF '==> Simulator boot wait after the build overlap:' "$gate_script")" == 2 ]] || {
+[[ "$(grep -cF 'record_phase simulator-boot-wait' "$gate_script")" == 2 ]] || {
     echo "app and package lanes must each attribute the boot/build overlap" >&2
     exit 1
 }
@@ -200,7 +209,7 @@ fi
     exit 1
 }
 awk '
-    /^claim_port_block$/ { ports = NR }
+    /^[[:space:]]*claim_port_block$/ { ports = NR }
     /xcrun simctl boot "/ { boot = NR }
     /ssh-keygen -q -t rsa -b 3072/ { keygen = NR }
     END { exit (ports && boot && keygen && ports < boot && boot < keygen) ? 0 : 1 }
@@ -227,6 +236,8 @@ for required in \
     'plugin/test-vectors/**' \
     '.github/workflows/ci.yml'
 do
+    # The sed character class includes a literal dollar sign.
+    # shellcheck disable=SC2016
     escaped="$(printf '%s' "$required" | sed 's/[.[*^$()+?{|]/\\&/g')"
     [[ "$(grep -cE "^[[:space:]]+- ${escaped}$" "$workflow")" == 2 ]] || {
         echo "pull_request and push paths must both include $required" >&2

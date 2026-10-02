@@ -15,6 +15,7 @@ SIM     ?= iPhone 17
 SIM_IPAD ?= iPad Pro 13-inch (M5)
 SIM_DESTINATION ?= platform=iOS Simulator,name=$(SIM)
 SIMULATOR_UDID ?=
+CI_APP_SHARD ?= all
 TEST_FLAGS ?=
 TEST_SELECTOR ?=
 export TEST_FLAGS TEST_SELECTOR
@@ -26,7 +27,7 @@ IOS_WATCH_DEBOUNCE ?= 1s
 DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
 DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
-.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight bump publish clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
+.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight bump publish clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
 
 # Command-line DERIVED overrides remain supported for either platform.
 test-app test-directory-browser-ui sim build-sim sim-id: DERIVED = $(DERIVED_SIMULATOR)
@@ -70,8 +71,9 @@ test-directory-browser-ui: ## Check first Browse presentation (SIMULATOR_UDID, r
 test-ipad: ## Run the app and HeelerSSH unit test suites on the iPad simulator
 	$(MAKE) test SIM='$(SIM_IPAD)'
 
-test-ci-app: ## Run the committed-project CI app lane (no generate)
-	HEELER_CI_LANE=app HEELER_CI_SIMULATOR_UDID='$(or $(SIMULATOR_UDID),$(HEELER_CI_SIMULATOR_UDID))' \
+test-ci-app: ## Run the committed-project CI app lane (CI_APP_SHARD, no generate)
+	HEELER_CI_LANE=app HEELER_CI_APP_SHARD='$(CI_APP_SHARD)' \
+		HEELER_CI_SIMULATOR_UDID='$(or $(SIMULATOR_UDID),$(HEELER_CI_SIMULATOR_UDID))' \
 		scripts/run-ci-ios-tests.sh
 
 test-ci-package: ## Run the committed-project CI SSH package lane (SIMULATOR_UDID)
@@ -85,11 +87,18 @@ test-tools: check-agent-docs ## Test agent tooling without Xcode or a simulator
 	python3 scripts/test-check-agent-docs.py
 	python3 scripts/test-run-app-simulator-tests.py
 	python3 scripts/test-simulator-ui.py
+	$(MAKE) test-ci-evidence
+
+test-ci-evidence: ## Test shard evidence, parameter cases, and skip provenance
+	python3 scripts/test-verify-ci-ios-evidence.py
 
 test-ci-guards: ## Test CI gate assertions without building the app (macOS)
 	scripts/test-run-ci-ios-tests-guards.sh
 
-test-ci-watchdog: ## Test the CI watchdog and simulator recovery (macOS)
+test-ci-background-build: ## Test owned background build failure and cancellation
+	python3 scripts/test-run-ci-background-build.py
+
+test-ci-watchdog: test-ci-background-build ## Test the CI watchdog and simulator recovery (macOS)
 	scripts/test-run-with-timeout.sh
 
 test-ci-recovery: ## Test simulator recovery with fake Xcode processes (macOS)

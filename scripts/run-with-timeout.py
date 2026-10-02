@@ -11,6 +11,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Sequence
 
@@ -191,23 +192,64 @@ def preserve_nonzero_exit(
     )
 
 
-def terminate_process_group(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
+def process_group_exists(process_group_id: int) -> bool:
     try:
-        os.killpg(process.pid, signal.SIGTERM)
+        os.killpg(process_group_id, 0)
     except ProcessLookupError:
-        return
+        return False
+    except PermissionError:
+        # A failed permission probe does not establish whether members can
+        # still execute. Ignore only an empty group or one containing zombies;
+        # keep a live member visible rather than hiding a signaling error.
+        listing = subprocess.run(
+            ["ps", "-axo", "pgid=,state="], check=True,
+            capture_output=True, text=True,
+        )
+        return any(
+            fields[0] == str(process_group_id) and not fields[1].startswith("Z")
+            for line in listing.stdout.splitlines()
+            if len(fields := line.split()) >= 2
+        )
+    return True
+
+
+def terminate_process_group(
+    process: subprocess.Popen[bytes], process_group_id: int
+) -> None:
+    # The leader may already have exited while a descendant ignores TERM.
+    # Keep the session's original PGID and check the whole group, not poll().
     try:
-        process.wait(timeout=5)
+        os.killpg(process_group_id, signal.SIGTERM)
+    except ProcessLookupError:
+        process.wait()
         return
-    except subprocess.TimeoutExpired:
+    except PermissionError:
+        if process_group_exists(process_group_id):
+            raise
+        process.wait()
+        return
+    deadline = time.monotonic() + 5
+    while True:
+        process.poll()  # Reap an exited leader while waiting for descendants.
+        if not process_group_exists(process_group_id):
+            process.wait()
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.05, remaining))
+    try:
+        os.killpg(process_group_id, signal.SIGKILL)
+    except ProcessLookupError:
         pass
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return
+    except PermissionError:
+        if process_group_exists(process_group_id):
+            raise
     process.wait()
+
+
+class CommandCancelled(Exception):
+    """Interrupt a command wait immediately after watchdog cancellation."""
 
 
 def shell_exit_status(return_code: int) -> int:
@@ -217,53 +259,89 @@ def shell_exit_status(return_code: int) -> int:
 
 
 def run(arguments: argparse.Namespace) -> int:
-    process = subprocess.Popen(arguments.command, start_new_session=True)
-    previous_sigterm = signal.getsignal(signal.SIGTERM)
+    process: subprocess.Popen[bytes] | None = None
+    process_group_id: int | None = None
+    cancellation_signal = 0
+    terminating = False
+    previous_handlers = {
+        signum: signal.getsignal(signum)
+        for signum in (signal.SIGINT, signal.SIGTERM)
+    }
 
-    def forward_sigterm(signum: int, _frame: object) -> None:
-        try:
-            os.killpg(process.pid, signum)
-        except ProcessLookupError:
-            pass
+    def cancel_command(signum: int, _frame: object) -> None:
+        nonlocal cancellation_signal, terminating
+        if not cancellation_signal:
+            cancellation_signal = signum
+        # Do not interrupt Popen before it publishes the child, or the bounded
+        # termination/reaping sequence itself on a repeated cancellation.
+        if process is not None and not terminating:
+            terminating = True
+            raise CommandCancelled()
 
-    signal.signal(signal.SIGTERM, forward_sigterm)
+    for signum in previous_handlers:
+        signal.signal(signum, cancel_command)
     try:
-        status = shell_exit_status(process.wait(timeout=arguments.timeout_seconds))
+        process = subprocess.Popen(arguments.command, start_new_session=True)
+        process_group_id = process.pid
+        if cancellation_signal:
+            terminating = True
+            raise CommandCancelled()
+        try:
+            status = shell_exit_status(process.wait(timeout=arguments.timeout_seconds))
+        except subprocess.TimeoutExpired:
+            arguments.diagnostics_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                record_exit_status(arguments.diagnostics_dir, TIMEOUT_EXIT_STATUS)
+                (arguments.diagnostics_dir / "timeout.txt").write_text(
+                    f"{arguments.label} exceeded {arguments.timeout_seconds:g} seconds\n",
+                    encoding="utf-8",
+                )
+                (arguments.diagnostics_dir / "processes.txt").write_text(
+                    process_snapshot(), encoding="utf-8"
+                )
+                sample_processes(process.pid, arguments.diagnostics_dir)
+            except OSError as error:
+                print(f"could not capture process diagnostics: {error}", file=sys.stderr)
+            finally:
+                terminating = True
+                try:
+                    terminate_process_group(process, process_group_id)
+                finally:
+                    terminating = False
+            if cancellation_signal:
+                terminating = True
+                raise CommandCancelled()
+            capture_artifacts(
+                arguments.diagnostics_dir,
+                arguments.artifact_path,
+                arguments.artifact_glob,
+            )
+            print(
+                f"{arguments.label} exceeded {arguments.timeout_seconds:g} seconds; "
+                f"diagnostics: {arguments.diagnostics_dir}",
+                file=sys.stderr,
+            )
+            return TIMEOUT_EXIT_STATUS
         if status != 0:
             preserve_nonzero_exit(arguments, status)
         return status
-    except subprocess.TimeoutExpired:
-        arguments.diagnostics_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            record_exit_status(arguments.diagnostics_dir, TIMEOUT_EXIT_STATUS)
-            (arguments.diagnostics_dir / "timeout.txt").write_text(
-                f"{arguments.label} exceeded {arguments.timeout_seconds:g} seconds\n",
-                encoding="utf-8",
-            )
-            (arguments.diagnostics_dir / "processes.txt").write_text(
-                process_snapshot(), encoding="utf-8"
-            )
-            sample_processes(process.pid, arguments.diagnostics_dir)
-        except OSError as error:
-            print(f"could not capture process diagnostics: {error}", file=sys.stderr)
-        finally:
-            terminate_process_group(process)
-        capture_artifacts(
-            arguments.diagnostics_dir,
-            arguments.artifact_path,
-            arguments.artifact_glob,
-        )
-        print(
-            f"{arguments.label} exceeded {arguments.timeout_seconds:g} seconds; "
-            f"diagnostics: {arguments.diagnostics_dir}",
-            file=sys.stderr,
-        )
-        return TIMEOUT_EXIT_STATUS
+    except CommandCancelled:
+        terminating = True
+        if process is not None:
+            # Popen starts a new session, so its PID is the owned PGID even if
+            # cancellation interrupts publication of process_group_id.
+            terminate_process_group(process, process_group_id or process.pid)
+        status = 128 + cancellation_signal
+        preserve_nonzero_exit(arguments, status)
+        return status
     except KeyboardInterrupt:
-        terminate_process_group(process)
+        terminating = True
+        if process is not None:
+            terminate_process_group(process, process_group_id or process.pid)
         return 130
     finally:
-        signal.signal(signal.SIGTERM, previous_sigterm)
+        for signum, previous_handler in previous_handlers.items():
+            signal.signal(signum, previous_handler)
 
 
 def main() -> int:

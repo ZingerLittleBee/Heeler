@@ -94,6 +94,8 @@ extract_shipped_function assert_behavior
 extract_shipped_function run_suite
 extract_shipped_function dump_fixture_logs
 extract_shipped_function preserve_failure_diagnostics
+extract_shipped_function cancel_background_build
+extract_shipped_function record_phase
 extract_shipped_function cleanup
 extract_shipped_function clear_simulator_environment
 extract_shipped_function stop_privileged_sshd
@@ -101,12 +103,11 @@ extract_shipped_function release_resource_lock
 extract_shipped_function provisioning_step
 extract_shipped_function redact_secret_in_file
 
-# The optimized gate has exactly three app fixture invocations. The package
-# suite runs in its own workflow job, so putting it back into the app lane or
-# silently expanding the fixture invocations must make this harness fail.
-app_fixture_lane_count=$(grep -c '^run_suite ' "$gate_script")
-[[ "$app_fixture_lane_count" == 3 ]] \
-    || die "gate has $app_fixture_lane_count app fixture lanes, expected 3"
+# The all and split layouts share five fixture call sites. Behavioral tests
+# in test-ci-simulator-recovery.sh prove which calls each shard executes.
+app_fixture_lane_count=$(grep -cE '^[[:space:]]*run_suite ' "$gate_script")
+[[ "$app_fixture_lane_count" == 5 ]] \
+    || die "gate has $app_fixture_lane_count app fixture call sites, expected 5"
 # These are source-code literals. The variable-looking text must not expand.
 # shellcheck disable=SC2016
 grep -qF 'if [[ "$ci_lane" == "package" ]]; then' "$gate_script" \
@@ -161,7 +162,7 @@ awk '
 # only build-for-testing. A late claim puts CoreSimulator wake back on the
 # critical path in front of compilation.
 awk '
-    /^claim_port_block$/ { claimed_ports = NR }
+    /^[[:space:]]*claim_port_block$/ { claimed_ports = NR }
     /xcrun simctl boot "/ { boot = NR }
     /host_ed25519"/ && /ssh-keygen/ { keygen = NR }
     END { exit (claimed_ports && boot && keygen \
@@ -204,6 +205,7 @@ grep -qF 'Show Xcode version' "$repo_root/.github/workflows/ci.yml" \
     run_lock_dir=""
     device_lock_dir=""
     diagnostic_root=""
+    phase_log="$work/phases.tsv"
     app_derived_data_path=""
     package_derived_data_path=""
     fixture_log_tail_lines=80
@@ -219,7 +221,7 @@ grep -qF 'Show Xcode version' "$repo_root/.github/workflows/ci.yml" \
 # The literal `$full_lane_log` is the gate's text, not an expansion here.
 # shellcheck disable=SC2016
 gate_executed_floor=$(sed -n \
-    's/^assert_full_lane_coverage "\$full_lane_log" \([0-9][0-9]*\)$/\1/p' \
+    's/^[[:space:]]*assert_full_lane_coverage "\$full_lane_log" \([0-9][0-9]*\)$/\1/p' \
     "$gate_script")
 [[ -n "$gate_executed_floor" ]] \
     || die "no assert_full_lane_coverage call site with a floor in $gate_script"

@@ -6,8 +6,8 @@ Study date: 2026-10-03. Source baseline:
 The app CI can be shortened without removing tests, but the useful changes
 are execution and build reuse, rather than deleting suites. Three independent
 reviews covered historical timing, coverage and isolation, and execution
-mechanisms. This study changes no workflow or test implementation. Proposed
-savings are estimates, not measurements of an optimized candidate.
+mechanisms. The historical analysis below predates implementation. Proposed
+savings remain estimates until the hosted experiment described below completes.
 
 The current execution constraint is **GitHub-hosted macOS runners**, preserving
 all test coverage. Ten minutes is a preference, not a hard acceptance limit;
@@ -17,6 +17,62 @@ Further independent reviews examined cold compilation, finer sharding, and
 the package lane. The earlier ten-minute analysis below is an exploratory
 scenario. Its local compilation-cold probe is evidence for that one build,
 not a proposed execution environment or a complete replacement CI.
+
+## Implementation experiment
+
+The workflow now uses three independently compiled app workers and the existing
+package worker on `macos-26`, with Xcode 26.6 pinned. Compilation starts after
+the worker claims its Simulator, while the parent prepares that Simulator and
+its fixtures. The ordinary worker provisions no SSH fixtures. Test selection,
+mandatory behavior assertions, signing, and destination recovery remain active.
+
+`CI / Build & test (iOS Simulator)` is the stable aggregate check. It requires
+every worker to succeed, then validates exported test methods, parameter case
+identities, exact fixture counts, and ordinary skip provenance. A completion
+record is created only after the runner and its cleanup return successfully.
+Missing, cancelled, failed, or inconsistent worker evidence fails the aggregate.
+
+The serial comparison retains the original test-call order on the same code and
+toolchain, with build/preparation overlap disabled. Both layouts explicitly
+disable native compilation caching and use fresh DerivedData. Warm mode restores
+only dependency sources; cold mode skips both cache restore and save. These
+controls distinguish a first dependency-cold run from a compilation-cold run
+whose dependency sources were restored.
+The explicit dependency-cold app benchmark permits a 20-minute build deadline
+for downloads; normal app runs retain 15 minutes. Test deadlines and the
+32-minute app step deadline remain unchanged.
+
+Local non-native checks use:
+
+```sh
+make test-tools test-ci-guards test-ci-watchdog
+actionlint .github/workflows/ci.yml
+```
+
+The watchdog target also runs the Simulator recovery and shard-dispatch guards;
+`make test-ci-recovery` remains available to run those checks directly.
+
+Hosted benchmarks use the pushed implementation branch. Run these sequentially
+to avoid competing for the shared macOS concurrency quota:
+
+```sh
+gh workflow run ci.yml --ref chore/ci-runtime-study \
+  -f layout=serial -f cache_mode=warm
+# Wait for the serial run to pass, then use its run ID below.
+gh workflow run ci.yml --ref chore/ci-runtime-study \
+  -f layout=sharded -f cache_mode=cold -f baseline_run=SERIAL_RUN_ID
+```
+
+The sharded aggregate compares the complete passing method and argument-case
+union with the same-SHA serial run. Worker artifacts include the checkout SHA,
+toolchain identity, per-phase results, and preparation/build/test timing. Report
+complete workflow elapsed time, runner execution time, cache mode, and any
+queueing separately. Synthetic guard tests and historical result-schema checks
+do not establish native equivalence or optimized hosted runtime.
+
+This experiment is stacked on the navigation/tooling branch while PR #401 is
+open; it does not alter app sources, the test suite, or the committed project.
+Hosted results are pending at implementation preparation time.
 
 ## Measured baseline
 
@@ -396,9 +452,9 @@ and conditional skipped jobs in
    tests on PRs; do not move them exclusively to nightly runs or replace real
    SSH and Simulator execution with mocks.
 
-Evidence consists of existing GitHub logs/metadata, repository source,
+Before implementation, evidence consisted of existing GitHub logs/metadata, repository source,
 official execution documentation, and the single local compilation-cold
-probe described above. No complete native App/SSH matrix, cache benchmark,
+probe described above. At that point, no complete native App/SSH matrix, cache benchmark,
 optimized CI, or fully dependency-cold run was performed. No workflow was
 dispatched or cancelled; no source/workflow implementation, runner
 registration, push, infrastructure, or billing mutation was made.
