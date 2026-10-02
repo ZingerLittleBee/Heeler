@@ -97,7 +97,9 @@ jobs:
     # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
     # rather than macos-latest for reproducibility.
     runs-on: macos-26
-    timeout-minutes: 35
+    # Serial measurements retain every original call and need a wider safety
+    # limit. The normal PR topology keeps its existing 35-minute job limit.
+    timeout-minutes: ${{ inputs.layout == 'serial' && 50 || 35 }}
     strategy:
       fail-fast: false
       matrix:
@@ -169,7 +171,7 @@ jobs:
       # fixture environment there, and targets that same device for every test
       # action. The app deployment target is iOS 18.
       - name: Build and test
-        timeout-minutes: 32
+        timeout-minutes: ${{ inputs.layout == 'serial' && 45 || 32 }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something merge CI may quietly run without.

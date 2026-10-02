@@ -55,7 +55,9 @@ until a complete run with this policy succeeds.
 Cold and warm app runs permit a 20-minute build deadline: hosted compilation
 has reached the final embedded-binary validation stage at the former 15-minute
 cutoff. This is a safety limit for runner variance, not a performance target.
-Test deadlines and the 32-minute app step deadline remain unchanged.
+Test deadlines and the normal PR's 32-minute app step deadline remain unchanged.
+The explicit serial comparison has a 45-minute step and 50-minute job safety
+limit, allowing its original sequential setup and four test calls to finish.
 
 Local non-native checks use:
 
