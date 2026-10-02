@@ -30,6 +30,12 @@ once on macOS, while app workers start their builds. Each app worker retains its
 own native Simulator and fixture checks, and the aggregate requires the package
 worker's checks to pass.
 
+Both native lanes select Python 3.12 with `actions/setup-python@v6`. Fixture
+processes use that selected runtime instead of the Apple Developer tool shim,
+and the runner logs the actual executable and version. Fixture arguments,
+readiness checks, authentication preflight, and cleanup remain unchanged; hosted
+runs must verify interpreter startup and fixture behavior.
+
 `CI / Build & test (iOS Simulator)` is the stable aggregate check. It requires
 every worker to succeed, then validates exported test methods, parameter case
 identities, exact fixture counts, and ordinary skip provenance. A completion
