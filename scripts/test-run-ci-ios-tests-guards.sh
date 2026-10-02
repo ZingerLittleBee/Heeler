@@ -38,6 +38,13 @@
 
 set -uo pipefail
 
+# Mock boundaries must not opt into a native worker's evidence or build
+# settings. Keep intentionally exercised evidence in this harness's temp tree.
+for inherited_setting in "${!HEELER_CI_@}" "${!HEELER_XCODEBUILD_@}"; do
+    [[ -z "$inherited_setting" ]] || unset "$inherited_setting"
+done
+unset inherited_setting
+
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 gate_script="$repo_root/scripts/run-ci-ios-tests.sh"
 green_log="$repo_root/scripts/testdata/gate-2f50170.log"

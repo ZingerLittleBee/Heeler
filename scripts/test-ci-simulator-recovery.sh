@@ -7,6 +7,13 @@
 # shellcheck disable=SC2030,SC2031,SC2034,SC2329
 set -euo pipefail
 
+# Mock boundaries must not opt into a native worker's evidence or build
+# settings. Keep intentionally exercised evidence in this harness's temp tree.
+for inherited_setting in "${!HEELER_CI_@}" "${!HEELER_XCODEBUILD_@}"; do
+    [[ -z "$inherited_setting" ]] || unset "$inherited_setting"
+done
+unset inherited_setting
+
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
@@ -251,6 +258,18 @@ run_case() (
     printf 'PASS %s\n' "$case_name"
     case_completed=1
 )
+
+# A single recovery plus subsequent action exercises the actual shipped app
+# wrapper under inherited worker settings without repeating all scenarios.
+case "${1:-}" in
+    --inherited-env-probe)
+        run_case same
+        echo 'Passed inherited CI environment recovery probe.'
+        exit 0
+        ;;
+    "") ;;
+    *) echo "Unknown recovery test option: $1" >&2; exit 2 ;;
+esac
 
 for scenario in same pinned-other-name replacement occupied package suite no-devices persistent \
     test-failure other-70 watchdog-status explicit-pin boot-failure env-failure list-failure \

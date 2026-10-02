@@ -300,3 +300,24 @@ fi
 echo "run-with-timeout behavior passed"
 
 "$repo_root/scripts/test-ci-simulator-recovery.sh"
+
+# Simulate job-global settings with a valid recording phase. Without isolation
+# the actual app wrapper would write fake xcresult evidence into this native
+# worker directory, even if the recovery itself still reported success.
+worker_evidence="$work/native-worker-evidence"
+mkdir -p "$worker_evidence"
+printf 'layout=sharded\nshard=ordinary\n' > "$worker_evidence/run-settings.txt"
+cp -R "$worker_evidence" "$work/native-worker-before"
+HEELER_CI_EVIDENCE_DIR="$worker_evidence" \
+HEELER_CI_EVIDENCE_METADATA='{"xcode_version":"fixture-xcode","sdk_version":"fixture-sdk","architecture":"fixture-arch"}' \
+HEELER_CI_TEST_PHASE=full-lane \
+HEELER_CI_APP_SHARD=ordinary \
+HEELER_CI_OVERLAP_BUILD=0 \
+HEELER_CI_DISABLE_COMPILATION_CACHE=1 \
+HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS=900 \
+    "$repo_root/scripts/test-ci-simulator-recovery.sh" --inherited-env-probe
+if ! diff -r "$work/native-worker-before" "$worker_evidence"; then
+    echo "mock recovery changed the native worker evidence directory" >&2
+    exit 1
+fi
+echo "inherited worker settings are isolated and evidence is byte-identical"
