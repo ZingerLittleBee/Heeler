@@ -127,20 +127,31 @@ def test_cases(report: object) -> list[dict]:
                 "Empty test identity component")
         return identity
 
-    def executions(node: dict, identity: str, argument: str | None = None) -> list[dict]:
+    def executions(node: dict, identity: str, method_url: str | None,
+                   argument: str | None = None) -> list[dict]:
         if node["nodeType"] == "Arguments":
             url = node.get("nodeIdentifierURL")
-            require(isinstance(url, str)
-                    and unquote(urlsplit(url).path).endswith("/" + identity),
-                    "Parameterized case has no argument URL identity")
-            query = urlsplit(url).query
+            query = ""
+            if url is not None:
+                require(isinstance(url, str) and bool(url), "Invalid parameterized argument URL")
+                parts = urlsplit(url)
+                if method_url is not None:
+                    parent = urlsplit(method_url)
+                    require((parts.scheme, parts.netloc, unquote(parts.path))
+                            == (parent.scheme, parent.netloc, unquote(parent.path)),
+                            "Parameterized argument URL differs from its parent method URL")
+                else:
+                    require(unquote(parts.path).endswith("/" + identity),
+                            "Parameterized argument URL differs from its parent method identity")
+                query = parts.query
             if query:
                 # Xcode 27 identifies argument cases in the complete URL query.
                 argument = identity + "?" + query
             else:
-                # Xcode 26.6 repeats the method URL and puts the complete argument
-                # display value in name. Preserve it losslessly, including quotes;
-                # duplicate names still fail rather than inventing ordinal IDs.
+                # Older readers omit argument URLs or repeat the parent URL.
+                # Ownership comes from the containing Test Case; preserve the
+                # complete argument name, and reject collisions instead of
+                # inventing ordinal IDs when display values are indistinguishable.
                 name = node.get("name")
                 require(isinstance(name, str) and bool(name),
                         "Parameterized case has no argument name identity")
@@ -149,7 +160,7 @@ def test_cases(report: object) -> list[dict]:
         if runs:
             result = []
             for child in runs:
-                result.extend(executions(child, identity, argument))
+                result.extend(executions(child, identity, method_url, argument))
             return result
         result = node.get("result")
         require(result in {"Passed", "Skipped"}, "Unsuccessful or unknown parameter/test result")
@@ -166,7 +177,10 @@ def test_cases(report: object) -> list[dict]:
             seen.add(identity)
             outcome = node.get("result")
             require(outcome in {"Passed", "Skipped"}, f"Unsuccessful test result: {identity}")
-            cases = executions(node, identity)
+            method_url = node.get("nodeIdentifierURL")
+            require(method_url is None or isinstance(method_url, str) and bool(method_url),
+                    "Invalid parent method URL")
+            cases = executions(node, identity, method_url)
             require(len({case["identity"] for case in cases}) == len(cases),
                     f"Duplicate argument/test execution: {identity}")
             if outcome == "Passed":
@@ -205,13 +219,27 @@ def record(directory: Path, phase: str, lane: str, shard: str, summary: object, 
     require(bool(re.fullmatch(r"[A-Za-z0-9_-]+", phase)), "Invalid evidence phase")
     require(lane in {"app", "package"} and shard in {"all", "session-weak", "transport", "ordinary"},
             "Invalid evidence lane or shard")
+    sha = tested_sha()
+    require(not list(directory.glob("worker-*.json")), "Evidence worker is already marked complete")
+    # Keep the reports emitted by the native reader before interpreting them.
+    # Re-reading an old bundle with another Xcode can produce a different schema.
+    diagnostics = directory / "diagnostics"
+    atomic_json(diagnostics / f"raw-{phase}-summary.json", summary)
+    atomic_json(diagnostics / f"raw-{phase}-tests.json", report)
+    metadata = toolchain()
+    try:
+        reader = subprocess.check_output(["xcrun", "--find", "xcresulttool"],
+                                         text=True, stderr=subprocess.DEVNULL).strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        reader = None
+    atomic_json(diagnostics / f"raw-{phase}-reader.json",
+                {"tested_sha": sha, "toolchain": metadata, "xcresulttool_path": reader})
     tests = test_cases(report)
-    value = {"schema": SCHEMA, "kind": "phase", "tested_sha": tested_sha(), "lane": lane,
-             "shard": shard, "phase": phase, "toolchain": toolchain(),
+    value = {"schema": SCHEMA, "kind": "phase", "tested_sha": sha, "lane": lane,
+             "shard": shard, "phase": phase, "toolchain": metadata,
              "selection": {"only_testing": selectors, "skip_testing": exclusions},
              "summary": summary_record(summary, tests), "tests": tests}
     path = directory / f"phase-{phase}.json"
-    require(not list(directory.glob("worker-*.json")), "Evidence worker is already marked complete")
     atomic_json(path, value)
     return path
 

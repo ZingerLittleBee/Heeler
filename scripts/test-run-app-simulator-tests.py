@@ -56,6 +56,8 @@ if args[:4] == ["xcresulttool", "get", "test-results", "summary"]:
     print(json.dumps(config["summary"]))
 elif args[:4] == ["xcresulttool", "get", "test-results", "tests"]:
     print(json.dumps(config["tests"]))
+elif args == ["--find", "xcresulttool"]:
+    print("/Applications/FakeXcode.app/usr/bin/xcresulttool")
 elif args[:2] == ["simctl", "spawn"] and args[3] == "defaults":
     prefs_path = root / "preferences.plist"
     prefs = plistlib.loads(prefs_path.read_bytes())
@@ -288,7 +290,10 @@ class ProcessBoundaryTests(unittest.TestCase):
         result = self.run_wrapper()
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("Partially executed parameterized test", result.stderr)
-        self.assertFalse((self.root / "evidence").exists())
+        self.assertFalse(list((self.root / "evidence").glob("phase-*.json")))
+        self.assertFalse(list((self.root / "evidence").glob("worker-*.json")))
+        self.assertEqual(json.loads((self.root / "evidence/diagnostics/raw-full-lane-tests.json").read_text()),
+                         self.config["tests"])
         self.assert_preferences_restored()
 
     def test_export_sha_mismatch_fails_after_restoring_preferences(self):

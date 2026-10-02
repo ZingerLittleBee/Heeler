@@ -73,9 +73,11 @@ complete workflow elapsed time, runner execution time, cache mode, and any
 queueing separately. Synthetic guard tests and historical result-schema checks
 do not establish native equivalence or optimized hosted runtime.
 
-This experiment is stacked on the navigation/tooling branch while PR #401 is
-open; it does not alter app sources, the test suite, or the committed project.
-Hosted results are pending at implementation preparation time.
+The experiment targets `main` after the navigation/tooling changes in #401.
+It does not alter app sources, the test suite, or the committed project.
+Hosted results are pending at implementation preparation time. The evidence
+recorder retains the native reader's raw reports before its coverage parsing;
+re-reading a result bundle with another Xcode version can change that report.
 
 ## Measured baseline
 

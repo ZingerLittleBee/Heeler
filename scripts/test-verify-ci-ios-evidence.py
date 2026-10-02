@@ -26,7 +26,7 @@ METADATA = {"xcode_version": "Xcode 26.6\nBuild version 17F113", "sdk_version": 
 
 
 def xcode26_parameter_report() -> dict:
-    """Keep the real argument subtree from native Xcode 26.6 run 37056503090."""
+    """Keep the Xcode 27 reader's view of native Xcode 26.6 run 37056503090."""
     identity = "DNSServiceAddressResolverTests/numericAddressesPreserveFamilyAndPort(_:)"
     url = "test://com.apple.xcode/HeelerSSH/HeelerSSHTests/" + identity
     return {"testNodes": [{"name": "HeelerSSH", "nodeType": "Test Plan", "result": "Passed", "children": [
@@ -263,6 +263,30 @@ class ResultTreeTests(unittest.TestCase):
             child.update(duration="12s", durationInSeconds=12.0)
         self.assertEqual(tests, evidence.test_cases(report))
 
+    def test_argument_names_bind_structurally_when_argument_urls_are_absent(self):
+        report = xcode26_parameter_report()
+        expected = evidence.test_cases(report)
+        node = report["testNodes"][0]["children"][0]["children"][0]["children"][0]
+        for child in node["children"]:
+            child.pop("nodeIdentifierURL")
+        self.assertEqual(expected, evidence.test_cases(report))
+        node.pop("nodeIdentifierURL")
+        self.assertEqual(expected, evidence.test_cases(report))
+        node["children"][0].pop("name")
+        with self.assertRaisesRegex(ValueError, "no argument name identity"):
+            evidence.test_cases(report)
+
+    def test_argument_urls_bind_to_the_actual_parent_url_not_its_display_identity(self):
+        report = xcode26_parameter_report()
+        node = report["testNodes"][0]["children"][0]["children"][0]["children"][0]
+        node["nodeIdentifier"] = "DNSServiceAddressResolverTests/displayAlias(_:)"
+        parsed = evidence.test_cases(report)
+        self.assertTrue(parsed[0]["cases"][0]["identity"].startswith(
+            "HeelerSSHTests/DNSServiceAddressResolverTests/displayAlias(_:)?"))
+        node["children"][0]["nodeIdentifierURL"] += "different"
+        with self.assertRaisesRegex(ValueError, "differs from its parent method URL"):
+            evidence.test_cases(report)
+
     def test_xcode26_argument_skips_missing_names_and_duplicate_names_fail(self):
         for scenario in ("skip", "missing-name", "empty-name", "duplicate-name", "wrong-method"):
             with self.subTest(scenario=scenario):
@@ -297,6 +321,23 @@ class ResultTreeTests(unittest.TestCase):
                 evidence.complete(directory, "app", "ordinary", SHA)
                 with self.assertRaisesRegex(ValueError, "already complete"):
                     evidence.complete(directory, "app", "ordinary", SHA)
+
+    def test_invalid_parameter_report_is_preserved_without_success_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            report = self.report("Skipped")
+            summary = {"totalTestCount": 1, "skippedTests": 0, "failedTests": 0, "result": "Passed"}
+            with patch.object(evidence, "tested_sha", return_value=SHA), \
+                    patch.object(evidence, "toolchain", return_value=METADATA), \
+                    patch.object(subprocess, "check_output", return_value="/Fake/xcresulttool\n"):
+                with self.assertRaisesRegex(ValueError, "Partially executed parameterized test"):
+                    evidence.record(directory, "full-lane", "app", "ordinary", summary, report, [], [])
+            self.assertEqual(json.loads((directory / "diagnostics/raw-full-lane-tests.json").read_text()), report)
+            self.assertEqual(json.loads((directory / "diagnostics/raw-full-lane-summary.json").read_text()), summary)
+            self.assertEqual(json.loads((directory / "diagnostics/raw-full-lane-reader.json").read_text()),
+                             {"tested_sha": SHA, "toolchain": METADATA, "xcresulttool_path": "/Fake/xcresulttool"})
+            self.assertFalse(list(directory.glob("phase-*.json")))
+            self.assertFalse(list(directory.glob("worker-*.json")))
 
     def test_git_sha_must_match_ci_checkout(self):
         with patch.object(subprocess, "check_output", return_value=SHA + "\n"), patch.dict(os.environ, {"GITHUB_SHA": "b" * 40}):
