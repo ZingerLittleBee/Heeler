@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Exercise the merge gate's own assertions without running the merge gate.
 #
-# Run through make test-ci-guards, locally or before the app lane in CI.
+# Run through make test-ci-guards, locally or in the mandatory macOS CI worker.
 # It proves the gate's guards can fail without building or running the app.
 #
 # The guards it exercises are the ones the full lane gained under #135. Those

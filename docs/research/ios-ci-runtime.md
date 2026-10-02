@@ -25,6 +25,10 @@ package worker on `macos-26`, with Xcode 26.6 pinned. Compilation starts after
 the worker claims its Simulator, while the parent prepares that Simulator and
 its fixtures. The ordinary worker provisions no SSH fixtures. Test selection,
 mandatory behavior assertions, signing, and destination recovery remain active.
+The mandatory package worker runs the watchdog and gate-guard regression checks
+once on macOS, while app workers start their builds. Each app worker retains its
+own native Simulator and fixture checks, and the aggregate requires the package
+worker's checks to pass.
 
 `CI / Build & test (iOS Simulator)` is the stable aggregate check. It requires
 every worker to succeed, then validates exported test methods, parameter case

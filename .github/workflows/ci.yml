@@ -162,12 +162,6 @@ jobs:
             printf 'build_deadline_seconds=%s\n' "$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS"
           } > "$HEELER_CI_EVIDENCE_DIR/run-settings.txt"
 
-      - name: Test CI watchdog
-        run: make test-ci-watchdog
-
-      - name: Test CI gate guards
-        run: make test-ci-guards
-
       # The script selects one available iPhone 17 UDID, boots it, injects the
       # fixture environment there, and targets that same device for every test
       # action. The app deployment target is iOS 18.
@@ -223,6 +217,15 @@ jobs:
       # cold-start; package-lane boot overlaps with build-for-testing.
       - name: Show Xcode version
         run: xcodebuild -version
+
+      # These checks exercise the same shipped helpers and process behavior on
+      # macOS. Run them once in this mandatory worker so app builds can start
+      # immediately; the aggregate requires this worker to pass as well.
+      - name: Test CI watchdog
+        run: make test-ci-watchdog
+
+      - name: Test CI gate guards
+        run: make test-ci-guards
 
       - name: Run package E2E
         timeout-minutes: 12
