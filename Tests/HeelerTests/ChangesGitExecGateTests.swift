@@ -264,7 +264,11 @@ struct ChangesGitExecGateTests {
     /// another git exec on that Host instead of running beside it.
     @Test func agentRowStoresReadThroughTheHostsGate() async throws {
         let host = Host.fixture()
-        let transport = ScriptedTransport()
+        let wireAgent = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+            tabID: "w1:t1", terminalID: "term_1", workspaceID: "w1",
+            agent: "claude", cwd: "/home/dev/src/app", terminalTitleStripped: "")
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [wireAgent]))
         let read = try ChangesStoreTests.read(GitProbeRecordings.hostile)
         await transport.scriptChangesReads([.success(read)])
         let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { _, subscriptions in
@@ -273,21 +277,19 @@ struct ChangesGitExecGateTests {
         console.setHosts([host])
         defer { console.setHosts([]) }
         await console.resume()
-        try await Self.waitUntil("the Host never connected") {
+        // Connected precedes inventory: the row must belong to the applied snapshot.
+        let agentID = ConsoleAgent.ID(hostID: host.id, paneID: wireAgent.paneID)
+        try await Self.waitUntil("the Host's Agent inventory never became ready") {
             console.hostStatuses[host.id] == .connected
+                && !console.hostsAwaitingSnapshot.contains(host.id)
+                && console.agents.contains { $0.id == agentID }
         }
+        let agent = try #require(console.agents.first { $0.id == agentID })
 
         let gate = console.gitExecGate(for: host.id)
         let other = ScriptedTransportCallGate()
         let holder = Task { try await gate.run { await other.waitUntilOpen() } }
         await other.waitForEntry()
-        let agent = ConsoleAgent(
-            hostID: host.id, hostName: host.name,
-            agent: Agent(
-                terminalID: "term_1", kind: "claude", title: "", status: .idle,
-                workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1", cwd: "/home/dev/src/app",
-                revision: 1, name: nil),
-            workspaceLabel: nil, repositoryCheckout: nil)
         console.rowChanges.rowAppeared(agent)
         defer { console.rowChanges.rowDisappeared(agent.id) }
         let store = try #require(console.rowChanges.store(for: agent))
