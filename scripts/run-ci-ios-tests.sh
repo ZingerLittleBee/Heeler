@@ -492,7 +492,7 @@ dump_fixture_logs() {
         [[ -s "$log" ]] || continue
         name=$(basename "$log")
         case "$name" in
-            sshd-*.log | weak-network.log | fake-herdr.log) ;;
+            sshd-*.log | weak-network.log | fake-herdr.log | stall-server.log | fixture-readiness.log) ;;
             *) continue ;;
         esac
         echo "===== $log (last $fixture_log_tail_lines lines)" >&2
@@ -1786,7 +1786,7 @@ elif [[ "$ci_lane" == "app" && "$ci_app_shard" != transport ]]; then
     echo "==> Twelve of the thirteen mandatory behaviours still run." >&2
 fi
 
-/usr/bin/python3 -c '
+/usr/bin/python3 -u -c '
 import socket
 import sys
 
@@ -1794,11 +1794,12 @@ server = socket.socket()
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(("127.0.0.1", int(sys.argv[1])))
 server.listen()
+print(f"Stall server listening on 127.0.0.1:{sys.argv[1]}", flush=True)
 connections = []
 while True:
     connection, _ = server.accept()
     connections.append(connection)
-' "$stall_port" >/dev/null 2>&1 &
+' "$stall_port" > "$fixture_dir/stall-server.log" 2>&1 &
 stall_pid=$!
 
 fixture_pids=(
@@ -1831,16 +1832,47 @@ fixture_ports=(
     "$weak_network_control_port"
 )
 
+fixture_failed_endpoint=""
 fixture_is_listening() {
     local port
+    fixture_failed_endpoint=""
     for port in "${fixture_ports[@]}"; do
-        nc -z 127.0.0.1 "$port" >/dev/null 2>&1 || return 1
+        if ! nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
+            fixture_failed_endpoint="tcp4:127.0.0.1:$port"
+            return 1
+        fi
     done
-    nc -z ::1 "$pairing_port" >/dev/null 2>&1 || return 1
-    [[ -S "$streamlocal_socket" ]] || return 1
-    [[ -S "$streamlocal_stale_socket" ]] || return 1
-    [[ -S "$streamlocal_wake_failure_socket" ]] || return 1
+    if ! nc -z ::1 "$pairing_port" >/dev/null 2>&1; then
+        fixture_failed_endpoint="tcp6:[::1]:$pairing_port"
+        return 1
+    fi
+    local socket_path
+    for socket_path in "$streamlocal_socket" "$streamlocal_stale_socket" "$streamlocal_wake_failure_socket"; do
+        if [[ ! -S "$socket_path" ]]; then
+            fixture_failed_endpoint="unix:$socket_path"
+            return 1
+        fi
+    done
     return 0
+}
+
+dump_fixture_readiness_failure() {
+    local failed_pid=${1:-}
+    local pid
+    printf 'Fixture readiness failed at %s\n' "${fixture_failed_endpoint:-unknown endpoint}" >&2
+    # Restrict diagnostics to our fixture processes. Command names and TCP
+    # listeners identify startup failures without command arguments or env.
+    {
+        printf 'Fixture readiness failed at %s\n' "${fixture_failed_endpoint:-unknown endpoint}"
+        [[ -z "$failed_pid" ]] || printf 'Fixture process exited: PID %s\n' "$failed_pid"
+        for pid in "${fixture_pids[@]}"; do
+            printf '===== fixture PID %s (pid ppid state elapsed command name)\n' "$pid"
+            ps -p "$pid" -o pid=,ppid=,state=,etime=,comm= 2>/dev/null || true
+            printf '===== fixture PID %s TCP listeners\n' "$pid"
+            lsof -nP -a -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null || true
+        done
+    } > "$fixture_dir/fixture-readiness.log"
+    dump_fixture_logs
 }
 
 for attempt in $(seq 1 50); do
@@ -1849,7 +1881,7 @@ for attempt in $(seq 1 50); do
     fi
     for pid in "${fixture_pids[@]}"; do
         if ! kill -0 "$pid" 2>/dev/null; then
-            dump_fixture_logs
+            dump_fixture_readiness_failure "$pid"
             exit 1
         fi
     done
@@ -1857,7 +1889,7 @@ for attempt in $(seq 1 50); do
 done
 
 if ! fixture_is_listening; then
-    dump_fixture_logs
+    dump_fixture_readiness_failure
     exit 1
 fi
 record_phase ssh-fixture-preparation "$ssh_fixture_started"
