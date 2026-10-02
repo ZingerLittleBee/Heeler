@@ -52,9 +52,10 @@ This reduces crash file/line symbolication and LLDB variable information; the
 normal Swift Testing failure locations remain available. Local builds retain
 their default symbol settings. Hosted performance benefits remain unverified
 until a complete run with this policy succeeds.
-The explicit dependency-cold app benchmark permits a 20-minute build deadline
-for downloads; normal app runs retain 15 minutes. Test deadlines and the
-32-minute app step deadline remain unchanged.
+Cold and warm app runs permit a 20-minute build deadline: hosted compilation
+has reached the final embedded-binary validation stage at the former 15-minute
+cutoff. This is a safety limit for runner variance, not a performance target.
+Test deadlines and the 32-minute app step deadline remain unchanged.
 
 Local non-native checks use:
 

@@ -108,9 +108,10 @@ jobs:
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
       HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
-      # Dependency-cold builds include downloads; retain the normal 15-minute
-      # build deadline and allow 20 minutes only for the explicit cold probe.
-      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: ${{ inputs.cache_mode == 'cold' && '1200' || '900' }}
+      # Hosted compilation can exceed 15 minutes even with restored sources.
+      # Leave room for runner variance without treating this safety deadline
+      # as a runtime target; cold and warm measurements use the same limit.
+      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1200'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
