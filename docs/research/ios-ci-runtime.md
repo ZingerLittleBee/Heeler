@@ -9,13 +9,14 @@ reviews covered historical timing, coverage and isolation, and execution
 mechanisms. This study changes no workflow or test implementation. Proposed
 savings are estimates, not measurements of an optimized candidate.
 
-The follow-up target is **the complete PR gate within ten minutes on a first
-run without restored dependency or compiled-output caches**, preserving all
-coverage. Further independent
-reviews examined cold compilation, finer sharding, and the package lane. The
-standard runner evidence does not establish that target. A successful local
-compilation-cold probe makes a faster execution environment worth evaluating,
-but does not validate a complete replacement CI.
+The current execution constraint is **GitHub-hosted macOS runners**, preserving
+all test coverage. Ten minutes is a preference, not a hard acceptance limit;
+a somewhat longer gate is acceptable. Compare the complete first run without
+restored dependency or compiled-output caches with subsequent runs separately.
+Further independent reviews examined cold compilation, finer sharding, and
+the package lane. The earlier ten-minute analysis below is an exploratory
+scenario. Its local compilation-cold probe is evidence for that one build,
+not a proposed execution environment or a complete replacement CI.
 
 ## Measured baseline
 
@@ -58,7 +59,72 @@ combined. Repeated package-graph resolution accounts for only 7.19 seconds of
 that gap. Existing logs cannot assign the remaining gap to one mechanism.
 These historical runs also predate the new xcresult selector verifier.
 
-## Ten-minute target: execution environment and topology
+## Current recommendation on GitHub-hosted runners
+
+Use the current standard `macos-26` image as the baseline. Favor a smaller
+three-worker app topology before the earlier five-worker scenario:
+
+| App worker | Selection and order |
+| --- | --- |
+| Session and WeakNetwork | Session 13 in its original call, stop the password sshd immediately, then all 10 WeakNetwork tests in a separate process with an exclusive proxy |
+| Ordered transport | Direct streamlocal 9, then the six non-Weak shared suites, 106 tests |
+| Ordinary regression | The complete ordinary target, retaining fixture skip provenance from the other workers |
+
+Session and WeakNetwork remain separate calls. Static review found no mutual
+proxy or stale-socket dependency, but this regrouping requires native mandatory
+fixture validation before it is equivalent. Direct remains before
+TransportBehavior. Each worker owns its Simulator, fixture state, preferences,
+keys and processes. Preserve the full method and parameterized-case union,
+exact mandatory counts and every existing behavior assertion in a final gate.
+The original package lane runs alongside these three app workers and keeps all
+70 tests and five suites.
+
+For the first implementation experiment, compare worker-local compilation
+concurrent with fixture preparation against one build followed by artifact
+fan-out. Starting three self-contained workers together avoids a separate
+post-build preparation barrier and product relocation, but duplicates cold
+compilation and dependency downloads. A build-once fan-out saves total build
+work while adding product transfer and fresh-worker preparation after the
+build. Do not attribute preparation/build overlap to ordinary `needs: build`
+scheduling. Measure the user-facing critical path and total runner work before
+choosing the final topology.
+
+The modeled prepared tail for the three groups is approximately 283-324,
+246-288, and 287-312 seconds respectively. With the observed 499-630-second
+build and ideal worker-local build/preparation overlap, this gives roughly
+**13-16 minutes plus other overhead**, with a dependency-source cache hit
+but no compiled-output reuse. This is a scenario, not an optimized-run result.
+Let `D` be the extra first-run dependency fetch and `O` include queueing, checks,
+result evidence transfer and aggregation: a completely cache-empty first run
+is modeled as `max(build + D, preparation) + test tail + O`. Neither `D` nor
+all of `O` has been measured for this topology. A 15-20-minute gate is a useful
+initial optimization objective; a truly first-cold run may exceed it.
+Compiled-cache benefits on subsequent runs also require a separate benchmark.
+
+GitHub's [Actions limits](https://docs.github.com/en/actions/reference/limits)
+currently allow five concurrent macOS jobs on Free, Pro and Team plans. Three
+app workers plus package use four slots for one PR, leaving some headroom;
+other PRs and workflows still consume the same quota. The earlier five app
+workers plus package cannot all run concurrently at that default limit.
+
+Keep initial changes focused on phase attribution, build/preparation overlap,
+the three groups above, and CI-only indexing as an independent build
+experiment. `COMPILER_INDEX_STORE_ENABLE=NO` can avoid editor index output,
+but its hosted savings are unmeasured. Pin and record the actual Xcode 26.6
+identity for the comparison; pinning is not itself a speedup.
+
+An independent hosted toolchain experiment is also available:
+GitHub's [Xcode 27 image announcement](https://github.com/actions/runner-images/issues/14404)
+documents the `xcode-27` public-preview label. The current
+[image manifest](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
+lists Xcode 27.0 and iOS 27.0 simulators, whereas
+[macos-26](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md)
+only has Xcode 26.x. This changes SDK/runtime and requires the complete original
+matrix and coverage checks. It is not a hardware upgrade or a confirmed
+speedup, and preview availability/queueing needs measurement. Keep it separate
+from the workflow-topology experiment and the local probe evidence.
+
+## Earlier ten-minute model: execution environment and topology
 
 Further splitting can shorten the test tail, but the existing cold build is
 already 499-630 seconds, with a dependency-source cache hit. A conservative
@@ -89,9 +155,9 @@ on the measured standard runner gives `499-630 + 246 = 745-876 seconds`, or
 the observed 177-285-second preparation then adds to this path. More shards
 alone do not establish a ten-minute first run.
 
-The proposed ten-minute experiment therefore combines a faster compatible
-execution environment, about five isolated app test workers, and preparation
-that overlaps compilation. An illustrative allocation is at most four minutes
+The earlier ten-minute scenario combines a faster compatible execution
+environment, about five isolated app test workers, and preparation that
+overlaps compilation. An illustrative allocation is at most four minutes
 for overlapped build/preparation, five minutes for the prepared test tail, and
 one minute for queue/transfer/aggregation. These are acceptance budgets, not
 predictions. Eager prepared workers waiting for a verified artifact, or
@@ -139,10 +205,9 @@ benefit of hardware alone. GitHub's
 [larger runners](https://docs.github.com/en/actions/reference/runners/larger-runners)
 require an organization on an eligible Team or Enterprise plan. This public
 repository is currently owned by an individual, so merely changing its
-`runs-on` label is not a deployment path for larger runners. A dedicated Mac
-runner is another option; public-PR execution requires the isolation described
-in GitHub's [runner security guidance](https://docs.github.com/en/actions/reference/security/secure-use).
-No runner was registered and no infrastructure or billing was changed.
+`runs-on` label is not a deployment path for larger runners. The current
+recommendation uses the repository's standard hosted runners. No runner was
+registered and no infrastructure or billing was changed.
 
 ### The package lane must also fit
 
@@ -206,7 +271,7 @@ the app job. It covers lower-level SessionDriver behavior and is not redundant
 with the product-level app suite. Removing that job would not shorten the
 current app critical path.
 
-## Recommended changes, in order
+## Supporting implementation experiments
 
 ### 1. Attribute setup and build, then overlap independent work
 
@@ -326,7 +391,8 @@ and conditional skipped jobs in
    first run without restored dependency-source or compiled-output caches and
    a warm run, rather than only local compiler timings. Include initial
    dependency downloads, provisioning, queueing, transfer, and aggregation in
-   the ten-minute first-run acceptance result. Keep the mandatory
+   the first-run result, and report it against the ten-minute preference without
+   treating that preference as a hard gate. Keep the mandatory
    tests on PRs; do not move them exclusively to nightly runs or replace real
    SSH and Simulator execution with mocks.
 
