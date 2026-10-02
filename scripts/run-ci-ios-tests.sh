@@ -175,6 +175,9 @@ start_background_build() {
     if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
         arguments+=(COMPILATION_CACHE_ENABLE_CACHING=NO)
     fi
+    if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
+        arguments+=(GCC_GENERATE_DEBUGGING_SYMBOLS=NO)
+    fi
     background_build_label="$label"
     background_build_log="$fixture_dir/background-build.log"
     background_build_timing="$fixture_dir/background-build-timing.json"
@@ -276,6 +279,9 @@ run_xcodebuild() {
         arguments+=(-showBuildTimingSummary COMPILER_INDEX_STORE_ENABLE=NO)
         if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
             arguments+=(COMPILATION_CACHE_ENABLE_CACHING=NO)
+        fi
+        if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
+            arguments+=(GCC_GENERATE_DEBUGGING_SYMBOLS=NO)
         fi
     fi
     # Keep this function in the calling shell. In particular, an outer tee

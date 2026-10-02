@@ -45,6 +45,13 @@ disable native compilation caching and use fresh DerivedData. Warm mode restores
 only dependency sources; cold mode skips both cache restore and save. These
 controls distinguish a first dependency-cold run from a compilation-cold run
 whose dependency sources were restored.
+CI builds also set `GCC_GENERATE_DEBUGGING_SYMBOLS=NO` to avoid DWARF generation
+([Apple build settings](https://developer.apple.com/documentation/xcode/build-settings-reference)),
+while retaining Debug configuration, `-Onone`, assertions, and testability.
+This reduces crash file/line symbolication and LLDB variable information; the
+normal Swift Testing failure locations remain available. Local builds retain
+their default symbol settings. Hosted performance benefits remain unverified
+until a complete run with this policy succeeds.
 The explicit dependency-cold app benchmark permits a 20-minute build deadline
 for downloads; normal app runs retain 15 minutes. Test deadlines and the
 32-minute app step deadline remain unchanged.
@@ -78,7 +85,11 @@ queueing separately. Synthetic guard tests and historical result-schema checks
 do not establish native equivalence or optimized hosted runtime.
 
 The experiment targets `main` after the navigation/tooling changes in #401.
-It does not alter app sources, the test suite, or the committed project.
+It keeps app sources and the committed project unchanged. One parameterized
+control-sequence test now accepts byte arrays instead of `Data`, then converts
+each array to the identical `Data` input. Its three inputs and assertions are
+preserved. Coverage export still rejects indistinguishable argument values or
+repetitions; the hosted run must verify three distinct case identities.
 Hosted results are pending at implementation preparation time. The evidence
 recorder retains the native reader's raw reports before its coverage parsing;
 re-reading a result bundle with another Xcode version can change that report.

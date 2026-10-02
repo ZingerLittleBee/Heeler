@@ -107,6 +107,7 @@ jobs:
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/app-${{ matrix.shard }}
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
+      HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
       # Dependency-cold builds include downloads; retain the normal 15-minute
       # build deadline and allow 20 minutes only for the explicit cold probe.
       HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: ${{ inputs.cache_mode == 'cold' && '1200' || '900' }}
@@ -160,6 +161,7 @@ jobs:
             printf 'checkout_sha=%s\nevent_sha=%s\n' "$(git rev-parse HEAD)" "$GITHUB_SHA"
             printf 'image_version=%s\n' "${ImageVersion:-unknown}"
             printf 'build_deadline_seconds=%s\n' "$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS"
+            printf 'debug_symbols=disabled\n'
           } > "$HEELER_CI_EVIDENCE_DIR/run-settings.txt"
 
       # The script selects one available iPhone 17 UDID, boots it, injects the
@@ -210,6 +212,7 @@ jobs:
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/package
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
+      HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
     steps:
       - uses: actions/checkout@v5
 

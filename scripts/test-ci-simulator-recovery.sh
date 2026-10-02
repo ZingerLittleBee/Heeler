@@ -190,6 +190,9 @@ run_case() (
         # shellcheck disable=SC2034
         simulator_environment_variables=(HEELER_SSH_E2E_REQUIRED HEELER_SSH_E2E_HOST)
     fi
+    if [[ "$case_name" == overlap-replacement ]]; then
+        export HEELER_CI_DISABLE_DEBUG_SYMBOLS=1
+    fi
     local status=0
     if [[ "$overlap_case" == 1 ]]; then
         start_background_build first
@@ -218,10 +221,28 @@ run_case() (
                 [[ "$device_lock_dir" == "$lock_root/device-$REPLACEMENT" ]] || fail 'cleanup lock is stale'
                 [[ ! -d "$lock_root/device-$ORIGINAL" ]] || fail 'old lock leaked'
             fi
+            if [[ "$overlap_case" == 1 ]]; then
+                local build_arguments
+                local attempt
+                for attempt in 1 2; do
+                    build_arguments=$(sed -n "${attempt}p" "$CASE_DIR/arguments")
+                    [[ " $build_arguments " == *' build-for-testing '* ]] || fail 'expected background build and foreground retry'
+                    if [[ "$case_name" == overlap-replacement ]]; then
+                        [[ " $build_arguments " == *' GCC_GENERATE_DEBUGGING_SYMBOLS=NO '* ]] || fail "build attempt $attempt lost opt-in debug symbol setting"
+                    else
+                        [[ "$build_arguments" != *GCC_GENERATE_DEBUGGING_SYMBOLS=* ]] || fail "build attempt $attempt disabled debug symbols without opt-in"
+                    fi
+                done
+            fi
             # Subsequent actions must inherit the recovered destination.
             run_xcodebuild next 10 "$CASE_DIR/next.log" test-without-building \
                 -destination "$simulator_destination" >> "$CASE_DIR/output" 2>&1
             tail -n 1 "$CASE_DIR/arguments" | grep -qF "id=$simulator_udid" || fail 'next action used stale UDID'
+            if [[ "$overlap_case" == 1 ]]; then
+                build_arguments=$(tail -n 1 "$CASE_DIR/arguments")
+                [[ " $build_arguments " == *' test-without-building '* ]] || fail 'subsequent action rebuilt tests'
+                [[ "$build_arguments" != *GCC_GENERATE_DEBUGGING_SYMBOLS=* ]] || fail 'test action inherited build-only debug symbol setting'
+            fi
             if [[ "$SCENARIO" == replacement || "$SCENARIO" == package ]]; then
                 grep -qF "simctl spawn $REPLACEMENT launchctl setenv HEELER_SSH_E2E_REQUIRED 1" "$CASE_DIR/simctl" || fail 'fixture environment was not restored'
             fi
