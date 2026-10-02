@@ -190,10 +190,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ci-evidence-app-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          # A partial rerun replaces only its worker; successful prerequisites
+          # retain their same-run, same-SHA evidence for the aggregate.
+          name: ios-ci-evidence-app-${{ matrix.shard }}-${{ github.run_id }}
           path: ${{ env.HEELER_CI_EVIDENCE_DIR }}
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
 
       - name: Upload iOS CI diagnostics
         if: failure()
@@ -236,10 +239,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ci-evidence-package-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ios-ci-evidence-package-${{ github.run_id }}
           path: ${{ env.HEELER_CI_EVIDENCE_DIR }}
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
 
       - name: Upload package CI diagnostics
         if: failure()
@@ -272,7 +276,7 @@ jobs:
           python-version: '3.12'
       - uses: actions/download-artifact@v4
         with:
-          pattern: ios-ci-evidence-*-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: ios-ci-evidence-*-${{ github.run_id }}
           path: .ci/evidence
       - name: Download same-SHA serial comparison
         if: ${{ inputs.baseline_run != '' }}

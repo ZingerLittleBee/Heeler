@@ -31,6 +31,9 @@ every worker to succeed, then validates exported test methods, parameter case
 identities, exact fixture counts, and ordinary skip provenance. A completion
 record is created only after the runner and its cleanup return successfully.
 Missing, cancelled, failed, or inconsistent worker evidence fails the aggregate.
+Evidence names include the run and worker, and a rerun replaces that worker's
+artifact. Partial reruns can retain successful same-run, same-SHA prerequisites;
+the aggregate still requires every worker's current result to succeed.
 
 The serial comparison retains the original test-call order on the same code and
 toolchain, with build/preparation overlap disabled. Both layouts explicitly
