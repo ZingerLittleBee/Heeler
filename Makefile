@@ -95,6 +95,7 @@ check-agent-docs: ## Check navigation links and unique ADR numbers
 	python3 scripts/check-agent-docs.py
 
 test-tools: check-agent-docs ## Test agent tooling without Xcode or a simulator
+	python3 scripts/test-native-test-lifecycle.py
 	python3 scripts/test-check-agent-docs.py
 	python3 scripts/test-run-app-simulator-tests.py
 	python3 scripts/test-simulator-ui.py
