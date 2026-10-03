@@ -198,6 +198,7 @@ actor SessionDriver {
     private var nextSessionWaitHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecStderrReadErrorForTesting: SSHError?
     private var nextExecStdoutOwnerErrorForTesting: SSHError?
+    private var nextExchangeStderrOwnerForTesting: Bool?
     private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextCompensationUnlinkPhaseHookForTesting: (@Sendable () async throws -> Void)?
@@ -2583,6 +2584,10 @@ actor SessionDriver {
         nextExecStdoutOwnerErrorForTesting = error
     }
 
+    func forceNextExchangeReadOwnerForTesting(stderr: Bool) {
+        nextExchangeStderrOwnerForTesting = stderr
+    }
+
     func holdNextExecChannelAllocationForTesting(
         _ hold: @escaping @Sendable () async throws -> Void
     ) {
@@ -3967,6 +3972,14 @@ actor SessionDriver {
                     buffer: &scratch)
             }
         }
+
+        #if DEBUG
+        // Model read-continuation ownership, not a native EAGAIN injection.
+        if let stderr = nextExchangeStderrOwnerForTesting {
+            nextExchangeStderrOwnerForTesting = nil
+            transportSendOwner = stderr ? stderrOwner : stdoutOwner
+        }
+        #endif
 
         while true {
             do {

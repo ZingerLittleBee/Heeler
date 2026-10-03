@@ -364,6 +364,10 @@ public final class SSHConnection: Sendable {
         await driver.interruptNextExecStdoutOwnerForTesting(error)
     }
 
+    func forceNextExchangeReadOwnerForTesting(stderr: Bool) async {
+        await driver.forceNextExchangeReadOwnerForTesting(stderr: stderr)
+    }
+
     public func holdNextExecChannelAllocationForTesting(
         _ hold: @escaping @Sendable () async throws -> Void
     ) async {

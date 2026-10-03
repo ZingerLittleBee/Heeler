@@ -130,6 +130,32 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    @Test("one-shot exec resumes owned reads before other exchange operations", arguments: [false, true])
+    func oneShotExecResumesOwnedReads(stderr: Bool) async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        await connection.forceNextExchangeReadOwnerForTesting(stderr: stderr)
+        let input = Data(repeating: 97, count: 131_072)
+        do {
+            let result = try await connection.execute(
+                "printf prefix; printf owned >&2; cat; printf stderr >&2; exit 7",
+                input: input, timeout: .seconds(5))
+            var expected = Data("prefix".utf8)
+            expected.append(input)
+            #expect(result.stdout == expected)
+            #expect(result.stderr == Data("ownedstderr".utf8))
+            #expect(result.exitStatus == 7)
+            #expect(result.reachedEOF)
+            #expect(await connection.oneShotRegistryCountForTesting() == 0)
+            #expect(try await connection.execute("printf reusable", timeout: .seconds(5)).stdout
+                == Data("reusable".utf8))
+            try await connection.close(timeout: .seconds(2))
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
     @Test("exec streams discard stderr without blocking stdout")
     func execStreamDiscardsStderrWithoutBlocking() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
