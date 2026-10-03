@@ -105,7 +105,7 @@ struct TerminalBackspaceButtonTests {
             frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
         ) { window in
             let deadline = ContinuousClock.now + .seconds(2)
-            func readyButton() -> TerminalRepeatingBackspaceButton? {
+            @MainActor func readyButton() -> TerminalRepeatingBackspaceButton? {
                 controller.view.layoutIfNeeded()
                 guard let button = findButton(in: controller.view), button.window === window,
                       !button.bounds.isEmpty,
@@ -120,7 +120,7 @@ struct TerminalBackspaceButtonTests {
             let started = ContinuousClock.now
             var trace: [String] = []
             var previousState: String?
-            func recordState() {
+            @MainActor func recordState() {
                 let state = "count=\(probe.count) highlighted=\(button.isHighlighted) enabled=\(button.isEnabled)"
                     + " attached=\(button.window === window) sameButton=\(findButton(in: controller.view) === button)"
                     + " bounds=\(button.bounds) appState=\(UIApplication.shared.applicationState.rawValue)"

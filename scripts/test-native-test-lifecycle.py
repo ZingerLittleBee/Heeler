@@ -35,6 +35,8 @@ class LifecycleContracts(unittest.TestCase):
         self.assertIn("#expect(repeats >= 3", method)
         self.assertIn("within timeout: Duration = .seconds(5)", source)
         self.assertIn("[backspace-test]", method)
+        self.assertIn("@MainActor func readyButton()", method)
+        self.assertIn("@MainActor func recordState()", method)
 
     def test_streams_are_registered_before_consumer_tasks(self):
         source = block(read("Sources/Heeler/LiveActivities/HostLiveActivityCoordinator.swift"), "beginSession")
