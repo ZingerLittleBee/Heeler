@@ -61,11 +61,29 @@ struct ConsoleTerminalInventoryTests {
     @Test func frequentPaneUpdatesRefreshMetadataWithoutSnapshotRequests() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: snapshot(panes: [pane("shell")]))
+        let snapshotGate = ScriptedTransportCallGate()
+        let subscriptionGate = ScriptedTransportCallGate()
+        defer {
+            Task {
+                await snapshotGate.open()
+                await subscriptionGate.open()
+            }
+        }
+        await transport.gateNextSnapshot(using: snapshotGate)
         let store = makeStore([host.id: transport])
         defer { store.setHosts([]) }
         store.setHosts([host])
         await store.resume()
+        try await waitUntil { await snapshotGate.entryCount == 1 }
+        await transport.gateNextSubscription(using: subscriptionGate)
+        await snapshotGate.open()
         try await waitUntil { store.terminals.count == 1 }
+        try await waitUntil { await subscriptionGate.entryCount == 1 }
+        let initialCount = await transport.snapshotFetchCount
+        #expect(initialCount == 1)
+        await subscriptionGate.open()
+        try await waitUntil { await transport.snapshotFetchCount > initialCount }
+        await store.refreshSidebarLayouts()
         let count = await transport.snapshotFetchCount
         for index in 0..<20 {
             let changed = pane("shell", title: "Build \(index)", foregroundCwd: "/work/\(index)")

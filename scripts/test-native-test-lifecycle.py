@@ -26,6 +26,19 @@ def block(source: str, name: str) -> str:
 
 
 class LifecycleContracts(unittest.TestCase):
+    def test_inventory_counter_is_captured_after_initial_subscription_resync(self):
+        source = read("Tests/HeelerTests/ConsoleTerminalInventoryTests.swift")
+        method = block(source, "frequentPaneUpdatesRefreshMetadataWithoutSnapshotRequests")
+        self.assertIn("await transport.gateNextSnapshot(using: snapshotGate)", method)
+        self.assertIn("await transport.gateNextSubscription(using: subscriptionGate)", method)
+        self.assertIn("await transport.snapshotFetchCount > initialCount", method)
+        self.assertLess(method.index("await store.refreshSidebarLayouts()"),
+                        method.index("let count = await transport.snapshotFetchCount"))
+        self.assertLess(method.index("let count = await transport.snapshotFetchCount"),
+                        method.index("for index in 0..<20"))
+        self.assertIn("#expect(await transport.snapshotFetchCount == count)", method)
+        self.assertIn('store.terminals.first?.cwd == "/work/19"', method)
+
     def test_terminal_key_fixture_cleans_up_failed_preparation_and_keeps_its_probe_bound(self):
         source = read("Tests/HeelerTests/TerminalKeyModifiersTests.swift")
         make = block(source, "make")
