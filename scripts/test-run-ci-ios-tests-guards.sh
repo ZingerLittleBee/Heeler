@@ -56,7 +56,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=64
+expected_cases=66
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -102,7 +102,7 @@ extract_shipped_function run_suite
 extract_shipped_function dump_fixture_logs
 extract_shipped_function preserve_failure_diagnostics
 extract_shipped_function cancel_background_build
-extract_shipped_function start_preparation_build
+extract_shipped_function start_preparation_work
 extract_shipped_function record_phase
 extract_shipped_function cleanup
 extract_shipped_function clear_simulator_environment
@@ -190,17 +190,16 @@ awk '
     END { exit ok ? 0 : 1 }
 ' "$gate_script" \
     || die "package lane does not overlap simulator boot with build-for-testing"
-# Simulator claim/boot must precede fixture keygen so boot overlaps setup, not
-# only build-for-testing. A late claim puts CoreSimulator wake back on the
-# critical path in front of compilation.
+# Claim early; the behavioral checks below retain early boot for non-password
+# workers and delay password-owning workers until after preflight.
 awk '
     /^[[:space:]]*claim_port_block$/ { claimed_ports = NR }
-    /xcrun simctl boot "/ { boot = NR }
+    /^start_preparation_work simulator$/ { boot = NR }
     /host_ed25519"/ && /ssh-keygen/ { keygen = NR }
     END { exit (claimed_ports && boot && keygen \
         && claimed_ports < boot && boot < keygen) ? 0 : 1 }
 ' "$gate_script" \
-    || die "simulator boot must start before fixture keygen"
+    || die "simulator preparation boundary must precede fixture keygen"
 # shellcheck disable=SC2016
 grep -qF 'clonedSourcePackagesDirPath "$source_packages_dir"' "$gate_script" \
     || die "app lane must pin a stable clonedSourcePackagesDirPath"
@@ -1408,8 +1407,8 @@ preflight_case no-eof \
     "password preflight still requires command exit after the sentinel"
 
 echo
-echo "== password fixture preparation precedes owned compilation =="
-# The extracted preparation function consumes these globals and build stub.
+echo "== password fixture preparation precedes owned compilation and boot =="
+# The extracted preparation function consumes these globals and work stubs.
 # shellcheck disable=SC2034,SC2329
 for preparation_layout in ordinary transport session-weak all package serial; do
     reason=""
@@ -1417,13 +1416,18 @@ for preparation_layout in ordinary transport session-weak all package serial; do
         ci_lane=app
         ci_app_shard=$preparation_layout
         overlap_build=1
+        simulator_udid=fixture-simulator
         expected_simulator_build=1
         expected_fixture_build=0
+        expected_simulator_boot=1
+        expected_fixture_boot=0
         expected_label="Build for testing"
         case "$preparation_layout" in
             session-weak | all)
                 expected_simulator_build=0
-                expected_fixture_build=1 ;;
+                expected_fixture_build=1
+                expected_simulator_boot=0
+                expected_fixture_boot=1 ;;
             package)
                 ci_lane=package
                 ci_app_shard=all
@@ -1431,32 +1435,66 @@ for preparation_layout in ordinary transport session-weak all package serial; do
             serial)
                 ci_app_shard=all
                 overlap_build=0
-                expected_simulator_build=0 ;;
+                expected_simulator_build=0
+                expected_simulator_boot=0
+                expected_fixture_boot=1 ;;
         esac
         build_calls=0
+        boot_calls=0
         start_background_build() {
             [[ "$overlap_build" == 1 ]] || return 0
             [[ "$1" == "$expected_label" ]] || exit 1
             build_calls=$((build_calls + 1))
         }
-        start_preparation_build simulator
+        xcrun() {
+            [[ "$*" == "simctl boot fixture-simulator" ]] || exit 1
+            boot_calls=$((boot_calls + 1))
+        }
+        record_phase() { [[ "$1" == initial-simulator-boot ]] || exit 1; }
+        start_preparation_work simulator
         [[ "$build_calls" == "$expected_simulator_build" ]] || exit 1
-        start_preparation_build fixtures
-        [[ "$build_calls" == "$((expected_simulator_build + expected_fixture_build))" ]]
+        [[ "$boot_calls" == "$expected_simulator_boot" ]] || exit 1
+        start_preparation_work fixtures
+        [[ "$build_calls" == "$((expected_simulator_build + expected_fixture_build))" ]] || exit 1
+        [[ "$boot_calls" == "$((expected_simulator_boot + expected_fixture_boot))" ]]
     ); then
-        reason="owned build started in the wrong phase for $preparation_layout"
+        reason="owned build or simulator boot started in the wrong phase for $preparation_layout"
     fi
     record_case "$preparation_layout preserves compilation ownership and fixture ordering" \
         "$reason" 0
 done
 
+for preparation_lane in app package; do
+    reason=""
+    # Invoke in a checked context, where Bash does not apply errexit.
+    # The shipped function must preserve a failed build start explicitly.
+    # shellcheck disable=SC2034,SC2329
+    if ! (
+        ci_lane=$preparation_lane
+        ci_app_shard=all
+        simulator_udid=fixture-simulator
+        boot_calls=0
+        start_background_build() { return 7; }
+        xcrun() { boot_calls=$((boot_calls + 1)); }
+        record_phase() { :; }
+        phase=simulator
+        [[ "$ci_lane" != app ]] || phase=fixtures
+        status=0
+        start_preparation_work "$phase" || status=$?
+        [[ "$status" == 7 && "$boot_calls" == 0 ]]
+    ); then
+        reason="failed $preparation_lane build start was masked or still booted the Simulator"
+    fi
+    record_case "$preparation_lane retains a failed build start without booting" "$reason" 0
+done
+
 awk '
-    /^start_preparation_build simulator$/ { early = NR; early_count++ }
+    /^start_preparation_work simulator$/ { early = NR; early_count++ }
     /record_phase password-preflight/ { preflight = NR }
-    /^start_preparation_build fixtures$/ { late = NR; late_count++ }
+    /^start_preparation_work fixtures$/ { late = NR; late_count++ }
     END { exit (early_count == 1 && late_count == 1 && early < preflight \
         && preflight < late) ? 0 : 1 }
-' "$gate_script" || die "preparation build call sites must surround the password preflight"
+' "$gate_script" || die "preparation work call sites must surround the password preflight"
 
 echo
 # The point of the count: a harness that silently stops running cases would

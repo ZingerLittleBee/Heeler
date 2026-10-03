@@ -261,18 +261,21 @@ start_background_build() {
     background_build_pid=$!
 }
 
-start_preparation_build() {
+start_preparation_work() {
     local phase=$1
-    local build_phase=simulator
+    local work_phase=simulator
     if [[ "$ci_lane" == app && ( "$ci_app_shard" == all || "$ci_app_shard" == session-weak ) ]]; then
-        build_phase=fixtures
+        work_phase=fixtures
     fi
-    [[ "$phase" == "$build_phase" ]] || return 0
+    [[ "$phase" == "$work_phase" ]] || return 0
     if [[ "$ci_lane" == app ]]; then
-        start_background_build "Build for testing"
+        start_background_build "Build for testing" || return
     else
-        start_background_build "HeelerSSH package build"
+        start_background_build "HeelerSSH package build" || return
     fi
+    local boot_started=$SECONDS
+    xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
+    record_phase initial-simulator-boot "$boot_started"
 }
 
 cancel_background_build() {
@@ -1463,13 +1466,9 @@ if [[ -z "$simulator_udid" ]]; then
 fi
 printf 'Claimed simulator %s\n' "$simulator_udid" >&2
 simulator_destination="platform=iOS Simulator,id=$simulator_udid"
-start_preparation_build simulator
-# Kick the boot off now and wait for it only after build-for-testing below:
-# compilation needs the destination to exist, not to be booted, so boot
-# happens under fixture provisioning and build instead of in front of them.
-initial_boot_started=$SECONDS
-xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
-record_phase initial-simulator-boot "$initial_boot_started"
+# Password-owning workers defer both boot and compilation until preflight.
+# Other workers keep overlapping boot with fixture preparation and build.
+start_preparation_work simulator
 
 if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
 ssh_fixture_started=$SECONDS
@@ -2323,7 +2322,7 @@ if [[ "$password_fixture_available" != "1" ]]; then
     session_skip_count=2
 fi
 echo "==> Preparation finished at t+${SECONDS}s for app/$ci_app_shard"
-start_preparation_build fixtures
+start_preparation_work fixtures
 # Build once per worker, joining the owned build if preparation overlapped it.
 # Keep the test manifest's gate flag explicit even before fixture setup.
 export HEELER_SSH_E2E_REQUIRED=1
