@@ -9,10 +9,12 @@ import Foundation
 /// path does not need the binary — that is why the Console can list Agents
 /// while the PTY Attach dies (#206).
 ///
-/// Extra prefixes are appended after the session `PATH` so an existing
-/// `herdr` keeps priority. There is no separate probe to discover the
-/// `herdr` path; the agent-availability probe reuses this export in its
-/// shell body instead of adding another SSH round trip.
+/// Extra prefixes are prepended before the session `PATH` so user-installed
+/// or package-manager-updated binaries (such as `~/.local/bin/herdr`, Homebrew,
+/// Cargo, or mise shims) take precedence over stale system binaries in
+/// `/usr/bin` that would cause protocol mismatches against the running server.
+/// There is no separate probe to discover the `herdr` path; the agent-availability
+/// probe reuses this export in its shell body instead of adding another SSH round trip.
 ///
 /// Two ways the prefixes get onto a command, pick by how `herdr` is spelled:
 /// - ``wrappingBareHerdr(_:)`` at the exec site when the command *word* is
@@ -23,7 +25,7 @@ import Foundation
 ///   config-dir and agent-discovery commands use this form. Wrapping looks
 ///   only at the command word, so it cannot see an inner `herdr`.
 enum HerdrHostPath: Sendable {
-    /// Directories appended to `PATH` on herdr CLI and Agent discovery
+    /// Directories prepended to `PATH` on herdr CLI and Agent discovery
     /// execs. `$HOME` and the parameter expansions are evaluated by the
     /// remote `/bin/sh`, not by Swift.
     ///
@@ -42,7 +44,7 @@ enum HerdrHostPath: Sendable {
     static let miseShims = "${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"
 
     static var pathAssignment: String {
-        "PATH=\"$PATH:\(extraPATH)\""
+        "PATH=\"\(extraPATH):$PATH\""
     }
 
     static var pathExport: String {

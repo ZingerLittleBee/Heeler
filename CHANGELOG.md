@@ -17,6 +17,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Prepend user-local and package-manager prefixes (`~/.local/bin`, Homebrew,
+  Cargo, mise) before the session `PATH` on non-interactive SSH commands, so
+  user installations take precedence over stale system binaries in `/usr/bin`
+  that would otherwise cause `protocol_mismatch` on attach. (#403)
 - Preserve literal absolute Unix API endpoints without a HOME probe, and keep
   Windows API and terminal connections on the selected session when SSH
   inherits legacy socket overrides. (#400)
