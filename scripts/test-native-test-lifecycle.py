@@ -26,6 +26,24 @@ def block(source: str, name: str) -> str:
 
 
 class LifecycleContracts(unittest.TestCase):
+    def test_terminal_key_fixture_cleans_up_failed_preparation_and_keeps_its_probe_bound(self):
+        source = read("Tests/HeelerTests/TerminalKeyModifiersTests.swift")
+        make = block(source, "make")
+        self.assertIn("catch {", make)
+        self.assertIn("fixture.close()", make)
+        self.assertIn("throw error", make)
+        close = block(source, "close")
+        self.assertIn("control.terminal = nil", close)
+        self.assertIn("onSend: nil", close)
+        self.assertIn("window?.rootViewController = nil", close)
+        drain = block(source, "drain")
+        self.assertEqual(drain.count('receive("\\u{1B}[c")'), 1)
+        self.assertIn("ContinuousClock.now + .seconds(2)", drain)
+        self.assertIn("Task.sleep(for: .milliseconds(10))", drain)
+        self.assertNotIn("Task.yield()", drain)
+        self.assertIn("[terminal-key-test]", source)
+        self.assertIn("@Test func failedFixturePreparationDetachesItsWindow()", source)
+
     def test_package_log_gate_requires_the_new_method_and_both_cases(self):
         source = read("scripts/run-ci-ios-tests.sh")
         self.assertIn("Test run with 71 tests in 5 suites passed", source)

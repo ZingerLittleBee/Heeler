@@ -8,6 +8,24 @@ import UIKit
 @MainActor
 @Suite("Terminal key modifiers", .serialized)
 struct TerminalKeyModifiersTests {
+    @Test func failedFixturePreparationDetachesItsWindow() async throws {
+        var window: UIWindow?
+        do {
+            _ = try await Fixture.make(beforeReadiness: { created in
+                window = created
+                throw FixturePreparationFailure.expected
+            })
+            Issue.record("Fixture preparation should throw")
+        } catch FixturePreparationFailure.expected {}
+        let failedWindow = try #require(window)
+        #expect(failedWindow.isHidden)
+        #expect(failedWindow.rootViewController == nil)
+    }
+
+    private enum FixturePreparationFailure: Error {
+        case expected
+    }
+
     @Test func characterKeysSendTextAndShiftedUSCaps() async throws {
         let fixture = try await Fixture.make()
         defer { fixture.close() }
@@ -570,26 +588,39 @@ struct TerminalKeyModifiersTests {
             control.terminal = terminal
         }
 
-        static func make() async throws -> Fixture {
+        static func make(beforeReadiness: (@MainActor (UIWindow) throws -> Void)? = nil) async throws -> Fixture {
             let fixture = Fixture()
             let controller = UIViewController()
             controller.view = fixture.terminal
-            fixture.window = try await makeTestWindow(
-                frame: CGRect(x: 0, y: 0, width: 402, height: 600),
-                rootViewController: controller)
-            fixture.window?.makeKeyAndVisible()
-            controller.view.layoutIfNeeded()
-            // insertText reaches Ghostty only while first responder. The gate
-            // refuses a bare becomeFirstResponder() until the keyboard is asked
-            // for, matching AgentDirectInputTests / TerminalAttachTests.
-            fixture.terminal.requestKeyboard()
-            // A terminal reply proves the surface exists and callbacks can reach
-            // the host before the test starts sending keys.
-            _ = try await fixture.drain()
-            return fixture
+            do {
+                let window = try await makeTestWindow(
+                    frame: CGRect(x: 0, y: 0, width: 402, height: 600),
+                    rootViewController: controller)
+                fixture.window = window
+                controller.view.layoutIfNeeded()
+                try beforeReadiness?(window)
+                // insertText reaches Ghostty only while first responder. The gate
+                // refuses a bare becomeFirstResponder() until the keyboard is asked
+                // for, matching AgentDirectInputTests / TerminalAttachTests.
+                fixture.terminal.requestKeyboard()
+                // A terminal reply proves the surface exists and callbacks can reach
+                // the host before the test starts sending keys.
+                _ = try await fixture.drain()
+                return fixture
+            } catch {
+                fixture.close()
+                throw error
+            }
         }
 
         func close() {
+            control.terminal = nil
+            terminal.updateCallbacks(
+                onSizeChanged: nil,
+                onViewportTextChanged: nil,
+                onSend: nil,
+                onScroll: nil,
+                onPaste: nil)
             window?.isHidden = true
             window?.rootViewController = nil
             window = nil
@@ -609,19 +640,32 @@ struct TerminalKeyModifiersTests {
             terminal.terminalSession.waitForPendingOutput()
         }
 
-        func drain() async throws -> Data {
+        func drain(caller: String = #function) async throws -> Data {
             // DA is ordered behind prior keys. Wait for its response as a
             // positive completion signal, including for an expected empty send.
+            let started = ContinuousClock.now
+            diagnose("enqueue \(caller)", started: started)
             receive("\u{1B}[c")
+            diagnose("parsed \(caller)", started: started)
             let marker = Data("\u{1B}[?62;22".utf8)
             let deadline = ContinuousClock.now + .seconds(2)
             while sent.range(of: marker) == nil, ContinuousClock.now < deadline {
-                await Task.yield()
+                // Give UIKit's run loop and Ghostty's tick a turn, not only
+                // other tasks on the main actor. This does not resend DA.
+                try await Task.sleep(for: .milliseconds(10))
             }
+            diagnose("completed \(caller)", started: started)
             let reply = try #require(sent.range(of: marker), "Ghostty device attributes reply did not arrive")
             let result = Data(sent[..<reply.lowerBound])
             sent.removeAll(keepingCapacity: true)
             return result
+        }
+
+        private func diagnose(_ stage: String, started: ContinuousClock.Instant) {
+            print("[terminal-key-test] \(stage) elapsed=\(started.duration(to: .now)) bytes=\(sent.count)"
+                + " attached=\(window != nil && terminal.window === window) key=\(window?.isKeyWindow == true)"
+                + " hidden=\(window?.isHidden == true) responder=\(terminal.isFirstResponder)"
+                + " metrics=\(terminal.hasTerminalGridMetrics) appState=\(UIApplication.shared.applicationState.rawValue)")
         }
     }
 }
