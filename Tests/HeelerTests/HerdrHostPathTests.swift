@@ -17,8 +17,10 @@ struct HerdrHostPathTests {
         #expect(
             HerdrHostPath.extraPATH.contains(
                 "${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"))
-        // Existing PATH entries keep priority over the extra prefixes.
-        #expect(HerdrHostPath.pathExport.hasPrefix("export PATH=\"$PATH:"))
+        // User prefixes take priority over existing PATH entries so updated
+        // binaries take precedence over stale system installations.
+        #expect(HerdrHostPath.pathExport.hasPrefix("export PATH=\"$HOME/.local/bin:"))
+        #expect(HerdrHostPath.pathExport.hasSuffix(":$PATH\""))
     }
 
     @Test func agentDiscoveryExportsExtraPATHBeforeProbing() {
@@ -81,7 +83,7 @@ struct HerdrHostPathTests {
         // never lets the account shell expand PATH: POSIX sh does it.
         let wrapped = HerdrHostPath.wrappingBareHerdr("herdr session list --json")
         #expect(wrapped.hasPrefix("/bin/sh -c '"))
-        #expect(HerdrHostPath.pathExport.contains("\"$PATH:"))
+        #expect(HerdrHostPath.pathExport.contains(":$PATH\""))
         #expect(!wrapped.hasPrefix("PATH="))
         #expect(!wrapped.hasPrefix("export PATH="))
     }
@@ -121,7 +123,8 @@ struct HerdrHostPathTests {
             socketPath: "/tmp/fake.sock")
         #expect(command.contains(HerdrHostPath.pathExport))
         #expect(command.contains("/home/linuxbrew/.linuxbrew/bin"))
-        #expect(command.contains("export PATH=\"$PATH:"))
+        #expect(command.contains("export PATH=\"$HOME/.local/bin:"))
+        #expect(command.contains(":$PATH\""))
         #expect(command.contains("exec herdr agent attach"))
     }
 

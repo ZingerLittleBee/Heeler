@@ -6,6 +6,12 @@ import UIKit
 /// leaves a wide iPhone's. Lives in a list tab's content, so the
 /// tab bar controller it reaches is the Console's own.
 ///
+/// A compact Agent push hides the bar as well. SwiftUI's own hide reaches
+/// the pushed detail's bottom safe area only once the push settles, so the
+/// detail would lay its input chrome out a bar's height too high and then
+/// drop it. Hiding the bar as soon as it is asked keeps that inset out of
+/// the detail's first layout.
+///
 /// A tab shown for the first time after launch is laid out with the
 /// floating bar inside its top safe area: its split view starts a bar's
 /// height too low, until a later visit or a rotation recomputes it. A change
@@ -45,7 +51,12 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
             }
         }
 
-        var hidesBar = false
+        var hidesBar = false {
+            didSet {
+                guard hidesBar, !oldValue else { return }
+                hideBarNow()
+            }
+        }
         private var hasSettledSafeArea = false
         private weak var styledController: UITabBarController?
 
@@ -67,9 +78,7 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
             // SwiftUI hides the bar only after the first layout, and a bar
             // hidden then leaves its height in the split view columns' top
             // insets until the window resizes. Hidden now, it never adds it.
-            if hidesBar, let controller = tabBarController, !controller.isTabBarHidden {
-                controller.setTabBarHidden(true, animated: false)
-            }
+            if hidesBar { hideBarNow() }
             applyChromeScheme()
             // The floating bar is regular width's; a compact bar sits at the
             // bottom, outside the safe area in question.
@@ -79,6 +88,11 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
             // After the layout pass that attached this tab; toggling during
             // it leaves the stale inset in place.
             Task { @MainActor [weak self] in self?.settleSafeArea() }
+        }
+
+        private func hideBarNow() {
+            guard let controller = tabBarController, !controller.isTabBarHidden else { return }
+            controller.setTabBarHidden(true, animated: false)
         }
 
         /// The bar's views can be rebuilt by a rotation or size change.
