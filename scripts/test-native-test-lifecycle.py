@@ -26,6 +26,14 @@ def block(source: str, name: str) -> str:
 
 
 class LifecycleContracts(unittest.TestCase):
+    def test_one_shot_exchange_resumes_its_own_reads_before_foreign_admission(self):
+        source = block(read("Packages/HeelerSSH/Sources/HeelerSSH/SessionDriver.swift"), "exchange")
+        self.assertIn("if !resumingRead, inputOffset < input.count", source)
+        self.assertIn("else if !resumingRead, !sentEOF", source)
+        self.assertIn("if transportSendOwner != stderrOwner", source)
+        self.assertIn("if transportSendOwner != stdoutOwner", source)
+        self.assertIn("if !ownsSend, libssh2_channel_eof", source)
+
     def test_full_keyboard_waits_for_visible_geometry_and_cleans_up_on_failure(self):
         source = read("Tests/HeelerTests/TerminalBackspaceButtonTests.swift")
         method = block(source, "fullKeyboardKeepsRepeatingAcrossViewUpdates")

@@ -3986,8 +3986,9 @@ actor SessionDriver {
                 try checkProgress(deadline: deadline)
                 var madeProgress = false
                 var skipReads = false
+                let resumingRead = transportSendOwner == stdoutOwner || transportSendOwner == stderrOwner
 
-                if inputOffset < input.count {
+                if !resumingRead, inputOffset < input.count {
                     try await waitForTransportSendAdmission(
                         owner: writeOwner,
                         deadline: deadline,
@@ -4008,7 +4009,7 @@ actor SessionDriver {
                     } else if transportSendOwner == writeOwner {
                         skipReads = true
                     }
-                } else if !sentEOF {
+                } else if !resumingRead, !sentEOF {
                     try await waitForTransportSendAdmission(
                         owner: eofOwner,
                         deadline: deadline,
@@ -4032,21 +4033,23 @@ actor SessionDriver {
                 }
 
                 if !skipReads {
-                    try await waitForTransportSendAdmission(
-                        owner: stdoutOwner,
-                        deadline: deadline,
-                        cancellable: true)
-                    let stdoutChannel = try resolveChannel(identity)
-                    let session = try requireSession()
-                    let stdoutRead = try readAvailableNoting(
-                        channel: stdoutChannel,
-                        stream: 0,
-                        buffer: &buffer,
-                        owner: stdoutOwner,
-                        session: session)
-                    if stdoutRead.count > 0 {
-                        stdout.append(stdoutRead)
-                        madeProgress = true
+                    if transportSendOwner != stderrOwner {
+                        try await waitForTransportSendAdmission(
+                            owner: stdoutOwner,
+                            deadline: deadline,
+                            cancellable: true)
+                        let stdoutChannel = try resolveChannel(identity)
+                        let session = try requireSession()
+                        let stdoutRead = try readAvailableNoting(
+                            channel: stdoutChannel,
+                            stream: 0,
+                            buffer: &buffer,
+                            owner: stdoutOwner,
+                            session: session)
+                        if stdoutRead.count > 0 {
+                            stdout.append(stdoutRead)
+                            madeProgress = true
+                        }
                     }
                     if transportSendOwner != stdoutOwner {
                         try await waitForTransportSendAdmission(
@@ -4069,7 +4072,9 @@ actor SessionDriver {
                 }
 
                 let eofChannel = try resolveChannel(identity)
-                if libssh2_channel_eof(eofChannel) == 1 {
+                let ownsSend = transportSendOwner == writeOwner || transportSendOwner == eofOwner
+                    || transportSendOwner == stdoutOwner || transportSendOwner == stderrOwner
+                if !ownsSend, libssh2_channel_eof(eofChannel) == 1 {
                     let exitStatus = try await exitStatusAfterChannelClose(
                         identity: identity,
                         deadline: deadline)
