@@ -3,6 +3,8 @@
 
 import contextlib
 import importlib.util
+import io
+import json
 from pathlib import Path
 import random
 import select
@@ -58,17 +60,23 @@ class ReceiveShape:
 
 
 class RecordWrites:
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, cap=None):
         self.endpoint = endpoint
+        self.cap = cap
+        self.offered = []
         self.writes = []
+        self.short_writes = 0
         self.first_write = None
 
     def send(self, chunk):
-        count = self.endpoint.send(chunk)
+        self.offered.append(len(chunk))
+        count = self.endpoint.send(chunk if self.cap is None else chunk[:self.cap])
         if count:
             if self.first_write is None:
                 self.first_write = time.monotonic()
             self.writes.append(count)
+            if count < len(chunk):
+                self.short_writes += 1
         return count
 
     def shutdown(self, direction):
@@ -114,11 +122,11 @@ class WriteActivity:
 
 
 class Forwarding:
-    def __init__(self, profile, receive_cap=65536):
+    def __init__(self, profile, receive_cap=65536, write_cap=None):
         self.sender, self.ingress = tcp_pair()
         self.egress, self.receiver = tcp_pair()
         self.source = ReceiveShape(self.ingress, receive_cap)
-        self.destination = RecordWrites(self.egress)
+        self.destination = RecordWrites(self.egress, write_cap)
         self.proxy = proxy_module.Proxy(0, 0, "127.0.0.1", 0)
         self.profile(profile)
         self.connection = proxy_module.Connection(1, self.ingress, self.egress, self.proxy)
@@ -195,8 +203,8 @@ class BidirectionalForwarding:
 
 
 class WeakNetworkProxyTests(unittest.TestCase):
-    def forwarding(self, profile=DEGRADED, receive_cap=65536):
-        forwarding = Forwarding(profile, receive_cap)
+    def forwarding(self, profile=DEGRADED, receive_cap=65536, write_cap=None):
+        forwarding = Forwarding(profile, receive_cap, write_cap)
         self.addCleanup(forwarding.close)
         return forwarding
 
@@ -387,6 +395,40 @@ class WeakNetworkProxyTests(unittest.TestCase):
         self.assertGreaterEqual(elapsed, 1)
         self.assertLess(elapsed, 3)
         self.assertLessEqual(max(forwarding.destination.writes), 512)
+
+    def test_short_writes_preserve_fifo_half_close_and_charge_each_byte_once(self):
+        original_bucket = proxy_module.TokenBucket
+        reservations = []
+
+        class RecordTokenBucket(original_bucket):
+            def consume(self, count, stopped=None):
+                reservations.append(count)
+                return super().consume(count, stopped)
+
+        proxy_module.TokenBucket = RecordTokenBucket
+        self.addCleanup(setattr, proxy_module, "TokenBucket", original_bucket)
+        payload = bytes(range(256)) * 2048
+        log = io.StringIO()
+        with contextlib.redirect_stdout(log):
+            forwarding = self.forwarding(receive_cap=2048, write_cap=73)
+            output, elapsed, _ = forwarding.transfer(payload)
+        self.assertEqual(output, payload)
+        self.assertFalse(forwarding.thread.is_alive())
+        self.assertGreater(forwarding.destination.short_writes, 0)
+        self.assertLessEqual(max(forwarding.destination.writes), 73)
+        self.assertLessEqual(max(forwarding.destination.offered), DEGRADED["segmentBytes"])
+        self.assertEqual(sum(forwarding.destination.writes), len(payload))
+        self.assertEqual(sum(reservations), len(payload))
+        self.assertGreaterEqual(elapsed, 1)
+        stats = forwarding.proxy._handle({"command": "stats"})
+        self.assertEqual(stats["bytesToClient"], len(payload))
+        reports = [json.loads(line.removeprefix("[weak-proxy] "))
+                   for line in log.getvalue().splitlines() if line.startswith("[weak-proxy] ")]
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]["receivedBytes"], len(payload))
+        self.assertEqual(reports[0]["deliveredBytes"], len(payload))
+        self.assertLessEqual(reports[0]["peakPendingBytes"], proxy_module.PENDING_BYTES)
+        self.assertEqual(reports[0]["exitReason"], "eof")
 
     def test_seeded_jitter_is_added_to_the_propagation_floor(self):
         profile = {**DEGRADED, "jitterSeed": 51}
