@@ -89,8 +89,8 @@ awk '
     END { exit (watchdog && raw) ? 0 : 1 }
 ' "$gate_script" || { echo "background build bypasses its watchdog" >&2; exit 1; }
 wrapped_calls=$(grep -cE '^[[:space:]]*(HEELER_CI_TEST_PHASE=[^ ]+ )?run_xcodebuild "' "$gate_script")
-[[ "$wrapped_calls" == 5 ]] || {
-    echo "expected 5 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
+[[ "$wrapped_calls" == 6 ]] || {
+    echo "expected 6 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
     exit 1
 }
 [[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 50 || 35 }}" "$workflow")" == 1 ]] || {

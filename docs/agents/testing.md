@@ -58,6 +58,16 @@ For CI parity, use the appropriate `test-ci-*` target. CI does not regenerate
 the Xcode project, so a regenerated local build cannot prove the committed
 project is complete.
 
+## Intermittent CI diagnosis
+
+The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml), called through the existing `ci.yml` entrypoint, builds once and repeats the original TOFU, staging recovery, or weak-network Changes assertions with fresh per-round state. It preserves their individual deadlines and captures real SSH fixture logs. `staging` selects the whole eight-method suite to retain preceding window lifecycles; `staging-method` isolates the recovery method. Defaults are 50 SSH, 20 staging, and 10 weak rounds. Repeated weak diagnostics have a 30-minute outer deadlock limit, while normal merge CI keeps two minutes and every read still asserts the original 10-second deadline. Diagnostic artifacts never establish complete coverage or replace the normal merge gate.
+
+```sh
+gh workflow run ci.yml --ref <candidate-branch> -f diagnostic_target=all
+```
+
+The committed-project entrypoint is `make test-ci-diagnostics` with `HEELER_CI_DIAGNOSTIC_TARGET` and optional `HEELER_CI_DIAGNOSTIC_ITERATIONS` environment variables. Every selected test and requested round must pass; a missing completion marker or skip fails the diagnostic command. `make test-ci-diagnostic-controls` verifies these guards without Xcode, and `make test-weak-network-proxy` exercises propagation, bandwidth, bounded buffering and cleanup over real local TCP.
+
 ## Build outputs and concurrency
 
 `DERIVED_DEVICE` and `DERIVED_SIMULATOR` separate device and Simulator outputs.

@@ -41,6 +41,51 @@ if [[ "$ci_lane" == package && "$ci_app_shard" != all ]]; then
     echo "The package lane does not accept an app shard" >&2
     exit 2
 fi
+ci_diagnostic_target="${HEELER_CI_DIAGNOSTIC_TARGET:-}"
+ci_diagnostic_iterations="${HEELER_CI_DIAGNOSTIC_ITERATIONS:-}"
+configure_diagnostic_lane() {
+    [[ -n "$ci_diagnostic_target" ]] || return 0
+    [[ "$ci_lane" == app ]] || { echo "Diagnostics require the app lane" >&2; return 2; }
+    case "$ci_diagnostic_target" in
+        ssh-jump)
+            ci_app_shard=transport
+            diagnostic_selector='HeelerSSHJumpHostGateE2ETests/trustIsIndependentAtBothHops()'
+            diagnostic_iteration_variable=HEELER_SSH_JUMP_TOFU_ITERATIONS
+            diagnostic_expected_tests=1
+            ci_diagnostic_iterations="${ci_diagnostic_iterations:-50}"
+            ;;
+        staging | staging-method)
+            ci_app_shard=ordinary
+            diagnostic_selector=AgentSurfaceReplacementTests
+            if [[ "$ci_diagnostic_target" == staging-method ]]; then
+                diagnostic_selector='AgentSurfaceReplacementTests/aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState()'
+            fi
+            diagnostic_iteration_variable=HEELER_STAGING_RECOVERY_ITERATIONS
+            diagnostic_expected_tests=8
+            [[ "$ci_diagnostic_target" != staging-method ]] || diagnostic_expected_tests=1
+            ci_diagnostic_iterations="${ci_diagnostic_iterations:-20}"
+            ;;
+        weak)
+            ci_app_shard=session-weak
+            diagnostic_selector='WeakNetworkE2ETests/largeChangesReadsFitTheGitDeadlineOverACellularLink()'
+            diagnostic_iteration_variable=HEELER_WEAK_CHANGES_ITERATIONS
+            diagnostic_expected_tests=1
+            ci_diagnostic_iterations="${ci_diagnostic_iterations:-10}"
+            ;;
+        *) echo "Invalid HEELER_CI_DIAGNOSTIC_TARGET: $ci_diagnostic_target" >&2; return 2 ;;
+    esac
+    if [[ ! "$ci_diagnostic_iterations" =~ ^([1-9][0-9]?|100)$ ]]; then
+        echo "HEELER_CI_DIAGNOSTIC_ITERATIONS must be between 1 and 100" >&2
+        return 2
+    fi
+    case "$ci_diagnostic_target" in
+        ssh-jump) diagnostic_completion_marker="[jump-tofu] iteration=$ci_diagnostic_iterations/$ci_diagnostic_iterations step=complete" ;;
+        staging | staging-method) diagnostic_completion_marker="[attach-staging-test] completed $ci_diagnostic_iterations iterations" ;;
+        weak) diagnostic_completion_marker="[weak-changes-test] completed $ci_diagnostic_iterations iterations" ;;
+    esac
+    export HEELER_CI_APP_SHARD="$ci_app_shard"
+}
+configure_diagnostic_lane
 overlap_build="${HEELER_CI_OVERLAP_BUILD:-1}"
 case "$overlap_build" in
     0 | 1) ;;
@@ -619,6 +664,13 @@ cleanup() {
         fi
     fi
     preserve_failure_diagnostics "$status"
+    if [[ -n "${ci_diagnostic_target:-}" && -n "${evidence_dir:-}" ]]; then
+        mkdir -p "$evidence_dir/fixture-logs" || status=1
+        local diagnostic_log
+        for diagnostic_log in "$fixture_dir"/*.log; do
+            [[ ! -f "$diagnostic_log" ]] || cp "$diagnostic_log" "$evidence_dir/fixture-logs/" || status=1
+        done
+    fi
     if [[ -f "${phase_log:-}" ]]; then
         record_phase fixture-cleanup "$cleanup_started" "$status"
     fi
@@ -682,7 +734,10 @@ clear_simulator_environment() {
         HEELER_SSH_E2E_STREAMLOCAL_SOCKET \
         HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG \
-        HEELER_PAIRING_E2E_CONFIG; do
+        HEELER_PAIRING_E2E_CONFIG \
+        HEELER_SSH_JUMP_TOFU_ITERATIONS \
+        HEELER_STAGING_RECOVERY_ITERATIONS \
+        HEELER_WEAK_CHANGES_ITERATIONS; do
         # launchctl takes one variable per call and each `simctl spawn` costs
         # seconds; run the round trips concurrently and collect them below.
         if [[ -n "$simulator_udid" ]]; then
@@ -2042,6 +2097,37 @@ run_suite() {
     pinned_lane_logs+=("$log")
 }
 
+# Manual diagnosis uses the same build, fixtures and execution checks as CI.
+# It never produces a full-worker completion marker or a merge-gate result.
+run_ci_diagnostic() {
+    local log="$fixture_dir/diagnostic-$ci_diagnostic_target.log"
+    local test_noun=tests
+    [[ "$diagnostic_expected_tests" != 1 ]] || test_noun='test'
+    export "$diagnostic_iteration_variable=$ci_diagnostic_iterations"
+    # Retain fixture values when destination recovery creates a new device.
+    # `${array[@]:-}` also supports an empty array with Bash 3.2 nounset.
+    local diagnostic_environment=()
+    local variable
+    for variable in "${simulator_environment_variables[@]:-}"; do
+        [[ -z "$variable" ]] || diagnostic_environment+=("$variable")
+    done
+    diagnostic_environment+=("$diagnostic_iteration_variable")
+    push_simulator_environment "${diagnostic_environment[@]}"
+    echo "==> Diagnostic only: $ci_diagnostic_target, $ci_diagnostic_iterations iterations"
+    HEELER_CI_TEST_PHASE="diagnostic-$ci_diagnostic_target" \
+        run_xcodebuild "Diagnostic-$ci_diagnostic_target" "$xcodebuild_test_timeout_seconds" "$log" \
+        test-without-building -project Heeler.xcodeproj -scheme Heeler \
+        -derivedDataPath "$app_derived_data_path" -destination "$simulator_destination" \
+        -collect-test-diagnostics never -parallel-testing-enabled NO \
+        "-only-testing:HeelerTests/$diagnostic_selector" || return $?
+    if ! grep -qF "Test run with $diagnostic_expected_tests $test_noun in 1 suite passed" "$log" \
+        || grep -qE '(Test|Suite) .* skipped' "$log" \
+        || ! grep -qF "$diagnostic_completion_marker" "$log"; then
+        echo "Diagnostic did not prove every requested iteration and selected test passed" >&2
+        return 1
+    fi
+}
+
 # These phases share fixture state only within their worker. DirectStreamLocal
 # must observe the stale socket before TransportBehavior relinks it.
 run_app_fixture_suites() {
@@ -2230,7 +2316,13 @@ push_simulator_environment \
     HEELER_SSH_E2E_CONFIG \
     HEELER_SSH_JUMP_E2E_CONFIG \
     HEELER_PAIRING_E2E_CONFIG
-run_app_fixture_suites
+fi
+if [[ -n "$ci_diagnostic_target" ]]; then
+    run_ci_diagnostic
+    exit 0
+fi
+if [[ "$ci_app_shard" != ordinary ]]; then
+    run_app_fixture_suites
 fi
 
 if [[ "$password_fixture_available" == "1" ]]; then

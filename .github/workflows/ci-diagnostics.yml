@@ -1,0 +1,78 @@
+name: iOS CI diagnostics
+run-name: iOS diagnostics (${{ inputs.target }})
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+      iterations:
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Isolated flaky-test feedback; never a full coverage gate
+        type: choice
+        options: [all, ssh-jump, staging, staging-method, weak]
+        default: all
+      iterations:
+        description: Optional 1-100 repetitions; defaults to SSH 50, staging 20, weak 10
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-ios-diagnostics-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    name: Diagnose ${{ matrix.target }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.target == 'all' && '["ssh-jump","staging","weak"]' || format('["{0}"]', inputs.target)) }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/diagnostics-${{ matrix.target }}
+      HEELER_CI_OVERLAP_BUILD: '1'
+      HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
+      HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
+      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1200'
+      # Repeated diagnostic cases retain their individual assertions/deadlines.
+      # Only this manual investigation has a longer invocation watchdog.
+      HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Verify SSH artifacts
+        run: make verify-ssh-artifacts
+      - name: Show toolchain
+        run: xcodebuild -version
+      - name: Build once and repeat the selected scenario
+        env:
+          HEELER_CI_DIAGNOSTIC_TARGET: ${{ matrix.target }}
+          HEELER_CI_DIAGNOSTIC_ITERATIONS: ${{ inputs.iterations }}
+          HEELER_CI_MANDATORY: '1'
+        run: make test-ci-diagnostics
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-diagnostic-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.HEELER_CI_EVIDENCE_DIR }}
+            ${{ runner.temp }}/heeler-ci-diagnostics-*
+          if-no-files-found: error
+          retention-days: 7

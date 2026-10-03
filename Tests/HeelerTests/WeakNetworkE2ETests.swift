@@ -10,9 +10,9 @@ import Testing
 /// unprivileged TCP proxy in front of the disposable sshd
 /// (`scripts/fixtures/weak-network-proxy.py`) and these suites steer it: added
 /// latency, a bandwidth cap, mid-stream fragmentation, and abrupt severance.
-/// Every impairment is a fixed duration or a byte count, so a profile treats
-/// the link the same way on every run and a failure here means a defect rather
-/// than a bad draw.
+/// Parameters and impairment bounds are fixed; OS receive boundaries and
+/// scheduling still vary, so a failure needs diagnosis rather than an assumed
+/// reproducible timing explanation.
 ///
 /// `.timeLimit` is the deadlock instrument. Everything these tests exercise is
 /// bounded by the product's own deadlines, so a run that has not finished
@@ -24,8 +24,18 @@ import Testing
         if: RealSSHFixture.gate(HeelerSSHTransportBehaviorEnvironment.current != nil),
         "requires the disposable impairment proxy fixture"),
     .serialized,
-    .timeLimit(.minutes(2)))
+    .timeLimit(WeakNetworkE2ETests.hasRepeatedChangesDiagnostic ? .minutes(30) : .minutes(2)))
 struct WeakNetworkE2ETests {
+    /// Repeated diagnostics need a larger outer budget. Each calibration still
+    /// asserts the production deadline; absent, single, or invalid counts keep
+    /// the normal deadlock limit and invalid input fails in the test itself.
+    private static var hasRepeatedChangesDiagnostic: Bool {
+        guard let configured = ProcessInfo.processInfo.environment["HEELER_WEAK_CHANGES_ITERATIONS"],
+              let iterations = Int(configured), (2...100).contains(iterations)
+        else { return false }
+        return true
+    }
+
     @Test("concurrent RPCs survive latency, a bandwidth cap, and fragmentation")
     func concurrentRPCsSurviveADegradedLink() async throws {
         let fixture = try #require(WeakNetworkFixture.current)

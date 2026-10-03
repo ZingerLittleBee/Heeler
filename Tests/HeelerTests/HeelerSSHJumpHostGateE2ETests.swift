@@ -36,16 +36,45 @@ struct HeelerSSHJumpHostGateE2ETests {
     @Test("TOFU records both endpoints once and identifies either mismatch")
     func trustIsIndependentAtBothHops() async throws {
         let environment = try #require(HeelerSSHJumpHostTestEnvironment.current)
+        let iterations: Int
+        if let configured = ProcessInfo.processInfo.environment["HEELER_SSH_JUMP_TOFU_ITERATIONS"] {
+            iterations = try #require(Int(configured), "TOFU iterations must be an integer")
+            try #require((1...100).contains(iterations), "TOFU iterations must be between 1 and 100")
+        } else {
+            iterations = 1
+        }
+        // Each iteration repeats the original assertions with new trust state;
+        // an unexpected mismatch stops the diagnostic run instead of retrying it.
+        for iteration in 1...iterations {
+            guard try await verifyTrustAtBothHops(
+                environment: environment,
+                iteration: iteration,
+                iterations: iterations)
+            else { return }
+        }
+    }
+
+    private func verifyTrustAtBothHops(
+        environment: HeelerSSHJumpHostTestEnvironment,
+        iteration: Int,
+        iterations: Int
+    ) async throws -> Bool {
+        let started = ContinuousClock.now
+        func note(_ step: String) {
+            print("[jump-tofu] iteration=\(iteration)/\(iterations) step=\(step) elapsed=\(started.duration(to: ContinuousClock.now))")
+        }
         let knownHosts = InMemoryKnownHostsStore()
         let confirmations = HostKeyConfirmationRecorder()
         let policy = HostKeyPolicy(knownHosts: knownHosts) { candidate in
             await confirmations.confirm(candidate)
         }
 
+        note("first-connect")
         let first = try await HeelerSSHTransport.connect(
             settings: environment.settings(policy: policy))
         _ = try await first.ping()
         try await first.close()
+        note("second-connect")
         let second = try await HeelerSSHTransport.connect(
             settings: environment.settings(policy: policy))
         try await second.close()
@@ -65,13 +94,14 @@ struct HeelerSSHJumpHostGateE2ETests {
                 algorithm: jumpFingerprint.algorithm),
             host: environment.host,
             port: Int(environment.jumpPort))
+        note("jump-mismatch")
         let jumpError = await #expect(throws: TransportError.self) {
             _ = try await HeelerSSHTransport.connect(
                 settings: environment.settings(policy: policy))
         }
         guard case .jumpHostFailed(.hostKeyMismatch) = jumpError else {
             Issue.record("expected the mismatch to identify the Jump Host, got \(String(describing: jumpError))")
-            return
+            return false
         }
 
         await knownHosts.setFingerprint(
@@ -88,14 +118,17 @@ struct HeelerSSHJumpHostGateE2ETests {
                 algorithm: targetFingerprint.algorithm),
             host: environment.targetHost,
             port: Int(environment.targetPort))
+        note("target-mismatch")
         let targetError = await #expect(throws: TransportError.self) {
             _ = try await HeelerSSHTransport.connect(
                 settings: environment.settings(policy: policy))
         }
         guard case .hostKeyMismatch = targetError else {
             Issue.record("expected the unwrapped mismatch to identify the Host, got \(String(describing: targetError))")
-            return
+            return false
         }
+        note("complete")
+        return true
     }
 
     @Test("outer and target authentication failures retain wrapping and retryability")

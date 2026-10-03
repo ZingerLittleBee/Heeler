@@ -111,6 +111,9 @@ actor SessionDriver {
     /// covers genuine post-negotiation transport loss, which is equally
     /// transient.
     private(set) var handshakeFailedInKeyExchange = false
+    /// Time spent in synchronous diagnostic sinks after the handshake result
+    /// was captured. This includes sink scheduling and output, not just formatting.
+    private(set) var handshakeFailureDiagnosticDuration: Duration?
     /// The identification string the server sent during the handshake
     /// (RFC 4253 section 4.2, without the trailing CR LF), such as
     /// `SSH-2.0-OpenSSH_9.9`. Nil until a handshake completes.
@@ -2761,7 +2764,7 @@ actor SessionDriver {
 #endif
             handshakeFailedInKeyExchange =
                 handshakeResult == LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE
-            throw mapSessionError(handshakeResult)
+            throw mapSessionError(handshakeResult, includeHandshakeMethods: true)
         }
         serverIdentification = libssh2_session_banner_get(createdSession).map {
             String(cString: $0)
@@ -4940,14 +4943,27 @@ actor SessionDriver {
     /// One line per failure: the phase, the raw libssh2 code by name, and the
     /// message libssh2 attached to it. The coarse `SSHError` the caller gets
     /// is unchanged; this is the detail it deliberately does not carry.
-    private func noteFailure(_ code: Int32) {
+    private func noteFailure(_ code: Int32, includeHandshakeMethods: Bool = false) {
         guard SSHDiagnostics.isEnabled else { return }
         var line = "\(diagnosticContext) failed: \(Self.libssh2ErrorName(code)) (\(code))"
         if let session, let message = Self.lastErrorMessage(session), !message.isEmpty {
             line += ": \(message)"
         }
+        if includeHandshakeMethods, let session {
+            // Capture the active methods before handshake failure invalidates
+            // the native session; an algorithm name contains no credentials.
+            let kex = libssh2_session_methods(session, LIBSSH2_METHOD_KEX)
+                .map { String(cString: $0) } ?? "none"
+            let hostKey = libssh2_session_methods(session, LIBSSH2_METHOD_HOSTKEY)
+                .map { String(cString: $0) } ?? "none"
+            line += " [negotiated_kex=\(kex); negotiated_hostkey=\(hostKey)]"
+        }
         if let context = SSHDiagnosticOperation.current { line += " \(context.timingDetails)" }
+        let sinkStarted = includeHandshakeMethods ? ContinuousClock.now : nil
         SSHDiagnostics.note(line)
+        if let sinkStarted {
+            handshakeFailureDiagnosticDuration = sinkStarted.duration(to: ContinuousClock.now)
+        }
     }
 
     /// A deadline can expire in a progress check, in a readiness timer, or in
@@ -5030,8 +5046,11 @@ actor SessionDriver {
         }
     }
 
-    private func mapSessionError(_ code: Int32) -> SSHError {
-        noteFailure(code)
+    private func mapSessionError(
+        _ code: Int32,
+        includeHandshakeMethods: Bool = false
+    ) -> SSHError {
+        noteFailure(code, includeHandshakeMethods: includeHandshakeMethods)
         switch code {
         case LIBSSH2_ERROR_KEX_FAILURE,
             LIBSSH2_ERROR_METHOD_NONE,

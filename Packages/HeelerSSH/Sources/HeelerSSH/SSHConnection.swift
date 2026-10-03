@@ -87,14 +87,33 @@ public final class SSHConnection: Sendable {
                     hostKey: hostKey,
                     serverIdentification: await driver.serverIdentification)
             } catch {
+                let retryable = await driver.handshakeFailedInKeyExchange
+                let sinkDuration = await driver.handshakeFailureDiagnosticDuration
                 guard
                     attemptsLeft > 0,
-                    await driver.handshakeFailedInKeyExchange,
+                    retryable,
                     ContinuousClock.now < deadline
-                else { throw error }
-                SSHDiagnostics.note(
-                    "handshake with \(endpoint.host):\(endpoint.port) failed in key exchange, "
-                        + "redialling")
+                else {
+                    if retryable {
+                        noteHandshakeAttempt(
+                            endpoint: endpoint,
+                            throughJump: false,
+                            attempt: handshakeAttemptLimit - attemptsLeft,
+                            sinkDuration: sinkDuration,
+                            cleanupDuration: .zero,
+                            remaining: ContinuousClock.now.duration(to: deadline),
+                            canRedial: false)
+                    }
+                    throw error
+                }
+                noteHandshakeAttempt(
+                    endpoint: endpoint,
+                    throughJump: false,
+                    attempt: handshakeAttemptLimit - attemptsLeft,
+                    sinkDuration: sinkDuration,
+                    cleanupDuration: .zero,
+                    remaining: ContinuousClock.now.duration(to: deadline),
+                    canRedial: true)
             }
         }
     }
@@ -144,18 +163,56 @@ public final class SSHConnection: Sendable {
                 // Jump Host session stays open for the redial and is closed
                 // below once no attempt is left.
                 let retryable = await targetDriver.handshakeFailedInKeyExchange
+                let sinkDuration = await targetDriver.handshakeFailureDiagnosticDuration
+                let cleanupStarted = ContinuousClock.now
                 await targetDriver.invalidate()
                 transport.abort()
                 try? await transport.close(timeout: .seconds(2))
+                let cleanupDuration = cleanupStarted.duration(to: ContinuousClock.now)
                 guard attemptsLeft > 0, retryable, ContinuousClock.now < deadline else {
+                    let remaining = ContinuousClock.now.duration(to: deadline)
                     try? await close(timeout: .seconds(2))
+                    if retryable {
+                        Self.noteHandshakeAttempt(
+                            endpoint: endpoint,
+                            throughJump: true,
+                            attempt: Self.handshakeAttemptLimit - attemptsLeft,
+                            sinkDuration: sinkDuration,
+                            cleanupDuration: cleanupDuration,
+                            remaining: remaining,
+                            canRedial: false)
+                    }
                     throw error
                 }
-                SSHDiagnostics.note(
-                    "handshake with \(endpoint.host):\(endpoint.port) over the Jump Host "
-                        + "transport failed in key exchange, redialling")
+                Self.noteHandshakeAttempt(
+                    endpoint: endpoint,
+                    throughJump: true,
+                    attempt: Self.handshakeAttemptLimit - attemptsLeft,
+                    sinkDuration: sinkDuration,
+                    cleanupDuration: cleanupDuration,
+                    remaining: ContinuousClock.now.duration(to: deadline),
+                    canRedial: true)
             }
         }
+    }
+
+    private static func noteHandshakeAttempt(
+        endpoint: SSHEndpoint,
+        throughJump: Bool,
+        attempt: Int,
+        sinkDuration: Duration?,
+        cleanupDuration: Duration,
+        remaining: Duration,
+        canRedial: Bool
+    ) {
+        SSHDiagnostics.note(
+            "handshake with \(endpoint.host):\(endpoint.port)"
+                + (throughJump ? " over the Jump Host transport" : "")
+                + " [attempt=\(attempt)/\(handshakeAttemptLimit); "
+                + "sink_elapsed=\(sinkDuration.map { String(describing: $0) } ?? "unmeasured"); "
+                + "forwarding_cleanup=\(cleanupDuration); remaining_budget=\(remaining); "
+                + "can_redial=\(canRedial)] failed in key exchange, "
+                + (canRedial ? "redialling" : "no redial"))
     }
 
     public func authenticate(

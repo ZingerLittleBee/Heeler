@@ -37,7 +37,7 @@
 #   relay/** do not match, so they never spend a macos-26 runner.
 
 name: CI
-run-name: iOS CI (${{ inputs.layout || 'sharded' }}, ${{ inputs.cache_mode || 'warm' }})
+run-name: iOS CI (${{ inputs.diagnostic_target != 'none' && inputs.diagnostic_target || inputs.layout || 'sharded' }}, ${{ inputs.cache_mode || 'warm' }})
 
 on:
   workflow_dispatch:
@@ -56,6 +56,15 @@ on:
         description: Optional completed same-SHA serial run for coverage comparison
         type: string
         default: ''
+      diagnostic_target:
+        description: Optional isolated feedback; never the complete coverage gate
+        type: choice
+        options: [none, all, ssh-jump, staging, staging-method, weak]
+        default: none
+      diagnostic_iterations:
+        description: Optional 1-100 rounds; defaults to SSH 50, staging 20, weak 10
+        type: string
+        default: ''
   pull_request:
     paths:
       - Sources/**
@@ -67,6 +76,7 @@ on:
       - scripts/**
       - plugin/test-vectors/**
       - .github/workflows/ci.yml
+      - .github/workflows/ci-diagnostics.yml
   push:
     branches: [main]
     paths:
@@ -79,12 +89,13 @@ on:
       - scripts/**
       - plugin/test-vectors/**
       - .github/workflows/ci.yml
+      - .github/workflows/ci-diagnostics.yml
 
 # Per-workflow group: sharing `ci-${{ github.ref }}` with ci-node.yml made
 # the two workflows cancel each other on the same SHA (plugin/test-vectors
 # and this file both start both workflows).
 concurrency:
-  group: ci-ios-${{ github.ref }}
+  group: ci-ios-${{ github.ref }}-${{ inputs.diagnostic_target != 'none' && inputs.diagnostic_target || 'full' }}
   cancel-in-progress: true
 
 permissions:
@@ -92,8 +103,16 @@ permissions:
   actions: read
 
 jobs:
+  diagnostics:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' }}
+    uses: ./.github/workflows/ci-diagnostics.yml
+    with:
+      target: ${{ inputs.diagnostic_target }}
+      iterations: ${{ inputs.diagnostic_iterations }}
+
   app-tests:
-    name: App tests (${{ matrix.shard }})
+    if: ${{ inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none' }}
+    name: ${{ inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && 'Diagnostic mode (app coverage not run)' || format('App tests ({0})', matrix.shard) }}
     # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
     # rather than macos-latest for reproducibility.
     runs-on: macos-26
@@ -210,7 +229,8 @@ jobs:
           retention-days: 7
 
   heelerssh-package-e2e:
-    name: HeelerSSH package E2E (iOS Simulator)
+    if: ${{ inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none' }}
+    name: ${{ inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && 'Diagnostic mode (package coverage not run)' || 'HeelerSSH package E2E (iOS Simulator)' }}
     runs-on: macos-26
     timeout-minutes: 15
     env:
@@ -270,9 +290,11 @@ jobs:
           retention-days: 7
 
   build-test:
-    name: Build & test (iOS Simulator)
+    # A skipped required check counts as successful on GitHub. Diagnostics
+    # therefore use a distinct name even for this unexecuted aggregate.
+    name: ${{ inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && 'Diagnostic mode (full coverage not run)' || 'Build & test (iOS Simulator)' }}
     needs: [app-tests, heelerssh-package-e2e]
-    if: always()
+    if: ${{ always() && (inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

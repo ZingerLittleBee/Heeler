@@ -222,6 +222,28 @@ struct AgentSurfaceReplacementTests {
     /// intact: links, a staging result, and a Paste awaiting confirmation all
     /// belong to this Attach until the user actually leaves it.
     @Test func aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState() async throws {
+        let configuredIterations =
+            ProcessInfo.processInfo.environment["HEELER_STAGING_RECOVERY_ITERATIONS"] ?? "1"
+        let iterations = try #require(
+            Int(configuredIterations), "the staging recovery iteration count must be an integer")
+        try #require(
+            (1...100).contains(iterations), "the staging recovery iteration count must be 1...100")
+        for iteration in 1...iterations {
+            guard try await Self.assertPossibleSuspensionRecovery(
+                iteration: iteration, iterations: iterations)
+            else { return }
+        }
+        print("[attach-staging-test] completed \(iterations) iterations")
+    }
+
+    private static func assertPossibleSuspensionRecovery(
+        iteration: Int, iterations: Int
+    ) async throws -> Bool {
+        var allExpectationsPassed = true
+        func observedExpectation(_ passed: Bool) -> Bool {
+            allExpectationsPassed = allExpectationsPassed && passed
+            return passed
+        }
         var now = ContinuousClock.now
         let activity = AppActivityCoordinator(
             gracePeriod: .seconds(20),
@@ -231,21 +253,32 @@ struct AgentSurfaceReplacementTests {
         let composer = Self.makeComposer(transport: transport)
         let owner = Self.makeAttachStore(transport: transport, composer: composer)
         let agent = Self.makeAgent(pane: "w1:p1")
+        let stagingTrace = SurfaceStagingTrace(iteration: iteration, iterations: iterations)
         let controller = UIHostingController(
             rootView: Self.makeDetailView(
                 agent: agent,
                 activity: activity,
                 attachStore: owner,
-                composer: composer))
+                composer: composer)
+                .onAppear {
+                    stagingTrace.record("view appeared", owner: owner, activity: activity)
+                }
+                .onDisappear {
+                    stagingTrace.record("view disappeared", owner: owner, activity: activity)
+                })
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
         controller.view.layoutIfNeeded()
 
         try #require(await Self.eventually {
             await transport.attachRequests.count == 1
         }, "the first PTY Attach should open")
-        #expect(await transport.emitAttachOutput(Data("opening".utf8)))
+        #expect(observedExpectation(await transport.emitAttachOutput(Data("opening".utf8))))
         try #require(await Self.eventually {
             owner.terminalStatus == .live
         }, "the first Attach should become live")
@@ -260,10 +293,29 @@ struct AgentSurfaceReplacementTests {
         }
 
         owner.viewportTextDidChange("https://before.example/recovery")
-        owner.staging.begin(.photo(DataImageSelection(data: Data([0x01]))))
-        try #require(await Self.eventually {
-            if case .failed = owner.staging.state { true } else { false }
-        }, "the image result should surface before recovery")
+        let stagingEventHandler = owner.staging.onOperationEvent
+        owner.staging.onOperationEvent = { [weak owner] event in
+            stagingEventHandler?(event)
+            guard let owner else { return }
+            stagingTrace.record("operation \(event)", owner: owner, activity: activity)
+        }
+        defer { owner.staging.onOperationEvent = stagingEventHandler }
+        stagingTrace.record("before begin", owner: owner, activity: activity)
+        let acceptedOperationID = owner.staging.begin(
+            .photo(DataImageSelection(data: Data([0x01]))))
+        stagingTrace.record(
+            "begin returned \(String(describing: acceptedOperationID))",
+            owner: owner, activity: activity)
+        let imageResultSurfaced = try await Self.eventually {
+            stagingTrace.recordStateChange(owner: owner, activity: activity)
+            if case .failed = owner.staging.state { return true }
+            return false
+        }
+        stagingTrace.record(
+            "precondition result \(imageResultSurfaced)", owner: owner, activity: activity)
+        try #require(
+            imageResultSurfaced,
+            "the image result should surface before recovery; accepted operation \(String(describing: acceptedOperationID)); trace: \(stagingTrace.entries)")
         let stagingResult = owner.staging.state
         owner.requestPaste("git status\ngit diff", bracketedPaste: true)
         let pendingPaste = try #require(owner.pendingPaste)
@@ -274,16 +326,17 @@ struct AgentSurfaceReplacementTests {
         try await Task.sleep(for: .milliseconds(100))
 
         #expect(
-            await transport.attachRequests.count == 1,
+            observedExpectation(await transport.attachRequests.count == 1),
             "a short bounce must not open another PTY Attach")
         #expect(
-            owner.terminalStatus == .live,
+            observedExpectation(owner.terminalStatus == .live),
             "a short bounce must not show Connecting")
         #expect(
-            Self.terminals(in: controller.view).first.map(ObjectIdentifier.init) == firstSurfaceID,
+            observedExpectation(
+                Self.terminals(in: controller.view).first.map(ObjectIdentifier.init) == firstSurfaceID),
             "a short bounce must keep the terminal surface")
-        #expect(owner.terminalID == firstTerminalID)
-        #expect(owner.terminalFeed === firstFeed)
+        #expect(observedExpectation(owner.terminalID == firstTerminalID))
+        #expect(observedExpectation(owner.terminalFeed === firstFeed))
 
         activity.didEnterBackground()
         now = now.advanced(by: .seconds(20))
@@ -306,13 +359,16 @@ struct AgentSurfaceReplacementTests {
             Self.terminals(in: controller.view).first,
             "recovery should create and attach a new terminal surface")
 
-        #expect(ObjectIdentifier(replacement) != firstSurfaceID)
-        #expect(owner.terminalFeed !== firstFeed, "the replacement needs a new byte feed")
-        #expect(owner.attachLinks.map(\.target) == ["https://before.example/recovery"])
-        #expect(owner.staging.state == stagingResult)
-        #expect(owner.pendingPaste == pendingPaste)
+        #expect(observedExpectation(ObjectIdentifier(replacement) != firstSurfaceID))
+        #expect(
+            observedExpectation(owner.terminalFeed !== firstFeed),
+            "the replacement needs a new byte feed")
+        #expect(
+            observedExpectation(owner.attachLinks.map(\.target) == ["https://before.example/recovery"]))
+        #expect(observedExpectation(owner.staging.state == stagingResult))
+        #expect(observedExpectation(owner.pendingPaste == pendingPaste))
 
-        #expect(await transport.emitAttachOutput(Data("recovered-frame".utf8)))
+        #expect(observedExpectation(await transport.emitAttachOutput(Data("recovered-frame".utf8))))
         try #require(await Self.eventually {
             owner.terminalStatus == .live
                 && replacement.terminalSession.readViewportText()?.contains("recovered-frame") == true
@@ -328,12 +384,13 @@ struct AgentSurfaceReplacementTests {
                 return false
             } == [.keystrokes(expectedPaste)]
         }, "the reviewed Paste should submit once through the replacement writer")
-        #expect(owner.pendingPaste == nil)
+        #expect(observedExpectation(owner.pendingPaste == nil))
 
         await owner.leave().value
         window.isHidden = true
         window.rootViewController = nil
         await Task.yield()
+        return allExpectationsPassed
     }
 
     /// The R3 device trace caught the foreground edge between Attach owners:
@@ -802,6 +859,33 @@ struct AgentSurfaceReplacementTests {
             try await Task.sleep(for: .milliseconds(5))
         }
         return await condition()
+    }
+}
+
+@MainActor
+private final class SurfaceStagingTrace {
+    private let startedAt = ContinuousClock.now
+    private let iteration: Int
+    private let iterations: Int
+    private var lastState: ComposerStagingStore.State?
+    private(set) var entries: [String] = []
+
+    init(iteration: Int, iterations: Int) {
+        self.iteration = iteration
+        self.iterations = iterations
+    }
+
+    func record(_ event: String, owner: AgentAttachStore, activity: AppActivityCoordinator) {
+        lastState = owner.staging.state
+        let entry =
+            "\(startedAt.duration(to: .now)): \(event); state=\(owner.staging.state); activity=\(activity.phase)/\(activity.activationCount); terminal=\(owner.terminalStatus); terminalID=\(owner.terminalID)"
+        entries.append(entry)
+        print("[attach-staging-test] iteration=\(iteration)/\(iterations) \(entry)")
+    }
+
+    func recordStateChange(owner: AgentAttachStore, activity: AppActivityCoordinator) {
+        guard owner.staging.state != lastState else { return }
+        record("state changed", owner: owner, activity: activity)
     }
 }
 
