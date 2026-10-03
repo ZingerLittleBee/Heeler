@@ -90,18 +90,27 @@ struct NotificationRegistrationCeremony: Sendable {
         pinnedPaneIDs: [String] = [],
         rowLayout: AgentRowLayout? = nil,
         hostName: String? = nil,
-        over transport: any Transport
+        over transport: any Transport,
+        diagnose: (@Sendable (String) async -> Void)? = nil
     ) async throws {
-        let file = try NotificationRegistrationFile.decode(
-            try await transport.readNotificationRegistration())
+        try Task.checkCancellation()
+        await diagnose?("registration read started")
+        let registration = try await transport.readNotificationRegistration()
+        await diagnose?("registration read completed")
+        try Task.checkCancellation()
+        let file = try NotificationRegistrationFile.decode(registration)
+        await diagnose?("registration decoded")
         guard file.containsDevice(token: deviceToken.hex) else {
             throw NotificationRegistrationError.deviceNotRegistered
         }
-        try await transport.replaceNotificationRegistration(
-            try file.settingLiveActivity(
-                token: tokenHex, startedAt: startedAt, forDeviceToken: deviceToken.hex,
-                pinnedPaneIDs: pinnedPaneIDs, rowLayout: rowLayout, hostName: hostName
-            ).encoded())
+        let contents = try file.settingLiveActivity(
+            token: tokenHex, startedAt: startedAt, forDeviceToken: deviceToken.hex,
+            pinnedPaneIDs: pinnedPaneIDs, rowLayout: rowLayout, hostName: hostName
+        ).encoded()
+        await diagnose?("registration encoded")
+        try Task.checkCancellation()
+        try await transport.replaceNotificationRegistration(contents)
+        await diagnose?("registration replaced")
     }
 
     /// Updates `pinned_pane_ids` on this device's existing `live_activity`

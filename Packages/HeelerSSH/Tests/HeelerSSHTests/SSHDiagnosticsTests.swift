@@ -35,6 +35,12 @@ struct SSHDiagnosticsTests {
                     + "LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE (\(LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE))")
                 == true,
             Comment(rawValue: "recorded: \(lines)"))
+        #expect(
+            lines.first?.contains("negotiated_kex=curve25519-sha256") == true,
+            Comment(rawValue: "recorded: \(lines)"))
+        #expect(
+            lines.first?.contains("negotiated_hostkey=ssh-ed25519") == true,
+            Comment(rawValue: "recorded: \(lines)"))
     }
 
     @Test("a handshake that never receives a banner names the phase that timed out")

@@ -17,6 +17,19 @@ final class FakeLiveActivityController: LiveActivityControlling {
 
     private var nextID = 1
     private var records: [String: Record] = [:]
+    var onDiagnostic: ((String) -> Void)?
+
+    var tokenSubscriberCount: Int {
+        records.values.reduce(0) { $0 + $1.tokenContinuations.count }
+    }
+
+    func finishStreams() {
+        for record in records.values {
+            for continuation in record.tokenContinuations { continuation.finish() }
+            for continuation in record.stateContinuations { continuation.finish() }
+        }
+        records.removeAll()
+    }
 
     private struct Record {
         var id: String
@@ -32,6 +45,7 @@ final class FakeLiveActivityController: LiveActivityControlling {
     }
 
     func emitToken(id: String, _ data: Data) {
+        onDiagnostic?("token emitted subscribers=\(records[id]?.tokenContinuations.count ?? 0)")
         records[id]?.lastToken = data
         for continuation in records[id]?.tokenContinuations ?? [] {
             continuation.yield(data)

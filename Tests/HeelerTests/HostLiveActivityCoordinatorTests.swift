@@ -27,6 +27,38 @@ struct HostLiveActivityCoordinatorTests {
         var statuses: [UUID: EventsSessionStatus] = [:]
         var deviceToken: APNSDeviceToken?
         var layout: AgentRowLayout?
+        var coordinators: [HostLiveActivityCoordinator] = []
+        let startedAt = ContinuousClock.now
+        var trace: [String] = []
+
+        func record(_ event: String) {
+            trace.append("\(startedAt.duration(to: .now)): \(event)")
+        }
+    }
+
+    private func withFixture(_ body: @MainActor (UserDefaults) async throws -> Void) async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        do {
+            try await body(defaults)
+        } catch {
+            printTrace()
+            await tearDown()
+            throw error
+        }
+        await tearDown()
+    }
+
+    private func tearDown() async {
+        let coordinators = world.coordinators
+        world.coordinators.removeAll()
+        controller.finishStreams()
+        for coordinator in coordinators { await coordinator.stop() }
+        #expect(controller.tokenSubscriberCount == 0)
+    }
+
+    private func printTrace() {
+        for entry in world.trace { print("[live-activity-test] \(entry)") }
     }
 
     private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
@@ -57,6 +89,9 @@ struct HostLiveActivityCoordinatorTests {
             pinnedPaneIDs: { pinStore?.pinnedPaneIDs(for: $0) ?? [] },
             rowLayout: { _ in world.layout },
             settleDuration: .milliseconds(20))
+        coordinator.onDiagnostic = { _, event in world.record(event) }
+        controller.onDiagnostic = { event in world.record(event) }
+        world.coordinators.append(coordinator)
         if enable {
             coordinator.setEnabled(true, for: host.id)
         }
@@ -101,7 +136,9 @@ struct HostLiveActivityCoordinatorTests {
             if try await condition() { break }
             try await Task.sleep(for: .milliseconds(5))
         }
-        #expect(try await condition(), comment)
+        let satisfied = try await condition()
+        if !satisfied { printTrace() }
+        #expect(satisfied, comment)
     }
 
     private func waitPastSettle() async throws {
@@ -131,492 +168,532 @@ struct HostLiveActivityCoordinatorTests {
 
     // MARK: Start / settle / flap
 
-    @Test func startsAfterTheSettleNotOnFirstSight() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        #expect(controller.requested.isEmpty, "the desired state must settle first")
-
-        try await waitUntil("a working Agent should start an activity once settled") {
-            !controller.requested.isEmpty
+    @Test func fixtureTeardownReleasesTheCoordinatorAndSubscriptions() async throws {
+        weak var owner: HostLiveActivityCoordinator?
+        try await withFixture { defaults in
+            let coordinator = makeCoordinator(defaults: defaults)
+            owner = coordinator
+            try await registerDevice()
+            armWorld()
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            #expect(controller.tokenSubscriberCount == 1)
         }
-        #expect(controller.requested.count == 1)
-        #expect(controller.requested[0].counts == .init(working: 1, blocked: 0, done: 0))
+        #expect(owner == nil)
+        #expect(controller.tokenSubscriberCount == 0)
+    }
+
+    @Test func stoppingCancelsAnInFlightTokenWrite() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            let writes = await transport.replacedNotificationRegistrations.count
+            let gate = CancellablePhaseGate()
+            await transport.holdNotificationRegistrationWrites(on: gate)
+            controller.emitToken(id: activityID, Data([0xde, 0xad]))
+            try await waitUntil("the token write should reach the barrier") {
+                await transport.notificationRegistrationWriteIsBlocked
+            }
+            await coordinator.stop()
+            await gate.release()
+            #expect(await transport.replacedNotificationRegistrations.count == writes)
+            #expect(try await liveActivityToken() == nil)
+        }
+    }
+
+    @Test func startsAfterTheSettleNotOnFirstSight() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            #expect(controller.requested.isEmpty, "the desired state must settle first")
+
+            try await waitUntil("a working Agent should start an activity once settled") {
+                !controller.requested.isEmpty
+            }
+            #expect(controller.requested.count == 1)
+            #expect(controller.requested[0].counts == .init(working: 1, blocked: 0, done: 0))
+        }
     }
 
     @Test func aFlapBackToTheAppliedDesireDoesNotEnd() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requested.isEmpty }
 
-        coordinator.agentsDidChange([])
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitPastSettle()
+            coordinator.agentsDidChange([])
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitPastSettle()
 
-        #expect(controller.ended.isEmpty)
-        #expect(controller.requested.count == 1)
-        #expect(controller.updates.isEmpty)
+            #expect(controller.ended.isEmpty)
+            #expect(controller.requested.count == 1)
+            #expect(controller.updates.isEmpty)
+        }
     }
 
     @Test func updateCoalescesToTheLatestDesire() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requested.isEmpty }
 
-        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
-        coordinator.agentsDidChange([agent(observedPaneID, .done)])
-        try await waitUntil("only the latest desire should land as an update") {
-            controller.updates.count == 1
+            coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
+            coordinator.agentsDidChange([agent(observedPaneID, .done)])
+            try await waitUntil("only the latest desire should land as an update") {
+                controller.updates.count == 1
+            }
+            try await waitPastSettle()
+            #expect(controller.updates.count == 1)
+            #expect(controller.updates[0].content.counts == .init(working: 0, blocked: 0, done: 1))
         }
-        try await waitPastSettle()
-        #expect(controller.updates.count == 1)
-        #expect(controller.updates[0].content.counts == .init(working: 0, blocked: 0, done: 1))
     }
 
     // MARK: Fail closed
 
     @Test func staysIdleWhenThePreferenceIsOff() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults, enable: false)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
-        try await waitPastSettle()
-        #expect(controller.requested.isEmpty)
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults, enable: false)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
+            try await waitPastSettle()
+            #expect(controller.requested.isEmpty)
+        }
     }
 
     @Test func staysIdleWhenTheNotificationKeyIsMissing() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
-        try await waitPastSettle()
-        #expect(controller.requested.isEmpty)
+        try await withFixture { defaults in
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
+            try await waitPastSettle()
+            #expect(controller.requested.isEmpty)
+        }
     }
 
     @Test func staysIdleWhenTheDeviceTokenIsMissing() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try saveKey()
-        armWorld(token: nil)
-        world.deviceToken = nil
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .done)])
-        try await waitPastSettle()
-        #expect(controller.requested.isEmpty)
+        try await withFixture { defaults in
+            try saveKey()
+            armWorld(token: nil)
+            world.deviceToken = nil
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .done)])
+            try await waitPastSettle()
+            #expect(controller.requested.isEmpty)
+        }
     }
 
     @Test func staysIdleWhenActivitiesAreDisabledOrRequestThrows() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        controller.areEnabled = false
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitPastSettle()
-        #expect(controller.requested.isEmpty)
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            controller.areEnabled = false
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitPastSettle()
+            #expect(controller.requested.isEmpty)
 
-        controller.areEnabled = true
-        controller.requestError = LiveActivityRequestError.requestFailed()
-        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
-        try await waitPastSettle()
-        #expect(controller.requested.isEmpty)
+            controller.areEnabled = true
+            controller.requestError = LiveActivityRequestError.requestFailed()
+            coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
+            try await waitPastSettle()
+            #expect(controller.requested.isEmpty)
+        }
     }
 
     // MARK: End + token pipe
 
     @Test func endingOnEmptyClearsTheLiveActivityToken() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
-        let activityID = try #require(controller.requestedHandles.first?.id)
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
 
-        controller.emitToken(id: activityID, Data([0xde, 0xad]))
-        try await waitUntil("the push token should land on the Host") {
-            try await liveActivityToken() == "dead"
-        }
+            controller.emitToken(id: activityID, Data([0xde, 0xad]))
+            try await waitUntil("the push token should land on the Host") {
+                try await liveActivityToken() == "dead"
+            }
 
-        coordinator.agentsDidChange([])
-        try await waitUntil("an empty eligible set should end the activity") {
-            !controller.ended.isEmpty
-        }
-        #expect(controller.ended[0].immediate)
-        try await waitUntil("ending should drop the registration field") {
-            try await liveActivityToken() == nil
+            coordinator.agentsDidChange([])
+            try await waitUntil("an empty eligible set should end the activity") {
+                !controller.ended.isEmpty
+            }
+            #expect(controller.ended[0].immediate)
+            try await waitUntil("ending should drop the registration field") {
+                try await liveActivityToken() == nil
+            }
         }
     }
 
     @Test func tokenRotationRewritesTheRegistrationField() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
-        let activityID = try #require(controller.requestedHandles.first?.id)
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
 
-        controller.emitToken(id: activityID, Data([0xaa]))
-        try await waitUntil("the first token should be written") {
-            try await liveActivityToken() == "aa"
-        }
-        controller.emitToken(id: activityID, Data([0xbb]))
-        try await waitUntil("a rotated token should replace the field") {
-            try await liveActivityToken() == "bb"
+            controller.emitToken(id: activityID, Data([0xaa]))
+            try await waitUntil("the first token should be written") {
+                try await liveActivityToken() == "aa"
+            }
+            controller.emitToken(id: activityID, Data([0xbb]))
+            try await waitUntil("a rotated token should replace the field") {
+                try await liveActivityToken() == "bb"
+            }
         }
     }
 
     @Test func aDirtyTokenWriteRetriesAfterReconnect() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
-        let activityID = try #require(controller.requestedHandles.first?.id)
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
 
-        await transport.setNotificationRegistrationWriteFailure(
-            .writeFailed(detail: "offline"))
-        world.statuses[host.id] = .reconnecting(
-            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
-        controller.emitToken(id: activityID, Data([0xcc]))
-        try await waitPastSettle()
-        #expect(try await liveActivityToken() == nil)
+            await transport.setNotificationRegistrationWriteFailure(
+                .writeFailed(detail: "offline"))
+            world.statuses[host.id] = .reconnecting(
+                attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
+            controller.emitToken(id: activityID, Data([0xcc]))
+            try await waitPastSettle()
+            #expect(try await liveActivityToken() == nil)
 
-        await transport.setNotificationRegistrationWriteFailure(nil)
-        world.statuses[host.id] = .connected
-        coordinator.connectionsDidChange()
-        try await waitUntil("a recovered connection should flush the dirty token") {
-            try await liveActivityToken() == "cc"
+            await transport.setNotificationRegistrationWriteFailure(nil)
+            world.statuses[host.id] = .connected
+            coordinator.connectionsDidChange()
+            try await waitUntil("a recovered connection should flush the dirty token") {
+                try await liveActivityToken() == "cc"
+            }
         }
     }
 
     @Test func switchingThePreferenceOffEndsAndClears() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
-        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
-        let activityID = try #require(controller.requestedHandles.first?.id)
-        controller.emitToken(id: activityID, Data([0x11]))
-        try await waitUntil("the token should be written") {
-            try await liveActivityToken() == "11"
-        }
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .blocked)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            controller.emitToken(id: activityID, Data([0x11]))
+            try await waitUntil("the token should be written") {
+                try await liveActivityToken() == "11"
+            }
 
-        coordinator.setEnabled(false, for: host.id)
-        #expect(controller.ended.count == 1)
-        #expect(controller.ended[0].immediate)
-        try await waitUntil("disabling should clear the registration field") {
-            try await liveActivityToken() == nil
+            coordinator.setEnabled(false, for: host.id)
+            #expect(controller.ended.count == 1)
+            #expect(controller.ended[0].immediate)
+            try await waitUntil("disabling should clear the registration field") {
+                try await liveActivityToken() == nil
+            }
         }
     }
 
     // MARK: Cold launch
 
     @Test func startAdoptsAKnownActivityAndRewritesANewToken() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        controller.seed(id: "act-cold", hostID: host.id)
-        controller.emitToken(id: "act-cold", Data([0xee]))
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        #expect(controller.ended.isEmpty)
-        #expect(controller.requested.isEmpty)
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            controller.seed(id: "act-cold", hostID: host.id)
+            controller.emitToken(id: "act-cold", Data([0xee]))
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            #expect(controller.ended.isEmpty)
+            #expect(controller.requested.isEmpty)
+            #expect(controller.tokenSubscriberCount == 1)
 
-        try await waitUntil("adopting should write the current push token") {
-            try await liveActivityToken() == "ee"
+            try await waitUntil("adopting should write the current push token") {
+                try await liveActivityToken() == "ee"
+            }
         }
     }
 
     @Test func startEndsAnOrphanActivityImmediately() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        armWorld()
-        controller.seed(id: "act-orphan", hostID: UUID())
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        #expect(controller.ended.map(\.id) == ["act-orphan"])
-        #expect(controller.ended[0].immediate)
+        try await withFixture { defaults in
+            armWorld()
+            controller.seed(id: "act-orphan", hostID: UUID())
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            #expect(controller.ended.map(\.id) == ["act-orphan"])
+            #expect(controller.ended[0].immediate)
+        }
     }
 
     @Test func reconnectEmptySliceDoesNotEndAnActiveActivity() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requested.isEmpty }
-        #expect(controller.ended.isEmpty)
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+            #expect(controller.ended.isEmpty)
 
-        // ConsoleStore.rebuild assigns `agents` before `hostsAwaitingSnapshot`,
-        // so the coordinator can see an empty slice while the hold is stale.
-        coordinator.agentsDidChange([])
-        world.awaitingSnapshot = [host.id]
-        world.statuses[host.id] = .reconnecting(
-            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
-        coordinator.connectionsDidChange()
-        try await waitPastSettle()
-        #expect(controller.ended.isEmpty, "an empty slice while reconnecting is not all-idle")
+            // ConsoleStore.rebuild assigns `agents` before `hostsAwaitingSnapshot`,
+            // so the coordinator can see an empty slice while the hold is stale.
+            coordinator.agentsDidChange([])
+            world.awaitingSnapshot = [host.id]
+            world.statuses[host.id] = .reconnecting(
+                attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
+            coordinator.connectionsDidChange()
+            try await waitPastSettle()
+            #expect(controller.ended.isEmpty, "an empty slice while reconnecting is not all-idle")
 
-        world.awaitingSnapshot = []
-        world.statuses[host.id] = .connected
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        coordinator.connectionsDidChange()
-        try await waitPastSettle()
-        #expect(controller.ended.isEmpty)
-        #expect(controller.requested.count == 1)
+            world.awaitingSnapshot = []
+            world.statuses[host.id] = .connected
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            coordinator.connectionsDidChange()
+            try await waitPastSettle()
+            #expect(controller.ended.isEmpty)
+            #expect(controller.requested.count == 1)
+        }
     }
 
     @Test func emptySnapshotAfterReconnectEndsTheActivity() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requested.isEmpty }
 
-        coordinator.agentsDidChange([])
-        world.awaitingSnapshot = [host.id]
-        world.statuses[host.id] = .reconnecting(
-            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
-        coordinator.connectionsDidChange()
-        try await waitPastSettle()
-        #expect(controller.ended.isEmpty)
+            coordinator.agentsDidChange([])
+            world.awaitingSnapshot = [host.id]
+            world.statuses[host.id] = .reconnecting(
+                attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
+            coordinator.connectionsDidChange()
+            try await waitPastSettle()
+            #expect(controller.ended.isEmpty)
 
-        world.awaitingSnapshot = []
-        world.statuses[host.id] = .connected
-        coordinator.connectionsDidChange()
-        try await waitUntil("an empty post-reconnect snapshot should end") {
-            !controller.ended.isEmpty
+            world.awaitingSnapshot = []
+            world.statuses[host.id] = .connected
+            coordinator.connectionsDidChange()
+            try await waitUntil("an empty post-reconnect snapshot should end") {
+                !controller.ended.isEmpty
+            }
         }
     }
 
     @Test func doesNotEndAnAdoptedActivityBeforeTheFirstSnapshot() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        world.awaitingSnapshot = [host.id]
-        controller.seed(id: "act-hold", hostID: host.id)
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([])
-        try await waitPastSettle()
-        #expect(controller.ended.isEmpty)
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            world.awaitingSnapshot = [host.id]
+            controller.seed(id: "act-hold", hostID: host.id)
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([])
+            try await waitPastSettle()
+            #expect(controller.ended.isEmpty)
 
-        world.awaitingSnapshot = []
-        coordinator.connectionsDidChange()
-        try await waitUntil("an empty snapshot should end once it arrives") {
-            !controller.ended.isEmpty
+            world.awaitingSnapshot = []
+            coordinator.connectionsDidChange()
+            try await waitUntil("an empty snapshot should end once it arrives") {
+                !controller.ended.isEmpty
+            }
+            #expect(controller.ended[0].id == "act-hold")
         }
-        #expect(controller.ended[0].id == "act-hold")
     }
 
     @Test func dismissalWhileForegroundedClearsTheRegistrationField() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
-        let activityID = try #require(controller.requestedHandles.first?.id)
-        controller.emitToken(id: activityID, Data([0xdd]))
-        try await waitUntil("the token should be written") {
-            try await liveActivityToken() == "dd"
-        }
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            controller.emitToken(id: activityID, Data([0xdd]))
+            try await waitUntil("the token should be written") {
+                try await liveActivityToken() == "dd"
+            }
 
-        controller.emitState(id: activityID, .dismissed)
-        try await waitUntil("a foreground dismissal should drop the field") {
-            try await liveActivityToken() == nil
+            controller.emitState(id: activityID, .dismissed)
+            try await waitUntil("a foreground dismissal should drop the field") {
+                try await liveActivityToken() == nil
+            }
+            try await waitPastSettle()
+            #expect(controller.requested.count == 1, "the same desire must not restart")
         }
-        try await waitPastSettle()
-        #expect(controller.requested.count == 1, "the same desire must not restart")
     }
 
     @Test func layoutChangesUpdateActivityAndRetryBackgroundRegistration() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        try await registerDevice()
-        armWorld()
-        world.layout = AgentRowLayout(rows: [[.init(.host)]])
-        let coordinator = makeCoordinator(defaults: defaults)
-        coordinator.start()
-        coordinator.agentsDidChange([agent(observedPaneID, .working)])
-        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
-        let activityID = try #require(controller.requestedHandles.first?.id)
-        controller.emitToken(id: activityID, Data([0xab]))
-        try await waitUntil("the initial layout should be registered") {
-            let file = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
-            return file.devices.first?["live_activity"]?["row_layout"] != nil
-        }
-        let initialFile = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
-        #expect(initialFile.devices.first?["live_activity"]?["host_name"] == .string("mbp"))
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            world.layout = AgentRowLayout(rows: [[.init(.host)]])
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            controller.emitToken(id: activityID, Data([0xab]))
+            try await waitUntil("the initial layout should be registered") {
+                let file = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
+                return file.devices.first?["live_activity"]?["row_layout"] != nil
+            }
+            let initialFile = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
+            #expect(initialFile.devices.first?["live_activity"]?["host_name"] == .string("mbp"))
 
-        await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "offline"))
-        world.layout = AgentRowLayout(rows: [[.init(.status, dim: true)]])
-        coordinator.layoutsDidChange()
-        try await waitUntil("layout-only edits should refresh the activity") { !controller.updates.isEmpty }
-        let envelope = try #require(controller.updates.last?.content.envelope)
-        let details = try AgentActivityEnvelope.open(
-            try JSONEncoder().encode(envelope), using: notificationKey())
-        #expect(details.agents.first?.rows == [[.init(text: "Working", dim: true)]])
-        await transport.setNotificationRegistrationWriteFailure(nil)
-        coordinator.connectionsDidChange()
-        try await waitUntil("reconnection should retry the latest layout") {
-            let file = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
-            guard case .array(let rows)? = file.devices.first?["live_activity"]?["row_layout"]?["rows"],
-                  case .array(let fields)? = rows.first else { return false }
-            return fields.first?["token"] == .string("status")
+            await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "offline"))
+            world.layout = AgentRowLayout(rows: [[.init(.status, dim: true)]])
+            coordinator.layoutsDidChange()
+            try await waitUntil("layout-only edits should refresh the activity") { !controller.updates.isEmpty }
+            let envelope = try #require(controller.updates.last?.content.envelope)
+            let details = try AgentActivityEnvelope.open(
+                try JSONEncoder().encode(envelope), using: notificationKey())
+            #expect(details.agents.first?.rows == [[.init(text: "Working", dim: true)]])
+            await transport.setNotificationRegistrationWriteFailure(nil)
+            coordinator.connectionsDidChange()
+            try await waitUntil("reconnection should retry the latest layout") {
+                let file = try NotificationRegistrationFile.decode(await transport.notificationRegistration)
+                guard case .array(let rows)? = file.devices.first?["live_activity"]?["row_layout"]?["rows"],
+                      case .array(let fields)? = rows.first else { return false }
+                return fields.first?["token"] == .string("status")
+            }
+            #expect(try await liveActivityToken() == "ab")
         }
-        #expect(try await liveActivityToken() == "ab")
     }
 
     // MARK: Pins
 
     @Test func pinToggleRebuildsOrderAndWritesPinnedPaneIDs() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        let (pinDefaults, pinCleanup) = try makeDefaults()
-        defer { pinCleanup() }
-        try await registerDevice()
-        armWorld()
-        let pins = PinnedAgentsStore(defaults: pinDefaults)
-        let coordinator = makeCoordinator(defaults: defaults, pins: pins)
-        coordinator.start()
-        coordinator.agentsDidChange([
-            agent("w:p-work", .working),
-            agent("w:p-block", .blocked),
-        ])
-        try await waitUntil("the activity should start") { !controller.requested.isEmpty }
-        #expect(try openedPaneIDs(controller.requested[0]) == ["w:p-block", "w:p-work"])
-        #expect(controller.requested[0].counts == .init(working: 1, blocked: 1, done: 0))
+        try await withFixture { defaults in
+            let (pinDefaults, pinCleanup) = try makeDefaults()
+            defer { pinCleanup() }
+            try await registerDevice()
+            armWorld()
+            let pins = PinnedAgentsStore(defaults: pinDefaults)
+            let coordinator = makeCoordinator(defaults: defaults, pins: pins)
+            coordinator.start()
+            coordinator.agentsDidChange([
+                agent("w:p-work", .working),
+                agent("w:p-block", .blocked),
+            ])
+            try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+            #expect(try openedPaneIDs(controller.requested[0]) == ["w:p-block", "w:p-work"])
+            #expect(controller.requested[0].counts == .init(working: 1, blocked: 1, done: 0))
 
-        let activityID = try #require(controller.requestedHandles.first?.id)
-        controller.emitToken(id: activityID, Data([0xab]))
-        try await waitUntil("the token should be written") {
-            try await liveActivityToken() == "ab"
-        }
-        #expect(try await filePinnedPaneIDs() == [])
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            controller.emitToken(id: activityID, Data([0xab]))
+            try await waitUntil("the token should be written") {
+                try await liveActivityToken() == "ab"
+            }
+            #expect(try await filePinnedPaneIDs() == [])
 
-        pins.togglePin(hostID: host.id, paneID: "w:p-work")
-        coordinator.pinsDidChange()
-        try await waitUntil("a pin toggle should reorder the lock-screen rows") {
-            controller.updates.count == 1
+            pins.togglePin(hostID: host.id, paneID: "w:p-work")
+            coordinator.pinsDidChange()
+            try await waitUntil("a pin toggle should reorder the lock-screen rows") {
+                controller.updates.count == 1
+            }
+            #expect(try openedPaneIDs(controller.updates[0].content) == ["w:p-work", "w:p-block"])
+            #expect(controller.updates[0].content.counts == .init(working: 1, blocked: 1, done: 0))
+            try await waitUntil("the Host should receive the new pin list") {
+                try await filePinnedPaneIDs() == ["w:p-work"]
+            }
+            #expect(controller.requested.count == 1)
+            #expect(controller.ended.isEmpty)
         }
-        #expect(try openedPaneIDs(controller.updates[0].content) == ["w:p-work", "w:p-block"])
-        #expect(controller.updates[0].content.counts == .init(working: 1, blocked: 1, done: 0))
-        try await waitUntil("the Host should receive the new pin list") {
-            try await filePinnedPaneIDs() == ["w:p-work"]
-        }
-        #expect(controller.requested.count == 1)
-        #expect(controller.ended.isEmpty)
     }
 
     @Test func pinningAnIneligibleAgentLeavesRowsAndUpdatesTheFile() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        let (pinDefaults, pinCleanup) = try makeDefaults()
-        defer { pinCleanup() }
-        try await registerDevice()
-        armWorld()
-        let pins = PinnedAgentsStore(defaults: pinDefaults)
-        let coordinator = makeCoordinator(defaults: defaults, pins: pins)
-        coordinator.start()
-        coordinator.agentsDidChange([
-            agent("w:p-work", .working),
-            agent("w:p-idle", .idle),
-        ])
-        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
-        let activityID = try #require(controller.requestedHandles.first?.id)
-        controller.emitToken(id: activityID, Data([0x11]))
-        try await waitUntil("the token should be written") {
-            try await liveActivityToken() == "11"
-        }
+        try await withFixture { defaults in
+            let (pinDefaults, pinCleanup) = try makeDefaults()
+            defer { pinCleanup() }
+            try await registerDevice()
+            armWorld()
+            let pins = PinnedAgentsStore(defaults: pinDefaults)
+            let coordinator = makeCoordinator(defaults: defaults, pins: pins)
+            coordinator.start()
+            coordinator.agentsDidChange([
+                agent("w:p-work", .working),
+                agent("w:p-idle", .idle),
+            ])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            controller.emitToken(id: activityID, Data([0x11]))
+            try await waitUntil("the token should be written") {
+                try await liveActivityToken() == "11"
+            }
 
-        pins.togglePin(hostID: host.id, paneID: "w:p-idle")
-        coordinator.pinsDidChange()
-        try await waitPastSettle()
-        #expect(controller.updates.isEmpty, "ineligible pins must not change LA rows")
-        try await waitUntil("the Host should still receive the pin list") {
-            try await filePinnedPaneIDs() == ["w:p-idle"]
+            pins.togglePin(hostID: host.id, paneID: "w:p-idle")
+            coordinator.pinsDidChange()
+            try await waitPastSettle()
+            #expect(controller.updates.isEmpty, "ineligible pins must not change LA rows")
+            try await waitUntil("the Host should still receive the pin list") {
+                try await filePinnedPaneIDs() == ["w:p-idle"]
+            }
         }
     }
 
     @Test func pinToggleWhileOfflineDoesNotWriteUntilTheNextTokenWrite() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        let (pinDefaults, pinCleanup) = try makeDefaults()
-        defer { pinCleanup() }
-        try await registerDevice()
-        armWorld()
-        let pins = PinnedAgentsStore(defaults: pinDefaults)
-        let coordinator = makeCoordinator(defaults: defaults, pins: pins)
-        coordinator.start()
-        coordinator.agentsDidChange([
-            agent("w:p-work", .working),
-            agent("w:p-block", .blocked),
-        ])
-        try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
-        let activityID = try #require(controller.requestedHandles.first?.id)
-        controller.emitToken(id: activityID, Data([0xaa]))
-        try await waitUntil("the first token should be written") {
-            try await liveActivityToken() == "aa"
-        }
+        try await withFixture { defaults in
+            let (pinDefaults, pinCleanup) = try makeDefaults()
+            defer { pinCleanup() }
+            try await registerDevice()
+            armWorld()
+            let pins = PinnedAgentsStore(defaults: pinDefaults)
+            let coordinator = makeCoordinator(defaults: defaults, pins: pins)
+            coordinator.start()
+            coordinator.agentsDidChange([
+                agent("w:p-work", .working),
+                agent("w:p-block", .blocked),
+            ])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+            controller.emitToken(id: activityID, Data([0xaa]))
+            try await waitUntil("the first token should be written") {
+                try await liveActivityToken() == "aa"
+            }
 
-        world.statuses[host.id] = .reconnecting(
-            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
-        pins.togglePin(hostID: host.id, paneID: "w:p-work")
-        coordinator.pinsDidChange()
-        try await waitPastSettle()
-        #expect(try await filePinnedPaneIDs() == [])
+            world.statuses[host.id] = .reconnecting(
+                attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
+            pins.togglePin(hostID: host.id, paneID: "w:p-work")
+            coordinator.pinsDidChange()
+            try await waitPastSettle()
+            #expect(try await filePinnedPaneIDs() == [])
 
-        world.statuses[host.id] = .connected
-        controller.emitToken(id: activityID, Data([0xbb]))
-        try await waitUntil("the next live_activity write should carry current pins") {
-            let token = try await liveActivityToken()
-            let pins = try await filePinnedPaneIDs()
-            return token == "bb" && pins == ["w:p-work"]
+            world.statuses[host.id] = .connected
+            controller.emitToken(id: activityID, Data([0xbb]))
+            try await waitUntil("the next live_activity write should carry current pins") {
+                let token = try await liveActivityToken()
+                let pins = try await filePinnedPaneIDs()
+                return token == "bb" && pins == ["w:p-work"]
+            }
         }
     }
 }

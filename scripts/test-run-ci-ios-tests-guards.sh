@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Exercise the merge gate's own assertions without running the merge gate.
 #
-# Run through make test-ci-guards, locally or before the app lane in CI.
+# Run through make test-ci-guards, locally or in the mandatory macOS CI worker.
 # It proves the gate's guards can fail without building or running the app.
 #
 # The guards it exercises are the ones the full lane gained under #135. Those
@@ -38,6 +38,13 @@
 
 set -uo pipefail
 
+# Mock boundaries must not opt into a native worker's evidence or build
+# settings. Keep intentionally exercised evidence in this harness's temp tree.
+for inherited_setting in "${!HEELER_CI_@}" "${!HEELER_XCODEBUILD_@}"; do
+    [[ -z "$inherited_setting" ]] || unset "$inherited_setting"
+done
+unset inherited_setting
+
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 gate_script="$repo_root/scripts/run-ci-ios-tests.sh"
 green_log="$repo_root/scripts/testdata/gate-2f50170.log"
@@ -49,7 +56,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=49
+expected_cases=64
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -94,6 +101,9 @@ extract_shipped_function assert_behavior
 extract_shipped_function run_suite
 extract_shipped_function dump_fixture_logs
 extract_shipped_function preserve_failure_diagnostics
+extract_shipped_function cancel_background_build
+extract_shipped_function start_preparation_build
+extract_shipped_function record_phase
 extract_shipped_function cleanup
 extract_shipped_function clear_simulator_environment
 extract_shipped_function stop_privileged_sshd
@@ -101,12 +111,11 @@ extract_shipped_function release_resource_lock
 extract_shipped_function provisioning_step
 extract_shipped_function redact_secret_in_file
 
-# The optimized gate has exactly three app fixture invocations. The package
-# suite runs in its own workflow job, so putting it back into the app lane or
-# silently expanding the fixture invocations must make this harness fail.
-app_fixture_lane_count=$(grep -c '^run_suite ' "$gate_script")
-[[ "$app_fixture_lane_count" == 3 ]] \
-    || die "gate has $app_fixture_lane_count app fixture lanes, expected 3"
+# The all and split layouts share five fixture call sites. Behavioral tests
+# in test-ci-simulator-recovery.sh prove which calls each shard executes.
+app_fixture_lane_count=$(grep -cE '^[[:space:]]*run_suite ' "$gate_script")
+[[ "$app_fixture_lane_count" == 5 ]] \
+    || die "gate has $app_fixture_lane_count app fixture call sites, expected 5"
 # These are source-code literals. The variable-looking text must not expand.
 # shellcheck disable=SC2016
 grep -qF 'if [[ "$ci_lane" == "package" ]]; then' "$gate_script" \
@@ -115,6 +124,30 @@ grep -qF 'HEELER_CI_LANE: package' "$repo_root/.github/workflows/ci.yml" \
     || die "workflow has no package-only job"
 grep -qF 'HEELER_CI_LANE: app' "$repo_root/.github/workflows/ci.yml" \
     || die "workflow does not pin the app-only job"
+# All fixture processes must use the explicitly selected job runtime.
+if grep -qF '/usr/bin/python3' "$gate_script"; then
+    die "fixtures must not invoke the Apple Developer tool Python shim"
+fi
+# shellcheck disable=SC2016
+grep -qF 'fixture_python="$(command -v python3)"' "$gate_script" \
+    || die "gate must resolve the selected Python runtime once"
+grep -qF 'Fixture Python: {sys.executable} (Python {sys.version.split()[0]})' "$gate_script" \
+    || die "gate must report the fixture Python executable and version"
+# shellcheck disable=SC2016
+fixture_python_calls=$(grep -cE '^device_key_seed=.*fixture_python|^"\$fixture_python" (scripts/fixtures/|-u -c)' "$gate_script")
+[[ "$fixture_python_calls" == 4 ]] \
+    || die "gate has $fixture_python_calls selected Python fixture calls, expected 4"
+for worker_job in app-tests heelerssh-package-e2e; do
+    awk -v job="$worker_job" '
+        $0 == "  " job ":" { in_job = 1; next }
+        in_job && /^  [[:alnum:]_-]+:/ { in_job = 0 }
+        in_job && /uses: actions\/checkout@v5/ { checkout = 1 }
+        in_job && /uses: actions\/setup-python@v6/ { selected = checkout }
+        in_job && /python-version: .3\.12./ && selected { pinned = 1 }
+        END { exit pinned ? 0 : 1 }
+    ' "$repo_root/.github/workflows/ci.yml" \
+        || die "$worker_job must select Python 3.12 after checkout"
+done
 # shellcheck disable=SC2016
 grep -qF '"KexAlgorithms curve25519-sha256" >> "$modern_config"' "$gate_script" \
     || die "shared modern fixture does not pin the Curve25519 baseline"
@@ -161,7 +194,7 @@ awk '
 # only build-for-testing. A late claim puts CoreSimulator wake back on the
 # critical path in front of compilation.
 awk '
-    /^claim_port_block$/ { claimed_ports = NR }
+    /^[[:space:]]*claim_port_block$/ { claimed_ports = NR }
     /xcrun simctl boot "/ { boot = NR }
     /host_ed25519"/ && /ssh-keygen/ { keygen = NR }
     END { exit (claimed_ports && boot && keygen \
@@ -204,6 +237,7 @@ grep -qF 'Show Xcode version' "$repo_root/.github/workflows/ci.yml" \
     run_lock_dir=""
     device_lock_dir=""
     diagnostic_root=""
+    phase_log="$work/phases.tsv"
     app_derived_data_path=""
     package_derived_data_path=""
     fixture_log_tail_lines=80
@@ -219,7 +253,7 @@ grep -qF 'Show Xcode version' "$repo_root/.github/workflows/ci.yml" \
 # The literal `$full_lane_log` is the gate's text, not an expansion here.
 # shellcheck disable=SC2016
 gate_executed_floor=$(sed -n \
-    's/^assert_full_lane_coverage "\$full_lane_log" \([0-9][0-9]*\)$/\1/p' \
+    's/^[[:space:]]*assert_full_lane_coverage "\$full_lane_log" \([0-9][0-9]*\)$/\1/p' \
     "$gate_script")
 [[ -n "$gate_executed_floor" ]] \
     || die "no assert_full_lane_coverage call site with a floor in $gate_script"
@@ -1301,6 +1335,128 @@ else
 fi
 record_case "a successful sysadminctl never records the password" \
     "$reason" "$expect_status"
+
+echo
+echo "== password SSH preflight diagnoses failures without relaxing deadlines =="
+preflight_expect="$work/password-preflight.exp"
+awk '/^password_ssh_preflight\(\) \{$/ { in_function = 1 }
+     in_function && /<<'"'"'EXPECT'"'"'$/ { inside = 1; next }
+     inside && /^EXPECT$/ { exit }
+     inside { print }' "$gate_script" > "$preflight_expect"
+[[ -s "$preflight_expect" ]] || die "no password preflight expect script"
+grep -qFx 'set timeout 5' "$preflight_expect" \
+    || die "password preflight changed its original five-second deadline"
+perl -0pi -e 's/spawn \/usr\/bin\/ssh \\\n(?:    [^\n]*\\\n)*    \/bin\/echo HEELER_PASSWORD_SSH_PREFLIGHT_OK\n/spawn \$env(HEELER_FAKE_PASSWORD_SSH)\n/; s/^set timeout 5$/set timeout 1/m' \
+    "$preflight_expect"
+# shellcheck disable=SC2016
+grep -qF 'spawn $env(HEELER_FAKE_PASSWORD_SSH)' "$preflight_expect" \
+    || die "could not redirect the password preflight SSH spawn"
+
+preflight_case() {
+    local name=$1 body=$2 expected_status=$3 diagnostic=$4 label=$5
+    local output status reason=""
+    write_stand_in "$work/preflight-$name.sh" "$body"
+    output=$(
+        HEELER_FAKE_PASSWORD_SSH="$work/preflight-$name.sh" \
+        HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD="$fake_secret" \
+            /usr/bin/expect "$preflight_expect" 2>&1
+        printf 'STATUS=%s\n' "$?"
+    )
+    status=$(printf '%s\n' "$output" | sed -n 's/^STATUS=//p')
+    if [[ "$status" != "$expected_status" ]]; then
+        reason="status $status, expected $expected_status: $output"
+    elif [[ -n "$diagnostic" ]] && ! printf '%s\n' "$output" | grep -qF "$diagnostic"; then
+        reason="missing diagnostic: $output"
+    elif [[ -z "$diagnostic" && "$output" != "STATUS=0" ]]; then
+        reason="successful preflight was not silent: $output"
+    elif printf '%s\n' "$output" | grep -qF "$fake_secret"; then
+        reason="preflight exposed the password"
+    fi
+    record_case "$label" "$reason" "$status"
+}
+
+preflight_case success \
+    'printf "Password:"; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK' \
+    0 '' "password preflight requires the sentinel and zero SSH exit"
+preflight_case lowercase \
+    'printf "user@127.0.0.1\047s password: "; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK' \
+    0 '' "password preflight recognizes the real OpenSSH password prompt"
+preflight_case no-prompt 'echo "connection refused"; exit 255' \
+    1 'SSH exited before the password prompt' \
+    "password preflight diagnoses an exit before authentication"
+preflight_case prompt-timeout 'sleep 5' \
+    1 'password prompt timed out after 1s' \
+    "password preflight retains its bounded prompt wait"
+preflight_case completion-timeout \
+    'printf "Password:"; read -r pw; sleep 5; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK' \
+    1 'command completion timed out after 1s (sentinel received: 0)' \
+    "password preflight rejects slow command completion without a retry"
+preflight_case no-sentinel 'printf "Password:"; read -r pw; exit 0' \
+    1 'SSH exited without the command sentinel' \
+    "password preflight rejects zero exit without the sentinel"
+preflight_case failed-command \
+    'printf "Password:"; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK; exit 7' \
+    7 'SSH exited with status 7' \
+    "password preflight preserves a nonzero SSH exit after the sentinel"
+preflight_case second-prompt \
+    'printf "Password:"; read -r pw; printf "Password:"; read -r pw' \
+    1 'SSH requested a second password' \
+    "password preflight never resends the password"
+preflight_case no-eof \
+    'printf "Password:"; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK; sleep 5' \
+    1 'command completion timed out after 1s (sentinel received: 1)' \
+    "password preflight still requires command exit after the sentinel"
+
+echo
+echo "== password fixture preparation precedes owned compilation =="
+# The extracted preparation function consumes these globals and build stub.
+# shellcheck disable=SC2034,SC2329
+for preparation_layout in ordinary transport session-weak all package serial; do
+    reason=""
+    if ! (
+        ci_lane=app
+        ci_app_shard=$preparation_layout
+        overlap_build=1
+        expected_simulator_build=1
+        expected_fixture_build=0
+        expected_label="Build for testing"
+        case "$preparation_layout" in
+            session-weak | all)
+                expected_simulator_build=0
+                expected_fixture_build=1 ;;
+            package)
+                ci_lane=package
+                ci_app_shard=all
+                expected_label="HeelerSSH package build" ;;
+            serial)
+                ci_app_shard=all
+                overlap_build=0
+                expected_simulator_build=0 ;;
+        esac
+        build_calls=0
+        start_background_build() {
+            [[ "$overlap_build" == 1 ]] || return 0
+            [[ "$1" == "$expected_label" ]] || exit 1
+            build_calls=$((build_calls + 1))
+        }
+        start_preparation_build simulator
+        [[ "$build_calls" == "$expected_simulator_build" ]] || exit 1
+        start_preparation_build fixtures
+        [[ "$build_calls" == "$((expected_simulator_build + expected_fixture_build))" ]]
+    ); then
+        reason="owned build started in the wrong phase for $preparation_layout"
+    fi
+    record_case "$preparation_layout preserves compilation ownership and fixture ordering" \
+        "$reason" 0
+done
+
+awk '
+    /^start_preparation_build simulator$/ { early = NR; early_count++ }
+    /record_phase password-preflight/ { preflight = NR }
+    /^start_preparation_build fixtures$/ { late = NR; late_count++ }
+    END { exit (early_count == 1 && late_count == 1 && early < preflight \
+        && preflight < late) ? 0 : 1 }
+' "$gate_script" || die "preparation build call sites must surround the password preflight"
 
 echo
 # The point of the count: a harness that silently stops running cases would

@@ -28,6 +28,24 @@ func makeTestWindow(
     return window
 }
 
+@MainActor
+func withTestWindow(
+    frame: CGRect,
+    rootViewController: UIViewController,
+    body: @MainActor (UIWindow) async throws -> Void
+) async throws {
+    let window = try await makeTestWindow(frame: frame, rootViewController: rootViewController)
+    do {
+        try await body(window)
+    } catch {
+        await hideTestWindowWhenSettled(window)
+        window.rootViewController = nil
+        throw error
+    }
+    await hideTestWindowWhenSettled(window)
+    window.rootViewController = nil
+}
+
 /// No push or pop is still animating under `root`.
 @MainActor
 func isNavigationSettled(_ root: UIViewController?) -> Bool {

@@ -8,6 +8,25 @@ import UIKit
 @MainActor
 @Suite("Changes reference actions", .timeLimit(.minutes(1)))
 struct ChangesReferenceViewTests {
+    private enum WindowScopeFailure: Error { case expected }
+
+    @Test func failingWindowScopeStillDetachesTheHostingRoot() async throws {
+        var failedWindow: UIWindow?
+        let controller = UIHostingController(rootView: Text("Cleanup"))
+        do {
+            try await withTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+            ) { window in
+                failedWindow = window
+                throw WindowScopeFailure.expected
+            }
+            Issue.record("the window scope should rethrow its body failure")
+        } catch WindowScopeFailure.expected {}
+        let window = try #require(failedWindow)
+        #expect(window.isHidden)
+        #expect(window.rootViewController == nil)
+    }
+
     @Test func fileRowsOfferCopyAndInsertionThroughAccessibility() async throws {
         let (store, file) = try await Self.store()
         var copied: [String] = []
@@ -15,18 +34,19 @@ struct ChangesReferenceViewTests {
         store.copyToPasteboard = { copied.append($0) }
         store.insertReference = { inserted.append($0) }
         let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try #require(await ChangesViewTests.eventually {
-            Self.element(file.rowAccessibilityLabel, in: controller.view) != nil
-        })
-        let row = try #require(Self.element(file.rowAccessibilityLabel, in: controller.view))
-        #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Path", "Insert Path"])
-        try Self.perform("Copy Path", on: row)
-        try Self.perform("Insert Path", on: row)
-        #expect(copied == ["file.swift"])
-        #expect(inserted == ["file.swift "])
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try #require(await ChangesViewTests.eventually {
+                Self.element(file.rowAccessibilityLabel, in: controller.view) != nil
+            })
+            let row = try #require(Self.element(file.rowAccessibilityLabel, in: controller.view))
+            #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Path", "Insert Path"])
+            try Self.perform("Copy Path", on: row)
+            try Self.perform("Insert Path", on: row)
+            #expect(copied == ["file.swift"])
+            #expect(inserted == ["file.swift "])
+        }
     }
 
     @Test func diffRowsExposeLineHunkAndPathActions() async throws {
@@ -37,30 +57,29 @@ struct ChangesReferenceViewTests {
         store.insertReference = { inserted.append($0) }
         store.openDiff(file)
         let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try #require(await ChangesViewTests.eventually {
-            Self.element("Removed, line 2: old", in: controller.view) != nil
-        })
-        let row = try #require(Self.element("Removed, line 2: old", in: controller.view))
-        #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == [
-            "Copy Line", "Copy Hunk", "Copy Path", "Insert Line Reference",
-        ])
-        try Self.perform("Copy Line", on: row)
-        try Self.perform("Copy Hunk", on: row)
-        try Self.perform("Copy Path", on: row)
-        try Self.perform("Insert Line Reference", on: row)
-        #expect(copied == ["old", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n", "file.swift"])
-        #expect(inserted == ["file.swift:2 "])
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try #require(await ChangesViewTests.eventually {
+                Self.element("Removed, line 2: old", in: controller.view) != nil
+            })
+            let row = try #require(Self.element("Removed, line 2: old", in: controller.view))
+            #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == [
+                "Copy Line", "Copy Hunk", "Copy Path", "Insert Line Reference",
+            ])
+            try Self.perform("Copy Line", on: row)
+            try Self.perform("Copy Hunk", on: row)
+            try Self.perform("Copy Path", on: row)
+            try Self.perform("Insert Line Reference", on: row)
+            #expect(copied == ["old", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n", "file.swift"])
+            #expect(inserted == ["file.swift:2 "])
 
-        let header = try #require(Self.element("pkg/file.swift", in: controller.view))
-        try Self.perform("Copy Path", on: header)
-        let hunk = try #require(Self.element("@@ -1,3 +1,3 @@", in: controller.view))
-        try Self.perform("Copy Hunk", on: hunk)
-        #expect(copied.suffix(2) == ["file.swift", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"])
-        // The diff pushed as the view appeared.
-        await hideTestWindowWhenSettled(window)
+            let header = try #require(Self.element("pkg/file.swift", in: controller.view))
+            try Self.perform("Copy Path", on: header)
+            let hunk = try #require(Self.element("@@ -1,3 +1,3 @@", in: controller.view))
+            try Self.perform("Copy Hunk", on: hunk)
+            #expect(copied.suffix(2) == ["file.swift", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"])
+        }
     }
 
     @Test func qualifiedActionsCanBeCombinedForBothSidesOfAPair() async throws {
@@ -84,18 +103,19 @@ struct ChangesReferenceViewTests {
                 .diffLineAccessibilityActions(lines[1], qualifier: "Removed")
                 .diffLineAccessibilityActions(lines[2], qualifier: "Added")
                 .environment(\.changesReferenceActions, ChangesReferenceActions(store: store)))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try #require(await ChangesViewTests.eventually { Self.element("Pair", in: controller.view) != nil })
-        let row = try #require(Self.element("Pair", in: controller.view))
-        let names = Set(row.accessibilityCustomActions?.map(\.name) ?? [])
-        #expect(names.contains("Copy Removed Line"))
-        #expect(names.contains("Copy Added Line"))
-        try Self.perform("Copy Removed Line", on: row)
-        try Self.perform("Insert Added Line Reference", on: row)
-        #expect(copied == ["old"])
-        #expect(inserted == ["file.swift:2 "])
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try #require(await ChangesViewTests.eventually { Self.element("Pair", in: controller.view) != nil })
+            let row = try #require(Self.element("Pair", in: controller.view))
+            let names = Set(row.accessibilityCustomActions?.map(\.name) ?? [])
+            #expect(names.contains("Copy Removed Line"))
+            #expect(names.contains("Copy Added Line"))
+            try Self.perform("Copy Removed Line", on: row)
+            try Self.perform("Insert Added Line Reference", on: row)
+            #expect(copied == ["old"])
+            #expect(inserted == ["file.swift:2 "])
+        }
     }
 
     @Test func aControlCharacterPathOffersCopyWithoutAnInsertAction() async throws {
@@ -108,16 +128,17 @@ struct ChangesReferenceViewTests {
         store.insertReference = { _ in Issue.record("unsafe path was inserted") }
         let controller = UIHostingController(rootView:
             ChangesFileRow(file: file).changedFileReferenceMenu(file, store: store))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try #require(await ChangesViewTests.eventually {
-            Self.element(file.rowAccessibilityLabel, in: controller.view) != nil
-        })
-        let row = try #require(Self.element(file.rowAccessibilityLabel, in: controller.view))
-        #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Path"])
-        try Self.perform("Copy Path", on: row)
-        #expect(copied == ["line\nbreak.swift"])
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try #require(await ChangesViewTests.eventually {
+                Self.element(file.rowAccessibilityLabel, in: controller.view) != nil
+            })
+            let row = try #require(Self.element(file.rowAccessibilityLabel, in: controller.view))
+            #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Path"])
+            try Self.perform("Copy Path", on: row)
+            #expect(copied == ["line\nbreak.swift"])
+        }
     }
 
     @Test(arguments: [false, true])
@@ -135,19 +156,18 @@ struct ChangesReferenceViewTests {
         }
         store.openDiff(file)
         let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try #require(await ChangesViewTests.eventually {
-            Self.element("Removed, line 2: old", in: controller.view) != nil
-        })
-        let row = try #require(Self.element("Removed, line 2: old", in: controller.view))
-        #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Line", "Copy Hunk", "Copy Path"])
-        try Self.perform("Copy Line", on: row)
-        try Self.perform("Copy Path", on: row)
-        #expect(copied == ["old", unsafePath ? "line\nbreak.swift" : "file.swift"])
-        // The diff pushed as the view appeared.
-        await hideTestWindowWhenSettled(window)
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try #require(await ChangesViewTests.eventually {
+                Self.element("Removed, line 2: old", in: controller.view) != nil
+            })
+            let row = try #require(Self.element("Removed, line 2: old", in: controller.view))
+            #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Line", "Copy Hunk", "Copy Path"])
+            try Self.perform("Copy Line", on: row)
+            try Self.perform("Copy Path", on: row)
+            #expect(copied == ["old", unsafePath ? "line\nbreak.swift" : "file.swift"])
+        }
     }
 
     @Test func anUnrepresentablePathStillOffersLineAndHunkCopies() async throws {
@@ -160,19 +180,18 @@ struct ChangesReferenceViewTests {
         store.insertReference = { _ in Issue.record("unrepresentable path was inserted") }
         store.openDiff(file)
         let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try #require(await ChangesViewTests.eventually {
-            Self.element("Removed, line 2: old", in: controller.view) != nil
-        })
-        let row = try #require(Self.element("Removed, line 2: old", in: controller.view))
-        #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Line", "Copy Hunk"])
-        try Self.perform("Copy Line", on: row)
-        try Self.perform("Copy Hunk", on: row)
-        #expect(copied == ["old", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"])
-        // The diff pushed as the view appeared.
-        await hideTestWindowWhenSettled(window)
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try #require(await ChangesViewTests.eventually {
+                Self.element("Removed, line 2: old", in: controller.view) != nil
+            })
+            let row = try #require(Self.element("Removed, line 2: old", in: controller.view))
+            #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Line", "Copy Hunk"])
+            try Self.perform("Copy Line", on: row)
+            try Self.perform("Copy Hunk", on: row)
+            #expect(copied == ["old", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"])
+        }
     }
 
     private static func store() async throws -> (ChangesStore, ChangedFile) {

@@ -56,6 +56,8 @@ if args[:4] == ["xcresulttool", "get", "test-results", "summary"]:
     print(json.dumps(config["summary"]))
 elif args[:4] == ["xcresulttool", "get", "test-results", "tests"]:
     print(json.dumps(config["tests"]))
+elif args == ["--find", "xcresulttool"]:
+    print("/Applications/FakeXcode.app/usr/bin/xcresulttool")
 elif args[:2] == ["simctl", "spawn"] and args[3] == "defaults":
     prefs_path = root / "preferences.plist"
     prefs = plistlib.loads(prefs_path.read_bytes())
@@ -135,6 +137,9 @@ class ProcessBoundaryTests(unittest.TestCase):
         self.env = {**os.environ, "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
                     "FAKE_HOST_ROOT": str(self.root), "TEST_FLAGS": "", "TEST_SELECTOR": "",
                     "PYTHONDONTWRITEBYTECODE": "1"}
+        for key in ("HEELER_CI_EVIDENCE_DIR", "HEELER_CI_TEST_PHASE", "HEELER_CI_APP_SHARD",
+                    "HEELER_CI_EVIDENCE_METADATA"):
+            self.env.pop(key, None)
         self.base_arguments = ["-destination", "platform=iOS Simulator,id=owned-device",
                                "-derivedDataPath", str(self.root / "derived")]
 
@@ -249,6 +254,56 @@ class ProcessBoundaryTests(unittest.TestCase):
         result = self.run_wrapper("-only-testing:HeelerTests/Missing", action="test-without-building")
         self.assertEqual(result.returncode, 1)
         self.assertIn("Requested selector", result.stderr)
+
+    def enable_evidence(self):
+        self.env.update(HEELER_CI_EVIDENCE_DIR=str(self.root / "evidence"),
+                        HEELER_CI_TEST_PHASE="full-lane", HEELER_CI_APP_SHARD="ordinary",
+                        HEELER_CI_EVIDENCE_METADATA=json.dumps({"xcode_version": "Xcode 26.6",
+                                                              "sdk_version": "26.5", "architecture": "arm64"}))
+        self.env.pop("GITHUB_SHA", None)
+
+    def test_success_exports_execution_evidence_without_marking_shell_guards_complete(self):
+        self.enable_evidence()
+        result = self.run_wrapper()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        phase = json.loads((self.root / "evidence/phase-full-lane.json").read_text())
+        self.assertEqual(phase["tests"][0]["identity"], "HeelerTests/Suite/test()")
+        self.assertEqual(phase["summary"]["total"], 1)
+        self.assertEqual(phase["selection"], {"only_testing": [], "skip_testing": []})
+        self.assertFalse(list((self.root / "evidence").glob("worker-*.json")))
+        self.assert_preferences_restored()
+
+    def test_failed_child_exports_no_success_evidence(self):
+        self.enable_evidence()
+        self.config["status"] = 65
+        result = self.run_wrapper()
+        self.assertEqual(result.returncode, 65, result.stderr)
+        self.assertFalse((self.root / "evidence").exists())
+
+    def test_partial_parameter_execution_cannot_export_a_green_phase(self):
+        self.enable_evidence()
+        node = self.config["tests"]["testNodes"][0]["children"][0]
+        url = "test://com.apple.xcode/Heeler/HeelerTests/Suite/test()"
+        node["children"] = [
+            {"nodeType": "Arguments", "nodeIdentifierURL": url + "?args=first", "result": "Passed"},
+            {"nodeType": "Arguments", "nodeIdentifierURL": url + "?args=second", "result": "Skipped"}]
+        result = self.run_wrapper()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("Partially executed parameterized test", result.stderr)
+        self.assertFalse(list((self.root / "evidence").glob("phase-*.json")))
+        self.assertFalse(list((self.root / "evidence").glob("worker-*.json")))
+        self.assertEqual(json.loads((self.root / "evidence/diagnostics/raw-full-lane-tests.json").read_text()),
+                         self.config["tests"])
+        self.assert_preferences_restored()
+
+    def test_export_sha_mismatch_fails_after_restoring_preferences(self):
+        self.enable_evidence()
+        self.env["GITHUB_SHA"] = "0" * 40
+        result = self.run_wrapper()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("GITHUB_SHA does not match", result.stderr)
+        self.assertFalse((self.root / "evidence").exists())
+        self.assert_preferences_restored()
 
     def test_supplied_result_bundle_is_used_and_existing_results_are_never_removed(self):
         bundle = self.root / "chosen.xcresult"

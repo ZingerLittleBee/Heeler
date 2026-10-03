@@ -113,6 +113,8 @@ final actor ScriptedTransport: Transport {
     private(set) var notificationRegistrationReads = 0
     private var notificationRegistrationReadFailure: NotificationRegistrationError?
     private var notificationRegistrationWriteFailure: NotificationRegistrationError?
+    private var notificationRegistrationWriteGate: CancellablePhaseGate?
+    private(set) var notificationRegistrationWriteIsBlocked = false
     /// The Host's current `notify.json` bytes; nil scripts "no config yet".
     /// The relay-URL write path (#76) asserts on what the ceremony merged in.
     private(set) var notificationConfig: Data?
@@ -371,6 +373,10 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent registration replace throw `failure`.
     func setNotificationRegistrationWriteFailure(_ failure: NotificationRegistrationError?) {
         notificationRegistrationWriteFailure = failure
+    }
+
+    func holdNotificationRegistrationWrites(on gate: CancellablePhaseGate) {
+        notificationRegistrationWriteGate = gate
     }
 
     /// Scripts the `notify.json` config the Host currently holds.
@@ -708,6 +714,12 @@ final actor ScriptedTransport: Transport {
     }
 
     func replaceNotificationRegistration(_ contents: Data) async throws {
+        if let gate = notificationRegistrationWriteGate {
+            notificationRegistrationWriteIsBlocked = true
+            await gate.enterAndHold()
+            notificationRegistrationWriteIsBlocked = false
+        }
+        try Task.checkCancellation()
         if let failure = notificationRegistrationWriteFailure { throw failure }
         notificationRegistration = contents
         replacedNotificationRegistrations.append(contents)

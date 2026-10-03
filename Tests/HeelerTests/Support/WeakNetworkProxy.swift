@@ -1,12 +1,13 @@
 import Foundation
 
-/// One deterministic impairment recipe for `scripts/fixtures/weak-network-proxy.py`.
+/// One impairment recipe for `scripts/fixtures/weak-network-proxy.py`.
 ///
-/// Every knob is a fixed duration or a byte count, so the same profile treats
-/// the link the same way on every run. `jitterMillis` is the only stochastic
-/// one and is drawn from `jitterSeed`, so it replays exactly too.
+/// Parameters and the per-connection jitter seed are fixed. Receive boundaries
+/// and scheduling still vary with the OS; the jitter sequence repeats for the
+/// same boundaries. Propagation is scheduled on receipt and can overlap across
+/// chunks, while the byte budget and destination write limit remain bounded.
 struct WeakNetworkProfile: Sendable, Codable, Equatable {
-    /// Delivery delay applied once to each chunk read off the source socket.
+    /// Delivery delay scheduled from each chunk's receipt, overlapping later chunks.
     var latencyMillis: Double = 0
     var jitterMillis: Double = 0
     var jitterSeed: Int = 0

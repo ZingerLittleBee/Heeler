@@ -52,7 +52,10 @@ struct TerminalBackspaceButtonTests {
     @Test func heldTouchRepeatsBeforeUIKitDeliversDelayedControlActions() async throws {
         var count = 0
         let (button, window) = try await host { count += 1 }
-        defer { window.isHidden = true }
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
         let finger = Finger()
         let event = UIEvent()
         // An ancestor recognizer can delay UIButton's touchDown until release.
@@ -98,25 +101,54 @@ struct TerminalBackspaceButtonTests {
     @Test func fullKeyboardKeepsRepeatingAcrossViewUpdates() async throws {
         let probe = KeyboardProbe()
         let controller = UIHostingController(rootView: KeyboardProbeView(probe: probe))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        func findButton(in view: UIView) -> TerminalRepeatingBackspaceButton? {
-            if let button = view as? TerminalRepeatingBackspaceButton { return button }
-            return view.subviews.lazy.compactMap { findButton(in: $0) }.first
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { window in
+            let deadline = ContinuousClock.now + .seconds(2)
+            func readyButton() -> TerminalRepeatingBackspaceButton? {
+                controller.view.layoutIfNeeded()
+                guard let button = findButton(in: controller.view), button.window === window,
+                      !button.bounds.isEmpty,
+                      window.bounds.contains(button.convert(button.bounds, to: window)) else { return nil }
+                return button
+            }
+            while readyButton() == nil, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            let button = try #require(readyButton(), "Backspace must be laid out before the synthetic press")
+            let press = Press(button)
+            let started = ContinuousClock.now
+            var trace: [String] = []
+            var previousState: String?
+            func recordState() {
+                let state = "count=\(probe.count) highlighted=\(button.isHighlighted) enabled=\(button.isEnabled)"
+                    + " attached=\(button.window === window) sameButton=\(findButton(in: controller.view) === button)"
+                    + " bounds=\(button.bounds) appState=\(UIApplication.shared.applicationState.rawValue)"
+                if state != previousState {
+                    trace.append("\(started.duration(to: .now)): \(state)")
+                    previousState = state
+                }
+            }
+            #expect(button.isEnabled)
+            press.begin()
+            let repeats = await repeatsReaching(3) {
+                recordState()
+                return probe.count
+            }
+            if repeats < 3 {
+                for entry in trace { print("[backspace-test] \(entry)") }
+            }
+            #expect(repeats >= 3, "A held full-keyboard Backspace must delete repeatedly")
+            press.end()
+            let count = probe.count
+            try await Task.sleep(for: .milliseconds(150))
+            #expect(probe.count == count)
         }
-        controller.view.layoutIfNeeded()
-        let button = try #require(findButton(in: controller.view))
-        let press = Press(button)
-        #expect(button.isEnabled)
-        press.begin()
-        #expect(
-            await repeatsReaching(3) { probe.count } >= 3,
-            "A held full-keyboard Backspace must delete repeatedly")
-        press.end()
-        let count = probe.count
-        try await Task.sleep(for: .milliseconds(150))
-        #expect(probe.count == count)
+    }
+
+    private func findButton(in view: UIView) -> TerminalRepeatingBackspaceButton? {
+        if let button = view as? TerminalRepeatingBackspaceButton { return button }
+        return view.subviews.lazy.compactMap { findButton(in: $0) }.first
     }
 
     /// Waits for a held key to reach `target` repeats, and answers how many it

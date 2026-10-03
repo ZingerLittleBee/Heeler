@@ -1,7 +1,7 @@
 # Headless iOS Simulator build + test (User Story 12, refs #23).
 #
-# Runs the XCTest suite on an iOS simulator. Kept deliberately minimal:
-# no signing certificates, no archive, no xcodegen. Simulator builds use free
+# Runs the complete app and SSH package suites on isolated iOS simulators.
+# No signing certificates, archive, or xcodegen. Simulator builds use free
 # ad-hoc signing ("Sign to Run Locally"), so no certificate or provisioning
 # profile is needed. We must NOT pass CODE_SIGNING_ALLOWED=NO: it strips the
 # app's signature and with it the keychain-access entitlement, which breaks the
@@ -37,8 +37,34 @@
 #   relay/** do not match, so they never spend a macos-26 runner.
 
 name: CI
+run-name: iOS CI (${{ inputs.diagnostic_target != 'none' && inputs.diagnostic_target || inputs.layout || 'sharded' }}, ${{ inputs.cache_mode || 'warm' }})
 
 on:
+  workflow_dispatch:
+    inputs:
+      layout:
+        description: Test topology (serial retains the comparison entrypoint)
+        type: choice
+        options: [sharded, serial]
+        default: sharded
+      cache_mode:
+        description: Restore dependency sources, or measure a first cold run
+        type: choice
+        options: [cold, warm]
+        default: cold
+      baseline_run:
+        description: Optional completed same-SHA serial run for coverage comparison
+        type: string
+        default: ''
+      diagnostic_target:
+        description: Optional isolated feedback; never the complete coverage gate
+        type: choice
+        options: [none, all, ssh-jump, staging, staging-method, weak, layout]
+        default: none
+      diagnostic_iterations:
+        description: Optional 1-100 rounds; defaults to SSH 50, staging/layout 20, weak 10
+        type: string
+        default: ''
   pull_request:
     paths:
       - Sources/**
@@ -50,6 +76,7 @@ on:
       - scripts/**
       - plugin/test-vectors/**
       - .github/workflows/ci.yml
+      - .github/workflows/ci-diagnostics.yml
   push:
     branches: [main]
     paths:
@@ -62,32 +89,63 @@ on:
       - scripts/**
       - plugin/test-vectors/**
       - .github/workflows/ci.yml
+      - .github/workflows/ci-diagnostics.yml
 
 # Per-workflow group: sharing `ci-${{ github.ref }}` with ci-node.yml made
 # the two workflows cancel each other on the same SHA (plugin/test-vectors
 # and this file both start both workflows).
 concurrency:
-  group: ci-ios-${{ github.ref }}
+  group: ci-ios-${{ github.ref }}-${{ inputs.diagnostic_target != 'none' && inputs.diagnostic_target || 'full' }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
-  build-test:
-    name: Build & test (iOS Simulator)
+  diagnostics:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' }}
+    uses: ./.github/workflows/ci-diagnostics.yml
+    with:
+      target: ${{ inputs.diagnostic_target }}
+      iterations: ${{ inputs.diagnostic_iterations }}
+
+  app-tests:
+    if: ${{ inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none' }}
+    name: ${{ inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && 'Diagnostic mode (app coverage not run)' || format('App tests ({0})', matrix.shard) }}
     # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
     # rather than macos-latest for reproducibility.
     runs-on: macos-26
-    timeout-minutes: 35
+    # Serial measurements retain every original call and need a wider safety
+    # limit. The normal PR topology keeps its existing 35-minute job limit.
+    timeout-minutes: ${{ inputs.layout == 'serial' && 50 || 35 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.layout == 'serial' && '["all"]' || '["session-weak","transport","ordinary"]') }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/app-${{ matrix.shard }}
+      HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
+      HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
+      HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
+      # Hosted compilation can exceed 15 minutes even with restored sources.
+      # Leave room for runner variance without treating this safety deadline
+      # as a runtime target; cold and warm measurements use the same limit.
+      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1200'
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v5
         with:
           node-version: 24
 
-      # libghostty-spm's prebuilt XCFramework dominates cold build-for-testing
-      # wall-clock (~3–4 minutes of "Checking out" on run 33488345559). Cache
-      # the cloned SourcePackages tree and the SwiftPM download cache keyed on
-      # Package.resolved so a pin change still misses and re-fetches.
+      # Cache dependency sources, never compiled test products or results.
+      # Cold benchmarks skip the entire action, including its post-run save.
       - name: Cache SwiftPM checkouts
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -113,52 +171,114 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
-      - name: Test CI watchdog
-        run: make test-ci-watchdog
-
-      - name: Test CI gate guards
-        run: make test-ci-guards
+      - name: Record cache and checkout identity
+        env:
+          CACHE_MODE: ${{ inputs.cache_mode || 'warm' }}
+          APP_SHARD: ${{ matrix.shard }}
+        run: |
+          mkdir -p "$HEELER_CI_EVIDENCE_DIR"
+          if [[ "$CACHE_MODE" == cold && -e .ci/source-packages ]]; then
+            echo 'Cold run unexpectedly contains restored dependency sources.' >&2
+            exit 1
+          fi
+          {
+            printf 'cache_mode=%s\nshard=%s\n' "$CACHE_MODE" "$APP_SHARD"
+            printf 'checkout_sha=%s\nevent_sha=%s\n' "$(git rev-parse HEAD)" "$GITHUB_SHA"
+            printf 'image_version=%s\n' "${ImageVersion:-unknown}"
+            printf 'build_deadline_seconds=%s\n' "$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS"
+            printf 'debug_symbols=disabled\n'
+          } > "$HEELER_CI_EVIDENCE_DIR/run-settings.txt"
 
       # The script selects one available iPhone 17 UDID, boots it, injects the
       # fixture environment there, and targets that same device for every test
       # action. The app deployment target is iOS 18.
       - name: Build and test
-        timeout-minutes: 32
+        timeout-minutes: ${{ inputs.layout == 'serial' && 45 || 32 }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something merge CI may quietly run without.
         env:
           HEELER_CI_LANE: app
+          APP_SHARD: ${{ matrix.shard }}
           HEELER_CI_MANDATORY: "1"
-        run: scripts/run-ci-ios-tests.sh
+        run: |
+          make test-ci-app CI_APP_SHARD="$APP_SHARD"
+          python3 scripts/verify-ci-ios-evidence.py complete \
+            --evidence-dir "$HEELER_CI_EVIDENCE_DIR" \
+            --lane app --shard "$APP_SHARD" --sha "$GITHUB_SHA"
+
+      - name: Upload app test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # A partial rerun replaces only its worker; successful prerequisites
+          # retain their same-run, same-SHA evidence for the aggregate.
+          name: ios-ci-evidence-app-${{ matrix.shard }}-${{ github.run_id }}
+          path: ${{ env.HEELER_CI_EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
 
       - name: Upload iOS CI diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ios-ci-diagnostics-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/heeler-ci-diagnostics-*
           if-no-files-found: ignore
           retention-days: 7
 
   heelerssh-package-e2e:
-    name: HeelerSSH package E2E (iOS Simulator)
+    if: ${{ inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none' }}
+    name: ${{ inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && 'Diagnostic mode (package coverage not run)' || 'HeelerSSH package E2E (iOS Simulator)' }}
     runs-on: macos-26
     timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/package
+      HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
+      HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
+      HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
       # Same rationale as the app job: avoid a critical-path CoreSimulator
       # cold-start; package-lane boot overlaps with build-for-testing.
       - name: Show Xcode version
         run: xcodebuild -version
 
+      # These checks exercise the same shipped helpers and process behavior on
+      # macOS. Run them once in this mandatory worker so app builds can start
+      # immediately; the aggregate requires this worker to pass as well.
+      - name: Test CI watchdog
+        run: make test-ci-watchdog
+
+      - name: Test CI gate guards
+        run: make test-ci-guards
+
       - name: Run package E2E
         timeout-minutes: 12
         env:
           HEELER_CI_LANE: package
           HEELER_CI_MANDATORY: "1"
-        run: scripts/run-ci-ios-tests.sh
+        run: |
+          make test-ci-package
+          python3 scripts/verify-ci-ios-evidence.py complete \
+            --evidence-dir "$HEELER_CI_EVIDENCE_DIR" \
+            --lane package --shard all --sha "$GITHUB_SHA"
+
+      - name: Upload package test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-evidence-package-${{ github.run_id }}
+          path: ${{ env.HEELER_CI_EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
 
       - name: Upload package CI diagnostics
         if: failure()
@@ -168,3 +288,48 @@ jobs:
           path: ${{ runner.temp }}/heeler-ci-diagnostics-*
           if-no-files-found: ignore
           retention-days: 7
+
+  build-test:
+    # A skipped required check counts as successful on GitHub. Diagnostics
+    # therefore use a distinct name even for this unexecuted aggregate.
+    name: ${{ inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && 'Diagnostic mode (full coverage not run)' || 'Build & test (iOS Simulator)' }}
+    needs: [app-tests, heelerssh-package-e2e]
+    if: ${{ always() && (inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every worker to succeed
+        env:
+          APP_RESULT: ${{ needs.app-tests.result }}
+          PACKAGE_RESULT: ${{ needs.heelerssh-package-e2e.result }}
+        run: |
+          if [[ "$APP_RESULT" != success || "$PACKAGE_RESULT" != success ]]; then
+            printf 'Worker failure: app=%s package=%s\n' "$APP_RESULT" "$PACKAGE_RESULT" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ios-ci-evidence-*-${{ github.run_id }}
+          path: .ci/evidence
+      - name: Download same-SHA serial comparison
+        if: ${{ inputs.baseline_run != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ios-ci-evidence-*
+          path: .ci/baseline
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.baseline_run }}
+      - name: Verify complete test coverage
+        env:
+          LAYOUT: ${{ inputs.layout || 'sharded' }}
+          BASELINE_RUN: ${{ inputs.baseline_run }}
+        run: |
+          arguments=(verify --evidence-dir .ci/evidence --sha "$GITHUB_SHA" --layout "$LAYOUT" --require-package)
+          if [[ -n "$BASELINE_RUN" ]]; then
+            arguments+=(--baseline .ci/baseline)
+          fi
+          python3 scripts/verify-ci-ios-evidence.py "${arguments[@]}"

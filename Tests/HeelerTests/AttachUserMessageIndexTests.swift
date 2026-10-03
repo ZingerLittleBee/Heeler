@@ -50,14 +50,14 @@ struct AttachUserMessageIndexTests {
     }
 
     @Test(arguments: [
-        Data([0x1B, 0x5B, 0x44]),
-        Data([0x1B, 0x5B, 0x31, 0x3B, 0x32, 0x43]),
-        Data([0x1B, 0x4F, 0x41]),
+        [UInt8(0x1B), 0x5B, 0x44],
+        [UInt8(0x1B), 0x5B, 0x31, 0x3B, 0x32, 0x43],
+        [UInt8(0x1B), 0x4F, 0x41],
     ])
-    func controlSequencesDoNotLandInTheIndexedText(_ sequence: Data) throws {
+    func controlSequencesDoNotLandInTheIndexedText(_ sequence: [UInt8]) throws {
         let index = AttachUserMessageIndex()
         index.observeOutgoing(Data("please ".utf8))
-        index.observeOutgoing(sequence)
+        index.observeOutgoing(Data(sequence))
         index.observeOutgoing(Data("implement the parser".utf8))
         index.observeOutgoing(Data([0x0D]))
         let raw = try #require(index.entries.first).rawText

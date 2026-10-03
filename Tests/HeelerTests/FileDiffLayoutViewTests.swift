@@ -5,10 +5,20 @@ import UIKit
 
 @testable import Heeler
 
+/// Invalid input keeps the normal suite limit and fails the test's guard.
+private func hasRepeatedDiffLayoutDiagnostic() -> Bool {
+    guard let configured = ProcessInfo.processInfo.environment["HEELER_DIFF_LAYOUT_ITERATIONS"],
+          let iterations = Int(configured), (2...100).contains(iterations)
+    else { return false }
+    return true
+}
+
 /// Hosted stand-ins for the iPad detail column. Settings are injected, so
 /// these tests never read `UIDevice` or `UserDefaults.standard`.
 @MainActor
-@Suite("File diff layout", .serialized, .timeLimit(.minutes(1)))
+@Suite(
+    "File diff layout", .serialized,
+    .timeLimit(hasRepeatedDiffLayoutDiagnostic() ? .minutes(30) : .minutes(1)))
 struct FileDiffLayoutViewTests {
     private static let pairedLabel = "Removed, line 8: old value. Added, line 8: new value"
     private static let removedLabel = "Removed, line 8: old value"
@@ -129,38 +139,94 @@ struct FileDiffLayoutViewTests {
     }
 
     @Test func aLayoutSwitchKeepsTheTopmostLine() async throws {
+        let configuredIterations =
+            ProcessInfo.processInfo.environment["HEELER_DIFF_LAYOUT_ITERATIONS"] ?? "1"
+        let iterations = try #require(
+            Int(configuredIterations), "the diff layout iteration count must be an integer")
+        try #require((1...100).contains(iterations), "the diff layout iteration count must be 1...100")
+        for iteration in 1...iterations {
+            try await assertLayoutSwitchKeepsTheTopmostLine(iteration: iteration, iterations: iterations)
+        }
+        print("[diff-layout-test] completed \(iterations) iterations")
+    }
+
+    private func assertLayoutSwitchKeepsTheTopmostLine(iteration: Int, iterations: Int) async throws {
         let (settings, _, cleanup) = try makeSettings(offersSideBySide: true)
         defer { cleanup() }
         let (controller, window) = try await host(
             patch: Self.longContextPatch(), settings: settings,
             size: CGSize(width: 1376, height: 1032))
         defer { window.isHidden = true }
+        let trace = ScrollSetupTrace(iteration: iteration, iterations: iterations)
+        defer { trace.record("round-ended", controller: controller, window: window) }
 
         // Stay in the middle of the document. A line near the end cannot sit
         // at the top once a shorter layout clamps the scroll view.
-        try #require(await ChangesViewTests.eventually(timeout: .seconds(8)) {
+        // Content height alone can precede the first resolved row width and
+        // navigation insets. Establish the initial layout before scrolling.
+        var previousGeometry: ScrollSetupGeometry?
+        var readinessStreak = 0
+        var readyScroll: UIScrollView?
+        let initialLayoutReady = try await ChangesViewTests.eventually(timeout: .seconds(8)) {
             controller.view.layoutIfNeeded()
-            guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
-            return scroll.contentSize.height > scroll.bounds.height + 400
-        })
-        var captured: Int?
-        var stable = 0
-        var didScroll = false
-        try #require(await ChangesViewTests.eventually(timeout: .seconds(8)) {
-            controller.view.layoutIfNeeded()
-            guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
-            let travel = max(0, scroll.contentSize.height - scroll.bounds.height)
-            let y = min(CGFloat(3200), travel * 0.35)
-            if !didScroll {
-                guard travel > 400 else { return false }
-                didScroll = true
-                // An animated offset settles through the scroll view's own
-                // delegate, which is what updates `scrollPosition`. A direct
-                // write plus a manual delegate call does not.
-                scroll.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+            trace.record("initial-layout", controller: controller, window: window)
+            let control = Self.layoutControl(in: controller.view)
+            guard controller.view.window === window, !window.isHidden,
+                isNavigationSettled(controller), abs(controller.view.bounds.width - 1376) < 1,
+                control.present, !control.disabled,
+                let scroll = Self.diffScrollView(in: controller.view), scroll.window === window,
+                scroll.contentSize.height > scroll.bounds.height + 400,
+                let edge = Self.revealedEdge(of: scroll),
+                let firstLine = Self.lineFrame("file-diff-line-0", in: controller.view)
+            else {
+                previousGeometry = nil
+                readinessStreak = 0
                 return false
             }
-            guard !scroll.isDragging, !scroll.isDecelerating, abs(scroll.contentOffset.y - y) < 2 else {
+            let viewport = UIAccessibility.convertToScreenCoordinates(scroll.bounds, in: scroll)
+            let readableViewport = CGRect(
+                x: viewport.minX, y: edge, width: viewport.width, height: viewport.maxY - edge)
+            guard readableViewport.height > 1, firstLine.intersects(readableViewport) else {
+                previousGeometry = nil
+                readinessStreak = 0
+                return false
+            }
+            let geometry = ScrollSetupGeometry(scroll)
+            readinessStreak = previousGeometry.map { geometry.matches($0) } == true
+                ? readinessStreak + 1 : 1
+            previousGeometry = geometry
+            guard readinessStreak >= 3 else { return false }
+            readyScroll = scroll
+            trace.record("initial-layout-ready", controller: controller, window: window)
+            return true
+        }
+        try #require(initialLayoutReady, "initial layout should settle; trace: \(trace.recentEntries)")
+        let initialScroll = try #require(readyScroll)
+        var captured: Int?
+        var stable = 0
+        var requestedOffsetY: CGFloat?
+        let initialScrollSettled = try await ChangesViewTests.eventually(timeout: .seconds(8)) {
+            controller.view.layoutIfNeeded()
+            trace.record("initial-scroll", controller: controller, window: window)
+            guard let scroll = Self.diffScrollView(in: controller.view), scroll === initialScroll else {
+                return false
+            }
+            if requestedOffsetY == nil {
+                let travel = max(0, scroll.contentSize.height - scroll.bounds.height)
+                guard travel > 400 else { return false }
+                let y = min(CGFloat(3200), travel * 0.35)
+                requestedOffsetY = y
+                // Let the scroll view drive the animation and the view's
+                // geometry/line-frame sampling; do not call its delegate
+                // or retry the scroll.
+                scroll.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+                trace.record("scroll-requested target=\(y)", controller: controller, window: window)
+                return false
+            }
+            guard let requestedOffsetY,
+                !scroll.isDragging, !scroll.isDecelerating,
+                abs(scroll.contentOffset.y - requestedOffsetY) < 2
+            else {
                 return false
             }
             guard let top = Self.topLineID(in: controller.view, viewport: scroll), top >= 40 else {
@@ -175,21 +241,38 @@ struct FileDiffLayoutViewTests {
                 stable = 1
             }
             return stable >= 3
-        })
+        }
+        let observedScroll = Self.diffScrollView(in: controller.view)
+        let observedTop = observedScroll.flatMap { Self.topLineID(in: controller.view, viewport: $0) }
+        try #require(
+            initialScrollSettled,
+            """
+            initial scroll target \(String(describing: requestedOffsetY)) actual offset \(String(describing: observedScroll?.contentOffset.y))
+            content height \(String(describing: observedScroll?.contentSize.height)) bounds height \(String(describing: observedScroll?.bounds.height))
+            top \(String(describing: observedTop)) stable \(stable)
+            dragging \(String(describing: observedScroll?.isDragging)) decelerating \(String(describing: observedScroll?.isDecelerating))
+            trace: \(trace.recentEntries)
+            """)
         let expected = try #require(captured)
 
+        trace.record("select-unified", controller: controller, window: window)
         settings.select(.unified)
         try await Self.expectTop(expected, in: controller)
+        trace.record("unified-settled", controller: controller, window: window)
         settings.select(.sideBySide)
         try await Self.expectTop(expected, in: controller)
+        trace.record("side-by-side-settled", controller: controller, window: window)
         Self.resize(window, to: CGSize(width: 834, height: 1032))
+        trace.record("resize-narrow", controller: controller, window: window)
         try #require(await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
             return Self.topLineID(in: controller.view, viewport: scroll) == expected
                 && Self.layoutControl(in: controller.view).disabled
         })
+        trace.record("narrow-settled", controller: controller, window: window)
         Self.resize(window, to: CGSize(width: 1376, height: 1032))
+        trace.record("resize-wide", controller: controller, window: window)
         try #require(await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
@@ -197,6 +280,74 @@ struct FileDiffLayoutViewTests {
             return Self.topLineID(in: controller.view, viewport: scroll) == expected
                 && control.present && !control.disabled
         })
+        trace.record("wide-settled", controller: controller, window: window)
+    }
+
+    @MainActor
+    private struct ScrollSetupGeometry {
+        let identity: ObjectIdentifier
+        let bounds: CGSize
+        let content: CGSize
+        let offset: CGPoint
+        let insets: UIEdgeInsets
+        let safeArea: UIEdgeInsets
+
+        init(_ scroll: UIScrollView) {
+            identity = ObjectIdentifier(scroll)
+            bounds = scroll.bounds.size
+            content = scroll.contentSize
+            offset = scroll.contentOffset
+            insets = scroll.adjustedContentInset
+            safeArea = scroll.safeAreaInsets
+        }
+
+        func matches(_ other: Self) -> Bool {
+            guard identity == other.identity else { return false }
+            let values = [
+                bounds.width - other.bounds.width, bounds.height - other.bounds.height,
+                content.width - other.content.width, content.height - other.content.height,
+                offset.x - other.offset.x, offset.y - other.offset.y,
+                insets.top - other.insets.top, insets.left - other.insets.left,
+                insets.bottom - other.insets.bottom, insets.right - other.insets.right,
+                safeArea.top - other.safeArea.top, safeArea.left - other.safeArea.left,
+                safeArea.bottom - other.safeArea.bottom, safeArea.right - other.safeArea.right,
+            ]
+            return values.allSatisfy { abs($0) < 0.5 }
+        }
+    }
+
+    @MainActor
+    private final class ScrollSetupTrace {
+        let iteration: Int
+        let iterations: Int
+        private let started = ContinuousClock.now
+        private var lastObservation: String?
+        private var entries: [String] = []
+
+        init(iteration: Int, iterations: Int) {
+            self.iteration = iteration
+            self.iterations = iterations
+        }
+
+        var recentEntries: String { entries.suffix(12).joined(separator: "; ") }
+
+        func record(_ stage: String, controller: UIViewController, window: UIWindow) {
+            let scroll = FileDiffLayoutViewTests.diffScrollView(in: controller.view)
+            let identity = scroll.map { String(describing: ObjectIdentifier($0)) } ?? "nil"
+            let observation = """
+                stage=\(stage) scroll=\(identity) rootWidth=\(controller.view.bounds.width) \
+                attached=\(controller.view.window === window && scroll?.window === window) \
+                key=\(window.isKeyWindow) navigationSettled=\(isNavigationSettled(controller)) \
+                bounds=\(String(describing: scroll?.bounds.size)) content=\(String(describing: scroll?.contentSize)) \
+                insets=\(String(describing: scroll?.adjustedContentInset)) safeArea=\(String(describing: scroll?.safeAreaInsets)) \
+                offset=\(String(describing: scroll?.contentOffset))
+                """
+            guard observation != lastObservation else { return }
+            lastObservation = observation
+            let entry = "\(started.duration(to: .now)) \(observation)"
+            entries.append(entry)
+            print("[diff-layout-test] iteration=\(iteration)/\(iterations) \(entry)")
+        }
     }
 
     @Test func pairedRowOffersBothLinesReferenceActions() async throws {

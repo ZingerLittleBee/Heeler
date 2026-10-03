@@ -3,6 +3,15 @@ import Testing
 
 @testable import Heeler
 
+/// Repeated diagnostics need a larger outer budget. Invalid input retains the
+/// normal deadlock limit and fails the iteration guard inside the test.
+private func hasRepeatedWeakChangesDiagnostic() -> Bool {
+    guard let configured = ProcessInfo.processInfo.environment["HEELER_WEAK_CHANGES_ITERATIONS"],
+          let iterations = Int(configured), (2...100).contains(iterations)
+    else { return false }
+    return true
+}
+
 /// The product driven over a link the test degrades on purpose.
 ///
 /// The merge gate runs unprivileged, which rules out `pfctl`/`dummynet` and the
@@ -10,9 +19,9 @@ import Testing
 /// unprivileged TCP proxy in front of the disposable sshd
 /// (`scripts/fixtures/weak-network-proxy.py`) and these suites steer it: added
 /// latency, a bandwidth cap, mid-stream fragmentation, and abrupt severance.
-/// Every impairment is a fixed duration or a byte count, so a profile treats
-/// the link the same way on every run and a failure here means a defect rather
-/// than a bad draw.
+/// Parameters and impairment bounds are fixed; OS receive boundaries and
+/// scheduling still vary, so a failure needs diagnosis rather than an assumed
+/// reproducible timing explanation.
 ///
 /// `.timeLimit` is the deadlock instrument. Everything these tests exercise is
 /// bounded by the product's own deadlines, so a run that has not finished
@@ -24,7 +33,7 @@ import Testing
         if: RealSSHFixture.gate(HeelerSSHTransportBehaviorEnvironment.current != nil),
         "requires the disposable impairment proxy fixture"),
     .serialized,
-    .timeLimit(.minutes(2)))
+    .timeLimit(hasRepeatedWeakChangesDiagnostic() ? .minutes(30) : .minutes(2)))
 struct WeakNetworkE2ETests {
     @Test("concurrent RPCs survive latency, a bandwidth cap, and fragmentation")
     func concurrentRPCsSurviveADegradedLink() async throws {

@@ -31,8 +31,32 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private var settleTasks: [Host.ID: Task<Void, Never>] = [:]
     @ObservationIgnored private var sessions: [Host.ID: ActivitySession] = [:]
     @ObservationIgnored private var pipes: [Host.ID: TokenPipe] = [:]
+    @ObservationIgnored private var writerTasks: [Host.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored var onDiagnostic: (@MainActor (Host.ID, String) -> Void)?
 
     var areActivitiesEnabled: Bool { controller.areEnabled }
+
+    deinit {
+        for task in settleTasks.values { task.cancel() }
+        for session in sessions.values {
+            session.tokenTask.cancel()
+            session.stateTask.cancel()
+        }
+        for task in writerTasks.values { task.cancel() }
+    }
+
+    func stop() async {
+        didStart = false
+        let tasks = Array(settleTasks.values) + Array(writerTasks.values)
+            + sessions.values.flatMap { [$0.tokenTask, $0.stateTask] }
+        for task in tasks { task.cancel() }
+        settleTasks.removeAll()
+        sessions.removeAll()
+        writerTasks.removeAll()
+        pipes.removeAll()
+        applied.removeAll()
+        for task in tasks { await task.value }
+    }
 
     /// Last reconcile verdict per Host, human-readable — the Settings
     /// diagnostic row that turns "no banner and no idea why" into a
@@ -354,7 +378,7 @@ final class HostLiveActivityCoordinator {
 
     // MARK: Sessions
 
-    private struct ActivitySession {
+    private struct ActivitySession: Sendable {
         var id: String
         var awaitingFirstSnapshot: Bool
         var tokenTask: Task<Void, Never>
@@ -364,16 +388,19 @@ final class HostLiveActivityCoordinator {
     private func beginSession(
         _ handle: LiveActivityHandle, awaitingFirstSnapshot: Bool
     ) {
+        let tokens = controller.pushTokenUpdates(for: handle)
+        let states = controller.stateUpdates(for: handle)
+        onDiagnostic?(handle.hostID, "subscribed")
         let tokenTask = Task { [weak self] in
-            guard let self else { return }
-            for await token in self.controller.pushTokenUpdates(for: handle) {
-                self.considerToken(token, hostID: handle.hostID)
+            for await token in tokens {
+                guard !Task.isCancelled else { break }
+                self?.considerToken(token, hostID: handle.hostID)
             }
         }
         let stateTask = Task { [weak self] in
-            guard let self else { return }
-            for await state in self.controller.stateUpdates(for: handle) {
-                self.considerState(state, hostID: handle.hostID)
+            for await state in states {
+                guard !Task.isCancelled else { break }
+                self?.considerState(state, hostID: handle.hostID)
             }
         }
         sessions[handle.hostID] = ActivitySession(
@@ -384,6 +411,7 @@ final class HostLiveActivityCoordinator {
     }
 
     private func considerToken(_ token: Data, hostID: Host.ID) {
+        onDiagnostic?(hostID, "token consumed")
         let hex = Self.hexEncoded(token)
         guard !hex.isEmpty else { return }
         enqueue(.set(hex: hex, startedAt: now()), for: hostID)
@@ -430,6 +458,7 @@ final class HostLiveActivityCoordinator {
     }
 
     private func enqueue(_ job: TokenJob, for hostID: Host.ID) {
+        guard didStart else { return }
         var pipe = pipes[hostID] ?? TokenPipe()
         switch (pipe.pending, job) {
         case (.some(.set), .setPreferences), (.some(.clear), .setPreferences):
@@ -440,17 +469,22 @@ final class HostLiveActivityCoordinator {
             pipe.pending = job
         }
         pipes[hostID] = pipe
+        onDiagnostic?(hostID,
+            "pipe queued pending=\(pipe.pending != nil) inFlight=\(pipe.inFlight) dirty=\(pipe.isDirty)")
         pump(hostID)
     }
 
     private func pump(_ hostID: Host.ID) {
-        guard var pipe = pipes[hostID], !pipe.inFlight, let job = pipe.pending else { return }
+        guard didStart, var pipe = pipes[hostID], !pipe.inFlight, let job = pipe.pending else { return }
         pipe.pending = nil
         pipe.inFlight = true
         pipes[hostID] = pipe
-        Task { [weak self] in
+        writerTasks[hostID] = Task { [weak self] in
             guard let self else { return }
+            self.onDiagnostic?(hostID, "writer started")
             let succeeded = await self.perform(job, hostID: hostID)
+            guard !Task.isCancelled, self.didStart else { return }
+            self.writerTasks[hostID] = nil
             var pipe = self.pipes[hostID] ?? TokenPipe()
             pipe.inFlight = false
             let newer = pipe.pending
@@ -461,6 +495,8 @@ final class HostLiveActivityCoordinator {
                 if newer == nil { pipe.pending = job }
             }
             self.pipes[hostID] = pipe
+            self.onDiagnostic?(hostID,
+                "writer completed success=\(succeeded) pending=\(pipe.pending != nil) dirty=\(pipe.isDirty)")
             // A failed write stays queued as dirty and waits for reconnect
             // or a foreground reconcile; pumping it here would spin.
             if succeeded || newer != nil {
@@ -474,14 +510,18 @@ final class HostLiveActivityCoordinator {
         let pins = pinnedPaneIDs(hostID)
         let layout = rowLayout(hostID)
         let hostName = resolvedHostName(hostID, agents: latestAgents[hostID] ?? [])
+        let diagnose = onDiagnostic
         do {
             try await transports.withNotificationTransport(for: hostID) { [ceremony] transport in
+                try Task.checkCancellation()
+                await diagnose?(hostID, "transport acquired")
                 switch job {
                 case .set(let hex, let startedAt):
                     try await ceremony.setLiveActivityToken(
                         tokenHex: hex, startedAt: startedAt, deviceToken: token,
                         pinnedPaneIDs: pins, rowLayout: layout, hostName: hostName,
-                        over: transport)
+                        over: transport,
+                        diagnose: { event in await diagnose?(hostID, event) })
                 case .setPreferences:
                     try await ceremony.setLiveActivityPinnedPaneIDs(
                         pins, rowLayout: layout, hostName: hostName, deviceToken: token, over: transport)
@@ -492,8 +532,24 @@ final class HostLiveActivityCoordinator {
             }
             return true
         } catch {
+            onDiagnostic?(hostID, "writer error category=\(Self.errorCategory(error))")
             return false
         }
+    }
+
+    private static func errorCategory(_ error: any Error) -> String {
+        if let registrationError = error as? NotificationRegistrationError {
+            switch registrationError {
+            case .pluginNotInstalled: return "pluginNotInstalled"
+            case .pluginProbeFailed: return "pluginProbeFailed"
+            case .readFailed: return "readFailed"
+            case .writeFailed: return "writeFailed"
+            case .unsupportedFileVersion: return "unsupportedFileVersion"
+            case .deviceNotRegistered: return "deviceNotRegistered"
+            }
+        }
+        if error is CancellationError { return "cancelled" }
+        return String(describing: type(of: error))
     }
 
     private func retryDirtyPipes(onlyIfConnected: Bool) {
