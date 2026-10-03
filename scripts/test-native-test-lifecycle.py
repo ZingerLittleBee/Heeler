@@ -26,6 +26,16 @@ def block(source: str, name: str) -> str:
 
 
 class LifecycleContracts(unittest.TestCase):
+    def test_full_keyboard_waits_for_visible_geometry_and_cleans_up_on_failure(self):
+        source = read("Tests/HeelerTests/TerminalBackspaceButtonTests.swift")
+        method = block(source, "fullKeyboardKeepsRepeatingAcrossViewUpdates")
+        self.assertIn("withTestWindow(", method)
+        self.assertLess(method.index("!button.bounds.isEmpty"), method.index("press.begin()"))
+        self.assertLess(method.index("window.bounds.contains("), method.index("press.begin()"))
+        self.assertIn("#expect(repeats >= 3", method)
+        self.assertIn("within timeout: Duration = .seconds(5)", source)
+        self.assertIn("[backspace-test]", method)
+
     def test_streams_are_registered_before_consumer_tasks(self):
         source = block(read("Sources/Heeler/LiveActivities/HostLiveActivityCoordinator.swift"), "beginSession")
         self.assertLess(source.index("controller.pushTokenUpdates"), source.index("Task {"))
