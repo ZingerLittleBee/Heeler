@@ -162,25 +162,35 @@ class Connection:
                 return False
             self.is_cut = True
             self.stopped.set()
-        linger = struct.pack("ii", 1, 0)
-        for endpoint in (self.client, self.upstream):
-            try:
-                endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger)
-            except OSError:
-                pass
-            try:
-                endpoint.close()
-            except OSError:
-                pass
+            # Keep reset preparation atomic with serve's normal cleanup: once
+            # stopped is visible, both pumps may immediately return and join.
+            linger = struct.pack("ii", 1, 0)
+            for endpoint in (self.client, self.upstream):
+                try:
+                    endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger)
+                except OSError:
+                    pass
+                try:
+                    endpoint.close()
+                except OSError:
+                    pass
         return True
 
     def close(self) -> None:
-        self.stopped.set()
-        for endpoint in (self.client, self.upstream):
-            try:
-                endpoint.close()
-            except OSError:
-                pass
+        with self.lock:
+            self.stopped.set()
+            for endpoint in (self.client, self.upstream):
+                # A close in one thread need not wake another thread's blocking
+                # socket operation. Fatal errors must end both pumps before
+                # serve can join them and remove this connection from the live set.
+                try:
+                    endpoint.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                try:
+                    endpoint.close()
+                except OSError:
+                    pass
 
     def _pump(self, source: socket.socket, destination: socket.socket,
               direction: str) -> None:
@@ -208,6 +218,8 @@ class Connection:
             "tokenWaitSeconds": 0.0,
             "sendWaitSeconds": 0.0,
             "deliveredBytes": 0,
+            "exitReason": "stopped",
+            "socketErrorCode": None,
         }
 
         try:
@@ -215,8 +227,12 @@ class Connection:
                 if ended and not pending:
                     try:
                         destination.shutdown(socket.SHUT_WR)
-                    except OSError:
-                        pass
+                    except OSError as error:
+                        metrics["exitReason"] = "shutdownError"
+                        metrics["socketErrorCode"] = error.errno
+                        self.close()
+                        return
+                    metrics["exitReason"] = "eof"
                     return
 
                 now = time.monotonic()
@@ -226,7 +242,10 @@ class Connection:
                 waited_at = time.monotonic()
                 try:
                     ready, _, _ = select.select(readers, [], [], wait)
-                except (OSError, ValueError):
+                except (OSError, ValueError) as error:
+                    metrics["exitReason"] = "selectError"
+                    metrics["socketErrorCode"] = getattr(error, "errno", None)
+                    self.close()
                     return
                 if waiting_for_latency:
                     metrics["latencyWaitSeconds"] += time.monotonic() - waited_at
@@ -234,7 +253,10 @@ class Connection:
                 if ready:
                     try:
                         chunk = source.recv(min(RECEIVE_BYTES, PENDING_BYTES - pending_bytes))
-                    except OSError:
+                    except OSError as error:
+                        metrics["exitReason"] = "receiveError"
+                        metrics["socketErrorCode"] = error.errno
+                        self.close()
                         return
                     if not chunk:
                         ended = True
@@ -271,7 +293,10 @@ class Connection:
                 send_started = time.monotonic()
                 try:
                     destination.sendall(segment)
-                except OSError:
+                except OSError as error:
+                    metrics["exitReason"] = "sendError"
+                    metrics["socketErrorCode"] = error.errno
+                    self.close()
                     return
                 metrics["sendWaitSeconds"] += time.monotonic() - send_started
                 metrics["deliveredBytes"] += len(segment)

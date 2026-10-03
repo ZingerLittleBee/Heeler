@@ -5,7 +5,9 @@ import contextlib
 import importlib.util
 from pathlib import Path
 import random
+import select
 import socket
+import struct
 import threading
 import time
 import unittest
@@ -122,11 +124,177 @@ class Forwarding:
         return bytes(output), elapsed, self.destination.first_write - started
 
 
+class BidirectionalForwarding:
+    """Exercise the production serve/join/forget lifecycle with real TCP peers."""
+
+    def __init__(self, profile):
+        self.client, ingress = tcp_pair()
+        egress, self.server = tcp_pair()
+        self.proxy = proxy_module.Proxy(0, 0, "127.0.0.1", 0)
+        self.proxy._handle({"command": "profile", "profile": profile})
+        self.connection = proxy_module.Connection(1, ingress, egress, self.proxy)
+        with self.proxy.lock:
+            self.proxy.connections.append(self.connection)
+            self.proxy.accepted += 1
+        self.thread = threading.Thread(target=self.connection.serve, daemon=True)
+        self.thread.start()
+
+    def close(self):
+        # Shutdown the peer endpoints too: cleanup must work even when a
+        # regression leaves a production pump waiting for the opposite peer.
+        self.connection.close()
+        for endpoint in (self.client, self.server):
+            with contextlib.suppress(OSError):
+                endpoint.shutdown(socket.SHUT_RDWR)
+            endpoint.close()
+        self.thread.join(timeout=1)
+
+    def live_connections(self):
+        return self.proxy._handle({"command": "stats"})["liveConnections"]
+
+
 class WeakNetworkProxyTests(unittest.TestCase):
     def forwarding(self, profile=DEGRADED, receive_cap=65536):
         forwarding = Forwarding(profile, receive_cap)
         self.addCleanup(forwarding.close)
         return forwarding
+
+    def bidirectional(self, profile=DEGRADED):
+        forwarding = BidirectionalForwarding(profile)
+        self.addCleanup(forwarding.close)
+        return forwarding
+
+    def test_client_reset_releases_both_pumps_and_forgets_the_connection(self):
+        forwarding = self.bidirectional()
+        captured = threading.Event()
+        release = threading.Event()
+        self.addCleanup(release.set)
+        current_profile = forwarding.proxy.current_profile
+
+        def pause_received_chunk():
+            profile = current_profile()
+            captured.set()
+            release.wait(timeout=2)
+            return profile
+
+        forwarding.proxy.current_profile = pause_received_chunk
+        forwarding.client.sendall(b"pending request")
+        self.assertTrue(captured.wait(timeout=1))
+        # Reset immediately after a real receive, while the upstream peer is
+        # held open. The pending bytes cannot have reached the server yet.
+        forwarding.client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        forwarding.client.close()
+        release.set()
+        forwarding.thread.join(timeout=1)
+        self.assertFalse(forwarding.thread.is_alive(), "serve is still joining the opposite pump")
+        self.assertEqual(forwarding.live_connections(), 0)
+        self.assertFalse(forwarding.connection.is_cut)
+        self.assertEqual(forwarding.proxy._handle({"command": "stats"})["cutConnections"], 0)
+
+    def test_server_reset_releases_the_idle_client_direction(self):
+        forwarding = self.bidirectional()
+        forwarding.server.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        forwarding.server.close()
+        forwarding.thread.join(timeout=1)
+        self.assertFalse(forwarding.thread.is_alive())
+        self.assertEqual(forwarding.live_connections(), 0)
+        self.assertFalse(forwarding.connection.is_cut)
+
+    def test_full_connection_half_close_drains_queued_bytes_and_allows_a_response(self):
+        forwarding = self.bidirectional()
+        forwarding.client.settimeout(2)
+        forwarding.server.settimeout(2)
+        request = bytes(range(256)) * 1024
+        response = bytes(reversed(range(256))) * 128
+        forwarding.client.sendall(request)
+        forwarding.client.shutdown(socket.SHUT_WR)
+        received = bytearray()
+        while chunk := forwarding.server.recv(65536):
+            received.extend(chunk)
+        self.assertEqual(received, request)
+        # Only the request direction ended. The live response direction must
+        # remain usable even after every queued request byte and FIN arrived.
+        self.assertTrue(forwarding.thread.is_alive())
+        self.assertEqual(forwarding.live_connections(), 1)
+        forwarding.server.sendall(response)
+        forwarding.server.shutdown(socket.SHUT_WR)
+        received = bytearray()
+        while chunk := forwarding.client.recv(65536):
+            received.extend(chunk)
+        self.assertEqual(received, response)
+        forwarding.thread.join(timeout=1)
+        self.assertFalse(forwarding.thread.is_alive())
+        self.assertEqual(forwarding.live_connections(), 0)
+        stats = forwarding.proxy._handle({"command": "stats"})
+        self.assertEqual(stats["bytesToServer"], len(request))
+        self.assertEqual(stats["bytesToClient"], len(response))
+
+    def test_full_connection_cut_forgets_both_directions_and_resets_both_peers(self):
+        forwarding = self.bidirectional({})
+        self.assertEqual(forwarding.proxy._handle({"command": "cut"})["cutConnections"], 1)
+        forwarding.thread.join(timeout=1)
+        self.assertFalse(forwarding.thread.is_alive())
+        self.assertEqual(forwarding.live_connections(), 0)
+        for endpoint in (forwarding.client, forwarding.server):
+            endpoint.settimeout(1)
+            with self.assertRaises(ConnectionResetError):
+                endpoint.recv(1)
+
+    def test_cut_interrupts_a_full_connection_blocked_on_destination_writes(self):
+        forwarding = self.bidirectional({})
+        for endpoint in (forwarding.client, forwarding.server,
+                         forwarding.connection.client, forwarding.connection.upstream):
+            endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+            endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        # A stalled real peer eventually backpressures the entire TCP path.
+        # Timeout and write readiness establish the blocked state, not a sleep.
+        forwarding.client.settimeout(0.1)
+        with self.assertRaises(TimeoutError):
+            forwarding.client.sendall(b"x" * (16 * 1024 * 1024))
+        self.assertEqual(select.select([], [forwarding.connection.upstream], [], 0)[1], [])
+        self.assertTrue(forwarding.thread.is_alive())
+        self.assertEqual(forwarding.proxy._handle({"command": "cut"})["cutConnections"], 1)
+        forwarding.thread.join(timeout=1)
+        self.assertFalse(forwarding.thread.is_alive(), "cut did not interrupt a blocking sendall")
+        self.assertEqual(forwarding.live_connections(), 0)
+
+    def test_cut_keeps_reset_preparation_atomic_with_normal_cleanup(self):
+        forwarding = self.bidirectional({})
+        captured = threading.Event()
+        release = threading.Event()
+        self.addCleanup(release.set)
+        endpoint = forwarding.connection.client
+
+        class PauseLinger:
+            def __getattr__(self, name):
+                return getattr(endpoint, name)
+
+            def setsockopt(self, level, option, value):
+                if option == socket.SO_LINGER:
+                    captured.set()
+                    release.wait(timeout=2)
+                endpoint.setsockopt(level, option, value)
+
+        forwarding.connection.client = PauseLinger()
+        cuts = []
+        cutter = threading.Thread(target=lambda: cuts.append(forwarding.connection.cut()), daemon=True)
+        cutter.start()
+        self.assertTrue(captured.wait(timeout=1))
+        # Both pumps can already see stopped, but serve must not perform a
+        # normal shutdown while the cut is preparing its reset socket options.
+        forwarding.thread.join(timeout=1)
+        self.assertTrue(forwarding.thread.is_alive(), "normal cleanup overtook reset preparation")
+        release.set()
+        cutter.join(timeout=1)
+        forwarding.thread.join(timeout=1)
+        self.assertFalse(cutter.is_alive())
+        self.assertFalse(forwarding.thread.is_alive())
+        self.assertEqual(cuts, [True])
+        self.assertEqual(forwarding.live_connections(), 0)
+        for peer in (forwarding.client, forwarding.server):
+            peer.settimeout(1)
+            with self.assertRaises(ConnectionResetError):
+                peer.recv(1)
 
     def test_receive_boundaries_do_not_add_a_second_bandwidth_limit(self):
         payload = bytes(range(256)) * 512
