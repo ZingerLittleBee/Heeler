@@ -646,7 +646,7 @@ struct TerminalKeyModifiersTests {
             let started = ContinuousClock.now
             diagnose("enqueue \(caller)", started: started)
             receive("\u{1B}[c")
-            diagnose("parsed \(caller)", started: started)
+            diagnose("pending-output-wait-returned \(caller)", started: started)
             let marker = Data("\u{1B}[?62;22".utf8)
             let deadline = ContinuousClock.now + .seconds(2)
             while sent.range(of: marker) == nil, ContinuousClock.now < deadline {
@@ -665,7 +665,7 @@ struct TerminalKeyModifiersTests {
             print("[terminal-key-test] \(stage) elapsed=\(started.duration(to: .now)) bytes=\(sent.count)"
                 + " attached=\(window != nil && terminal.window === window) key=\(window?.isKeyWindow == true)"
                 + " hidden=\(window?.isHidden == true) responder=\(terminal.isFirstResponder)"
-                + " metrics=\(terminal.hasTerminalGridMetrics) appState=\(UIApplication.shared.applicationState.rawValue)")
+                + " metrics=\(terminal.viewportRows != nil) appState=\(UIApplication.shared.applicationState.rawValue)")
         }
     }
 }

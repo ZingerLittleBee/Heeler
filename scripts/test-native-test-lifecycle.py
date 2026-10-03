@@ -42,6 +42,8 @@ class LifecycleContracts(unittest.TestCase):
         self.assertIn("Task.sleep(for: .milliseconds(10))", drain)
         self.assertNotIn("Task.yield()", drain)
         self.assertIn("[terminal-key-test]", source)
+        self.assertIn("terminal.viewportRows != nil", source)
+        self.assertNotIn("terminal.hasTerminalGridMetrics", source)
         self.assertIn("@Test func failedFixturePreparationDetachesItsWindow()", source)
 
     def test_package_log_gate_requires_the_new_method_and_both_cases(self):
