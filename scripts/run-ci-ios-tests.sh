@@ -884,6 +884,13 @@ password_ssh_preflight() {
 set timeout 5
 log_user 0
 
+proc preflight_fail {reason} {
+    puts stderr "Password SSH preflight failed: $reason"
+    catch {close}
+    catch {wait}
+    exit 1
+}
+
 set password $env(HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD)
 unset env(HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD)
 
@@ -907,11 +914,12 @@ spawn /usr/bin/ssh \
     /bin/echo HEELER_PASSWORD_SSH_PREFLIGHT_OK
 
 expect {
-    -re {(?i)password:[[:space:]]*$} {
+    -nocase -re {password:[[:space:]]*$} {
+        catch {exec stty -echo < $spawn_out(slave,name)}
         send -- "$password\r"
     }
-    timeout { exit 1 }
-    eof { exit 1 }
+    timeout { preflight_fail "password prompt timed out after ${timeout}s" }
+    eof { preflight_fail "SSH exited before the password prompt" }
 }
 
 set saw_sentinel 0
@@ -920,15 +928,25 @@ expect {
         set saw_sentinel 1
         exp_continue
     }
-    -re {(?i)password:[[:space:]]*$} { exit 1 }
-    timeout { exit 1 }
+    -nocase -re {password:[[:space:]]*$} { preflight_fail "SSH requested a second password" }
+    timeout {
+        preflight_fail "command completion timed out after ${timeout}s (sentinel received: $saw_sentinel)"
+    }
     eof {}
 }
 
 if {!$saw_sentinel} {
-    exit 1
+    preflight_fail "SSH exited without the command sentinel"
 }
-set child_status [wait]
+if {[catch {wait} child_status] || [lindex $child_status 2] != 0} {
+    preflight_fail "could not collect the SSH exit status"
+}
+if {[llength $child_status] > 4} {
+    preflight_fail "SSH terminated abnormally"
+}
+if {[lindex $child_status 3] != 0} {
+    puts stderr "Password SSH preflight failed: SSH exited with status [lindex $child_status 3]"
+}
 exit [lindex $child_status 3]
 EXPECT
     then

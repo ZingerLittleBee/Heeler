@@ -56,7 +56,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=49
+expected_cases=58
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -1334,6 +1334,77 @@ else
 fi
 record_case "a successful sysadminctl never records the password" \
     "$reason" "$expect_status"
+
+echo
+echo "== password SSH preflight diagnoses failures without relaxing deadlines =="
+preflight_expect="$work/password-preflight.exp"
+awk '/^password_ssh_preflight\(\) \{$/ { in_function = 1 }
+     in_function && /<<'"'"'EXPECT'"'"'$/ { inside = 1; next }
+     inside && /^EXPECT$/ { exit }
+     inside { print }' "$gate_script" > "$preflight_expect"
+[[ -s "$preflight_expect" ]] || die "no password preflight expect script"
+grep -qFx 'set timeout 5' "$preflight_expect" \
+    || die "password preflight changed its original five-second deadline"
+perl -0pi -e 's/spawn \/usr\/bin\/ssh \\\n(?:    [^\n]*\\\n)*    \/bin\/echo HEELER_PASSWORD_SSH_PREFLIGHT_OK\n/spawn \$env(HEELER_FAKE_PASSWORD_SSH)\n/; s/^set timeout 5$/set timeout 1/m' \
+    "$preflight_expect"
+# shellcheck disable=SC2016
+grep -qF 'spawn $env(HEELER_FAKE_PASSWORD_SSH)' "$preflight_expect" \
+    || die "could not redirect the password preflight SSH spawn"
+
+preflight_case() {
+    local name=$1 body=$2 expected_status=$3 diagnostic=$4 label=$5
+    local output status reason=""
+    write_stand_in "$work/preflight-$name.sh" "$body"
+    output=$(
+        HEELER_FAKE_PASSWORD_SSH="$work/preflight-$name.sh" \
+        HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD="$fake_secret" \
+            /usr/bin/expect "$preflight_expect" 2>&1
+        printf 'STATUS=%s\n' "$?"
+    )
+    status=$(printf '%s\n' "$output" | sed -n 's/^STATUS=//p')
+    if [[ "$status" != "$expected_status" ]]; then
+        reason="status $status, expected $expected_status: $output"
+    elif [[ -n "$diagnostic" ]] && ! printf '%s\n' "$output" | grep -qF "$diagnostic"; then
+        reason="missing diagnostic: $output"
+    elif [[ -z "$diagnostic" && "$output" != "STATUS=0" ]]; then
+        reason="successful preflight was not silent: $output"
+    elif printf '%s\n' "$output" | grep -qF "$fake_secret"; then
+        reason="preflight exposed the password"
+    fi
+    record_case "$label" "$reason" "$status"
+}
+
+preflight_case success \
+    'printf "Password:"; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK' \
+    0 '' "password preflight requires the sentinel and zero SSH exit"
+preflight_case lowercase \
+    'printf "user@127.0.0.1\047s password: "; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK' \
+    0 '' "password preflight recognizes the real OpenSSH password prompt"
+preflight_case no-prompt 'echo "connection refused"; exit 255' \
+    1 'SSH exited before the password prompt' \
+    "password preflight diagnoses an exit before authentication"
+preflight_case prompt-timeout 'sleep 5' \
+    1 'password prompt timed out after 1s' \
+    "password preflight retains its bounded prompt wait"
+preflight_case completion-timeout \
+    'printf "Password:"; read -r pw; sleep 5; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK' \
+    1 'command completion timed out after 1s (sentinel received: 0)' \
+    "password preflight rejects slow command completion without a retry"
+preflight_case no-sentinel 'printf "Password:"; read -r pw; exit 0' \
+    1 'SSH exited without the command sentinel' \
+    "password preflight rejects zero exit without the sentinel"
+preflight_case failed-command \
+    'printf "Password:"; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK; exit 7' \
+    7 'SSH exited with status 7' \
+    "password preflight preserves a nonzero SSH exit after the sentinel"
+preflight_case second-prompt \
+    'printf "Password:"; read -r pw; printf "Password:"; read -r pw' \
+    1 'SSH requested a second password' \
+    "password preflight never resends the password"
+preflight_case no-eof \
+    'printf "Password:"; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK; sleep 5' \
+    1 'command completion timed out after 1s (sentinel received: 1)' \
+    "password preflight still requires command exit after the sentinel"
 
 echo
 # The point of the count: a harness that silently stops running cases would
