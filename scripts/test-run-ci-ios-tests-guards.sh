@@ -56,7 +56,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=58
+expected_cases=64
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -102,6 +102,7 @@ extract_shipped_function run_suite
 extract_shipped_function dump_fixture_logs
 extract_shipped_function preserve_failure_diagnostics
 extract_shipped_function cancel_background_build
+extract_shipped_function start_preparation_build
 extract_shipped_function record_phase
 extract_shipped_function cleanup
 extract_shipped_function clear_simulator_environment
@@ -1405,6 +1406,57 @@ preflight_case no-eof \
     'printf "Password:"; read -r pw; echo HEELER_PASSWORD_SSH_PREFLIGHT_OK; sleep 5' \
     1 'command completion timed out after 1s (sentinel received: 1)' \
     "password preflight still requires command exit after the sentinel"
+
+echo
+echo "== password fixture preparation precedes owned compilation =="
+# The extracted preparation function consumes these globals and build stub.
+# shellcheck disable=SC2034,SC2329
+for preparation_layout in ordinary transport session-weak all package serial; do
+    reason=""
+    if ! (
+        ci_lane=app
+        ci_app_shard=$preparation_layout
+        overlap_build=1
+        expected_simulator_build=1
+        expected_fixture_build=0
+        expected_label="Build for testing"
+        case "$preparation_layout" in
+            session-weak | all)
+                expected_simulator_build=0
+                expected_fixture_build=1 ;;
+            package)
+                ci_lane=package
+                ci_app_shard=all
+                expected_label="HeelerSSH package build" ;;
+            serial)
+                ci_app_shard=all
+                overlap_build=0
+                expected_simulator_build=0 ;;
+        esac
+        build_calls=0
+        start_background_build() {
+            [[ "$overlap_build" == 1 ]] || return 0
+            [[ "$1" == "$expected_label" ]] || exit 1
+            build_calls=$((build_calls + 1))
+        }
+        start_preparation_build simulator
+        [[ "$build_calls" == "$expected_simulator_build" ]] || exit 1
+        start_preparation_build fixtures
+        [[ "$build_calls" == "$((expected_simulator_build + expected_fixture_build))" ]]
+    ); then
+        reason="owned build started in the wrong phase for $preparation_layout"
+    fi
+    record_case "$preparation_layout preserves compilation ownership and fixture ordering" \
+        "$reason" 0
+done
+
+awk '
+    /^start_preparation_build simulator$/ { early = NR; early_count++ }
+    /record_phase password-preflight/ { preflight = NR }
+    /^start_preparation_build fixtures$/ { late = NR; late_count++ }
+    END { exit (early_count == 1 && late_count == 1 && early < preflight \
+        && preflight < late) ? 0 : 1 }
+' "$gate_script" || die "preparation build call sites must surround the password preflight"
 
 echo
 # The point of the count: a harness that silently stops running cases would

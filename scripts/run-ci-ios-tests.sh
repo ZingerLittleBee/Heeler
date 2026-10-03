@@ -261,6 +261,20 @@ start_background_build() {
     background_build_pid=$!
 }
 
+start_preparation_build() {
+    local phase=$1
+    local build_phase=simulator
+    if [[ "$ci_lane" == app && ( "$ci_app_shard" == all || "$ci_app_shard" == session-weak ) ]]; then
+        build_phase=fixtures
+    fi
+    [[ "$phase" == "$build_phase" ]] || return 0
+    if [[ "$ci_lane" == app ]]; then
+        start_background_build "Build for testing"
+    else
+        start_background_build "HeelerSSH package build"
+    fi
+}
+
 cancel_background_build() {
     local pid=${background_build_pid:-}
     [[ -n "$pid" ]] || return 0
@@ -1449,11 +1463,7 @@ if [[ -z "$simulator_udid" ]]; then
 fi
 printf 'Claimed simulator %s\n' "$simulator_udid" >&2
 simulator_destination="platform=iOS Simulator,id=$simulator_udid"
-if [[ "$ci_lane" == app ]]; then
-    start_background_build "Build for testing"
-else
-    start_background_build "HeelerSSH package build"
-fi
+start_preparation_build simulator
 # Kick the boot off now and wait for it only after build-for-testing below:
 # compilation needs the destination to exist, not to be booted, so boot
 # happens under fixture provisioning and build instead of in front of them.
@@ -2313,6 +2323,7 @@ if [[ "$password_fixture_available" != "1" ]]; then
     session_skip_count=2
 fi
 echo "==> Preparation finished at t+${SECONDS}s for app/$ci_app_shard"
+start_preparation_build fixtures
 # Build once per worker, joining the owned build if preparation overlapped it.
 # Keep the test manifest's gate flag explicit even before fixture setup.
 export HEELER_SSH_E2E_REQUIRED=1
