@@ -130,6 +130,11 @@ class Connection:
         self.lock = threading.Lock()
         self.is_cut = False
         self.stopped = threading.Event()
+        # These two fixture-owned endpoints are shared only by this pair of
+        # pumps. Nonblocking mode keeps every write cancellable on Darwin too,
+        # where MSG_DONTWAIT alone does not prevent send-buffer waits.
+        self.client.setblocking(False)
+        self.upstream.setblocking(False)
 
     def serve(self) -> None:
         threads = [
@@ -253,6 +258,10 @@ class Connection:
                 if ready:
                     try:
                         chunk = source.recv(min(RECEIVE_BYTES, PENDING_BYTES - pending_bytes))
+                    except BlockingIOError:
+                        # Readiness can change before recv; try the selector
+                        # again without treating a transient EAGAIN as EOF.
+                        continue
                     except OSError as error:
                         metrics["exitReason"] = "receiveError"
                         metrics["socketErrorCode"] = error.errno
@@ -292,17 +301,35 @@ class Connection:
                     return
                 send_started = time.monotonic()
                 try:
-                    destination.sendall(segment)
-                except OSError as error:
+                    sent = 0
+                    while sent < len(segment):
+                        if self.stopped.is_set():
+                            return
+                        # Nonblocking sends let cut interrupt a peer that
+                        # stopped reading without issuing a graceful shutdown
+                        # before the reset. Reserve tokens once per segment,
+                        # then account only for bytes each short write sent.
+                        try:
+                            count = destination.send(segment[sent:])
+                        except BlockingIOError:
+                            select.select([], [destination], [], POLL_SECONDS)
+                            continue
+                        if count == 0:
+                            metrics["exitReason"] = "sendZero"
+                            self.close()
+                            return
+                        sent += count
+                        metrics["deliveredBytes"] += count
+                        self.proxy.count(direction, count)
+                        pending_bytes -= count
+                        delivery.offset += count
+                except (OSError, ValueError) as error:
                     metrics["exitReason"] = "sendError"
-                    metrics["socketErrorCode"] = error.errno
+                    metrics["socketErrorCode"] = getattr(error, "errno", None)
                     self.close()
                     return
-                metrics["sendWaitSeconds"] += time.monotonic() - send_started
-                metrics["deliveredBytes"] += len(segment)
-                self.proxy.count(direction, len(segment))
-                pending_bytes -= len(segment)
-                delivery.offset += len(segment)
+                finally:
+                    metrics["sendWaitSeconds"] += time.monotonic() - send_started
                 if delivery.offset == len(chunk):
                     pending.popleft()
         finally:

@@ -63,14 +63,54 @@ class RecordWrites:
         self.writes = []
         self.first_write = None
 
-    def sendall(self, chunk):
-        if self.first_write is None:
-            self.first_write = time.monotonic()
-        self.writes.append(len(chunk))
-        self.endpoint.sendall(chunk)
+    def send(self, chunk):
+        count = self.endpoint.send(chunk)
+        if count:
+            if self.first_write is None:
+                self.first_write = time.monotonic()
+            self.writes.append(count)
+        return count
 
     def shutdown(self, direction):
         self.endpoint.shutdown(direction)
+
+
+class WriteActivity:
+    """Observe real TCP writes that return EAGAIN with unsent bytes."""
+
+    def __init__(self, endpoint):
+        self.endpoint = endpoint
+        self.condition = threading.Condition()
+        self.unsent = 0
+
+    def __getattr__(self, name):
+        return getattr(self.endpoint, name)
+
+    def send(self, chunk):
+        try:
+            count = self.endpoint.send(chunk)
+        except BlockingIOError:
+            with self.condition:
+                self.unsent = len(chunk)
+                self.condition.notify_all()
+            raise
+        with self.condition:
+            self.unsent = 0
+            self.condition.notify_all()
+        return count
+
+    def wait_for_backpressure(self, timeout):
+        deadline = time.monotonic() + timeout
+        with self.condition:
+            while True:
+                if self.unsent and not select.select([], [self.endpoint], [], 0)[1]:
+                    return True
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                # Actual send outcomes wake this condition; a bounded poll
+                # also observes kernel readiness changes while bytes remain.
+                self.condition.wait(timeout=min(remaining, 0.01))
 
 
 class Forwarding:
@@ -127,12 +167,13 @@ class Forwarding:
 class BidirectionalForwarding:
     """Exercise the production serve/join/forget lifecycle with real TCP peers."""
 
-    def __init__(self, profile):
+    def __init__(self, profile, observe_writes=False):
         self.client, ingress = tcp_pair()
         egress, self.server = tcp_pair()
         self.proxy = proxy_module.Proxy(0, 0, "127.0.0.1", 0)
         self.proxy._handle({"command": "profile", "profile": profile})
-        self.connection = proxy_module.Connection(1, ingress, egress, self.proxy)
+        self.writes = WriteActivity(egress) if observe_writes else None
+        self.connection = proxy_module.Connection(1, ingress, self.writes or egress, self.proxy)
         with self.proxy.lock:
             self.proxy.connections.append(self.connection)
             self.proxy.accepted += 1
@@ -159,8 +200,8 @@ class WeakNetworkProxyTests(unittest.TestCase):
         self.addCleanup(forwarding.close)
         return forwarding
 
-    def bidirectional(self, profile=DEGRADED):
-        forwarding = BidirectionalForwarding(profile)
+    def bidirectional(self, profile=DEGRADED, observe_writes=False):
+        forwarding = BidirectionalForwarding(profile, observe_writes)
         self.addCleanup(forwarding.close)
         return forwarding
 
@@ -241,22 +282,49 @@ class WeakNetworkProxyTests(unittest.TestCase):
                 endpoint.recv(1)
 
     def test_cut_interrupts_a_full_connection_blocked_on_destination_writes(self):
-        forwarding = self.bidirectional({})
+        forwarding = self.bidirectional({}, observe_writes=True)
         for endpoint in (forwarding.client, forwarding.server,
                          forwarding.connection.client, forwarding.connection.upstream):
             endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
             endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
-        # A stalled real peer eventually backpressures the entire TCP path.
-        # Timeout and write readiness establish the blocked state, not a sleep.
+        # Keep the real sender active until an actual pump send returns EAGAIN
+        # against the stalled peer. A client timeout need not fill the downstream
+        # socket yet, especially when the two pumps are scheduled differently.
         forwarding.client.settimeout(0.1)
-        with self.assertRaises(TimeoutError):
-            forwarding.client.sendall(b"x" * (16 * 1024 * 1024))
-        self.assertEqual(select.select([], [forwarding.connection.upstream], [], 0)[1], [])
-        self.assertTrue(forwarding.thread.is_alive())
-        self.assertEqual(forwarding.proxy._handle({"command": "cut"})["cutConnections"], 1)
-        forwarding.thread.join(timeout=1)
-        self.assertFalse(forwarding.thread.is_alive(), "cut did not interrupt a blocking sendall")
-        self.assertEqual(forwarding.live_connections(), 0)
+        sender_stopped = threading.Event()
+        sender_timed_out = threading.Event()
+        sender_errors = []
+
+        def send_until_cut():
+            while not sender_stopped.is_set():
+                try:
+                    forwarding.client.sendall(b"x" * 65536)
+                except TimeoutError:
+                    sender_timed_out.set()
+                except OSError as error:
+                    if not sender_stopped.is_set():
+                        sender_errors.append(error)
+                    return
+
+        sender = threading.Thread(target=send_until_cut, daemon=True)
+        sender.start()
+        try:
+            self.assertTrue(sender_timed_out.wait(timeout=5), "sender never encountered backpressure")
+            self.assertTrue(forwarding.writes.wait_for_backpressure(timeout=5),
+                            "pump never encountered EAGAIN with unsent destination bytes")
+            self.assertEqual(sender_errors, [])
+            self.assertTrue(forwarding.thread.is_alive())
+            sender_stopped.set()
+            self.assertEqual(forwarding.proxy._handle({"command": "cut"})["cutConnections"], 1)
+            forwarding.thread.join(timeout=1)
+            self.assertFalse(forwarding.thread.is_alive(), "cut did not interrupt the backpressured pump")
+            self.assertEqual(forwarding.live_connections(), 0)
+        finally:
+            sender_stopped.set()
+            with contextlib.suppress(OSError):
+                forwarding.client.shutdown(socket.SHUT_RDWR)
+            sender.join(timeout=1)
+        self.assertFalse(sender.is_alive(), "sender did not stop after cut")
 
     def test_cut_keeps_reset_preparation_atomic_with_normal_cleanup(self):
         forwarding = self.bidirectional({})
