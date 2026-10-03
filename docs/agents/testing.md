@@ -60,13 +60,16 @@ project is complete.
 
 ## Intermittent CI diagnosis
 
-The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml), called through the existing `ci.yml` entrypoint, builds once and repeats the original TOFU, staging recovery, or weak-network Changes assertions with fresh per-round state. It preserves their individual deadlines and captures real SSH fixture logs. `staging` selects the whole eight-method suite to retain preceding window lifecycles; `staging-method` isolates the recovery method. Defaults are 50 SSH, 20 staging, and 10 weak rounds. Repeated weak diagnostics have a 30-minute outer deadlock limit, while normal merge CI keeps two minutes and every read still asserts the original 10-second deadline. Diagnostic artifacts never establish complete coverage or replace the normal merge gate.
+The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml), called through the existing `ci.yml` entrypoint, builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole eight-method suite to retain preceding window lifecycles; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to normal merge CI or the existing `all` diagnostic.
+
+Repeated weak and layout diagnostics have a 30-minute outer deadlock limit. Normal merge CI retains the weak suite's two-minute limit and the layout suite's one-minute limit; every weak read still asserts its original 10-second deadline, and both layout setup waits retain eight seconds. Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace the normal merge gate.
 
 ```sh
 gh workflow run ci.yml --ref <candidate-branch> -f diagnostic_target=all
+gh workflow run ci.yml --ref <candidate-branch> -f diagnostic_target=layout -f diagnostic_iterations=20
 ```
 
-The committed-project entrypoint is `make test-ci-diagnostics` with `HEELER_CI_DIAGNOSTIC_TARGET` and optional `HEELER_CI_DIAGNOSTIC_ITERATIONS` environment variables. Every selected test and requested round must pass; a missing completion marker or skip fails the diagnostic command. `make test-ci-diagnostic-controls` verifies these guards without Xcode, and `make test-weak-network-proxy` exercises propagation, bandwidth, bounded buffering and cleanup over real local TCP.
+The committed-project entrypoint is `make test-ci-diagnostics` with `HEELER_CI_DIAGNOSTIC_TARGET` and optional `HEELER_CI_DIAGNOSTIC_ITERATIONS` environment variables. Counts must be integers from 1 through 100. For layout, the runner passes the count as `HEELER_DIFF_LAYOUT_ITERATIONS` and requires eight executed tests plus `[diff-layout-test] completed N iterations`. Every selected test and requested round must pass; a missing or mismatched completion marker or any skip fails the diagnostic command. Fixture and iteration variables follow a replacement Simulator during destination recovery and are cleared from the shell and current Simulator during runner cleanup. `make test-ci-diagnostic-controls` verifies the workflow isolation, source contracts and fake native-boundary execution guards without Xcode; it does not prove native layout behavior. `make test-weak-network-proxy` exercises propagation, bandwidth, bounded buffering and cleanup over real local TCP.
 
 ## Build outputs and concurrency
 

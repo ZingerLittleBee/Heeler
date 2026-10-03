@@ -59,10 +59,10 @@ on:
       diagnostic_target:
         description: Optional isolated feedback; never the complete coverage gate
         type: choice
-        options: [none, all, ssh-jump, staging, staging-method, weak]
+        options: [none, all, ssh-jump, staging, staging-method, weak, layout]
         default: none
       diagnostic_iterations:
-        description: Optional 1-100 rounds; defaults to SSH 50, staging 20, weak 10
+        description: Optional 1-100 rounds; defaults to SSH 50, staging/layout 20, weak 10
         type: string
         default: ''
   pull_request:

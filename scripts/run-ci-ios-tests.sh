@@ -72,6 +72,13 @@ configure_diagnostic_lane() {
             diagnostic_expected_tests=1
             ci_diagnostic_iterations="${ci_diagnostic_iterations:-10}"
             ;;
+        layout)
+            ci_app_shard=ordinary
+            diagnostic_selector=FileDiffLayoutViewTests
+            diagnostic_iteration_variable=HEELER_DIFF_LAYOUT_ITERATIONS
+            diagnostic_expected_tests=8
+            ci_diagnostic_iterations="${ci_diagnostic_iterations:-20}"
+            ;;
         *) echo "Invalid HEELER_CI_DIAGNOSTIC_TARGET: $ci_diagnostic_target" >&2; return 2 ;;
     esac
     if [[ ! "$ci_diagnostic_iterations" =~ ^([1-9][0-9]?|100)$ ]]; then
@@ -82,6 +89,7 @@ configure_diagnostic_lane() {
         ssh-jump) diagnostic_completion_marker="[jump-tofu] iteration=$ci_diagnostic_iterations/$ci_diagnostic_iterations step=complete" ;;
         staging | staging-method) diagnostic_completion_marker="[attach-staging-test] completed $ci_diagnostic_iterations iterations" ;;
         weak) diagnostic_completion_marker="[weak-changes-test] completed $ci_diagnostic_iterations iterations" ;;
+        layout) diagnostic_completion_marker="[diff-layout-test] completed $ci_diagnostic_iterations iterations" ;;
     esac
     export HEELER_CI_APP_SHARD="$ci_app_shard"
 }
@@ -737,7 +745,8 @@ clear_simulator_environment() {
         HEELER_PAIRING_E2E_CONFIG \
         HEELER_SSH_JUMP_TOFU_ITERATIONS \
         HEELER_STAGING_RECOVERY_ITERATIONS \
-        HEELER_WEAK_CHANGES_ITERATIONS; do
+        HEELER_WEAK_CHANGES_ITERATIONS \
+        HEELER_DIFF_LAYOUT_ITERATIONS; do
         # launchctl takes one variable per call and each `simctl spawn` costs
         # seconds; run the round trips concurrently and collect them below.
         if [[ -n "$simulator_udid" ]]; then

@@ -15,10 +15,10 @@ on:
       target:
         description: Isolated flaky-test feedback; never a full coverage gate
         type: choice
-        options: [all, ssh-jump, staging, staging-method, weak]
+        options: [all, ssh-jump, staging, staging-method, weak, layout]
         default: all
       iterations:
-        description: Optional 1-100 repetitions; defaults to SSH 50, staging 20, weak 10
+        description: Optional 1-100 repetitions; defaults to SSH 50, staging/layout 20, weak 10
         type: string
         default: ''
 
