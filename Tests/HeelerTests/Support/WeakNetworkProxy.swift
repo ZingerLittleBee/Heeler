@@ -6,6 +6,11 @@ import Foundation
 /// and scheduling still vary with the OS; the jitter sequence repeats for the
 /// same boundaries. Propagation is scheduled on receipt and can overlap across
 /// chunks, while the byte budget and destination write limit remain bounded.
+///
+/// Applying a profile to a live link keeps the propagation delay of bytes the
+/// proxy already holds, but meters and fragments those bytes under the new
+/// budget. Restoring bandwidth therefore also releases bytes queued under a
+/// starved profile, including a write still waiting for budget.
 struct WeakNetworkProfile: Sendable, Codable, Equatable {
     /// Delivery delay scheduled from each chunk's receipt, overlapping later chunks.
     var latencyMillis: Double = 0

@@ -10,6 +10,7 @@ import random
 import select
 import socket
 import struct
+import sys
 import threading
 import time
 import unittest
@@ -17,6 +18,7 @@ import unittest
 SPEC = importlib.util.spec_from_file_location(
     "weak_network_proxy", Path(__file__).parent / "fixtures" / "weak-network-proxy.py")
 proxy_module = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = proxy_module
 SPEC.loader.exec_module(proxy_module)
 
 DEGRADED = {
@@ -401,9 +403,11 @@ class WeakNetworkProxyTests(unittest.TestCase):
         reservations = []
 
         class RecordTokenBucket(original_bucket):
-            def consume(self, count, stopped=None):
-                reservations.append(count)
-                return super().consume(count, stopped)
+            def consume(self, count, *arguments):
+                consumed = super().consume(count, *arguments)
+                if consumed:
+                    reservations.append(count)
+                return consumed
 
         proxy_module.TokenBucket = RecordTokenBucket
         self.addCleanup(setattr, proxy_module, "TokenBucket", original_bucket)
@@ -458,7 +462,7 @@ class WeakNetworkProxyTests(unittest.TestCase):
             if not snapshots:
                 # The real accessor has returned the old immutable profile.
                 # Changing the proxy while this return is paused cannot change
-                # the object the pump will enqueue for its first chunk.
+                # the propagation delay the pump schedules for its first chunk.
                 snapshots.append(profile)
                 captured.set()
                 release.wait(timeout=2)
@@ -479,6 +483,28 @@ class WeakNetworkProxyTests(unittest.TestCase):
             output.extend(chunk)
         self.assertEqual(output, b"AB")
         self.assertGreaterEqual(forwarding.destination.first_write - started, 0.2)
+
+    def test_live_profile_change_meters_queued_bytes_under_the_new_budget(self):
+        # One 256-byte segment needs three more seconds of a 64 B/s budget.
+        forwarding = self.forwarding({"bandwidthBytesPerSecond": 64, "segmentBytes": 256})
+        payload = bytes(range(256)) * 4
+        forwarding.sender.sendall(payload)
+        self.assertTrue(forwarding.source.received.wait(timeout=1))
+        time.sleep(0.2)
+        self.assertEqual(forwarding.destination.writes, [], "the starved budget was not in force")
+        restored = time.monotonic()
+        forwarding.profile({"segmentBytes": 128})
+        forwarding.receiver.settimeout(2)
+        output = bytearray()
+        with contextlib.suppress(TimeoutError):
+            while len(output) < len(payload) and (chunk := forwarding.receiver.recv(65536)):
+                output.extend(chunk)
+        elapsed = time.monotonic() - restored
+        # Restoring the link releases the queued bytes and the write already
+        # waiting for budget, and their segments follow the new profile.
+        self.assertLess(elapsed, 1, f"queued bytes kept the starved budget for {elapsed:.2f}s")
+        self.assertEqual(output, payload)
+        self.assertLessEqual(max(forwarding.destination.writes), 128)
 
     def test_cut_interrupts_bandwidth_starvation_and_counts_once(self):
         forwarding = self.forwarding({"bandwidthBytesPerSecond": 1, "segmentBytes": 512})

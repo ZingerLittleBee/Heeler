@@ -1764,8 +1764,8 @@ fake_herdr_pid=$!
 # The weak-network route. `pfctl`/`dummynet` need root and the Network Link
 # Conditioner is machine-wide, so degrade one TCP path instead: the suite
 # points its Host at this port and steers latency, bandwidth, fragmentation
-# and abrupt severance through the control port. Deterministic by construction
-# — every knob is a fixed duration or a byte count.
+# and abrupt severance through the control port. Every knob is a fixed
+# duration, seed, or byte count; OS receive boundaries and scheduling still vary.
 "$fixture_python" scripts/fixtures/weak-network-proxy.py \
     --listen-port "$weak_network_port" \
     --control-port "$weak_network_control_port" \

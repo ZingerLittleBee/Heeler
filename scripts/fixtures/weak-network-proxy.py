@@ -13,6 +13,11 @@
 # the same receive boundaries. Receive boundaries themselves are OS-dependent,
 # so their propagation waits must overlap instead of limiting stream throughput.
 #
+# A profile change reaches live links at two points. Propagation delay is fixed
+# when a chunk arrives, so bytes already in flight keep it. The byte budget and
+# segment size apply when bytes leave, so queued bytes, including a write still
+# waiting for budget, move to the new rate instead of draining at the old one.
+#
 # Control protocol, one JSON request line per connection, one JSON response
 # line back, then close (the same shape as the herdr API socket):
 #
@@ -21,8 +26,11 @@
 #   {"command": "cut"}                        RST every live proxied connection
 #   {"command": "stats"}                      counters since the last reset
 
+from __future__ import annotations
+
 import argparse
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 import json
 import random
@@ -47,17 +55,19 @@ def parse_arguments() -> argparse.Namespace:
 
 
 class Profile:
-    """One deterministic impairment recipe, applied per direction."""
+    """One impairment recipe, applied to each direction separately."""
 
     def __init__(self, values: object = None) -> None:
         values = values if isinstance(values, dict) else {}
         # Delivery delay from each chunk's arrival, independent of later
-        # arrivals. Propagation overlaps across a stream; sleeping before the
-        # next receive would add an unintended recv-dependent rate limit.
+        # arrivals and later profiles. Propagation overlaps across a stream;
+        # sleeping before the next receive would add an unintended
+        # recv-dependent rate limit.
         self.latency_millis = float(values.get("latencyMillis", 0))
         self.jitter_millis = float(values.get("jitterMillis", 0))
         self.jitter_seed = int(values.get("jitterSeed", 0))
-        # Token bucket, refilled continuously; 0 disables the cap.
+        # Token bucket, refilled continuously; 0 disables the cap. Charged when
+        # bytes leave, so a new profile also meters bytes already queued.
         self.bandwidth_bytes_per_second = int(values.get("bandwidthBytesPerSecond", 0))
         # Largest single write onto the destination socket. Small values force
         # the peer through many partial reads and EAGAIN cycles, which is the
@@ -82,7 +92,14 @@ class TokenBucket:
         self.available = float(bytes_per_second)
         self.updated_at = time.monotonic()
 
-    def consume(self, count: int, stopped: threading.Event | None = None) -> bool:
+    def consume(self, count: int, stopped: threading.Event | None = None,
+                superseded: Callable[[], bool] | None = None) -> bool:
+        """Takes `count` bytes of budget, waiting for the refill if needed.
+
+        Returns False without taking any budget once `stopped` is set, or when
+        `superseded` reports, at least once per poll interval of waiting, that
+        the caller should plan the write again under a newer profile.
+        """
         if self.bytes_per_second <= 0:
             return True
         # The ceiling must admit the request itself. Clamping at one second's
@@ -103,7 +120,11 @@ class TokenBucket:
             if self.available >= count:
                 self.available -= count
                 return True
+            if superseded is not None and superseded():
+                return False
             wait = (count - self.available) / self.bytes_per_second
+            if superseded is not None:
+                wait = min(wait, POLL_SECONDS)
             if stopped is None:
                 time.sleep(wait)
             elif stopped.wait(wait):
@@ -113,7 +134,6 @@ class TokenBucket:
 @dataclass
 class PendingChunk:
     ready_at: float
-    profile: Profile
     data: bytes
     offset: int = 0
 
@@ -199,10 +219,12 @@ class Connection:
 
     def _pump(self, source: socket.socket, destination: socket.socket,
               direction: str) -> None:
-        # The profile is re-read once per chunk rather than snapshotted at
-        # accept, so a test can degrade a link that is already carrying an SSH
-        # session. Re-reading at a chunk boundary keeps the change observable
-        # at a well-defined point instead of part-way through a write.
+        # The profile is re-read rather than snapshotted at accept, so a test
+        # can degrade or restore a link that is already carrying an SSH
+        # session. Each received chunk fixes its propagation delay; each
+        # segment write reads the budget and segment size, so the change is
+        # observable at a well-defined point instead of part-way through a
+        # write, and restoring a link also releases bytes already queued.
         bucket = TokenBucket(0)
         jitter = None
         pending: deque[PendingChunk] = deque()
@@ -277,7 +299,7 @@ class Connection:
                         delay = profile.latency_millis
                         if profile.jitter_millis > 0:
                             delay += jitter.uniform(0, profile.jitter_millis)
-                        pending.append(PendingChunk(received_at + delay / 1000, profile, chunk))
+                        pending.append(PendingChunk(received_at + delay / 1000, chunk))
                         pending_bytes += len(chunk)
                         metrics["receivedChunks"] += 1
                         metrics["receivedBytes"] += len(chunk)
@@ -289,16 +311,23 @@ class Connection:
                 if not pending or pending[0].ready_at > time.monotonic():
                     continue
                 delivery = pending[0]
-                profile, chunk, offset = delivery.profile, delivery.data, delivery.offset
+                chunk, offset = delivery.data, delivery.offset
+                profile = self.proxy.current_profile()
                 if bucket.bytes_per_second != profile.bandwidth_bytes_per_second:
                     bucket = TokenBucket(profile.bandwidth_bytes_per_second)
                 span = profile.segment_bytes if profile.segment_bytes > 0 else len(chunk)
                 segment = chunk[offset : offset + span]
                 token_started = time.monotonic()
-                consumed = bucket.consume(len(segment), self.stopped)
+                consumed = bucket.consume(
+                    len(segment), self.stopped,
+                    lambda: self.proxy.current_profile() is not profile)
                 metrics["tokenWaitSeconds"] += time.monotonic() - token_started
                 if not consumed:
-                    return
+                    if self.stopped.is_set():
+                        return
+                    # A new profile arrived while this segment waited for
+                    # budget; plan the same bytes again under it.
+                    continue
                 send_started = time.monotonic()
                 try:
                     sent = 0

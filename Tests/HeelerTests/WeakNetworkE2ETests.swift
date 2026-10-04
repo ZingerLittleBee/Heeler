@@ -248,6 +248,10 @@ struct WeakNetworkE2ETests {
         try await fixture.control.apply(.starved)
         let started = ContinuousClock.now
         let recovery = TimeoutRecoveryRecorder()
+        // Restore the link at the timeout boundary, before the timed-out
+        // channel's two-second close exchange. The proxy re-meters bytes it
+        // already holds, so a starved response queued ahead of the remote
+        // close no longer drains at 64 bytes per second.
         await transport.runNextStreamLocalTimeoutHookForTesting {
             try #require(started.duration(to: .now) >= .seconds(4))
             try await fixture.control.apply(.degraded)
