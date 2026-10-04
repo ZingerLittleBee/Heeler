@@ -254,12 +254,17 @@ jobs:
 
       # These checks exercise the same shipped helpers and process behavior on
       # macOS. Run them once in this mandatory worker so app builds can start
-      # immediately; the aggregate requires this worker to pass as well.
+      # immediately; the aggregate requires this worker to pass as well. The
+      # diagnostic controls also run in Agent tooling, but only this runner's
+      # /bin/bash 3.2 matches the script that CI executes.
       - name: Test CI watchdog
         run: make test-ci-watchdog
 
       - name: Test CI gate guards
         run: make test-ci-guards
+
+      - name: Test CI diagnostic controls
+        run: make test-ci-diagnostic-controls
 
       - name: Run package E2E
         timeout-minutes: 12
