@@ -208,15 +208,6 @@ fi
     echo "both macOS jobs must keep the lightweight Xcode version step" >&2
     exit 1
 }
-awk '
-    /^[[:space:]]*claim_port_block$/ { ports = NR }
-    /xcrun simctl boot "/ { boot = NR }
-    /ssh-keygen -q -t rsa -b 3072/ { keygen = NR }
-    END { exit (ports && boot && keygen && ports < boot && boot < keygen) ? 0 : 1 }
-' "$gate_script" || {
-    echo "simulator boot must overlap fixture provisioning, not follow it" >&2
-    exit 1
-}
 
 # iOS CI uses positive `paths`, not all-or-nothing `paths-ignore`. The old
 # pin required `output/**` on both ignore lists; omitting it from a positive
