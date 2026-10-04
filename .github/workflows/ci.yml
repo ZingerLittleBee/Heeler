@@ -252,6 +252,16 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      # An early failure still uploads an evidence directory, so the upload
+      # reports only the failure that stopped the worker.
+      - name: Record checkout identity
+        run: |
+          mkdir -p "$HEELER_CI_EVIDENCE_DIR"
+          {
+            printf 'checkout_sha=%s\nevent_sha=%s\n' "$(git rev-parse HEAD)" "$GITHUB_SHA"
+            printf 'image_version=%s\n' "${ImageVersion:-unknown}"
+          } > "$HEELER_CI_EVIDENCE_DIR/run-settings.txt"
+
       # These checks exercise the same shipped helpers and process behavior on
       # macOS. Run them once in this mandatory worker so app builds can start
       # immediately; the aggregate requires this worker to pass as well. The
