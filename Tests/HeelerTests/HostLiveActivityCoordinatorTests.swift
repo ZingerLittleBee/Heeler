@@ -52,9 +52,30 @@ struct HostLiveActivityCoordinatorTests {
     private func tearDown() async {
         let coordinators = world.coordinators
         world.coordinators.removeAll()
-        controller.finishStreams()
-        for coordinator in coordinators { await coordinator.stop() }
+        let controller = controller
+        for coordinator in coordinators {
+            do {
+                try await stopWithDeadline(coordinator) { await controller.finishStreams() }
+            } catch {
+                Issue.record("stop() did not end the coordinator's tasks: \(error)")
+            }
+        }
+        // The streams are still open, so only stop()'s own cancellation can
+        // have ended the subscriptions.
         #expect(controller.tokenSubscriberCount == 0)
+        controller.finishStreams()
+    }
+
+    /// A `stop()` that stopped cancelling a task it joins would wait forever.
+    /// `onTimeout` unblocks that task, so the failure surfaces here rather
+    /// than at the run watchdog.
+    private func stopWithDeadline(
+        _ coordinator: HostLiveActivityCoordinator,
+        onTimeout: @escaping @Sendable () async -> Void
+    ) async throws {
+        try await AsyncDeadline.run(for: .seconds(5), onTimeout: onTimeout) {
+            await coordinator.stop()
+        }
     }
 
     private func printTrace() {
@@ -184,6 +205,29 @@ struct HostLiveActivityCoordinatorTests {
         #expect(controller.tokenSubscriberCount == 0)
     }
 
+    @Test func droppingTheLastOwnerEndsItsSubscriptionsWithoutStop() async throws {
+        weak var owner: HostLiveActivityCoordinator?
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            do {
+                let coordinator = makeCoordinator(defaults: defaults)
+                owner = coordinator
+                coordinator.start()
+                coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            }
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            #expect(controller.tokenSubscriberCount == 1)
+            // The streams stay open and stop() never runs, so a subscription
+            // task that held the coordinator would keep it alive from here.
+            world.coordinators.removeAll()
+            try await waitUntil("no subscription task should retain the coordinator") { owner == nil }
+            try await waitUntil("deinit should cancel the token subscription") {
+                controller.tokenSubscriberCount == 0
+            }
+        }
+    }
+
     @Test func stoppingCancelsAnInFlightTokenWrite() async throws {
         try await withFixture { defaults in
             try await registerDevice()
@@ -200,10 +244,13 @@ struct HostLiveActivityCoordinatorTests {
             try await waitUntil("the token write should reach the barrier") {
                 await transport.notificationRegistrationWriteIsBlocked
             }
-            await coordinator.stop()
-            await gate.release()
+            try await stopWithDeadline(coordinator) { await gate.release() }
+            // The barrier is still closed: cancellation alone ended the write,
+            // before it recorded anything.
+            #expect(await !transport.notificationRegistrationWriteIsBlocked)
             #expect(await transport.replacedNotificationRegistrations.count == writes)
             #expect(try await liveActivityToken() == nil)
+            await gate.release()
         }
     }
 

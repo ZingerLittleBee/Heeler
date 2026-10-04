@@ -240,8 +240,9 @@ class LifecycleContracts(unittest.TestCase):
         test = block(source, "stoppingCancelsAnInFlightTokenWrite")
         self.assertIn("CancellablePhaseGate()", test)
         self.assertIn("notificationRegistrationWriteIsBlocked", test)
-        self.assertIn("await coordinator.stop()", test)
+        self.assertLess(test.index("try await stopWithDeadline(coordinator)"), test.index("await gate.release()"))
         self.assertNotIn("Task.sleep", test)
+        self.assertIn("await coordinator.stop()", block(source, "stopWithDeadline"))
         block(source, "fixtureTeardownReleasesTheCoordinatorAndSubscriptions")
         block(read("Tests/HeelerTests/ChangesReferenceViewTests.swift"), "failingWindowScopeStillDetachesTheHostingRoot")
 
