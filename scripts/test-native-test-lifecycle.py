@@ -26,6 +26,26 @@ def block(source: str, name: str) -> str:
 
 
 class LifecycleContracts(unittest.TestCase):
+    def test_foreground_failure_waits_for_the_live_pane_stream_before_closing(self):
+        source = read("Tests/HeelerTests/AppForegroundRecoveryTests.swift")
+        body = block(source, "aFailedHostIsAskedAgainWhicheverNonRetryableClassStoppedIt")
+        self.assertIn("waitUntilPaneResubscribeSettles(on: stopped)", body)
+        self.assertLess(body.index("waitUntilPaneResubscribeSettles(on: stopped)"),
+                        body.index("try await stopped.close()"))
+        self.assertIn("withClosingRecoveryDriver", body)
+        self.assertNotIn("store.setHosts([])", body)
+        cleanup = block(source, "withClosingRecoveryDriver")
+        self.assertEqual(cleanup.count("await tearDown()"), 2)
+        self.assertIn("driver.cancel()", cleanup)
+        self.assertIn("await driver.value", cleanup)
+        self.assertIn("await store.suspend()", cleanup)
+        self.assertLess(cleanup.index("await driver.value"),
+                        cleanup.index("await store.suspend()"))
+        self.assertLess(cleanup.index("await store.suspend()"),
+                        cleanup.index("store.setHosts([])"))
+        self.assertIn("throw error", cleanup)
+        self.assertIn("timeout: Duration = .seconds(5)", source)
+
     def test_attach_preparation_traces_main_actor_admission_before_the_executor_hop(self):
         source = block(read("Sources/Heeler/Attachments/ComposerStagingStore.swift"), "runSelection")
         self.assertRegex(source, r'#if DEBUG\s+imageAdapter\.preparationObserverForTesting\?\("selection started"\)\s+#endif')

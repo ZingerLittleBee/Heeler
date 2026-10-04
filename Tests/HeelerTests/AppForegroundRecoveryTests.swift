@@ -519,27 +519,27 @@ struct AppForegroundRecoveryTests {
         let driver = Task {
             await ConsoleActivityDriver(activity: activity, console: store).run()
         }
-        defer { driver.cancel() }
+        try await withClosingRecoveryDriver(driver, store: store) {
+            store.setHosts([host])
+            await store.resume()
+            try await waitUntil("the Host should come up connected") {
+                store.hostStatuses[host.id] == .connected
+            }
+            try await waitUntilPaneResubscribeSettles(on: stopped)
 
-        store.setHosts([host])
-        await store.resume()
-        try await waitUntil("the Host should come up connected") {
-            store.hostStatuses[host.id] == .connected
-        }
+            // The link goes away while the app is out, and the re-dial that
+            // follows is refused for a reason no reconnect can repair.
+            try await stopped.close()
+            try await waitUntil("the refused dial should fail the Host") {
+                store.hostStatuses[host.id] == .failed(failure)
+            }
 
-        // The link goes away while the app is out, and the re-dial that
-        // follows is refused for a reason no reconnect can repair.
-        try await stopped.close()
-        try await waitUntil("the refused dial should fail the Host") {
-            store.hostStatuses[host.id] == .failed(failure)
+            activity.didEnterBackground()
+            activity.didBecomeActive()
+            try await waitUntil("coming back should ask this Host again too") {
+                store.hostStatuses[host.id] == .connected
+            }
         }
-
-        activity.didEnterBackground()
-        activity.didBecomeActive()
-        try await waitUntil("coming back should ask this Host again too") {
-            store.hostStatuses[host.id] == .connected
-        }
-        store.setHosts([])
     }
 
     /// The recovery must not reach a Host that is already *reconnecting*.
@@ -1152,6 +1152,26 @@ struct AppForegroundRecoveryTests {
             projection.status == .connected
         }
         #expect(projection.syncError == nil)
+    }
+
+    private func withClosingRecoveryDriver(
+        _ driver: Task<Void, Never>, store: ConsoleStore,
+        body: @MainActor () async throws -> Void
+    ) async throws {
+        @MainActor func tearDown() async {
+            driver.cancel()
+            await driver.value
+            await store.suspend()
+            store.setHosts([])
+        }
+
+        do {
+            try await body()
+            await tearDown()
+        } catch {
+            await tearDown()
+            throw error
+        }
     }
 
     /// A store whose session factory hands out scripted transports in order,
