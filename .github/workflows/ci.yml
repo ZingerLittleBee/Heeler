@@ -118,9 +118,8 @@ jobs:
     # macos-26 ships Xcode 26.x and the iOS 26 simulator runtimes. Pinned
     # rather than macos-latest for reproducibility.
     runs-on: macos-26
-    # Serial measurements retain every original call and need a wider safety
-    # limit. The normal PR topology keeps its existing 35-minute job limit.
-    timeout-minutes: ${{ inputs.layout == 'serial' && 50 || 35 }}
+    # The job limit leaves the setup and upload steps room around the test step.
+    timeout-minutes: ${{ inputs.layout == 'serial' && 50 || 44 }}
     strategy:
       fail-fast: false
       matrix:
@@ -194,8 +193,15 @@ jobs:
       # The script selects one available iPhone 17 UDID, boots it, injects the
       # fixture environment there, and targets that same device for every test
       # action. The app deployment target is iOS 18.
+      #
+      # A step timeout signals only the step shell, so the script's cleanup and
+      # failure diagnostics survive only when its own watchdogs fire first. The
+      # limit therefore nests the worst sharded budget: preparation (about 3
+      # minutes), the 20-minute build deadline, a passing first suite (about 4),
+      # and a hung second suite's 10-minute watchdog with sampling and cleanup.
+      # Serial runs every phase once and has its own wider limit.
       - name: Build and test
-        timeout-minutes: ${{ inputs.layout == 'serial' && 45 || 32 }}
+        timeout-minutes: ${{ inputs.layout == 'serial' && 45 || 40 }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something merge CI may quietly run without.
@@ -234,7 +240,7 @@ jobs:
     if: ${{ inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none' }}
     name: ${{ inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && 'Diagnostic mode (package coverage not run)' || 'HeelerSSH package E2E (iOS Simulator)' }}
     runs-on: macos-26
-    timeout-minutes: 15
+    timeout-minutes: 36
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/package
@@ -276,8 +282,11 @@ jobs:
       - name: Test CI diagnostic controls
         run: make test-ci-diagnostic-controls
 
+      # Nests the package budget like the app step: simulator discovery, the
+      # 15-minute build deadline, and a hung suite's 10-minute watchdog with
+      # sampling and cleanup. Passing runs take 6 to 12 minutes.
       - name: Run package E2E
-        timeout-minutes: 12
+        timeout-minutes: 30
         env:
           HEELER_CI_LANE: package
           HEELER_CI_MANDATORY: "1"
