@@ -6,8 +6,8 @@ Study date: 2026-10-03. Source baseline:
 The app CI can be shortened without removing tests, but the useful changes
 are execution and build reuse, rather than deleting suites. Three independent
 reviews covered historical timing, coverage and isolation, and execution
-mechanisms. The historical analysis below predates implementation. Proposed
-savings remain estimates until the hosted experiment described below completes.
+mechanisms. The historical analysis below predates implementation; the
+[hosted results](#hosted-results) measure the implemented topology.
 
 The current execution constraint is **GitHub-hosted macOS runners**, preserving
 all test coverage. Ten minutes is a preference, not a hard acceptance limit;
@@ -56,14 +56,19 @@ CI builds also set `GCC_GENERATE_DEBUGGING_SYMBOLS=NO` to avoid DWARF generation
 while retaining Debug configuration, `-Onone`, assertions, and testability.
 This reduces crash file/line symbolication and LLDB variable information; the
 normal Swift Testing failure locations remain available. Local builds retain
-their default symbol settings. Hosted performance benefits remain unverified
-until a complete run with this policy succeeds.
+their default symbol settings. The hosted runs below used this policy, but
+none isolates its saving.
 Cold and warm app runs permit a 20-minute build deadline: hosted compilation
 has reached the final embedded-binary validation stage at the former 15-minute
 cutoff. This is a safety limit for runner variance, not a performance target.
-Test deadlines and the normal PR's 32-minute app step deadline remain unchanged.
-The explicit serial comparison has a 45-minute step and 50-minute job safety
-limit, allowing its original sequential setup and four test calls to finish.
+Test deadlines remain unchanged. GitHub's step timeout signals only the step
+shell, so the runner's cleanup and diagnostics survive only when its own
+watchdogs fire first. The sharded app step therefore allows 40 minutes (44 for
+the job) and the package step 30 (36 for the job), enough for preparation, the
+build deadline, and a hung suite's 10-minute watchdog with sampling and
+cleanup. The explicit serial comparison has a 45-minute step and 50-minute job
+safety limit, allowing its original sequential setup and four test calls to
+finish.
 
 Local non-native checks use:
 
@@ -99,9 +104,44 @@ control-sequence test now accepts byte arrays instead of `Data`, then converts
 each array to the identical `Data` input. Its three inputs and assertions are
 preserved. Coverage export still rejects indistinguishable argument values or
 repetitions; the hosted run must verify three distinct case identities.
-Hosted results are pending at implementation preparation time. The evidence
-recorder retains the native reader's raw reports before its coverage parsing;
-re-reading a result bundle with another Xcode version can change that report.
+The evidence recorder retains the native reader's raw reports before its
+coverage parsing; re-reading a result bundle with another Xcode version can
+change that report.
+
+### Hosted results
+
+The dispatched runs tested `63213590`; the pull request run tested its merge
+checkout `1723cdd8`, whose tree is identical. Every app worker ran on runner
+image 20260907.0351.1 with Xcode 26.6 (17F113). Queue is the time from job
+creation to job start; job time sums the macOS jobs' execution.
+
+| Run | Layout and cache | Elapsed | Longest queue | Longest job | macOS job time |
+| --- | --- | ---: | ---: | ---: | ---: |
+| [37194084997](https://github.com/ZingerLittleBee/Heeler/actions/runs/37194084997) | sharded, cold, serial comparison | 19:53 | 0:08 | 19:34 ordinary | 59.0 min |
+| [37195266663](https://github.com/ZingerLittleBee/Heeler/actions/runs/37195266663) | sharded, cold | 24:05 | 4:41 package | 23:10 transport | 69.0 min |
+| [37191709708](https://github.com/ZingerLittleBee/Heeler/actions/runs/37191709708) | sharded, warm, pull request | 29:50 | 8:04 ordinary | 24:12 session-weak | 76.2 min |
+| [37191724530](https://github.com/ZingerLittleBee/Heeler/actions/runs/37191724530) | serial, cold | 42:24 | 17:20 app | 24:49 app | 35.7 min |
+
+The three preceding `main` pushes took 29:03 to 31:27 with 32.0 to 38.3 macOS
+job minutes:
+[37040027795](https://github.com/ZingerLittleBee/Heeler/actions/runs/37040027795),
+[37057234010](https://github.com/ZingerLittleBee/Heeler/actions/runs/37057234010), and
+[37146949284](https://github.com/ZingerLittleBee/Heeler/actions/runs/37146949284).
+
+- Coverage: the evidence of both cold sharded runs matches the serial run's
+  2,543 passing methods and 3,126 argument cases under `verify --baseline`
+  (`baseline_compared=true`). The pull request run produced the same union
+  without a same-SHA comparison.
+- Without queueing, sharding finished in 19:53 and 24:05, 5 to 12 minutes
+  sooner than `main`, at 1.5 to 2 times the macOS job time.
+- The critical worker varies with build time. Ordinary was last in 37194084997
+  (717-second build, 341-second full lane); transport was last in 37195266663,
+  where its build took 825 seconds instead of 419.
+- Dependency restore showed no build benefit in these samples: the warm pull
+  request run built for 840 to 914 seconds, against 413 to 825 seconds in the
+  cold runs.
+- Queueing can erase the gain; see
+  [concurrency](#current-recommendation-on-github-hosted-runners).
 
 ## Measured baseline
 
@@ -162,7 +202,7 @@ TransportBehavior. Each worker owns its Simulator, fixture state, preferences,
 keys and processes. Preserve the full method and parameterized-case union,
 exact mandatory counts and every existing behavior assertion in a final gate.
 The original package lane runs alongside these three app workers and keeps all
-70 tests and five suites.
+five suites and every test (71 since the exchange-ordering regression test).
 
 For the first implementation experiment, compare worker-local compilation
 concurrent with fixture preparation against one build followed by artifact
@@ -191,6 +231,11 @@ currently allow five concurrent macOS jobs on Free, Pro and Team plans. Three
 app workers plus package use four slots for one PR, leaving some headroom;
 other PRs and workflows still consume the same quota. The earlier five app
 workers plus package cannot all run concurrently at that default limit.
+That headroom was not enough in
+[run 37191709708](https://github.com/ZingerLittleBee/Heeler/actions/runs/37191709708):
+a serial dispatch on the same commit and another pull request's CI held macOS
+slots, its workers queued 2:44 to 8:04, and the pull request took 29:50, no
+faster than `main`. The serial run queued 17:20 before its app job started.
 
 Keep initial changes focused on phase attribution, build/preparation overlap,
 the three groups above, and CI-only indexing as an independent build
@@ -309,9 +354,10 @@ an arithmetic saving ceiling of 126 seconds in that run, giving about 8:59
 before contention changes. This is not a measured candidate or a tail-latency
 guarantee. Investigate package-specific fixture provisioning as well, after
 tracing every consumer; the existing log cannot attribute its long setup to
-individual operations. Keep all 70 tests, five suites, serialized SessionDriver
-resource behavior, and every named assertion. Run package work alongside the
-app lanes; its duration still limits complete PR completion.
+individual operations. Keep all 71 tests (70 in that run), five suites,
+serialized SessionDriver resource behavior, and every named assertion. Run
+package work alongside the app lanes; its duration still limits complete PR
+completion.
 
 The app job in that same run failed one ordinary UI test,
 `aLayoutSwitchKeepsTheTopmostLine()`, at an eight-second `eventually` assertion.
@@ -351,7 +397,7 @@ environment variables, accessibility preferences, app data, and Keychain state.
 Different ports and DerivedData do not make one shared Simulator safe for
 concurrent lanes. Blanket parallel execution is therefore inappropriate.
 
-The separate package job proves 70 tests in 5 suites and already runs alongside
+The separate package job proves 71 tests in 5 suites and already runs alongside
 the app job. It covers lower-level SessionDriver behavior and is not redundant
 with the product-level app suite. Removing that job would not shorten the
 current app critical path.
