@@ -61,7 +61,7 @@ configure_diagnostic_lane() {
                 diagnostic_selector='AgentSurfaceReplacementTests/aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState()'
             fi
             diagnostic_iteration_variable=HEELER_STAGING_RECOVERY_ITERATIONS
-            diagnostic_expected_tests=8
+            diagnostic_expected_tests=9
             [[ "$ci_diagnostic_target" != staging-method ]] || diagnostic_expected_tests=1
             ci_diagnostic_iterations="${ci_diagnostic_iterations:-20}"
             ;;

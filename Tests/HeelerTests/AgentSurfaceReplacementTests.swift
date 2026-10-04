@@ -269,128 +269,171 @@ struct AgentSurfaceReplacementTests {
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
-        defer {
-            window.isHidden = true
-            window.rootViewController = nil
-        }
-        controller.view.layoutIfNeeded()
-
-        try #require(await Self.eventually {
-            await transport.attachRequests.count == 1
-        }, "the first PTY Attach should open")
-        #expect(observedExpectation(await transport.emitAttachOutput(Data("opening".utf8))))
-        try #require(await Self.eventually {
-            owner.terminalStatus == .live
-        }, "the first Attach should become live")
-        let firstTerminalID = owner.terminalID
-        let firstFeed = owner.terminalFeed
-        weak var predecessor: HeelerTerminalView?
-        let firstSurfaceID: ObjectIdentifier
-        do {
-            let firstSurface = try #require(Self.terminals(in: controller.view).first)
-            predecessor = firstSurface
-            firstSurfaceID = ObjectIdentifier(firstSurface)
-        }
-
-        owner.viewportTextDidChange("https://before.example/recovery")
-        let stagingEventHandler = owner.staging.onOperationEvent
-        owner.staging.onOperationEvent = { [weak owner] event in
-            stagingEventHandler?(event)
-            guard let owner else { return }
-            stagingTrace.record("operation \(event)", owner: owner, activity: activity)
-        }
-        defer { owner.staging.onOperationEvent = stagingEventHandler }
-        stagingTrace.record("before begin", owner: owner, activity: activity)
-        let acceptedOperationID = owner.staging.begin(
-            .photo(DataImageSelection(data: Data([0x01]))))
-        stagingTrace.record(
-            "begin returned \(String(describing: acceptedOperationID))",
-            owner: owner, activity: activity)
-        let imageResultSurfaced = try await Self.eventually {
-            stagingTrace.recordStateChange(owner: owner, activity: activity)
-            if case .failed = owner.staging.state { return true }
-            return false
-        }
-        stagingTrace.record(
-            "precondition result \(imageResultSurfaced)", owner: owner, activity: activity)
-        try #require(
-            imageResultSurfaced,
-            "the image result should surface before recovery; accepted operation \(String(describing: acceptedOperationID)); trace: \(stagingTrace.entries)")
-        let stagingResult = owner.staging.state
-        owner.requestPaste("git status\ngit diff", bracketedPaste: true)
-        let pendingPaste = try #require(owner.pendingPaste)
-
-        activity.didEnterBackground()
-        now = now.advanced(by: .seconds(5))
-        activity.didBecomeActive()
-        try await Task.sleep(for: .milliseconds(100))
-
-        #expect(
-            observedExpectation(await transport.attachRequests.count == 1),
-            "a short bounce must not open another PTY Attach")
-        #expect(
-            observedExpectation(owner.terminalStatus == .live),
-            "a short bounce must not show Connecting")
-        #expect(
-            observedExpectation(
-                Self.terminals(in: controller.view).first.map(ObjectIdentifier.init) == firstSurfaceID),
-            "a short bounce must keep the terminal surface")
-        #expect(observedExpectation(owner.terminalID == firstTerminalID))
-        #expect(observedExpectation(owner.terminalFeed === firstFeed))
-
-        activity.didEnterBackground()
-        now = now.advanced(by: .seconds(20))
-        activity.didBecomeActive()
-
-        let didReplaceTerminal = try await Self.eventually {
-            owner.terminalID != firstTerminalID
-        }
-        let didExecuteAnotherAttach = try await Self.eventually {
-            controller.view.setNeedsLayout()
+        return try await Self.withClosingAttachOwner(owner, window: window) {
             controller.view.layoutIfNeeded()
-            return await transport.attachRequests.count == 2
-        }
-        try #require(didReplaceTerminal, "recovery should replace the terminal pipeline")
-        try #require(didExecuteAnotherAttach, "the replacement should execute a new PTY Attach")
-        try #require(await Self.eventually {
-            predecessor == nil
-        }, "the old terminal surface should detach")
-        let replacement = try #require(
-            Self.terminals(in: controller.view).first,
-            "recovery should create and attach a new terminal surface")
 
-        #expect(observedExpectation(ObjectIdentifier(replacement) != firstSurfaceID))
-        #expect(
-            observedExpectation(owner.terminalFeed !== firstFeed),
-            "the replacement needs a new byte feed")
-        #expect(
-            observedExpectation(owner.attachLinks.map(\.target) == ["https://before.example/recovery"]))
-        #expect(observedExpectation(owner.staging.state == stagingResult))
-        #expect(observedExpectation(owner.pendingPaste == pendingPaste))
+            try #require(await Self.eventually {
+                await transport.attachRequests.count == 1
+            }, "the first PTY Attach should open")
+            #expect(observedExpectation(await transport.emitAttachOutput(Data("opening".utf8))))
+            try #require(await Self.eventually {
+                owner.terminalStatus == .live
+            }, "the first Attach should become live")
+            let firstTerminalID = owner.terminalID
+            let firstFeed = owner.terminalFeed
+            weak var predecessor: HeelerTerminalView?
+            let firstSurfaceID: ObjectIdentifier
+            do {
+                let firstSurface = try #require(Self.terminals(in: controller.view).first)
+                predecessor = firstSurface
+                firstSurfaceID = ObjectIdentifier(firstSurface)
+            }
 
-        #expect(observedExpectation(await transport.emitAttachOutput(Data("recovered-frame".utf8))))
-        try #require(await Self.eventually {
-            owner.terminalStatus == .live
-                && replacement.terminalSession.readViewportText()?.contains("recovered-frame") == true
-        }, "new PTY output should reach the replacement Ghostty viewport")
-
-        owner.confirmPaste()
-        let expectedPaste =
-            TerminalBracketedPaste.start + Data("git status\ngit diff".utf8)
-            + TerminalBracketedPaste.end
-        try #require(await Self.eventually {
-            await transport.attachInputs.filter {
-                if case .keystrokes = $0 { return true }
+            owner.viewportTextDidChange("https://before.example/recovery")
+            let stagingEventHandler = owner.staging.onOperationEvent
+            owner.staging.onOperationEvent = { [weak owner] event in
+                stagingEventHandler?(event)
+                guard let owner else { return }
+                stagingTrace.record("operation \(event)", owner: owner, activity: activity)
+            }
+            defer { owner.staging.onOperationEvent = stagingEventHandler }
+            let preparationStartedAt = ContinuousClock.now
+            owner.staging.observeImagePreparationForTesting { phase in
+                print("[attach-staging-test] image preparation \(phase) elapsed=\(preparationStartedAt.duration(to: .now))")
+            }
+            defer { owner.staging.observeImagePreparationForTesting(nil) }
+            stagingTrace.record("before begin", owner: owner, activity: activity)
+            let acceptedOperationID = owner.staging.begin(
+                .photo(DataImageSelection(data: Data([0x01]))))
+            stagingTrace.record(
+                "begin returned \(String(describing: acceptedOperationID))",
+                owner: owner, activity: activity)
+            let imageResultSurfaced = try await Self.eventually {
+                stagingTrace.recordStateChange(owner: owner, activity: activity)
+                if case .failed = owner.staging.state { return true }
                 return false
-            } == [.keystrokes(expectedPaste)]
-        }, "the reviewed Paste should submit once through the replacement writer")
-        #expect(observedExpectation(owner.pendingPaste == nil))
+            }
+            stagingTrace.record(
+                "precondition result \(imageResultSurfaced)", owner: owner, activity: activity)
+            try #require(
+                imageResultSurfaced,
+                "the image result should surface before recovery; accepted operation \(String(describing: acceptedOperationID)); trace: \(stagingTrace.entries)")
+            let stagingResult = owner.staging.state
+            owner.requestPaste("git status\ngit diff", bracketedPaste: true)
+            let pendingPaste = try #require(owner.pendingPaste)
 
-        await owner.leave().value
-        window.isHidden = true
-        window.rootViewController = nil
-        await Task.yield()
-        return allExpectationsPassed
+            activity.didEnterBackground()
+            now = now.advanced(by: .seconds(5))
+            activity.didBecomeActive()
+            try await Task.sleep(for: .milliseconds(100))
+
+            #expect(
+                observedExpectation(await transport.attachRequests.count == 1),
+                "a short bounce must not open another PTY Attach")
+            #expect(
+                observedExpectation(owner.terminalStatus == .live),
+                "a short bounce must not show Connecting")
+            #expect(
+                observedExpectation(
+                    Self.terminals(in: controller.view).first.map(ObjectIdentifier.init) == firstSurfaceID),
+                "a short bounce must keep the terminal surface")
+            #expect(observedExpectation(owner.terminalID == firstTerminalID))
+            #expect(observedExpectation(owner.terminalFeed === firstFeed))
+
+            activity.didEnterBackground()
+            now = now.advanced(by: .seconds(20))
+            activity.didBecomeActive()
+
+            let didReplaceTerminal = try await Self.eventually {
+                owner.terminalID != firstTerminalID
+            }
+            let didExecuteAnotherAttach = try await Self.eventually {
+                controller.view.setNeedsLayout()
+                controller.view.layoutIfNeeded()
+                return await transport.attachRequests.count == 2
+            }
+            try #require(didReplaceTerminal, "recovery should replace the terminal pipeline")
+            try #require(didExecuteAnotherAttach, "the replacement should execute a new PTY Attach")
+            try #require(await Self.eventually {
+                predecessor == nil
+            }, "the old terminal surface should detach")
+            let replacement = try #require(
+                Self.terminals(in: controller.view).first,
+                "recovery should create and attach a new terminal surface")
+
+            #expect(observedExpectation(ObjectIdentifier(replacement) != firstSurfaceID))
+            #expect(
+                observedExpectation(owner.terminalFeed !== firstFeed),
+                "the replacement needs a new byte feed")
+            #expect(
+                observedExpectation(owner.attachLinks.map(\.target) == ["https://before.example/recovery"]))
+            #expect(observedExpectation(owner.staging.state == stagingResult))
+            #expect(observedExpectation(owner.pendingPaste == pendingPaste))
+
+            #expect(observedExpectation(await transport.emitAttachOutput(Data("recovered-frame".utf8))))
+            try #require(await Self.eventually {
+                owner.terminalStatus == .live
+                    && replacement.terminalSession.readViewportText()?.contains("recovered-frame") == true
+            }, "new PTY output should reach the replacement Ghostty viewport")
+
+            owner.confirmPaste()
+            let expectedPaste =
+                TerminalBracketedPaste.start + Data("git status\ngit diff".utf8)
+                + TerminalBracketedPaste.end
+            try #require(await Self.eventually {
+                await transport.attachInputs.filter {
+                    if case .keystrokes = $0 { return true }
+                    return false
+                } == [.keystrokes(expectedPaste)]
+            }, "the reviewed Paste should submit once through the replacement writer")
+            #expect(observedExpectation(owner.pendingPaste == nil))
+
+            return allExpectationsPassed
+        }
+    }
+
+    @Test func failedRecoveryScopeReleasesAttachOwnerAndWindow() async throws {
+        let transport = ScriptedTransport()
+        let composer = Self.makeComposer(transport: transport)
+        let owner = Self.makeAttachStore(transport: transport, composer: composer)
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: UIViewController())
+
+        await #expect(throws: SurfaceCleanupFailure.injected) {
+            try await Self.withClosingAttachOwner(owner, window: window) {
+                () async throws -> Void in
+                owner.viewDidResize(cols: 80, rows: 24)
+                try #require(await Self.eventually { await transport.hasLiveAttachSession })
+                throw SurfaceCleanupFailure.injected
+            }
+        }
+
+        #expect(window.isHidden)
+        #expect(window.rootViewController == nil)
+        #expect(owner.terminalStatus == .stopped)
+        #expect(await transport.hasLiveAttachSession == false)
+    }
+
+    private static func withClosingAttachOwner<T>(
+        _ owner: AgentAttachStore,
+        window: UIWindow,
+        body: @MainActor () async throws -> T
+    ) async throws -> T {
+        @MainActor func tearDown() async {
+            await owner.leave().value
+            await hideTestWindowWhenSettled(window)
+            window.rootViewController = nil
+            await Task.yield()
+        }
+        do {
+            let result = try await body()
+            await tearDown()
+            return result
+        } catch {
+            await tearDown()
+            throw error
+        }
     }
 
     /// The R3 device trace caught the foreground edge between Attach owners:
@@ -860,6 +903,10 @@ struct AgentSurfaceReplacementTests {
         }
         return await condition()
     }
+}
+
+private enum SurfaceCleanupFailure: Error {
+    case injected
 }
 
 @MainActor

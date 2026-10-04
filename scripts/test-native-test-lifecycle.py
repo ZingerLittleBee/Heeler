@@ -26,6 +26,45 @@ def block(source: str, name: str) -> str:
 
 
 class LifecycleContracts(unittest.TestCase):
+    def test_handshake_times_tcp_separately_without_changing_the_deadline(self):
+        source = block(read("Packages/HeelerSSH/Sources/HeelerSSH/SessionDriver.swift"), "handshake")
+        self.assertIn('SSHDiagnosticOperation.current?.step = "TCP connect"', source)
+        self.assertLess(source.index('step = "TCP connect"'), source.index("SocketConnector.connect"))
+        self.assertLess(source.index('step = ""'), source.index("performHandshake(deadline: deadline)"))
+        self.assertIn("ContinuousClock.now.advanced(by: timeout)", source)
+
+    def test_image_preparation_observer_brackets_the_real_preparer(self):
+        source = read("Sources/Heeler/Attachments/ComposerStagingStore.swift")
+        adapter = source[source.index("private struct ImageAdapter"):source.index("private struct FileAdapter")]
+        self.assertIn('preparationObserverForTesting?("started")', adapter)
+        self.assertIn('defer { preparationObserverForTesting?("finished") }', adapter)
+        self.assertIn("preparer.prepare(selection)", adapter)
+        self.assertIn("@Sendable (String) -> Void", adapter)
+        self.assertRegex(adapter, r'#if DEBUG\s+preparationObserverForTesting\?\("started"\)')
+        test = block(read("Tests/HeelerTests/AgentSurfaceReplacementTests.swift"), "assertPossibleSuspensionRecovery")
+        self.assertIn("observeImagePreparationForTesting", test)
+        self.assertIn("DataImageSelection(data: Data([0x01]))", test)
+        self.assertIn("observeImagePreparationForTesting(nil)", test)
+
+    def test_attach_recovery_cleans_up_on_success_and_thrown_failure(self):
+        source = read("Tests/HeelerTests/AgentSurfaceReplacementTests.swift")
+        test = block(source, "assertPossibleSuspensionRecovery")
+        self.assertIn("withClosingAttachOwner", test)
+        cleanup = block(source, "withClosingAttachOwner")
+        self.assertEqual(cleanup.count("await tearDown()"), 2)
+        self.assertIn("await owner.leave().value", cleanup)
+        self.assertIn("window.rootViewController = nil", cleanup)
+        self.assertIn("await hideTestWindowWhenSettled(window)", cleanup)
+        self.assertIn("throw error", cleanup)
+        self.assertIn("timeout: Duration = .seconds(5)", source)
+        regression = block(source, "failedRecoveryScopeReleasesAttachOwnerAndWindow")
+        self.assertIn("SurfaceCleanupFailure.injected", regression)
+        self.assertIn("owner.terminalStatus == .stopped", regression)
+        self.assertIn("transport.hasLiveAttachSession == false", regression)
+        self.assertEqual(len(re.findall(r"(?m)^\s*@Test\b", source)), 9)
+        diagnostic = read("scripts/test-ci-ios-diagnostics.sh")
+        self.assertIn("AgentSurfaceReplacementTests HEELER_STAGING_RECOVERY_ITERATIONS 9 20", diagnostic)
+
     def test_starvation_recovers_at_the_timeout_boundary_without_changing_deadlines(self):
         source = read("Tests/HeelerTests/WeakNetworkE2ETests.swift")
         method = block(source, "starvedLinkTimesOutAndRecovers")

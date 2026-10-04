@@ -63,6 +63,7 @@ struct SSHDiagnosticsTests {
             lines.first?.hasPrefix("handshake with 127.0.0.1:\(listener.port) timed out [") == true,
             Comment(rawValue: "recorded: \(lines)"))
         #expect(lines.first?.contains("last_wait=socket read") == true)
+        #expect(lines.first?.contains("TCP connect=") == true)
 
         // Exercise the readiness timer itself, then let its caller overwrite
         // the context as a cleanup/drain would. The failure must already have

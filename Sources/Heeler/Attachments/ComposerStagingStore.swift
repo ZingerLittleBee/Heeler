@@ -98,9 +98,16 @@ final class ComposerStagingStore {
     private struct ImageAdapter: Sendable {
         let preparer: any ImagePreparing
         let stage: ImageStager
+        #if DEBUG
+        var preparationObserverForTesting: (@Sendable (String) -> Void)?
+        #endif
 
         func prepare(_ selection: any ImageSelection) async throws -> PreparedSource {
-            .image(try await preparer.prepare(selection))
+            #if DEBUG
+            preparationObserverForTesting?("started")
+            defer { preparationObserverForTesting?("finished") }
+            #endif
+            return .image(try await preparer.prepare(selection))
         }
 
         func upload(
@@ -180,7 +187,7 @@ final class ComposerStagingStore {
         Self.presentation(for: state)
     }
 
-    private let imageAdapter: ImageAdapter
+    private var imageAdapter: ImageAdapter
     private let fileAdapter: FileAdapter
     private let clipboard: any AttachmentClipboard
     private let composer: any ComposerDraftOperations
@@ -207,6 +214,12 @@ final class ComposerStagingStore {
         self.clipboard = clipboard
         self.composer = composer
     }
+
+    #if DEBUG
+    func observeImagePreparationForTesting(_ observer: (@Sendable (String) -> Void)?) {
+        imageAdapter.preparationObserverForTesting = observer
+    }
+    #endif
 
     /// Starts one attachment. Returns the operation id, or `nil` when busy.
     /// Retry keeps that same id. The picker keeps the default path insertion.

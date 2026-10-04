@@ -191,7 +191,7 @@ check_configuration() (
     done
 )
 check_configuration ssh-jump transport 'HeelerSSHJumpHostGateE2ETests/trustIsIndependentAtBothHops()' HEELER_SSH_JUMP_TOFU_ITERATIONS 1 50
-check_configuration staging ordinary AgentSurfaceReplacementTests HEELER_STAGING_RECOVERY_ITERATIONS 8 20
+check_configuration staging ordinary AgentSurfaceReplacementTests HEELER_STAGING_RECOVERY_ITERATIONS 9 20
 check_configuration staging-method ordinary 'AgentSurfaceReplacementTests/aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState()' HEELER_STAGING_RECOVERY_ITERATIONS 1 20
 check_configuration weak session-weak 'WeakNetworkE2ETests/largeChangesReadsFitTheGitDeadlineOverACellularLink()' HEELER_WEAK_CHANGES_ITERATIONS 1 10
 check_configuration layout ordinary FileDiffLayoutViewTests HEELER_DIFF_LAYOUT_ITERATIONS 8 20

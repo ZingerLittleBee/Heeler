@@ -238,12 +238,14 @@ actor SessionDriver {
 
             do {
                 do {
+                    SSHDiagnosticOperation.current?.step = "TCP connect"
                     descriptor = try await SocketConnector.connect(to: endpoint, until: deadline)
                 } catch {
                     SSHDiagnostics.note(
                         "\(diagnosticContext) failed before the TCP connection completed: \(error)")
                     throw error
                 }
+                SSHDiagnosticOperation.current?.step = ""
                 return try await performHandshake(deadline: deadline)
             } catch {
                 invalidateResources()
