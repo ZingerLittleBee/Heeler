@@ -343,6 +343,9 @@ final class ComposerStagingStore {
     }
 
     private func runSelection(_ source: Source, operationID: UInt64) async {
+        #if DEBUG
+        imageAdapter.preparationObserverForTesting?("selection started")
+        #endif
         var unclaimedSource: PreparedSource?
         do {
             let prepared = try await prepare(source)

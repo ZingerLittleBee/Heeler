@@ -39,50 +39,49 @@ struct AgentSurfaceReplacementTests {
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        try #require(await Self.eventually {
+        try await Self.withClosingAttachOwner(owner, window: window) {
             controller.view.layoutIfNeeded()
-            return await transport.attachRequests.count == 1
-        })
-        #expect(await transport.emitAttachOutput(Data("live-frame".utf8)))
-        try #require(await Self.eventually { owner.terminalStatus == .live })
+            try #require(await Self.eventually {
+                controller.view.layoutIfNeeded()
+                return await transport.attachRequests.count == 1
+            })
+            #expect(await transport.emitAttachOutput(Data("live-frame".utf8)))
+            try #require(await Self.eventually { owner.terminalStatus == .live })
 
-        let terminal = try #require(Self.terminals(in: controller.view).first)
-        #expect(!terminal.isLocalInputEnabled)
-        terminal.requestKeyboard()
-        let keyboard = TerminalKeyboardControl()
-        keyboard.terminal = terminal
-        keyboard.sendTerminalKey(.enter)
-        await Task.yield()
-        #expect(!terminal.isFirstResponder)
-        #expect(
-            await transport.attachInputs.allSatisfy {
-                if case .keystrokes = $0 { false } else { true }
+            let terminal = try #require(Self.terminals(in: controller.view).first)
+            #expect(!terminal.isLocalInputEnabled)
+            terminal.requestKeyboard()
+            let keyboard = TerminalKeyboardControl()
+            keyboard.terminal = terminal
+            keyboard.sendTerminalKey(.enter)
+            await Task.yield()
+            #expect(!terminal.isFirstResponder)
+            #expect(
+                await transport.attachInputs.allSatisfy {
+                    if case .keystrokes = $0 { false } else { true }
+                })
+
+            terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
+            #expect(terminal.scrollTouch(translationY: 32) != 0)
+            try #require(await Self.eventually {
+                await transport.attachInputs.contains {
+                    if case .scroll = $0 { true } else { false }
+                }
             })
 
-        terminal.receive(Data("\u{1B}[?1049h\u{1B}[?1000;1006h".utf8))
-        #expect(terminal.scrollTouch(translationY: 32) != 0)
-        try #require(await Self.eventually {
-            await transport.attachInputs.contains {
-                if case .scroll = $0 { true } else { false }
-            }
-        })
+            terminal.sendQuickKey(.enter)
+            try #require(await Self.eventually {
+                await transport.attachInputs.contains(.keystrokes(Data([0x0D])))
+            })
 
-        terminal.sendQuickKey(.enter)
-        try #require(await Self.eventually {
-            await transport.attachInputs.contains(.keystrokes(Data([0x0D])))
-        })
-
-        composer.replaceDraft(with: "Continue from the current output")
-        await composer.send()
-        #expect(
-            await transport.agentPromptParams == [
-                AgentPromptParams(
-                    target: "w1:p1", text: "Continue from the current output")
-            ])
-
-        await owner.leave().value
+            composer.replaceDraft(with: "Continue from the current output")
+            await composer.send()
+            #expect(
+                await transport.agentPromptParams == [
+                    AgentPromptParams(
+                        target: "w1:p1", text: "Continue from the current output")
+                ])
+        }
     }
 
     /// A replacement surface must take over the feed, or output goes to a view
@@ -109,32 +108,33 @@ struct AgentSurfaceReplacementTests {
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
+        try await Self.withClosingSurfaceWindow(window) {
+            controller.view.layoutIfNeeded()
 
-        // Deliberately not retained: the predecessor has to be free to go away,
-        // or a stale sink would still look live.
-        weak var predecessor: HeelerTerminalView?
-        predecessor = Self.terminals(in: controller.view).first
-        #expect(predecessor != nil, "the first surface should exist")
-        feed.write(Data("first".utf8))
+            // Deliberately not retained: the predecessor has to be free to go away,
+            // or a stale sink would still look live.
+            weak var predecessor: HeelerTerminalView?
+            predecessor = Self.terminals(in: controller.view).first
+            #expect(predecessor != nil, "the first surface should exist")
+            feed.write(Data("first".utf8))
 
-        controller.rootView = Harness(feed: feed, surface: 2)
-        controller.view.setNeedsLayout()
-        controller.view.layoutIfNeeded()
-        await Task.yield()
-        try await Task.sleep(for: .milliseconds(100))
+            controller.rootView = Harness(feed: feed, surface: 2)
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(100))
 
-        let replacement = try #require(
-            Self.terminals(in: controller.view).first,
-            "SwiftUI should have built a replacement surface")
-        #expect(predecessor == nil, "the replaced surface should have gone away")
-        feed.write(Data("second".utf8))
-        try #require(await Self.eventually {
-            replacement.terminalSession.readViewportText()?.contains("second") == true
-        }, "output after a replacement must reach the replacement's terminal session")
-        #expect(Self.terminals(in: controller.view).count == 1)
-        _ = replacement
+            let replacement = try #require(
+                Self.terminals(in: controller.view).first,
+                "SwiftUI should have built a replacement surface")
+            #expect(predecessor == nil, "the replaced surface should have gone away")
+            feed.write(Data("second".utf8))
+            try #require(await Self.eventually {
+                replacement.terminalSession.readViewportText()?.contains("second") == true
+            }, "output after a replacement must reach the replacement's terminal session")
+            #expect(Self.terminals(in: controller.view).count == 1)
+            _ = replacement
+        }
     }
 
     /// An Agent switch must build a surface for the store it just constructed.
@@ -186,35 +186,36 @@ struct AgentSurfaceReplacementTests {
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(100))
-
-        var surfaces: [ObjectIdentifier] = []
-        var roundsWithoutASurface: [Int] = []
-        for round in agents.indices {
-            controller.rootView = Harness(agent: agents[round], make: make)
-            controller.view.setNeedsLayout()
+        try await Self.withClosingSurfaceWindow(window) {
             controller.view.layoutIfNeeded()
-            await Task.yield()
-            try await Task.sleep(for: .milliseconds(50))
+            try await Task.sleep(for: .milliseconds(100))
 
-            guard let terminal = Self.terminals(in: controller.view).first else {
-                roundsWithoutASurface.append(round)
-                continue
+            var surfaces: [ObjectIdentifier] = []
+            var roundsWithoutASurface: [Int] = []
+            for round in agents.indices {
+                controller.rootView = Harness(agent: agents[round], make: make)
+                controller.view.setNeedsLayout()
+                controller.view.layoutIfNeeded()
+                await Task.yield()
+                try await Task.sleep(for: .milliseconds(50))
+
+                guard let terminal = Self.terminals(in: controller.view).first else {
+                    roundsWithoutASurface.append(round)
+                    continue
+                }
+                surfaces.append(ObjectIdentifier(terminal))
             }
-            surfaces.append(ObjectIdentifier(terminal))
-        }
 
-        #expect(
-            roundsWithoutASurface.isEmpty,
-            "an Agent switch left the screen with no terminal surface on rounds \(roundsWithoutASurface)")
-        // Every switch is a fresh screen, so no two consecutive rounds may be
-        // looking at the same surface object.
-        let repeats = zip(surfaces, surfaces.dropFirst()).filter { $0 == $1 }.count
-        #expect(
-            repeats == 0,
-            "\(repeats) of \(surfaces.count - 1) switches reused the previous surface")
+            #expect(
+                roundsWithoutASurface.isEmpty,
+                "an Agent switch left the screen with no terminal surface on rounds \(roundsWithoutASurface)")
+            // Every switch is a fresh screen, so no two consecutive rounds may be
+            // looking at the same surface object.
+            let repeats = zip(surfaces, surfaces.dropFirst()).filter { $0 == $1 }.count
+            #expect(
+                repeats == 0,
+                "\(repeats) of \(surfaces.count - 1) switches reused the previous surface")
+        }
     }
 
     /// The production call-site seam for #141. Recovery must replace every
@@ -420,8 +421,23 @@ struct AgentSurfaceReplacementTests {
         window: UIWindow,
         body: @MainActor () async throws -> T
     ) async throws -> T {
+        try await withClosingSurfaceWindow(window) {
+            do {
+                let result = try await body()
+                await owner.leave().value
+                return result
+            } catch {
+                await owner.leave().value
+                throw error
+            }
+        }
+    }
+
+    private static func withClosingSurfaceWindow<T>(
+        _ window: UIWindow,
+        body: @MainActor () async throws -> T
+    ) async throws -> T {
         @MainActor func tearDown() async {
-            await owner.leave().value
             await hideTestWindowWhenSettled(window)
             window.rootViewController = nil
             await Task.yield()

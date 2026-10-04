@@ -26,6 +26,28 @@ def block(source: str, name: str) -> str:
 
 
 class LifecycleContracts(unittest.TestCase):
+    def test_attach_preparation_traces_main_actor_admission_before_the_executor_hop(self):
+        source = block(read("Sources/Heeler/Attachments/ComposerStagingStore.swift"), "runSelection")
+        self.assertRegex(source, r'#if DEBUG\s+imageAdapter\.preparationObserverForTesting\?\("selection started"\)\s+#endif')
+        self.assertLess(source.index('("selection started")'), source.index("try await prepare(source)"))
+
+    def test_preceding_surface_tests_close_roots_even_when_the_body_throws(self):
+        source = read("Tests/HeelerTests/AgentSurfaceReplacementTests.swift")
+        for name in ["composerDetailRendersAttachButSendsOnlyThroughPrompt",
+                     "aReplacementSurfaceTakesOverTheFeed",
+                     "anAgentSwitchBuildsASurfaceForTheNewStore"]:
+            body = block(source, name)
+            self.assertIn("withClosing", body)
+            self.assertNotIn("defer { window.isHidden = true }", body)
+        window_cleanup = block(source, "withClosingSurfaceWindow")
+        self.assertEqual(window_cleanup.count("await tearDown()"), 2)
+        self.assertIn("window.rootViewController = nil", window_cleanup)
+        self.assertIn("await hideTestWindowWhenSettled(window)", window_cleanup)
+        self.assertIn("throw error", window_cleanup)
+        owner_cleanup = block(source, "withClosingAttachOwner")
+        self.assertIn("withClosingSurfaceWindow", owner_cleanup)
+        self.assertEqual(owner_cleanup.count("await owner.leave().value"), 2)
+
     def test_handshake_times_tcp_separately_without_changing_the_deadline(self):
         source = block(read("Packages/HeelerSSH/Sources/HeelerSSH/SessionDriver.swift"), "handshake")
         self.assertIn('SSHDiagnosticOperation.current?.step = "TCP connect"', source)
@@ -51,10 +73,11 @@ class LifecycleContracts(unittest.TestCase):
         test = block(source, "assertPossibleSuspensionRecovery")
         self.assertIn("withClosingAttachOwner", test)
         cleanup = block(source, "withClosingAttachOwner")
-        self.assertEqual(cleanup.count("await tearDown()"), 2)
+        self.assertEqual(cleanup.count("await owner.leave().value"), 2)
         self.assertIn("await owner.leave().value", cleanup)
-        self.assertIn("window.rootViewController = nil", cleanup)
-        self.assertIn("await hideTestWindowWhenSettled(window)", cleanup)
+        window_cleanup = block(source, "withClosingSurfaceWindow")
+        self.assertIn("window.rootViewController = nil", window_cleanup)
+        self.assertIn("await hideTestWindowWhenSettled(window)", window_cleanup)
         self.assertIn("throw error", cleanup)
         self.assertIn("timeout: Duration = .seconds(5)", source)
         regression = block(source, "failedRecoveryScopeReleasesAttachOwnerAndWindow")
