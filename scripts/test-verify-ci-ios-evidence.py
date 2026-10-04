@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -268,6 +269,31 @@ class AggregateTests(unittest.TestCase):
         self.values[-1]["summary"]["total"] -= 1
         with self.assertRaisesRegex(ValueError, "Package suite/count contract changed"):
             self.check(package=True)
+
+    def test_runner_count_gates_match_the_recorded_suite_contracts(self):
+        # The runner gates each native phase on a count that the recorder
+        # repeats in its suite contract. Read the runner's copies so changing
+        # one side alone fails here rather than on a hosted run.
+        runner = SCRIPT.with_name("run-ci-ios-tests.sh").read_text()
+        accepted = set()
+        for layout in ("serial", "sharded"):
+            values = records(layout, package=True)
+            write_records(self.root / layout, values)
+            evidence.verify(self.root / layout, SHA, layout, None, True)
+            accepted |= {(value["phase"], len(value["tests"])) for value in values}
+        gates = {(name, int(count)) for name, count in re.findall(r"(?m)^\s*run_suite (\w+) (\d+) ", runner)}
+        self.assertEqual(gates, {gate for gate in accepted if gate[0] not in ("full-lane", "package-e2e")})
+        self.assertIn(f"Test run with {dict(accepted)['package-e2e']} tests in 5 suites passed", runner)
+        floor = re.search(r'(?m)^\s*assert_full_lane_coverage "\$full_lane_log" (\d+)$', runner)
+        self.assertIsNotNone(floor)
+        full = self.values[-1]
+        executed = [test for test in full["tests"] if test["result"] != "Skipped"]
+        self.assertEqual(len(executed), int(floor.group(1)), "records() no longer sits on the runner floor")
+        self.check()
+        full["tests"].remove(executed[-1])
+        full["summary"]["total"] -= 1
+        with self.assertRaisesRegex(ValueError, "Full ordinary lane executed fewer than"):
+            self.check()
 
     def test_cli_rejects_missing_evidence_with_nonzero_exit(self):
         result = subprocess.run([sys.executable, str(SCRIPT), "verify", "--evidence-dir", str(self.candidate),
