@@ -37,7 +37,9 @@
 #   relay/** do not match, so they never spend a macos-26 runner.
 
 name: CI
-run-name: iOS CI (${{ inputs.diagnostic_target != 'none' && inputs.diagnostic_target || inputs.layout || 'sharded' }}, ${{ inputs.cache_mode || 'warm' }})
+# Only manual runs need their topology in the title. An empty run-name keeps
+# the default pull request or commit title for every other event.
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('iOS CI ({0}, {1})', inputs.diagnostic_target != 'none' && inputs.diagnostic_target || inputs.layout, inputs.cache_mode) || '' }}
 
 on:
   workflow_dispatch:
@@ -290,8 +292,9 @@ jobs:
           retention-days: 7
 
   build-test:
-    # A skipped required check counts as successful on GitHub. Diagnostics
-    # therefore use a distinct name even for this unexecuted aggregate.
+    # A skipped required check counts as successful on GitHub. Diagnostic runs
+    # skip this job, and GitHub publishes a skipped job's name as its raw
+    # expression text, which still differs from the required gate name.
     name: ${{ inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && 'Diagnostic mode (full coverage not run)' || 'Build & test (iOS Simulator)' }}
     needs: [app-tests, heelerssh-package-e2e]
     if: ${{ always() && (inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none') }}
