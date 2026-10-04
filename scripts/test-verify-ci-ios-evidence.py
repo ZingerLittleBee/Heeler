@@ -304,8 +304,20 @@ class ResultTreeTests(unittest.TestCase):
         self.assertEqual(tests, evidence.test_cases(report))
 
     def test_native_xcode26_grouped_data_repetitions_remain_ambiguous(self):
-        with self.assertRaisesRegex(ValueError, "Duplicate argument/test execution"):
+        with self.assertRaisesRegex(ValueError, "Duplicate argument/test execution") as raised:
             evidence.test_cases(xcode26_data_collision_report())
+        # The failure names the colliding display value and where the rule lives.
+        self.assertIn("ran '3 bytes' more than once", str(raised.exception))
+        self.assertIn("docs/agents/testing.md", str(raised.exception))
+
+    def test_expected_failures_are_not_evidence_at_either_level(self):
+        for level in ("method", "argument"):
+            with self.subTest(level=level):
+                report = self.report()
+                node = report["testNodes"][0]["children"][0]
+                (node if level == "method" else node["children"][1])["result"] = "Expected Failure"
+                with self.assertRaisesRegex(ValueError, "Expected failure is not CI evidence: HeelerTests/Suite"):
+                    evidence.test_cases(report)
 
     def test_three_byte_arrays_keep_their_complete_distinct_case_identity(self):
         test = evidence.test_cases(byte_array_parameter_report())[0]

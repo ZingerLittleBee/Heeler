@@ -83,7 +83,8 @@ class ResultParsingTests(unittest.TestCase):
         valid = {"totalTestCount": 3, "skippedTests": 1, "failedTests": 0, "result": "Passed"}
         self.assertEqual(runner.TestRunSummary.parse(valid).executed, 2)
         for key, value in [("totalTestCount", True), ("totalTestCount", "3"),
-                           ("skippedTests", -1), ("skippedTests", 4), ("failedTests", 3)]:
+                           ("skippedTests", -1), ("skippedTests", 4), ("failedTests", 3),
+                           ("expectedFailures", -1), ("expectedFailures", "1")]:
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 runner.TestRunSummary.parse({**valid, key: value})
 
@@ -242,6 +243,15 @@ class ProcessBoundaryTests(unittest.TestCase):
         result = self.run_wrapper()
         self.assertEqual(result.returncode, 1)
         self.assertIn("reports Failed", result.stderr)
+
+    def test_expected_failures_fail_like_the_ci_evidence_recorder(self):
+        for summary in ({"expectedFailures": 1}, {"expectedFailures": 1, "result": "Expected Failure"}):
+            with self.subTest(summary=summary):
+                self.config["summary"].update(summary)
+                result = self.run_wrapper()
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("reports 1 expected failures", result.stderr)
+                self.assert_preferences_restored()
 
     def test_build_for_testing_does_not_consume_selection_or_require_results(self):
         self.env.update(TEST_FLAGS="unbalanced'", TEST_SELECTOR="HeelerTests/Missing")

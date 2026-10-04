@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 
 SCHEMA = 1
+ARGUMENT_NAME = "?xcresult-argument-name="
 SHARED = {
     "HeelerSSHPTYE2ETests", "HeelerSSHJumpHostGateE2ETests",
     "HeelerSSHTransportBehaviorE2ETests", "ChangesFieldHostE2ETests",
@@ -155,7 +157,7 @@ def test_cases(report: object) -> list[dict]:
                 name = node.get("name")
                 require(isinstance(name, str) and bool(name),
                         "Parameterized case has no argument name identity")
-                argument = identity + "?xcresult-argument-name=" + quote(name, safe="")
+                argument = identity + ARGUMENT_NAME + quote(name, safe="")
         runs = [child for child in children(node) if child["nodeType"] in RUN_NODES]
         if runs:
             result = []
@@ -163,6 +165,7 @@ def test_cases(report: object) -> list[dict]:
                 result.extend(executions(child, identity, method_url, argument))
             return result
         result = node.get("result")
+        require(result != "Expected Failure", f"Expected failure is not CI evidence: {identity}")
         require(result in {"Passed", "Skipped"}, "Unsuccessful or unknown parameter/test result")
         return [{"identity": argument or identity, "result": result}]
 
@@ -176,13 +179,15 @@ def test_cases(report: object) -> list[dict]:
             require(identity not in seen, f"Duplicate registered test: {identity}")
             seen.add(identity)
             outcome = node.get("result")
+            require(outcome != "Expected Failure", f"Expected failure is not CI evidence: {identity}")
             require(outcome in {"Passed", "Skipped"}, f"Unsuccessful test result: {identity}")
             method_url = node.get("nodeIdentifierURL")
             require(method_url is None or isinstance(method_url, str) and bool(method_url),
                     "Invalid parent method URL")
             cases = executions(node, identity, method_url)
-            require(len({case["identity"] for case in cases}) == len(cases),
-                    f"Duplicate argument/test execution: {identity}")
+            counts = Counter(case["identity"] for case in cases)
+            repeated = sorted(case for case, count in counts.items() if count > 1)
+            require(not repeated, duplicate_execution_message(identity, repeated))
             if outcome == "Passed":
                 require(bool(cases) and all(case["result"] == "Passed" for case in cases),
                         f"Partially executed parameterized test: {identity}")
@@ -198,6 +203,16 @@ def test_cases(report: object) -> list[dict]:
         visit(node)
     require(bool(tests), "xcresult registered no tests")
     return sorted(tests, key=lambda item: item["identity"])
+
+
+def duplicate_execution_message(identity: str, repeated: list[str]) -> str:
+    names = [case.removeprefix(identity + ARGUMENT_NAME) for case in repeated]
+    labels = ", ".join(repr(unquote(name)) if name != case else repr(case)
+                       for name, case in zip(names, repeated))
+    return (f"Duplicate argument/test execution: {identity} ran {labels} more than once. "
+            "Result bundles group argument cases by their displayed value, and evidence "
+            "rejects repeated runs; give each argument a distinct description "
+            "(docs/agents/testing.md).")
 
 
 def summary_record(summary: object, tests: list[dict]) -> dict:

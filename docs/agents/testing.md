@@ -60,6 +60,22 @@ project is complete. `make check-test-membership`, which `make test-tools` and
 the merge gate run, fails when the committed HeelerTests target omits a Swift
 file under `Tests/HeelerTests` or the shared scheme skips tests.
 
+## CI evidence constraints
+
+The merge gate records every registered method and parameterized argument case
+from each native result bundle, then requires the shards together to cover the
+whole target ([the recorder](../../scripts/verify-ci-ios-evidence.py)). Two
+test-writing rules follow:
+
+- Each argument of a parameterized test needs a distinct display value.
+  Result bundles group argument cases by the value Swift Testing displays, so
+  `Data([1, 2, 3])` and `Data([4, 5, 6])` run as one `3 bytes` case and fail
+  the shard as a duplicate execution. Use distinct values, such as byte arrays,
+  or a `CustomTestStringConvertible` description.
+- Evidence accepts only passed and skipped results. `withKnownIssue` and
+  `XCTExpectFailure` produce expected failures, which fail both `make test-app`
+  and the CI recorder; fix the test or disable it with a reason instead.
+
 ## Intermittent CI diagnosis
 
 The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml), called through the existing `ci.yml` entrypoint, builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole nine-method suite to retain preceding window lifecycles and the failed-owner cleanup regression; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to normal merge CI or the existing `all` diagnostic.

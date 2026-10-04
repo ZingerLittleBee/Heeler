@@ -37,6 +37,7 @@ class TestRunSummary:
     skipped: int
     failed: int
     result: str
+    expected_failures: int = 0
 
     @property
     def executed(self) -> int:
@@ -55,7 +56,10 @@ class TestRunSummary:
         total, skipped, failed = counts
         if skipped + failed > total or not isinstance(value.get("result"), str):
             raise ValueError("xcresult summary has inconsistent test counts or result")
-        return cls(total, skipped, failed, value["result"])
+        expected_failures = value.get("expectedFailures", 0)
+        if type(expected_failures) is not int or expected_failures < 0:
+            raise ValueError("xcresult summary has an invalid expectedFailures")
+        return cls(total, skipped, failed, value["result"], expected_failures)
 
 
 def option_value(arguments: list[str], option: str) -> str | None:
@@ -177,7 +181,12 @@ def verify_test_result(bundle: Path, selectors: list[str], arguments: list[str] 
     summary = TestRunSummary.parse(summary_report)
     if summary.executed <= 0:
         raise ValueError(f"App test run executed no tests ({summary.total} registered, {summary.skipped} skipped)")
-    if summary.failed or summary.result not in {"Passed", "Expected Failure"}:
+    if summary.expected_failures or summary.result == "Expected Failure":
+        # CI evidence records only passed and skipped tests, so a known issue
+        # would pass here and fail that shard's recorder much later.
+        raise ValueError(f"App test result reports {summary.expected_failures} expected failures; "
+                         "fix or disable the known issue instead (docs/agents/testing.md)")
+    if summary.failed or summary.result != "Passed":
         raise ValueError(f"App test result reports {summary.result} with {summary.failed} failed tests")
     tests_report = xcresult_report(bundle, "tests")
     identifiers = executed_test_identifiers(tests_report)
