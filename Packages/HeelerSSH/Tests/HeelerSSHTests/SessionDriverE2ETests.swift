@@ -134,18 +134,31 @@ struct SessionDriverE2ETests {
     func oneShotExecResumesOwnedReads(stderr: Bool) async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let connection = try await environment.connect()
-        await connection.forceNextExchangeReadOwnerForTesting(stderr: stderr)
         let input = Data(repeating: 97, count: 131_072)
         do {
-            let result = try await connection.execute(
-                "printf prefix; printf owned >&2; cat; printf stderr >&2; exit 7",
+            // Neither stream writes before input arrives, so the owned read
+            // finds no data and must give up the send it no longer holds.
+            await connection.forceNextExchangeReadOwnerForTesting(stderr: stderr)
+            let echoed = try await connection.execute(
+                "cat; printf stderr >&2; exit 7",
                 input: input, timeout: .seconds(5))
-            var expected = Data("prefix".utf8)
-            expected.append(input)
-            #expect(result.stdout == expected)
-            #expect(result.stderr == Data("ownedstderr".utf8))
-            #expect(result.exitStatus == 7)
-            #expect(result.reachedEOF)
+            #expect(echoed.stdout == input)
+            #expect(echoed.stderr == Data("stderr".utf8))
+            #expect(echoed.exitStatus == 7)
+            #expect(echoed.reachedEOF)
+
+            // The other stream's output and EOF arrive while the owned read
+            // is held, so that read queues them and no socket edge follows.
+            await connection.forceNextExchangeReadOwnerForTesting(stderr: stderr) {
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            let queued = try await connection.execute(
+                stderr ? "printf queued; exit 5" : "printf queued >&2; exit 5",
+                timeout: .seconds(5))
+            #expect(queued.stdout == Data((stderr ? "queued" : "").utf8))
+            #expect(queued.stderr == Data((stderr ? "" : "queued").utf8))
+            #expect(queued.exitStatus == 5)
+            #expect(queued.reachedEOF)
             #expect(await connection.oneShotRegistryCountForTesting() == 0)
             #expect(try await connection.execute("printf reusable", timeout: .seconds(5)).stdout
                 == Data("reusable".utf8))

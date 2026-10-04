@@ -25,6 +25,8 @@ Entries reference the issue that motivated them.
 - Preserve literal absolute Unix API endpoints without a HOME probe, and keep
   Windows API and terminal connections on the selected session when SSH
   inherits legacy socket overrides. (#400)
+- Large diffs in Changes no longer wait for the Git timeout when the SSH
+  connection briefly cannot send. (#402)
 
 ## [0.1.12] - 2026-10-02
 

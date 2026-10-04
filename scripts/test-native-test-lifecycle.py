@@ -185,6 +185,10 @@ class LifecycleContracts(unittest.TestCase):
         self.assertIn("else if !resumingRead, !sentEOF", source)
         self.assertIn("if transportSendOwner != stderrOwner", source)
         self.assertIn("if transportSendOwner != stdoutOwner", source)
+        self.assertIn("if readOwnsSend, !sessionReportsOutbound(try requireSession())", source)
+        self.assertLess(
+            source.index("if readOwnsSend, !sessionReportsOutbound"),
+            source.index("if resumingRead, transportSendOwner != stdoutOwner"))
         self.assertIn("if !ownsSend, libssh2_channel_eof", source)
 
     def test_full_keyboard_waits_for_visible_geometry_and_cleans_up_on_failure(self):

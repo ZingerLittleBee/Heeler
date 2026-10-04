@@ -203,6 +203,18 @@ exactly as a channel that cannot be reclaimed already does. There is no
 admissible state in which the owner is clear while the session is still valid
 and its packet still pending.
 
+Amendment (#402): a channel read is the one producer whose packet can leave
+while its call still returns `EAGAIN`. libssh2 finishes a read's pending
+receive-window adjustment at the top of the read, then reports `EAGAIN`
+because no data has arrived. Holding ownership until data arrived could stall
+a one-shot exec until its deadline: its input waited behind the owning read,
+and a command that answers only after reading input never answered. The
+one-shot exchange therefore ends a read's ownership when the read returns
+`EAGAIN` and the session no longer reports an outbound block, so no packet is
+pending and the rule above still holds. That read may also have taken the
+other stream's data off the socket, so the exchange retries at once instead of
+waiting for a socket edge that has already passed.
+
 Yielding is a per-resource privilege rather than a session-wide one: only an
 operation whose complete native continuation is proven safe for its own
 resource may take bounded turns. SFTP does not qualify and stays outside this

@@ -168,8 +168,10 @@ actor SessionDriver {
     private var oneShotChannels: [UInt64: OneShotChannel] = [:]
     private var nextTransportSendIdentity: UInt64 = 0
     /// The logical libssh2 call that last returned `EAGAIN` with an outbound
-    /// block. Cleared only by that same call returning non-`EAGAIN`, or by
-    /// completed whole-session invalidation. Cancellation does not clear it.
+    /// block. Cleared only by that same call returning non-`EAGAIN`, by a
+    /// one-shot exchange read returning `EAGAIN` with no outbound block left,
+    /// or by completed whole-session invalidation. Cancellation does not
+    /// clear it.
     private var transportSendOwner: UInt64?
     /// Session-owned channel opens must not interleave, even when the opener
     /// releases the operation mutex to wait for a foreign send owner.
@@ -199,6 +201,7 @@ actor SessionDriver {
     private var nextExecStderrReadErrorForTesting: SSHError?
     private var nextExecStdoutOwnerErrorForTesting: SSHError?
     private var nextExchangeStderrOwnerForTesting: Bool?
+    private var nextExchangeOwnedReadHoldForTesting: (@Sendable () async -> Void)?
     private var nextStreamLocalTimeoutHookForTesting: (@Sendable () async throws -> Void)?
     private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
@@ -2592,8 +2595,12 @@ actor SessionDriver {
         nextExecStdoutOwnerErrorForTesting = error
     }
 
-    func forceNextExchangeReadOwnerForTesting(stderr: Bool) {
+    func forceNextExchangeReadOwnerForTesting(
+        stderr: Bool,
+        holdingOwnedRead hold: (@Sendable () async -> Void)? = nil
+    ) {
         nextExchangeStderrOwnerForTesting = stderr
+        nextExchangeOwnedReadHoldForTesting = hold
     }
 
     func runNextStreamLocalTimeoutHookForTesting(
@@ -4002,6 +4009,10 @@ actor SessionDriver {
         if let stderr = nextExchangeStderrOwnerForTesting {
             nextExchangeStderrOwnerForTesting = nil
             transportSendOwner = stderr ? stderrOwner : stdoutOwner
+            if let hold = nextExchangeOwnedReadHoldForTesting {
+                nextExchangeOwnedReadHoldForTesting = nil
+                await hold()
+            }
         }
         #endif
 
@@ -4093,6 +4104,22 @@ actor SessionDriver {
                             madeProgress = true
                         }
                     }
+                    // A read owns the send only while libssh2 holds its packet.
+                    // One that sent its window adjustment and then found no
+                    // data returns EAGAIN with no outbound block left.
+                    let readOwnsSend = transportSendOwner == stdoutOwner
+                        || transportSendOwner == stderrOwner
+                    if readOwnsSend, !sessionReportsOutbound(try requireSession()) {
+                        transportSendOwner = nil
+                    }
+                }
+
+                // Ending a read's send skipped this round's input, and that
+                // read may have queued the other stream's data. Retry at once
+                // instead of waiting for a socket edge that already passed.
+                if resumingRead, transportSendOwner != stdoutOwner,
+                   transportSendOwner != stderrOwner {
+                    madeProgress = true
                 }
 
                 let eofChannel = try resolveChannel(identity)
