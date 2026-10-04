@@ -20,14 +20,20 @@ def require_line(body, expected):
     if [line.strip() for line in body.splitlines()].count(expected) != 1:
         raise SystemExit(f"Diagnostic workflow contract missing or duplicated: {expected}")
 
-def job(name):
+def job(name, source=workflow):
     match = re.search(rf"(?m)^  {re.escape(name)}:\n(.*?)(?=^  [\w-]+:|\Z)",
-                      workflow, re.DOTALL)
+                      source, re.DOTALL)
     if match is None:
         raise SystemExit(f"Missing CI job: {name}")
     return match.group(1)
 
 require_line(workflow, "workflow_dispatch:")
+require_line(workflow, "workflow_call:")
+release = Path(sys.argv[1]).with_name("release.yml").read_text()
+release_test = job("test", release)
+require_line(release_test, "uses: ./.github/workflows/ci.yml")
+require_line(release_test, "contents: read")
+require_line(release_test, "actions: read")
 require_line(workflow, "diagnostic_target:")
 require_line(workflow, "options: [none, all, ssh-jump, staging, staging-method, weak, layout]")
 require_line(workflow, "default: none")

@@ -181,7 +181,7 @@ struct ConsoleView: View {
                     presentation: presentation, fitsContent: true))
             }
         }
-        // An Agent row asks here before closing its tab.
+        // An Agent row's swipe or context menu asks here before closing.
         .alert(tabCloseDialogTitle, isPresented: tabCloseDialogPresented) {
             Button(tabCloseConfirmLabel, role: .destructive) { confirmTabClose() }
             Button("Cancel", role: .cancel) { pendingTabClose = nil }
@@ -613,6 +613,10 @@ struct ConsoleView: View {
                                 horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
                             .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                             .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
+                            .environment(
+                                \.showsDetailBackHeader,
+                                !presentation.usesRegularColumns
+                                    && UIDevice.current.userInterfaceIdiom == .phone)
                             .toolbar {
                                 if usesSidebarNavigation,
                                     splitVisibility(for: tab).isSidebarVisible == false
@@ -1430,6 +1434,15 @@ struct ConsoleView: View {
                         openInNewWindow(agent)
                     }
                 }
+                // Asks first, like the swipe. A menu item can be destructive:
+                // the row stays put until the close succeeds.
+                Divider()
+                Button(
+                    "Close \(closeScope(for: agent))", systemImage: "trash",
+                    role: .destructive
+                ) {
+                    pendingTabClose = agent
+                }
             } preview: {
                 AgentCardView(
                     agent: agent,
@@ -1492,7 +1505,7 @@ struct ConsoleView: View {
     }
 
     /// Whether the close confirmation is up for whichever Agent the swipe
-    /// action queued.
+    /// or context menu queued.
     private var tabCloseDialogPresented: Binding<Bool> {
         Binding(
             get: { pendingTabClose != nil },
@@ -1511,11 +1524,14 @@ struct ConsoleView: View {
         closeTabNow(agent)
     }
 
-    /// What the pending close takes down, widest first.
-    private var pendingCloseScope: String {
-        guard let agent = pendingTabClose else { return "Tab" }
+    /// What closing this Agent takes down, widest first.
+    private func closeScope(for agent: ConsoleAgent) -> String {
         if console.closesWorkspaceWithTab(of: agent) { return "Workspace" }
         return console.closesTab(of: agent) ? "Tab" : "Pane"
+    }
+
+    private var pendingCloseScope: String {
+        pendingTabClose.map(closeScope(for:)) ?? "Tab"
     }
 
     private var tabCloseDialogTitle: String { "Close \(pendingCloseScope)?" }
@@ -2245,6 +2261,11 @@ extension EnvironmentValues {
     /// edge swipe calls it in place of going back; nil where the detail has
     /// no sidebar to show.
     @Entry var revealDetailSidebar: (@MainActor @Sendable () -> Void)? = nil
+    /// The detail is pushed over the list on an iPhone, so it shows its own
+    /// floating header with a Back button. False in regular columns,
+    /// including a large iPhone in landscape, and on an iPad, where an edge
+    /// swipe or the sidebar leads back.
+    @Entry var showsDetailBackHeader = false
 }
 
 /// A navigation bar's vertical extent in its column's own coordinates.

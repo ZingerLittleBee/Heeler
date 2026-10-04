@@ -13,7 +13,9 @@ Options are make variables rather than flags because make consumes
 `--dry-run` as its own `-n` and rejects unknown long options, so a flag
 never reaches the recipe.
 
-`scripts/publish.sh` is the implementation; this document is the contract.
+`scripts/publish.sh` cuts the release on your Mac and pushes a tag;
+[`release.yml`](../../.github/workflows/release.yml) builds, signs, and
+uploads it. This document is the contract for both.
 
 ## CHANGELOG.md is the source
 
@@ -70,51 +72,159 @@ passed explicitly.
    `## [X.Y.Z] - YYYY-MM-DD` with a fresh empty `## [Unreleased]` above it.
 4. **Update the declared version** and increment the build number, in
    every target.
-5. **Regenerate** `project.pbxproj` via `xcodegen generate`.
-6. **Build and upload** — `make archive` then `make upload`, which
-   signs locally and uploads to App Store Connect.
-7. **Commit** as `chore: release vX.Y.Z`.
-8. **Push the commit, then create and push the annotated tag.** In that
-   order: the tag has to point at a commit reviewers can fetch.
-9. **Create the GitHub release** with the CHANGELOG section as its body,
-   then verify it is published and not a draft.
+5. **Regenerate** `project.pbxproj` via `xcodegen generate`, then check
+   that every version setting in it is the new one: CI archives the
+   committed project, never `project.yml`.
+6. **Commit** as `chore: release vX.Y.Z` and create the annotated tag.
+7. **Push both atomically** with `git push --atomic origin main vX.Y.Z`.
+   Either the commit and the tag both land or neither does, so the tag
+   never points at a commit the remote lacks.
 
-The build runs before anything is committed on purpose. It is the
-slowest and most failure-prone step (codesigning, network, App Store
-Connect auth), and a failure there leaves nothing but local file edits,
-which the script tells you how to revert.
+Nothing is built or signed on your Mac. The release commit goes straight
+to `main` on purpose: it is mechanical, was reviewed line by line in the
+plan, and the tag must point at the exact SHA on that branch — a PR merge
+would change it.
 
-The release commit goes straight to `main`, also on purpose: it is
-mechanical, was reviewed line by line in the plan, and the tag must
-point at the exact SHA on that branch — a PR merge would change it.
+## The release workflow
 
-### If it fails after the tag is pushed
+The tag starts [`release.yml`](../../.github/workflows/release.yml):
 
-Do not re-run `make publish`; the tag exists and preflight will refuse
-it. Recovery is a single `gh release create` against the existing tag,
-which the script prints for you.
+| Job | What it does |
+|---|---|
+| `meta` | Checks the tag: `vX.Y.Z`, annotated, on `main`, equal to `MARKETING_VERSION` in `project.yml` and in the committed project, no GitHub release yet. Takes the `[X.Y.Z]` CHANGELOG section as the release notes. |
+| `test` | Runs both `ci.yml` lanes against the tag. |
+| `archive` | Runs in the `release` environment. Archives the committed project with manual App Store signing, exports the IPA, checks its versions, bundle IDs, and entitlements, validates it with App Store Connect, and uploads it. |
+| `release` | Creates the GitHub release with the notes as its body and checks that it is published, not a draft. |
 
-## Publish mode: local build
+There is no approval step: only admins can create `v*` tags, so pushing
+the tag is the decision to release. The build reaches TestFlight once App
+Store Connect finishes processing it.
 
-The archive is signed with the developer's Apple credentials and
-uploaded to App Store Connect. Neither exists on a CI runner here, so a
-tag-triggered workflow cannot produce the artifact and there is no
-release workflow to keep in sync.
+The GitHub release carries the notes and the tag only. There is no
+downloadable asset: an App Store-signed `.ipa` installs nowhere, and the
+build reaches testers through TestFlight.
 
-The GitHub release therefore carries the notes and the tag only. There
-is no downloadable asset: an App Store-signed `.ipa` installs nowhere,
-and the build reaches testers through TestFlight.
+### Rehearsal
+
+Run the workflow manually from `main` (Actions → Release → Run workflow)
+after rotating the certificate, a profile, or the API key. A rehearsal
+skips the tests, archives the next patch version with the next build
+number, and stops after App Store Connect validation: nothing is uploaded,
+no build number is consumed, and no release is created.
+
+### Failure and recovery
+
+A pushed tag is never moved or deleted. App Store Connect never accepts a
+build number twice, and the tag already names the release, so a tag whose
+build never reached TestFlight is void: fix the cause and cut the next
+version. Version gaps are fine.
+
+| Failure | Recovery |
+|---|---|
+| `meta` | Nothing was built. Fix the cause, [reopen the void version's notes](#cutting-the-next-version-after-a-void-tag), and `make publish`. |
+| `test` | Fix on `main`, reopen the void version's notes, and `make publish`. |
+| `archive`, before the upload step | If the cause was external (runner, network, an Apple outage), re-run failed jobs. For a signing or credential error, fix the `release` environment (see below), rehearse, then re-run failed jobs. For a code error, fix it, reopen the void version's notes, and `make publish`. |
+| `archive`, upload step or later | Check TestFlight first. If the build did not arrive, re-run failed jobs. If it arrived, do not re-run anything: `archive` would upload the same build number again, which App Store Connect rejects, and `release` stays skipped while `archive` reads as failed. Create the GitHub release by hand instead (below). |
+| `release` | Re-run failed jobs; the job skips creating a release that already exists. |
+
+Use **Re-run failed jobs**, not "Re-run all jobs", so the tests are not
+repeated needlessly.
+
+To create the GitHub release by hand, take the notes from the run's
+`release-notes` artifact:
+
+```sh
+gh run download <run-id> --name release-notes --dir /tmp/heeler-notes
+gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file /tmp/heeler-notes/notes.md
+```
+
+### Cutting the next version after a void tag
+
+`make publish` moved the void version's notes from `[Unreleased]` into
+its `## [X.Y.Z]` section, so `[Unreleased]` is empty and publish refuses
+to run. Reopen them on `main`:
+
+1. Move the body of `## [X.Y.Z] - YYYY-MM-DD` back under `## [Unreleased]`,
+   alongside any newer entries.
+2. Keep the `## [X.Y.Z]` heading, with the single line
+   `_Not released: the vX.Y.Z build never reached TestFlight._` as its
+   body. Publish checks the newest heading against the newest tag, so
+   deleting it would stop the next cut.
+3. Commit, push, and `make publish`. It picks `X.Y.(Z+1)` and the next
+   build number.
+
+## Signing and credentials
+
+The `archive` job signs manually with a CI-only Apple Distribution
+certificate and one App Store provisioning profile per signed target.
+[`scripts/release-signing.py`](../../scripts/release-signing.py) installs
+them in a throwaway keychain, checks every profile (App Store type, team,
+bundle ID, expiry, the certificate, the App Group, production push) before
+anything is built, writes the archive and export overrides, and checks the
+exported IPA. The project itself keeps automatic signing for local
+development.
+
+Cloud-managed signing was considered and rejected: it needs an Admin API
+key, and every run on a clean runner creates another development
+certificate for the archive step.
+
+The `release` environment holds everything, and admits only `v*` tags
+and `main`:
+
+| Name | Kind | Content |
+|---|---|---|
+| `DISTRIBUTION_P12_BASE64` | secret | Base64 of the Apple Distribution `.p12`, exported with its private key and the Apple WWDR intermediate |
+| `DISTRIBUTION_P12_PASSWORD` | secret | The `.p12` export password |
+| `DISTRIBUTION_CERT_SHA1` | variable | SHA-1 of that certificate, from `security find-identity -v -p codesigning` |
+| `PROFILE_APP_BASE64` | secret | Base64 of the App Store profile for `dev.bybee.heeler` |
+| `PROFILE_NOTIFICATION_SERVICE_BASE64` | secret | Same, for `dev.bybee.heeler.NotificationService` |
+| `PROFILE_WIDGETS_BASE64` | secret | Same, for `dev.bybee.heeler.Widgets` |
+| `ASC_API_KEY_P8` | secret | Contents of the App Store Connect Team API key `.p8` (App Manager role) |
+| `ASC_API_KEY_ID` | variable | The key ID |
+| `ASC_API_ISSUER_ID` | variable | The issuer ID |
+
+Set each base64 secret straight from the file, so no copy of it passes
+through the clipboard:
+
+```sh
+base64 -i distribution.p12 | gh secret set DISTRIBUTION_P12_BASE64 --env release
+base64 -i Heeler_App_Store.mobileprovision | gh secret set PROFILE_APP_BASE64 --env release
+gh secret set ASC_API_KEY_P8 --env release < AuthKey_XXXXXXXXXX.p8
+```
+
+The certificate expires after a year, and each profile when the
+certificate does or a year after it was made. A new capability or App
+Group also needs new profiles. Replace the affected secrets, then run a
+rehearsal before the next release.
+
+## Repository setup
+
+Once, before the first release:
+
+1. **Environment `release`** (Settings → Environments): no reviewer;
+   deployment branches and tags limited to the tag pattern `v*` and the
+   branch `main`. Add the secrets and variables above to it, never at
+   repository level.
+2. **Tag ruleset**: target tags matching `v*`; restrict creation, updates,
+   and deletions, with only the admin role allowed to bypass. Creating a
+   release tag is then an admin's decision, and a pushed tag never moves.
+3. **Rehearse**: run the workflow from `main`. It must pass before the
+   first `make publish`.
 
 ## `make publish` versus `make bump && make testflight`
 
 Two paths to TestFlight, different jobs:
 
 - `make bump && make testflight` — an **interim** build for testing on
-  device. Bumps the build number only; the marketing version, the
-  CHANGELOG, and the tags stay where they are. Leaves `project.yml` and
-  `project.pbxproj` dirty for you to commit.
-- `make publish` — a **release**. Everything above, in one shot, with a
-  version, notes, a tag, and a GitHub release.
+  device, built and uploaded from your Mac with your own Xcode account.
+  Bumps the build number only; the marketing version, the CHANGELOG, and
+  the tags stay where they are. Leaves `project.yml` and
+  `project.pbxproj` dirty. Commit and push the bump to `main` before the
+  next `make publish`, which refuses a dirty or unpushed tree. Discarding
+  the bump instead makes publish reuse the uploaded build number, and App
+  Store Connect validation then voids the tag.
+- `make publish` — a **release**. Everything above, with a version,
+  notes, a tag, a reviewed CI build, and a GitHub release.
 
 Never hand-edit `MARKETING_VERSION` to cut a release; that is what
 publish is for.

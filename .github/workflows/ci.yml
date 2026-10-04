@@ -92,6 +92,9 @@ on:
       - plugin/test-vectors/**
       - .github/workflows/ci.yml
       - .github/workflows/ci-diagnostics.yml
+  # release.yml runs both lanes against the release tag before anything is
+  # signed. Path filters do not apply to a call.
+  workflow_call:
 
 # Per-workflow group: sharing `ci-${{ github.ref }}` with ci-node.yml made
 # the two workflows cancel each other on the same SHA (plugin/test-vectors

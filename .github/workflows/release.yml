@@ -1,0 +1,302 @@
+# Ships a tag cut by `make publish` (scripts/publish.sh). docs/guides/releasing.md
+# is the contract; this is the implementation.
+#
+#   meta     resolves the tag: format, annotated, on main, versions in project.yml
+#            and the committed project, release notes from CHANGELOG.md.
+#   test     runs ci.yml's two lanes against the tag.
+#   archive  in the `release` environment, archives the committed project with
+#            manual App Store signing, exports and checks the IPA, validates it
+#            with App Store Connect, and uploads it.
+#   release  creates the GitHub release with the CHANGELOG section as its body.
+#
+# A manual dispatch from main is a rehearsal: it skips the tests, archives the
+# next patch version and build number, and stops after App Store Connect
+# validation, so nothing is uploaded and no build number is consumed. Use it
+# after rotating the certificate, profiles, or API key.
+#
+# The `release` environment holds every credential and admits only `v*` tags
+# and `main`. There is no approval step: the tag ruleset lets only admins
+# create `v*` tags, so pushing the tag is the decision to release. No other
+# job sees a secret. The archive job restores no cache and resolves packages itself, so
+# the test gate's SwiftPM cache (from ci.yml) never reaches the signed build.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    name: Resolve the release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.resolve.outputs.mode }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      build: ${{ steps.resolve.outputs.build }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and check the release
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+
+          # Every target carries one version; publish.sh keeps them in lockstep.
+          marketing="$(awk -F'"' '/^ *MARKETING_VERSION:/ { print $2 }' project.yml | sort -u)"
+          build="$(awk -F'"' '/^ *CURRENT_PROJECT_VERSION:/ { print $2 }' project.yml | sort -u)"
+          [[ "$(wc -l <<<"$marketing")" -eq 1 && "$marketing" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || fail "project.yml MARKETING_VERSION is not one X.Y.Z: $marketing"
+          [[ "$(wc -l <<<"$build")" -eq 1 && "$build" =~ ^[0-9]+$ ]] \
+            || fail "project.yml CURRENT_PROJECT_VERSION is not one integer: $build"
+
+          # CI archives the committed project, so it must agree with project.yml.
+          pbx="Heeler.xcodeproj/project.pbxproj"
+          pbx_marketing="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION = (.*);$/\1/p' "$pbx" | sort -u)"
+          pbx_build="$(sed -nE 's/^[[:space:]]*CURRENT_PROJECT_VERSION = (.*);$/\1/p' "$pbx" | sort -u)"
+          [[ "$pbx_marketing" == "$marketing" && "$pbx_build" == "$build" ]] \
+            || fail "$pbx has versions '$pbx_marketing' ($pbx_build), project.yml has $marketing ($build); run xcodegen generate"
+
+          if [[ "$EVENT" == push ]]; then
+            tag="$REF_NAME"
+            [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "$tag is not vX.Y.Z"
+            version="${tag#v}"
+
+            # checkout may hand over a lightweight copy of the tag; fetch the
+            # real ref to see whether it is annotated.
+            git fetch --quiet --force origin "+$REF:$REF" "+refs/heads/main:refs/remotes/origin/main"
+            [[ "$(git cat-file -t "$REF")" == tag ]] || fail "$tag is not an annotated tag; cut releases with make publish"
+            [[ "$(git rev-parse "$REF^{commit}")" == "$GITHUB_SHA" ]] || fail "$tag does not point at $GITHUB_SHA"
+            git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || fail "$tag is not on main"
+            [[ "$marketing" == "$version" ]] || fail "$tag but project.yml MARKETING_VERSION is $marketing"
+
+            if gh release view "$tag" >/dev/null 2>&1; then
+              fail "a GitHub release for $tag already exists"
+            fi
+
+            mkdir -p "$RUNNER_TEMP/notes"
+            awk -v heading="## [$version]" '
+              index($0, heading) == 1 { inside = 1; next }
+              inside && /^## / { exit }
+              inside { print }
+            ' CHANGELOG.md | awk 'NF == 0 && !seen { next } { seen = 1; print }' > "$RUNNER_TEMP/notes/notes.md"
+            [[ -n "$(tr -d '[:space:]' < "$RUNNER_TEMP/notes/notes.md")" ]] \
+              || fail "CHANGELOG.md has no notes under [$version]"
+            mode=release
+          else
+            [[ "$REF" == refs/heads/main ]] || fail "rehearsals run from main, not $REF"
+            # Validate the version the next release would use, so App Store
+            # Connect does not reject a build number it has already seen.
+            IFS=. read -r major minor patch <<<"$marketing"
+            version="$major.$minor.$((patch + 1))"
+            build="$((build + 1))"
+            tag="rehearsal"
+            mode=rehearsal
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+          echo "### $mode: $version ($build)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release notes
+        if: steps.resolve.outputs.mode == 'release'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes/notes.md
+          if-no-files-found: error
+          # Serves a hand-made release after a failed upload step.
+          retention-days: 90
+
+  test:
+    name: Test gate
+    needs: meta
+    if: needs.meta.outputs.mode == 'release'
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/ci.yml
+
+  archive:
+    name: Archive, sign and upload
+    needs: [meta, test]
+    # A rehearsal skips the tests; a release needs them green.
+    if: >-
+      ${{ !cancelled() && needs.meta.result == 'success' &&
+      (needs.test.result == 'success' ||
+      (needs.meta.outputs.mode == 'rehearsal' && needs.test.result == 'skipped')) }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+    env:
+      MODE: ${{ needs.meta.outputs.mode }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      BUILD: ${{ needs.meta.outputs.build }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          xcodebuild -version | head -1 | sed 's/^/**/; s/$/**/' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify HeelerSSH native artifacts
+        run: make verify-ssh-artifacts
+
+      # Fetch every package before any credential reaches the runner, and
+      # only at the versions Package.resolved pins.
+      - name: Resolve packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Heeler.xcodeproj -scheme Heeler \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm" \
+            -onlyUsePackageVersionsFromResolvedFile
+
+      - name: Install signing material
+        env:
+          DISTRIBUTION_P12_BASE64: ${{ secrets.DISTRIBUTION_P12_BASE64 }}
+          DISTRIBUTION_P12_PASSWORD: ${{ secrets.DISTRIBUTION_P12_PASSWORD }}
+          DISTRIBUTION_CERT_SHA1: ${{ vars.DISTRIBUTION_CERT_SHA1 }}
+          PROFILE_APP_BASE64: ${{ secrets.PROFILE_APP_BASE64 }}
+          PROFILE_NOTIFICATION_SERVICE_BASE64: ${{ secrets.PROFILE_NOTIFICATION_SERVICE_BASE64 }}
+          PROFILE_WIDGETS_BASE64: ${{ secrets.PROFILE_WIDGETS_BASE64 }}
+        run: python3 scripts/release-signing.py install --dir "$RUNNER_TEMP/signing"
+
+      - name: Archive
+        run: |
+          set -euo pipefail
+          overrides=()
+          if [[ "$MODE" == rehearsal ]]; then
+            overrides=(MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD")
+          fi
+          xcodebuild -project Heeler.xcodeproj -scheme Heeler -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Heeler.xcarchive" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -xcconfig "$RUNNER_TEMP/signing/signing.xcconfig" \
+            ${overrides[@]+"${overrides[@]}"} \
+            archive
+
+      - name: Export the IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Heeler.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/signing/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export"
+
+      - name: Verify the IPA
+        run: python3 scripts/release-signing.py verify-ipa "$RUNNER_TEMP/export/Heeler.ipa" --version "$VERSION" --build "$BUILD"
+
+      - name: Install the App Store Connect key
+        env:
+          ASC_API_KEY_ID: ${{ vars.ASC_API_KEY_ID }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          [[ -n "$ASC_API_KEY_ID" && -n "$ASC_API_KEY_P8" ]] || { echo "::error::ASC_API_KEY_ID or ASC_API_KEY_P8 is empty"; exit 1; }
+          keys="$RUNNER_TEMP/private_keys"
+          mkdir -m 700 "$keys"
+          (umask 077; printf '%s\n' "$ASC_API_KEY_P8" > "$keys/AuthKey_$ASC_API_KEY_ID.p8")
+          echo "API_PRIVATE_KEYS_DIR=$keys" >> "$GITHUB_ENV"
+
+      - name: Validate with App Store Connect
+        env:
+          ASC_API_KEY_ID: ${{ vars.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ vars.ASC_API_ISSUER_ID }}
+        run: |
+          xcrun altool --validate-app -f "$RUNNER_TEMP/export/Heeler.ipa" -t ios \
+            --apiKey "$ASC_API_KEY_ID" --apiIssuer "$ASC_API_ISSUER_ID"
+
+      - name: Upload to App Store Connect
+        if: env.MODE == 'release'
+        env:
+          ASC_API_KEY_ID: ${{ vars.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ vars.ASC_API_ISSUER_ID }}
+        run: |
+          xcrun altool --upload-app -f "$RUNNER_TEMP/export/Heeler.ipa" -t ios \
+            --apiKey "$ASC_API_KEY_ID" --apiIssuer "$ASC_API_ISSUER_ID"
+          echo "Uploaded $VERSION ($BUILD); TestFlight processing takes a few more minutes." >> "$GITHUB_STEP_SUMMARY"
+
+      # The export directory holds the IPA plus xcodebuild's distribution logs
+      # and summary; the logs explain a failed export or validation.
+      # Must not fail the job once the build is uploaded.
+      - name: Upload export logs
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: export-logs-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/export/*.log
+            ${{ runner.temp }}/export/*.plist
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          python3 scripts/release-signing.py cleanup --dir "$RUNNER_TEMP/signing"
+          rm -rf "$RUNNER_TEMP/private_keys"
+
+  release:
+    name: Create the GitHub release
+    needs: [meta, archive]
+    if: needs.meta.outputs.mode == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.meta.outputs.tag }}
+    steps:
+      - name: Download release notes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes
+
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          # A re-run after a failed check below finds the release already made.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes/notes.md"
+          fi
+          # A pushed tag is not a published release.
+          [[ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" == false ]] \
+            || { echo "::error::$TAG is still a draft"; exit 1; }
+          gh release view "$TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

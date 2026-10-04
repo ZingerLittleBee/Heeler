@@ -53,6 +53,13 @@ struct ShellTerminalView: View {
     @Environment(\.detailTopChromeInset) private var topChromeInset
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
+    @Environment(\.showsDetailBackHeader) private var showsBackHeader
+    /// Shared with Agent detail's header: folding it is one reading
+    /// preference across both kinds of terminal.
+    @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
+    /// The Workspace drawer's panel, while the back header's button owns it.
+    @State private var isHeaderDrawerOpen = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The window's own controls over this screen's top-leading corner, on
     /// a windowed iPad; see `onWindowControlsHeightChange`.
     @State private var windowControlsHeight: CGFloat = 0
@@ -184,15 +191,26 @@ struct ShellTerminalView: View {
             .id(store.terminalID)
             .overlay {
                 if let workspaceDrawer {
-                    keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
+                    let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
+                    // The back header's button stands in for the edge handle
+                    // while the header is out; folded, the handle comes back.
+                    if showsBackHeader, isBackHeaderExpanded {
+                        drawer.openedFromHeader(
+                            $isHeaderDrawerOpen,
+                            panelTop: backHeaderTop + AgentDetailHeader.controlSize + 8)
+                    } else {
+                        drawer
+                    }
                 }
             }
             .overlay { statusOverlay }
             // The input row and controls dock must stay above the edge
             // gesture's hit region, including their leftmost buttons.
             .overlay(alignment: .leading) {
-                ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                    if let revealDetailSidebar { revealDetailSidebar() } else { await goBack() }
+                if !usesSystemBackSwipe {
+                    ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
+                        if let revealDetailSidebar { revealDetailSidebar() } else { await goBack() }
+                    }
                 }
             }
             // Always present, keyboard up or down: with no title bar, its
@@ -235,7 +253,28 @@ struct ShellTerminalView: View {
             // No title bar, as on Agent detail: the navigation bar stays
             // only as the owner of the status bar appearance, and this inset
             // keeps terminal output below the system clock.
-            .padding(.top, max(statusBarInset, topChromeInset, windowControlsHeight))
+            .padding(.top, terminalTopInset)
+            .overlay(alignment: .top) {
+                if showsBackHeader {
+                    AgentDetailHeader(
+                        palette: themePalette,
+                        isExpanded: $isBackHeaderExpanded,
+                        onBack: {
+                            guard !isReturning else { return }
+                            Task { await goBack() }
+                        },
+                        actions: backHeaderActions)
+                    .environment(
+                        \.colorScheme,
+                        terminal.themes.selection(for: colorScheme)
+                            .chromeColorScheme(for: colorScheme))
+                    .padding(.horizontal, 12)
+                    .padding(.top, backHeaderTop)
+                    .onChange(of: isBackHeaderExpanded) { _, expanded in
+                        if !expanded { isHeaderDrawerOpen = false }
+                    }
+                }
+            }
             .onWindowControlsHeightChange { windowControlsHeight = $0 }
             .background {
                 // Keyboard geometry and the status bar inset follow this
@@ -260,6 +299,7 @@ struct ShellTerminalView: View {
                 for: .navigationBar
             )
             .navigationBarBackButtonHidden(true)
+            .interactivePopGestureEnabled(usesSystemBackSwipe)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             // `toolbarColorScheme` takes effect only while the bar background
@@ -342,6 +382,29 @@ struct ShellTerminalView: View {
                 }
                 if managesLifecycle { store.leave() }
             }
+    }
+
+    private var terminalTopInset: CGFloat {
+        max(statusBarInset, topChromeInset, windowControlsHeight)
+    }
+
+    private var backHeaderTop: CGFloat { terminalTopInset + 4 }
+
+    /// An iPhone's terminal pushed over the Console list goes back the
+    /// system's way, following the finger. One opened from an Agent stands
+    /// in for that Agent on the same screen, so a system swipe there would
+    /// leave the Agent too; it keeps the edge gesture that returns to it.
+    private var usesSystemBackSwipe: Bool {
+        showsBackHeader && !backReturnsToAgent
+    }
+
+    private var backHeaderActions: [AgentDetailHeaderAction] {
+        guard workspaceDrawer != nil else { return [] }
+        return [AgentDetailHeaderAction(title: "Workspace Terminals", systemImage: "terminal") {
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                isHeaderDrawerOpen.toggle()
+            }
+        }]
     }
 
     /// `restoresSystemKeyboard` is false when Text follows a fresh surface

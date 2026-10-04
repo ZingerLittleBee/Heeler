@@ -6,11 +6,11 @@
 # becomes the release notes verbatim; every version string elsewhere is
 # derived from the version this script resolves.
 #
-# Publish mode: local build. The archive is signed with the developer's Apple
-# credentials and uploaded to App Store Connect, neither of which exists on a
-# CI runner, so a tag-triggered workflow cannot produce the artifact. The
-# GitHub release therefore carries the notes and the tag only; the build ships
-# through TestFlight.
+# Publish mode: GitHub Actions. This script only cuts the release: it edits the
+# CHANGELOG and versions, regenerates the project, commits, tags, and pushes
+# the commit and tag in one atomic push. The tag starts
+# .github/workflows/release.yml, which tests, archives and uploads to App Store
+# Connect, and creates the GitHub release. Nothing is built or signed here.
 #
 # Options arrive as environment variables because make consumes flags of its
 # own (--dry-run is make's -n) and rejects unknown long options, so a flag
@@ -35,23 +35,26 @@ die() { printf 'publish: %s\n' "$*" >&2; exit 1; }
 # Tracks how far we got, so a failure can name the right recovery. Anything
 # before `mutating` leaves the working tree untouched.
 stage="preflight"
-notes_file=""
 tag=""
 
 on_exit() {
     local code=$?
-    if [ -n "$notes_file" ]; then rm -f "$notes_file"; fi
     if [ "$code" -eq 0 ]; then return 0; fi
     case "$stage" in
         mutating)
-            printf '\npublish: failed before anything was pushed. Undo the local edits with:\n'
-            printf '  git checkout -- %s %s %s\n' "$CHANGELOG" "$PROJECT_YML" "$XCODEPROJ"
+            # HEAD, not the index: the edits may already be staged.
+            printf '\npublish: failed before anything was committed. Undo the local edits with:\n'
+            printf '  git checkout HEAD -- %s %s %s\n' "$CHANGELOG" "$PROJECT_YML" "$XCODEPROJ"
             ;;
-        tagged)
-            printf '\npublish: %s is already pushed — do NOT re-run publish.\n' "$tag"
-            printf 'Finish by creating the release against the existing tag:\n'
-            printf '  gh release create %s --title %s --notes "<the [%s] section of %s>"\n' \
-                "$tag" "$tag" "${tag#v}" "$CHANGELOG"
+        committed)
+            # The push is atomic, so a failed push left neither the commit nor
+            # the tag on the remote.
+            printf '\npublish: nothing reached %s. Undo the local release commit with:\n' "$REMOTE"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+                printf '  git tag -d %s && git reset --hard HEAD~1\n' "$tag"
+            else
+                printf '  git reset --hard HEAD~1\n'
+            fi
             ;;
     esac
     return 0
@@ -60,7 +63,7 @@ trap on_exit EXIT
 
 # --- Preflight ---------------------------------------------------------------
 
-for tool in git gh xcodegen xcodebuild awk sed; do
+for tool in git gh xcodegen awk sed; do
     command -v "$tool" >/dev/null 2>&1 || die "$tool is not installed"
 done
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated (run: gh auth login)"
@@ -83,8 +86,14 @@ notes="$(awk '
     inside && /^## / { exit }
     inside { print }
 ' "$CHANGELOG")"
-[ -n "$(printf '%s' "$notes" | tr -d '[:space:]')" ] \
-    || die "[Unreleased] is empty — there is nothing to release. Entries belong there as they merge."
+if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+    # After a void tag the notes sit in that version's section instead.
+    newest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
+    if [ -n "$newest_tag" ] && ! gh release view "$newest_tag" >/dev/null 2>&1; then
+        die "[Unreleased] is empty and $newest_tag has no GitHub release. If its build never reached TestFlight, reopen its notes first: docs/guides/releasing.md, \"Cutting the next version after a void tag\"."
+    fi
+    die "[Unreleased] is empty — there is nothing to release. Entries belong there as they merge."
+fi
 
 # Drop the blank line that follows the heading; $( ) already ate the trailing ones.
 notes="$(printf '%s\n' "$notes" | awk 'NF == 0 && !seen { next } { seen = 1; print }')"
@@ -154,12 +163,11 @@ row "$PROJECT_YML" "MARKETING_VERSION $current_marketing -> $version ($marketing
 row "$PROJECT_YML" "CURRENT_PROJECT_VERSION $current_build -> $next_build (App Store Connect rejects reused build numbers)"
 row "$XCODEPROJ" 'regenerate via `xcodegen generate`'
 echo
-row "build" "make archive  (Release, signed locally)"
-row "upload" "make upload   (App Store Connect / TestFlight)"
 row "commit" "chore: release $tag"
-row "push" "$REMOTE $DEFAULT_BRANCH"
-row "tag" "$tag (annotated) -> $REMOTE"
-row "release" "gh release create (notes only; the build ships via TestFlight)"
+row "tag" "$tag (annotated)"
+row "push" "git push --atomic $REMOTE $DEFAULT_BRANCH $tag"
+row "release" ".github/workflows/release.yml: test, archive, upload to TestFlight,"
+row "" "then the GitHub release"
 printf '\nRelease notes (from %s [Unreleased]):\n' "$CHANGELOG"
 printf '%s\n' "$notes" | sed 's/^/  /'
 echo
@@ -182,9 +190,6 @@ fi
 # --- Cut ---------------------------------------------------------------------
 
 stage="mutating"
-
-notes_file="$(mktemp -t heeler-release-notes)"
-printf '%s\n' "$notes" >"$notes_file"
 
 awk -v ver="$version" -v today="$today" '
     !cut && /^## \[Unreleased\]/ {
@@ -210,33 +215,31 @@ sed -i '' \
 echo "==> Regenerating $XCODEPROJ"
 xcodegen generate
 
-echo "==> Building and uploading to TestFlight"
-make archive
-make upload
+# CI archives the committed project, never project.yml, so every version
+# setting it carries must be the one being released.
+pbxproj="$XCODEPROJ/project.pbxproj"
+grep -E '^[[:space:]]*MARKETING_VERSION = ' "$pbxproj" | grep -vqE "= $version;\$" \
+    && die "$pbxproj has a MARKETING_VERSION other than $version after xcodegen"
+grep -E '^[[:space:]]*CURRENT_PROJECT_VERSION = ' "$pbxproj" | grep -vqE "= $next_build;\$" \
+    && die "$pbxproj has a CURRENT_PROJECT_VERSION other than $next_build after xcodegen"
 
 # --- Ship --------------------------------------------------------------------
 
 echo "==> Committing and tagging"
 git add "$CHANGELOG" "$PROJECT_YML" "$XCODEPROJ"
 git commit -m "chore: release $tag"
+stage="committed"
+git tag -a "$tag" -m "$tag"
 
 # Straight to the default branch on purpose: the commit is mechanical, was
 # reviewed in the plan above, and the tag must point at the exact SHA on that
-# branch — a PR merge would change it.
-git push "$REMOTE" "$DEFAULT_BRANCH"
-
-# Push the commit first: the tag has to point at a commit reviewers can fetch.
-git tag -a "$tag" -m "$tag"
-git push "$REMOTE" "$tag"
-stage="tagged"
-
-echo "==> Creating the GitHub release"
-gh release create "$tag" --title "$tag" --notes-file "$notes_file"
-
-# A pushed tag is not a published release.
-gh release view "$tag" --json isDraft,tagName --jq 'select(.isDraft == false) | .tagName' \
-    | grep -qx "$tag" || die "gh release view $tag does not show a published release"
-
+# branch — a PR merge would change it. One atomic push lands both or neither,
+# so the tag can never point at a commit the remote lacks.
+git push --atomic "$REMOTE" "$DEFAULT_BRANCH" "refs/tags/$tag"
 stage="done"
-printf '\nPublished %s. TestFlight processing takes a few more minutes.\n' "$tag"
-gh release view "$tag" --json url --jq .url
+
+printf '\nPushed %s. The release workflow now tests, archives, and uploads it to TestFlight.\n' "$tag"
+# The push already succeeded; a failed lookup must not turn that into an error.
+if repo_url="$(gh repo view --json url --jq .url 2>/dev/null)"; then
+    printf '  %s/actions/workflows/release.yml\n' "$repo_url"
+fi

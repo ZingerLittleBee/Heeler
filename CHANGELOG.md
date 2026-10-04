@@ -14,6 +14,12 @@ Entries reference the issue that motivated them.
   directory navigation. Windows uses herdr's official API bridge and terminal
   controller. Pairing, Changes, Skills, file uploads, and notification
   registration remain unavailable on Windows. (#400)
+- Long-press an Agent row to close its pane, tab, or workspace, with the same
+  confirmation as the swipe action. (#408)
+- Agent and terminal screens on iPhone have floating glass buttons for Back,
+  the Workspace's terminals, and an Agent's Changes. They start folded to a
+  single button and stay shown once the user opens them. Swiping back from
+  either follows the finger like any other screen. (#409)
 
 ### Fixed
 

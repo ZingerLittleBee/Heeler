@@ -21,6 +21,11 @@ struct WorkspaceTerminalDrawer: View {
     var onNewTerminal: (() -> Void)? = nil
     /// A creation in flight: the button shows progress and takes no hit.
     var isCreatingTerminal = false
+    /// Set while a header button opens the panel in place of the handle.
+    var headerExpansion: Binding<Bool>?
+    /// Where the panel's top edge sits, in global space, while a header
+    /// opens it: just below the header.
+    var headerPanelTop: CGFloat = 0
 
     static let handleSize = CGSize(width: TerminalEdgeTabBackground.width, height: 68)
     /// The handle's hit area reaches past its visible edge into the terminal.
@@ -86,6 +91,19 @@ struct WorkspaceTerminalDrawer: View {
         return min(max(centred, 0), max(0, height - panelHeight))
     }
 
+    /// Hands the panel to a header button: the handle steps aside, and the
+    /// panel drops from the top instead of growing out of the edge.
+    func openedFromHeader(_ isExpanded: Binding<Bool>, panelTop: CGFloat) -> Self {
+        var copy = self
+        copy.headerExpansion = isExpanded
+        copy.headerPanelTop = panelTop
+        return copy
+    }
+
+    private var expanded: Bool {
+        headerExpansion?.wrappedValue ?? isExpanded
+    }
+
     /// The surface's own theme colours, like every other floating control.
     func palette(_ palette: TerminalThemePalette) -> Self {
         var copy = self
@@ -100,7 +118,7 @@ struct WorkspaceTerminalDrawer: View {
                 fraction: edgeDock.fraction(for: .workspaceDrawer),
                 liftTravel: liftTravel, height: height)
             ZStack(alignment: .topTrailing) {
-                if isExpanded {
+                if expanded {
                     // A tap anywhere else closes the panel instead of reaching
                     // the terminal underneath it.
                     Color.clear
@@ -109,11 +127,16 @@ struct WorkspaceTerminalDrawer: View {
                         .accessibilityHidden(true)
                     let panelHeight = Self.panelHeight(
                         count: terminals.count, hasFooter: onNewTerminal != nil)
+                    let top = headerExpansion == nil
+                        ? Self.panelTop(
+                            handleTop: handleTop, panelHeight: panelHeight, height: height)
+                        : min(
+                            max(headerPanelTop - geometry.frame(in: .global).minY, 0),
+                            max(0, height - panelHeight))
                     panel(height: panelHeight)
-                        .offset(y: Self.panelTop(
-                            handleTop: handleTop, panelHeight: panelHeight, height: height))
+                        .offset(y: top)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
-                } else {
+                } else if headerExpansion == nil {
                     handle(top: handleTop, height: height)
                         .offset(y: handleTop)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -123,13 +146,17 @@ struct WorkspaceTerminalDrawer: View {
         }
         .foregroundStyle(palette.foreground)
         .onChange(of: selectedPaneID) { _, _ in
-            if isExpanded { setExpanded(false) }
+            if expanded { setExpanded(false) }
         }
     }
 
     private func setExpanded(_ expanded: Bool) {
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
-            isExpanded = expanded
+            if let headerExpansion {
+                headerExpansion.wrappedValue = expanded
+            } else {
+                isExpanded = expanded
+            }
         }
     }
 
