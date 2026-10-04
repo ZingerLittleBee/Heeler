@@ -247,11 +247,26 @@ struct WeakNetworkE2ETests {
         // per-request deadline is what must end this — not a hung channel.
         try await fixture.control.apply(.starved)
         let started = ContinuousClock.now
+        let recovery = TimeoutRecoveryRecorder()
+        await transport.runNextStreamLocalTimeoutHookForTesting {
+            try #require(started.duration(to: .now) >= .seconds(4))
+            try await fixture.control.apply(.degraded)
+            await recovery.record()
+        }
         await #expect(throws: TransportError.timedOut) { _ = try await transport.ping() }
         #expect(started.duration(to: .now) < .seconds(20))
 
-        try await fixture.control.apply(.degraded)
+        // The deadline may return before the cancelled native operation drains.
+        try await waitUntil("the timeout gate should restore bandwidth before cleanup") {
+            await recovery.count == 1
+        }
+        try #require(await recovery.count == 1)
+        try await waitUntil("the timed-out channel should be reclaimed") {
+            await transport.oneShotChannelCountForTesting() == 0
+        }
+        #expect(await transport.oneShotChannelCountForTesting() == 0)
         #expect(try await transport.ping().protocolVersion == 17)
+        #expect(await recovery.count == 1)
         try await transport.close()
     }
 
@@ -460,6 +475,12 @@ struct WeakNetworkE2ETests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(await condition(), comment)
+    }
+
+    private actor TimeoutRecoveryRecorder {
+        private(set) var count = 0
+
+        func record() { count += 1 }
     }
 
     private actor StatusRecorder {

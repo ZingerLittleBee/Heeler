@@ -26,6 +26,38 @@ def block(source: str, name: str) -> str:
 
 
 class LifecycleContracts(unittest.TestCase):
+    def test_starvation_recovers_at_the_timeout_boundary_without_changing_deadlines(self):
+        source = read("Tests/HeelerTests/WeakNetworkE2ETests.swift")
+        method = block(source, "starvedLinkTimesOutAndRecovers")
+        self.assertIn("settings.requestTimeout = .seconds(4)", method)
+        self.assertIn("await transport.runNextStreamLocalTimeoutHookForTesting", method)
+        self.assertIn("started.duration(to: .now) >= .seconds(4)", method)
+        self.assertIn("await recovery.record()", method)
+        self.assertIn("#require(await recovery.count == 1)", method)
+        self.assertIn("#expect(await transport.oneShotChannelCountForTesting() == 0)", method)
+        self.assertIn("await #expect(throws: TransportError.timedOut)", method)
+        self.assertIn("started.duration(to: .now) < .seconds(20)", method)
+        self.assertEqual(method.count("transport.ping().protocolVersion == 17"), 2)
+        self.assertLess(method.index("runNextStreamLocalTimeoutHookForTesting"),
+                        method.index("await #expect(throws:"))
+        self.assertNotIn("Task.sleep", method)
+
+    def test_timeout_hook_precedes_both_owned_send_drain_paths_and_is_one_shot(self):
+        source = read("Packages/HeelerSSH/Sources/HeelerSSH/SessionDriver.swift")
+        method = block(source, "exchangeResponseLine")
+        for match in re.finditer(r"await drainOwnedSends\(requestOffset:", method):
+            prefix = method[:match.start()]
+            self.assertRegex(prefix, r"#if DEBUG\s+try await runStreamLocalTimeoutHookForTestingIfNeeded\(error\)\s+#endif\s+$")
+        self.assertEqual(method.count("runStreamLocalTimeoutHookForTestingIfNeeded(error)"), 2)
+        hook = block(source, "runStreamLocalTimeoutHookForTestingIfNeeded")
+        self.assertIn("failure == .timedOut || failure == .cancelled", hook)
+        self.assertLess(hook.index("nextStreamLocalTimeoutHookForTesting = nil"),
+                        hook.index("try await hook()"))
+        exchange = block(source, "exchangeStreamLocal")
+        self.assertIn("nextStreamLocalTimeoutHookForTesting = nil", exchange)
+        self.assertIn("deadline: ContinuousClock.now.advanced(by: .seconds(2))", exchange)
+        self.assertIn("catch {\n                        invalidateResources()", exchange)
+
     def test_inventory_counter_is_captured_after_initial_subscription_resync(self):
         source = read("Tests/HeelerTests/ConsoleTerminalInventoryTests.swift")
         method = block(source, "frequentPaneUpdatesRefreshMetadataWithoutSnapshotRequests")

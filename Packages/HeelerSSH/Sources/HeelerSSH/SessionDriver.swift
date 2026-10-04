@@ -199,6 +199,7 @@ actor SessionDriver {
     private var nextExecStderrReadErrorForTesting: SSHError?
     private var nextExecStdoutOwnerErrorForTesting: SSHError?
     private var nextExchangeStderrOwnerForTesting: Bool?
+    private var nextStreamLocalTimeoutHookForTesting: (@Sendable () async throws -> Void)?
     private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextCompensationUnlinkPhaseHookForTesting: (@Sendable () async throws -> Void)?
@@ -1053,7 +1054,12 @@ actor SessionDriver {
     ) async throws -> Data {
         try await withDiagnosticPhase("stream-local exchange on \(socketPath)") {
             await acquireOperation()
-            defer { releaseOperation() }
+            defer {
+                #if DEBUG
+                nextStreamLocalTimeoutHookForTesting = nil
+                #endif
+                releaseOperation()
+            }
 
             guard valid, !forwarding, authenticated, session != nil else {
                 throw SSHError.connectionInvalidated
@@ -2586,6 +2592,22 @@ actor SessionDriver {
 
     func forceNextExchangeReadOwnerForTesting(stderr: Bool) {
         nextExchangeStderrOwnerForTesting = stderr
+    }
+
+    func runNextStreamLocalTimeoutHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
+    ) {
+        nextStreamLocalTimeoutHookForTesting = hook
+    }
+
+    private func runStreamLocalTimeoutHookForTestingIfNeeded(_ error: any Error) async throws {
+        // The app's request deadline can cancel before the driver's own timer.
+        guard let failure = error as? SSHError,
+            failure == .timedOut || failure == .cancelled,
+            let hook = nextStreamLocalTimeoutHookForTesting
+        else { return }
+        nextStreamLocalTimeoutHookForTesting = nil
+        try await hook()
     }
 
     func holdNextExecChannelAllocationForTesting(
@@ -4218,12 +4240,18 @@ actor SessionDriver {
                     } catch {
                         let drainRequestOffset = requestOffset
                         await acquireOperation()
+                        #if DEBUG
+                        try await runStreamLocalTimeoutHookForTestingIfNeeded(error)
+                        #endif
                         await drainOwnedSends(requestOffset: drainRequestOffset)
                         throw error
                     }
                     await acquireOperation()
                 }
             } catch {
+                #if DEBUG
+                try await runStreamLocalTimeoutHookForTestingIfNeeded(error)
+                #endif
                 await drainOwnedSends(requestOffset: requestOffset)
                 throw error
             }

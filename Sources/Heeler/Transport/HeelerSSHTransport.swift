@@ -1280,6 +1280,16 @@ actor HeelerSSHTransport: Transport {
         await channelAdmission.snapshot().ordinarySession
     }
 
+    func oneShotChannelCountForTesting() async -> Int {
+        await connection.oneShotRegistryCountForTesting()
+    }
+
+    func runNextStreamLocalTimeoutHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
+    ) async {
+        await connection.runNextStreamLocalTimeoutHookForTesting(hook)
+    }
+
     func delayNextNotificationSFTPWriteForTesting(_ delay: Duration) async {
         await connection.delayNextSFTPWriteForTesting(delay)
     }
