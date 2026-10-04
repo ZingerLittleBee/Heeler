@@ -27,7 +27,7 @@ IOS_WATCH_DEBOUNCE ?= 1s
 DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
 DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
-.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight bump publish clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
+.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight bump publish clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts
 
 # Command-line DERIVED overrides remain supported for either platform.
 test-app test-directory-browser-ui sim build-sim sim-id: DERIVED = $(DERIVED_SIMULATOR)
@@ -94,9 +94,13 @@ test-ci-diagnostic-controls: ## Verify diagnostic isolation and execution guards
 check-agent-docs: ## Check navigation links and unique ADR numbers
 	python3 scripts/check-agent-docs.py
 
-test-tools: check-agent-docs ## Test agent tooling without Xcode or a simulator
+check-test-membership: ## Check that the committed project compiles every app test source
+	python3 scripts/check-test-target-membership.py
+
+test-tools: check-agent-docs check-test-membership ## Test agent tooling without Xcode or a simulator
 	python3 scripts/test-native-test-lifecycle.py
 	python3 scripts/test-check-agent-docs.py
+	python3 scripts/test-check-test-target-membership.py
 	python3 scripts/test-run-app-simulator-tests.py
 	python3 scripts/test-simulator-ui.py
 	$(MAKE) test-ci-evidence

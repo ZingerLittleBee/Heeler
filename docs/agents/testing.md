@@ -56,7 +56,9 @@ plan. The standalone package runner is
 `scripts/run-heelerssh-package-tests.sh`; `make test` invokes it after app tests.
 For CI parity, use the appropriate `test-ci-*` target. CI does not regenerate
 the Xcode project, so a regenerated local build cannot prove the committed
-project is complete.
+project is complete. `make check-test-membership`, which `make test-tools` and
+the merge gate run, fails when the committed HeelerTests target omits a Swift
+file under `Tests/HeelerTests` or the shared scheme skips tests.
 
 ## Intermittent CI diagnosis
 

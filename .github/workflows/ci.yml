@@ -351,6 +351,10 @@ jobs:
           path: .ci/baseline
           github-token: ${{ github.token }}
           run-id: ${{ inputs.baseline_run }}
+      - name: Check test target membership
+        # Evidence proves every test compiled into HeelerTests ran; this
+        # proves every Swift source under Tests/HeelerTests is compiled in.
+        run: make check-test-membership
       - name: Verify complete test coverage
         env:
           LAYOUT: ${{ inputs.layout || 'sharded' }}
