@@ -341,7 +341,9 @@ def load_evidence(directory: Path, sha: str, layout: str, include_package: bool)
             workers[worker] = value
         else:
             raise ValueError(f"Unsupported evidence kind: {path}")
-    require(set(workers) == set(expected), "Missing worker completion evidence")
+    missing = sorted("-".join(worker) for worker in set(expected) - set(workers))
+    require(not missing, f"Missing worker completion evidence: {', '.join(missing)}. A worker records it only "
+            "after its tests pass; if it passed in an earlier attempt whose artifact expired, rerun all jobs")
     for worker, names in expected.items():
         actual = {key[2] for key in phases if key[:2] == worker}
         require(actual == names, f"Missing or unexpected phases for {worker}: {actual}")

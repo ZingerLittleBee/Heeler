@@ -220,11 +220,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           # A partial rerun replaces only its worker; successful prerequisites
-          # retain their same-run, same-SHA evidence for the aggregate.
+          # retain their same-run, same-SHA evidence for the aggregate. Keep it
+          # for GitHub's 30-day rerun window.
           name: ios-ci-evidence-app-${{ matrix.shard }}-${{ github.run_id }}
           path: ${{ env.HEELER_CI_EVIDENCE_DIR }}
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
           overwrite: true
 
       - name: Upload iOS CI diagnostics
@@ -303,7 +304,7 @@ jobs:
           name: ios-ci-evidence-package-${{ github.run_id }}
           path: ${{ env.HEELER_CI_EVIDENCE_DIR }}
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
           overwrite: true
 
       - name: Upload package CI diagnostics

@@ -203,7 +203,7 @@ class AggregateTests(unittest.TestCase):
         self.values = records()
         write_records(self.candidate, self.values)
         (self.candidate / "app-ordinary/worker-app-ordinary.json").unlink()
-        with self.assertRaisesRegex(ValueError, "Missing worker"):
+        with self.assertRaisesRegex(ValueError, "Missing worker completion evidence: app-ordinary\\. .*rerun all jobs"):
             evidence.verify(self.candidate, SHA, "sharded", None, False)
 
     def test_wrong_sha_and_unknown_schema_fail(self):
