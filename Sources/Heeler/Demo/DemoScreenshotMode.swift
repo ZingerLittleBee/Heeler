@@ -1096,7 +1096,8 @@
                 revision: 1,
                 source: params.source,
                 tabID: agent?.tabID ?? "demo:t1",
-                text: profile.terminalOutputs[params.target]
+                text: (params.format == .ansi ? DemoChatSample.screen(forPane: params.target) : nil)
+                    ?? profile.terminalOutputs[params.target]
                     ?? DemoScreenshotFixture.terminalOutput,
                 truncated: false,
                 workspaceID: agent?.workspaceID ?? "demo")

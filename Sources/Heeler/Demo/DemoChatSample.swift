@@ -95,6 +95,43 @@
             "\(home)/.claude/projects/\(ClaudeProjectKey.key(forDirectory: directory))/\(session).jsonl"
         }
 
+        // MARK: Screens
+
+        /// A demo Agent's screen as `agent.read` returns it with colors, for
+        /// Chat's Blocked card; nil where the terminal sample serves.
+        static func screen(forPane paneID: String) -> String? {
+            paneID == "checkout:p3" ? checkoutApproval : nil
+        }
+
+        /// checkout:p3: Claude asking to run the command its transcript ends
+        /// on, in Claude Code's colors.
+        private static let checkoutApproval: String = {
+            let accent = "\u{1B}[38;2;177;185;249m"
+            let inactive = "\u{1B}[38;2;153;153;153m"
+            let dashes = "\u{1B}[38;2;80;80;80m"
+            let bold = "\u{1B}[1m"
+            let reset = "\u{1B}[0m"
+            let width = 80
+            let rule = accent + String(repeating: "─", count: width) + reset
+            let dashed = dashes + String(repeating: "╌", count: width) + reset
+            return [
+                "",
+                rule,
+                " \(bold)\(accent)Bash command\(reset)",
+                " \(inactive)Run the declined card UI test\(reset)",
+                dashed,
+                " swift test --filter CheckoutUITests/testDeclinedPaymentKeepsTheCart",
+                dashed,
+                " Do you want to proceed?",
+                " \(accent)❯ \(reset)\(inactive)1. \(reset)\(accent)Yes\(reset)",
+                "   \(inactive)2. \(reset)Yes, and don't ask again for \(bold)swift test\(reset) commands in "
+                    + "\(bold)/workspace/storefront\(reset)",
+                "   \(inactive)3. \(reset)No",
+                "",
+                " \(inactive)Esc to cancel · Tab to amend\(reset)",
+            ].joined(separator: "\r\n")
+        }()
+
         // MARK: Conversations
 
         /// docs:p2, idle: a finished edit, a compaction, then a follow-up

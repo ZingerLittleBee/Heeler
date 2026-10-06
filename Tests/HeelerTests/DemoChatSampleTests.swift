@@ -60,6 +60,17 @@
             #expect(pending.kind == .command)
         }
 
+        @Test func theBlockedSampleShowsADialogForItsPendingCall() async throws {
+            let text = try #require(DemoChatSample.screen(forPane: "checkout:p3"))
+            let dialog = try #require(BlockedDialogParser.parse(ANSIScreenDecoder.decode(text), program: .claude).dialog)
+            #expect(dialog.kind == .claudeBash)
+            #expect(dialog.options.map(\.role) == [.approve, .approvePersistent, .decline])
+
+            let requests = try await Self.open("checkout:p3").transcript.pendingRequests
+            let request = try #require(BlockedRequestMatch.request(for: dialog, in: requests))
+            #expect(request.toolName == "Bash")
+        }
+
         @Test func samplesUseInventedNamesOnly() async throws {
             let forbidden = [
                 "heeler", "herdr", "github", "anthropic", "openai", "stripe",
