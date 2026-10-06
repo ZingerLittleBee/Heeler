@@ -25,7 +25,9 @@ struct ChatCacheSettingsModelTests {
                     id: ChatEntryID("e0"), sourceOffset: 0,
                     content: .assistant(ChatAssistantMessage(text: "hello")))
             ],
-            savedAt: Date())
+            // Whole seconds: the cache stores seconds since 1970, which about
+            // half of all `Date()` values do not survive bit for bit.
+            savedAt: Date(timeIntervalSince1970: 1_791_266_400))
     }
 
     @Test func measuresWhatIsSavedAndClearsIt() async {
