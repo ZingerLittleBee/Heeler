@@ -2573,7 +2573,7 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 71 tests in 5 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 76 tests in 5 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "one-shot exec resumes owned reads before other exchange operations" with 2 test cases passed' \
         "$package_e2e_log" \
@@ -2688,7 +2688,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all 71 tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all 76 tests" >&2
     exit 1
 fi
 exit 0

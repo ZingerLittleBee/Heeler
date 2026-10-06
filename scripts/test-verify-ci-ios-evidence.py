@@ -104,7 +104,7 @@ def records(layout: str = "sharded", package: bool = False) -> list[dict]:
                   phase("full-lane", "ordinary", ordinary + skipped, set())]
     if package:
         tests = [method(suite, 0, target="HeelerSSHTests") for suite in sorted(evidence.PACKAGE_SUITES)]
-        tests += [method("SessionDriverE2ETests", index, target="HeelerSSHTests") for index in range(1, 67)]
+        tests += [method("SessionDriverE2ETests", index, target="HeelerSSHTests") for index in range(1, 72)]
         result.append(phase("package-e2e", "all", tests, set(), "package"))
     return result
 

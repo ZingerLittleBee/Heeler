@@ -175,7 +175,7 @@ class LifecycleContracts(unittest.TestCase):
 
     def test_package_log_gate_requires_the_new_method_and_both_cases(self):
         source = read("scripts/run-ci-ios-tests.sh")
-        self.assertIn("Test run with 71 tests in 5 suites passed", source)
+        self.assertIn("Test run with 76 tests in 5 suites passed", source)
         self.assertIn('Test "one-shot exec resumes owned reads before other exchange operations" with 2 test cases passed', source)
         self.assertNotIn("Test run with 70 tests in 5 suites passed", source)
 
