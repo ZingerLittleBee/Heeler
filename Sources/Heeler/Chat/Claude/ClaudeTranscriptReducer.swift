@@ -1,0 +1,60 @@
+import Foundation
+
+/// The Claude Code adapter: folds transcript lines into an index and projects
+/// the conversation's current branch on demand.
+///
+/// Lines may arrive in any order (a tail window, then older pages, then
+/// re-fed lines after a rewrite); the index converges on the same state
+/// either way, so `append` and `prepend` differ only in what the follower
+/// promises. Everything else happens in `transcript(_:)`, which is pure: the
+/// branch is chosen again on every projection because a later line can
+/// change it (a rewind, a second writer, a compaction).
+struct ClaudeTranscriptReducer: ChatTranscriptReducer {
+    enum Role: Sendable, Equatable {
+        /// A session's own transcript, where sidechain and team records are
+        /// someone else's.
+        case main
+        /// A subagent's file, where every record is a sidechain.
+        case subagent
+    }
+
+    let role: Role
+    private(set) var index = ClaudeTranscriptIndex()
+
+    init(role: Role = .main) {
+        self.role = role
+    }
+
+    mutating func append(_ lines: [ChatLine]) {
+        for line in lines {
+            index.apply(line)
+        }
+    }
+
+    mutating func prepend(_ lines: [ChatLine]) {
+        for line in lines {
+            index.apply(line)
+        }
+    }
+
+    /// The current branch. With the file's head loaded, a missing parent is
+    /// a line that could not be read, and the walk bridges it; in a tail
+    /// window it is where an older page continues.
+    func chain(_ context: ChatProjectionContext) -> ClaudeChain {
+        ClaudeChainResolver.resolve(index, role: role, bridgesMissingParents: context.windowStart == 0)
+    }
+
+    func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
+        ClaudeTranscriptProjection.transcript(index: index, chain: chain(context), role: role, context: context)
+    }
+
+    /// The form a sent prompt and a recorded one are compared in (brief §7):
+    /// NFC, LF line ends, `<pasted_content>` unwrapped, trimmed. Claude Code
+    /// trims what it records, and Heeler appends a space when it sends.
+    static func echoKey(_ text: String) -> String {
+        let unified = text.precomposedStringWithCanonicalMapping
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        return ClaudeUserText.unwrappingPastedContent(unified).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
