@@ -10,9 +10,15 @@
         /// Adds Hosts that reconnect, cannot connect, or cannot sync, so the
         /// Host problem surfaces can be seen without a failing server.
         static let hostProblemsArgument = "--demo-host-problems"
+        /// Opens Agent details on Chat instead of the terminal.
+        static let chatArgument = "--demo-chat"
 
         static var showsHostProblems: Bool {
             ProcessInfo.processInfo.arguments.contains(hostProblemsArgument)
+        }
+
+        static var opensChat: Bool {
+            ProcessInfo.processInfo.arguments.contains(chatArgument)
         }
 
         static var isEnabled: Bool {
@@ -128,6 +134,8 @@
                 transports: console,
                 deviceToken: { nil },
                 relayBaseURL: { nil })
+            let detailSurface = AgentDetailSurfaceSettings(defaults: defaults)
+            if DemoScreenshotMode.opensChat { detailSurface.select(.chat) }
             return DemoScreenshotComposition(
                 hosts: HostStore(volatileHosts: DemoScreenshotFixture.hosts),
                 console: console,
@@ -137,7 +145,7 @@
                 snippets: SnippetStore(defaults: defaults),
                 appearance: AppAppearanceSettings(defaults: defaults),
                 inputMode: AgentInputModeSettings(defaults: defaults),
-                detailSurface: AgentDetailSurfaceSettings(defaults: defaults),
+                detailSurface: detailSurface,
                 pushRegistration: pushRegistration,
                 notificationPreferences: notificationPreferences,
                 relaySettings: relaySettings,
@@ -426,6 +434,7 @@
                 terminalID: "terminal:\(paneID)",
                 workspaceID: workspaceID,
                 agent: kind,
+                agentSession: DemoChatSample.session(forPane: paneID),
                 cwd: cwd,
                 name: name,
                 terminalTitleStripped: title)
@@ -1141,6 +1150,31 @@
             _ request: UntrackedDirectoryRequest
         ) async throws -> UntrackedDirectoryListing {
             try DemoChangesSample.listUntrackedDirectory(request)
+        }
+
+        /// Screenshot Chat transcripts, served in-process like Changes.
+        func hostHomeDirectory() async throws -> String {
+            DemoChatSample.home
+        }
+
+        func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+            DemoChatSample.status(atPath: path)
+        }
+
+        func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+            DemoChatSample.list(request)
+        }
+
+        func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+            DemoChatSample.read(range)
+        }
+
+        func agentInfo(_ target: AgentTarget) async throws -> Agent {
+            guard let agent = profile.snapshot.agents.first(where: { $0.paneID == target.target })
+            else {
+                throw TransportError.malformedResponse("Demo profile has no matching Agent.")
+            }
+            return Agent(agent)
         }
 
         func subscribeToEvents(
