@@ -22,12 +22,12 @@ struct ClaudeChain: Sendable, Equatable {
 /// past compactions so history stays visible: compaction relinks preserved
 /// messages, the newest eligible terminal picks the branch, the walk goes up
 /// from that terminal, and at a `compact_boundary` it continues from the
-/// newest terminal written before the boundary. Records the walk leaves out
-/// but that belong to it (parallel tool results, split blocks) are recovered
-/// as siblings. Everything else is a rolled-back or abandoned branch and
-/// stays hidden. The result is ordered by byte offset, which equals chain
-/// order for a linear chain and leaves preserved records where they were
-/// written.
+/// branch tip the boundary names (or, lacking one, the newest terminal
+/// written before it). Records the walk leaves out but that belong to it
+/// (parallel tool results, split blocks) are recovered as siblings.
+/// Everything else is a rolled-back or abandoned branch and stays hidden.
+/// The result is ordered by byte offset, which equals chain order for a
+/// linear chain and leaves preserved records where they were written.
 enum ClaudeChainResolver {
     /// - Parameter bridgesMissingParents: true when the file's head is
     ///   loaded, so a missing parent is a line that could not be read (an
@@ -101,7 +101,9 @@ enum ClaudeChainResolver {
         chain.terminalUUID = terminal.uuid
 
         var selected: Set<String> = []
-        /// The terminal of the segment written before `record`.
+        var expandedBoundaries: Set<String> = []
+        /// The newest terminal written before `record` that leads to a
+        /// message the walk has not shown: the brief's segment policy.
         func segmentTerminal(before record: ClaudeRecord) -> ClaudeRecord? {
             guard let limit = rank[record.uuid] else { return nil }
             var claimed: Set<String> = []
@@ -112,22 +114,40 @@ enum ClaudeChainResolver {
             }
             return nil
         }
-        var segmentStart: ClaudeRecord? = terminal
-        while let start = segmentStart {
-            segmentStart = nil
+        /// Where history continues above `boundary`. The CLI writes the
+        /// record the boundary would have followed as its
+        /// `logicalParentUuid`: the branch tip before compaction. Without
+        /// one, or with the file's head loaded and that record unreadable,
+        /// the newest terminal before the boundary stands in.
+        func olderSegment(before boundary: ClaudeRecord) -> ClaudeRecord? {
+            guard expandedBoundaries.insert(boundary.uuid).inserted else { return nil }
+            if let logicalParent = boundary.system?.logicalParentUUID {
+                if let record = records[logicalParent] { return record }
+                if chain.missingParent == nil { chain.missingParent = logicalParent }
+                guard bridgesMissingParents else { return nil }
+            }
+            return segmentTerminal(before: boundary)
+        }
+        // The first segment follows relinked parents, so it runs through the
+        // messages a compaction preserved. Older segments follow the parents
+        // as written, through those same messages to what preceded them.
+        var segment: (start: ClaudeRecord, followsWrittenParents: Bool)? = (terminal, false)
+        while let (start, followsWrittenParents) = segment {
+            segment = nil
             var current = start
-            // The walk stops at a selected record, which also guards cycles.
-            while selected.insert(current.uuid).inserted {
-                guard let parentID = parents[current.uuid] else {
-                    if current.isCompactBoundary {
-                        segmentStart = segmentTerminal(before: current)
+            var walked: Set<String> = []
+            while walked.insert(current.uuid).inserted {
+                selected.insert(current.uuid)
+                guard let parentID = followsWrittenParents ? current.parentUUID : parents[current.uuid] else {
+                    if current.isCompactBoundary, let older = olderSegment(before: current) {
+                        segment = (older, true)
                     }
                     break
                 }
                 guard let parent = records[parentID] else {
                     if chain.missingParent == nil { chain.missingParent = parentID }
-                    if bridgesMissingParents {
-                        segmentStart = segmentTerminal(before: current)
+                    if bridgesMissingParents, let older = segmentTerminal(before: current) {
+                        segment = (older, true)
                     }
                     break
                 }
