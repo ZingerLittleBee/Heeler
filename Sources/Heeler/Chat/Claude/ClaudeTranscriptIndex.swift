@@ -24,6 +24,8 @@ struct ClaudeTranscriptIndex: Sendable {
     private var permissionModeValue = Latest<String>()
     private var relocatedCwd = Latest<String>()
     private var continuedIn = Latest<String>()
+    /// Where the newest assistant record of the session itself starts.
+    private var lastAssistantOffset: UInt64?
     /// Offsets rather than counts, so a line fed twice counts once.
     private var invalidOffsets: Set<UInt64> = []
     private var oversizedOffsets: Set<UInt64> = []
@@ -60,6 +62,9 @@ struct ClaudeTranscriptIndex: Sendable {
     private mutating func insert(_ record: ClaudeRecord) {
         if let existing = records[record.uuid], existing.byteOffset > record.byteOffset { return }
         records[record.uuid] = record
+        if record.kind == .assistant, !record.isSidechain {
+            lastAssistantOffset = max(lastAssistantOffset ?? 0, record.byteOffset)
+        }
         switch record.kind {
         case .unknown(let type):
             unknownRecordTypes.insert(type)
@@ -92,8 +97,15 @@ struct ClaudeTranscriptIndex: Sendable {
 
     var permissionMode: String? { permissionModeValue.value }
 
+    /// The newest `relocated` and `continued-in`. A hand-off the session
+    /// wrote assistant messages after is history, not where the
+    /// conversation went (brief §8).
     var links: ChatTranscriptLinks {
-        ChatTranscriptLinks(relocatedCwd: relocatedCwd.value, continuedInSessionID: continuedIn.value)
+        var continuedInSessionID = continuedIn.value
+        if let lastAssistantOffset, lastAssistantOffset > continuedIn.offset {
+            continuedInSessionID = nil
+        }
+        return ChatTranscriptLinks(relocatedCwd: relocatedCwd.value, continuedInSessionID: continuedInSessionID)
     }
 
     var diagnostics: ChatTranscriptDiagnostics {
@@ -111,7 +123,7 @@ struct ClaudeTranscriptIndex: Sendable {
 /// A value where the line furthest into the file wins.
 private struct Latest<Value: Sendable & Equatable>: Sendable, Equatable {
     private(set) var value: Value?
-    private var offset: UInt64 = 0
+    private(set) var offset: UInt64 = 0
 
     mutating func offer(_ candidate: Value, at candidateOffset: UInt64) {
         guard value == nil || candidateOffset >= offset else { return }
