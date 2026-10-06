@@ -4,13 +4,28 @@ import UIKit
 @MainActor
 enum TerminalTextSelectionPresenter {
     static func present(_ request: TerminalTextSelectionRequest, from sourceView: UIView) {
+        present(
+            TerminalTextSelectionViewController(text: request.text, anchorRange: request.anchorRange),
+            from: sourceView)
+    }
+
+    /// Chat's Select Text: the whole message in the reading font, selected.
+    static func present(
+        text: String, font: UIFont, adjustsFontForContentSizeCategory: Bool,
+        accessibilityIdentifier: String, from sourceView: UIView
+    ) {
+        present(
+            TerminalTextSelectionViewController(
+                text: text, anchorRange: nil, font: font,
+                adjustsFontForContentSizeCategory: adjustsFontForContentSizeCategory,
+                accessibilityIdentifier: accessibilityIdentifier),
+            from: sourceView)
+    }
+
+    private static func present(_ selection: TerminalTextSelectionViewController, from sourceView: UIView) {
         guard let presentingViewController = sourceView.nearestPresentingViewController else {
             return
         }
-
-        let selection = TerminalTextSelectionViewController(
-            text: request.text,
-            anchorRange: request.anchorRange)
         let navigation = UINavigationController(rootViewController: selection)
         navigation.modalPresentationStyle = .pageSheet
         navigation.sheetPresentationController?.detents = [.large()]
@@ -22,11 +37,22 @@ enum TerminalTextSelectionPresenter {
 final class TerminalTextSelectionViewController: UIViewController {
     private let text: String
     private let anchorRange: NSRange?
+    private let font: UIFont
+    private let adjustsFontForContentSizeCategory: Bool
+    private let textAccessibilityIdentifier: String
     private let textView = UITextView()
 
-    init(text: String, anchorRange: NSRange?) {
+    init(
+        text: String, anchorRange: NSRange?,
+        font: UIFont = .monospacedSystemFont(ofSize: 14, weight: .regular),
+        adjustsFontForContentSizeCategory: Bool = false,
+        accessibilityIdentifier: String = "terminal.text-selection"
+    ) {
         self.text = text
         self.anchorRange = anchorRange
+        self.font = font
+        self.adjustsFontForContentSizeCategory = adjustsFontForContentSizeCategory
+        textAccessibilityIdentifier = accessibilityIdentifier
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -47,13 +73,14 @@ final class TerminalTextSelectionViewController: UIViewController {
         textView.translatesAutoresizingMaskIntoConstraints = false
         textView.backgroundColor = .systemBackground
         textView.textColor = .label
-        textView.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+        textView.font = font
+        textView.adjustsFontForContentSizeCategory = adjustsFontForContentSizeCategory
         textView.isEditable = false
         textView.isSelectable = true
         textView.alwaysBounceVertical = true
         textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
         textView.text = text
-        textView.accessibilityIdentifier = "terminal.text-selection"
+        textView.accessibilityIdentifier = textAccessibilityIdentifier
         view.addSubview(textView)
 
         NSLayoutConstraint.activate([

@@ -44,6 +44,9 @@ final class AgentChatStore {
     private(set) var conversation: ChatConversationSnapshot
     /// Whether a Chat view is showing this conversation.
     private(set) var isVisible = false
+    /// Changes whenever Chat starts following another conversation, which
+    /// the timeline opens at its end instead of diffing into.
+    private(set) var conversationGeneration = 0
 
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
@@ -293,6 +296,7 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        conversationGeneration += 1
         engine = target.map(makeEngine)
         restored = false
         appliedRevision = nil
