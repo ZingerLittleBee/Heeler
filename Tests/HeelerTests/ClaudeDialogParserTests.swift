@@ -415,11 +415,11 @@ struct ClaudeDialogParserTests {
 /// Synthetic Claude dialogs in the dark theme's colors, laid out like the
 /// captured Bash dialog.
 enum ClaudeDialogRows {
-    static let width = 60
-
+    /// A dialog `width` columns wide. A label may hold `\r\n` and an indent
+    /// to wrap onto the next row.
     static func screen(
         title: String, body: [String] = [], options: [String], focused: Int = 1, firstNumber: Int = 1,
-        footer: String = "Esc to cancel · Tab to amend"
+        footer: String = "Esc to cancel · Tab to amend", width: Int = 60
     ) -> ANSIScreen {
         var rows = [
             SGR.reset + SGR.claudeAccent + String(repeating: "─", count: width) + SGR.reset,
