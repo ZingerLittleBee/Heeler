@@ -194,6 +194,9 @@ struct AgentTerminalView: View {
     private let showChanges: (() -> Void)?
     /// Opens Changes for a Worktree directory after its sheet has dismissed.
     private let showWorktreeChanges: ((String) -> Void)?
+    /// Swaps this screen for Chat in place; nil for an Agent without Chat,
+    /// which hides the switcher button and the menu entry.
+    private let showChat: (() -> Void)?
     private let composer: AgentComposerStore
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
     private let retainedSurface: TerminalSurfaceRetention?
@@ -311,6 +314,7 @@ struct AgentTerminalView: View {
         openTerminal: @escaping () -> Void = {},
         showChanges: (() -> Void)? = nil,
         showWorktreeChanges: ((String) -> Void)? = nil,
+        showChat: (() -> Void)? = nil,
         composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil,
         retainedSurface: TerminalSurfaceRetention? = nil,
@@ -339,6 +343,7 @@ struct AgentTerminalView: View {
         self.openTerminal = openTerminal
         self.showChanges = showChanges
         self.showWorktreeChanges = showWorktreeChanges
+        self.showChat = showChat
         self.composer = composer
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
         self.retainedSurface = retainedSurface
@@ -955,7 +960,15 @@ struct AgentTerminalView: View {
                 } : nil,
             renameAgent: { isRenamingAgent = true },
             renameWorkspace: { isRenamingWorkspace = true },
-            closeAgent: { isConfirmingClose = true })
+            closeAgent: { isConfirmingClose = true },
+            showChat: showChat.map { showChat in
+                {
+                    // Chat takes over in place, so a raised keyboard moves
+                    // to its Composer rather than going down.
+                    armSameAgentKeyboardHandoffIfKeyboardIsUp()
+                    showChat()
+                }
+            })
     }
 
     private func makeWorktreeStore(checkout: RepositoryCheckout) -> WorktreeDetailStore {
@@ -1250,6 +1263,7 @@ struct AgentTerminalView: View {
             keyboardPresentation: $composerKeyboardPresentation,
             prepareKeyboardPresentation: prepareComposerKeyboardPresentation,
             modeControl: composerModeControl,
+            surfaceControl: chatSurfaceControl,
             keyboardHandoffID: directToComposerHandoffID,
             isKeyboardHandoffCurrent: { id in
                 isOnStage()
@@ -1269,6 +1283,16 @@ struct AgentTerminalView: View {
             links: attach.attachLinks,
             open: { link in openAttachLink(link) },
             copy: { link in UIPasteboard.general.string = link.target })
+    }
+
+    private var chatSurfaceControl: TerminalAgentSwitcherModeControl? {
+        composerActions.showChat.map { showChat in
+            .button(
+                systemImage: AgentDetailSurface.chat.showSystemImage,
+                accessibilityLabel: AgentDetailSurface.chat.showTitle,
+                accessibilityHint: AgentDetailSurface.chat.showAccessibilityHint,
+                action: showChat)
+        }
     }
 
     private var composerModeControl: TerminalAgentSwitcherModeControl {
@@ -1633,6 +1657,13 @@ struct AgentTerminalView: View {
         guard id != agent.id, keyboardIsUpForHandoff else { return }
         keyboardHandoff.arm(
             for: id, mode: isDirectInput && usesDirectToolsKeyboard ? .controls : .text)
+    }
+
+    /// For Chat replacing this screen on the same Agent. Chat always types
+    /// through its Composer, so the keyboard it inherits is the text one.
+    private func armSameAgentKeyboardHandoffIfKeyboardIsUp() {
+        guard keyboardIsUpForHandoff else { return }
+        keyboardHandoff.arm(for: agent.id, mode: .text)
     }
 
     /// A Shell Terminal opened from here comes up with the keyboard in the

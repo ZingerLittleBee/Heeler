@@ -33,6 +33,7 @@ final class HeelerAppModel {
     let snippets: SnippetStore
     let appearance: AppAppearanceSettings
     let inputMode: AgentInputModeSettings
+    let detailSurface: AgentDetailSurfaceSettings
     let relaySettings: NotificationRelaySettings
     let bannerStore: AgentNotificationBannerStore
     let liveActivities: HostLiveActivityCoordinator
@@ -67,6 +68,7 @@ final class HeelerAppModel {
         snippets = SnippetStore()
         appearance = AppAppearanceSettings()
         inputMode = AgentInputModeSettings()
+        detailSurface = AgentDetailSurfaceSettings()
         let relaySettings = NotificationRelaySettings()
         self.relaySettings = relaySettings
         // Preference reads/writes borrow the Console's live per-Host SSH

@@ -517,6 +517,7 @@ struct AgentDetailChangesTests {
             console: console,
             terminal: terminal,
             inputMode: inputMode,
+            detailSurface: AgentDetailSurfaceSettings(defaults: defaults),
             hosts: [],
             activity: AppActivityCoordinator(),
             keyboardHandoff: TerminalKeyboardHandoff(),

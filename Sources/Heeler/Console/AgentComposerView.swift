@@ -77,6 +77,10 @@ struct AgentComposerActions {
     let renameAgent: () -> Void
     let renameWorkspace: () -> Void
     let closeAgent: () -> Void
+    /// Swaps the detail to Chat or back to the Agent terminal. Nil hides the
+    /// entry: the surface already showing it, or an Agent without Chat.
+    var showChat: (() -> Void)? = nil
+    var showAgentTerminal: (() -> Void)? = nil
 }
 
 struct AgentComposerLinkPresentation: Equatable {
@@ -130,6 +134,8 @@ struct AgentComposerView: View {
     let prepareKeyboardPresentation: (AgentComposerKeyboardPresentation) -> Void
     /// Optional Hide Composer control on the switcher trail.
     var modeControl: TerminalAgentSwitcherModeControl? = nil
+    /// Optional Show Chat / Show Agent Terminal control, before `modeControl`.
+    var surfaceControl: TerminalAgentSwitcherModeControl? = nil
     var keyboardHandoffID: UUID?
     var isKeyboardHandoffCurrent: (UUID) -> Bool = { _ in false }
     var onFirstResponderRequest: (UUID, Bool) -> Void = { _, _ in }
@@ -294,7 +300,8 @@ struct AgentComposerView: View {
                         toggleKeyboard: dismissOrPresentKeyboard,
                         isToolsKeyboardPresented: isToolsKeyboardPresented,
                         switchKeyboard: keyboardSwitchAction,
-                        modeControl: modeControl)
+                        modeControl: modeControl,
+                        surfaceControl: surfaceControl)
                 }
                 .background(
                     .regularMaterial,

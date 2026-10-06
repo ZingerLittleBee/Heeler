@@ -15,6 +15,7 @@ struct ConsoleView: View {
     let console: ConsoleStore
     let terminal: TerminalSettings
     let inputMode: AgentInputModeSettings
+    let detailSurface: AgentDetailSurfaceSettings
     let appearance: AppAppearanceSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
@@ -63,6 +64,9 @@ struct ConsoleView: View {
     /// The Agent whose detail shows Changes in place of its terminal; the
     /// window's chrome then follows the app, not the terminal theme.
     @State private var agentShowingChanges: ConsoleAgent.ID?
+    /// The Agent whose detail shows Chat in place of its terminal, for the
+    /// same reason.
+    @State private var agentShowingChat: ConsoleAgent.ID?
     /// Each list tab's last selection. In regular width both lists sit
     /// beside their own detail, so a list tab comes back to what it showed
     /// rather than to the other list's pick.
@@ -1132,7 +1136,9 @@ struct ConsoleView: View {
             return terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme)
         }
-        guard let id = notificationRouter.path.last, agentShowingChanges != id else { return nil }
+        guard let id = notificationRouter.path.last, agentShowingChanges != id,
+            agentShowingChat != id
+        else { return nil }
         let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
             && MissingAgentPresentation(agentID: id, console: console, hosts: hosts)
@@ -1157,6 +1163,7 @@ struct ConsoleView: View {
                     console: console,
                     terminal: terminal,
                     inputMode: inputMode,
+                    detailSurface: detailSurface,
                     hosts: hosts.hosts,
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,
@@ -1181,6 +1188,13 @@ struct ConsoleView: View {
                             agentShowingChanges = id
                         } else if agentShowingChanges == id {
                             agentShowingChanges = nil
+                        }
+                    },
+                    onShowsChat: { shows in
+                        if shows {
+                            agentShowingChat = id
+                        } else if agentShowingChat == id {
+                            agentShowingChat = nil
                         }
                     }
                 )

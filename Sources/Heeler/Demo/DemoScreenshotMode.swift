@@ -37,6 +37,7 @@
         @State private var snippets: SnippetStore
         @State private var appearance: AppAppearanceSettings
         @State private var inputMode: AgentInputModeSettings
+        @State private var detailSurface: AgentDetailSurfaceSettings
         @State private var pushRegistration: PushRegistrationStore
         @State private var notificationPreferences: NotificationPreferencesStore
         @State private var relaySettings: NotificationRelaySettings
@@ -56,6 +57,7 @@
             _snippets = State(initialValue: composition.snippets)
             _appearance = State(initialValue: composition.appearance)
             _inputMode = State(initialValue: composition.inputMode)
+            _detailSurface = State(initialValue: composition.detailSurface)
             _pushRegistration = State(initialValue: composition.pushRegistration)
             _notificationPreferences = State(initialValue: composition.notificationPreferences)
             _relaySettings = State(initialValue: composition.relaySettings)
@@ -77,6 +79,7 @@
                 console: console,
                 terminal: terminal,
                 inputMode: inputMode,
+                detailSurface: detailSurface,
                 appearance: appearance,
                 pushRegistration: pushRegistration,
                 notificationPreferences: notificationPreferences,
@@ -106,6 +109,7 @@
         let snippets: SnippetStore
         let appearance: AppAppearanceSettings
         let inputMode: AgentInputModeSettings
+        let detailSurface: AgentDetailSurfaceSettings
         let pushRegistration: PushRegistrationStore
         let notificationPreferences: NotificationPreferencesStore
         let relaySettings: NotificationRelaySettings
@@ -133,6 +137,7 @@
                 snippets: SnippetStore(defaults: defaults),
                 appearance: AppAppearanceSettings(defaults: defaults),
                 inputMode: AgentInputModeSettings(defaults: defaults),
+                detailSurface: AgentDetailSurfaceSettings(defaults: defaults),
                 pushRegistration: pushRegistration,
                 notificationPreferences: notificationPreferences,
                 relaySettings: relaySettings,

@@ -74,7 +74,8 @@ struct AgentDirectInputChrome: View {
                     toggleKeyboard: interactions.toggleKeyboard,
                     isToolsKeyboardPresented: presentation.isToolsKeyboardPresented,
                     switchKeyboard: interactions.switchKeyboard,
-                    modeControl: modeControl)
+                    modeControl: modeControl,
+                    surfaceControl: surfaceControl)
             }
             .padding(.vertical, 8)
         }
@@ -86,6 +87,18 @@ struct AgentDirectInputChrome: View {
             accessibilityLabel: AgentDirectInputPresentation.showComposerAccessibilityLabel,
             accessibilityHint: AgentDirectInputPresentation.showComposerAccessibilityHint,
             action: interactions.showComposer)
+    }
+
+    /// Show Chat, for an Agent that has one. Chat always uses the Composer,
+    /// so this leaves Direct Input behind without changing the saved mode.
+    private var surfaceControl: TerminalAgentSwitcherModeControl? {
+        interactions.actions.showChat.map { showChat in
+            .button(
+                systemImage: AgentDetailSurface.chat.showSystemImage,
+                accessibilityLabel: AgentDetailSurface.chat.showTitle,
+                accessibilityHint: AgentDetailSurface.chat.showAccessibilityHint,
+                action: showChat)
+        }
     }
 
     private var shortcutRow: some View {

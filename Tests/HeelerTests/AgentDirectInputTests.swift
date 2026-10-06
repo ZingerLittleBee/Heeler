@@ -107,7 +107,10 @@ struct AgentDirectInputTests {
                 == [.addImage, .addFile])
         #expect(
             AgentActionMenuSection.sessionTools.items
-                == [.openTerminal, .changes, .newAgent, .skills, .snippets])
+                == [
+                    .showChat, .showAgentTerminal, .openTerminal, .changes, .newAgent, .skills,
+                    .snippets,
+                ])
         #expect(
             AgentActionMenuSection.agentLifecycle.items
                 == [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent])
@@ -118,6 +121,8 @@ struct AgentDirectInputTests {
         let metadata: [(AgentActionMenuItem, String, String, Bool, Bool)] = [
             (.addImage, "Add Image", "photo", false, true),
             (.addFile, "Add File", "doc", false, true),
+            (.showChat, "Show Chat", "bubble.left.and.text.bubble.right", false, false),
+            (.showAgentTerminal, "Show Agent Terminal", "terminal", false, false),
             (.openTerminal, "Open Terminal", "apple.terminal", false, false),
             (.changes, "Changes", "plus.forwardslash.minus", false, false),
             (.newAgent, "New Agent", "plus", false, false),
@@ -138,8 +143,8 @@ struct AgentDirectInputTests {
 
     @Test func sharedActionMenuAvailabilityAndDispatchCoverAllGates() {
         enum Event: Equatable {
-            case addImage, addFile, openTerminal, changes, startAgent, skills, snippets
-            case worktree, renameAgent, renameWorkspace, closeAgent
+            case addImage, addFile, showChat, showAgentTerminal, openTerminal, changes
+            case startAgent, skills, snippets, worktree, renameAgent, renameWorkspace, closeAgent
         }
         var events: [Event] = []
         let gated = AgentComposerActions(
@@ -189,11 +194,19 @@ struct AgentDirectInputTests {
             showWorktreeDetails: { events.append(.worktree) },
             renameAgent: { events.append(.renameAgent) },
             renameWorkspace: { events.append(.renameWorkspace) },
-            closeAgent: { events.append(.closeAgent) })
+            closeAgent: { events.append(.closeAgent) },
+            showChat: { events.append(.showChat) },
+            showAgentTerminal: { events.append(.showAgentTerminal) })
 
         let availability: [(AgentActionMenuItem, AgentComposerActions, Bool, Bool)] = [
             (.addImage, gated, true, false),
             (.addFile, gated, true, false),
+            // Each switch shows only where the other surface is on screen,
+            // and only for an Agent that has Chat.
+            (.showChat, gated, false, true),
+            (.showChat, ready, true, true),
+            (.showAgentTerminal, gated, false, true),
+            (.showAgentTerminal, ready, true, true),
             (.openTerminal, gated, true, false),
             (.openTerminal, busy, true, false),
             (.openTerminal, ready, true, true),
@@ -222,8 +235,9 @@ struct AgentDirectInputTests {
         }
         #expect(
             events == [
-                .addImage, .addFile, .openTerminal, .changes, .startAgent, .skills, .snippets,
-                .worktree, .renameAgent, .renameWorkspace, .closeAgent,
+                .addImage, .addFile, .showChat, .showAgentTerminal, .openTerminal, .changes,
+                .startAgent, .skills, .snippets, .worktree, .renameAgent, .renameWorkspace,
+                .closeAgent,
             ])
     }
 
@@ -248,7 +262,9 @@ struct AgentDirectInputTests {
             showWorktreeDetails: { steps.append(.action(.worktreeDetails)) },
             renameAgent: { steps.append(.action(.renameAgent)) },
             renameWorkspace: { steps.append(.action(.renameWorkspace)) },
-            closeAgent: { steps.append(.action(.closeAgent)) })
+            closeAgent: { steps.append(.action(.closeAgent)) },
+            showChat: { steps.append(.action(.showChat)) },
+            showAgentTerminal: { steps.append(.action(.showAgentTerminal)) })
         let restoreComposerThen: (@escaping () -> Void) -> Void = { action in
             steps.append(.restore)
             action()
@@ -265,6 +281,8 @@ struct AgentDirectInputTests {
             steps == [
                 .restore, .action(.addImage),
                 .restore, .action(.addFile),
+                .action(.showChat),
+                .action(.showAgentTerminal),
                 .action(.openTerminal),
                 .action(.changes),
                 .action(.newAgent),

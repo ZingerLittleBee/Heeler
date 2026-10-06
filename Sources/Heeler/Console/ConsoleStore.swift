@@ -36,6 +36,13 @@ final class ConsoleStore {
     private(set) var removedWorktreesByAgent: [
         ConsoleAgent.ID: WorktreeRemovalReceipt
     ] = [:]
+    /// Each Host's platform as its connection reported it; Chat offers
+    /// itself only on a Host known to be POSIX. Kept across reconnects of
+    /// one catalog entry, so a reconnect does not take an open Chat away,
+    /// and asked again on each new connection.
+    private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
+    /// The connection each Host's platform was last asked on.
+    @ObservationIgnored private var hostPlatformGenerations: [Host.ID: UInt64] = [:]
 
     @ObservationIgnored private var projections: [
         Host.ID: HostConsoleProjection
@@ -141,6 +148,8 @@ final class ConsoleStore {
             sidebarSnapshots.invalidate(id)
             terminalSnapshotRevisions[id] = nil
             terminalTransportGenerations[id] = nil
+            hostPlatforms[id] = nil
+            hostPlatformGenerations[id] = nil
             Task {
                 await terminalConnections.removeHost(id)
                 await agentTerminals.removeHost(id)
@@ -338,6 +347,29 @@ final class ConsoleStore {
                 detail: "The Host is not connected.")
         }
         return projection
+    }
+
+    /// Learns the Host's platform on its current connection, at most once
+    /// per connection. A failure keeps the last answer and lets the next
+    /// call ask again.
+    func resolveHostPlatform(_ hostID: Host.ID) async {
+        guard let projection = projections[hostID] else { return }
+        let generation = projection.transportGeneration
+        guard hostPlatformGenerations[hostID] != generation else { return }
+        hostPlatformGenerations[hostID] = generation
+        let platform: HostPlatform
+        do {
+            platform = try await projection.session.withTransport { transport in
+                try await transport.hostPlatform()
+            }
+        } catch {
+            if projections[hostID] === projection, hostPlatformGenerations[hostID] == generation {
+                hostPlatformGenerations[hostID] = nil
+            }
+            return
+        }
+        guard projections[hostID] === projection else { return }
+        if hostPlatforms[hostID] != platform { hostPlatforms[hostID] = platform }
     }
 
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
@@ -762,6 +794,7 @@ final class ConsoleStore {
     private func rebuild() {
         let current = Array(projections.values)
         reconcileTerminalConnections(current)
+        requestChatHostPlatforms(current)
         hostStatuses = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.status.map { (projection.host.id, $0) }
@@ -875,6 +908,23 @@ final class ConsoleStore {
                     hostID: hostID, identities: identities, isCurrent: isCurrent)
                 await agentTerminals.reconcile(hostID: hostID, agents: agents, isCurrent: isCurrent)
             }
+        }
+    }
+
+    /// Chat needs each Host's platform before it can offer itself. Asking as
+    /// soon as a connection lists a Claude or Codex Agent means a detail
+    /// opening on Chat rarely has to show the terminal first. The answer is
+    /// usually already known to the transport, which learned it connecting.
+    private func requestChatHostPlatforms(_ current: [HostConsoleProjection]) {
+        for projection in current
+        where projection.status == .connected && !projection.isAwaitingSnapshot {
+            let hostID = projection.host.id
+            guard hostPlatformGenerations[hostID] != projection.transportGeneration,
+                projection.agentsByPane.values.contains(where: {
+                    AgentChatAvailability.mayOfferChat(for: $0.agent)
+                })
+            else { continue }
+            Task { [weak self] in await self?.resolveHostPlatform(hostID) }
         }
     }
 
