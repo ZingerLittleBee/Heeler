@@ -1,5 +1,7 @@
+import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Agent detail's Chat surface (ADR 0020): the Agent's conversation, read
 /// from the transcript its own program writes, in place of the terminal.
@@ -13,7 +15,10 @@ struct AgentChatSurfaceView: View {
     private let console: ConsoleStore
     private let terminal: TerminalSettings
     private let hosts: [Host]
-    private let composer: AgentComposerStore
+    /// The Composer and staging the terminal shares, so a draft or an
+    /// upload carries across a surface switch.
+    private let session: AgentComposerSession
+    private var composer: AgentComposerStore { session.composer }
     private let keyboardHandoff: TerminalKeyboardHandoff
     private let keyboardInset: TerminalKeyboardInset
     /// Router truth: the detail shows, with Chat as its surface.
@@ -42,6 +47,9 @@ struct AgentChatSurfaceView: View {
     @State private var followRequest = 0
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var isConfirmingClose = false
+    @State private var isSelectingPhoto = false
+    @State private var isSelectingFile = false
+    @State private var selectedPhoto: PhotosPickerItem?
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
@@ -72,7 +80,7 @@ struct AgentChatSurfaceView: View {
         console: ConsoleStore,
         terminal: TerminalSettings,
         hosts: [Host],
-        composer: AgentComposerStore,
+        session: AgentComposerSession,
         keyboardHandoff: TerminalKeyboardHandoff,
         keyboardInset: TerminalKeyboardInset,
         isOnStage: @escaping () -> Bool,
@@ -90,7 +98,7 @@ struct AgentChatSurfaceView: View {
         self.console = console
         self.terminal = terminal
         self.hosts = hosts
-        self.composer = composer
+        self.session = session
         self.keyboardHandoff = keyboardHandoff
         self.keyboardInset = keyboardInset
         self.isOnStage = isOnStage
@@ -131,9 +139,9 @@ struct AgentChatSurfaceView: View {
         .modifier(ConsoleTerminalCommandRegistration(
             agentID: agent.id,
             isFocused: false,
-            isPresenting: isConfirmingClose || isStartingAgent || isManagingSnippets
-                || isShowingSkillsPicker || isRenamingAgent || isRenamingWorkspace
-                || closeErrorMessage != nil,
+            isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
+                || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
+                || isRenamingAgent || isRenamingWorkspace || closeErrorMessage != nil,
             isOnStage: { @MainActor in isOnStage() },
             toggleInputMode: nil,
             inputMode: .composer))
@@ -142,6 +150,17 @@ struct AgentChatSurfaceView: View {
 
     private var presentedSurface: some View {
         lifecycleSurface
+        .photosPicker(
+            isPresented: $isSelectingPhoto,
+            selection: $selectedPhoto,
+            matching: .images)
+        .fileImporter(
+            isPresented: $isSelectingFile,
+            allowedContentTypes: [.data]
+        ) { result in
+            guard case .success(let url) = result else { return }
+            session.staging.begin(.file(url))
+        }
         .sheet(isPresented: $isStartingAgent) {
             StartAgentView(
                 hosts: hosts,
@@ -255,6 +274,11 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
+        .onChange(of: selectedPhoto) { _, item in
+            guard let item else { return }
+            selectedPhoto = nil
+            session.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
+        }
         .onChange(of: composer.draft.hasPrefix("/"), initial: true) { _, opensMenu in
             guard opensMenu, let skills else { return }
             Task { await skills.loadIfNeeded() }
@@ -302,6 +326,11 @@ struct AgentChatSurfaceView: View {
                     if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ComposerStagingStatusBar(staging: session.staging)
+                .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
+                .frame(maxWidth: .infinity)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             composerChrome
@@ -614,12 +643,10 @@ struct AgentChatSurfaceView: View {
 
     private var composerActions: AgentComposerActions {
         AgentComposerActions(
-            // Attachments wait for staging to move off the terminal's
-            // Attach, which Chat never holds.
-            canBegin: false,
+            canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: {},
-            addFile: {},
+            addImage: { isSelectingPhoto = true },
+            addFile: { isSelectingFile = true },
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {

@@ -74,8 +74,9 @@ from live Host reads.
   [the UI runbook](simulator-ui.md).
 - **Image/file staging:** [ComposerStagingStore](../../Sources/Heeler/Attachments/ComposerStagingStore.swift)
   belongs to the Agent's [AgentComposerSession](../../Sources/Heeler/Console/AgentComposerSession.swift),
-  which `ConsoleStore` keeps per Agent above the detail and its Attach; the
-  last detail leaving the Agent cancels an upload, and suspension interrupts it.
+  which `ConsoleStore` keeps per Agent above the detail, its Attach and Chat;
+  the last detail leaving the Agent cancels an upload, and suspension
+  interrupts it.
   [ImagePreparer](../../Sources/Heeler/Images/ImagePreparer.swift) and
   [FilePreparer](../../Sources/Heeler/Files/FilePreparer.swift) prepare local media;
   typed `Transport.stageImage`/`stageFile` use SFTP.

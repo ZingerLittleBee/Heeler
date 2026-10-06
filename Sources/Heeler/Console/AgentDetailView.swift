@@ -323,7 +323,7 @@ struct AgentDetailView: View {
                     console: console,
                     terminal: terminal,
                     hosts: hosts,
-                    composer: session.composer,
+                    session: session,
                     keyboardHandoff: keyboardHandoff,
                     keyboardInset: keyboardInset,
                     // Chat holds no terminal channel, so a detail that lost
