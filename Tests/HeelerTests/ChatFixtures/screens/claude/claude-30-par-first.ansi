@@ -1,0 +1,30 @@
+
+
+[0m[38;2;153;153;153m✻ Cogitated for 2s · done 1:54 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mIn one single message, make two Bash [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtool calls in parallel: touch [0m[48;2;55;55;55m        [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mpar-a.txt and touch par-b.txt.[0m[48;2;55;55;55m        [0m
+
+[0m[38;2;153;153;153m⏺[0m Creating empty file par-b.txt
+[0m[38;2;153;153;153m  ⎿  $ touch par-b.txt[0m
+
+[0m[38;2;177;185;249m────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mBash command[0m
+ [0m[1mTip: auto mode handles these prompts [0m
+ [0m[1mfor you — choose "switch to auto mode"[0m
+ [0m[1mbelow[0m
+ [0m[38;2;153;153;153mCreate empty file par-a.txt[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ touch par-a.txt
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mYes, and always allow access to
+      [0m[1m/private/tmp/heeler-tmp-chat2/prob[0m
+      [0m[1me-claude[0m from this project
+   [0m[38;2;153;153;153m3. [0mYes, and switch to auto mode[0m[38;2;153;153;153m · [0m
+      [0m[38;2;153;153;153mauto mode handles these prompts [0m
+   [0m[38;2;153;153;153m4. [0mNo[0m[38;2;153;153;153mr you[0m
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend[0m
