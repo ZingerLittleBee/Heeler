@@ -112,7 +112,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .claude,
             io: BlockedScreenIO(
-                readScreen: { try await pane.read() },
+                readScreen: { await pane.read() },
                 sendKeys: { keys in
                     await pane.send(keys)
                     // The program records the result; the dialog still shows.
@@ -162,17 +162,37 @@ struct BlockedCardStoreTests {
         #expect(await pane.keys == [["1"]])
     }
 
-    @Test func aScreenWithNoDialogWhileBlockedSaysSoAndLeavingBlockedClearsIt() async throws {
+    @Test func aScreenWithNoDialogWhileBlockedSaysSoOnlyAfterAMoment() async throws {
         let pane = FakePane(try ScreenFixture.screen("claude-01-ready"))
-        let store = Self.store(.claude, pane: pane)
+        let clock = ManualClock()
+        let store = Self.store(.claude, pane: pane, clock: clock)
         store.update(activity: .blocked)
 
+        // herdr reports Blocked a moment before the dialog draws.
+        await store.refresh()
+        #expect(store.content == .none)
+        clock.advance(.seconds(2))
         await store.refresh()
         #expect(store.content == .unreadable)
 
         store.update(activity: .idle)
         #expect(store.content == .none)
         await store.refresh()
+        #expect(store.content == .none)
+    }
+
+    @Test func anAnsweredDialogLeavesNothingBehindWhileBlockedLingers() async throws {
+        let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("claude-29-c3-after-immediate"))
+        let clock = ManualClock()
+        let store = Self.store(.claude, pane: pane, clock: clock)
+        store.update(activity: .blocked)
+        clock.advance(.seconds(5))
+        await store.refresh()
+
+        await store.perform(.choose(ordinal: 1))
+        await store.refresh()
+
         #expect(store.content == .none)
     }
 
@@ -213,7 +233,7 @@ struct BlockedCardStoreTests {
         BlockedCardStore(
             program: program,
             io: BlockedScreenIO(
-                readScreen: { try await pane.read() },
+                readScreen: { await pane.read() },
                 sendKeys: { await pane.send($0) },
                 paste: { await pane.paste($0) }),
             clock: clock.clock)
@@ -285,6 +305,10 @@ private final class ManualClock: @unchecked Sendable {
     private var recorded: [Duration] = []
 
     var sleeps: [Duration] { lock.withLock { recorded } }
+
+    func advance(_ duration: Duration) {
+        lock.withLock { elapsed += duration }
+    }
 
     var clock: BlockedCardClock {
         BlockedCardClock(

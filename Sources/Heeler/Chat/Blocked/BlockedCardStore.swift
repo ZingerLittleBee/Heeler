@@ -53,6 +53,11 @@ final class BlockedCardStore {
         /// How long a dialog must have shown before the first key: a key
         /// sent as the dialog draws can land on the screen before it.
         var grace: Duration = .milliseconds(150)
+        /// How long the Agent may be Blocked with no dialog on screen before
+        /// the card says it can't read one. herdr reports Blocked a moment
+        /// before the program draws its dialog, and a moment after an
+        /// answer removed it.
+        var unreadableAfter: Duration = .seconds(2)
     }
 
     enum Content: Equatable {
@@ -100,6 +105,9 @@ final class BlockedCardStore {
     /// A dialog an action gave up on part way, shown as the generic card
     /// until another dialog replaces it.
     @ObservationIgnored private var degraded: (fingerprint: DialogFingerprint, reason: String)?
+    /// Since when a screen without a dialog may be Blocked for a reason
+    /// the card can't read: Blocked starting, or an answer taking effect.
+    @ObservationIgnored private var quietSince: ContinuousClock.Instant?
 
     init(program: ChatProgram, io: BlockedScreenIO, timing: Timing = Timing(), clock: BlockedCardClock = .live) {
         self.program = program
@@ -143,6 +151,7 @@ final class BlockedCardStore {
     func update(activity: ChatAgentActivity) {
         guard activity != self.activity else { return }
         self.activity = activity
+        if activity == .blocked { quietSince = clock.now() }
         if activity != .blocked, progress != .acting { clear() }
         updateWatching()
     }
@@ -239,7 +248,7 @@ final class BlockedCardStore {
         let observation = await observe()
         guard progress != .acting, activity == .blocked else { return }
         guard let observation else {
-            if content == .none { content = .unreadable }
+            if content == .none, !isQuiet { content = .unreadable }
             return
         }
         if progress == .unconfirmed { progress = .ready }
@@ -301,6 +310,7 @@ final class BlockedCardStore {
             return
         }
         progress = .ready
+        quietSince = clock.now()
         present(confirmed)
         if plan.focusesComposer { composerFocusRequest += 1 }
     }
@@ -372,9 +382,16 @@ final class BlockedCardStore {
         case .unrecognized(let excerpt):
             next = .generic(excerpt)
         case .none:
-            next = observation.activity == .blocked ? .unreadable : .none
+            next = observation.activity == .blocked && !isQuiet ? .unreadable : .none
         }
         if next != content { content = next }
+    }
+
+    /// Within the moment around a dialog appearing or going, when Blocked
+    /// with nothing on screen is expected.
+    private var isQuiet: Bool {
+        guard let quietSince else { return false }
+        return clock.now() - quietSince < timing.unreadableAfter
     }
 
     private func clear() {
