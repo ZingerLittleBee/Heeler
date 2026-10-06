@@ -36,6 +36,31 @@ final class AgentChatStore {
         /// How often the Agent's record is re-read while it reports no
         /// session Chat can follow.
         var sessionRecheck: TimeInterval = 5
+        /// How long after delivery a sent prompt may stay unrecorded before
+        /// its echo says so.
+        var echoTimeout: TimeInterval = 10
+    }
+
+    /// A message in Chat's Composer, as the store matches it against the
+    /// prompts the transcript records.
+    struct SentMessage: Equatable, Sendable {
+        let id: UUID
+        /// What herdr typed: the draft after Chat's rewrite.
+        let text: String
+        /// `agent.prompt` took it, so the program may record it.
+        let isDelivered: Bool
+    }
+
+    /// Where a sent message stands against the transcript.
+    enum SendStatus: Equatable, Sendable {
+        case awaiting
+        /// The transcript recorded it; its entry replaces the echo.
+        case recorded
+        /// Still unrecorded `Timing.echoTimeout` after delivery.
+        case overdue
+        /// Unrecorded and no longer worth an echo: it went into an earlier
+        /// conversation, or was sent before this store was watching.
+        case abandoned
     }
 
     let agentID: ConsoleAgent.ID
@@ -47,6 +72,8 @@ final class AgentChatStore {
     /// Changes whenever Chat starts following another conversation, which
     /// the timeline opens at its end instead of diffing into.
     private(set) var conversationGeneration = 0
+    /// Each message `updateSends(_:)` reported, by Composer message id.
+    private(set) var sendStatuses: [UUID: SendStatus] = [:]
 
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
@@ -73,6 +100,29 @@ final class AgentChatStore {
     @ObservationIgnored private var finishing: Task<Void, Never>?
     @ObservationIgnored private var sleeper: Task<Void, Never>?
     @ObservationIgnored private var wakeRequested = false
+    /// The Chat views on screen; the conversation is followed while any is.
+    @ObservationIgnored private var viewers: Set<UUID> = []
+    @ObservationIgnored private var sends: [TrackedSend] = []
+    /// Recorded prompts already taken by a send in the current
+    /// conversation: one recorded copy answers one send.
+    @ObservationIgnored private var claimedOffsets: Set<UInt64> = []
+    @ObservationIgnored private var claimedGeneration = 0
+    @ObservationIgnored private var skillNames: Set<String> = []
+
+    private struct TrackedSend {
+        let id: UUID
+        let key: String
+        /// The conversation it went into, and how far that had been read:
+        /// the program records the prompt at or after this offset.
+        let generation: Int
+        let floor: UInt64
+        /// First seen already delivered, so its floor is unknown.
+        let isOrphan: Bool
+        var deliveredAt: Date?
+    }
+
+    /// Callers that only ever show one Chat for this Agent.
+    static let soleViewer = UUID()
 
     init(
         agentID: ConsoleAgent.ID,
@@ -96,15 +146,20 @@ final class AgentChatStore {
 
     // MARK: View lifecycle
 
-    /// Chat is on screen: follow the conversation.
-    func show() {
+    /// A Chat view is on screen: follow the conversation. Each view passes
+    /// its own token, so one window leaving does not stop another's.
+    func show(_ viewer: UUID = AgentChatStore.soleViewer) {
+        viewers.insert(viewer)
         isVisible = true
         needsAgentRefresh = true
         startLoop()
     }
 
-    /// Chat left the screen: stop reading, saving what showed.
-    func hide() {
+    /// A Chat view left the screen. The last one out stops reading, saving
+    /// what showed.
+    func hide(_ viewer: UUID = AgentChatStore.soleViewer) {
+        viewers.remove(viewer)
+        guard viewers.isEmpty else { return }
         isVisible = false
         stopLoop()
     }
@@ -123,6 +178,7 @@ final class AgentChatStore {
 
     /// The Agent or its Host is gone.
     func end() {
+        viewers.removeAll()
         isVisible = false
         stopLoop()
     }
@@ -158,6 +214,36 @@ final class AgentChatStore {
         wake()
     }
 
+    /// The messages Chat's Composer holds, oldest first. Each one's place in
+    /// the transcript is taken when it first appears, before it is sent, so
+    /// only prompts recorded after that can match it.
+    func updateSends(_ messages: [SentMessage]) {
+        let ids = Set(messages.map(\.id))
+        sends.removeAll { !ids.contains($0.id) }
+        for message in messages {
+            if let index = sends.firstIndex(where: { $0.id == message.id }) {
+                guard message.isDelivered != (sends[index].deliveredAt != nil) else { continue }
+                sends[index].deliveredAt = message.isDelivered ? now() : nil
+                if message.isDelivered { noteSent() }
+            } else {
+                sends.append(
+                    TrackedSend(
+                        id: message.id, key: source.adapter.echoKey(message.text),
+                        generation: conversationGeneration, floor: conversation.readOffset,
+                        isOrphan: message.isDelivered, deliveredAt: message.isDelivered ? now() : nil))
+            }
+        }
+        matchSends()
+    }
+
+    /// The skills the Host offers, so a Codex `$name` prompt shows as the
+    /// command it invoked.
+    func skillsDidLoad(_ names: Set<String>) {
+        guard names != skillNames else { return }
+        skillNames = names
+        wake()
+    }
+
     /// The Console's latest record of the Agent, from a snapshot or a status
     /// change.
     func agentDidChange(_ next: Agent) {
@@ -182,7 +268,10 @@ final class AgentChatStore {
     /// drive turns directly.
     func step() async {
         if needsAgentRefresh || sessionRecheckIsDue { await refreshAgent() }
-        guard let engine else { return }
+        guard let engine else {
+            matchSends()
+            return
+        }
         let context = projectionContext
         if !restored {
             restored = true
@@ -201,6 +290,7 @@ final class AgentChatStore {
             snapshot = await engine.reproject(context: context)
         }
         apply(snapshot, from: engine)
+        matchSends()
         await engine.save()
     }
 
@@ -387,13 +477,86 @@ final class AgentChatStore {
     }
 
     private var projectionContext: ChatProjectionContext {
-        let activity: ChatAgentActivity =
-            switch agent.status {
-            case .idle, .done: .idle
-            case .working: .working
-            case .blocked: .blocked
-            default: .unknown
+        ChatProjectionContext(activity: ChatAgentActivity(agent.status), skillNames: skillNames)
+    }
+
+    // MARK: Sent prompts
+
+    /// Matches sends to the prompts the transcript recorded: first in,
+    /// first out, one to one, equal keys, and only prompts recorded after
+    /// the send. A send that went into an earlier conversation, such as the
+    /// first prompt that makes Codex report a session, may match anywhere in
+    /// the current one. Conservative on purpose: a wrong match would hide a
+    /// prompt that never arrived.
+    private func matchSends() {
+        if claimedGeneration != conversationGeneration {
+            claimedGeneration = conversationGeneration
+            claimedOffsets = []
+        }
+        let transcript = conversation.transcript
+        let recorded = transcript.recordedPrompts.map { (offset: $0.offset, key: source.adapter.echoKey($0.text)) }
+        // Codex records no prompt for `/compact`, only the compaction.
+        let compactions = transcript.entries.compactMap { entry -> UInt64? in
+            guard case .divider(let divider) = entry.content, divider.kind == .compaction else { return nil }
+            return entry.sourceOffset
+        }
+        let date = now()
+        var statuses: [UUID: SendStatus] = [:]
+        var becameOverdue = false
+        for send in sends {
+            if sendStatuses[send.id] == .recorded {
+                statuses[send.id] = .recorded
+                continue
             }
-        return ChatProjectionContext(activity: activity)
+            guard let deliveredAt = send.deliveredAt else {
+                statuses[send.id] = .awaiting
+                continue
+            }
+            if send.isOrphan {
+                statuses[send.id] = .abandoned
+                continue
+            }
+            let floor = send.generation == conversationGeneration ? send.floor : 0
+            var match = recorded.first {
+                $0.offset >= floor && $0.key == send.key && !claimedOffsets.contains($0.offset)
+            }?.offset
+            if match == nil, send.key == "/compact" {
+                match = compactions.first { $0 >= floor && !claimedOffsets.contains($0) }
+            }
+            if let match {
+                claimedOffsets.insert(match)
+                statuses[send.id] = .recorded
+            } else if date.timeIntervalSince(deliveredAt) < timing.echoTimeout {
+                statuses[send.id] = .awaiting
+            } else if send.generation == conversationGeneration {
+                statuses[send.id] = .overdue
+                becameOverdue = becameOverdue || sendStatuses[send.id] != .overdue
+            } else {
+                statuses[send.id] = .abandoned
+            }
+        }
+        if statuses != sendStatuses { sendStatuses = statuses }
+        // The program may have forked into a session herdr has not
+        // reported through the snapshot yet.
+        if becameOverdue {
+            needsAgentRefresh = true
+            wake()
+        }
+    }
+}
+
+extension ChatAgentActivity {
+    /// What herdr's Agent Status says about the Agent's turn.
+    init(_ status: AgentStatus?) {
+        guard let status else {
+            self = .unknown
+            return
+        }
+        switch status {
+        case .idle, .done: self = .idle
+        case .working: self = .working
+        case .blocked: self = .blocked
+        default: self = .unknown
+        }
     }
 }

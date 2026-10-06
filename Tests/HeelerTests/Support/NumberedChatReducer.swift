@@ -5,12 +5,16 @@ import Foundation
 /// A stand-in program format for Chat's plumbing tests. Each `{"n":k}`
 /// line becomes one user entry `n-k`; the conversation is titled with the
 /// first line it was seeded with; `{"format":"old"}` is a format it does
-/// not read; `{"continued":"<id>"}` links to another session.
+/// not read; `{"continued":"<id>"}` links to another session;
+/// `{"prompt":"<text>"}` is a typed prompt the file records, and
+/// `{"compacted":true}` a compaction.
 struct NumberedChatReducer: ChatTranscriptReducer {
     private struct Record: Decodable {
         let n: Int?
         let format: String?
         let continued: String?
+        let prompt: String?
+        let compacted: Bool?
     }
 
     let seed: ChatReducerSeed
@@ -44,6 +48,13 @@ struct NumberedChatReducer: ChatTranscriptReducer {
         range.map { "n-\($0)" }
     }
 
+    static func prompt(_ text: String) -> String {
+        let data = (try? JSONEncoder().encode(["prompt": text])) ?? Data()
+        return String(decoding: data, as: UTF8.self) + "\n"
+    }
+
+    static let compaction = #"{"compacted":true}"# + "\n"
+
     mutating func append(_ lines: [ChatLine]) { self.lines += lines }
     mutating func prepend(_ lines: [ChatLine]) { self.lines = lines + self.lines }
 
@@ -51,6 +62,16 @@ struct NumberedChatReducer: ChatTranscriptReducer {
         let records = lines.map { (line: $0, record: Self.record($0)) }
         return ChatTranscript(
             entries: records.compactMap { line, record in
+                if let prompt = record?.prompt {
+                    return ChatEntry(
+                        id: ChatEntryID("p-\(line.offset)"), sourceOffset: line.offset,
+                        content: .user(ChatUserMessage(text: prompt)))
+                }
+                if record?.compacted == true {
+                    return ChatEntry(
+                        id: ChatEntryID("c-\(line.offset)"), sourceOffset: line.offset,
+                        content: .divider(ChatDivider(kind: .compaction)))
+                }
                 guard let n = record?.n else { return nil }
                 return ChatEntry(
                     id: ChatEntryID("n-\(n)"), sourceOffset: line.offset,
@@ -58,6 +79,11 @@ struct NumberedChatReducer: ChatTranscriptReducer {
             },
             title: seed.firstLine.map { String(decoding: $0.data, as: UTF8.self) },
             needsOlderHistory: context.windowStart > 0,
+            recordedPrompts: records.compactMap { line, record in
+                record?.prompt.map {
+                    ChatRecordedPrompt(offset: line.offset, text: $0, entryID: ChatEntryID("p-\(line.offset)"))
+                }
+            },
             links: ChatTranscriptLinks(
                 continuedInSessionID: records.lazy.compactMap { $0.record?.continued }.last))
     }

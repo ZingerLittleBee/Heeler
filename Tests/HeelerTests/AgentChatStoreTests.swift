@@ -229,6 +229,158 @@ struct AgentChatStoreTests {
         #expect(!fixture.store.isVisible)
     }
 
+    @Test func anotherWindowsChatKeepsFollowingWhenOneLeaves() async throws {
+        let fixture = Fixture(session: Self.first)
+        let left = UUID()
+        let right = UUID()
+
+        fixture.store.show(left)
+        fixture.store.show(right)
+        fixture.store.hide(left)
+
+        #expect(fixture.store.isVisible)
+
+        fixture.store.hide(right)
+
+        #expect(!fixture.store.isVisible)
+    }
+
+    // MARK: Sent prompts
+
+    private static func sent(_ id: UUID, _ text: String, delivered: Bool = true) -> AgentChatStore.SentMessage {
+        AgentChatStore.SentMessage(id: id, text: text, isDelivered: delivered)
+    }
+
+    @Test func aSentPromptIsRecordedOnceTheTranscriptHasIt() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        await fixture.store.step()
+        let id = UUID()
+
+        fixture.store.updateSends([Self.sent(id, "hello ", delivered: false)])
+        #expect(fixture.store.sendStatuses[id] == .awaiting)
+        fixture.store.updateSends([Self.sent(id, "hello ")])
+        await fixture.files.append(NumberedChatReducer.prompt("hello"), to: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[id] == .recorded)
+    }
+
+    @Test func onlyAPromptRecordedAfterTheSendCounts() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.prompt("hello"), at: Self.path(Self.first))
+        await fixture.store.step()
+        let id = UUID()
+
+        fixture.store.updateSends([Self.sent(id, "hello ", delivered: false)])
+        fixture.store.updateSends([Self.sent(id, "hello ")])
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[id] == .awaiting)
+
+        fixture.advance(10)
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[id] == .overdue)
+
+        await fixture.files.append(NumberedChatReducer.prompt("hello"), to: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[id] == .recorded)
+    }
+
+    @Test func twoIdenticalSendsNeedTwoRecordedCopies() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<1), at: Self.path(Self.first))
+        await fixture.store.step()
+        let first = UUID()
+        let second = UUID()
+        fixture.store.updateSends([Self.sent(first, "go ", delivered: false), Self.sent(second, "go ", delivered: false)])
+        fixture.store.updateSends([Self.sent(first, "go "), Self.sent(second, "go ")])
+
+        await fixture.files.append(NumberedChatReducer.prompt("go"), to: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[first] == .recorded)
+        #expect(fixture.store.sendStatuses[second] == .awaiting)
+
+        await fixture.files.append(NumberedChatReducer.prompt("go"), to: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[second] == .recorded)
+    }
+
+    @Test func aSentCompactIsRecordedByTheCompaction() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<1), at: Self.path(Self.first))
+        await fixture.store.step()
+        let id = UUID()
+        fixture.store.updateSends([Self.sent(id, "/compact ", delivered: false)])
+        fixture.store.updateSends([Self.sent(id, "/compact ")])
+
+        await fixture.files.append(NumberedChatReducer.compaction, to: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[id] == .recorded)
+    }
+
+    @Test func aSendIntoAnEarlierConversationMatchesAnywhereInTheNext() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<20), at: Self.path(Self.first))
+        await fixture.files.write(NumberedChatReducer.prompt("fork me"), at: Self.path(Self.second))
+        await fixture.store.step()
+        let id = UUID()
+        fixture.store.updateSends([Self.sent(id, "fork me ", delivered: false)])
+        fixture.store.updateSends([Self.sent(id, "fork me ")])
+
+        // The prompt landed at the start of a session herdr reports next,
+        // far before where the first file had been read to.
+        await fixture.server.set(Self.agent(session: Self.second))
+        fixture.store.agentDidChange(Self.agent(session: Self.second))
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.second)))
+        #expect(fixture.store.sendStatuses[id] == .recorded)
+    }
+
+    @Test func anUnrecordedSendFromAnEarlierConversationStopsShowing() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        await fixture.files.write(NumberedChatReducer.lines(5..<6), at: Self.path(Self.second))
+        await fixture.store.step()
+        let id = UUID()
+        fixture.store.updateSends([Self.sent(id, "lost ", delivered: false)])
+        fixture.store.updateSends([Self.sent(id, "lost ")])
+
+        await fixture.server.set(Self.agent(session: Self.second))
+        fixture.store.agentDidChange(Self.agent(session: Self.second))
+        fixture.advance(10)
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[id] == .abandoned)
+    }
+
+    @Test func aMessageFirstSeenDeliveredGetsNoEcho() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        await fixture.store.step()
+        let id = UUID()
+
+        fixture.store.updateSends([Self.sent(id, "earlier ")])
+
+        #expect(fixture.store.sendStatuses[id] == .abandoned)
+    }
+
+    @Test func aMessageTheComposerDroppedIsForgotten() async throws {
+        let fixture = Fixture(session: Self.first)
+        let id = UUID()
+        fixture.store.updateSends([Self.sent(id, "refused ", delivered: false)])
+
+        fixture.store.updateSends([])
+
+        #expect(fixture.store.sendStatuses.isEmpty)
+    }
+
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {
         guard case .hit(let document) = await cache.load(key) else { return [] }
         return document.entries.map(\.id.rawValue)
