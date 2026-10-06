@@ -25,6 +25,11 @@ struct ChatRowView: View {
 
     var body: some View {
         content
+            // The cell, measured to fit the row, offers exactly that height
+            // as a limit. A stack held to a limit shares it out by
+            // flexibility and can cut a line from one text even though the
+            // total fits, so rows always take their ideal height.
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.top, row.topSpacing)
             .chatContentColumn()
             .modifier(ChatRowAccessibility(row: row, actions: actions))

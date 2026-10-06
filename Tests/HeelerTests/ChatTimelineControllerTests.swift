@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 import UIKit
 
@@ -388,5 +389,49 @@ struct ChatRowBuilderTests {
         #expect(ChatRowBuilder.spacing(before: tool, after: tool) < ChatRowBuilder.spacing(before: tool, after: user))
         #expect(ChatRowBuilder.spacing(before: user, after: tool) > ChatRowBuilder.spacing(before: tool, after: user))
         #expect(ChatRowBuilder.spacing(before: user, after: nil) == 8)
+    }
+}
+
+@MainActor
+@Suite("Chat row view")
+struct ChatRowViewTests {
+    private static let actions = ChatRowActions(
+        toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: "")
+
+    /// A cell is exactly as tall as its row measured and offers that height
+    /// as the row's limit. A SwiftUI stack held to a limit shares it out by
+    /// flexibility, which once cut the last line of a code block sitting
+    /// between paragraphs and a list.
+    @Test func aRowHeldToItsMeasuredHeightShowsAllOfIt() async {
+        let answer = ChatEntry(
+            id: ChatEntryID("answer"), sourceOffset: 0,
+            content: .assistant(
+                ChatAssistantMessage(
+                    text: """
+                        The retry keeps the cart. `retryPayment()` submits the same cart with `keepingItems: true`, and the flow tests cover a decline followed by a retry.
+
+                        Two small suggestions:
+
+                        - Clear the retry banner when the payment sheet closes, so it doesn't flash at the next checkout.
+                        - Keep the banner state in one place:
+
+                        ```swift
+                        func sheetDidClose() {
+                            banner = nil
+                        }
+                        ```
+
+                        Before you commit, I'd like to run the UI test that covers a declined card.
+                        """)))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [answer]))
+        #expect(!rows.isEmpty)
+        for row in rows {
+            let host = UIHostingController(rootView: ChatRowView(row: row, isExpanded: false, actions: Self.actions))
+            for width in stride(from: CGFloat(320), through: 440, by: 2) {
+                let measured = host.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+                let laidOut = host.sizeThatFits(in: CGSize(width: width, height: measured.height))
+                #expect(abs(laidOut.height - measured.height) <= 0.01, "at width \(width)")
+            }
+        }
     }
 }
