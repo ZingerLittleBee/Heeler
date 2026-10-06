@@ -246,8 +246,8 @@ struct AgentChatSurfaceView: View {
             timeline.update(
                 conversation: feed.generation,
                 input: ChatTimelineInput(
-                    entries: chat?.conversation.transcript.entries ?? [], pending: feed.pending,
-                    older: feed.older),
+                    entries: feed.history.marking(chat?.conversation.transcript.entries ?? []),
+                    pending: feed.pending, older: feed.older),
                 isReady: feed.isReady)
         }
         .onChange(of: sentMessages, initial: true) { previous, messages in
@@ -487,12 +487,16 @@ struct AgentChatSurfaceView: View {
         var revision: Int
         var older: ChatOlderHistory
         var pending: [ChatPendingEcho]
+        /// Blocked card answers the entries can't show by themselves.
+        var history: BlockedHistory
         var isReady: Bool
     }
 
     private var timelineFeed: TimelineFeed {
         guard let chat else {
-            return TimelineFeed(generation: 0, revision: 0, older: .reachedStart, pending: [], isReady: false)
+            return TimelineFeed(
+                generation: 0, revision: 0, older: .reachedStart, pending: [], history: BlockedHistory(),
+                isReady: false)
         }
         let conversation = chat.conversation
         let pending = pendingEchoes
@@ -500,7 +504,7 @@ struct AgentChatSurfaceView: View {
         if case .locating = conversation.phase {} else { isReady = true }
         return TimelineFeed(
             generation: chat.conversationGeneration, revision: conversation.revision,
-            older: conversation.older, pending: pending, isReady: isReady)
+            older: conversation.older, pending: pending, history: chat.blocked.history, isReady: isReady)
     }
 
     private var timelineActions: ChatTimelineActions {

@@ -148,6 +148,60 @@ struct BlockedCardStoreTests {
         #expect(store.progress == .ready)
     }
 
+    @Test func answersTheTranscriptCantShowAreKeptOnceTheyTakeEffect() async throws {
+        let request = Self.bash("toolu_1", "touch c1.txt")
+        for (action, keys, expected) in [
+            (DialogAction.choose(ordinal: 1), ["1"], ChatToolActivity.CardAnswer?.some(.allowed)),
+            (.dismiss, ["esc"], .stopped),
+            // The transcript records a decline itself.
+            (.choose(ordinal: 4), ["4"], nil),
+        ] {
+            let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
+            await pane.react(to: keys, with: try ScreenFixture.screen("claude-29-c3-after-immediate"))
+            let store = Self.store(.claude, pane: pane)
+            store.update(transcript: Self.transcript(pending: [request]))
+            store.update(activity: .blocked)
+            await store.refresh()
+
+            await store.perform(action)
+
+            #expect(await pane.keys == [keys])
+            #expect(store.history.calls["toolu_1"] == expected, "\(action)")
+        }
+    }
+
+    @Test func anAnswerThatShowedNoEffectIsNotKept() async throws {
+        let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
+        let store = Self.store(.claude, pane: pane)
+        store.update(transcript: Self.transcript(pending: [Self.bash("toolu_1", "touch c1.txt")]))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(store.progress == .unconfirmed)
+        #expect(store.history.isEmpty)
+    }
+
+    @Test func aCodexAsynchronousAnswerIsQueuedUnderItsQuestion() async throws {
+        let pane = FakePane(try ScreenFixture.screen("codex-09-x4-expanded"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("codex-10-x4-after-digit"))
+        let store = Self.store(.codex, pane: pane)
+        let request = ChatPendingRequest(
+            entryID: ChatEntryID("item-1"), callID: "item-1", kind: .question, toolName: "request_user_input_async",
+            summary: "Pick a fruit",
+            questions: [ChatQuestion(id: "item-1:0", text: "Pick a fruit"), ChatQuestion(id: "item-1:1", text: "Pick a drink")])
+        store.update(transcript: ChatTranscript(entries: [], pendingRequests: [request]))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        #expect(store.history.queuedAnswers == ["item-1:0": "Apple"])
+        #expect(store.history.calls.isEmpty)
+    }
+
     @Test func oneActionAtATime() async throws {
         let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
         await pane.react(to: ["1"], with: try ScreenFixture.screen("claude-29-c3-after-immediate"))

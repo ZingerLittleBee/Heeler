@@ -88,6 +88,8 @@ final class BlockedCardStore {
     /// Bumped when an answer hands the turn back to the user (a Codex
     /// decline or interrupt), so Chat focuses its Composer.
     private(set) var composerFocusRequest = 0
+    /// Confirmed answers the transcript can't show, for the timeline.
+    private(set) var history = BlockedHistory()
     /// Folded to a bar; a new dialog unfolds it.
     var isCollapsed = false
 
@@ -182,11 +184,39 @@ final class BlockedCardStore {
         guard progress == .ready, case .card(let shown) = content else { return }
         let program = program
         let requests = pendingRequests
-        await act(on: shown.dialog.fingerprint) { observation throws(DialogPlanError) in
+        var answered: BlockedCard?
+        let isConfirmed = await act(on: shown.dialog.fingerprint) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
             let request = BlockedRequestMatch.request(for: dialog, in: requests)
+            answered = BlockedCard(dialog: dialog, request: request)
             return try DialogActionPlanner.plan(
                 action, for: dialog, toolUseID: program == .claude ? request?.callID : nil)
+        }
+        if isConfirmed, let answered { record(action, on: answered) }
+    }
+
+    /// Keeps what the transcript won't show of an answer that took effect.
+    private func record(_ action: DialogAction, on card: BlockedCard) {
+        let dialog = card.dialog
+        switch action {
+        case .choose(let ordinal) where dialog.kind == .codexAsyncQuestion:
+            let title = DialogRowScanner.comparable(dialog.title)
+            guard let option = dialog.option(ordinal),
+                let question = card.request?.questions.first(where: { DialogRowScanner.comparable($0.text) == title }),
+                let id = question.id
+            else { return }
+            history.queue(option.label, forQuestion: id)
+        case .choose(let ordinal), .amend(let ordinal, _):
+            let allows: Set<DialogOptionRole> = [.approve, .approvePersistent, .approveModeSwitch]
+            guard let id = card.request?.callID, let role = dialog.option(ordinal)?.role, allows.contains(role) else {
+                return
+            }
+            history.record(.allowed, forCall: id)
+        case .dismiss:
+            guard let id = card.request?.callID else { return }
+            history.record(.stopped, forCall: id)
+        case .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+            break
         }
     }
 
@@ -334,31 +364,33 @@ final class BlockedCardStore {
 
     // MARK: Acting
 
+    /// Whether the plan's effect showed.
+    @discardableResult
     private func act(
         on shown: DialogFingerprint,
         plan makePlan: (DialogObservation) throws(DialogPlanError) -> DialogActionPlan
-    ) async {
+    ) async -> Bool {
         progress = .acting
         notice = nil
         guard let fresh = await observe() else {
             finish(notice: Self.unreadMessage)
-            return
+            return false
         }
         present(fresh)
         guard fresh.result.fingerprint == shown else {
             finish(notice: Self.changedMessage)
-            return
+            return false
         }
         let plan: DialogActionPlan
         do {
             plan = try makePlan(fresh)
         } catch {
             finish(notice: error.message)
-            return
+            return false
         }
         await waitOutGrace(for: shown)
-        guard case .sent = await send(plan.steps, to: shown) else { return }
-        await confirm(plan, on: shown)
+        guard case .sent = await send(plan.steps, to: shown) else { return false }
+        return await confirm(plan, on: shown)
     }
 
     private enum StepsOutcome {
@@ -403,20 +435,23 @@ final class BlockedCardStore {
         return .sent(checked)
     }
 
-    /// Watches for the plan's effect on the dialog with `fingerprint`.
-    private func confirm(_ plan: DialogActionPlan, on fingerprint: DialogFingerprint) async {
+    /// Watches for the plan's effect on the dialog with `fingerprint`, and
+    /// says whether it showed.
+    @discardableResult
+    private func confirm(_ plan: DialogActionPlan, on fingerprint: DialogFingerprint) async -> Bool {
         let confirmation = await poll(within: timing.confirmationWindow) {
             plan.confirmation.isMet(by: $0, fingerprint: fingerprint)
         }
         guard confirmation.isMet, let confirmed = confirmation.last else {
             progress = .unconfirmed
             notice = "The Agent hasn't responded yet."
-            return
+            return false
         }
         progress = .ready
         quietSince = clock.now()
         present(confirmed)
         if plan.focusesComposer { composerFocusRequest += 1 }
+        return true
     }
 
     private func finish(notice: String) {

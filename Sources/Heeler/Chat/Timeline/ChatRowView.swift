@@ -267,7 +267,7 @@ private struct ChatToolRow: View {
                     if let diff = tool.diff {
                         ChatDiffBadge(diff: diff)
                     }
-                    ChatToolStatusBadge(status: tool.status, exitCode: tool.exitCode)
+                    ChatToolStatusBadge(status: tool.status, exitCode: tool.exitCode, cardAnswer: tool.cardAnswer)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
@@ -384,6 +384,9 @@ private struct ChatDiffBadge: View {
 private struct ChatToolStatusBadge: View {
     let status: ChatToolActivity.Status
     let exitCode: Int?
+    /// Set only where the status agrees: `allowed` on a call that ran,
+    /// `stopped` on one that didn't.
+    var cardAnswer: ChatToolActivity.CardAnswer? = nil
 
     var body: some View {
         switch status {
@@ -391,7 +394,7 @@ private struct ChatToolStatusBadge: View {
             ProgressView()
                 .controlSize(.mini)
                 .accessibilityLabel("Running")
-        case .succeeded:
+        case .succeeded where cardAnswer != .allowed:
             Image(systemName: "checkmark")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -404,34 +407,41 @@ private struct ChatToolStatusBadge: View {
         }
     }
 
+    /// A plain success shows only its checkmark, so `succeeded` gets here
+    /// only when it was allowed in Chat.
     private var label: String {
+        if cardAnswer == .stopped { return "Stopped" }
         switch status {
-        case .awaitingApproval: "Waiting"
-        case .failed: exitCode.map { "Exit \($0)" } ?? "Failed"
-        case .declined: "Declined"
-        case .interrupted: "Interrupted"
-        case .notCompleted: "Not completed"
-        case .noResult: "No result"
-        case .running, .succeeded: ""
+        case .awaitingApproval: return "Waiting"
+        case .succeeded: return "Allowed"
+        case .failed: return exitCode.map { "Exit \($0)" } ?? "Failed"
+        case .declined: return "Declined"
+        case .interrupted: return "Interrupted"
+        case .notCompleted: return "Not completed"
+        case .noResult: return "No result"
+        case .running: return ""
         }
     }
 
     private var symbol: String {
+        if cardAnswer == .stopped { return "stop.circle" }
         switch status {
-        case .awaitingApproval: "hand.raised"
-        case .failed: "xmark.circle"
-        case .declined: "nosign"
-        case .interrupted: "stop.circle"
-        case .notCompleted, .noResult: "minus.circle"
-        case .running, .succeeded: ""
+        case .awaitingApproval: return "hand.raised"
+        case .succeeded: return "checkmark"
+        case .failed: return "xmark.circle"
+        case .declined: return "nosign"
+        case .interrupted: return "stop.circle"
+        case .notCompleted, .noResult: return "minus.circle"
+        case .running: return ""
         }
     }
 
     private var color: Color {
+        if cardAnswer == .stopped { return .secondary }
         switch status {
-        case .awaitingApproval, .declined: .orange
-        case .failed: .red
-        default: .secondary
+        case .awaitingApproval, .declined: return .orange
+        case .failed: return .red
+        default: return .secondary
         }
     }
 }
@@ -488,6 +498,16 @@ private struct ChatQuestionsView: View {
                             Image(systemName: "arrow.turn.down.right")
                         }
                         .font(.subheadline.weight(.medium))
+                    } else if let answer = question.queuedAnswer {
+                        Label {
+                            Text(verbatim: answer)
+                        } icon: {
+                            Image(systemName: "clock")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        Text("Queued. Codex sends it after its next tool call.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

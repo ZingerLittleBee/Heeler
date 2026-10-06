@@ -180,6 +180,14 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         case noResult
     }
 
+    /// How the user answered the call's Blocked card in Chat.
+    enum CardAnswer: Sendable {
+        /// An option that allows the call.
+        case allowed
+        /// Stop: Esc, which declines and ends the turn.
+        case stopped
+    }
+
     var kind: Kind
     /// The program's own tool name: `Bash`, `Edit`, `exec_command`.
     var name: String
@@ -203,6 +211,9 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     var preview: ChatToolPreview?
     /// Where the full output can be re-read on demand.
     var output: ChatOutputReference?
+    /// What the transcript can't tell: an approval given in Chat reads there
+    /// like an automatic one, and Stop like a decline. Held in memory only.
+    var cardAnswer: CardAnswer?
 
     init(
         kind: Kind, name: String, title: String, subtitle: String? = nil,
@@ -224,7 +235,8 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         self.output = output
     }
 
-    // `preview` is deliberately absent: decoding leaves it nil.
+    // `preview` and `cardAnswer` are deliberately absent: decoding leaves
+    // them nil.
     private enum CodingKeys: String, CodingKey {
         case kind, name, title, subtitle, status, note, diff, exitCode, questions, callID, output
     }
@@ -354,6 +366,10 @@ struct ChatQuestion: Equatable, Codable, Sendable {
     /// Claude's `multiSelect`: the answer may be several options.
     var isMultiSelect: Bool
     var answer: String?
+    /// An answer given in Chat that the program holds back: Codex records
+    /// an asynchronous answer only once it sends it, after its next tool
+    /// call. Held in memory only.
+    var queuedAnswer: String?
 
     init(
         id: String? = nil, header: String? = nil, text: String, options: [Option] = [],
@@ -365,6 +381,11 @@ struct ChatQuestion: Equatable, Codable, Sendable {
         self.options = options
         self.isMultiSelect = isMultiSelect
         self.answer = answer
+    }
+
+    // `queuedAnswer` is deliberately absent: decoding leaves it nil.
+    private enum CodingKeys: String, CodingKey {
+        case id, header, text, options, isMultiSelect, answer
     }
 }
 
