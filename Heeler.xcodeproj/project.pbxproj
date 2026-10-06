@@ -396,6 +396,7 @@
 		A7C2C6945D44E8693FDFA13C /* GitProbePatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ADBC931C815068BD91E9850 /* GitProbePatchTests.swift */; };
 		A89F91298354D322AA83674F /* ConversationReferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF75A37A647ADF8132633D1 /* ConversationReferenceTests.swift */; };
 		A8BBA0418C4309A3CCA51148 /* ChatHostFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A38EA0E0EA6F0382E91E5E /* ChatHostFiles.swift */; };
+		A9ABBE57A693649B885D9419 /* ChatTranscriptAdapter+Programs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8600859EA0F94A1A75BAE9CA /* ChatTranscriptAdapter+Programs.swift */; };
 		AA6498ABD1E1782C0B5D8F5B /* ConsoleStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00807A3942817BEE9800534F /* ConsoleStoreTests.swift */; };
 		AAB4193E96B628C1F90B96E9 /* GitProbeRecordings+Patch.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACD077CCDE12B9CE49BF7D08 /* GitProbeRecordings+Patch.swift */; };
 		AB9F96B7D7E163391A43B272 /* TranscriptFollowerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D5D0749EAEEF354B7939E72 /* TranscriptFollowerTests.swift */; };
@@ -599,6 +600,7 @@
 		FCC374190EE36E254109D6AD /* HerdrHostPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB90BB1A82BAAD178E1258F3 /* HerdrHostPathTests.swift */; };
 		FCCE1492C64201FF221B64A3 /* AgentActivityEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69EBBC2C99AA84420FDF600A /* AgentActivityEnvelope.swift */; };
 		FCD98A152DD66F79CA9E1D91 /* WindowReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36183A0ED703C88B9D16031 /* WindowReader.swift */; };
+		FCF04AE197F3313D2C526646 /* ChatStandardAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB053AB4EBB371EC7A9E9DFA /* ChatStandardAdapterTests.swift */; };
 		FE166661ED7A958DBE0F48B7 /* NotificationRegistrationCeremonyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 078D357A959644457EA59E43 /* NotificationRegistrationCeremonyTests.swift */; };
 		FE387FB6FB6CC68E066B23AE /* HostCredentialsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DBBD602AA4969937A9306C3 /* HostCredentialsProvider.swift */; };
 		FE5088A56B1C9684CB1F548F /* FilePatchTransportSeamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3413A0AA0CA38E695DAA75C6 /* FilePatchTransportSeamTests.swift */; };
@@ -959,6 +961,7 @@
 		856A8398D8F0FB87F252D193 /* FakeLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeLiveActivityController.swift; sourceTree = "<group>"; };
 		856C56B29DCF048C09AF7C1C /* TerminalStatusDialogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalStatusDialogTests.swift; sourceTree = "<group>"; };
 		85BEE99E7BEFA0D0D985162C /* AttachUserMessageIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachUserMessageIndex.swift; sourceTree = "<group>"; };
+		8600859EA0F94A1A75BAE9CA /* ChatTranscriptAdapter+Programs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatTranscriptAdapter+Programs.swift"; sourceTree = "<group>"; };
 		86642A7BA9C1F1E3456D64E3 /* SSHChannelAdmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHChannelAdmission.swift; sourceTree = "<group>"; };
 		8676E870CC318F78C437284B /* HeelerAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerAppModel.swift; sourceTree = "<group>"; };
 		8685922F4558E91588C4A956 /* AgentComposerChatRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentComposerChatRouteTests.swift; sourceTree = "<group>"; };
@@ -1219,6 +1222,7 @@
 		FA0C6500E42E81CD914D5B90 /* ChangesCountsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesCountsViews.swift; sourceTree = "<group>"; };
 		FA8A874D332DD2DCCF313D56 /* GitProbeRecordings+UntrackedDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbeRecordings+UntrackedDirectory.swift"; sourceTree = "<group>"; };
 		FAF5D79337402EF6FA70F9CA /* ImagePreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreparer.swift; sourceTree = "<group>"; };
+		FB053AB4EBB371EC7A9E9DFA /* ChatStandardAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStandardAdapterTests.swift; sourceTree = "<group>"; };
 		FB37CBDC9DE0CE539FC476A0 /* AgentNotificationRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRenderer.swift; sourceTree = "<group>"; };
 		FB43ADC71539AC324F155DD0 /* HeelerWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerWidgetsBundle.swift; sourceTree = "<group>"; };
 		FBA937EDF831047EA33892F9 /* HeelerTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HeelerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1339,6 +1343,7 @@
 				25BD7FF49C5C56E50E588B94 /* ChatLinkPolicyTests.swift */,
 				B7F661B5D2153414B59FF899 /* ChatMarkdownTests.swift */,
 				D75D42118459DEA416288A33 /* ChatSendRulesTests.swift */,
+				FB053AB4EBB371EC7A9E9DFA /* ChatStandardAdapterTests.swift */,
 				B156B1E015D9241895BF0798 /* ChatTimelineGeometryTests.swift */,
 				29DEFD952316075758AE9C93 /* ChatTranscriptCacheTests.swift */,
 				7C26CB9A95794EEDF88CF131 /* ClaudeChainResolverTests.swift */,
@@ -1681,6 +1686,7 @@
 			children = (
 				E98ACE560E5E71FC03C67703 /* AgentChatStore.swift */,
 				0C335816709B13280089FD2C /* ChatConversationEngine.swift */,
+				8600859EA0F94A1A75BAE9CA /* ChatTranscriptAdapter+Programs.swift */,
 			);
 			path = Conversation;
 			sourceTree = "<group>";
@@ -2434,6 +2440,7 @@
 				BE514EA5DE00BF97731E245E /* ChatSendRules.swift in Sources */,
 				815BA6026CCD7AD9B4DA496C /* ChatTimelineGeometry.swift in Sources */,
 				D33AB87E0BCEB58D9F07DF70 /* ChatTranscript.swift in Sources */,
+				A9ABBE57A693649B885D9419 /* ChatTranscriptAdapter+Programs.swift in Sources */,
 				CB8CFB197D7A9D2EFBE06720 /* ChatTranscriptCache.swift in Sources */,
 				BA2858E66D4769B8A5289569 /* CheckoutChanges+Limits.swift in Sources */,
 				BE6E5B65B5F471C78273989B /* CheckoutChanges.swift in Sources */,
@@ -2736,6 +2743,7 @@
 				93AB1BBA0D0F40F30C97311F /* ChatLinkPolicyTests.swift in Sources */,
 				4B9F81B5CFE0B356BBC2B200 /* ChatMarkdownTests.swift in Sources */,
 				32E639E1436C832A5DD25B01 /* ChatSendRulesTests.swift in Sources */,
+				FCF04AE197F3313D2C526646 /* ChatStandardAdapterTests.swift in Sources */,
 				DD843F1EB2667F08EC4A19BC /* ChatTimelineGeometryTests.swift in Sources */,
 				5766D55A0DEE0FD1D4DB01DC /* ChatTranscriptCacheTests.swift in Sources */,
 				540F5B581FC8DD4D0664039D /* ClaudeChainResolverTests.swift in Sources */,

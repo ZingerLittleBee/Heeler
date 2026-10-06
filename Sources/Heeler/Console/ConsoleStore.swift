@@ -119,7 +119,9 @@ final class ConsoleStore {
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory(),
-        chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = { _ in nil }
+        chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = {
+            ChatTranscriptAdapter.standard(for: $0)
+        }
     ) {
         self.chatCache = chatCache
         self.chatAdapter = chatAdapter
