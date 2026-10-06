@@ -65,6 +65,37 @@ method names and source-line anchors are not current implementation instructions
 For screenshot/demo fixtures, follow [Demo](../../Sources/Heeler/Demo) separately
 from live Host reads.
 
+## Chat
+
+Agent detail swaps the Agent terminal for
+[AgentChatSurfaceView](../../Sources/Heeler/Console/AgentChatSurfaceView.swift) through
+[AgentDetailSurfaceSettings](../../Sources/Heeler/Settings/AgentDetailSurfaceSettings.swift);
+[AgentChatAvailability](../../Sources/Heeler/Console/AgentChatAvailability.swift) decides which Agents offer it.
+`ConsoleStore` keeps an [AgentChatStore](../../Sources/Heeler/Chat/Conversation/AgentChatStore.swift) per Agent,
+whose single loop drives a [ChatConversationEngine](../../Sources/Heeler/Chat/Conversation/ChatConversationEngine.swift)
+over the session herdr reports. Host files come through
+[ChatHostFiles](../../Sources/Heeler/Chat/Source/ChatHostFiles.swift) to `Transport.readHostFileRange`,
+`fileStatus`, `listFiles` and `hostHomeDirectory`. Read
+[ADR 0020](../adr/0020-native-chat-from-agent-transcripts.md); the formats are
+recorded in [Claude Code transcripts](../research/claude-code-transcript-format.md)
+and [Codex rollouts](../research/codex-rollout-format.md), and herdr's behavior
+in [the compatibility notes](herdr-compatibility.md).
+
+| Task | Owner | Focused coverage |
+| --- | --- | --- |
+| Finding and following a transcript | [ConversationReference](../../Sources/Heeler/Chat/Source/ConversationReference.swift), [ClaudeTranscriptLocator](../../Sources/Heeler/Chat/Source/ClaudeTranscriptLocator.swift), [CodexTranscriptLocator](../../Sources/Heeler/Chat/Source/CodexTranscriptLocator.swift), [TranscriptFollower](../../Sources/Heeler/Chat/Source/TranscriptFollower.swift) | [ClaudeTranscriptLocatorTests](../../Tests/HeelerTests/ClaudeTranscriptLocatorTests.swift), [CodexTranscriptLocatorTests](../../Tests/HeelerTests/CodexTranscriptLocatorTests.swift), [TranscriptFollowerTests](../../Tests/HeelerTests/TranscriptFollowerTests.swift), [ChatConversationEngineTests](../../Tests/HeelerTests/ChatConversationEngineTests.swift), [AgentChatStoreTests](../../Tests/HeelerTests/AgentChatStoreTests.swift) |
+| Claude Code records and rows | [ClaudeTranscriptReducer](../../Sources/Heeler/Chat/Claude/ClaudeTranscriptReducer.swift), [ClaudeChainResolver](../../Sources/Heeler/Chat/Claude/ClaudeChainResolver.swift), [ClaudeTextClassifier](../../Sources/Heeler/Chat/Claude/ClaudeTextClassifier.swift) | [ClaudeTranscriptReducerTests](../../Tests/HeelerTests/ClaudeTranscriptReducerTests.swift), [ClaudeChainResolverTests](../../Tests/HeelerTests/ClaudeChainResolverTests.swift), [ClaudeSyntheticTranscriptTests](../../Tests/HeelerTests/ClaudeSyntheticTranscriptTests.swift) |
+| Codex records and rows | [CodexRolloutReducer](../../Sources/Heeler/Chat/Codex/CodexRolloutReducer.swift), [CodexPaginatedReducer](../../Sources/Heeler/Chat/Codex/CodexPaginatedReducer.swift), [CodexLegacyReducer](../../Sources/Heeler/Chat/Codex/CodexLegacyReducer.swift), [CodexTimeline](../../Sources/Heeler/Chat/Codex/CodexTimeline.swift) | [CodexIncrementalTests](../../Tests/HeelerTests/CodexIncrementalTests.swift), [CodexLegacyReplayTests](../../Tests/HeelerTests/CodexLegacyReplayTests.swift), [CodexLineageTests](../../Tests/HeelerTests/CodexLineageTests.swift), [CodexProbeTranscriptTests](../../Tests/HeelerTests/CodexProbeTranscriptTests.swift) |
+| Timeline, scrolling, tool output | [ChatTimelineController](../../Sources/Heeler/Chat/Timeline/ChatTimelineController.swift), [ChatTimelineLayout](../../Sources/Heeler/Chat/Timeline/ChatTimelineLayout.swift), [ChatRowBuilder](../../Sources/Heeler/Chat/Timeline/ChatRowBuilder.swift), [ChatToolOutputs](../../Sources/Heeler/Chat/Conversation/ChatToolOutputs.swift) | [ChatTimelineControllerTests](../../Tests/HeelerTests/ChatTimelineControllerTests.swift), [ChatTimelineGeometryTests](../../Tests/HeelerTests/ChatTimelineGeometryTests.swift), [ChatFollowLatchTests](../../Tests/HeelerTests/ChatFollowLatchTests.swift), [ChatToolOutputTests](../../Tests/HeelerTests/ChatToolOutputTests.swift) |
+| Cache and its Settings | [FileChatTranscriptCache](../../Sources/Heeler/Chat/Cache/FileChatTranscriptCache.swift), [ChatCacheSettingsSection](../../Sources/Heeler/Settings/ChatCacheSettingsSection.swift) | [ChatTranscriptCacheTests](../../Tests/HeelerTests/ChatTranscriptCacheTests.swift), [ChatCacheSettingsModelTests](../../Tests/HeelerTests/ChatCacheSettingsModelTests.swift) |
+| Send rules, `/` menu, delivery check | [ChatSendRules](../../Sources/Heeler/Chat/Compose/ChatSendRules.swift), [ChatDeliveryPolicy](../../Sources/Heeler/Chat/Compose/ChatDeliveryPolicy.swift), [PreSendGate](../../Sources/Heeler/Chat/Screen/PreSendGate.swift), [InputBoxStateDetector](../../Sources/Heeler/Chat/Screen/InputBoxStateDetector.swift) | [ChatSendRulesTests](../../Tests/HeelerTests/ChatSendRulesTests.swift), [ChatDeliveryPolicyTests](../../Tests/HeelerTests/ChatDeliveryPolicyTests.swift), [PreSendGateTests](../../Tests/HeelerTests/PreSendGateTests.swift), [InputBoxStateDetectorTests](../../Tests/HeelerTests/InputBoxStateDetectorTests.swift), [AgentComposerChatRouteTests](../../Tests/HeelerTests/AgentComposerChatRouteTests.swift) |
+| Blocked cards | [BlockedCardStore](../../Sources/Heeler/Chat/Blocked/BlockedCardStore.swift) → [ClaudeDialogParser](../../Sources/Heeler/Chat/Blocked/ClaudeDialogParser.swift), [CodexDialogParser](../../Sources/Heeler/Chat/Blocked/CodexDialogParser.swift) → [DialogActionPlanner](../../Sources/Heeler/Chat/Blocked/DialogActionPlanner.swift); [BlockedHistory](../../Sources/Heeler/Chat/Blocked/BlockedHistory.swift) | [BlockedCardStoreTests](../../Tests/HeelerTests/BlockedCardStoreTests.swift), [DialogActionPlannerTests](../../Tests/HeelerTests/DialogActionPlannerTests.swift), [ClaudeDialogParserTests](../../Tests/HeelerTests/ClaudeDialogParserTests.swift), [CodexDialogParserTests](../../Tests/HeelerTests/CodexDialogParserTests.swift), [QuestionFormTests](../../Tests/HeelerTests/QuestionFormTests.swift), [BlockedHistoryTests](../../Tests/HeelerTests/BlockedHistoryTests.swift) |
+| Tools dock Agent page | [AgentChatToolsKeyboard](../../Sources/Heeler/Console/AgentChatToolsKeyboard.swift), [ChatAgentKeysStore](../../Sources/Heeler/Chat/Compose/ChatAgentKeysStore.swift) | [ChatAgentKeysStoreTests](../../Tests/HeelerTests/ChatAgentKeysStoreTests.swift) |
+
+Transcript and screen fixtures, sanitized from isolated-backend probes, live in
+[ChatFixtures](../../Tests/HeelerTests/ChatFixtures); demo mode's conversation
+is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
+
 ## Other feature routes
 
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)

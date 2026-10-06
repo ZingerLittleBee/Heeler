@@ -1,0 +1,190 @@
+---
+status: accepted
+---
+
+# Native Chat from the Agent's own transcript
+
+A Claude Code or Codex Agent's detail can show Chat in its terminal's place:
+the Agent's conversation as native rows, read from the transcript its program
+writes on the Host. Heeler reads that file read-only over SFTP on the Host's
+existing SSH connection, with one adapter per program: Claude Code's project
+JSONL, with its subagent transcripts under `<session>/subagents/`, and Codex's
+rollout in its paginated and legacy forms. Nothing is installed on the Host
+and herdr is unchanged. herdr still owns the Agent's identity and Agent
+Status, submission through `agent.prompt`, and keys through `agent.send_keys`;
+its `agent_session` names the transcript by a Claude Code session id or a
+Codex thread id. Other Agents, and every Agent on a native Windows Host, hide
+the entry. Where the design was open, T3 Code's mobile chat was the reference.
+
+The formats as observed are recorded in
+[Claude Code transcripts](../research/claude-code-transcript-format.md) and
+[Codex rollouts](../research/codex-rollout-format.md); the herdr behavior Chat
+relies on is in the
+[versioned compatibility notes](../agents/herdr-compatibility.md).
+
+## Entry and the terminal
+
+A button beside Hide Composer in the Agent switcher row, and Show Chat and
+Show Agent Terminal in the More menu, swap the two surfaces in place; they are
+never mounted together. Terminal is the default, and a choice is remembered
+app-wide. Each detail copies it when it opens, so a choice in one window does
+not swap another window's screen. Chat holds no Attach. Switching to it
+releases the Agent's terminal to ADR 0017's retention, where the PTY keeps
+feeding the retained surface and nothing resizes it; switching back shows that
+terminal, or attaches again if it was evicted. Direct Input stays on the
+terminal, and ⌘E is disabled while Chat shows.
+
+When Chat cannot show a conversation it says why and keeps the terminal one
+tap away: herdr reports no session (Chat shows `herdr integration install` to
+copy and never runs it), the transcript is not found or holds another session,
+or it is in a form Chat does not read.
+
+## Reading and caching
+
+Chat follows only the session herdr reports, and only the conversation's
+current branch. It opens on the last 1 MiB of the file, reads older pages as
+the user scrolls up, and reads what the program appends: every second while
+the Agent is Working or Blocked and for 15 seconds after a change, a send or a
+status change, every 4 seconds otherwise. Compaction keeps the history above a
+separator; rolled-back turns are hidden. When a sent message has not appeared
+after 10 seconds, Chat reads the Agent's record again, because the program may
+have moved to a session herdr reports later. The list is a `UICollectionView`
+of hosted SwiftUI rows with its own single-column layout: it opens at the
+newest row and keeps the reader's place while rows above it measure, which
+needs anchoring in the same main-thread turn.
+
+Tool activity is one row per call. Decoding keeps a preview of at most
+40 lines or 8 KiB; expanding a row reads its record again, at most 1 MiB, and
+shows up to 1,000 lines or 64 KiB. A spilled Claude Code output is read only
+from `<session>/tool-results/` beside the transcript. Chat reads no other path
+a transcript names.
+
+Conversations persist in Caches with Complete file protection: decoded entries
+and read cursors, never tool output, which an expanded row fetches again. The
+cache is limited to 300 MB, pruned least recently used, drops documents unused
+for 30 days, forgets a Host's documents when the Host is deleted, and can be
+cleared in Settings. A cached conversation opens at once, stays readable
+offline, and survives the remote file's removal.
+
+## Sending
+
+Chat shares the terminal's Composer and its draft. Send is one `agent.prompt`
+request, under rules that stand in for the screen the user cannot see:
+
+- A draft the program would run rather than read is never sent: a leading
+  `!`, control bytes, and Claude Code's whole-message `exit`, `quit`, `:q`,
+  `:q!`, `:wq` and `:wq!`.
+- A leading `/` must name an entry of Chat's `/` menu: the Agent's skills from
+  the existing Skills probe, and `/compact` while the Agent is idle. The menu
+  offers no interactive or destructive program command. Both programs show
+  `/name`; a Codex skill is sent as `$name`. A leading path is text, and any
+  other leading `/word` is refused with a pointer to the menu or the terminal.
+- Invisible characters are removed and exactly one trailing space is appended,
+  so a final `/name` or `@path` cannot leave a completion popup open when
+  Enter arrives.
+- Before sending, `agent.read` of the visible screen must show the program's
+  input box empty, in its normal mode, with no popup. Anything else, an
+  unreadable screen included, sends nothing and says why. Chat never clears
+  the box.
+- Three seconds after the acknowledgement the screen is read again. Text left
+  in the box marks the message Not delivered. Chat never resends.
+
+A sent message shows at once as a local echo, matched conservatively against
+the transcript.
+
+## Blocked cards
+
+While Agent Status is Blocked, Chat answers the dialog on the Agent's screen
+with a native card in the Composer's place instead of sending the user to the
+terminal. The screen decides what a card offers. Chat reads the visible screen
+through `agent.read` with its ANSI colors, which also tell a narrow pane's
+leftover text apart, and joins it with the pending request in the transcript,
+a subagent's included. Labels are the program's own text.
+
+An answer compares a fingerprint of the dialog first and sends nothing if it
+changed, waits until the dialog has shown for 150 ms, presses keys through
+`agent.send_keys`, and types text answers (feedback, a plan note, a custom
+answer) through `pane.send_input`. The answer is confirmed when the dialog on
+screen changes, when Claude Code's transcript shows the matching tool result,
+or when Codex leaves Blocked. Staying Blocked proves nothing, because herdr
+stays Blocked while the next queued approval takes the screen. Three seconds
+without effect shows a hint, and nothing is resent. Codex holds an answer to
+its asynchronous question until its next tool call, so the card confirms it by
+Codex's queued-messages notice and shows it as Queued; Chat never works around
+herdr's `agent_blocked` while such a question waits. A dialog the parsers do
+not know gets a generic card with the Agent controls. Answers the transcript
+does not record join the history as Allowed, Declined, Stopped and Answered
+rows.
+
+## Staging and the tools dock
+
+Image and file staging moves from the Attach to the Agent's
+`AgentComposerSession`, which the Console keeps per Agent above the detail, so
+Chat and the terminal share an upload as they share the draft. This updates
+ADR 0006's owner. An upload now survives pushing Changes, opening a Shell
+Terminal in the detail, terminal eviction and reconnect. The last detail
+leaving the Agent cancels it, and suspension ends it interrupted, with Retry.
+
+Chat's tools dock keeps the Skills and Snippets panes, which insert into the
+draft. Its Agent page presses Esc, Tab, Backspace, the arrows and Enter in the
+program through `agent.send_keys`, one request at a time in the order pressed.
+It has no Appearance tab and no Terminal keyboard, and a Blocked card taking
+the Composer's place puts it away.
+
+## Rationale
+
+The transcript is the program's own record of the conversation, with structure
+no screen has: message boundaries, tool calls and their results, reasoning,
+subagents. It is already on the Host and readable over the connection Heeler
+holds. Each alternative adds to the Host: an Agent SDK or app server runs a
+second process the user did not start, and herdr serves no transcripts, so
+serving them would take a change to herdr, which is not this project's, or a
+plugin on every Host. Rebuilding a conversation from screen reads is what
+ADR 0013 replaced with the live terminal.
+
+Off the PTY, Chat cannot type into the TUI by accident or resize the pane under
+the terminal's other clients, and its requests are the ones the terminal's
+Composer already makes. A user at the terminal sees the input box and the
+dialog before acting; Chat does not. It therefore reads the screen before and
+after sending, refuses what it cannot check, and never resends, because a
+duplicate prompt or answer does more harm than a missing one.
+
+Staging moved because the Attach was the wrong owner. SwiftUI builds a detail
+value, with a placeholder Attach, on every evaluation, and the placeholder
+rebound the Composer to its own staging: a drop after a re-render, after
+returning to a retained terminal, or on a first appear never started. Chat has
+no Attach at all.
+
+## Consequences
+
+- The adapters read formats their programs do not document, and both change
+  often. Unknown records are skipped, so a format change hides content until
+  an adapter learns it rather than breaking Chat. The research notes record
+  what each version wrote.
+- Only `~/.claude` and `~/.codex` are searched; an Agent run with
+  `CLAUDE_CONFIG_DIR` or `CODEX_HOME` elsewhere shows Conversation Not Found.
+  Compressed (`.zst`) and pre-envelope Codex rollouts are not read.
+- Claude Code writes no transcript before the first prompt, and Codex reports
+  no session to herdr until after it. The Composer works in both states.
+- Following makes SFTP requests on the Host's connection at every poll.
+- Chat never resizes the pane, and herdr keeps the last attached client's
+  size, so cards are parsed at the phone's last grid, usually 40 to
+  64 columns, where Claude Code leaves stale text.
+- Conversation text now rests on the device, in the protected cache that
+  [PRIVACY.md](../../PRIVACY.md) describes.
+- Not in this version:
+  - Chat on native Windows Hosts, and keyboard operation of cards and menus.
+  - The segment before a Codex undo. After one, Chat shows only the turns
+    written since; the reducer accepts the earlier segment, but nothing loads
+    it yet.
+  - Claude Code's session registry (`~/.claude/sessions/<pid>.json`) as a
+    second Blocked signal. Cards follow herdr's Blocked alone, which reported
+    every dialog the isolated-backend probes raised.
+  - Skill sources the Skills probe misses: Claude Code's `.claude/commands`,
+    Codex's built-in, `/etc/codex/skills`, plugin and nested `.agents/skills`
+    skills. Claude Code's built-in skills are compiled into the program and
+    not on disk.
+  - Chat's send rules and `/` menu on the terminal's Composer, which still
+    sends text as typed while the user watches the terminal.
+  - Search, export, a usage meter, a command palette, a model picker, and
+    editing, resending, rewinding or forking a conversation.

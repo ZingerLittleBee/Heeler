@@ -1,5 +1,11 @@
 # Stage attachments over SFTP and insert their paths without submitting
 
+Status: Accepted; ADR 0020 moves the staging owner. `ComposerStagingStore` now
+belongs to the Agent's `AgentComposerSession`, which the Console keeps per Agent
+above the detail and shares between its Attach and Chat. The last detail
+leaving the Agent cancels an upload, and suspension interrupts it with Retry.
+The rest of this decision is unchanged.
+
 The Composer's Add menu accepts one image from Photos or one document from Files. Images are decoded, bounded, stripped of metadata, and re-encoded into protected app-owned temporary storage. Files are copied into protected app-owned temporary storage while the document provider's security scope is active, capped at 64 MiB, and given a private random local name. The original safe extension is retained so the Agent can identify the staged file type.
 
 `Transport.stageImage(_:)` and `Transport.stageFile(_:)` share the same SFTP implementation: private Host temporary directories, restrictive permissions, partial-file compensation, atomic completion, and the shared SSH session-channel budget. The resulting absolute Host path is copied to the local-only expiring clipboard and appended to the local Composer draft with a trailing space. It never submits the draft.

@@ -155,6 +155,9 @@ and the Composer never claims otherwise.
 Composer remains the default authored-input path on Agent detail. Direct Input
 is an explicit, opt-in alternative that hides the Composer card without
 clearing or submitting the draft.
+Chat shows the same Composer, draft and staging below the conversation. There
+Send follows Chat's rules instead, and while Agent Status is Blocked a Blocked
+Card takes the Composer's place.
 _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
 
 **Attach**:
@@ -169,6 +172,9 @@ tools keyboard submits or cancels. Only Composer's explicit tools-keyboard
 controls (and Direct Input's shortcut row / system Return) send terminal
 control sequences. The directly interactive surface on an ordinary shell is
 the Shell Terminal, never unqualified "Attach".
+Chat holds no Attach: while Chat shows in its place, the Agent's Attach is
+retained like any terminal the user has left, and nothing types into or
+resizes it.
 _Avoid_: takeover (that's herdr's flag, not our surface), connect
 
 **Attach Link**:
@@ -176,6 +182,33 @@ An ordinary web URL observed in the terminal during one Agent detail session. It
 available after scrolling or reconnecting, but is forgotten when the user
 leaves the detail; a later session discovers whatever its terminal shows anew.
 _Avoid_: recent link, visible link, link history
+
+**Chat**:
+The native conversation a Claude Code or Codex Agent's detail can show in its
+terminal's place, read from the Agent's Transcript. Chat holds no Attach; its
+Composer and draft are the terminal's. Send is one `agent.prompt` request, made
+only after a screen read shows the program's input box empty, and refused for
+text the program would run rather than read. Its `/` menu offers the Agent's
+skills and `/compact`. Chat never resends: text left in the box after sending
+marks the message Not delivered. The choice between Chat and the terminal is
+app-wide, Terminal by default. Not offered on native Windows Hosts.
+_Avoid_: chat mode, conversation view, Monitor (ADR 0012's removed surface)
+
+**Transcript**:
+The file an Agent's program writes on its Host as its record of the
+conversation: Claude Code's session JSONL, with its subagents' files, or a
+Codex rollout. The session herdr reports names it. Heeler only reads it, over
+SFTP, and keeps decoded entries, never tool output, in an on-device cache.
+_Avoid_: log, history file, session file
+
+**Blocked Card**:
+Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
+Composer's place. Its options come from the screen and the request's details
+from the Transcript; answers go through `agent.send_keys` and
+`pane.send_input`, never Attach. A card sends nothing once the dialog has
+changed and never resends. A dialog it cannot read gets a generic card with
+the Agent controls.
+_Avoid_: approval sheet, permission prompt (the program's own dialog), alert
 
 **Shell Terminal**:
 The full interactive terminal on an ordinary shell Pane, opened by Agent
@@ -235,6 +268,10 @@ full Terminal keyboard in the controls tab, without the Agent page or pager.
 It reuses the same measured footprint for an optional tools dock, but its
 primary shortcuts persist in an app-content
 row above the Agent switcher strip rather than replacing the system keyboard.
+Chat's tools dock keeps the Agent page, whose keys reach the Agent's program
+through `agent.send_keys` in the order pressed, and the Skills and Snippets
+tabs, which insert into the draft. It has no Terminal keyboard and no
+Appearance tab.
 _Avoid_: desktop keyboard, reply keyboard, Keys mode (the direct-input predecessor)
 
 **Snippet**:
