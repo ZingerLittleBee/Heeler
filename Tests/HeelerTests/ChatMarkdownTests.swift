@@ -240,8 +240,11 @@ struct ChatMarkdownTests {
             name: "An aligned table without outer pipes", source: "l | c | r\n:-- | :-: | --:\n1 | 2 | 3",
             expected: [Shape(.table, "l | c | r\n:-- | :-: | --:\n1 | 2 | 3")]),
         Vector(
-            name: "A table in a quote loses its quote markers", source: "> | a | b |\n> | - | - |\n> | 1 | 2 |\n>\n> text",
-            expected: [Shape(.table, "| a | b |\n| - | - |\n| 1 | 2 |", quote: 1), Shape(.paragraph, "text", quote: 1)]),
+            name: "A table in a quote loses its quote markers",
+            source: "> | a | b |\n> | - | - |\n> | 1 | 2 |\n>\n> text",
+            expected: [
+                Shape(.table, "| a | b |\n| - | - |\n| 1 | 2 |", quote: 1), Shape(.paragraph, "text", quote: 1),
+            ]),
         Vector(
             name: "A table in a list item loses its indent", source: "- item\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |",
             expected: [

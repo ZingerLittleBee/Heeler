@@ -69,6 +69,13 @@ struct ChatFollowLatchTests {
         let isFollowing: Bool
         let isUserScrolling: Bool
 
+        init(_ start: Start, _ event: Event, following: Bool, scrolling: Bool) {
+            self.start = start
+            self.event = event
+            isFollowing = following
+            isUserScrolling = scrolling
+        }
+
         var testDescription: String {
             "\(start.rawValue) + \(event.name) -> following: \(isFollowing), scrolling: \(isUserScrolling)"
         }
@@ -77,36 +84,36 @@ struct ChatFollowLatchTests {
     /// Every reachable state against every event, as T3's reducer resolves
     /// it, with the scroll session tracked the way its feed tracks it.
     static let transitions: [Transition] = [
-        Transition(start: .following, event: .reset, isFollowing: true, isUserScrolling: false),
-        Transition(start: .following, event: .userScrollBegan, isFollowing: false, isUserScrolling: true),
+        Transition(.following, .reset, following: true, scrolling: false),
+        Transition(.following, .userScrollBegan, following: false, scrolling: true),
         // The end of a scroll the user never started is ignored either way.
-        Transition(start: .following, event: .userScrollEnded(isAtEnd: true), isFollowing: true, isUserScrolling: false),
-        Transition(start: .following, event: .userScrollEnded(isAtEnd: false), isFollowing: true, isUserScrolling: false),
-        Transition(start: .following, event: .scrolled(isAtEnd: true), isFollowing: true, isUserScrolling: false),
+        Transition(.following, .userScrollEnded(isAtEnd: true), following: true, scrolling: false),
+        Transition(.following, .userScrollEnded(isAtEnd: false), following: true, scrolling: false),
+        Transition(.following, .scrolled(isAtEnd: true), following: true, scrolling: false),
         // Layout compensation away from the end is not a user scroll.
-        Transition(start: .following, event: .scrolled(isAtEnd: false), isFollowing: true, isUserScrolling: false),
-        Transition(start: .following, event: .disclosureSettled(isAtEnd: true), isFollowing: true, isUserScrolling: false),
-        Transition(start: .following, event: .disclosureSettled(isAtEnd: false), isFollowing: false, isUserScrolling: false),
+        Transition(.following, .scrolled(isAtEnd: false), following: true, scrolling: false),
+        Transition(.following, .disclosureSettled(isAtEnd: true), following: true, scrolling: false),
+        Transition(.following, .disclosureSettled(isAtEnd: false), following: false, scrolling: false),
 
-        Transition(start: .paused, event: .reset, isFollowing: true, isUserScrolling: false),
-        Transition(start: .paused, event: .userScrollBegan, isFollowing: false, isUserScrolling: true),
-        Transition(start: .paused, event: .userScrollEnded(isAtEnd: true), isFollowing: false, isUserScrolling: false),
-        Transition(start: .paused, event: .userScrollEnded(isAtEnd: false), isFollowing: false, isUserScrolling: false),
+        Transition(.paused, .reset, following: true, scrolling: false),
+        Transition(.paused, .userScrollBegan, following: false, scrolling: true),
+        Transition(.paused, .userScrollEnded(isAtEnd: true), following: false, scrolling: false),
+        Transition(.paused, .userScrollEnded(isAtEnd: false), following: false, scrolling: false),
         // A programmatic scroll that reaches the end re-arms.
-        Transition(start: .paused, event: .scrolled(isAtEnd: true), isFollowing: true, isUserScrolling: false),
-        Transition(start: .paused, event: .scrolled(isAtEnd: false), isFollowing: false, isUserScrolling: false),
-        Transition(start: .paused, event: .disclosureSettled(isAtEnd: true), isFollowing: true, isUserScrolling: false),
-        Transition(start: .paused, event: .disclosureSettled(isAtEnd: false), isFollowing: false, isUserScrolling: false),
+        Transition(.paused, .scrolled(isAtEnd: true), following: true, scrolling: false),
+        Transition(.paused, .scrolled(isAtEnd: false), following: false, scrolling: false),
+        Transition(.paused, .disclosureSettled(isAtEnd: true), following: true, scrolling: false),
+        Transition(.paused, .disclosureSettled(isAtEnd: false), following: false, scrolling: false),
 
-        Transition(start: .scrolling, event: .reset, isFollowing: true, isUserScrolling: false),
-        Transition(start: .scrolling, event: .userScrollBegan, isFollowing: false, isUserScrolling: true),
-        Transition(start: .scrolling, event: .userScrollEnded(isAtEnd: true), isFollowing: true, isUserScrolling: false),
-        Transition(start: .scrolling, event: .userScrollEnded(isAtEnd: false), isFollowing: false, isUserScrolling: false),
+        Transition(.scrolling, .reset, following: true, scrolling: false),
+        Transition(.scrolling, .userScrollBegan, following: false, scrolling: true),
+        Transition(.scrolling, .userScrollEnded(isAtEnd: true), following: true, scrolling: false),
+        Transition(.scrolling, .userScrollEnded(isAtEnd: false), following: false, scrolling: false),
         // Passing the end mid-drag does not re-arm until the drag rests there.
-        Transition(start: .scrolling, event: .scrolled(isAtEnd: true), isFollowing: false, isUserScrolling: true),
-        Transition(start: .scrolling, event: .scrolled(isAtEnd: false), isFollowing: false, isUserScrolling: true),
-        Transition(start: .scrolling, event: .disclosureSettled(isAtEnd: true), isFollowing: false, isUserScrolling: true),
-        Transition(start: .scrolling, event: .disclosureSettled(isAtEnd: false), isFollowing: false, isUserScrolling: true),
+        Transition(.scrolling, .scrolled(isAtEnd: true), following: false, scrolling: true),
+        Transition(.scrolling, .scrolled(isAtEnd: false), following: false, scrolling: true),
+        Transition(.scrolling, .disclosureSettled(isAtEnd: true), following: false, scrolling: true),
+        Transition(.scrolling, .disclosureSettled(isAtEnd: false), following: false, scrolling: true),
     ]
 
     @Test("The transition table covers every state and event once")

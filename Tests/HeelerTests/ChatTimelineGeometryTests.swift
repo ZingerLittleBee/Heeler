@@ -249,14 +249,15 @@ struct ChatTimelineGeometryTests {
         var testDescription: String { name }
     }
 
-    static let cached = ChatMeasuredHeight(
-        height: 88, width: 390, contentSizeCategory: "UICTContentSizeCategoryL", revision: 3)
+    static let large = "UICTContentSizeCategoryL"
+    static let extraLarge = "UICTContentSizeCategoryXL"
+    static let cached = ChatMeasuredHeight(height: 88, width: 390, contentSizeCategory: large, revision: 3)
 
     static let cacheCases: [CacheCase] = [
-        CacheCase(name: "all match", width: 390, category: "UICTContentSizeCategoryL", revision: 3, isExact: true),
-        CacheCase(name: "another width", width: 834, category: "UICTContentSizeCategoryL", revision: 3, isExact: false),
-        CacheCase(name: "another text size", width: 390, category: "UICTContentSizeCategoryXL", revision: 3, isExact: false),
-        CacheCase(name: "another revision", width: 390, category: "UICTContentSizeCategoryL", revision: 4, isExact: false),
+        CacheCase(name: "all match", width: 390, category: large, revision: 3, isExact: true),
+        CacheCase(name: "another width", width: 834, category: large, revision: 3, isExact: false),
+        CacheCase(name: "another text size", width: 390, category: extraLarge, revision: 3, isExact: false),
+        CacheCase(name: "another revision", width: 390, category: large, revision: 4, isExact: false),
     ]
 
     @Test("A cached height is exact only when width, text size and revision all match", arguments: cacheCases)
@@ -277,8 +278,7 @@ struct ChatTimelineGeometryTests {
     func seedEstimate() {
         for seed in ChatRowSeed.allCases {
             let estimate = ChatHeightEstimate(
-                cached: nil, seed: seed, width: 390,
-                contentSizeCategory: "UICTContentSizeCategoryL", revision: 0)
+                cached: nil, seed: seed, width: 390, contentSizeCategory: Self.large, revision: 0)
             #expect(estimate == .seed(seed.height))
             #expect(!estimate.isExact)
             #expect(seed.height > 0)
