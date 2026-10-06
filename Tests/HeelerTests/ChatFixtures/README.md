@@ -26,12 +26,13 @@ bodies with `{"type": …, "redacted": true}` and thinking text with
 `<redacted>`. Real transcripts are compact JSON, so tests parse lines and
 never compare bytes with a live file.
 
-Copying them here also rewrote:
+Copying them here also rewrote, with replacements of the same length so
+byte offsets and screen columns stay exactly as captured:
 
-- `/Users/<name>` and its project-key form `-Users-<name>` to `/Users/dev`
-  and `-Users-dev`;
-- the probe root `heeler-iso-chat` to `heeler-chat`.
+- the account name to `developer` (so `/Users/developer` and its project-key
+  form `-Users-developer`);
+- the probe root `heeler-iso-chat` to `heeler-tmp-chat`.
 
-Byte offsets in tests refer to these scrubbed files. After adding a capture,
-check that searching this directory for `/Users/` (other than `/Users/dev`),
-`ghp_`, `Bearer` and e-mail addresses finds nothing.
+After adding a capture, check that searching this directory for `/Users/`
+(other than `/Users/developer`), `ghp_`, `Bearer` and e-mail addresses finds
+nothing.
