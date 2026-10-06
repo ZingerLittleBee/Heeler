@@ -143,7 +143,16 @@ struct AgentComposerView: View {
     /// Drop is Composer-only. Defaults to Composer so existing call sites stay
     /// a drop target; Direct Input must pass `.direct` to keep this inert.
     var inputMode: AgentInputMode = .composer
+    /// How Send, Retry and ⌘↩ deliver. Chat passes its own.
+    var sendPolicy: ComposerDeliveryPolicy = .terminal
+    /// Chat's `/` menu, in place of the inline Skill suggestions; nil
+    /// outside Chat.
+    var commandMenu: [ChatCommand]? = nil
+    /// Offered beside a refusal the terminal can carry out.
+    var openAgentTerminal: (() -> Void)? = nil
     @State private var isInputFocused = false
+    /// Why the last Send did not go, until the draft it refused changes.
+    @State private var notice: ComposerNotice?
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
@@ -168,7 +177,14 @@ struct AgentComposerView: View {
 
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 8) {
-                        if let skills, let trigger = suggestionTrigger,
+                        if let commands = commandSuggestions, isInputFocused, !isSuggestionsDismissed {
+                            ChatCommandSuggestions(
+                                commands: commands,
+                                onSelect: { command in
+                                    store.replaceDraft(with: "/\(command.name) ")
+                                },
+                                onDismiss: { isSuggestionsDismissed = true })
+                        } else if let skills, let trigger = suggestionTrigger,
                             isInputFocused, !isSuggestionsDismissed
                         {
                             AgentComposerSkillSuggestions(
@@ -209,7 +225,11 @@ struct AgentComposerView: View {
                                     .lineLimit(2)
                                 HStack(spacing: 8) {
                                     Button("Retry") {
-                                        Task { await deliverDraft { await store.retry(failure.id) } }
+                                        Task {
+                                            await deliverDraft {
+                                                await store.retry(failure.id, policy: sendPolicy)
+                                            }
+                                        }
                                     }
                                     Button("Edit Draft") {
                                         store.withdrawToDraft(failure.id)
@@ -219,6 +239,22 @@ struct AgentComposerView: View {
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
                             }
+                        }
+
+                        if let notice, failureIsHidden {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label(notice.refusal.message, systemImage: "exclamationmark.bubble")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                                if notice.refusal.suggestsTerminal, let openAgentTerminal {
+                                    Button("Open in Terminal", action: openAgentTerminal)
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                }
+                            }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("composer.notice")
                         }
 
                         HStack(spacing: 8) {
@@ -286,7 +322,7 @@ struct AgentComposerView: View {
                                 isEnabled: store.canSend,
                                 accessibilityHint: store.sendAccessibilityHint
                             ) {
-                                Task { await deliverDraft { await store.send() } }
+                                Task { await deliverDraft { await store.send(policy: sendPolicy) } }
                             }
                         }
                     }
@@ -330,7 +366,7 @@ struct AgentComposerView: View {
             agentID: switcher.selectedID,
             isFocused: isInputFocused,
             hasDraft: { store.canSend },
-            send: { await deliverDraft { await store.send() } }))
+            send: { await deliverDraft { await store.send(policy: sendPolicy) } }))
         .onAppear {
             guard inheritsKeyboardHandoff,
                   let selectedID = switcher.selectedID,
@@ -350,7 +386,12 @@ struct AgentComposerView: View {
                 setKeyboardPresentation(.hidden)
             }
         }
-        .onChange(of: store.draft) { _, _ in
+        .onChange(of: store.draft) { _, draft in
+            if let notice, notice.draft != draft { self.notice = nil }
+            if commandMenu != nil {
+                if commandSuggestions == nil { isSuggestionsDismissed = false }
+                return
+            }
             guard let skills else { return }
             if suggestionTrigger == nil {
                 isSuggestionsDismissed = false
@@ -411,12 +452,30 @@ struct AgentComposerView: View {
         keyboardPresentation = presentation
     }
 
+    /// The `/` menu's matches for the draft, while it is open.
+    private var commandSuggestions: [ChatCommand]? {
+        guard let commandMenu,
+            let matches = ChatCommandMenu.suggestions(for: store.draft, in: commandMenu),
+            !matches.isEmpty
+        else { return nil }
+        return matches
+    }
+
+    /// The notice gives way to a failure, which has its own row and Retry.
+    private var failureIsHidden: Bool { latestFailure == nil }
+
     /// Blocked delivery types into Attach without Enter; the tools keyboard
-    /// is what submits or cancels.
+    /// is what submits or cancels. A refusal stays as a notice and keeps the
+    /// keyboard where it is.
     private func deliverDraft(
         _ deliver: () async -> AgentComposerStore.SendResult
     ) async {
         let result = await deliver()
+        if case .refused(let refusal) = result {
+            notice = ComposerNotice(refusal: refusal, draft: store.draft)
+            return
+        }
+        notice = nil
         guard result == .deliveredViaAttach else { return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -439,8 +498,10 @@ struct AgentComposerView: View {
             onTogglePin: switcher.onTogglePin)
     }
 
+    /// Only this surface's own messages: a failure from the other one is
+    /// retried there, the way it was sent.
     private var latestFailure: (id: AgentComposerStore.Message.ID, detail: String)? {
-        guard let message = store.messages.last,
+        guard let message = store.messages.last(where: { $0.route == sendPolicy.route }),
               case .failed(let detail) = message.state
         else { return nil }
         return (message.id, detail)

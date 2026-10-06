@@ -68,3 +68,10 @@ struct ComposerDeliveryPolicy: Sendable {
         route: .terminal, insertsIntoAttachWhenBlocked: true, outgoingText: { $0 },
         validate: { _ in nil }, preflight: nil, verify: nil)
 }
+
+/// A refusal the Composer shows until the draft it refused changes.
+struct ComposerNotice: Equatable {
+    let refusal: ComposerRefusal
+    /// The draft as it stood after the refusal.
+    let draft: String
+}

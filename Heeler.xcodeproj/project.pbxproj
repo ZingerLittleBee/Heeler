@@ -262,6 +262,7 @@
 		6CD1D3CCDB58EBFF5350AC7F /* AgentNotificationBannerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A319930B80D42FB33DC8E42 /* AgentNotificationBannerStoreTests.swift */; };
 		6D436E6E24D655DD87ED9364 /* ConsoleCommandRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F6451A20326DC01EDBFE50D /* ConsoleCommandRegistry.swift */; };
 		6D4CA5B12B7977BD95A758DD /* ClaudeSyntheticTranscriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EECB915608BCB22A56A63EAC /* ClaudeSyntheticTranscriptTests.swift */; };
+		6D56A124BF425772E1B318C5 /* ChatCommandSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9375C8BA3B724F2FA55CDD1A /* ChatCommandSuggestions.swift */; };
 		6DA75E728052945BC787BBD3 /* AgentComposerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362EF66CE6DA07688C3E5F63 /* AgentComposerStoreTests.swift */; };
 		6DF161C3190C2D5DD0204839 /* WorktreeDetailStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0123607D5AA9F2DD3E26902A /* WorktreeDetailStore.swift */; };
 		6DF78601300724A7AD79B882 /* RSAKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9807494CCCB18E9C9E43662 /* RSAKeyStore.swift */; };
@@ -1026,6 +1027,7 @@
 		915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		921CA559141776BD0F02FDA7 /* TerminalThemeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemeSettingsTests.swift; sourceTree = "<group>"; };
 		93417EFE29FA2DC3DD3FAF9F /* AsyncDeadlineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncDeadlineTests.swift; sourceTree = "<group>"; };
+		9375C8BA3B724F2FA55CDD1A /* ChatCommandSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCommandSuggestions.swift; sourceTree = "<group>"; };
 		9394E039D63A2FEE9BAB1D25 /* HeelerNotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HeelerNotificationService.entitlements; sourceTree = "<group>"; };
 		943C187E6425414801A4734E /* NotificationPrivacyCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPrivacyCopyTests.swift; sourceTree = "<group>"; };
 		9469465EF16322DDC174CD5E /* TerminalThemePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemePickerView.swift; sourceTree = "<group>"; };
@@ -1562,6 +1564,7 @@
 		1502BE8D0C82472625FE3051 /* Compose */ = {
 			isa = PBXGroup;
 			children = (
+				9375C8BA3B724F2FA55CDD1A /* ChatCommandSuggestions.swift */,
 				610E09C50B3599AF347D1E5D /* ChatSendRules.swift */,
 			);
 			path = Compose;
@@ -2510,6 +2513,7 @@
 				441575A5947642BEBBAF1586 /* ChangesUntrackedDirectoryRows.swift in Sources */,
 				F3E9E4B1663C7477CA87E175 /* ChangesView.swift in Sources */,
 				2E00E51B67FB381127C54963 /* ChatCacheSettingsSection.swift in Sources */,
+				6D56A124BF425772E1B318C5 /* ChatCommandSuggestions.swift in Sources */,
 				FE879DCE064FE4E203D2B2D9 /* ChatConversationEngine.swift in Sources */,
 				AD8F5D76914DBF0FE4494F0C /* ChatFollowLatch.swift in Sources */,
 				A8BBA0418C4309A3CCA51148 /* ChatHostFiles.swift in Sources */,
