@@ -10,7 +10,9 @@ struct CodexOrdinalDiagnostics: Equatable, Sendable {
     var duplicates = 0
     /// Places where ordinals skip ahead.
     var gaps = 0
-    /// Lines a subagent inherited from its parent: accepted, never shown.
+    /// Lines before `subagent_history_start_ordinal`, the subagent's own
+    /// header included: history it inherited from its parent. Accepted,
+    /// never shown.
     var inherited = 0
 }
 
