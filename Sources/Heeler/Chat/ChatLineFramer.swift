@@ -49,6 +49,10 @@ struct JSONLLineFramer: Sendable {
     /// The offset just past the last complete line delivered, which is
     /// where the next unread line starts.
     private(set) var processedEnd: UInt64
+    /// Where whole lines begin: the start offset, or the byte after the
+    /// dropped leading fragment once its newline has arrived. Nil while the
+    /// fragment is still being skipped.
+    private(set) var deliveryStart: UInt64?
     /// Bytes of the line in progress, up to `lineCap` (or `prefixCap` once
     /// the line has outgrown `lineCap`).
     private var pending = Data()
@@ -69,6 +73,7 @@ struct JSONLLineFramer: Sendable {
         self.prefixCap = max(0, min(prefixCap, lineCap))
         processedEnd = startOffset
         isDiscardingFragment = dropsLeadingFragment && startOffset > 0
+        deliveryStart = isDiscardingFragment ? nil : startOffset
     }
 
     /// The bytes received after the last complete line.
@@ -115,6 +120,7 @@ struct JSONLLineFramer: Sendable {
         if isDiscardingFragment {
             isDiscardingFragment = false
             processedEnd += 1
+            deliveryStart = processedEnd
             return nil
         }
         let length = pendingLength
