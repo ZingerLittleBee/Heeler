@@ -385,7 +385,8 @@ extension ClaudeRecord {
                 details.queuedCommand = ClaudeQueuedCommand(
                     text: blocks.compactMap { $0.type == "text" ? $0.text : nil }.joined(separator: "\n"),
                     imageCount: blocks.filter { $0.type == "image" }.count,
-                    sourceUUID: rawAttachment.sourceUUID, commandMode: rawAttachment.commandMode,
+                    sourceUUID: rawAttachment.sourceUUID.flatMap { $0.isEmpty ? nil : $0 },
+                    commandMode: rawAttachment.commandMode,
                     originKind: rawAttachment.origin?.kind, isMeta: rawAttachment.isMeta ?? false)
             }
             attachment = details
