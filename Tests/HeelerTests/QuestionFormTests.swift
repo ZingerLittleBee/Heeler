@@ -89,6 +89,19 @@ struct QuestionFormTests {
         }
     }
 
+    @Test func aLongAnswerWrappedOnTheReviewReadsWhole() async throws {
+        let answer = "Something between the two, about the size of a paperback"
+        let tui = FakeQuestionTUI(.claude, Self.claudeQuestions, reviewWidth: 30)
+        for keys in [["1"], ["down"], ["down"], ["down"], ["down"], ["enter"], ["3"]] { await tui.send(keys) }
+        await tui.paste(answer)
+        await tui.send(["enter"])
+
+        let screen = await tui.read()
+        let review = try #require(ClaudeDialogParser.parse(screen).dialog)
+        #expect(review.kind == .claudeQuestionReview)
+        #expect(review.subject.reviewAnswers.map(\.answer) == ["Red", answer])
+    }
+
     // MARK: Driving
 
     @Test func claudeGetsEveryPageAnsweredThenItsReviewSubmitted() async throws {

@@ -773,14 +773,29 @@ private struct ClaudeDialogReader {
         return (titleIndex.map { rows[$0].trimmedText }, planRows, top ?? titleIndex)
     }
 
+    /// ` ● <question>` and `   → <answer>` pairs. A row indented past the
+    /// marker continues the text above it: a long answer wraps.
     private func reviewAnswers(in range: Range<Int>) -> [DialogSubject.ReviewAnswer] {
         var answers: [DialogSubject.ReviewAnswer] = []
+        // The text a further row may continue, with its marker's indent.
+        var open: (isAnswer: Bool, indent: Int)?
         for index in range {
             let text = rows[index].trimmedText
+            let indent = rows[index].indent ?? 0
             if text.hasPrefix("●") {
                 answers.append(.init(question: text.dropFirst().trimmingCharacters(in: .whitespaces), answer: ""))
+                open = (false, indent)
             } else if text.hasPrefix("→"), let last = answers.indices.last {
                 answers[last].answer = text.dropFirst().trimmingCharacters(in: .whitespaces)
+                open = (true, indent)
+            } else if let field = open, !text.isEmpty, indent > field.indent, let last = answers.indices.last {
+                if field.isAnswer {
+                    answers[last].answer += " " + text
+                } else {
+                    answers[last].question += " " + text
+                }
+            } else {
+                open = nil
             }
         }
         return answers
