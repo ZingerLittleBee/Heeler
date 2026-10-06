@@ -190,6 +190,83 @@ final class BlockedCardStore {
         }
     }
 
+    /// Answers a question form: each page in turn, checked against its
+    /// question before its keys and turned by them, then Claude's review
+    /// page once it lists the same answers. A page that shows anything else
+    /// stops the answers there, on the generic card.
+    func submit(_ answers: [QuestionFormAnswer]) async {
+        guard progress == .ready, case .card(let shown) = content, let form = QuestionForm(card: shown),
+            answers.count == form.questions.count
+        else { return }
+        progress = .acting
+        notice = nil
+        // A text the dialog won't take would stop the answers part way.
+        for case .text(let text) in answers {
+            do {
+                _ = try DialogActionPlanner.fieldText(text)
+            } catch {
+                finish(notice: error.message)
+                return
+            }
+        }
+        guard var current = await observe() else {
+            finish(notice: Self.unreadMessage)
+            return
+        }
+        present(current)
+        guard current.result.fingerprint == shown.dialog.fingerprint, var page = current.result.dialog else {
+            finish(notice: Self.changedMessage)
+            return
+        }
+        let toolUseID = program == .claude ? shown.request?.callID : nil
+        await waitOutGrace(for: page.fingerprint)
+        for index in form.questions.indices {
+            let stopped =
+                "Heeler stopped at question \(index + 1): the dialog didn't respond the way it expected. "
+                + Self.finishThere
+            let plan: DialogActionPlan
+            do {
+                plan = try DialogActionPlanner.plan(
+                    form.action(answers[index], forQuestion: index, on: page), for: page, toolUseID: toolUseID)
+            } catch {
+                if index == 0 {
+                    finish(notice: error.message)
+                } else {
+                    stopPartWay(on: page.fingerprint, last: current, reason: "\(error.message) \(Self.finishThere)")
+                }
+                return
+            }
+            guard case .sent(let turned) = await send(plan.steps, to: page.fingerprint, stopReason: stopped) else {
+                return
+            }
+            // Codex submits every answer with the last one.
+            if index == form.questions.count - 1, program == .codex {
+                await confirm(plan, on: page.fingerprint)
+                return
+            }
+            guard let turned, let next = turned.result.dialog else {
+                stopPartWay(on: page.fingerprint, last: turned ?? current, reason: stopped)
+                return
+            }
+            current = turned
+            page = next
+            // The page just drew: a key now could land before it.
+            try? await clock.sleep(timing.grace)
+        }
+        let reviewProblem =
+            "Claude's review lists other answers than the card's, so Heeler didn't submit them. "
+            + "Check them here or in the terminal."
+        guard form.review(page, shows: answers), let submitOption = page.options.first(where: { $0.role == .submit }),
+            let plan = try? DialogActionPlanner.plan(
+                .choose(ordinal: submitOption.ordinal), for: page, toolUseID: toolUseID)
+        else {
+            stopPartWay(on: page.fingerprint, last: current, reason: reviewProblem)
+            return
+        }
+        guard case .sent = await send(plan.steps, to: page.fingerprint) else { return }
+        await confirm(plan, on: page.fingerprint)
+    }
+
     /// The generic card's option button.
     func press(number: Int) async {
         guard progress == .ready, case .generic(let shown) = content else { return }
@@ -264,7 +341,7 @@ final class BlockedCardStore {
         progress = .acting
         notice = nil
         guard let fresh = await observe() else {
-            finish(notice: "Heeler couldn't read the Agent's screen, so nothing was sent.")
+            finish(notice: Self.unreadMessage)
             return
         }
         present(fresh)
@@ -280,29 +357,56 @@ final class BlockedCardStore {
             return
         }
         await waitOutGrace(for: shown)
-        for step in plan.steps {
+        guard case .sent = await send(plan.steps, to: shown) else { return }
+        await confirm(plan, on: shown)
+    }
+
+    private enum StepsOutcome {
+        /// Every step went out. Carries the read that met the last step
+        /// when that step was a check.
+        case sent(DialogObservation?)
+        /// A check failed or a send did; the card says so.
+        case stopped
+    }
+
+    /// Sends `steps` to the dialog with `fingerprint`, checking each
+    /// expectation before the next step.
+    private func send(
+        _ steps: [DialogStep], to fingerprint: DialogFingerprint,
+        stopReason: String = BlockedCardStore.stoppedMessage
+    ) async -> StepsOutcome {
+        var checked: DialogObservation?
+        for step in steps {
             do {
                 switch step {
                 case .keys(let keys):
                     try await io.sendKeys(keys)
+                    checked = nil
                 case .paste(let text):
                     try await io.paste(text)
+                    checked = nil
                 case .expect(let expectation):
                     let check = await poll(within: timing.expectationWindow) {
-                        expectation.isMet(by: $0, fingerprint: shown)
+                        expectation.isMet(by: $0, fingerprint: fingerprint)
                     }
                     guard check.isMet else {
-                        stopPartWay(on: shown, last: check.last)
-                        return
+                        stopPartWay(on: fingerprint, last: check.last, reason: stopReason)
+                        return .stopped
                     }
+                    checked = check.last
                 }
             } catch {
                 finish(notice: Self.sendFailure(error))
-                return
+                return .stopped
             }
         }
+        return .sent(checked)
+    }
+
+    /// Watches for the plan's effect on the dialog with `fingerprint`.
+    private func confirm(_ plan: DialogActionPlan, on fingerprint: DialogFingerprint) async {
         let confirmation = await poll(within: timing.confirmationWindow) {
-            plan.confirmation.isMet(by: $0, fingerprint: shown)
+            plan.confirmation.isMet(by: $0, fingerprint: fingerprint)
         }
         guard confirmation.isMet, let confirmed = confirmation.last else {
             progress = .unconfirmed
@@ -322,14 +426,13 @@ final class BlockedCardStore {
 
     /// A step the dialog did not answer as expected: nothing more is sent,
     /// and the dialog falls back to the generic card with the reason.
-    private func stopPartWay(on fingerprint: DialogFingerprint, last: DialogObservation?) {
-        degraded = (
-            fingerprint,
-            "The dialog didn't respond the way Heeler expected, so it stopped. Finish here or in the terminal."
-        )
+    private func stopPartWay(
+        on fingerprint: DialogFingerprint, last: DialogObservation?, reason: String = BlockedCardStore.stoppedMessage
+    ) {
+        degraded = (fingerprint, reason)
         progress = .ready
         if let last { present(last) }
-        notice = degraded?.reason
+        notice = reason
     }
 
     private func waitOutGrace(for fingerprint: DialogFingerprint) async {
@@ -419,6 +522,10 @@ final class BlockedCardStore {
     }
 
     private static let changedMessage = "This prompt changed. Check it before answering."
+    private static let unreadMessage = "Heeler couldn't read the Agent's screen, so nothing was sent."
+    private static let finishThere = "Finish here or in the terminal."
+    private static let stoppedMessage =
+        "The dialog didn't respond the way Heeler expected, so it stopped. " + finishThere
 
     private static func sendFailure(_ error: any Error) -> String {
         let prefix = "Heeler couldn't reach the Agent, so the answer may not have gone."

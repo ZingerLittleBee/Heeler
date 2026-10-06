@@ -19,8 +19,14 @@ struct BlockedCardView: View {
             } else {
                 switch store.content {
                 case .card(let card):
-                    BlockedDialogCard(card: card, store: store, maxHeight: maxHeight)
-                        .id(card.dialog.fingerprint)
+                    Group {
+                        if let form = QuestionForm(card: card) {
+                            QuestionFormCard(card: card, form: form, store: store, maxHeight: maxHeight)
+                        } else {
+                            BlockedDialogCard(card: card, store: store, maxHeight: maxHeight)
+                        }
+                    }
+                    .id(card.dialog.fingerprint)
                 case .generic(let excerpt):
                     GenericDialogCard(excerpt: excerpt, store: store, maxHeight: maxHeight, openTerminal: openTerminal)
                 case .unreadable:
@@ -181,7 +187,9 @@ private struct BlockedDialogCard: View {
         if isMultiSelect {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(dialog.options.filter { $0.role == .answer }, id: \.ordinal) { option in
-                    BlockedToggleRow(option: option, isOn: selection.contains(option.ordinal)) {
+                    BlockedToggleRow(
+                        label: option.label, detail: option.detail, isOn: selection.contains(option.ordinal)
+                    ) {
                         selection.formSymmetricDifference([option.ordinal])
                     }
                 }
@@ -449,12 +457,20 @@ struct BlockedCardFooter: View {
     var stopTitle: String? = nil
     let isReady: Bool
     var stop: () -> Void = {}
+    /// A quieter way out than Stop, at the trailing edge: Claude's `Chat
+    /// about this` on a question form.
+    var asideTitle: String? = nil
+    var aside: () -> Void = {}
     /// Shows or hides the key pad, where options cover most answers.
     var keys: Binding<Bool>? = nil
     var openTerminal: (() -> Void)? = nil
 
+    private var hasControls: Bool {
+        stopTitle != nil || asideTitle != nil || keys != nil || openTerminal != nil
+    }
+
     var body: some View {
-        if notice != nil || stopTitle != nil || keys != nil || openTerminal != nil {
+        if notice != nil || hasControls {
             VStack(alignment: .leading, spacing: 8) {
                 if let notice {
                     Label(notice, systemImage: "exclamationmark.circle")
@@ -463,7 +479,7 @@ struct BlockedCardFooter: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("chat.blocked-card.notice")
                 }
-                if stopTitle != nil || keys != nil || openTerminal != nil {
+                if hasControls {
                     HStack(spacing: 16) {
                         if let stopTitle {
                             Button(stopTitle, role: .destructive, action: stop)
@@ -477,6 +493,10 @@ struct BlockedCardFooter: View {
                             }
                         }
                         Spacer(minLength: 0)
+                        if let asideTitle {
+                            Button(asideTitle, action: aside)
+                                .disabled(!isReady)
+                        }
                         if let openTerminal {
                             Button(action: openTerminal) {
                                 Label("Open in Terminal", systemImage: "terminal")
@@ -500,18 +520,30 @@ enum BlockedOptionEmphasis: Equatable {
 }
 
 struct BlockedOptionButton: View {
-    let option: DialogOption
+    let label: String
+    let detail: String?
     let emphasis: BlockedOptionEmphasis
     let action: () -> Void
+
+    init(option: DialogOption, emphasis: BlockedOptionEmphasis, action: @escaping () -> Void) {
+        self.init(label: option.label, detail: option.detail, emphasis: emphasis, action: action)
+    }
+
+    init(label: String, detail: String? = nil, emphasis: BlockedOptionEmphasis, action: @escaping () -> Void) {
+        self.label = label
+        self.detail = detail
+        self.emphasis = emphasis
+        self.action = action
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Button(action: action) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: option.label)
+                    Text(verbatim: label)
                         .font(.body.weight(emphasis == .primary ? .semibold : .regular))
                         .multilineTextAlignment(.leading)
-                    if let detail = option.detail, !detail.isEmpty, detail != option.label {
+                    if let detail, !detail.isEmpty, detail != label {
                         Text(verbatim: detail)
                             .font(.caption)
                             .opacity(0.75)
@@ -575,8 +607,9 @@ private struct BlockedOptionStyle: ButtonStyle {
     }
 }
 
-private struct BlockedToggleRow: View {
-    let option: DialogOption
+struct BlockedToggleRow: View {
+    let label: String
+    var detail: String? = nil
     let isOn: Bool
     let toggle: () -> Void
 
@@ -586,9 +619,9 @@ private struct BlockedToggleRow: View {
                 Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isOn ? Color.accentColor : .secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: option.label)
+                    Text(verbatim: label)
                         .foregroundStyle(.primary)
-                    if let detail = option.detail, !detail.isEmpty, detail != option.label {
+                    if let detail, !detail.isEmpty, detail != label {
                         Text(verbatim: detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -604,7 +637,7 @@ private struct BlockedToggleRow: View {
     }
 }
 
-private struct BlockedTextField: View {
+struct BlockedTextField: View {
     let placeholder: String
     @Binding var text: String
     var isFocused: FocusState<Bool>.Binding
