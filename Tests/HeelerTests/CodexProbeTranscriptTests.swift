@@ -3,8 +3,8 @@ import Testing
 
 @testable import Heeler
 
-/// The two captured probe rollouts, projected whole. Line numbers follow the
-/// brief (P1, P2; 1-based).
+/// The two captured probe rollouts, projected whole. Line numbers follow
+/// docs/research/codex-rollout-format.md (P1, P2; 1-based).
 @Suite("Codex probe transcripts")
 struct CodexProbeTranscriptTests {
     private let idle = ChatProjectionContext(activity: .idle)

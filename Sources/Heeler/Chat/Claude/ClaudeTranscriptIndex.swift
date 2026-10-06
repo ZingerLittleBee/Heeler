@@ -99,7 +99,8 @@ struct ClaudeTranscriptIndex: Sendable {
 
     /// The newest `relocated` and `continued-in`. A hand-off the session
     /// wrote assistant messages after is history, not where the
-    /// conversation went (brief §8).
+    /// conversation went (docs/research/claude-code-transcript-format.md,
+    /// "Location").
     var links: ChatTranscriptLinks {
         var continuedInSessionID = continuedIn.value
         if let lastAssistantOffset, lastAssistantOffset > continuedIn.offset {

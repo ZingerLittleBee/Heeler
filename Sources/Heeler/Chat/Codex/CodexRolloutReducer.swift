@@ -1,6 +1,7 @@
 import Foundation
 
-/// Whether the adapter can read a rollout, decided by its first line (§1).
+/// Whether the adapter can read a rollout, decided by its first line
+/// (docs/research/codex-rollout-format.md, "Dialect detection").
 enum CodexRolloutSupport: Equatable, Sendable {
     enum Reason: String, Equatable, Sendable, Codable {
         /// Codex 0.30 or older: line 1 is `{id, instructions}`, not an envelope.
@@ -59,9 +60,10 @@ struct CodexProjection: Equatable, Sendable {
 /// lines that arrive earlier wait whole.
 ///
 /// A reverted paginated rollout continues history kept in older files
-/// (§5). The reducer cannot read files, so it names the base it needs in
-/// `pendingHistoryBase` and takes that file's lines through
-/// `setBaseSegment(rolloutID:path:lines:)`, one base at a time.
+/// (docs/research/codex-rollout-format.md, "Revert"). The reducer cannot
+/// read files, so it names the base it needs in `pendingHistoryBase` and
+/// takes that file's lines through `setBaseSegment(rolloutID:path:lines:)`,
+/// one base at a time.
 struct CodexRolloutReducer: ChatTranscriptReducer {
     /// Bumped when the normalization changes, so entries cached by an
     /// older build are dropped instead of mixed with new ones.
@@ -236,7 +238,8 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
             outcome: CodexRecordDecoder.decode(line, as: classification, in: context))
     }
 
-    /// The dialect line 1 declares (§1 Detection).
+    /// The dialect line 1 declares (docs/research/codex-rollout-format.md,
+    /// "Dialect detection").
     static func detect(_ line: ChatLine) -> (support: CodexRolloutSupport, meta: CodexSessionMeta?) {
         let data = line.isTruncated ? CodexJSONPrefix.repaired(line.data) : line.data
         guard let data, let first = try? JSONDecoder().decode(CodexFirstLine.self, from: data) else {

@@ -3,7 +3,9 @@ import Testing
 
 @testable import Heeler
 
-/// How recorded user messages read in Chat (§4 UserMessage display, §7).
+/// How recorded user messages read in Chat
+/// (docs/research/codex-rollout-format.md, "User message display" and
+/// "Skill prompts").
 @Suite("Codex message display")
 struct CodexMessageDisplayTests {
     private let idle = ChatProjectionContext(activity: .idle)
@@ -167,7 +169,8 @@ struct CodexMessageDisplayTests {
     }
 }
 
-/// `$name` prompts and whether they read as `/name` (§7 Display).
+/// `$name` prompts and whether they read as `/name`
+/// (docs/research/codex-rollout-format.md, "Skill prompts").
 enum CodexSkillCase: CaseIterable, CustomTestStringConvertible {
     case skillPart
     case pluginInCatalog

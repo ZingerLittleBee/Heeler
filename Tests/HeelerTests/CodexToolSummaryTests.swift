@@ -3,7 +3,8 @@ import Testing
 
 @testable import Heeler
 
-/// Tool rows: titles as the TUI renders them, outcomes and line counts (§6).
+/// Tool rows: titles as the TUI renders them, outcomes and line counts
+/// (docs/research/codex-rollout-format.md, "Tool calls and outputs").
 @Suite("Codex tool summaries")
 struct CodexToolSummaryTests {
     @Test("Command titles follow the TUI", arguments: CodexCommandTitleCase.allCases)
@@ -159,7 +160,8 @@ enum CodexCommandTitleCase: CaseIterable, CustomTestStringConvertible {
     }
 }
 
-/// The formats legacy tool outputs were written in (§6 Legacy pairing).
+/// The formats legacy tool outputs were written in
+/// (docs/research/codex-rollout-format.md, "Legacy pairing").
 enum CodexLegacyOutputCase: CaseIterable, CustomTestStringConvertible {
     case json045
     case exitCodeHeader
@@ -212,7 +214,8 @@ enum CodexLegacyOutputCase: CaseIterable, CustomTestStringConvertible {
     }
 }
 
-/// A command still `in_progress` when the loaded lines end (§5).
+/// A command still `in_progress` when the loaded lines end
+/// (docs/research/codex-rollout-format.md, "Paginated turns").
 enum CodexOpenCallCase: CaseIterable, CustomTestStringConvertible {
     case workingInOpenTurn
     case blockedInOpenTurn

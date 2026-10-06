@@ -3,8 +3,8 @@ import Testing
 
 @testable import Heeler
 
-/// `/compact` turns (§7) and reverted rollouts that continue a base file
-/// (§5 Revert).
+/// `/compact` turns (docs/research/codex-rollout-format.md, "Compaction
+/// command") and reverted rollouts that continue a base file ("Revert").
 @Suite("Codex compaction and revert lineage")
 struct CodexLineageTests {
     private let idle = ChatProjectionContext(activity: .idle)

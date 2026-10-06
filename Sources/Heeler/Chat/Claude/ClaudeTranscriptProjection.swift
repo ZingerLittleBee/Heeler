@@ -1,6 +1,8 @@
 import Foundation
 
-/// Turns the current branch into Chat entries (brief §3, §4 and §6), plus the
+/// Turns the current branch into Chat entries
+/// (docs/research/claude-code-transcript-format.md, "One API message across
+/// records", "Tool pairing and outcomes" and "Special flows"), plus the
 /// requests a Blocked card matches and the prompts pending-echo matching
 /// looks for.
 ///

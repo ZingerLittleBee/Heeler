@@ -4,7 +4,8 @@ import Testing
 @testable import Heeler
 
 /// Lines Codex itself would skip, repeat or cut short, and the ordinals that
-/// decide which line counts (§4 R5, §9).
+/// decide which line counts (docs/research/codex-rollout-format.md,
+/// "Paginated ordinals" and "Incremental parsing").
 @Suite("Codex line hygiene")
 struct CodexLineHygieneTests {
     private let idle = ChatProjectionContext(activity: .idle)

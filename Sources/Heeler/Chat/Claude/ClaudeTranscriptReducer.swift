@@ -82,9 +82,11 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
         return path.hasPrefix(String(transcriptPath.dropLast(".jsonl".count)) + "/tool-results/")
     }
 
-    /// The form a sent prompt and a recorded one are compared in (brief §7):
-    /// NFC, LF line ends, `<pasted_content>` unwrapped, trimmed. Claude Code
-    /// trims what it records, and Heeler appends a space when it sends.
+    /// The form a sent prompt and a recorded one are compared in
+    /// (docs/research/claude-code-transcript-format.md, "Prompt recording and
+    /// echo matching"): NFC, LF line ends, `<pasted_content>` unwrapped,
+    /// trimmed. Claude Code trims what it records, and Heeler appends a space
+    /// when it sends.
     static func echoKey(_ text: String) -> String {
         let unified = text.precomposedStringWithCanonicalMapping
             .replacingOccurrences(of: "\r\n", with: "\n")

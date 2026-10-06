@@ -153,8 +153,9 @@ enum CodexTimelineProjector {
         return output
     }
 
-    /// What a call without a recorded outcome shows (§5): the newest open
-    /// turn follows herdr's activity; any other open turn was cut off.
+    /// What a call without a recorded outcome shows
+    /// (docs/research/codex-rollout-format.md, "Paginated turns"): the newest
+    /// open turn follows herdr's activity; any other open turn was cut off.
     private static func openStatus(
         _ turn: CodexTimelineTurn, isLive: Bool, activity: ChatAgentActivity
     ) -> ChatToolActivity.Status {

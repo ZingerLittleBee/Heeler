@@ -16,7 +16,8 @@ struct ClaudeChain: Sendable, Equatable {
     var parents: [String: String] = [:]
 }
 
-/// Picks the current branch out of the `parentUuid` tree (brief §2).
+/// Picks the current branch out of the `parentUuid` tree
+/// (docs/research/claude-code-transcript-format.md, "Current branch").
 ///
 /// This ports the SDK reader (`Eu` and the intent of `cCe`) and extends it
 /// past compactions so history stays visible: compaction relinks preserved
@@ -103,7 +104,8 @@ enum ClaudeChainResolver {
         var selected: Set<String> = []
         var expandedBoundaries: Set<String> = []
         /// The newest terminal written before `record` that leads to a
-        /// message the walk has not shown: the brief's segment policy.
+        /// message the walk has not shown: the segment policy in
+        /// docs/research/claude-code-transcript-format.md, "Current branch".
         func segmentTerminal(before record: ClaudeRecord) -> ClaudeRecord? {
             guard let limit = rank[record.uuid] else { return nil }
             var claimed: Set<String> = []

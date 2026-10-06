@@ -1,7 +1,7 @@
 import Foundation
 
 /// Whose conversation a transcript file holds, read from its first lines
-/// (brief §8).
+/// (docs/research/claude-code-transcript-format.md, "Location").
 ///
 /// A file is a session's transcript when its first `sessionId` is that
 /// session's id and its first chain record is not a subagent's. The second

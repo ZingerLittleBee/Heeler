@@ -4,8 +4,9 @@ import Testing
 @testable import Heeler
 
 /// Flows the probe captures do not hold, written by hand in the compact
-/// JSON Claude Code writes. Shapes the brief marks UNVERIFIED follow the CLI
-/// source they cite.
+/// JSON Claude Code writes. Shapes
+/// docs/research/claude-code-transcript-format.md marks "Not verified" follow
+/// the CLI source they cite.
 @Suite("Claude synthetic transcripts")
 struct ClaudeSyntheticTranscriptTests {
     /// The transcript and the lines it came from, for offsets.

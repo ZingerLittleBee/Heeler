@@ -4,8 +4,9 @@ import Testing
 @testable import Heeler
 
 /// Legacy rollouts: events and response items replayed through the rules of
-/// Codex's `ThreadHistoryBuilder` (§5), with tool calls paired by `call_id`
-/// (§6). No local file is legacy, so every input here is synthetic.
+/// Codex's `ThreadHistoryBuilder` (docs/research/codex-rollout-format.md,
+/// "Legacy turns"), with tool calls paired by `call_id` ("Legacy pairing").
+/// No local file is legacy, so every input here is synthetic.
 @Suite("Codex legacy replay")
 struct CodexLegacyReplayTests {
     private let idle = ChatProjectionContext(activity: .idle)

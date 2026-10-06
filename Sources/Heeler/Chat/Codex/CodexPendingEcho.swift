@@ -1,6 +1,8 @@
 import Foundation
 
-/// The key a sent prompt and a recorded prompt are compared on (§8).
+/// The key a sent prompt and a recorded prompt are compared on
+/// (docs/research/codex-rollout-format.md, "Prompt recording and echo
+/// matching").
 ///
 /// The Codex TUI changes a paste before recording it: CRLF and CR become
 /// LF, control characters other than newline and tab and whole CSI
@@ -86,12 +88,14 @@ struct CodexEchoCandidate: Equatable, Sendable {
     var kind: Kind
 }
 
-/// Matches pending sends to the prompts Codex recorded (§8). The rules are
-/// conservative because a wrong match hides a prompt that was never
-/// delivered: keys must be equal, only entries recorded after the send
-/// count, and matching is first in, first out and one to one, so a prompt
-/// sent twice needs two recorded copies. Codex's own message id is useless
-/// here: the TUI sets a fresh `client_id` that Heeler cannot choose.
+/// Matches pending sends to the prompts Codex recorded
+/// (docs/research/codex-rollout-format.md, "Prompt recording and echo
+/// matching"). The rules are conservative because a wrong match hides a
+/// prompt that was never delivered: keys must be equal, only entries
+/// recorded after the send count, and matching is first in, first out and
+/// one to one, so a prompt sent twice needs two recorded copies. Codex's own
+/// message id is useless here: the TUI sets a fresh `client_id` that Heeler
+/// cannot choose.
 enum CodexPendingEcho {
     /// The command whose echo is a compaction rather than a prompt.
     static let compactCommand = "/compact"

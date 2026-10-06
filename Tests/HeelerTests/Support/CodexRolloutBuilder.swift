@@ -37,7 +37,8 @@ enum CodexJSON: Sendable, ExpressibleByStringLiteral, ExpressibleByIntegerLitera
 }
 
 /// A captured probe rollout: `probe1` (P1, 65 lines) or `probe2` (P2, 119
-/// lines), numbered from 1 as the brief numbers them.
+/// lines), numbered from 1 as docs/research/codex-rollout-format.md numbers
+/// them.
 struct CodexProbe {
     /// Neither probe was reverted, so each rollout id is its thread id.
     static let probe1ID = "01a10f87-e025-7fb1-8974-8dd09937767a"
@@ -108,9 +109,10 @@ extension ChatEntry {
     }
 }
 
-/// Writes synthetic Codex rollouts in the shapes the brief documents:
-/// paginated (every line has an ordinal, history is `item_completed` turn
-/// items) or legacy (no ordinals, history is events and response items).
+/// Writes synthetic Codex rollouts in the shapes
+/// docs/research/codex-rollout-format.md documents: paginated (every line has
+/// an ordinal, history is `item_completed` turn items) or legacy (no
+/// ordinals, history is events and response items).
 struct CodexRolloutBuilder {
     enum Dialect {
         case paginated

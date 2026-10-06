@@ -153,7 +153,8 @@ struct CodexIncrementalTests {
     }
 }
 
-/// What line 1 says about a rollout (§1 Detection).
+/// What line 1 says about a rollout (docs/research/codex-rollout-format.md,
+/// "Dialect detection").
 @Suite("Codex dialect detection")
 struct CodexDialectDetectionTests {
     @Test("Line 1 decides support", arguments: CodexHeadCase.allCases)

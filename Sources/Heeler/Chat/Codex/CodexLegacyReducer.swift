@@ -11,7 +11,8 @@ import Foundation
 /// offset (`codex/<rollout>/@<offset>`).
 ///
 /// Codex's builder ignores tool response items; Heeler pairs them by
-/// `call_id` so legacy tool calls show as rows (§6), and merges the
+/// `call_id` so legacy tool calls show as rows
+/// (docs/research/codex-rollout-format.md, "Legacy pairing"), and merges the
 /// `*_end` events that share a call id into the same row.
 struct CodexLegacyBuilder {
     private struct Item {

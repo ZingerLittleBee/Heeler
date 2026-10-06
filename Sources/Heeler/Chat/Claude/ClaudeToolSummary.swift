@@ -137,7 +137,9 @@ struct ClaudeToolSummary: Sendable, Equatable {
     }
 }
 
-/// How a tool call that has a result ended (brief §4, first match wins).
+/// How a tool call that has a result ended
+/// (docs/research/claude-code-transcript-format.md, "Tool pairing and
+/// outcomes"; first match wins).
 enum ClaudeToolOutcome: Sendable, Equatable {
     case succeeded(note: String?)
     case declined(feedback: String?)

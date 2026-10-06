@@ -3,7 +3,9 @@ import Testing
 
 @testable import Heeler
 
-/// Matching prompts Heeler sent to the prompts Codex recorded (§8).
+/// Matching prompts Heeler sent to the prompts Codex recorded
+/// (docs/research/codex-rollout-format.md, "Prompt recording and echo
+/// matching").
 @Suite("Codex pending echo")
 struct CodexPendingEchoTests {
     @Test("The key undoes what the TUI changes in a paste", arguments: CodexEchoKeyCase.allCases)
