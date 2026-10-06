@@ -81,12 +81,14 @@ enum ClaudeTranscriptProjection {
         }
     }
 
-    /// A prompt's text as typed, or a command as `/name args`.
+    /// A prompt's text as typed, a command as `/name args`, or a shell-mode
+    /// command as `!command`, the way it was typed.
     static func promptText(_ text: String) -> String? {
         guard !ClaudeUserText.isMarker(text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
         switch ClaudeUserText.classify(text) {
         case .prompt(let prompt): return prompt.isEmpty ? nil : prompt
         case .command(let invocation): return invocation.displayText
+        case .bashInput(let command): return command.isEmpty ? nil : "!\(command)"
         default: return nil
         }
     }
