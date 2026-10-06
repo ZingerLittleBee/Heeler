@@ -105,29 +105,57 @@ enum ClaudeUserText: Sendable, Equatable {
         return .prompt(unwrappingPastedContent(text))
     }
 
-    /// Replaces each `<pasted_content id="…">` wrapper with the text it
-    /// holds. Claude Code wraps pastes this way behind a flag that is off by
-    /// default; the paste itself is what the user sent.
+    /// Replaces each `<pasted_content id="abcd">` block with the paste it
+    /// holds, as Claude Code itself does (CLI `qTt` and `Khe`,
+    /// chunk-r9sh95qa.js): the id is four lowercase hex digits, and up to two
+    /// newlines on either side belong to the wrapper. The CLI wraps pastes
+    /// this way behind a flag that is off by default; the paste is what the
+    /// user sent. The markers are ASCII, so the work happens on UTF-8 bytes.
     static func unwrappingPastedContent(_ text: String) -> String {
-        let open = "<pasted_content id=\""
-        guard text.contains(open) else { return text }
-        var result = ""
-        var rest = text[...]
-        while let start = rest.range(of: open) {
-            guard let idEnd = rest[start.upperBound...].range(of: "\">") else { break }
-            let id = rest[start.upperBound..<idEnd.lowerBound]
-            let close = "</pasted_content id=\"\(id)\">"
-            guard let closing = rest[idEnd.upperBound...].range(of: close) else { break }
-            var body = rest[idEnd.upperBound..<closing.lowerBound]
-            if body.first == "\n" { body = body.dropFirst() }
-            if body.last == "\n" { body = body.dropLast() }
-            result += rest[..<start.lowerBound]
-            result += body
-            rest = rest[closing.upperBound...]
-            if rest.first == "\n" { rest = rest.dropFirst() }
+        guard text.contains(#"<pasted_content id=""#) else { return text }
+        let bytes = Array(text.utf8)
+        let opener = Array(#"<pasted_content id=""#.utf8)
+        let newline = UInt8(ascii: "\n")
+        var parts: [ArraySlice<UInt8>] = []
+        var textStart = 0
+        var searchStart = 0
+        var unwrapped = false
+        while let open = bytes[searchStart...].firstRange(of: opener) {
+            let idEnd = open.upperBound + 4
+            guard idEnd + 3 <= bytes.count, bytes[open.upperBound..<idEnd].allSatisfy(isLowercaseHexDigit),
+                bytes[idEnd..<idEnd + 3].elementsEqual(#"">\#n"#.utf8)
+            else {
+                searchStart = open.upperBound
+                continue
+            }
+            let bodyStart = idEnd + 3
+            // The closer's own newline may be the opener's, for an empty paste.
+            let closer = Array("\n</pasted_content id=\"".utf8) + bytes[open.upperBound..<idEnd] + Array("\">".utf8)
+            guard let close = bytes[(bodyStart - 1)...].firstRange(of: closer) else { break }
+            var textEnd = open.lowerBound
+            var dropped = 0
+            while dropped < 2, textEnd > textStart, bytes[textEnd - 1] == newline {
+                textEnd -= 1
+                dropped += 1
+            }
+            parts.append(bytes[textStart..<textEnd])
+            parts.append(bytes[bodyStart..<max(bodyStart, close.lowerBound)])
+            textStart = close.upperBound
+            dropped = 0
+            while dropped < 2, textStart < bytes.count, bytes[textStart] == newline {
+                textStart += 1
+                dropped += 1
+            }
+            searchStart = textStart
+            unwrapped = true
         }
-        result += rest
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard unwrapped else { return text }
+        parts.append(bytes[textStart...])
+        return String(decoding: parts.joined(), as: UTF8.self)
+    }
+
+    private static func isLowercaseHexDigit(_ byte: UInt8) -> Bool {
+        (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
     }
 }
 
