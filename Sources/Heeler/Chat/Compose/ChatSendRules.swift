@@ -52,6 +52,13 @@ enum ChatCommandMenu {
     }
 }
 
+extension AgentSkill {
+    /// A skill as Chat's Composer takes it: `/name` for both programs,
+    /// which the send turns into the program's own form when it leads the
+    /// message.
+    var chatInsertionText: String { "/\(name) " }
+}
+
 /// What a Chat draft sends to the Agent's input box (ADR 0020).
 ///
 /// The text arrives as one bracketed paste and Enter, exactly as if typed,

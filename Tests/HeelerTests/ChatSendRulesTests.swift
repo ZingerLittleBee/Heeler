@@ -74,6 +74,18 @@ struct ChatSendRulesTests {
         #expect(rules.outgoingText("/deploy") == "$deploy ")
     }
 
+    @Test(arguments: ChatProgram.allCases)
+    func aPickedSkillSendsInTheProgramsOwnForm(program: ChatProgram) {
+        let skill = AgentSkill(
+            scope: .project, name: "review", description: nil,
+            commandPrefix: program == .codex ? "$" : "/")
+
+        #expect(skill.chatInsertionText == "/review ")
+        #expect(
+            Self.rules(program).outgoingText(skill.chatInsertionText + "the diff")
+                == "\(skill.command) the diff ")
+    }
+
     @Test func compactIsOfferedOnlyWhileIdleAndBeatsASkillOfTheSameName() {
         let idle = Self.rules(.codex)
         let busy = Self.rules(.codex, idle: false)

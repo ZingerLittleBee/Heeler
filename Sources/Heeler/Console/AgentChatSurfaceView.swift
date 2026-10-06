@@ -183,7 +183,7 @@ struct AgentChatSurfaceView: View {
             if let skills {
                 SkillsPickerView(
                     store: skills,
-                    onInsert: { composer.insertIntoDraft($0.insertionText) },
+                    onInsert: { composer.insertIntoDraft($0.chatInsertionText) },
                     readSkill: { [console, agent] skill in
                         try await console.readSkillFile(path: skill.path, on: agent.hostID)
                     })
