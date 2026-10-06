@@ -950,6 +950,36 @@ final class AgentComposerUITextView: UITextView {
     }
 }
 
+/// The tools dock's tab row: the terminal's dock and Chat's.
+struct ToolsKeyboardTabBar: View {
+    let tabs: [TerminalKeysTab]
+    @Binding var selection: TerminalKeysTab
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(tabs) { tab in
+                Button {
+                    selection = tab
+                } label: {
+                    Image(systemName: tab.systemImageName)
+                        .font(.body)
+                        .foregroundStyle(selection == tab ? Color.accentColor : .secondary)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .background(
+                            selection == tab ? Color(uiColor: .secondarySystemFill) : .clear,
+                            in: .rect(cornerRadius: 8))
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.accessibilityLabel)
+                .accessibilityAddTraits(selection == tab ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 2)
+    }
+}
+
 struct AgentToolsKeyboard: View {
     /// The screen routes authored text according to the active input mode.
     let insertText: (String) -> Void
@@ -1009,27 +1039,7 @@ struct AgentToolsKeyboard: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
-            HStack(spacing: 4) {
-                ForEach(tabs) { tab in
-                    Button {
-                        selectedTab = tab
-                    } label: {
-                        Image(systemName: tab.systemImageName)
-                            .font(.body)
-                            .foregroundStyle(selectedTab == tab ? Color.accentColor : .secondary)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(
-                                selectedTab == tab ? Color(uiColor: .secondarySystemFill) : .clear,
-                                in: .rect(cornerRadius: 8))
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(tab.accessibilityLabel)
-                    .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 2)
+            ToolsKeyboardTabBar(tabs: tabs, selection: $selectedTab)
         }
         .frame(height: height)
         .clipped()

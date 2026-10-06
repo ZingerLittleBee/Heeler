@@ -53,6 +53,8 @@ struct AgentChatSurfaceView: View {
     @State private var isStartingAgent = false
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
+    @State private var viewingSkill: AgentSkill?
+    @State private var agentKeys: ChatAgentKeysStore
     @State private var isRenamingAgent = false
     @State private var isRenamingWorkspace = false
     @State private var closeErrorMessage: String?
@@ -113,6 +115,10 @@ struct AgentChatSurfaceView: View {
         _skills = State(initialValue: AgentTerminalView.makeSkillsStore(for: agent, console: console))
         let paneID = agent.agent.paneID
         let hostID = agent.hostID
+        _agentKeys = State(
+            initialValue: ChatAgentKeysStore { [console] keys in
+                try await console.sendAgentKeys(keys, to: paneID, on: hostID)
+            })
         _closer = State(
             initialValue: ClosePaneStore(paneTitle: AgentTerminalView.displayTitle(for: agent)) {
                 [console] in
@@ -141,7 +147,8 @@ struct AgentChatSurfaceView: View {
             isFocused: false,
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
                 || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
-                || isRenamingAgent || isRenamingWorkspace || closeErrorMessage != nil,
+                || viewingSkill != nil || isRenamingAgent || isRenamingWorkspace
+                || closeErrorMessage != nil,
             isOnStage: { @MainActor in isOnStage() },
             toggleInputMode: nil,
             inputMode: .composer))
@@ -190,6 +197,13 @@ struct AgentChatSurfaceView: View {
                 .modifier(ConsoleSheetPresentationModifier(
                     presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
             }
+        }
+        .sheet(item: $viewingSkill) { skill in
+            SkillContentSheet(skill: skill) { [console, agent] in
+                try await console.readSkillFile(path: skill.path, on: agent.hostID)
+            }
+            .modifier(ConsoleSheetPresentationModifier(
+                presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
@@ -274,6 +288,14 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
+        .onChange(of: chat.map { $0.blocked.content != .none } ?? false) { _, isReplaced in
+            // A Blocked card takes the Composer's place and the tools dock
+            // with it. iPad keeps `.tools` without focus, so nothing else
+            // would put the dock away.
+            guard isReplaced, composerKeyboardPresentation == .tools else { return }
+            prepareComposerKeyboardPresentation(.hidden)
+            composerKeyboardPresentation = .hidden
+        }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             selectedPhoto = nil
@@ -336,6 +358,23 @@ struct AgentChatSurfaceView: View {
             composerChrome
         }
         .padding(.bottom, composerKeyboardLayout.contentInset)
+        // In place at the system keyboard's last height, as on the terminal,
+        // and shown only while the Composer has switched to it.
+        .overlay(alignment: .bottom) {
+            AgentChatToolsKeyboard(
+                insertText: { composer.insertIntoDraft($0) },
+                skills: skills.map { store in
+                    TerminalSkillsContext(store: store) { viewingSkill = $0 }
+                },
+                snippets: terminal.snippets,
+                manageSnippets: { isManagingSnippets = true },
+                agentKeys: agentKeys,
+                height: composerKeyboardLayout.availableToolsHeight)
+            .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
+            .disabled(composerKeyboardPresentation != .tools)
+            .allowsHitTesting(composerKeyboardPresentation == .tools)
+            .accessibilityHidden(composerKeyboardPresentation != .tools)
+        }
         .padding(.top, topInset)
         .overlay(alignment: .top) {
             if showsBackHeader {
@@ -606,8 +645,7 @@ struct AgentChatSurfaceView: View {
             chromeColorScheme: colorScheme,
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
-            // No tools dock yet, so no keyboard switch.
-            keyboardHeight: 0,
+            keyboardHeight: composerKeyboardLayout.availableToolsHeight,
             actions: composerActions,
             attachLinksPopover: AttachLinksPopover(
                 origin: .composerChip, presentedOrigin: .constant(nil), links: [],
