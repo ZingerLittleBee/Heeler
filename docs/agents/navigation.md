@@ -73,13 +73,16 @@ from live Host reads.
   cover store behavior; the first-presentation native check is in
   [the UI runbook](simulator-ui.md).
 - **Image/file staging:** [ComposerStagingStore](../../Sources/Heeler/Attachments/ComposerStagingStore.swift)
-  is lifecycle-owned by [AgentAttachStore](../../Sources/Heeler/Console/AgentAttachStore.swift).
+  belongs to the Agent's [AgentComposerSession](../../Sources/Heeler/Console/AgentComposerSession.swift),
+  which `ConsoleStore` keeps per Agent above the detail and its Attach; the
+  last detail leaving the Agent cancels an upload, and suspension interrupts it.
   [ImagePreparer](../../Sources/Heeler/Images/ImagePreparer.swift) and
   [FilePreparer](../../Sources/Heeler/Files/FilePreparer.swift) prepare local media;
   typed `Transport.stageImage`/`stageFile` use SFTP.
   Read [ADR 0005](../adr/0005-keep-staged-image-cleanup-outside-mobile.md) and
   [ADR 0006](../adr/0006-stage-images-over-sftp.md); start with
-  [ComposerStagingStoreTests](../../Tests/HeelerTests/ComposerStagingStoreTests.swift).
+  [ComposerStagingStoreTests](../../Tests/HeelerTests/ComposerStagingStoreTests.swift)
+  and [ComposerStagingOwnershipTests](../../Tests/HeelerTests/ComposerStagingOwnershipTests.swift).
 - **Notifications and Live Activities:** [AgentNotificationRouter](../../Sources/Heeler/Notifications/AgentNotificationRouter.swift)
   routes scenes; [HostLiveActivityCoordinator](../../Sources/Heeler/LiveActivities/HostLiveActivityCoordinator.swift)
   owns Host activity updates. Payloads cross the app, `HeelerActivityCore`,

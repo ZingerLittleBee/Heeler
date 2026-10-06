@@ -65,9 +65,10 @@ final class ConsoleStore {
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
     }
     /// Composer ownership sits above the detail branch so a transient
-    /// missing-Agent placeholder during reconnect cannot destroy a draft.
-    @ObservationIgnored private var composerStores: [
-        ConsoleAgent.ID: AgentComposerStore
+    /// missing-Agent placeholder during reconnect cannot destroy a draft, and
+    /// no view's lifetime decides an upload's.
+    @ObservationIgnored private var composerSessions: [
+        ConsoleAgent.ID: AgentComposerSession
     ] = [:]
     /// The shell tab this app created per Workspace, so Open Terminal
     /// reattaches to it instead of accumulating a new tab per visit.
@@ -145,7 +146,10 @@ final class ConsoleStore {
     /// projection because its connection coordinates may have changed.
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
-        composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
+        for (id, session) in composerSessions where incoming[id.hostID] == nil {
+            session.leaveStaging()
+            composerSessions[id] = nil
+        }
         // A changed Host may name another herdr session, which keys Chat's
         // cache: its Chats start over.
         for (id, store) in chatStores where incoming[id.hostID] != projections[id.hostID]?.host {
@@ -232,6 +236,9 @@ final class ConsoleStore {
         await enqueueLifecycleTransition { [self] in
             isActive = false
             for store in chatStores.values { store.suspend() }
+            // Before the terminals go: an upload ends interrupted, with
+            // Retry, rather than cancelled by the teardown.
+            for session in composerSessions.values { session.didSuspend() }
             await terminalConnections.suspend()
             await agentTerminals.suspend()
             sidebarSnapshots.invalidateAll()
@@ -535,13 +542,14 @@ final class ConsoleStore {
         }
     }
 
-    /// One Composer per selected Agent for the lifetime of its Host catalog
-    /// entry. The Console detail may be replaced by a reconnect placeholder;
-    /// retaining the store here keeps its entirely local draft intact.
-    func composerStore(for agent: ConsoleAgent) -> AgentComposerStore {
-        if let existing = composerStores[agent.id] { return existing }
+    /// One Composer and staging per selected Agent for the lifetime of its
+    /// Host catalog entry. The Console detail may be replaced by a reconnect
+    /// placeholder; retaining the session here keeps its entirely local draft
+    /// intact.
+    func composerSession(for agent: ConsoleAgent) -> AgentComposerSession {
+        if let existing = composerSessions[agent.id] { return existing }
         let hostID = agent.hostID
-        let store = AgentComposerStore(
+        let composer = AgentComposerStore(
             target: agent.agent.paneID,
             initialStatus: agent.agent.status,
             statusUpdates: agentStatusUpdates(for: agent.id)
@@ -549,8 +557,14 @@ final class ConsoleStore {
             guard let self else { throw TransportError.cancelled }
             return try await self.promptAgent(params, on: hostID)
         }
-        composerStores[agent.id] = store
-        return store
+        let session = AgentComposerSession(
+            composer: composer, stageImage: imageStager(for: hostID), stageFile: fileStager(for: hostID))
+        composerSessions[agent.id] = session
+        return session
+    }
+
+    func composerStore(for agent: ConsoleAgent) -> AgentComposerStore {
+        composerSession(for: agent).composer
     }
 
     /// The Agent's Chat (ADR 0020), made on first use and kept while the

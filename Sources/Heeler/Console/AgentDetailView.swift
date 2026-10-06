@@ -32,7 +32,9 @@ struct AgentDetailView: View {
     @State private var focus = AgentFocusCoordinator()
     @State private var hasAppeared = false
     @Environment(\.scenePhase) private var scenePhase
-    @State private var composer: AgentComposerStore
+    @State private var session: AgentComposerSession
+    /// This detail's presence in `session`, outside a scene root.
+    @State private var presenceToken = UUID()
     @State private var attach: AgentAttachStore
     @State private var openTerminal: AgentOpenTerminalStore
     @State private var changes: AgentChangesPresentation
@@ -66,7 +68,7 @@ struct AgentDetailView: View {
         onSelectTerminal: ((ConsoleTerminal) -> Void)? = nil,
         onShowsChanges: ((Bool) -> Void)? = nil,
         onShowsChat: ((Bool) -> Void)? = nil,
-        composerStore: AgentComposerStore? = nil,
+        composerSession: AgentComposerSession? = nil,
         attachStore: AgentAttachStore? = nil,
         openTerminalStore: AgentOpenTerminalStore? = nil,
         changesPresentation: AgentChangesPresentation? = nil
@@ -89,8 +91,7 @@ struct AgentDetailView: View {
         self.onSelectTerminal = onSelectTerminal
         self.onShowsChanges = onShowsChanges
         self.onShowsChat = onShowsChat
-        let composer = composerStore ?? console.composerStore(for: agent)
-        _composer = State(initialValue: composer)
+        _session = State(initialValue: composerSession ?? console.composerSession(for: agent))
         let ownerID = UUID()
         _retentionOwnerID = State(initialValue: ownerID)
         permitsRetention = attachStore == nil && openTerminalStore == nil
@@ -102,10 +103,7 @@ struct AgentDetailView: View {
                 paneTitle: AgentTerminalView.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: { !retainsSessions && isOnStage() },
-                runTerminal: console.terminalRunner(for: agent.hostID),
-                stageImage: console.imageStager(for: agent.hostID),
-                stageFile: console.fileStager(for: agent.hostID),
-                composer: composer
+                runTerminal: console.terminalRunner(for: agent.hostID)
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             }
@@ -158,6 +156,12 @@ struct AgentDetailView: View {
 
     private var terminalAccess: HostTerminalAccess {
         sceneRouting?.terminalAccess(for: agent.hostID) ?? .holds
+    }
+
+    /// One per window, so a detail SwiftUI remounts, as a size-class change
+    /// does, takes its predecessor's place instead of outliving it.
+    private var presenceKey: UUID {
+        sceneRouting?.sceneID ?? presenceToken
     }
 
     private var changesRoute: Binding<ChangesRoute<ChangesStore>?> {
@@ -249,8 +253,7 @@ struct AgentDetailView: View {
         }
         if retainedAgent == nil { attach.leaveForTerminalHandoff() }
         let entry = console.agentTerminals.acquire(
-            agent: agent, console: console, composer: composer, ownerID: retentionOwnerID,
-            isPresented: { isOnStage() })
+            agent: agent, console: console, ownerID: retentionOwnerID, isPresented: { isOnStage() })
         retainedAgent = entry
         attach = entry.attach
         attachReference.store = attach
@@ -266,9 +269,6 @@ struct AgentDetailView: View {
             transportGeneration: console.hostConnectionGenerations[agent.hostID],
             isOnStage: isOnStage,
             runTerminal: console.terminalRunner(for: agent.hostID),
-            stageImage: console.imageStager(for: agent.hostID),
-            stageFile: console.fileStager(for: agent.hostID),
-            composer: composer,
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
                 try await console.closePane(paneID, on: hostID)
@@ -323,7 +323,7 @@ struct AgentDetailView: View {
                     console: console,
                     terminal: terminal,
                     hosts: hosts,
-                    composer: composer,
+                    composer: session.composer,
                     keyboardHandoff: keyboardHandoff,
                     keyboardInset: keyboardInset,
                     // Chat holds no terminal channel, so a detail that lost
@@ -367,7 +367,7 @@ struct AgentDetailView: View {
                         changes.open(directory: directory)
                     },
                     showChat: chatProgram == nil ? nil : { selectSurface(.chat) },
-                    composer: composer,
+                    session: session,
                     attachStore: attach,
                     retainedSurface: retainedAgent?.surfaceRetention,
                     onRetainDeparture: retainedAgent.map { entry in
@@ -392,6 +392,7 @@ struct AgentDetailView: View {
         }
         .onAppear {
             hasAppeared = true
+            session.detailDidAppear(presenceKey)
             prepareRetainedAgent()
             updateFocus()
         }
@@ -401,6 +402,15 @@ struct AgentDetailView: View {
         .onDisappear {
             hasAppeared = false
             focus.leave()
+            // The router's truth, not SwiftUI's: a spurious disappear, or
+            // Changes pushed over the detail, keeps the upload going.
+            let key = presenceKey
+            let session = session
+            Task { @MainActor in
+                await Task.yield()
+                guard !isVisible() else { return }
+                session.detailDidDisappear(key)
+            }
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             prepareRetainedAgent()
@@ -445,7 +455,7 @@ struct AgentDetailView: View {
                     if inputMode.isDirect && effectiveSurface == .terminal {
                         attach.insertReference(text)
                     } else {
-                        composer.insertIntoDraft(text)
+                        session.composer.insertIntoDraft(text)
                     }
                 }
             }

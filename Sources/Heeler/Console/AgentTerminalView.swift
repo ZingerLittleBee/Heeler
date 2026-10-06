@@ -197,7 +197,8 @@ struct AgentTerminalView: View {
     /// Swaps this screen for Chat in place; nil for an Agent without Chat,
     /// which hides the switcher button and the menu entry.
     private let showChat: (() -> Void)?
-    private let composer: AgentComposerStore
+    private let session: AgentComposerSession
+    private var composer: AgentComposerStore { session.composer }
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
     private let retainedSurface: TerminalSurfaceRetention?
     /// Called with whether the next screen takes the keyboard over, so the
@@ -315,7 +316,7 @@ struct AgentTerminalView: View {
         showChanges: (() -> Void)? = nil,
         showWorktreeChanges: ((String) -> Void)? = nil,
         showChat: (() -> Void)? = nil,
-        composer: AgentComposerStore,
+        session: AgentComposerSession,
         attachStore: AgentAttachStore? = nil,
         retainedSurface: TerminalSurfaceRetention? = nil,
         onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)? = nil,
@@ -344,7 +345,7 @@ struct AgentTerminalView: View {
         self.showChanges = showChanges
         self.showWorktreeChanges = showWorktreeChanges
         self.showChat = showChat
-        self.composer = composer
+        self.session = session
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
         self.retainedSurface = retainedSurface
         self.onRetainDeparture = onRetainDeparture
@@ -355,10 +356,7 @@ struct AgentTerminalView: View {
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: isOnStage,
-                runTerminal: console.terminalRunner(for: agent.hostID),
-                stageImage: console.imageStager(for: agent.hostID),
-                stageFile: console.fileStager(for: agent.hostID),
-                composer: composer
+                runTerminal: console.terminalRunner(for: agent.hostID)
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
@@ -561,7 +559,7 @@ struct AgentTerminalView: View {
             allowedContentTypes: [.data]
         ) { result in
             guard case .success(let url) = result else { return }
-            attach.staging.begin(.file(url))
+            session.staging.begin(.file(url))
         }
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
@@ -723,14 +721,7 @@ struct AgentTerminalView: View {
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             selectedPhoto = nil
-            attach.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
-        }
-        // Follows the grace period, not the raw scene phase: a staging operation
-        // is exactly the work worth finishing while the app is briefly out of
-        // sight, and it is cancelled only once the app really suspends.
-        .onChange(of: activity.phase) { _, phase in
-            guard phase == .suspended else { return }
-            attach.staging.didEnterBackground()
+            session.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the
@@ -936,7 +927,7 @@ struct AgentTerminalView: View {
 
     private var composerActions: AgentComposerActions {
         AgentComposerActions(
-            canBegin: attach.staging.canBegin,
+            canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
             addImage: { isSelectingPhoto = true },
             addFile: { isSelectingFile = true },
@@ -1836,7 +1827,7 @@ struct AgentTerminalView: View {
 
     @ViewBuilder
     private var attachmentStatus: some View {
-        if let presentation = attach.staging.presentation {
+        if let presentation = session.staging.presentation {
             AttachmentStatusBar(
                 icon: presentation.icon,
                 title: presentation.title,
@@ -1853,13 +1844,13 @@ struct AgentTerminalView: View {
     private func stagingCommandButton(_ command: ComposerStagingStore.Command) -> some View {
         switch command {
         case .cancel:
-            Button("Cancel", role: .cancel) { attach.staging.perform(command) }
+            Button("Cancel", role: .cancel) { session.staging.perform(command) }
         case .retry:
-            Button("Retry") { attach.staging.perform(command) }
+            Button("Retry") { session.staging.perform(command) }
         case .copyPath:
-            Button("Copy Path") { attach.staging.perform(command) }
+            Button("Copy Path") { session.staging.perform(command) }
         case .dismiss:
-            Button("Dismiss", role: .cancel) { attach.staging.perform(command) }
+            Button("Dismiss", role: .cancel) { session.staging.perform(command) }
         }
     }
 

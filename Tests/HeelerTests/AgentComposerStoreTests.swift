@@ -1227,22 +1227,16 @@ struct AgentComposerStoreTests {
         #expect(await fixture.preparer.loadedSelections().isEmpty)
     }
 
-    @Test func attachStoreBindsDroppedImagesOntoStagingBegin() throws {
+    @Test func sessionBindsDroppedImagesOntoStagingBegin() throws {
         let store = Self.draftOnlyStore()
-        let attach = AgentAttachStore(
-            target: "w1:p1",
-            paneTitle: "pane",
-            transportGeneration: nil,
-            isOnStage: { true },
-            runTerminal: { _, _ in },
-            stageImage: { _, _ in try StagedImage(path: "/tmp/heeler-drop.jpg") },
-            stageFile: { _, _ in try StagedFile(path: "/tmp/heeler-drop.txt") },
+        let session = AgentComposerSession(
             composer: store,
-            closePane: {})
+            stageImage: { _, _ in try StagedImage(path: "/tmp/heeler-drop.jpg") },
+            stageFile: { _, _ in try StagedFile(path: "/tmp/heeler-drop.txt") })
 
         store.acceptDrop([.image(Data([0x01]), suggestedName: "x.png")])
 
-        #expect(attach.staging.state != .idle)
+        #expect(session.staging.state != .idle)
         let token = try #require(store.pendingDropPlaceholders.first)
         #expect(store.draft == token)
         #expect(store.messages.isEmpty)
@@ -1441,21 +1435,15 @@ struct AgentComposerStoreTests {
         #expect(fixture.store.draft == "/tmp/heeler-drop.jpg  note ")
     }
 
-    @Test func attachLeaveClearsTheDropQueueWithoutStartingTheNextUpload() async throws {
+    @Test func stagingLeaveClearsTheDropQueueWithoutStartingTheNextUpload() async throws {
         let gate = ScriptedTransportCallGate()
         let counter = LeaveStageCounter(gate: gate)
         let jpeg = try Self.tinyJPEGData()
         let store = Self.draftOnlyStore()
-        let attach = AgentAttachStore(
-            target: "w1:p1",
-            paneTitle: "pane",
-            transportGeneration: nil,
-            isOnStage: { true },
-            runTerminal: { _, _ in },
-            stageImage: { _, _ in try await counter.stage() },
-            stageFile: { _, _ in try StagedFile(path: "/tmp/heeler-drop.txt") },
+        let session = AgentComposerSession(
             composer: store,
-            closePane: {})
+            stageImage: { _, _ in try await counter.stage() },
+            stageFile: { _, _ in try StagedFile(path: "/tmp/heeler-drop.txt") })
 
         store.acceptDrop([
             .image(jpeg, suggestedName: "a.jpg"),
@@ -1465,37 +1453,31 @@ struct AgentComposerStoreTests {
             "the first dropped image should occupy staging",
             timeout: .seconds(5)
         ) {
-            attach.staging.state.isBusy
+            session.staging.state.isBusy
         }
         #expect(store.pendingDropPlaceholders.count == 2)
 
-        let leave = attach.leave()
+        let leave = session.leaveStaging()
         await gate.open()
         await leave.value
 
         #expect(await counter.count < 2)
         #expect(!store.hasPendingDroppedImages)
         #expect(!AgentComposerStore.containsDropPlaceholder(store.draft))
-        #expect(attach.staging.state == .idle)
+        #expect(session.staging.state == .idle)
         #expect(!store.draft.contains("/tmp/leave-"))
         #expect(store.messages.isEmpty)
     }
 
-    @Test func rejoinAfterLeaveLetsALaterDropStageAndRestoresSend() async throws {
+    @Test func aDropAfterTheStagingLeftStagesAndRestoresSend() async throws {
         let gate = ScriptedTransportCallGate()
         let counter = LeaveStageCounter(gate: gate)
         let jpeg = try Self.tinyJPEGData()
         let store = Self.draftOnlyStore()
-        let attach = AgentAttachStore(
-            target: "w1:p1",
-            paneTitle: "pane",
-            transportGeneration: nil,
-            isOnStage: { true },
-            runTerminal: { _, _ in },
-            stageImage: { _, _ in try await counter.stage() },
-            stageFile: { _, _ in try StagedFile(path: "/tmp/heeler-drop.txt") },
+        let session = AgentComposerSession(
             composer: store,
-            closePane: {})
+            stageImage: { _, _ in try await counter.stage() },
+            stageFile: { _, _ in try StagedFile(path: "/tmp/heeler-drop.txt") })
 
         store.acceptDrop([
             .image(jpeg, suggestedName: "a.jpg")
@@ -1504,29 +1486,20 @@ struct AgentComposerStoreTests {
             "the first dropped image should occupy staging",
             timeout: .seconds(5)
         ) {
-            attach.staging.state.isBusy
+            session.staging.state.isBusy
         }
-        let leftID = attach.terminalID
 
-        let leave = attach.leave()
+        let leave = session.leaveStaging()
         await gate.open()
         await leave.value
         #expect(!store.hasPendingDroppedImages)
         #expect(!store.canSend)
 
-        attach.rejoin()
-        try await waitUntil(
-            "rejoin should rebuild the terminal after leave",
-            timeout: .seconds(5)
-        ) {
-            attach.terminalID != leftID
-        }
-
         store.acceptDrop([
             .image(jpeg, suggestedName: "b.jpg")
         ])
         try await waitUntil(
-            "the drop after rejoin should stage",
+            "the drop after the leave should stage",
             timeout: .seconds(5)
         ) {
             store.draft.contains("/tmp/leave-") && !store.hasPendingDroppedImages

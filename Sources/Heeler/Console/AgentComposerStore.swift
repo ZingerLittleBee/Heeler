@@ -7,13 +7,6 @@ import Observation
 protocol ComposerDraftOperations: AnyObject {
     func replaceDraft(with text: String)
     func insertIntoDraft(_ text: String)
-    func abandonDroppedImagesForTeardown()
-    func resumeDroppedImagesAfterRejoin()
-}
-
-extension ComposerDraftOperations {
-    func abandonDroppedImagesForTeardown() {}
-    func resumeDroppedImagesAfterRejoin() {}
 }
 
 /// Owns Agent detail's local draft and delivery state. Draft edits do not
@@ -198,6 +191,7 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     /// Forwards dropped images onto ``ComposerStagingStore.begin(_:)``, the
     /// same call the photo picker uses. One operation at a time; extras queue.
+    /// `AgentComposerSession` binds its staging once.
     func bindStaging(_ staging: ComposerStagingStore) {
         self.staging = staging
         isTearingDownDroppedImages = false
@@ -265,9 +259,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         pendingDroppedImages.removeAll()
     }
 
-    /// Called after a serial leave has finished. Same-store rejoin does not
-    /// reconstruct Attach or re-bind staging.
-    func resumeDroppedImagesAfterRejoin() {
+    /// Called once the staging's leave has finished: later drops may start.
+    func resumeDroppedImages() {
         isTearingDownDroppedImages = false
         startNextDroppedImageIfNeeded()
     }

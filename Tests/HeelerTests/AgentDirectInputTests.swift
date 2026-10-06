@@ -344,7 +344,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "keep me")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
 
@@ -392,7 +392,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "do not send")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -534,7 +534,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { params in
             try await transport.promptAgent(params)
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let controller = UIHostingController(
@@ -611,7 +611,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "keep this local: ")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: mode)
         defer { cleanup() }
         let controller = UIHostingController(
@@ -691,7 +691,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -755,7 +755,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -811,7 +811,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let probe = AgentTerminalInteractionProbe()
@@ -860,10 +860,8 @@ struct AgentDirectInputTests {
         let secondComposer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let firstOwner = try await Self.makeLiveAttach(
-            transport: ScriptedTransport(), composer: firstComposer)
-        let secondOwner = try await Self.makeLiveAttach(
-            transport: ScriptedTransport(), composer: secondComposer)
+        let firstOwner = try await Self.makeLiveAttach(transport: ScriptedTransport())
+        let secondOwner = try await Self.makeLiveAttach(transport: ScriptedTransport())
         let firstProbe = AgentTerminalInteractionProbe()
         let secondProbe = AgentTerminalInteractionProbe()
         let controller = UIHostingController(rootView: AnyView(Self.makeDetailView(
@@ -916,7 +914,7 @@ struct AgentDirectInputTests {
             Agent(.fixture(paneID: "w1:p1"))
         }
         composer.replaceDraft(with: "waiting draft")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -959,7 +957,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1080,7 +1078,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1192,7 +1190,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1256,7 +1254,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1305,7 +1303,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1343,7 +1341,7 @@ struct AgentDirectInputTests {
             Agent(.fixture(paneID: "w1:p1"))
         }
         composer.replaceDraft(with: "keep")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1407,7 +1405,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let handoff = TerminalKeyboardHandoff()
@@ -1508,7 +1506,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1578,10 +1576,7 @@ struct AgentDirectInputTests {
         return (settings, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
-    private static func makeLiveAttach(
-        transport: ScriptedTransport,
-        composer: AgentComposerStore
-    ) async throws -> AgentAttachStore {
+    private static func makeLiveAttach(transport: ScriptedTransport) async throws -> AgentAttachStore {
         let owner = AgentAttachStore(
             target: "w1:p1",
             paneTitle: "Claude",
@@ -1591,9 +1586,6 @@ struct AgentDirectInputTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: { _, _ in throw TransportError.cancelled },
-            stageFile: { _, _ in throw TransportError.cancelled },
-            composer: composer,
             closePane: {})
         // Fresh stores start `.active` with `.waitingForSize`. `rejoin()` is a
         // no-op until leave/rejoinRequired, so open the channel the same way
@@ -1646,7 +1638,7 @@ struct AgentDirectInputTests {
             isOnStage: isOnStage,
             onSwitch: onSwitch,
             onClosed: {},
-            composer: composer,
+            session: AgentComposerSession(composer: composer),
             attachStore: attachStore,
             interactionProbe: interactionProbe)
     }

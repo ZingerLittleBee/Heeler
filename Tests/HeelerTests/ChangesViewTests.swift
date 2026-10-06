@@ -366,7 +366,7 @@ struct AgentDetailChangesTests {
             Agent(.fixture(paneID: "w1:p1"))
         }
         composer.replaceDraft(with: "keep this draft")
-        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let attach = try await Self.makeLiveAttach(transport: transport)
         let suiteName = "changes-detail-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -434,7 +434,7 @@ struct AgentDetailChangesTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let attach = try await Self.makeLiveAttach(transport: transport)
         let suiteName = "changes-chrome-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -526,15 +526,12 @@ struct AgentDetailChangesTests {
             onSwitch: { _ in },
             onClosed: {},
             onShowsChanges: onShowsChanges,
-            composerStore: composer,
+            composerSession: AgentComposerSession(composer: composer),
             attachStore: attach,
             changesPresentation: changes)
     }
 
-    private static func makeLiveAttach(
-        transport: ScriptedTransport,
-        composer: AgentComposerStore
-    ) async throws -> AgentAttachStore {
+    private static func makeLiveAttach(transport: ScriptedTransport) async throws -> AgentAttachStore {
         let attach = AgentAttachStore(
             target: "w1:p1",
             paneTitle: "Claude",
@@ -544,9 +541,6 @@ struct AgentDetailChangesTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: { _, _ in throw TransportError.cancelled },
-            stageFile: { _, _ in throw TransportError.cancelled },
-            composer: composer,
             closePane: {})
         attach.viewDidResize(cols: 80, rows: 24)
         try #require(
@@ -579,7 +573,7 @@ struct AgentDetailChangesTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "keep this draft")
-        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let attach = try await Self.makeLiveAttach(transport: transport)
         let suiteName = "changes-reference-detail-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }

@@ -26,16 +26,15 @@ struct AgentSurfaceReplacementTests {
     /// bypass the one-shot `agent.prompt` path.
     @Test func composerDetailRendersAttachButSendsOnlyThroughPrompt() async throws {
         let transport = ScriptedTransport()
-        let composer = AgentComposerStore(target: "w1:p1") { params in
-            try await transport.promptAgent(params)
-        }
-        let owner = Self.makeAttachStore(transport: transport, composer: composer)
+        let session = Self.makeSession(transport: transport)
+        let composer = session.composer
+        let owner = Self.makeAttachStore(transport: transport)
         let controller = UIHostingController(
             rootView: Self.makeDetailView(
                 agent: Self.makeAgent(pane: "w1:p1"),
                 activity: AppActivityCoordinator(),
                 attachStore: owner,
-                composer: composer))
+                session: session))
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -220,8 +219,9 @@ struct AgentSurfaceReplacementTests {
 
     /// The production call-site seam for #141. Recovery must replace every
     /// terminal-owned object while leaving the surrounding Attach interaction
-    /// intact: links, a staging result, and a Paste awaiting confirmation all
-    /// belong to this Attach until the user actually leaves it.
+    /// intact: links and a Paste awaiting confirmation belong to this Attach
+    /// until the user actually leaves it, and the Composer's staging result
+    /// is not the terminal's to touch.
     @Test func aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState() async throws {
         let configuredIterations =
             ProcessInfo.processInfo.environment["HEELER_STAGING_RECOVERY_ITERATIONS"] ?? "1"
@@ -251,16 +251,17 @@ struct AgentSurfaceReplacementTests {
             granter: SurfaceTestBackgroundGranter(),
             now: { now })
         let transport = ScriptedTransport()
-        let composer = Self.makeComposer(transport: transport)
-        let owner = Self.makeAttachStore(transport: transport, composer: composer)
+        let session = Self.makeSession(transport: transport)
+        let owner = Self.makeAttachStore(transport: transport)
         let agent = Self.makeAgent(pane: "w1:p1")
-        let stagingTrace = SurfaceStagingTrace(iteration: iteration, iterations: iterations)
+        let stagingTrace = SurfaceStagingTrace(
+            iteration: iteration, iterations: iterations, staging: session.staging)
         let controller = UIHostingController(
             rootView: Self.makeDetailView(
                 agent: agent,
                 activity: activity,
                 attachStore: owner,
-                composer: composer)
+                session: session)
                 .onAppear {
                     stagingTrace.record("view appeared", owner: owner, activity: activity)
                 }
@@ -291,27 +292,27 @@ struct AgentSurfaceReplacementTests {
             }
 
             owner.viewportTextDidChange("https://before.example/recovery")
-            let stagingEventHandler = owner.staging.onOperationEvent
-            owner.staging.onOperationEvent = { [weak owner] event in
+            let stagingEventHandler = session.staging.onOperationEvent
+            session.staging.onOperationEvent = { [weak owner] event in
                 stagingEventHandler?(event)
                 guard let owner else { return }
                 stagingTrace.record("operation \(event)", owner: owner, activity: activity)
             }
-            defer { owner.staging.onOperationEvent = stagingEventHandler }
+            defer { session.staging.onOperationEvent = stagingEventHandler }
             let preparationStartedAt = ContinuousClock.now
-            owner.staging.observeImagePreparationForTesting { phase in
+            session.staging.observeImagePreparationForTesting { phase in
                 print("[attach-staging-test] image preparation \(phase) elapsed=\(preparationStartedAt.duration(to: .now))")
             }
-            defer { owner.staging.observeImagePreparationForTesting(nil) }
+            defer { session.staging.observeImagePreparationForTesting(nil) }
             stagingTrace.record("before begin", owner: owner, activity: activity)
-            let acceptedOperationID = owner.staging.begin(
+            let acceptedOperationID = session.staging.begin(
                 .photo(DataImageSelection(data: Data([0x01]))))
             stagingTrace.record(
                 "begin returned \(String(describing: acceptedOperationID))",
                 owner: owner, activity: activity)
             let imageResultSurfaced = try await Self.eventually {
                 stagingTrace.recordStateChange(owner: owner, activity: activity)
-                if case .failed = owner.staging.state { return true }
+                if case .failed = session.staging.state { return true }
                 return false
             }
             stagingTrace.record(
@@ -319,7 +320,7 @@ struct AgentSurfaceReplacementTests {
             try #require(
                 imageResultSurfaced,
                 "the image result should surface before recovery; accepted operation \(String(describing: acceptedOperationID)); trace: \(stagingTrace.entries)")
-            let stagingResult = owner.staging.state
+            let stagingResult = session.staging.state
             owner.requestPaste("git status\ngit diff", bracketedPaste: true)
             let pendingPaste = try #require(owner.pendingPaste)
 
@@ -368,7 +369,7 @@ struct AgentSurfaceReplacementTests {
                 "the replacement needs a new byte feed")
             #expect(
                 observedExpectation(owner.attachLinks.map(\.target) == ["https://before.example/recovery"]))
-            #expect(observedExpectation(owner.staging.state == stagingResult))
+            #expect(observedExpectation(session.staging.state == stagingResult))
             #expect(observedExpectation(owner.pendingPaste == pendingPaste))
 
             #expect(observedExpectation(await transport.emitAttachOutput(Data("recovered-frame".utf8))))
@@ -395,8 +396,8 @@ struct AgentSurfaceReplacementTests {
 
     @Test func failedRecoveryScopeReleasesAttachOwnerAndWindow() async throws {
         let transport = ScriptedTransport()
-        let composer = Self.makeComposer(transport: transport)
-        let owner = Self.makeAttachStore(transport: transport, composer: composer)
+        let session = Self.makeSession(transport: transport)
+        let owner = Self.makeAttachStore(transport: transport)
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: UIViewController())
@@ -469,8 +470,8 @@ struct AgentSurfaceReplacementTests {
         activity.didBecomeActive()
 
         let oldTransport = ScriptedTransport()
-        let oldComposer = Self.makeComposer(transport: oldTransport)
-        let oldOwner = Self.makeAttachStore(transport: oldTransport, composer: oldComposer)
+        let oldSession = Self.makeSession(transport: oldTransport)
+        let oldOwner = Self.makeAttachStore(transport: oldTransport)
         let agent = Self.makeAgent(pane: "w1:p1")
         let controller = UIHostingController(
             rootView: AnyView(
@@ -478,7 +479,7 @@ struct AgentSurfaceReplacementTests {
                     agent: agent,
                     activity: activity,
                     attachStore: oldOwner,
-                    composer: oldComposer)))
+                    session: oldSession)))
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -506,10 +507,8 @@ struct AgentSurfaceReplacementTests {
         #expect(activity.lastAbsenceMayHaveSuspended)
 
         let replacementTransport = ScriptedTransport()
-        let replacementComposer = Self.makeComposer(transport: replacementTransport)
-        let replacementOwner = Self.makeAttachStore(
-            transport: replacementTransport,
-            composer: replacementComposer)
+        let replacementSession = Self.makeSession(transport: replacementTransport)
+        let replacementOwner = Self.makeAttachStore(transport: replacementTransport)
         await replacementOwner.terminal.stop()
         let stoppedTerminalID = replacementOwner.terminalID
 
@@ -518,7 +517,7 @@ struct AgentSurfaceReplacementTests {
                 agent: agent,
                 activity: activity,
                 attachStore: replacementOwner,
-                composer: replacementComposer))
+                session: replacementSession))
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
 
@@ -569,13 +568,13 @@ struct AgentSurfaceReplacementTests {
         let transport = ScriptedTransport()
         let endGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: endGate)
-        let composer = Self.makeComposer(transport: transport)
-        let owner = Self.makeAttachStore(transport: transport, composer: composer)
+        let session = Self.makeSession(transport: transport)
+        let owner = Self.makeAttachStore(transport: transport)
         let detail = Self.makeDetailView(
             agent: Self.makeAgent(pane: "w1:p1"),
             activity: activity,
             attachStore: owner,
-            composer: composer)
+            session: session)
         let controller = UIHostingController(
             rootView: Harness(detail: detail, mounts: [0]))
         let window = Self.makeLocalTestWindow(
@@ -635,14 +634,14 @@ struct AgentSurfaceReplacementTests {
             granter: RefusingSurfaceTestBackgroundGranter(),
             now: { now })
         let transport = ScriptedTransport()
-        let composer = Self.makeComposer(transport: transport)
-        let owner = Self.makeAttachStore(transport: transport, composer: composer)
+        let session = Self.makeSession(transport: transport)
+        let owner = Self.makeAttachStore(transport: transport)
         let controller = UIHostingController(
             rootView: Self.makeDetailView(
                 agent: Self.makeAgent(pane: "w1:p1"),
                 activity: activity,
                 attachStore: owner,
-                composer: composer))
+                session: session))
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -690,14 +689,14 @@ struct AgentSurfaceReplacementTests {
         let transport = ScriptedTransport()
         let endGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: endGate)
-        let composer = Self.makeComposer(transport: transport)
-        let owner = Self.makeAttachStore(transport: transport, composer: composer)
+        let session = Self.makeSession(transport: transport)
+        let owner = Self.makeAttachStore(transport: transport)
         let controller = UIHostingController(
             rootView: Self.makeDetailView(
                 agent: Self.makeAgent(pane: "w1:p1"),
                 activity: activity,
                 attachStore: owner,
-                composer: composer))
+                session: session))
         let window = Self.makeLocalTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -830,8 +829,7 @@ struct AgentSurfaceReplacementTests {
         let inset = TerminalKeyboardInset()
         let activity = AppActivityCoordinator()
         return { agent in
-            let composer = console.composerStore(for: agent)
-            return AgentTerminalView(
+            AgentTerminalView(
                 agent: agent,
                 console: console,
                 terminal: terminal,
@@ -843,7 +841,7 @@ struct AgentSurfaceReplacementTests {
                 isOnStage: { true },
                 onSwitch: { _ in },
                 onClosed: {},
-                composer: composer)
+                session: console.composerSession(for: agent))
         }
     }
 
@@ -851,7 +849,7 @@ struct AgentSurfaceReplacementTests {
         agent: ConsoleAgent,
         activity: AppActivityCoordinator,
         attachStore: AgentAttachStore,
-        composer: AgentComposerStore,
+        session: AgentComposerSession,
         inputMode: AgentInputModeSettings? = nil
     ) -> AgentTerminalView {
         let defaults = UserDefaults(suiteName: "attach-recovery-\(UUID())") ?? .standard
@@ -879,20 +877,22 @@ struct AgentSurfaceReplacementTests {
             isOnStage: { true },
             onSwitch: { _ in },
             onClosed: {},
-            composer: composer,
+            session: session,
             attachStore: attachStore)
     }
 
-    private static func makeComposer(transport: ScriptedTransport) -> AgentComposerStore {
-        AgentComposerStore(target: "w1:p1") { params in
-            try await transport.promptAgent(params)
-        }
+    /// A Composer whose Send prompts `transport`, with a staging whose
+    /// uploads always fail.
+    private static func makeSession(transport: ScriptedTransport) -> AgentComposerSession {
+        AgentComposerSession(
+            composer: AgentComposerStore(target: "w1:p1") { params in
+                try await transport.promptAgent(params)
+            },
+            stageImage: { _, _ in throw TransportError.cancelled },
+            stageFile: { _, _ in throw TransportError.cancelled })
     }
 
-    private static func makeAttachStore(
-        transport: ScriptedTransport,
-        composer: AgentComposerStore
-    ) -> AgentAttachStore {
+    private static func makeAttachStore(transport: ScriptedTransport) -> AgentAttachStore {
         AgentAttachStore(
             target: "w1:p1",
             paneTitle: "pane",
@@ -902,9 +902,6 @@ struct AgentSurfaceReplacementTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: { _, _ in throw TransportError.cancelled },
-            stageFile: { _, _ in throw TransportError.cancelled },
-            composer: composer,
             closePane: {})
     }
 
@@ -930,24 +927,26 @@ private final class SurfaceStagingTrace {
     private let startedAt = ContinuousClock.now
     private let iteration: Int
     private let iterations: Int
+    private let staging: ComposerStagingStore
     private var lastState: ComposerStagingStore.State?
     private(set) var entries: [String] = []
 
-    init(iteration: Int, iterations: Int) {
+    init(iteration: Int, iterations: Int, staging: ComposerStagingStore) {
         self.iteration = iteration
         self.iterations = iterations
+        self.staging = staging
     }
 
     func record(_ event: String, owner: AgentAttachStore, activity: AppActivityCoordinator) {
-        lastState = owner.staging.state
+        lastState = staging.state
         let entry =
-            "\(startedAt.duration(to: .now)): \(event); state=\(owner.staging.state); activity=\(activity.phase)/\(activity.activationCount); terminal=\(owner.terminalStatus); terminalID=\(owner.terminalID)"
+            "\(startedAt.duration(to: .now)): \(event); state=\(staging.state); activity=\(activity.phase)/\(activity.activationCount); terminal=\(owner.terminalStatus); terminalID=\(owner.terminalID)"
         entries.append(entry)
         print("[attach-staging-test] iteration=\(iteration)/\(iterations) \(entry)")
     }
 
     func recordStateChange(owner: AgentAttachStore, activity: AppActivityCoordinator) {
-        guard owner.staging.state != lastState else { return }
+        guard staging.state != lastState else { return }
         record("state changed", owner: owner, activity: activity)
     }
 }
