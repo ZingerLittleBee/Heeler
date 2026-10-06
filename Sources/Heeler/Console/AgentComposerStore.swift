@@ -18,14 +18,18 @@ extension ComposerDraftOperations {
 
 /// Owns Agent detail's local draft and delivery state. Draft edits do not
 /// touch Transport. Send delivers through one `agent.prompt` RPC, except
-/// when Agent Status is Blocked: then it inserts into the live Attach PTY
-/// without Enter.
+/// when Agent Status is Blocked: then the terminal's policy inserts into the
+/// live Attach PTY without Enter, and Chat's refuses.
+///
+/// Both surfaces share the one draft; each message remembers which surface
+/// sent it.
 @MainActor
 @Observable
 final class AgentComposerStore: ComposerDraftOperations {
     struct Message: Identifiable, Equatable {
         let id: UUID
         let text: String
+        let route: ComposerRoute
         fileprivate var agentWasWorkingAtSend: Bool
         fileprivate var statusRevisionAtSend: UInt64
         fileprivate var observedWorkingAfterSend: Bool
@@ -39,6 +43,9 @@ final class AgentComposerStore: ComposerDraftOperations {
         case sending
         case delivered(AgentProgress)
         case failed(String)
+        /// `agent.prompt` succeeded but the text stayed in the Agent's input
+        /// box. Never resent: the user decides in the terminal.
+        case undelivered
     }
 
     enum AgentProgress: Equatable {
@@ -55,6 +62,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         case deliveredViaPrompt
         case deliveredViaAttach
         case failed
+        /// The policy declined the draft, which is back in the Composer.
+        case refused(ComposerRefusal)
     }
 
     private(set) var messages: [Message] = []
@@ -297,10 +306,11 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     @discardableResult
-    func send() async -> SendResult {
+    func send(policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
         guard canSend, !containsPendingPlaceholderInDraft else { return .ignored }
+        if let refusal = policy.validate(draft) { return .refused(refusal) }
         let message = Message(
-            id: UUID(), text: draft,
+            id: UUID(), text: draft, route: policy.route,
             agentWasWorkingAtSend: agentStatus == .working,
             statusRevisionAtSend: statusRevision,
             observedWorkingAfterSend: false,
@@ -309,19 +319,32 @@ final class AgentComposerStore: ComposerDraftOperations {
         draft = ""
         draftSelection = NSRange(location: 0, length: 0)
         messages.append(message)
-        return await deliver(message.id)
+        if let preflight = policy.preflight, let refusal = await preflight(message.text) {
+            returnToDraft(message.id)
+            return .refused(refusal)
+        }
+        return await deliver(message.id, policy: policy)
     }
 
+    /// Sends a failed message again. The policy should be the one for the
+    /// message's own route.
     @discardableResult
-    func retry(_ id: Message.ID) async -> SendResult {
+    func retry(_ id: Message.ID, policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
-        guard case .failed = messages[index].state else { return .ignored }
+        guard case .failed = messages[index].state, messages[index].route == policy.route else {
+            return .ignored
+        }
+        if let refusal = policy.validate(messages[index].text) { return .refused(refusal) }
         messages[index].agentWasWorkingAtSend = agentStatus == .working
         messages[index].statusRevisionAtSend = statusRevision
         messages[index].observedWorkingAfterSend = false
         messages[index].tracksAgentProgress = true
         messages[index].state = .sending
-        return await deliver(id)
+        if let preflight = policy.preflight, let refusal = await preflight(messages[index].text) {
+            fail(id, message: refusal.message)
+            return .refused(refusal)
+        }
+        return await deliver(id, policy: policy)
     }
 
     /// Removes a failed echo and restores all of its text to the draft. If
@@ -329,8 +352,16 @@ final class AgentComposerStore: ComposerDraftOperations {
     func withdrawToDraft(_ id: Message.ID) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         guard case .failed = messages[index].state else { return }
+        returnToDraft(id)
+    }
+
+    /// Removes an echo and puts its text back in front of whatever has been
+    /// typed since.
+    private func returnToDraft(_ id: Message.ID) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         let text = messages.remove(at: index).text
         draft = draft.isEmpty ? text : "\(text)\n\(draft)"
+        draftSelection = NSRange(location: (draft as NSString).length, length: 0)
     }
 
     func agentStatusDidChange(_ status: AgentStatus) {
@@ -361,35 +392,60 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
     }
 
-    private func deliver(_ id: Message.ID) async -> SendResult {
+    private func deliver(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         let text = messages[index].text
         if Self.containsDropPlaceholder(text) {
             return .ignored
         }
         if agentStatus == .blocked {
-            return deliverThroughAttach(id, text: text)
+            return deliverWhileBlocked(id, text: text, policy: policy)
         }
+        let outgoing = policy.outgoingText(text)
         let input = attachInput
         let generation = input?.liveGeneration
         do {
             _ = try await promptWaitingOutLaunch(
-                AgentPromptParams(target: target, text: text))
+                AgentPromptParams(target: target, text: outgoing))
             guard let acknowledgedIndex = messages.firstIndex(where: { $0.id == id }) else {
                 return .ignored
             }
             messages[acknowledgedIndex].state = .delivered(
                 progressAfterAcknowledgment(for: messages[acknowledgedIndex]))
             if let input, let generation {
-                input.recordSubmitted(text, generation: generation)
+                input.recordSubmitted(outgoing, generation: generation)
+            }
+            if let verify = policy.verify {
+                Task { [weak self] in
+                    guard !(await verify(outgoing)) else { return }
+                    self?.markUndelivered(id)
+                }
             }
             return .deliveredViaPrompt
         } catch {
             if Self.isAgentBlocked(error) {
-                return deliverThroughAttach(id, text: text)
+                return deliverWhileBlocked(id, text: text, policy: policy)
             }
             return fail(id, message: Self.message(for: error))
         }
+    }
+
+    private func deliverWhileBlocked(
+        _ id: Message.ID, text: String, policy: ComposerDeliveryPolicy
+    ) -> SendResult {
+        guard policy.insertsIntoAttachWhenBlocked else {
+            returnToDraft(id)
+            return .refused(.agentBlocked)
+        }
+        return deliverThroughAttach(id, text: text)
+    }
+
+    private func markUndelivered(_ id: Message.ID) {
+        guard let index = messages.firstIndex(where: { $0.id == id }),
+            case .delivered = messages[index].state
+        else { return }
+        messages[index].tracksAgentProgress = false
+        messages[index].state = .undelivered
     }
 
     /// Delivers one `agent.prompt` request, waiting out a fresh launch's
