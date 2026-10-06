@@ -73,6 +73,9 @@ struct ChatTranscriptAdapter: Sendable {
     /// Whether `makeReducer` needs the file's first line.
     var wantsFirstLine = false
     var makeReducer: @Sendable (ChatReducerSeed) -> any ChatTranscriptReducer
+    /// What a sent prompt and a recorded one are compared on: the text as
+    /// the program records it, which drops what Heeler adds when it sends.
+    var echoKey: @Sendable (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
 }
 
 /// One conversation's transcript on its Host: finds the file, follows it,

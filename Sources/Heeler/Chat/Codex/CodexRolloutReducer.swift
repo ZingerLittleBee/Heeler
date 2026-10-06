@@ -63,6 +63,10 @@ struct CodexProjection: Equatable, Sendable {
 /// `pendingHistoryBase` and takes that file's lines through
 /// `setBaseSegment(rolloutID:path:lines:)`, one base at a time.
 struct CodexRolloutReducer: ChatTranscriptReducer {
+    /// Bumped when the normalization changes, so entries cached by an
+    /// older build are dropped instead of mixed with new ones.
+    static let revision = 1
+
     let rolloutID: String
     private(set) var support: CodexRolloutSupport = .pending
     private var meta: CodexSessionMeta?
@@ -79,6 +83,16 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
 
     init(rolloutID: String) {
         self.rolloutID = rolloutID
+    }
+
+    /// Names a rollout this reducer does not read, for Chat to explain.
+    var unsupportedFormat: String? {
+        guard case .unsupported(let reason) = support else { return nil }
+        return switch reason {
+        case .preEnvelope: "a rollout from Codex 0.30 or earlier"
+        case .noSessionMeta: "a rollout that does not start with its session record"
+        case .unknownHistoryMode: "a rollout with a history mode Chat does not know"
+        }
     }
 
     var dialect: CodexRolloutDialect? {

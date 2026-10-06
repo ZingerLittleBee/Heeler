@@ -10,9 +10,22 @@ extension ChatTranscriptAdapter {
             // the subagents that wrote them.
             ChatTranscriptAdapter(
                 revision: ClaudeTranscriptReducer.revision,
-                makeReducer: { _ in ClaudeTranscriptReducer(role: .main) })
+                makeReducer: { _ in ClaudeTranscriptReducer(role: .main) },
+                echoKey: { ClaudeTranscriptReducer.echoKey($0) })
         case .codex:
-            nil
+            // Line 1's `session_meta` names the rollout's dialect, so a tail
+            // window that starts past it still needs it.
+            ChatTranscriptAdapter(
+                revision: CodexRolloutReducer.revision,
+                wantsFirstLine: true,
+                makeReducer: { seed in
+                    let fileName = seed.path.split(separator: "/").last.map(String.init) ?? seed.path
+                    var reducer = CodexRolloutReducer(
+                        rolloutID: CodexRolloutFileName(fileName: fileName)?.rolloutID ?? fileName)
+                    if let firstLine = seed.firstLine { reducer.setSessionMeta(firstLine) }
+                    return reducer
+                },
+                echoKey: { codexEchoKey($0) })
         }
     }
 }
