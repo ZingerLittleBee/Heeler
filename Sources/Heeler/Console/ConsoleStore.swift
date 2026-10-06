@@ -508,6 +508,17 @@ final class ConsoleStore {
         }
     }
 
+    /// The Agent's screen as herdr renders it now, colors kept
+    /// (`agent.read`). Chat reads it around a send instead of the Attach
+    /// PTY, which it never touches.
+    func readAgentScreen(_ paneID: String, on hostID: Host.ID) async throws -> ANSIScreen {
+        let read = try await projection(for: hostID).session.withTransport { transport in
+            try await transport.readAgent(
+                AgentReadParams(source: .visible, target: paneID, format: .ansi, stripANSI: false))
+        }
+        return ANSIScreenDecoder.decode(read.text)
+    }
+
     /// One Composer per selected Agent for the lifetime of its Host catalog
     /// entry. The Console detail may be replaced by a reconnect placeholder;
     /// retaining the store here keeps its entirely local draft intact.

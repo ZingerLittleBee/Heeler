@@ -371,7 +371,7 @@ struct AgentTerminalView: View {
     /// The Skills pane's store, or nil when this agent's kind has no skills
     /// source catalog. Captures launch-time context on purpose: the project
     /// root is the worktree checkout or launch cwd, never the live cwd.
-    private static func makeSkillsStore(
+    static func makeSkillsStore(
         for agent: ConsoleAgent, console: ConsoleStore
     ) -> SkillsPaneStore? {
         guard let kind = SupportedAgentKind(rawValue: agent.agent.kind) else { return nil }
@@ -1909,7 +1909,7 @@ struct AgentTerminalView: View {
 
 /// Preserve edge-swipe navigation after the title bar is removed. Beside
 /// an iPad's sidebar the swipe brings the sidebar out instead of going back.
-private struct AgentEdgeBackGesture: View {
+struct AgentEdgeBackGesture: View {
     let dismiss: @MainActor () -> Void
 
     var body: some View {

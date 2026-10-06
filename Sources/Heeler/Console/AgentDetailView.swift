@@ -204,6 +204,11 @@ struct AgentDetailView: View {
         openTerminal.shell == nil && changes.store == nil && effectiveSurface == .terminal
     }
 
+    /// Chat is on screen in the terminal's place, with nothing over it.
+    private var showsChatSurface: Bool {
+        openTerminal.shell == nil && changes.store == nil && effectiveSurface == .chat
+    }
+
     /// Swaps Chat and the Agent terminal in place. A surface whose keyboard
     /// is up arms the handoff before calling this; only it knows.
     private func selectSurface(_ next: AgentDetailSurface) {
@@ -315,6 +320,22 @@ struct AgentDetailView: View {
                 AgentChatSurfaceView(
                     agent: agent,
                     program: chatProgram,
+                    console: console,
+                    terminal: terminal,
+                    hosts: hosts,
+                    composer: composer,
+                    keyboardHandoff: keyboardHandoff,
+                    keyboardInset: keyboardInset,
+                    // Chat holds no terminal channel, so a detail that lost
+                    // it to another window still shows Chat.
+                    isOnStage: { isVisible() && showsChatSurface },
+                    onSwitch: onSwitch,
+                    onClosed: onClosed,
+                    canOpenTerminal: (!workspaceShells.isEmpty || openTerminal.canOpen) && terminalAccess == .holds,
+                    isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
+                    openTerminal: { openWorkspaceTerminal() },
+                    showChanges: agent.directory == nil ? nil : { changes.open() },
+                    workspaceDrawer: workspaceDrawer,
                     selectSurface: { selectSurface($0) })
             } else {
                 AgentTerminalView(
