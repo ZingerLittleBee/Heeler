@@ -247,11 +247,13 @@ private struct ChatToolRow: View {
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: tool.title)
-                            .font(titleFont)
+                            .font(.subheadline)
+                            .fontDesign(titleIsCode ? .monospaced : nil)
                             .lineLimit(isExpanded ? nil : 2)
                         if let subtitle = tool.subtitle, !subtitle.isEmpty {
                             Text(verbatim: subtitle)
                                 .font(.caption)
+                                .fontDesign(subtitleIsCode ? .monospaced : nil)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(isExpanded ? nil : 1)
                         }
@@ -278,12 +280,20 @@ private struct ChatToolRow: View {
         .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
     }
 
-    private var titleFont: Font {
+    /// Commands, paths and patterns read as code. A command row with a
+    /// subtitle is titled by its description, and the command moves below.
+    private var titleIsCode: Bool {
         switch tool.kind {
-        case .command, .fileEdit, .fileWrite, .fileRead, .search:
-            .system(.subheadline, design: .monospaced)
-        default:
-            .subheadline
+        case .command: tool.subtitle?.isEmpty ?? true
+        case .fileEdit, .fileWrite, .fileRead, .search: true
+        default: false
+        }
+    }
+
+    private var subtitleIsCode: Bool {
+        switch tool.kind {
+        case .command, .fileEdit, .fileWrite, .fileRead, .search: true
+        default: false
         }
     }
 
