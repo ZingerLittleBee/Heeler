@@ -573,7 +573,20 @@ final class ConsoleStore {
                     guard let self else { throw TransportError.cancelled }
                     return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
                 },
-                cache: chatCache, adapter: adapter))
+                cache: chatCache, adapter: adapter,
+                screen: BlockedScreenIO(
+                    readScreen: { [weak self] in
+                        guard let self else { throw TransportError.cancelled }
+                        return try await self.readAgentScreen(paneID, on: hostID)
+                    },
+                    sendKeys: { [weak self] keys in
+                        guard let self else { throw TransportError.cancelled }
+                        try await self.sendAgentKeys(keys, to: paneID, on: hostID)
+                    },
+                    paste: { [weak self] text in
+                        guard let self else { throw TransportError.cancelled }
+                        try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
+                    })))
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
         return store

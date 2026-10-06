@@ -13,6 +13,8 @@ struct AgentChatSource: Sendable {
     let agentInfo: @Sendable () async throws -> Agent
     let cache: any ChatTranscriptCache
     let adapter: ChatTranscriptAdapter
+    /// The Agent's pane, which a Blocked card reads and answers.
+    var screen: BlockedScreenIO = .unavailable
 }
 
 /// One Agent's Chat (ADR 0020): the conversation herdr says the Agent is
@@ -74,6 +76,8 @@ final class AgentChatStore {
     private(set) var conversationGeneration = 0
     /// Each message `updateSends(_:)` reported, by Composer message id.
     private(set) var sendStatuses: [UUID: SendStatus] = [:]
+    /// The dialog the Agent waits on while herdr reports it Blocked.
+    let blocked: BlockedCardStore
 
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
@@ -141,6 +145,8 @@ final class AgentChatStore {
         let resolution = ConversationReference.resolve(agent.agentSession)
         self.resolution = resolution
         conversation = ChatConversationSnapshot()
+        blocked = BlockedCardStore(program: program, io: source.screen)
+        blocked.update(activity: ChatAgentActivity(agent.status))
         followReference()
     }
 
@@ -153,6 +159,7 @@ final class AgentChatStore {
         isVisible = true
         needsAgentRefresh = true
         startLoop()
+        blocked.show()
     }
 
     /// A Chat view left the screen. The last one out stops reading, saving
@@ -162,18 +169,21 @@ final class AgentChatStore {
         guard viewers.isEmpty else { return }
         isVisible = false
         stopLoop()
+        blocked.hide()
     }
 
     /// The app went to the background; Chat keeps its place.
     func suspend() {
         isSuspended = true
         stopLoop()
+        blocked.suspend()
     }
 
     func resume() {
         isSuspended = false
         needsAgentRefresh = true
         startLoop()
+        blocked.resume()
     }
 
     /// The Agent or its Host is gone.
@@ -181,6 +191,7 @@ final class AgentChatStore {
         viewers.removeAll()
         isVisible = false
         stopLoop()
+        blocked.end()
     }
 
     // MARK: Requests
@@ -252,6 +263,7 @@ final class AgentChatStore {
         agent = next
         if sessionChanged { adopt(ConversationReference.resolve(next.agentSession)) }
         guard statusChanged else { return }
+        blocked.update(activity: ChatAgentActivity(next.status))
         // A turn starting or ending is when a session changes (`/clear`,
         // `/resume`) and when a missing transcript appears.
         lastActivity = now()
@@ -430,6 +442,7 @@ final class AgentChatStore {
         var next = snapshot
         if olderRequested, next.older == .available { next.older = .loading }
         conversation = next
+        blocked.update(transcript: next.transcript)
         if let linked = snapshot.transcript.links.continuedInSessionID
             .flatMap(ConversationReference.canonicalUUID),
             linked != followed?.sessionID
