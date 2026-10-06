@@ -353,6 +353,14 @@ struct ClaudeDialogParserTests {
         #expect(excerpt.rows.last?.trimmedText == "Esc to cancel · Tab to amend")
     }
 
+    @Test("A dialog whose title isn't bold says so rather than quote nothing (synthetic)")
+    func untitled() throws {
+        let screen = ClaudeDialogRows.screen(title: "", body: ["Run the migration"], options: ["Yes", "No"])
+        let excerpt = try #require(ClaudeDialogParser.parse(screen).excerpt)
+        #expect(excerpt.reason == "The dialog's title could not be read.")
+        #expect(excerpt.numbered == [1: "Yes", 2: "No"])
+    }
+
     @Test("An unknown option label sends a known dialog to the generic card (synthetic)")
     func unknownLabel() throws {
         let screen = ClaudeDialogRows.screen(title: "Bash command", options: ["Yes", "Maybe later", "No"])

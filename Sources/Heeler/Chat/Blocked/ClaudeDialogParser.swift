@@ -287,6 +287,7 @@ private struct ClaudeDialogReader {
         }
         let title = Self.title(of: header)
         guard let kind = Self.permissionTitles[title.text] else {
+            guard !title.text.isEmpty else { return unrecognized(from: top, "The dialog's title could not be read.") }
             return unrecognized(from: top, "Heeler does not know the dialog \u{201C}\(title.text)\u{201D}.")
         }
         return readPermission(
