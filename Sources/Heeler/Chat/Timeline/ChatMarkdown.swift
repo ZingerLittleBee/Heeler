@@ -302,28 +302,42 @@ private struct BlockBuilder {
         return content
     }
 
-    /// A table's source lines. Only cells carry source positions, so the
-    /// lines they cover grow to the whole table: up and down over adjacent
-    /// non-blank lines (a table cannot contain a blank one), stopping short
-    /// of the neighbouring blocks' lines. That recovers the delimiter row of
-    /// a header-only table and rows of empty cells. Quote markers and the
-    /// common indent are removed, leaving the table as it would be written
-    /// on its own.
+    /// A table's source lines, with quote markers and the common indent
+    /// removed so the table reads as if written on its own.
+    ///
+    /// Only cells carry source positions, and not all of them reliably: when
+    /// a table interrupts a paragraph, the parser reports the paragraph and
+    /// the header row on lines that are too low (body rows stay right). The
+    /// delimiter row anchors the table instead. It is searched for over the
+    /// unbroken lines from the first reported cell, downward and then upward
+    /// (a table holds no blank line), and the header row is the line above
+    /// it. The end grows from the last reported cell over unbroken lines
+    /// (rows of empty cells report nothing) until the next block's start.
     private func tableText(for group: Group, at index: Int, in groups: [Group], quoteDepth: Int) -> String {
-        guard let first = group.firstLine, let last = group.lastLine, !lines.isEmpty else {
+        guard let firstCell = group.firstLine, let lastCell = group.lastLine, !lines.isEmpty else {
             return cellText(group.range)
         }
-        let lowest = (groups[..<index].compactMap(\.lastLine).max() ?? 0) + 1
-        let highest = min(groups[(index + 1)...].compactMap(\.firstLine).min().map { $0 - 1 } ?? lines.count, lines.count)
         func content(_ number: Int) -> Substring {
             Self.droppingQuoteMarkers(lines[number - 1], depth: quoteDepth)
         }
         func isBlank(_ number: Int) -> Bool { content(number).allSatisfy(\.isWhitespace) }
+        func delimiterRow(from line: Int, step: Int) -> Int? {
+            var line = line
+            while (1...lines.count).contains(line), !isBlank(line) {
+                if Self.isDelimiterRow(content(line)) { return line }
+                line += step
+            }
+            return nil
+        }
 
-        var start = min(max(first, 1), lines.count)
-        var end = min(max(last, start), lines.count)
-        while start - 1 >= max(lowest, 1), !isBlank(start - 1) { start -= 1 }
-        while end + 1 <= highest, !isBlank(end + 1) { end += 1 }
+        let first = min(max(firstCell, 1), lines.count)
+        let delimiter = delimiterRow(from: first, step: 1) ?? delimiterRow(from: first - 1, step: -1)
+        let start = delimiter.map { max($0 - 1, 1) } ?? first
+        var end = min(max(lastCell, delimiter ?? start), lines.count)
+        // Positions that go backward are the misreported ones above.
+        let nextBlock = groups[(index + 1)...].compactMap(\.firstLine).filter { $0 > end }.min()
+        let limit = min(nextBlock.map { $0 - 1 } ?? lines.count, lines.count)
+        while end + 1 <= limit, !isBlank(end + 1) { end += 1 }
 
         var rows = (start...end).map(content)
         while let row = rows.last, row.allSatisfy(\.isWhitespace) { rows.removeLast() }
@@ -368,6 +382,29 @@ private struct BlockBuilder {
         case 1: return "•"
         case 2: return "◦"
         default: return "▪"
+        }
+    }
+
+    /// A GFM delimiter row: cells of dashes, optionally colon-aligned,
+    /// separated by pipes, such as `| --- | :-: |`.
+    private static func isDelimiterRow(_ line: Substring) -> Bool {
+        var row = line.trimmingCharacters(in: .whitespaces)[...]
+        if row.first == "|" {
+            row = row.dropFirst()
+        }
+        if row.last == "|" {
+            row = row.dropLast()
+        }
+        let cells = row.split(separator: "|", omittingEmptySubsequences: false)
+        return !cells.isEmpty && cells.allSatisfy { cell in
+            var dashes = cell.trimmingCharacters(in: .whitespaces)[...]
+            if dashes.first == ":" {
+                dashes = dashes.dropFirst()
+            }
+            if dashes.last == ":" {
+                dashes = dashes.dropLast()
+            }
+            return !dashes.isEmpty && dashes.allSatisfy { $0 == "-" }
         }
     }
 

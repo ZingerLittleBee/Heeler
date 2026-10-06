@@ -192,14 +192,53 @@ struct ChatMarkdownTests {
             source: "| a | b |\n| - | - |\n| 1 | 2 |\n|   |   |\n\nafter",
             expected: [Shape(.table, "| a | b |\n| - | - |\n| 1 | 2 |\n|   |   |"), Shape(.paragraph, "after")]),
         Vector(
-            name: "A table with an empty header row", source: "intro\n\n|   |   |\n| - | - |\n| 1 | 2 |",
-            expected: [Shape(.paragraph, "intro"), Shape(.table, "|   |   |\n| - | - |\n| 1 | 2 |")]),
+            name: "A table with an empty header row", source: "intro\n\n|   |   |\n| - | - |\n| 1 | 2 |\n\n---\n\nend",
+            expected: [
+                Shape(.paragraph, "intro"), Shape(.table, "|   |   |\n| - | - |\n| 1 | 2 |"),
+                Shape(.thematicBreak, ""), Shape(.paragraph, "end"),
+            ]),
         Vector(
             name: "A table between other blocks", source: "# Title\n| a |\n| - |\n| 1 |\n\n---\n\nend",
             expected: [
                 Shape(.heading(level: 1), "Title"), Shape(.table, "| a |\n| - |\n| 1 |"),
                 Shape(.thematicBreak, ""), Shape(.paragraph, "end"),
             ]),
+        Vector(
+            name: "A table ends where the next block starts", source: "| a |\n| - |\n| 1 |\n# Heading",
+            expected: [Shape(.table, "| a |\n| - |\n| 1 |"), Shape(.heading(level: 1), "Heading")]),
+        Vector(
+            name: "A table can follow a paragraph line directly", source: "intro\n| a |\n| - |\n| 1 |",
+            expected: [Shape(.paragraph, "intro"), Shape(.table, "| a |\n| - |\n| 1 |")]),
+        Vector(
+            name: "A table after several paragraph lines",
+            source: "one\ntwo\nthree\n| a | b |\n| - | - |\n| 1 | 2 |\n\nafter",
+            expected: [
+                Shape(.paragraph, "one two three"), Shape(.table, "| a | b |\n| - | - |\n| 1 | 2 |"),
+                Shape(.paragraph, "after"),
+            ]),
+        Vector(
+            name: "A header-only aligned table after a paragraph line", source: "# H\n\npara\n| x | y |\n|:--|--:|",
+            expected: [
+                Shape(.heading(level: 1), "H"), Shape(.paragraph, "para"), Shape(.table, "| x | y |\n|:--|--:|"),
+            ]),
+        Vector(
+            name: "A table after a list item's first line", source: "- item\n  | a |\n  | - |\n  | 1 |",
+            expected: [
+                Shape(.listItem(marker: "•"), "• item", list: 1), Shape(.table, "| a |\n| - |\n| 1 |", list: 1),
+            ]),
+        Vector(
+            name: "A table after a quoted line", source: "> intro\n> | a |\n> | - |",
+            expected: [Shape(.paragraph, "intro", quote: 1), Shape(.table, "| a |\n| - |", quote: 1)]),
+        Vector(
+            name: "A table before a misreported one keeps its rows",
+            source: "| a |\n| - |\n| 1 |\n|   |\n\nintro\n| b |\n| - |\n| 2 |",
+            expected: [
+                Shape(.table, "| a |\n| - |\n| 1 |\n|   |"), Shape(.paragraph, "intro"),
+                Shape(.table, "| b |\n| - |\n| 2 |"),
+            ]),
+        Vector(
+            name: "An aligned table without outer pipes", source: "l | c | r\n:-- | :-: | --:\n1 | 2 | 3",
+            expected: [Shape(.table, "l | c | r\n:-- | :-: | --:\n1 | 2 | 3")]),
         Vector(
             name: "A table in a quote loses its quote markers", source: "> | a | b |\n> | - | - |\n> | 1 | 2 |\n>\n> text",
             expected: [Shape(.table, "| a | b |\n| - | - |\n| 1 | 2 |", quote: 1), Shape(.paragraph, "text", quote: 1)]),
