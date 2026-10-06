@@ -17,24 +17,21 @@ struct GenericDialogCard: View {
             BlockedCardHeader(
                 title: "Waiting for Input", detail: nil, isActing: store.progress == .acting,
                 collapse: { store.isCollapsed = true })
-            // The options stay in view below the rows, which scroll.
-            BlockedScrollingContent(maxHeight: max(maxHeight - CGFloat(numbers.count) * 52, 96)) {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !excerpt.reason.isEmpty {
-                        BlockedCardText(excerpt.reason)
-                    }
-                    GenericExcerptView(rows: excerpt.rows)
-                }
+            if !excerpt.reason.isEmpty {
+                BlockedCardText(excerpt.reason)
             }
+            // The options stay in view below the rows, which scroll.
+            // The box holds still and its rows scroll inside it, so a long
+            // excerpt keeps its corners.
+            BlockedScrollingContent(maxHeight: max(maxHeight - CGFloat(numbers.count) * 52, 96)) {
+                GenericExcerptView(rows: excerpt.rows)
+            }
+            .background(Color(uiColor: .tertiarySystemFill))
+            .clipShape(.rect(cornerRadius: 12, style: .continuous))
             if !numbers.isEmpty {
                 VStack(spacing: 8) {
                     ForEach(numbers, id: \.self) { number in
-                        BlockedOptionButton(
-                            option: DialogOption(
-                                ordinal: number, number: number,
-                                label: "\(number). \(excerpt.numbered[number] ?? "")", role: .answer),
-                            emphasis: .plain
-                        ) {
+                        BlockedOptionButton(label: "\(number). \(excerpt.numbered[number] ?? "")", emphasis: .plain) {
                             Task { await store.press(number: number) }
                         }
                     }
@@ -45,9 +42,10 @@ struct GenericDialogCard: View {
             if numbers.isEmpty || showsKeys {
                 BlockedKeyPad(store: store)
             }
+            // A step that stopped part way gives its reason as both.
             BlockedCardFooter(
-                notice: store.notice, isReady: isReady, keys: numbers.isEmpty ? nil : $showsKeys,
-                openTerminal: openTerminal)
+                notice: store.notice == excerpt.reason ? nil : store.notice, isReady: isReady,
+                keys: numbers.isEmpty ? nil : $showsKeys, openTerminal: openTerminal)
         }
     }
 }
@@ -115,7 +113,6 @@ private struct GenericExcerptView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 12, style: .continuous))
     }
 
     /// Trailing padding dropped, blank runs folded to one gap, none at
