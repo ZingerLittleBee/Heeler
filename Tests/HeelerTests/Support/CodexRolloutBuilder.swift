@@ -170,6 +170,13 @@ struct CodexRolloutBuilder {
     /// The byte offset where the next line will start.
     var endOffset: Int { data.count }
 
+    /// A reducer for rollout `rolloutID` fed every line in one batch.
+    func reducer(rolloutID: String = "r1") -> CodexRolloutReducer {
+        var reducer = CodexRolloutReducer(rolloutID: rolloutID)
+        reducer.append(chatLines)
+        return reducer
+    }
+
     // MARK: Raw lines
 
     /// One envelope line. Paginated lines take the next ordinal unless
@@ -272,12 +279,12 @@ struct CodexRolloutBuilder {
     /// after every field the row needs, as Codex orders them.
     mutating func command(
         _ turnID: String, id: String, argv: [String], status: String = "completed", exitCode: Int? = 0,
-        output: String = ""
+        output: String = "", parsedCommands: [CodexJSON] = []
     ) {
         var members: [(String, CodexJSON)] = [
             ("type", "CommandExecution"), ("id", .string(id)), ("command", .array(argv.map { .string($0) })),
             ("cwd", "file:///work"), ("process_id", nil), ("source", "agent"), ("status", .string(status)),
-            ("parsed_cmd", []),
+            ("parsed_cmd", .array(parsedCommands)),
         ]
         members.append(("aggregated_output", .string(output)))
         if let exitCode {
