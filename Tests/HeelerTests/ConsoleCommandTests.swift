@@ -211,6 +211,36 @@ struct ConsoleCommandRegistryTests {
         #expect(registry.composer == nil)
     }
 
+    /// Chat registers no input-mode toggle and its own Composer mode, so ⌘E
+    /// is off and ⌘↩ sends even while Direct Input is the saved mode.
+    @Test func aSurfaceWithoutDirectInputDisablesTheToggleAndKeepsSend() async {
+        let registry = ConsoleCommandRegistry()
+        let terminalToken = UUID()
+        let composerToken = UUID()
+        var sends = 0
+        registry.register(
+            ConsoleCommandRegistry.Terminal(
+                token: terminalToken, agentID: agent, isFocused: false, isPresenting: false,
+                isOnStage: { true }, toggleInputMode: nil, inputMode: .composer))
+        registry.register(
+            ConsoleCommandRegistry.Composer(
+                token: composerToken, terminalToken: terminalToken, agentID: agent,
+                isFocused: true, hasDraft: { true }, send: { sends += 1 }))
+        let commands = target(
+            registry: registry,
+            context: {
+                .init(
+                    selection: agent, agents: [agent], isSearchFocused: false,
+                    isCovered: false, inputMode: .direct)
+            })
+
+        #expect(!commands.allows(.toggleInputMode))
+        commands.perform(.toggleInputMode)
+        #expect(commands.allows(.sendDraft))
+        await commands.sendDraft(for: composerToken)
+        #expect(sends == 1)
+    }
+
     @Test func selectionAndModalStateAreRecheckedAtDispatch() {
         let registry = ConsoleCommandRegistry()
         var selected: ConsoleAgent.ID? = agent

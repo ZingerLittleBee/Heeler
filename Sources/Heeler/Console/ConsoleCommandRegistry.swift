@@ -12,7 +12,12 @@ final class ConsoleCommandRegistry {
         let isFocused: Bool
         let isPresenting: Bool
         let isOnStage: @MainActor () -> Bool
-        let toggleInputMode: @MainActor () -> Void
+        /// Nil where the surface has no Direct Input: Chat always types
+        /// through its Composer, so ⌘E is disabled there.
+        let toggleInputMode: (@MainActor () -> Void)?
+        /// The surface's own input mode when it differs from the saved
+        /// one: Chat registers `.composer` whatever Direct Input says.
+        var inputMode: AgentInputMode? = nil
     }
 
     struct Composer {
@@ -158,11 +163,11 @@ struct ConsoleCommandTarget {
         let availability = ConsoleCommandAvailability(
             focus: focus, hasSelection: context.selection != nil,
             agentCount: context.agents.count,
-            inputMode: context.inputMode,
+            inputMode: terminal?.inputMode ?? context.inputMode,
             hasDraft: composer?.hasDraft() ?? false)
         guard availability.allows(action) else { return false }
         switch action {
-        case .toggleInputMode: return terminal != nil
+        case .toggleInputMode: return terminal?.toggleInputMode != nil
         case .sendDraft: return composer != nil
         default: return true
         }
@@ -184,7 +189,7 @@ struct ConsoleCommandTarget {
         case .newAgent: newAgent()
         case .settings: settings()
         case .hosts: hosts()
-        case .toggleInputMode: terminal?.toggleInputMode()
+        case .toggleInputMode: terminal?.toggleInputMode?()
         case .closeAgent: closeAgent()
         case .sendDraft:
             guard let composer = activeComposer(for: terminal) else { return }
@@ -238,7 +243,8 @@ struct ConsoleTerminalCommandRegistration: ViewModifier {
     let isFocused: Bool
     let isPresenting: Bool
     let isOnStage: @MainActor () -> Bool
-    let toggleInputMode: @MainActor () -> Void
+    let toggleInputMode: (@MainActor () -> Void)?
+    var inputMode: AgentInputMode? = nil
     @Environment(\.consoleCommandRegistry) private var registry
     @State private var token = UUID()
 
@@ -265,7 +271,7 @@ struct ConsoleTerminalCommandRegistration: ViewModifier {
             ConsoleCommandRegistry.Terminal(
                 token: token, agentID: agentID, isFocused: isFocused,
                 isPresenting: isPresenting, isOnStage: isOnStage,
-                toggleInputMode: toggleInputMode))
+                toggleInputMode: toggleInputMode, inputMode: inputMode))
     }
 }
 
