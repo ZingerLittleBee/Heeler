@@ -91,6 +91,11 @@ final class ConsoleStore {
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
     let terminalConnections: TerminalConnectionPool
     let agentTerminals: AgentTerminalCache
+    /// Chat's saved conversations. Volatile unless the app passes the file
+    /// cache: demo mode and tests build Console stores in the app's own
+    /// container, and their `setHosts` would otherwise clear the real one.
+    @ObservationIgnored let chatCache: any ChatTranscriptCache
+    @ObservationIgnored private var chatCacheRetention: Task<Void, Never>?
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
 
@@ -98,9 +103,11 @@ final class ConsoleStore {
         snapshotRetryDelay: Duration = .seconds(2),
         pins: PinnedAgentsStore = PinnedAgentsStore(),
         rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
+        chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory()
     ) {
+        self.chatCache = chatCache
         let terminalBudget = TerminalRetentionBudget()
         terminalConnections = TerminalConnectionPool(budget: terminalBudget)
         agentTerminals = AgentTerminalCache(budget: terminalBudget)
@@ -122,6 +129,14 @@ final class ConsoleStore {
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
+        // Also the launch-time sweep: a Host removed while the app was not
+        // running leaves a cache no one else would delete. Chained, so the
+        // cache ends on the latest catalog whatever order tasks start in.
+        let hostIDs = Set(incoming.keys)
+        chatCacheRetention = Task { [previous = chatCacheRetention, chatCache] in
+            await previous?.value
+            await chatCache.retainHosts(hostIDs)
+        }
         for (id, projection) in projections where incoming[id] != projection.host {
             sidebarSnapshots.invalidate(id)
             terminalSnapshotRevisions[id] = nil

@@ -117,6 +117,39 @@ struct ConsoleStoreTests {
         #expect(await condition(), comment)
     }
 
+    @Test func removingAHostDropsItsChatCache() async throws {
+        let cache = VolatileChatTranscriptCache()
+        let kept = Host.fixture()
+        let removed = Host.fixture()
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10), chatCache: cache) {
+            _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { throw TransportError.sshUnreachable(detail: "unscripted host") },
+                keepalive: nil)
+        }
+        func key(_ host: Host) -> ChatCacheKey {
+            ChatCacheKey(
+                hostID: host.id, herdrSession: "", program: .codex,
+                conversationID: "01a10f87-e025-7fb1-8974-8dd09937767a")
+        }
+        for host in [kept, removed] {
+            await cache.save(
+                ChatCacheDocument(
+                    key: key(host), adapterRevision: 1, transcriptPath: "/r.jsonl", head: Data(),
+                    coverageStart: 0, reachedStart: true, title: nil, entries: [], savedAt: Date()))
+        }
+
+        store.setHosts([kept, removed])
+        store.setHosts([kept])
+
+        try await waitUntil("the removed Host's Chat cache is deleted") {
+            await cache.load(key(removed)) == .miss
+        }
+        #expect(await cache.load(key(kept)) != .miss)
+        store.setHosts([])
+    }
+
     @Test func sortBucketsRankBlockedThenDoneThenWorkingThenIdle() {
         #expect(AgentStatus.blocked.consoleSortBucket < AgentStatus.done.consoleSortBucket)
         #expect(AgentStatus.done.consoleSortBucket < AgentStatus.working.consoleSortBucket)
