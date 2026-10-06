@@ -1063,8 +1063,9 @@ private enum ClaudeLooseDialogReader {
         guard let last = rows.lastIndex(where: { !$0.isBlank }) else { return .none }
         let footer = rows[last]
         let text = footer.trimmedText
+        // Footers are drawn in one color, never the default.
         let footerColors = Set(footer.visibleRuns.map(\.style.foreground))
-        guard footerColors.count == 1, footerColors.first != nil,
+        guard footerColors.count == 1, let footerColor = footerColors.first, footerColor != nil,
             ["to cancel", "to confirm", "to select"].contains(where: text.contains)
         else { return .none }
         let pointerRow = (max(0, last - 12)..<last).reversed().first { index in
