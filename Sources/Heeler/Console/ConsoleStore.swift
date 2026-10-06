@@ -103,6 +103,12 @@ final class ConsoleStore {
     /// container, and their `setHosts` would otherwise clear the real one.
     @ObservationIgnored let chatCache: any ChatTranscriptCache
     @ObservationIgnored private var chatCacheRetention: Task<Void, Never>?
+    /// How Chat reads each program's transcripts; nil leaves the program
+    /// without Chat.
+    @ObservationIgnored private let chatAdapter: @Sendable (ChatProgram) -> ChatTranscriptAdapter?
+    /// One Chat per Agent whose detail has shown it, kept like the Composer
+    /// so leaving and returning keeps the conversation and its position.
+    @ObservationIgnored private var chatStores: [ConsoleAgent.ID: AgentChatStore] = [:]
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
 
@@ -112,9 +118,11 @@ final class ConsoleStore {
         rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
-            ConsoleStore.sshSessionFactory()
+            ConsoleStore.sshSessionFactory(),
+        chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = { _ in nil }
     ) {
         self.chatCache = chatCache
+        self.chatAdapter = chatAdapter
         let terminalBudget = TerminalRetentionBudget()
         terminalConnections = TerminalConnectionPool(budget: terminalBudget)
         agentTerminals = AgentTerminalCache(budget: terminalBudget)
@@ -136,6 +144,12 @@ final class ConsoleStore {
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
+        // A changed Host may name another herdr session, which keys Chat's
+        // cache: its Chats start over.
+        for (id, store) in chatStores where incoming[id.hostID] != projections[id.hostID]?.host {
+            store.end()
+            chatStores[id] = nil
+        }
         // Also the launch-time sweep: a Host removed while the app was not
         // running leaves a cache no one else would delete. Chained, so the
         // cache ends on the latest catalog whatever order tasks start in.
@@ -184,6 +198,7 @@ final class ConsoleStore {
     private func activate(revalidating: Bool) async {
         await enqueueLifecycleTransition { [self] in
             isActive = true
+            for store in chatStores.values { store.resume() }
             let projections = Array(self.projections.values)
             for projection in projections {
                 await projection.resume()
@@ -214,6 +229,7 @@ final class ConsoleStore {
     func suspend() async {
         await enqueueLifecycleTransition { [self] in
             isActive = false
+            for store in chatStores.values { store.suspend() }
             await terminalConnections.suspend()
             await agentTerminals.suspend()
             sidebarSnapshots.invalidateAll()
@@ -506,6 +522,62 @@ final class ConsoleStore {
         }
         composerStores[agent.id] = store
         return store
+    }
+
+    /// The Agent's Chat (ADR 0020), made on first use and kept while the
+    /// Agent and its Host entry last. Nil when the Host is not in the
+    /// catalog or the program has no transcript adapter.
+    func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
+        if let existing = chatStores[agent.id], existing.program == program { return existing }
+        guard let host = projections[agent.hostID]?.host, let adapter = chatAdapter(program) else {
+            return nil
+        }
+        chatStores[agent.id]?.end()
+        let hostID = agent.hostID
+        let paneID = agent.agent.paneID
+        let store = AgentChatStore(
+            agentID: agent.id, agent: agent.agent, program: program,
+            source: AgentChatSource(
+                hostID: hostID, socketLocation: host.socketLocation,
+                files: chatHostFiles(for: hostID),
+                agentInfo: { [weak self] in
+                    guard let self else { throw TransportError.cancelled }
+                    return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
+                },
+                cache: chatCache, adapter: adapter))
+        if !isActive { store.suspend() }
+        chatStores[agent.id] = store
+        return store
+    }
+
+    /// Chat's transcript reads on the Host's live connection, resolved on
+    /// every call like `sessionFileReader(for:)`.
+    func chatHostFiles(for hostID: Host.ID) -> ChatHostFiles {
+        ChatHostFiles(
+            status: { [weak self] path in
+                guard let self else { throw TransportError.cancelled }
+                return try await liveChatHostFiles(for: hostID).status(path)
+            },
+            list: { [weak self] request in
+                guard let self else { throw TransportError.cancelled }
+                return try await liveChatHostFiles(for: hostID).list(request)
+            },
+            read: { [weak self] range in
+                guard let self else { throw TransportError.cancelled }
+                return try await liveChatHostFiles(for: hostID).read(range)
+            },
+            home: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await liveChatHostFiles(for: hostID).home()
+            })
+    }
+
+    private func liveChatHostFiles(for hostID: Host.ID) throws -> ChatHostFiles {
+        try projection(for: hostID).chatHostFiles()
+    }
+
+    private func liveChatAgentInfo(hostID: Host.ID, paneID: String) async throws -> Agent {
+        try await projection(for: hostID).agentInfo(paneID: paneID)
     }
 
     /// A latest-value view of the existing `pane.agent_status_changed`
@@ -858,6 +930,7 @@ final class ConsoleStore {
         if terminals != nextTerminals { terminals = nextTerminals }
         rebuildAgentOrder()
         publishAgentStatuses()
+        publishChatAgents()
         // A reconnecting Host's empty projection is not proof its Agents
         // exited, so their row totals stay until its snapshot says so.
         let liveAgents = Set(agents.map(\.id))
@@ -968,6 +1041,23 @@ final class ConsoleStore {
                 .map { (agent.id, $0) }
         })
         agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
+    }
+
+    /// Hands each Chat its Agent's latest record, and ends the Chats of
+    /// Agents a current snapshot no longer lists.
+    private func publishChatAgents() {
+        guard !chatStores.isEmpty else { return }
+        let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
+        for (id, store) in chatStores {
+            if let agent = current[id] {
+                store.agentDidChange(agent)
+            } else if hostStatuses[id.hostID] == .connected,
+                !hostsAwaitingSnapshot.contains(id.hostID)
+            {
+                store.end()
+                chatStores[id] = nil
+            }
+        }
     }
 
     private func publishAgentStatuses() {

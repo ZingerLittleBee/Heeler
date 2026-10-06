@@ -20,42 +20,6 @@ struct ChatConversationEngineTests {
         tailWindow: 64, readChunk: 16, pollBudget: 1_024, olderPage: 32, maximumOlderPage: 128,
         lineStartSearch: 1_024, anchorLength: 8, headLength: 32, lineCap: 4_096, prefixCap: 16)
 
-    /// Turns each `{"n":k}` line into one entry `n-k`, titles the
-    /// conversation with the first line it was seeded with, and reports
-    /// `{"format":"old"}` as a format it does not read.
-    private struct NumberedReducer: ChatTranscriptReducer {
-        private struct Record: Decodable {
-            let n: Int?
-            let format: String?
-        }
-
-        let seed: ChatReducerSeed
-        var lines: [ChatLine] = []
-
-        mutating func append(_ lines: [ChatLine]) { self.lines += lines }
-        mutating func prepend(_ lines: [ChatLine]) { self.lines = lines + self.lines }
-
-        func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
-            ChatTranscript(
-                entries: lines.compactMap { line in
-                    guard let n = Self.record(line)?.n else { return nil }
-                    return ChatEntry(
-                        id: ChatEntryID("n-\(n)"), sourceOffset: line.offset,
-                        content: .user(ChatUserMessage(text: "\(n)")))
-                },
-                title: seed.firstLine.map { String(decoding: $0.data, as: UTF8.self) },
-                needsOlderHistory: context.windowStart > 0)
-        }
-
-        var unsupportedFormat: String? {
-            lines.lazy.compactMap { Self.record($0)?.format }.first
-        }
-
-        private static func record(_ line: ChatLine) -> Record? {
-            try? JSONDecoder().decode(Record.self, from: line.data)
-        }
-    }
-
     private final class Clock: @unchecked Sendable {
         var now = start
     }
@@ -85,9 +49,8 @@ struct ChatConversationEngineTests {
             return ChatConversationEngine(
                 reference: ConversationReference(program: program, sessionID: key.conversationID),
                 cacheKey: key, files: files.hostFiles(), cache: cache,
-                adapter: ChatTranscriptAdapter(
-                    revision: revision, limits: limits, wantsFirstLine: program == .codex,
-                    makeReducer: { NumberedReducer(seed: $0) }),
+                adapter: NumberedChatReducer.adapter(
+                    revision: revision, limits: limits, wantsFirstLine: program == .codex),
                 now: { clock.now })
         }
 
@@ -118,22 +81,19 @@ struct ChatConversationEngineTests {
                 reachedStart: reachedStart, title: nil,
                 entries: numbers.map { n in
                     ChatEntry(
-                        id: ChatEntryID("n-\(n)"), sourceOffset: ChatConversationEngineTests.offset(of: n),
+                        id: ChatEntryID("n-\(n)"), sourceOffset: NumberedChatReducer.offset(of: n),
                         content: .user(ChatUserMessage(text: "\(n)")))
                 },
                 savedAt: start)
         }
     }
 
-    private static func line(_ n: Int) -> String { #"{"n":\#(n)}"# + "\n" }
-
     private static func lines(_ range: Range<Int>) -> String {
-        range.map(line).joined()
+        NumberedChatReducer.lines(range)
     }
 
-    /// Where line `n` starts in a file of `lines(0..<k)`.
     private static func offset(of n: Int) -> UInt64 {
-        UInt64(lines(0..<n).utf8.count)
+        NumberedChatReducer.offset(of: n)
     }
 
     private static func numbers(_ snapshot: ChatConversationSnapshot) -> [String] {
@@ -141,7 +101,7 @@ struct ChatConversationEngineTests {
     }
 
     private static func ids(_ range: Range<Int>) -> [String] {
-        range.map { "n-\($0)" }
+        NumberedChatReducer.ids(range)
     }
 
     // MARK: Opening and following

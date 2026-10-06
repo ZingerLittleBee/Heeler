@@ -288,6 +288,33 @@ final class HostConsoleProjection {
         }
     }
 
+    /// Chat's transcript reads (ADR 0020), on this connection's session.
+    /// Their timeouts and refusals are Chat's own errors, which never redial.
+    func chatHostFiles() -> ChatHostFiles {
+        let session = session
+        return ChatHostFiles(
+            status: { path in
+                try await session.withTransport { try await $0.fileStatus(atPath: path) }
+            },
+            list: { request in
+                try await session.withTransport { try await $0.listFiles(request) }
+            },
+            read: { range in
+                try await session.withTransport { try await $0.readHostFileRange(range) }
+            },
+            home: {
+                try await session.withTransport { try await $0.hostHomeDirectory() }
+            })
+    }
+
+    /// One Agent's current record, which Chat re-reads to notice a changed
+    /// session: no event reports one.
+    func agentInfo(paneID: String) async throws -> Agent {
+        try await session.withTransport { transport in
+            try await transport.agentInfo(AgentTarget(target: paneID))
+        }
+    }
+
     func fileStager() -> FileStager {
         let session = session
         return { file, reporter in
