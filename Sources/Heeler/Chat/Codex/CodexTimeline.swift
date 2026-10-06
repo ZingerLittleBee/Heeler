@@ -210,7 +210,8 @@ enum CodexTimelineProjector {
                 let id = entry.itemID.map { CodexMessageFormatter.asyncQuestionID(itemID: $0, index: index) }
                 let reply = answers.reply(questionID: id, itemID: entry.itemID, title: question.title)
                 let chatQuestion = ChatQuestion(
-                    id: id, text: question.title, options: question.options, answer: reply?.answer)
+                    id: id, text: question.title, options: question.options.map { ChatQuestion.Option(label: $0) },
+                    answer: reply?.answer)
                 if reply == nil {
                     unanswered.append(chatQuestion)
                 }

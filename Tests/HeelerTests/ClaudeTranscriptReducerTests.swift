@@ -16,6 +16,11 @@ struct ClaudeTranscriptReducerTests {
         return ClaudeSample.reducer(lines, role: role).transcript(ChatProjectionContext(activity: activity))
     }
 
+    /// The probe's options, each described by its own label.
+    private static func selfDescribed(_ labels: String...) -> [ChatQuestion.Option] {
+        labels.map { ChatQuestion.Option(label: $0, detail: $0) }
+    }
+
     private static func tool(_ id: String, in transcript: ChatTranscript) -> ChatToolActivity? {
         guard case .tool(let row) = ClaudeSample.entry(id, in: transcript) else { return nil }
         return row
@@ -102,9 +107,12 @@ struct ClaudeTranscriptReducerTests {
                     status: .succeeded,
                     questions: [
                         ChatQuestion(
-                            header: "Colors", text: "Which colors?", options: ["Red", "Green", "Blue"],
+                            header: "Colors", text: "Which colors?",
+                            options: Self.selfDescribed("Red", "Green", "Blue"), isMultiSelect: true,
                             answer: "Red, Blue"),
-                        ChatQuestion(header: "Size", text: "Which size?", options: ["Small", "Large"], answer: "Medium"),
+                        ChatQuestion(
+                            header: "Size", text: "Which size?", options: Self.selfDescribed("Small", "Large"),
+                            answer: "Medium"),
                     ],
                     callID: "toolu_019oBhnhaxeeZbkHonqnhwsE", output: ChatOutputReference(offset: 20502, length: 1395)))
     }
@@ -246,8 +254,10 @@ struct ClaudeTranscriptReducerTests {
                 entryID: ChatEntryID("tool:toolu_019oBhnhaxeeZbkHonqnhwsE"), callID: "toolu_019oBhnhaxeeZbkHonqnhwsE",
                 kind: .question, toolName: "AskUserQuestion", summary: "Which colors?\nWhich size?",
                 questions: [
-                    ChatQuestion(header: "Colors", text: "Which colors?", options: ["Red", "Green", "Blue"]),
-                    ChatQuestion(header: "Size", text: "Which size?", options: ["Small", "Large"]),
+                    ChatQuestion(
+                        header: "Colors", text: "Which colors?", options: Self.selfDescribed("Red", "Green", "Blue"),
+                        isMultiSelect: true),
+                    ChatQuestion(header: "Size", text: "Which size?", options: Self.selfDescribed("Small", "Large")),
                 ])
         ])
 
@@ -383,7 +393,9 @@ struct ClaudeTranscriptReducerTests {
         #expect(!transcript.entries.contains { if case .notice = $0.content { true } else { false } })
         #expect(
             Self.tool("tool:toolu_01L2Jps7RPw1kkecazPkfmnJ", in: transcript)?.questions == [
-                ChatQuestion(header: "选择", text: "请选择 A 或 B？", options: ["A", "B"], answer: "B")
+                ChatQuestion(
+                    header: "选择", text: "请选择 A 或 B？",
+                    options: [.init(label: "A", detail: "选择 A"), .init(label: "B", detail: "选择 B")], answer: "B")
             ])
         #expect(
             ClaudeSample.entry("think:5ffb0011-cd0c-4104-9f69-a1198c1f411b", in: transcript)

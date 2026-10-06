@@ -168,7 +168,8 @@
         }
 
         private static func questionTexts(_ question: ChatQuestion) -> [String] {
-            [question.header, question.text, question.answer].compactMap(\.self) + question.options
+            [question.header, question.text, question.answer].compactMap(\.self)
+                + question.options.flatMap { [$0.label, $0.detail].compactMap(\.self) }
         }
 
         @MainActor

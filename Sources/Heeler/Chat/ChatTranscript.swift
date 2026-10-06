@@ -329,21 +329,41 @@ struct ChatPlan: Equatable, Codable, Sendable {
 
 /// One question the Agent asked, with the answer once there is one.
 struct ChatQuestion: Equatable, Codable, Sendable {
+    /// An option as the call lists it. A string literal is an option
+    /// without a description.
+    struct Option: Equatable, Codable, Sendable, ExpressibleByStringLiteral {
+        var label: String
+        /// The call's `description`, shown under the label.
+        var detail: String?
+
+        init(label: String, detail: String? = nil) {
+            self.label = label
+            self.detail = detail
+        }
+
+        init(stringLiteral label: String) {
+            self.init(label: label)
+        }
+    }
+
     /// The program's id for the question, when it has one.
     var id: String?
     var header: String?
     var text: String
-    var options: [String]
+    var options: [Option]
+    /// Claude's `multiSelect`: the answer may be several options.
+    var isMultiSelect: Bool
     var answer: String?
 
     init(
-        id: String? = nil, header: String? = nil, text: String, options: [String] = [],
-        answer: String? = nil
+        id: String? = nil, header: String? = nil, text: String, options: [Option] = [],
+        isMultiSelect: Bool = false, answer: String? = nil
     ) {
         self.id = id
         self.header = header
         self.text = text
         self.options = options
+        self.isMultiSelect = isMultiSelect
         self.answer = answer
     }
 }

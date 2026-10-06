@@ -439,7 +439,10 @@ extension ClaudeToolInput {
                 guard let text = question.question else { return nil }
                 return ChatQuestion(
                     header: question.header, text: text,
-                    options: (question.options ?? []).compactMap(\.label))
+                    options: (question.options ?? []).compactMap { option in
+                        option.label.map { ChatQuestion.Option(label: $0, detail: option.description) }
+                    },
+                    isMultiSelect: question.multiSelect ?? false)
             },
             todos: raw.todos?.compactMap(ClaudeTodo.init), skill: raw.skill, arguments: raw.args)
     }
@@ -708,12 +711,14 @@ private struct RawToolInput: Decodable {
     struct Question: Decodable {
         struct Option: Decodable {
             var label: String?
+            var description: String?
 
-            private enum CodingKeys: String, CodingKey { case label }
+            private enum CodingKeys: String, CodingKey { case label, description }
 
             init(from decoder: any Decoder) throws {
                 if let c = try? decoder.container(keyedBy: CodingKeys.self) {
                     label = c.lenient(String.self, .label)
+                    description = c.lenient(String.self, .description)
                 } else {
                     label = try? decoder.singleValueContainer().decode(String.self)
                 }
@@ -723,14 +728,16 @@ private struct RawToolInput: Decodable {
         var question: String?
         var header: String?
         var options: [Option]?
+        var multiSelect: Bool?
 
-        private enum CodingKeys: String, CodingKey { case question, header, options }
+        private enum CodingKeys: String, CodingKey { case question, header, options, multiSelect }
 
         init(from decoder: any Decoder) throws {
             guard let c = try? decoder.container(keyedBy: CodingKeys.self) else { return }
             question = c.lenient(String.self, .question)
             header = c.lenient(String.self, .header)
             options = c.lenient([Option].self, .options)
+            multiSelect = c.lenient(Bool.self, .multiSelect)
         }
     }
 

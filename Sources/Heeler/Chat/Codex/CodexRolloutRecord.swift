@@ -756,22 +756,24 @@ struct CodexRawSyncQuestion: Decodable {
     var id: String?
     var header: String?
     var question: String?
-    var options: [String]
+    var options: [ChatQuestion.Option]
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodexKey.self)
         id = container.lenient("id")
         header = container.lenient("header")
         question = container.lenient("question")
-        options =
-            container.lenient("options", as: CodexLossyArray<CodexRawOption>.self)?.elements.compactMap(\.label)
-            ?? []
+        let options = container.lenient("options", as: CodexLossyArray<CodexRawOption>.self)?.elements ?? []
+        self.options = options.compactMap { option in
+            option.label.map { ChatQuestion.Option(label: $0, detail: option.description) }
+        }
     }
 }
 
 /// A question option: `{label, description}` or a bare string.
 struct CodexRawOption: Decodable {
     var label: String?
+    var description: String?
 
     init(from decoder: any Decoder) throws {
         if let label = try? decoder.singleValueContainer().decode(String.self) {
@@ -780,6 +782,7 @@ struct CodexRawOption: Decodable {
         }
         let container = try decoder.container(keyedBy: CodexKey.self)
         label = container.lenient("label")
+        description = container.lenient("description")
     }
 }
 
@@ -858,7 +861,7 @@ struct CodexSyncQuestion: Equatable, Sendable {
     var id: String?
     var header: String?
     var text: String
-    var options: [String]
+    var options: [ChatQuestion.Option]
 }
 
 /// A tool row as the record that placed it describes it. `status` is nil

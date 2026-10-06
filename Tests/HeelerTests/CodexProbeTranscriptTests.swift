@@ -92,10 +92,18 @@ struct CodexProbeTranscriptTests {
                     kind: .question, name: "request_user_input", title: "Pick a color", status: .succeeded,
                     questions: [
                         ChatQuestion(
-                            id: "color", header: "Color", text: "Pick a color", options: ["Red", "Green"],
+                            id: "color", header: "Color", text: "Pick a color",
+                            options: [
+                                .init(label: "Red", detail: "Choose red."),
+                                .init(label: "Green", detail: "Choose green."),
+                            ],
                             answer: "Red"),
                         ChatQuestion(
-                            id: "size", header: "Size", text: "Pick a size", options: ["Small", "Large"],
+                            id: "size", header: "Size", text: "Pick a size",
+                            options: [
+                                .init(label: "Small", detail: "Choose small."),
+                                .init(label: "Large", detail: "Choose large."),
+                            ],
                             answer: "None of the above\nuser_note: Medium please"),
                     ], callID: "call_H7ieHhHMR8EkXwMKqGbHpnSB"))
         #expect(projection.transcript.pendingRequests.allSatisfy { $0.toolName != "request_user_input" })
@@ -168,7 +176,9 @@ struct CodexProbeTranscriptTests {
         #expect(question.status == .succeeded)
         #expect(
             question.questions == [
-                ChatQuestion(id: "pick_a_or_b", header: "选择", text: "请选择 A 或 B。", options: ["A", "B"], answer: "B")
+                ChatQuestion(
+                    id: "pick_a_or_b", header: "选择", text: "请选择 A 或 B。",
+                    options: [.init(label: "A", detail: "选择 A。"), .init(label: "B", detail: "选择 B。")], answer: "B")
             ])
         #expect(projection.transcript.pendingRequests.isEmpty)
     }
