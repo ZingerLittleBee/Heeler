@@ -59,6 +59,10 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
     var head: Data
     /// The earliest source byte the entries represent.
     var coverageStart: UInt64
+    /// Where reading had got to: the entries are complete up to this byte.
+    /// A later tail window that starts past it leaves a gap, so the entries
+    /// join it only once older pages close that gap.
+    var coverageEnd: UInt64
     var reachedStart: Bool
     var title: String?
     var entries: [ChatEntry]
@@ -66,8 +70,8 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
 
     init(
         key: ChatCacheKey, adapterRevision: Int, transcriptPath: String, head: Data,
-        coverageStart: UInt64, reachedStart: Bool, title: String?, entries: [ChatEntry],
-        savedAt: Date
+        coverageStart: UInt64, coverageEnd: UInt64, reachedStart: Bool, title: String?,
+        entries: [ChatEntry], savedAt: Date
     ) {
         formatVersion = Self.currentFormatVersion
         self.key = key
@@ -75,6 +79,7 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
         self.transcriptPath = transcriptPath
         self.head = head
         self.coverageStart = coverageStart
+        self.coverageEnd = coverageEnd
         self.reachedStart = reachedStart
         self.title = title
         self.entries = entries

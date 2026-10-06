@@ -1,0 +1,438 @@
+import Foundation
+import Testing
+
+@testable import Heeler
+
+@Suite("Chat conversation engine")
+struct ChatConversationEngineTests {
+    private static let sessionID = "e951205e-24af-4a5e-baa7-3ccbebd2de2c"
+    private static let thread = "01a10f87-e025-7fb1-8974-8dd09937767a"
+    private static let cwd = "/home/dev/proj"
+    private static let claudePath = "/home/dev/.claude/projects/-home-dev-proj/\(sessionID).jsonl"
+    private static let codexPath =
+        "/home/dev/.codex/sessions/2026/10/06/rollout-2026-10-06T12-45-25-\(thread).jsonl"
+    private static let host = UUID(uuidString: "6F1D5C2A-0000-4000-8000-00000000000A")!
+    /// 2026-10-06T06:00:00Z, the day the Codex thread started.
+    private static let start = Date(timeIntervalSince1970: 1_791_266_400)
+
+    /// Small limits so a few hundred bytes exercise windows and pages.
+    private static let limits = TranscriptFollower.Limits(
+        tailWindow: 64, readChunk: 16, pollBudget: 1_024, olderPage: 32, maximumOlderPage: 128,
+        lineStartSearch: 1_024, anchorLength: 8, headLength: 32, lineCap: 4_096, prefixCap: 16)
+
+    /// Turns each `{"n":k}` line into one entry `n-k`, titles the
+    /// conversation with the first line it was seeded with, and reports
+    /// `{"format":"old"}` as a format it does not read.
+    private struct NumberedReducer: ChatTranscriptReducer {
+        private struct Record: Decodable {
+            let n: Int?
+            let format: String?
+        }
+
+        let seed: ChatReducerSeed
+        var lines: [ChatLine] = []
+
+        mutating func append(_ lines: [ChatLine]) { self.lines += lines }
+        mutating func prepend(_ lines: [ChatLine]) { self.lines = lines + self.lines }
+
+        func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
+            ChatTranscript(
+                entries: lines.compactMap { line in
+                    guard let n = Self.record(line)?.n else { return nil }
+                    return ChatEntry(
+                        id: ChatEntryID("n-\(n)"), sourceOffset: line.offset,
+                        content: .user(ChatUserMessage(text: "\(n)")))
+                },
+                title: seed.firstLine.map { String(decoding: $0.data, as: UTF8.self) },
+                needsOlderHistory: context.windowStart > 0)
+        }
+
+        var unsupportedFormat: String? {
+            lines.lazy.compactMap { Self.record($0)?.format }.first
+        }
+
+        private static func record(_ line: ChatLine) -> Record? {
+            try? JSONDecoder().decode(Record.self, from: line.data)
+        }
+    }
+
+    private final class Clock: @unchecked Sendable {
+        var now = start
+    }
+
+    private struct Fixture {
+        let files = VirtualHostFiles()
+        let cache = VolatileChatTranscriptCache()
+        let clock = Clock()
+        let program: ChatProgram
+        let revision: Int
+
+        init(program: ChatProgram = .claude, revision: Int = 1) {
+            self.program = program
+            self.revision = revision
+        }
+
+        var path: String { program == .claude ? claudePath : codexPath }
+
+        var key: ChatCacheKey {
+            ChatCacheKey(
+                hostID: host, herdrSession: "", program: program,
+                conversationID: program == .claude ? sessionID : thread)
+        }
+
+        func makeEngine() -> ChatConversationEngine {
+            let clock = clock
+            return ChatConversationEngine(
+                reference: ConversationReference(program: program, sessionID: key.conversationID),
+                cacheKey: key, files: files.hostFiles(), cache: cache,
+                adapter: ChatTranscriptAdapter(
+                    revision: revision, limits: limits, wantsFirstLine: program == .codex,
+                    makeReducer: { NumberedReducer(seed: $0) }),
+                now: { clock.now })
+        }
+
+        func open(_ engine: ChatConversationEngine) async -> ChatConversationSnapshot {
+            await engine.open(directories: [cwd], context: ChatProjectionContext(activity: .idle))
+        }
+
+        func poll(_ engine: ChatConversationEngine) async -> ChatConversationSnapshot {
+            await engine.poll(context: ChatProjectionContext(activity: .idle))
+        }
+
+        func loadOlder(_ engine: ChatConversationEngine) async -> ChatConversationSnapshot {
+            await engine.loadOlder(context: ChatProjectionContext(activity: .idle))
+        }
+
+        func savedDocument() async -> ChatCacheDocument? {
+            guard case .hit(let document) = await cache.load(key) else { return nil }
+            return document
+        }
+
+        func document(
+            numbers: Range<Int>, head: String, coverageEnd: UInt64, reachedStart: Bool = true,
+            revision: Int? = nil
+        ) -> ChatCacheDocument {
+            ChatCacheDocument(
+                key: key, adapterRevision: revision ?? self.revision, transcriptPath: path,
+                head: Data(head.utf8), coverageStart: 0, coverageEnd: coverageEnd,
+                reachedStart: reachedStart, title: nil,
+                entries: numbers.map { n in
+                    ChatEntry(
+                        id: ChatEntryID("n-\(n)"), sourceOffset: ChatConversationEngineTests.offset(of: n),
+                        content: .user(ChatUserMessage(text: "\(n)")))
+                },
+                savedAt: start)
+        }
+    }
+
+    private static func line(_ n: Int) -> String { #"{"n":\#(n)}"# + "\n" }
+
+    private static func lines(_ range: Range<Int>) -> String {
+        range.map(line).joined()
+    }
+
+    /// Where line `n` starts in a file of `lines(0..<k)`.
+    private static func offset(of n: Int) -> UInt64 {
+        UInt64(lines(0..<n).utf8.count)
+    }
+
+    private static func numbers(_ snapshot: ChatConversationSnapshot) -> [String] {
+        snapshot.transcript.entries.map(\.id.rawValue)
+    }
+
+    private static func ids(_ range: Range<Int>) -> [String] {
+        range.map { "n-\($0)" }
+    }
+
+    // MARK: Opening and following
+
+    @Test func opensAtTheTailAndPagesBackToTheStart() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<30), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+
+        var snapshot = await fixture.open(engine)
+
+        #expect(snapshot.phase == .following(path: Self.claudePath))
+        #expect(!snapshot.isFromCache)
+        #expect(snapshot.older == .available)
+        #expect(snapshot.readOffset == UInt64(Self.lines(0..<30).utf8.count))
+        let tail = Self.numbers(snapshot)
+        #expect(tail.last == "n-29")
+        #expect(tail.count < 30)
+
+        var pages = 0
+        while snapshot.older == .available, pages < 50 {
+            snapshot = await fixture.loadOlder(engine)
+            pages += 1
+        }
+
+        #expect(snapshot.older == .reachedStart)
+        #expect(Self.numbers(snapshot) == Self.ids(0..<30))
+    }
+
+    @Test func appendedLinesShowOnTheNextPollAndAQuietPollChangesNothing() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<3), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        let opened = await fixture.open(engine)
+
+        let quiet = await fixture.poll(engine)
+        #expect(quiet.revision == opened.revision)
+
+        await fixture.files.append(Self.lines(3..<5), to: Self.claudePath)
+        let polled = await fixture.poll(engine)
+
+        #expect(Self.numbers(polled) == Self.ids(0..<5))
+        #expect(polled.revision > opened.revision)
+        #expect(polled.readOffset == Self.offset(of: 5))
+    }
+
+    @Test func aReplacedFileStartsOverAndDropsTheCache() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<3), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        _ = await fixture.open(engine)
+        await engine.save(force: true)
+        #expect(await fixture.savedDocument() != nil)
+
+        await fixture.files.write(Self.lines(7..<9), at: Self.claudePath)
+        let polled = await fixture.poll(engine)
+
+        #expect(Self.numbers(polled) == Self.ids(7..<9))
+        #expect(await fixture.savedDocument() == nil)
+    }
+
+    @Test func aMissingFileKeepsWhatShowsAndReportsItNotFound() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<3), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        _ = await fixture.open(engine)
+
+        await fixture.files.remove(Self.claudePath)
+        let polled = await fixture.poll(engine)
+
+        #expect(polled.phase == .unavailable(.notFound(searchedAll: true)))
+        #expect(polled.isFromCache)
+        #expect(Self.numbers(polled) == Self.ids(0..<3))
+
+        // The file comes back: opening again follows it.
+        await fixture.files.write(Self.lines(0..<4), at: Self.claudePath)
+        let reopened = await fixture.open(engine)
+
+        #expect(reopened.phase == .following(path: Self.claudePath))
+        #expect(Self.numbers(reopened) == Self.ids(0..<4))
+    }
+
+    @Test func aReadFailureKeepsTheEntriesUntilTheNextReadSucceeds() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<3), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        _ = await fixture.open(engine)
+
+        await fixture.files.failNext(.status, with: TransportError.hostFileTimedOut)
+        let failed = await fixture.poll(engine)
+
+        #expect(failed.readFailure == .hostFileTimedOut)
+        #expect(failed.phase == .following(path: Self.claudePath))
+        #expect(Self.numbers(failed) == Self.ids(0..<3))
+
+        let recovered = await fixture.poll(engine)
+
+        #expect(recovered.readFailure == nil)
+    }
+
+    @Test func aFailedLocateIsRetriedByOpeningAgain() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<3), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        await fixture.files.failNext(.home, with: TransportError.hostFileTimedOut)
+
+        let failed = await fixture.open(engine)
+
+        #expect(failed.phase == .locating)
+        #expect(failed.readFailure == .hostFileTimedOut)
+
+        let opened = await fixture.open(engine)
+
+        #expect(opened.phase == .following(path: Self.claudePath))
+        #expect(opened.readFailure == nil)
+    }
+
+    @Test func noTranscriptYetIsReportedAsNotFound() async throws {
+        let fixture = Fixture()
+        let engine = fixture.makeEngine()
+
+        let snapshot = await fixture.open(engine)
+
+        #expect(snapshot.phase == .unavailable(.notFound(searchedAll: true)))
+        #expect(!snapshot.isFromCache)
+    }
+
+    @Test func historyTooLongToPageEndsWithADivider() async throws {
+        let fixture = Fixture()
+        let long = #"{"pad":""# + String(repeating: "x", count: 2_000) + "\"}\n"
+        await fixture.files.write(long + Self.lines(0..<10), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        var snapshot = await fixture.open(engine)
+
+        var pages = 0
+        while snapshot.older == .available, pages < 50 {
+            snapshot = await fixture.loadOlder(engine)
+            pages += 1
+        }
+
+        #expect(snapshot.older == .reachedStart)
+        #expect(snapshot.transcript.entries.first?.content == .divider(ChatDivider(kind: .historyUnavailable)))
+        #expect(Array(Self.numbers(snapshot).dropFirst()) == Self.ids(0..<10))
+    }
+
+    @Test func anUnsupportedFormatStopsFollowing() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(#"{"format":"old"}"# + "\n" + Self.lines(0..<2), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+
+        let snapshot = await fixture.open(engine)
+
+        #expect(snapshot.phase == .unavailable(.unsupportedFormat("old")))
+        #expect(snapshot.transcript.entries.isEmpty)
+    }
+
+    @Test func codexReducersAreSeededWithTheRolloutsFirstLine() async throws {
+        let fixture = Fixture(program: .codex)
+        let meta = #"{"type":"session_meta","payload":{"id":"\#(Self.thread)"}}"#
+        await fixture.files.write(meta + "\n" + Self.lines(0..<30), at: Self.codexPath)
+        let engine = fixture.makeEngine()
+
+        let snapshot = await fixture.open(engine)
+
+        #expect(snapshot.phase == .following(path: Self.codexPath))
+        #expect(snapshot.older == .available)
+        #expect(snapshot.transcript.title == meta)
+    }
+
+    // MARK: Cache
+
+    @Test func savedEntriesShowBeforeTheHostAnswers() async throws {
+        let fixture = Fixture()
+        await fixture.cache.save(
+            fixture.document(numbers: 0..<3, head: Self.lines(0..<3), coverageEnd: Self.offset(of: 3)))
+        let engine = fixture.makeEngine()
+
+        let restored = await engine.restore()
+
+        #expect(restored.phase == .locating)
+        #expect(restored.isFromCache)
+        #expect(restored.older == .reachedStart)
+        #expect(Self.numbers(restored) == Self.ids(0..<3))
+    }
+
+    @Test func savedEntriesFillInAboveTheLiveWindow() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<30), at: Self.claudePath)
+        await fixture.cache.save(
+            fixture.document(numbers: 0..<25, head: Self.lines(0..<30), coverageEnd: Self.offset(of: 25)))
+        let engine = fixture.makeEngine()
+        _ = await engine.restore()
+
+        let snapshot = await fixture.open(engine)
+
+        #expect(snapshot.phase == .following(path: Self.claudePath))
+        #expect(!snapshot.isFromCache)
+        #expect(snapshot.older == .reachedStart)
+        #expect(Self.numbers(snapshot) == Self.ids(0..<30))
+    }
+
+    @Test func aGapBeforeTheLiveWindowKeepsSavedEntriesOutUntilPagesCloseIt() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<30), at: Self.claudePath)
+        await fixture.cache.save(
+            fixture.document(numbers: 0..<5, head: Self.lines(0..<30), coverageEnd: Self.offset(of: 5)))
+        let engine = fixture.makeEngine()
+        _ = await engine.restore()
+
+        var snapshot = await fixture.open(engine)
+
+        #expect(snapshot.older == .available)
+        #expect(!Self.numbers(snapshot).contains("n-0"))
+
+        var pages = 0
+        while snapshot.older == .available, pages < 50 {
+            snapshot = await fixture.loadOlder(engine)
+            pages += 1
+        }
+
+        #expect(Self.numbers(snapshot) == Self.ids(0..<30))
+        // The saved entries closed the gap before the window reached the head.
+        #expect(snapshot.older == .reachedStart)
+        #expect(snapshot.transcript.needsOlderHistory)
+    }
+
+    @Test func anotherConversationUnderTheSameNameDropsTheSavedEntries() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(10..<12), at: Self.claudePath)
+        await fixture.cache.save(
+            fixture.document(numbers: 0..<3, head: Self.lines(0..<3), coverageEnd: Self.offset(of: 3)))
+        let engine = fixture.makeEngine()
+        _ = await engine.restore()
+
+        let snapshot = await fixture.open(engine)
+
+        #expect(Self.numbers(snapshot) == Self.ids(10..<12))
+        #expect(await fixture.savedDocument() == nil)
+    }
+
+    @Test func entriesFromAnOlderAdapterRevisionAreDiscarded() async throws {
+        let fixture = Fixture(revision: 2)
+        await fixture.cache.save(
+            fixture.document(
+                numbers: 0..<3, head: Self.lines(0..<3), coverageEnd: Self.offset(of: 3), revision: 1))
+        let engine = fixture.makeEngine()
+
+        let restored = await engine.restore()
+
+        #expect(restored.transcript.entries.isEmpty)
+        #expect(await fixture.savedDocument() == nil)
+    }
+
+    @Test func savingRecordsCoverageAndIsThrottledUnlessForced() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<30), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        let opened = await fixture.open(engine)
+
+        await engine.save()
+        let first = try #require(await fixture.savedDocument())
+
+        #expect(first.transcriptPath == Self.claudePath)
+        #expect(first.coverageEnd == opened.readOffset)
+        #expect(first.coverageStart == opened.transcript.entries.first?.sourceOffset)
+        #expect(!first.reachedStart)
+        #expect(first.head == Data(Self.lines(0..<30).utf8.prefix(32)))
+
+        await fixture.files.append(Self.lines(30..<31), to: Self.claudePath)
+        _ = await fixture.poll(engine)
+        fixture.clock.now = Self.start.addingTimeInterval(5)
+        await engine.save()
+
+        #expect(await fixture.savedDocument()?.entries.last?.id.rawValue == "n-29")
+
+        await engine.save(force: true)
+
+        #expect(await fixture.savedDocument()?.entries.last?.id.rawValue == "n-30")
+    }
+
+    @Test func nothingIsSavedBeforeTheTranscriptIsFollowed() async throws {
+        let fixture = Fixture()
+        await fixture.cache.save(
+            fixture.document(numbers: 0..<3, head: Self.lines(0..<3), coverageEnd: Self.offset(of: 3)))
+        let engine = fixture.makeEngine()
+        _ = await engine.restore()
+        _ = await fixture.open(engine)
+
+        await engine.save(force: true)
+
+        // Not found keeps the saved entries rather than overwriting them.
+        #expect(await fixture.savedDocument()?.entries.count == 3)
+    }
+}

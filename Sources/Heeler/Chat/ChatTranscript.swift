@@ -555,4 +555,12 @@ protocol ChatTranscriptReducer: Sendable {
     /// history page.
     mutating func prepend(_ lines: [ChatLine])
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript
+    /// Names the transcript's format when the lines show one this reducer
+    /// does not read, such as a Codex rollout from before the envelope
+    /// format. Chat then explains instead of showing a partial conversation.
+    var unsupportedFormat: String? { get }
+}
+
+extension ChatTranscriptReducer {
+    var unsupportedFormat: String? { nil }
 }

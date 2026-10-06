@@ -137,7 +137,8 @@ struct ConsoleStoreTests {
             await cache.save(
                 ChatCacheDocument(
                     key: key(host), adapterRevision: 1, transcriptPath: "/r.jsonl", head: Data(),
-                    coverageStart: 0, reachedStart: true, title: nil, entries: [], savedAt: Date()))
+                    coverageStart: 0, coverageEnd: 0, reachedStart: true, title: nil, entries: [],
+                    savedAt: Date()))
         }
 
         store.setHosts([kept, removed])

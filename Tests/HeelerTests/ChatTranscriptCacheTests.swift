@@ -48,7 +48,8 @@ struct ChatTranscriptCacheTests {
     ) -> ChatCacheDocument {
         ChatCacheDocument(
             key: key, adapterRevision: 1, transcriptPath: "/home/dev/.claude/projects/-k/s.jsonl",
-            head: Data(#"{"type":"mode"}"#.utf8), coverageStart: 0, reachedStart: true,
+            head: Data(#"{"type":"mode"}"#.utf8), coverageStart: 0,
+            coverageEnd: UInt64(count * 100), reachedStart: true,
             title: "Fix the build",
             entries: (0..<count).map { index in
                 ChatEntry(
