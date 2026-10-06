@@ -127,6 +127,16 @@ extension TransportError {
                 summary: "Reading Changes timed out",
                 detail: nil,
                 recoverySuggestion: nil)
+        case .hostFileTimedOut:
+            TransportErrorPresentation(
+                summary: "Reading the conversation timed out",
+                detail: nil,
+                recoverySuggestion: nil)
+        case .hostFileUnreadable(let status):
+            TransportErrorPresentation(
+                summary: "The conversation file cannot be read",
+                detail: "SFTP status \(status)",
+                recoverySuggestion: "Check the file's permissions on the Host.")
         case .cancelled:
             TransportErrorPresentation(
                 summary: "Connection cancelled",

@@ -374,6 +374,9 @@ actor HeelerSSHTransport: Transport {
     /// channel and its lease would stay spent until the Host disconnects.
     private var sessionFileClientIdleRelease: Task<Void, Never>?
     static let sessionFileClientIdleTimeout: Duration = .seconds(30)
+    /// Set once the Host refused the SFTP subsystem to a Chat operation, so
+    /// later ones fail fast instead of asking for a channel every poll.
+    private var hostFileSFTPUnavailable = false
     private var notificationTemporaryPaths: [UUID: String] = [:]
 #if DEBUG
     private var stagingPhaseHoldsForTesting:
@@ -747,6 +750,9 @@ actor HeelerSSHTransport: Transport {
             }
             sessionFileClient = client
             sessionFileClientLease = lease
+            // A Chat read whose deadline passed during the open has already
+            // left; without this the channel would wait for the next read.
+            scheduleSessionFileClientIdleRelease()
             return client
         }
         sessionFileClientOpening = opening
@@ -777,6 +783,145 @@ actor HeelerSSHTransport: Transport {
         sessionFileClientLease = nil
         try? await client.close(timeout: .seconds(2))
         await lease?.release()
+    }
+
+    // MARK: Chat Host files
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        let timeout = requestTimeout
+        return try await withHostFileClient(path: range.path) { client in
+            let slice = try await client.readFileRange(
+                at: range.path,
+                offset: range.offset,
+                maxBytes: range.maxBytes,
+                timeout: timeout)
+            return RemoteFileSlice(data: slice.data, length: slice.length)
+        }
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        let timeout = requestTimeout
+        return try await withHostFileClient(path: path) { client in
+            try await client.fileStatus(at: path, timeout: timeout).map(RemoteFileStatus.init)
+        }
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        let timeout = requestTimeout
+        let query = SSHSFTPEntryQuery(
+            kinds: Set(request.kinds.map(SSHSFTPEntryKind.init)),
+            namePrefix: request.namePrefix,
+            nameSuffixes: request.nameSuffixes,
+            nameContains: request.nameContains,
+            maximumEntries: request.maximumEntries,
+            maximumScanned: request.maximumScanned)
+        return try await withHostFileClient(path: request.directory) { client in
+            try await client.listEntries(at: request.directory, matching: query, timeout: timeout)
+                .map(RemoteFileListing.init)
+        }
+    }
+
+    func hostPlatform() async throws -> HostPlatform {
+        try await hostFileEnvironment().isWindows ? .nativeWindows : .posix
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        let home = try await hostFileEnvironment().home
+        try await requirePOSIXHost(feature: "Chat")
+        return home
+    }
+
+    func agentInfo(_ target: AgentTarget) async throws -> Agent {
+        Agent(
+            try await request(method: "agent.get", params: target, decoding: AgentInfoResponse.self)
+                .agent)
+    }
+
+    /// Runs one Chat file operation on the held session-file SFTP channel.
+    ///
+    /// Chat polls a transcript every second or so, often over cellular, so its
+    /// failures must stay its own: the whole operation, channel admission and
+    /// open included, runs under one deadline that maps to
+    /// `.hostFileTimedOut` instead of the link-failure `.timedOut`, and a file
+    /// the server refuses is `.hostFileUnreadable`. Only a failure that says
+    /// the channel itself is unusable retires it, and only when no other read
+    /// is using it: a usage-strip read sharing the channel must not fail
+    /// because a Chat read did. The idle release reclaims a channel left open.
+    private func withHostFileClient<Value: Sendable>(
+        path: String,
+        _ operation: @escaping @Sendable (SSHSFTPClient) async throws -> Value
+    ) async throws -> Value {
+        guard RemoteFilePath.isAcceptable(path) else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        _ = try await hostFileEnvironment()
+        try await requirePOSIXHost(feature: "Chat")
+        if hostFileSFTPUnavailable {
+            throw TransportError.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host")
+        }
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
+        sessionFileReadsInFlight += 1
+        defer {
+            sessionFileReadsInFlight -= 1
+            scheduleSessionFileClientIdleRelease()
+        }
+        do {
+            return try await AsyncDeadline.run(for: requestTimeout) {
+                let client = try await self.sessionFileClientForReading()
+                return try await operation(client)
+            }
+        } catch {
+            let (mapped, retiresChannel) = await mapHostFileError(error)
+            if retiresChannel, sessionFileReadsInFlight == 1 {
+                await releaseSessionFileClient()
+            }
+            throw mapped
+        }
+    }
+
+    /// The remote environment, resolved at most once per connection. A Host
+    /// whose socket path is absolute never needed it, so a Chat operation can
+    /// be the first to ask; its probe timing out is Chat's own failure too.
+    private func hostFileEnvironment() async throws -> RemoteHostEnvironment {
+        do {
+            return try await remoteEnvironment()
+        } catch TransportError.timedOut {
+            throw TransportError.hostFileTimedOut
+        }
+    }
+
+    /// The Chat error for a failed file operation, and whether the shared
+    /// channel should go.
+    private func mapHostFileError(_ error: any Error) async -> (TransportError, Bool) {
+        if error as? SSHError == .sftpUnavailable {
+            hostFileSFTPUnavailable = true
+        }
+        if let failure = Self.hostFileFailure(for: error) {
+            return (failure.error, failure.retiresChannel)
+        }
+        return (await mapOperationError(error), true)
+    }
+
+    /// Classifies the failures a Chat file operation owns. Nil means the
+    /// failure is the link's, which the ordinary operation mapper reports.
+    static func hostFileFailure(
+        for error: any Error
+    ) -> (error: TransportError, retiresChannel: Bool)? {
+        switch error {
+        case AsyncDeadlineError.timedOut, SSHError.timedOut:
+            (.hostFileTimedOut, true)
+        case SSHError.sftpFailure(let status):
+            (.hostFileUnreadable(status: status), false)
+        case SSHError.sftpUnavailable:
+            (.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host"), true)
+        case is CancellationError, SSHError.cancelled, TransportError.cancelled:
+            (.cancelled, false)
+        case let error as TransportError:
+            (error, true)
+        default:
+            nil
+        }
     }
 
     func sessionSnapshot() async throws -> SessionSnapshot {
