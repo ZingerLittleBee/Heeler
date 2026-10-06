@@ -45,6 +45,11 @@ protocol Transport: Sendable {
     /// herdr's own spellings, shared with `pane.send_keys` / `pane.send_input`.
     func sendAgentKeys(_ params: AgentSendKeysParams) async throws
 
+    /// Types text into a Pane (`pane.send_input`), bracketed as a paste when
+    /// the program enabled bracketed paste. herdr passes it on unchecked, so
+    /// callers send one line of safe text and never keys this way.
+    func sendPaneInput(_ params: PaneSendInputParams) async throws
+
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
     /// work from the road). Creates a fresh herdr tab in the chosen workspace,
     /// starts the requested agent in its root pane, and returns the Agent once
@@ -365,6 +370,10 @@ extension Transport {
     func hostPlatform() async throws -> HostPlatform { .posix }
 
     func agentInfo(_ target: AgentTarget) async throws -> Agent {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func sendPaneInput(_ params: PaneSendInputParams) async throws {
         throw TransportError.hostFeatureUnavailable(feature: "Chat")
     }
 

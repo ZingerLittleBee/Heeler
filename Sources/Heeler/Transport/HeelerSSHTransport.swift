@@ -956,6 +956,13 @@ actor HeelerSSHTransport: Transport {
             decoding: OkResponse.self)
     }
 
+    func sendPaneInput(_ params: PaneSendInputParams) async throws {
+        _ = try await request(
+            method: "pane.send_input",
+            params: params,
+            decoding: OkResponse.self)
+    }
+
     /// Renames a tab. Best-effort at launch sites: the reply is `tab_info`
     /// (probed live against herdr 0.9), so a cosmetic rename must never fail
     /// a start that already succeeded.

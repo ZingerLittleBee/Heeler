@@ -519,6 +519,22 @@ final class ConsoleStore {
         return ANSIScreenDecoder.decode(read.text)
     }
 
+    /// Presses keys in the Agent's program (`agent.send_keys`): a Blocked
+    /// card's answers and the Agent controls, never through the Attach PTY.
+    func sendAgentKeys(_ keys: [String], to paneID: String, on hostID: Host.ID) async throws {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.sendAgentKeys(AgentSendKeysParams(keys: keys, target: paneID))
+        }
+    }
+
+    /// Types one line of text into the Agent's pane (`pane.send_input`): a
+    /// Blocked card's note or typed answer.
+    func pasteIntoAgent(_ text: String, paneID: String, on hostID: Host.ID) async throws {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.sendPaneInput(PaneSendInputParams(paneID: paneID, text: text))
+        }
+    }
+
     /// One Composer per selected Agent for the lifetime of its Host catalog
     /// entry. The Console detail may be replaced by a reconnect placeholder;
     /// retaining the store here keeps its entirely local draft intact.
