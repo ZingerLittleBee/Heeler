@@ -80,6 +80,15 @@ struct ComposerStagingOwnershipTests {
 
         try await fixture.expectUploaded(held)
         changes.close()
+        // Hiding the window mid-pop leaves the scene's keyboard layout guide
+        // offset by the transition, which later keyboard tests then read.
+        try #require(
+            await Self.eventually {
+                controller.view.layoutIfNeeded()
+                let stacks = ChangesViewTests.navigationControllers(in: controller)
+                return !stacks.isEmpty
+                    && stacks.allSatisfy { $0.viewControllers.count == 1 && $0.transitionCoordinator == nil }
+            }, "Changes should finish popping")
         await fixture.tearDown()
     }
 
