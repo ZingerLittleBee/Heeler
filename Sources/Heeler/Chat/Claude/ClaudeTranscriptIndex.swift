@@ -34,10 +34,12 @@ struct ClaudeTranscriptIndex: Sendable {
         var content: String?
     }
 
-    /// `system` subtypes this adapter knows; others are reported.
+    /// `system` subtypes this adapter knows, including the ones the CLI's
+    /// own renderer handles (`zm`); others are reported.
     static let knownSystemSubtypes: Set<String> = [
         "turn_duration", "compact_boundary", "local_command", "away_summary", "informational",
-        "scheduled_task_fire", "model_refusal_fallback", "agents_killed", "memory_saved", "api_error",
+        "scheduled_task_fire", "model_refusal_fallback", "model_fallback", "model_consent_fallback",
+        "agents_killed", "memory_saved", "api_error", "permission_retry", "stop_hook_summary",
     ]
 
     mutating func apply(_ line: ChatLine) {
