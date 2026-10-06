@@ -30,6 +30,20 @@ enum ClaudeTranscriptProjection {
             links: index.links, diagnostics: index.diagnostics)
     }
 
+    /// The output `record` holds for the call `use`, as its row's preview
+    /// is built. Nil when the record holds no result for it.
+    static func output(of use: ClaudeToolUse, in record: ClaudeRecord) -> ChatToolOutput? {
+        guard let answer = Builder.answers(in: record).first(where: { $0.result.toolUseID == use.id }) else {
+            return nil
+        }
+        let preview = ClaudeToolSummary.preview(
+            for: use, result: answer.result, details: record.toolResult, outcome: answer.outcome)
+        if let path = record.toolResult?.result?.persistedOutputPath {
+            return .file(path, fallback: preview)
+        }
+        return .preview(preview)
+    }
+
     // MARK: - Recorded prompts
 
     /// Every prompt a person typed, in file order, from all records rather
@@ -573,20 +587,26 @@ private struct Builder {
         return nil
     }
 
-    private mutating func collectAnswers(in record: ClaudeRecord) {
-        var current: Answer?
+    /// The results a record carries, each with the text blocks after it.
+    static func answers(in record: ClaudeRecord) -> [Answer] {
+        var answers: [Answer] = []
         for block in record.blocks {
             switch block {
             case .toolResult(let result):
-                if let current { store(current) }
-                current = Answer(record: record, result: result)
-            case .text(let text):
-                current?.trailingTexts.append(text)
+                answers.append(Answer(record: record, result: result))
+            case .text(let text) where !answers.isEmpty:
+                answers[answers.count - 1].trailingTexts.append(text)
             default:
                 break
             }
         }
-        if let current { store(current) }
+        return answers
+    }
+
+    private mutating func collectAnswers(in record: ClaudeRecord) {
+        for answer in Self.answers(in: record) {
+            store(answer)
+        }
     }
 
     private mutating func store(_ answer: Answer) {

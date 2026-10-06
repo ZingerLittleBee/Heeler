@@ -8,7 +8,9 @@ struct ChatTimelineActions {
     var followingChanged: @MainActor (Bool) -> Void = { _ in }
     /// The first layout that shows content, positioned at its end.
     var firstPositionedLayout: @MainActor () -> Void = {}
-    /// Shown in an expanded tool row whose output this device never read.
+    /// An expanded tool row has no output to show, or only its start.
+    var loadOutput: @MainActor (ChatEntryID) -> Void = { _ in }
+    /// Shown in an expanded tool row whose output was never read.
     var missingOutputText: String = "Output is available when connected."
 }
 
@@ -177,6 +179,15 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         snapshot.reconfigureItems(changed)
         expanded.formIntersection(rowsByID.keys)
+        // A row expanded while it ran may have output now. The request
+        // waits for this update to finish, since it changes what the list
+        // is built from.
+        let wanting = changed.filter { expanded.contains($0) && wantsOutput($0, retrying: false) }
+        if !wanting.isEmpty {
+            Task { @MainActor [weak self] in
+                for id in wanting { self?.requestOutput(id) }
+            }
+        }
         UIView.performWithoutAnimation {
             dataSource.apply(snapshot, animatingDifferences: false)
             collectionView.layoutIfNeeded()
@@ -279,6 +290,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             expanded.remove(id)
         } else {
             expanded.insert(id)
+            if wantsOutput(id, retrying: true) { requestOutput(id) }
         }
         var snapshot = dataSource.snapshot()
         snapshot.reconfigureItems([id])
@@ -289,6 +301,25 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         latch.disclosureSettled(isAtEnd: isAtEnd)
         noteFollowing()
+    }
+
+    /// Whether an expanded tool row should read its output again: it has
+    /// none to show, or only the start, and no read has answered. Only a
+    /// tap tries a failed read again.
+    private func wantsOutput(_ id: ChatRowID, retrying: Bool) -> Bool {
+        guard case .tool(let tool)? = rowsByID[id]?.content, tool.output != nil,
+            tool.preview?.isTruncated ?? true
+        else { return false }
+        switch tool.outputRead {
+        case nil: return true
+        case .failed?: return retrying
+        case .loading?, .read?: return false
+        }
+    }
+
+    private func requestOutput(_ id: ChatRowID) {
+        guard case .entry(let entryID) = id else { return }
+        actions.loadOutput(entryID)
     }
 
     /// A row's top edge relative to the visible top.

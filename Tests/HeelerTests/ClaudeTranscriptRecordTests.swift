@@ -139,8 +139,8 @@ struct ClaudeTranscriptRecordTests {
         #expect(creation.diff == ChatDiffStats(added: 5_000, removed: 0))
         let preview = try #require(creation.diffPreview)
         #expect(preview.isTruncated)
-        #expect(preview.text.utf8.count <= ChatToolPreview.maximumBytes)
-        #expect(preview.text.split(separator: "\n", omittingEmptySubsequences: false).count <= ChatToolPreview.maximumLines + 1)
+        #expect(preview.text.utf8.count <= ChatToolPreview.rowLimits.bytes)
+        #expect(preview.text.split(separator: "\n", omittingEmptySubsequences: false).count <= ChatToolPreview.rowLimits.lines + 1)
     }
 
     @Test("Images keep only their count")

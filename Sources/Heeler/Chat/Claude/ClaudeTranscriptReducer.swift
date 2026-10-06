@@ -24,10 +24,14 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
     static let revision = 1
 
     let role: Role
+    /// The file being read, whose sidecar directory holds the outputs
+    /// Claude Code spills; nil reads none of them.
+    let transcriptPath: String?
     private(set) var index = ClaudeTranscriptIndex()
 
-    init(role: Role = .main) {
+    init(role: Role = .main, transcriptPath: String? = nil) {
         self.role = role
+        self.transcriptPath = transcriptPath
     }
 
     mutating func append(_ lines: [ChatLine]) {
@@ -51,6 +55,31 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
 
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
         ClaudeTranscriptProjection.transcript(index: index, chain: chain(context), role: role, context: context)
+    }
+
+    /// The result record's output for the call, built as its row's preview
+    /// is. A call whose record is not indexed (an older page not loaded)
+    /// builds it from the tool's name alone.
+    func output(of line: ChatLine, for tool: ChatToolActivity) -> ChatToolOutput? {
+        guard let callID = tool.callID, case .record(let record) = ClaudeLine.decode(line) else { return nil }
+        let use =
+            index.records.values.lazy.flatMap(\.toolUses).first { $0.id == callID }
+            ?? ClaudeToolUse(id: callID, name: tool.name, input: ClaudeToolInput())
+        switch ClaudeTranscriptProjection.output(of: use, in: record) {
+        case .file(let path, let fallback)?:
+            return isSpilledOutput(path) ? .file(path, fallback: fallback) : .preview(fallback)
+        case let output:
+            return output
+        }
+    }
+
+    /// Claude Code spills a long output into `tool-results` beside the
+    /// transcript (`<session>/tool-results/`); no other file is read.
+    private func isSpilledOutput(_ path: String) -> Bool {
+        guard let transcriptPath, transcriptPath.hasSuffix(".jsonl"), RemoteFilePath.isAcceptable(path) else {
+            return false
+        }
+        return path.hasPrefix(String(transcriptPath.dropLast(".jsonl".count)) + "/tool-results/")
     }
 
     /// The form a sent prompt and a recorded one are compared in (brief §7):

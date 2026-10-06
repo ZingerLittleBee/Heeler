@@ -78,6 +78,8 @@ final class AgentChatStore {
     private(set) var sendStatuses: [UUID: SendStatus] = [:]
     /// The dialog the Agent waits on while herdr reports it Blocked.
     let blocked: BlockedCardStore
+    /// Output read again for expanded tool rows in this conversation.
+    private(set) var outputs = ChatToolOutputs()
 
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
@@ -112,6 +114,10 @@ final class AgentChatStore {
     @ObservationIgnored private var claimedOffsets: Set<UInt64> = []
     @ObservationIgnored private var claimedGeneration = 0
     @ObservationIgnored private var skillNames: Set<String> = []
+    /// Rows expanded before the transcript was open, read once it is.
+    @ObservationIgnored private var waitingOutputs: Set<ChatEntryID> = []
+    /// The latest read for each row, kept so tests can wait for them.
+    @ObservationIgnored private var outputReads: [ChatEntryID: Task<Void, Never>] = [:]
 
     private struct TrackedSend {
         let id: UUID
@@ -204,6 +210,34 @@ final class AgentChatStore {
         olderRequested = true
         conversation.older = .loading
         wake()
+    }
+
+    /// Reads a tool's output again for its expanded row, once the
+    /// transcript is open. A read that failed is tried again. Reads run
+    /// beside the loop: they change nothing it follows.
+    func loadOutput(_ id: ChatEntryID) {
+        guard case .tool(let tool)? = conversation.transcript.entries.last(where: { $0.id == id })?.content,
+            let reference = tool.output, outputs.needsRead(id, at: reference)
+        else { return }
+        guard case .following = conversation.phase, let engine else {
+            waitingOutputs.insert(id)
+            return
+        }
+        waitingOutputs.remove(id)
+        outputs.begin(id, at: reference)
+        let generation = conversationGeneration
+        outputReads[id] = Task { [weak self] in
+            let result = await engine.output(of: tool)
+            guard let self, conversationGeneration == generation else { return }
+            outputs.finish(id, at: reference, with: result)
+        }
+    }
+
+    /// Resolves once every output read so far has finished, for tests.
+    func outputReadsSettled() async {
+        for read in outputReads.values {
+            await read.value
+        }
     }
 
     /// Looks for the transcript again now, after a failure or an
@@ -405,6 +439,9 @@ final class AgentChatStore {
         olderRequested = false
         nextOpen = nil
         failedOpens = 0
+        // Reads still running for the last conversation drop their results.
+        outputs = ChatToolOutputs()
+        waitingOutputs = []
         if target == nil {
             showUnavailable()
         } else {
@@ -443,6 +480,13 @@ final class AgentChatStore {
         if olderRequested, next.older == .available { next.older = .loading }
         conversation = next
         blocked.update(transcript: next.transcript)
+        if case .following = next.phase, !waitingOutputs.isEmpty {
+            let waiting = waitingOutputs
+            waitingOutputs = []
+            for id in waiting {
+                loadOutput(id)
+            }
+        }
         if let linked = snapshot.transcript.links.continuedInSessionID
             .flatMap(ConversationReference.canonicalUUID),
             linked != followed?.sessionID

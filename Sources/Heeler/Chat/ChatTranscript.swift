@@ -188,6 +188,16 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         case stopped
     }
 
+    /// Where reading the output again for an expanded row stands.
+    enum OutputRead: Equatable, Sendable {
+        case loading
+        /// `preview` holds what the read found, or the earlier preview when
+        /// it found none.
+        case read
+        /// Why the output could not be read, as the row says it.
+        case failed(String)
+    }
+
     var kind: Kind
     /// The program's own tool name: `Bash`, `Edit`, `exec_command`.
     var name: String
@@ -206,14 +216,17 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     /// The tool's id in the transcript (`toolu_…`, `call_…`), used to match a
     /// Blocked card's request and the program's later records.
     var callID: String?
-    /// The first 40 lines or 8 KB of output. Held in memory only: the cache
-    /// stores entries without tool output, and an expanded row re-reads it.
+    /// The start of the output: what `ChatToolPreview.rowLimits` keeps, or
+    /// more once an expanded row read it again. Held in memory only: the
+    /// cache stores entries without tool output.
     var preview: ChatToolPreview?
     /// Where the full output can be re-read on demand.
     var output: ChatOutputReference?
     /// What the transcript can't tell: an approval given in Chat reads there
     /// like an automatic one, and Stop like a decline. Held in memory only.
     var cardAnswer: CardAnswer?
+    /// Reading the output again for an expanded row. Held in memory only.
+    var outputRead: OutputRead?
 
     init(
         kind: Kind, name: String, title: String, subtitle: String? = nil,
@@ -235,8 +248,8 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         self.output = output
     }
 
-    // `preview` and `cardAnswer` are deliberately absent: decoding leaves
-    // them nil.
+    // `preview`, `cardAnswer` and `outputRead` are deliberately absent:
+    // decoding leaves them nil.
     private enum CodingKeys: String, CodingKey {
         case kind, name, title, subtitle, status, note, diff, exitCode, questions, callID, output
     }
@@ -257,18 +270,30 @@ struct ChatDiffStats: Equatable, Codable, Sendable {
 
 /// The capped start of a tool's output.
 struct ChatToolPreview: Equatable, Sendable {
-    /// At most `ChatToolPreview.maximumLines` lines and
-    /// `ChatToolPreview.maximumBytes` UTF-8 bytes.
+    /// At most the lines and UTF-8 bytes `limits` allowed when it was
+    /// capped.
     var text: String
     /// True when the output continued past the cap.
     var isTruncated: Bool
     /// Images in the output, shown as placeholders.
     var imageCount: Int
 
-    static let maximumLines = 40
-    static let maximumBytes = 8 * 1_024
-    /// The most an expanded row fetches on demand.
+    /// How much of an output a preview keeps.
+    struct Limits: Equatable, Sendable {
+        var lines: Int
+        var bytes: Int
+    }
+
+    /// What every decoded row keeps.
+    static let rowLimits = Limits(lines: 40, bytes: 8 * 1_024)
+    /// What an expanded row keeps when it reads the output again.
+    static let expandedLimits = Limits(lines: 1_000, bytes: 64 * 1_024)
+    /// The longest line an expanded row reads again.
     static let maximumFetchBytes = 1_024 * 1_024
+
+    /// The limits `init(capping:)` applies: `rowLimits`, except while an
+    /// expanded row's output is decoded again.
+    @TaskLocal static var limits = rowLimits
 
     init(text: String, isTruncated: Bool, imageCount: Int = 0) {
         self.text = text
@@ -276,8 +301,9 @@ struct ChatToolPreview: Equatable, Sendable {
         self.imageCount = imageCount
     }
 
-    /// Caps `output` at 40 lines and 8 KB, never splitting a character.
+    /// Caps `output` at `limits`, never splitting a character.
     init(capping output: String, imageCount: Int = 0) {
+        let limits = Self.limits
         var lines = 0
         var bytes = 0
         var end = output.startIndex
@@ -285,13 +311,13 @@ struct ChatToolPreview: Equatable, Sendable {
         for index in output.indices {
             let character = output[index]
             let size = character.utf8.count
-            if bytes + size > Self.maximumBytes {
+            if bytes + size > limits.bytes {
                 truncated = true
                 break
             }
             if character == "\n" || character == "\r\n" {
                 lines += 1
-                if lines == Self.maximumLines {
+                if lines == limits.lines {
                     truncated = output.index(after: index) < output.endIndex
                     break
                 }
@@ -315,6 +341,16 @@ struct ChatOutputReference: Equatable, Codable, Sendable {
         self.offset = offset
         self.length = length
     }
+}
+
+/// A tool's output decoded again from the line its row references.
+enum ChatToolOutput: Equatable, Sendable {
+    /// The output as `ChatToolPreview.limits` caps it; nil when the call
+    /// recorded none.
+    case preview(ChatToolPreview?)
+    /// The program moved the output to this file. `fallback` is what the
+    /// line itself keeps.
+    case file(String, fallback: ChatToolPreview?)
 }
 
 /// A plan the Agent proposed, rendered as Markdown.
@@ -600,8 +636,14 @@ protocol ChatTranscriptReducer: Sendable {
     /// does not read, such as a Codex rollout from before the envelope
     /// format. Chat then explains instead of showing a partial conversation.
     var unsupportedFormat: String? { get }
+    /// The output `line` holds for `tool`, decoded again for an expanded
+    /// row. Nil when the line no longer holds that call, as after the file
+    /// was rewritten.
+    func output(of line: ChatLine, for tool: ChatToolActivity) -> ChatToolOutput?
 }
 
 extension ChatTranscriptReducer {
     var unsupportedFormat: String? { nil }
+
+    func output(of line: ChatLine, for tool: ChatToolActivity) -> ChatToolOutput? { nil }
 }

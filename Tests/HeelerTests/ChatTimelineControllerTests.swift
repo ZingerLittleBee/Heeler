@@ -169,6 +169,93 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    @Test func expandingAToolRowAsksForOutputItHasNoneOrOnlyTheStartOf() async throws {
+        var requested: [ChatEntryID] = []
+        var actions = ChatTimelineActions()
+        actions.loadOutput = { requested.append($0) }
+        let controller = ChatTimelineController(actions: actions)
+        let reference = ChatOutputReference(offset: 0, length: 10)
+        let entries = [
+            Self.tool("cut", preview: ChatToolPreview(text: "line 1", isTruncated: true), output: reference),
+            Self.tool("whole", preview: ChatToolPreview(text: "line 1", isTruncated: false), output: reference),
+            Self.tool("saved", preview: nil, output: reference),
+            Self.tool("running", preview: nil, output: nil, status: .running),
+        ]
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: entries))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+
+            for row in rows { controller.toggle(row.id) }
+
+            #expect(requested == [ChatEntryID("cut"), ChatEntryID("saved")])
+        }
+    }
+
+    @Test func aRowExpandedWhileItRanAsksOnceItHasOutputAndOnlyATapRetries() async throws {
+        var requested: [ChatEntryID] = []
+        var actions = ChatTimelineActions()
+        actions.loadOutput = { requested.append($0) }
+        let controller = ChatTimelineController(actions: actions)
+        let builder = ChatRowBuilder()
+        let id = ChatEntryID("step")
+        let reference = ChatOutputReference(offset: 0, length: 10)
+        let cut = ChatToolPreview(text: "line 1", isTruncated: true)
+        let running = await builder.rows(
+            for: ChatTimelineInput(entries: [Self.tool("step", preview: nil, output: nil, status: .running)]))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(running))
+            await Self.settle(controller)
+            controller.toggle(.entry(id))
+            #expect(requested.isEmpty)
+
+            let done = await builder.rows(
+                for: ChatTimelineInput(entries: [Self.tool("step", preview: cut, output: reference)]))
+            controller.apply(Self.state(done, revision: 2))
+            await Self.settle(controller)
+            #expect(requested == [id])
+
+            // The read failed: an update leaves it be, and a tap tries again.
+            let failed = await builder.rows(
+                for: ChatTimelineInput(entries: [
+                    Self.tool("step", preview: cut, output: reference, outputRead: .failed("Couldn't load output."))
+                ]))
+            controller.apply(Self.state(failed, revision: 3))
+            await Self.settle(controller)
+            #expect(requested == [id])
+            controller.toggle(.entry(id))
+            controller.toggle(.entry(id))
+            #expect(requested == [id, id])
+        }
+    }
+
+    @Test func aLongOutputScrollsInsideABoxOfItsOwn() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let short = ChatRowID.entry(ChatEntryID("short"))
+        let long = ChatRowID.entry(ChatEntryID("long"))
+        let rows = await ChatRowBuilder().rows(
+            for: ChatTimelineInput(entries: [
+                Self.tool("short", preview: ChatToolPreview(text: Self.outputLines(3), isTruncated: false), output: nil),
+                Self.tool("long", preview: ChatToolPreview(text: Self.outputLines(200), isTruncated: false), output: nil),
+            ]))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let folded = try #require(controller.cellFrame(of: short)).height
+
+            controller.toggle(short)
+            controller.toggle(long)
+            await Self.settle(controller)
+
+            // Three lines: the box hugs its text.
+            #expect(try #require(controller.cellFrame(of: short)).height - folded < 100)
+            // Two hundred: the box stops growing and scrolls.
+            let grown = try #require(controller.cellFrame(of: long)).height - folded
+            #expect(grown > 200)
+            #expect(grown < 300)
+        }
+    }
+
     @Test func anotherConversationOpensAtItsEnd() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<60)))
@@ -260,6 +347,20 @@ struct ChatTimelineControllerTests {
             }
             return ChatEntry(id: ChatEntryID("e\(index)"), sourceOffset: UInt64(index) * 100, content: content)
         }
+    }
+
+    private static func tool(
+        _ id: String, preview: ChatToolPreview?, output: ChatOutputReference?,
+        status: ChatToolActivity.Status = .succeeded, outputRead: ChatToolActivity.OutputRead? = nil
+    ) -> ChatEntry {
+        var tool = ChatToolActivity(
+            kind: .command, name: "Bash", title: "make test", status: status, preview: preview, output: output)
+        tool.outputRead = outputRead
+        return ChatEntry(id: ChatEntryID(id), sourceOffset: 0, content: .tool(tool))
+    }
+
+    private static func outputLines(_ count: Int) -> String {
+        (1...count).map { "line \($0) of the output" }.joined(separator: "\n")
     }
 
     /// A user scroll: the delegate sees a drag begin, the offset move, and

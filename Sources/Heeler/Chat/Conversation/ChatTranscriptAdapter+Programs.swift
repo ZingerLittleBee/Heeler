@@ -10,7 +10,7 @@ extension ChatTranscriptAdapter {
             // the subagents that wrote them.
             ChatTranscriptAdapter(
                 revision: ClaudeTranscriptReducer.revision,
-                makeReducer: { _ in ClaudeTranscriptReducer(role: .main) },
+                makeReducer: { ClaudeTranscriptReducer(role: .main, transcriptPath: $0.path) },
                 echoKey: { ClaudeTranscriptReducer.echoKey($0) })
         case .codex:
             // Line 1's `session_meta` names the rollout's dialect, so a tail

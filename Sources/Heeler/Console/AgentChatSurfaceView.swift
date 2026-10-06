@@ -243,11 +243,10 @@ struct AgentChatSurfaceView: View {
             }
         }
         .onChange(of: timelineFeed, initial: true) { _, feed in
+            let entries = feed.history.marking(chat?.conversation.transcript.entries ?? [])
             timeline.update(
                 conversation: feed.generation,
-                input: ChatTimelineInput(
-                    entries: feed.history.marking(chat?.conversation.transcript.entries ?? []),
-                    pending: feed.pending, older: feed.older),
+                input: ChatTimelineInput(entries: feed.outputs.marking(entries), pending: feed.pending, older: feed.older),
                 isReady: feed.isReady)
         }
         .onChange(of: sentMessages, initial: true) { previous, messages in
@@ -489,6 +488,8 @@ struct AgentChatSurfaceView: View {
         var pending: [ChatPendingEcho]
         /// Blocked card answers the entries can't show by themselves.
         var history: BlockedHistory
+        /// Output expanded rows read again.
+        var outputs: ChatToolOutputs
         var isReady: Bool
     }
 
@@ -496,7 +497,7 @@ struct AgentChatSurfaceView: View {
         guard let chat else {
             return TimelineFeed(
                 generation: 0, revision: 0, older: .reachedStart, pending: [], history: BlockedHistory(),
-                isReady: false)
+                outputs: ChatToolOutputs(), isReady: false)
         }
         let conversation = chat.conversation
         let pending = pendingEchoes
@@ -504,7 +505,8 @@ struct AgentChatSurfaceView: View {
         if case .locating = conversation.phase {} else { isReady = true }
         return TimelineFeed(
             generation: chat.conversationGeneration, revision: conversation.revision,
-            older: conversation.older, pending: pending, history: chat.blocked.history, isReady: isReady)
+            older: conversation.older, pending: pending, history: chat.blocked.history, outputs: chat.outputs,
+            isReady: isReady)
     }
 
     private var timelineActions: ChatTimelineActions {
@@ -512,10 +514,17 @@ struct AgentChatSurfaceView: View {
             loadOlder: { chat?.loadOlder() },
             followingChanged: { isFollowing = $0 },
             firstPositionedLayout: { detailCrossfade?.contentDidAppear() },
-            // Saved entries keep no tool output.
-            missingOutputText: console.hostStatuses[agent.hostID] == .connected
-                ? "This output isn't saved on this device."
-                : "Output is available when connected.")
+            loadOutput: { chat?.loadOutput($0) },
+            missingOutputText: missingOutputText)
+    }
+
+    /// What an expanded row whose output was never read says until it can
+    /// be: saved entries keep no tool output, and a row expanded before the
+    /// transcript opens is read once it does.
+    private var missingOutputText: String {
+        guard console.hostStatuses[agent.hostID] == .connected else { return "Output is available when connected." }
+        if case .unavailable = chat?.conversation.phase { return ChatToolOutputFailure.gone.message }
+        return "Loading output…"
     }
 
     private var pendingEchoes: [ChatPendingEcho] {

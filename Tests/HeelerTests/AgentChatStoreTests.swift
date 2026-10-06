@@ -381,6 +381,67 @@ struct AgentChatStoreTests {
         #expect(fixture.store.sendStatuses.isEmpty)
     }
 
+    // MARK: Tool output
+
+    @Test func anExpandedToolRowReadsItsOutputOnce() async throws {
+        let fixture = Fixture(session: Self.first)
+        let id = ChatEntryID("t-5")
+        await fixture.files.write(
+            NumberedChatReducer.lines(0..<2) + NumberedChatReducer.tool(5, output: "built\nok"),
+            at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.files.clearRecords()
+
+        fixture.store.loadOutput(id)
+        #expect(fixture.store.outputs.loads[id]?.state == .loading)
+        fixture.store.loadOutput(id)
+        await fixture.store.outputReadsSettled()
+
+        #expect(fixture.store.outputs.loads[id]?.state == .read(ChatToolPreview(text: "built\nok", isTruncated: false)))
+        fixture.store.loadOutput(id)
+        await fixture.store.outputReadsSettled()
+        #expect(await fixture.files.reads.count == 1)
+    }
+
+    @Test func aRowExpandedWhileTheTranscriptIsMissingIsReadOnceItIsBack() async throws {
+        let fixture = Fixture(session: Self.first)
+        let id = ChatEntryID("t-5")
+        let path = Self.path(Self.first)
+        let contents = NumberedChatReducer.lines(0..<2) + NumberedChatReducer.tool(5, output: "built")
+        await fixture.files.write(contents, at: path)
+        await fixture.store.step()
+        // Gone for now: Chat keeps showing what it read.
+        await fixture.files.remove(path)
+        await fixture.store.step()
+        guard case .unavailable = fixture.store.conversation.phase else {
+            Issue.record("Expected the transcript to be unavailable, got \(fixture.store.conversation.phase)")
+            return
+        }
+        #expect(Self.ids(fixture.store).contains("t-5"))
+
+        fixture.store.loadOutput(id)
+        #expect(fixture.store.outputs.isEmpty)
+
+        await fixture.files.write(contents, at: path)
+        fixture.store.retry()
+        await fixture.store.step()
+        await fixture.store.outputReadsSettled()
+        #expect(fixture.store.outputs.loads[id]?.state == .read(ChatToolPreview(text: "built", isTruncated: false)))
+    }
+
+    @Test func aReadForAnEarlierConversationIsDropped() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.tool(5, output: "first"), at: Self.path(Self.first))
+        await fixture.files.write(NumberedChatReducer.tool(5, output: "second"), at: Self.path(Self.second))
+        await fixture.store.step()
+
+        fixture.store.loadOutput(ChatEntryID("t-5"))
+        fixture.store.agentDidChange(Self.agent(session: Self.second))
+        await fixture.store.outputReadsSettled()
+
+        #expect(fixture.store.outputs.isEmpty)
+    }
+
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {
         guard case .hit(let document) = await cache.load(key) else { return [] }
         return document.entries.map(\.id.rawValue)

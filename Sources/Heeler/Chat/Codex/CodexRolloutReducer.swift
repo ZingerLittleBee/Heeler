@@ -153,6 +153,23 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
         projection(context).transcript
     }
 
+    /// The call's output from its item, end event or response line, decoded
+    /// whatever its size: the caller already bounded the line.
+    func output(of line: ChatLine, for tool: ChatToolActivity) -> ChatToolOutput? {
+        guard let dialect else { return nil }
+        var context = CodexRecordDecoder.Context(dialect: dialect, cwd: meta?.cwd)
+        context.outputDecodeLimit = .max
+        switch Self.decode(line, context: context).outcome.record {
+        case .item(_, let item)?, .legacyItem(let item, _)?:
+            guard case .tool(let snapshot) = item.content, snapshot.callID == tool.callID else { return nil }
+            return .preview(snapshot.preview)
+        case .callOutput(let output)?:
+            return output.callID == tool.callID ? .preview(output.preview) : nil
+        default:
+            return nil
+        }
+    }
+
     func projection(_ context: ChatProjectionContext) -> CodexProjection {
         var timeline = timeline
         if context.windowStart > 0 {

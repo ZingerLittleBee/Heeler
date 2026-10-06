@@ -6,15 +6,19 @@ import Foundation
 /// line becomes one user entry `n-k`; the conversation is titled with the
 /// first line it was seeded with; `{"format":"old"}` is a format it does
 /// not read; `{"continued":"<id>"}` links to another session;
-/// `{"prompt":"<text>"}` is a typed prompt the file records, and
-/// `{"compacted":true}` a compaction.
+/// `{"prompt":"<text>"}` is a typed prompt the file records,
+/// `{"compacted":true}` a compaction, and `{"tool":k,"output":"<text>"}`
+/// tool row `t-k`, which references its line for the output instead of
+/// keeping a preview, as a saved entry does.
 struct NumberedChatReducer: ChatTranscriptReducer {
-    private struct Record: Decodable {
-        let n: Int?
-        let format: String?
-        let continued: String?
-        let prompt: String?
-        let compacted: Bool?
+    private struct Record: Codable {
+        var n: Int?
+        var format: String?
+        var continued: String?
+        var prompt: String?
+        var compacted: Bool?
+        var tool: Int?
+        var output: String?
     }
 
     let seed: ChatReducerSeed
@@ -55,6 +59,11 @@ struct NumberedChatReducer: ChatTranscriptReducer {
 
     static let compaction = #"{"compacted":true}"# + "\n"
 
+    static func tool(_ n: Int, output: String) -> String {
+        let data = (try? JSONEncoder().encode(Record(tool: n, output: output))) ?? Data()
+        return String(decoding: data, as: UTF8.self) + "\n"
+    }
+
     mutating func append(_ lines: [ChatLine]) { self.lines += lines }
     mutating func prepend(_ lines: [ChatLine]) { self.lines = lines + self.lines }
 
@@ -71,6 +80,15 @@ struct NumberedChatReducer: ChatTranscriptReducer {
                     return ChatEntry(
                         id: ChatEntryID("c-\(line.offset)"), sourceOffset: line.offset,
                         content: .divider(ChatDivider(kind: .compaction)))
+                }
+                if let tool = record?.tool {
+                    return ChatEntry(
+                        id: ChatEntryID("t-\(tool)"), sourceOffset: line.offset,
+                        content: .tool(
+                            ChatToolActivity(
+                                kind: .command, name: "Bash", title: "step \(tool)", status: .succeeded,
+                                callID: "call-\(tool)",
+                                output: ChatOutputReference(offset: line.offset, length: line.length))))
                 }
                 guard let n = record?.n else { return nil }
                 return ChatEntry(
@@ -90,6 +108,11 @@ struct NumberedChatReducer: ChatTranscriptReducer {
 
     var unsupportedFormat: String? {
         lines.lazy.compactMap { Self.record($0)?.format }.first
+    }
+
+    func output(of line: ChatLine, for tool: ChatToolActivity) -> ChatToolOutput? {
+        guard let record = Self.record(line), let n = record.tool, tool.callID == "call-\(n)" else { return nil }
+        return .preview(record.output.map { ChatToolPreview(capping: $0) })
     }
 
     private static func record(_ line: ChatLine) -> Record? {

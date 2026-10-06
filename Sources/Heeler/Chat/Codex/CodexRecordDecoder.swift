@@ -42,6 +42,9 @@ enum CodexRecordDecoder {
         var dialect: CodexRolloutDialect
         /// The session's working directory, for relative paths in titles.
         var cwd: String?
+        /// The longest tool output decoded; an expanded row reading one
+        /// again raises it.
+        var outputDecodeLimit = CodexRecordDecoder.outputDecodeLimit
     }
 
     /// Event types some Codex version persists. Others are unknown to this
@@ -69,8 +72,8 @@ enum CodexRecordDecoder {
         .collabAgentToolCall, .subAgentActivity, .extension, .enteredReviewMode, .exitedReviewMode,
     ]
 
-    /// Tool outputs up to this size are decoded: question answers and legacy
-    /// previews. Larger ones only resolve their call.
+    /// Tool outputs up to this size are decoded while following: question
+    /// answers and legacy previews. Larger ones only resolve their call.
     static let outputDecodeLimit = 256 * 1_024
 
     /// The text Codex records when a question closes unanswered.
@@ -479,12 +482,12 @@ enum CodexRecordDecoder {
     /// outputs, so one without the word `answers` (or the cancellation text)
     /// is never decoded: it still resolves its call by id, in case that call
     /// was a question Codex closed. Legacy rollouts decode outputs for their
-    /// exit code and preview, up to `outputDecodeLimit`.
+    /// exit code and preview, up to the context's `outputDecodeLimit`.
     private static func decodeOutput(
         _ line: ChatLine, _ classification: CodexLineClassification, _ context: Context
     ) -> CodexLineOutcome {
         let decodes =
-            !line.isTruncated && line.length <= outputDecodeLimit
+            !line.isTruncated && line.length <= context.outputDecodeLimit
             && (context.dialect == .legacy || mayHoldAnswers(line.data))
         guard decodes else {
             guard let callID = classification.callID ?? reclassified(line)?.callID else {

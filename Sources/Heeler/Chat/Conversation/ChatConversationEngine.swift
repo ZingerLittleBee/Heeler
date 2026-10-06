@@ -30,6 +30,29 @@ enum ChatOlderHistory: Equatable, Sendable {
     case failed(String)
 }
 
+/// Why an expanded row's output could not be read again.
+enum ChatToolOutputFailure: Error, Equatable, Sendable {
+    /// No transcript is open to read it from.
+    case notFollowing
+    /// Its line is longer than `ChatToolPreview.maximumFetchBytes`.
+    case tooLong
+    /// The line no longer holds the call: the file was rewritten or is
+    /// gone.
+    case gone
+    /// The Host could not be read, for this reason.
+    case unreadable(String)
+
+    /// What the row says.
+    var message: String {
+        switch self {
+        case .notFollowing: "Output is available when connected."
+        case .tooLong: "This output is too long to show here."
+        case .gone: "Output is no longer available."
+        case .unreadable(let reason): "Couldn't load output: \(reason)"
+        }
+    }
+}
+
 /// What one conversation looks like after its engine's last step.
 struct ChatConversationSnapshot: Equatable, Sendable {
     enum Phase: Equatable, Sendable {
@@ -84,7 +107,8 @@ struct ChatTranscriptAdapter: Sendable {
 ///
 /// The owner makes one call at a time and waits for it. Each call may read
 /// the Host several times, and a second call interleaved at one of those
-/// awaits would follow the file from a stale offset.
+/// awaits would follow the file from a stale offset. `output(of:)` is the
+/// exception: it changes nothing, so it may run alongside.
 actor ChatConversationEngine {
     let reference: ConversationReference
     let cacheKey: ChatCacheKey
@@ -266,6 +290,55 @@ actor ChatConversationEngine {
         // fresh tail, or a rewrite's.
         cached = document
         lastSave = (snapshot.revision, date)
+    }
+
+    // MARK: Output
+
+    /// A tool's output read again for an expanded row: the line its row
+    /// references, decoded up to `ChatToolPreview.expandedLimits`, or the
+    /// start of the file the program moved a long output to. Nil when the
+    /// output has nothing to show.
+    func output(of tool: ChatToolActivity) async -> Result<ChatToolPreview?, ChatToolOutputFailure> {
+        guard let reference = tool.output, let reducer, let path = reference.path ?? follower?.path else {
+            return .failure(.notFollowing)
+        }
+        guard reference.length <= ChatToolPreview.maximumFetchBytes else { return .failure(.tooLong) }
+        do {
+            guard
+                let data = try await files.read(
+                    path: path, from: reference.offset, to: reference.offset + UInt64(reference.length),
+                    chunk: 256 << 10),
+                data.count == reference.length
+            else { return .failure(.gone) }
+            let line = ChatLine(offset: reference.offset, data: data)
+            let output = ChatToolPreview.$limits.withValue(ChatToolPreview.expandedLimits) {
+                reducer.output(of: line, for: tool)
+            }
+            switch output {
+            case .preview(let preview)?:
+                return .success(preview)
+            case .file(let file, let fallback)?:
+                return .success(try await spilledOutput(file) ?? fallback)
+            case nil:
+                return .failure(.gone)
+            }
+        } catch {
+            return .failure(
+                .unreadable((error as? TransportError)?.presentation.summary ?? "The Host could not be read."))
+        }
+    }
+
+    /// The start of a file a long output was moved to, capped like a line's
+    /// output; nil when the file is gone. A few bytes past the cap say
+    /// whether there is more, and keep a character cut at the end of the
+    /// read out of what shows.
+    private func spilledOutput(_ path: String) async throws -> ChatToolPreview? {
+        let limits = ChatToolPreview.expandedLimits
+        guard let data = try await files.read(path: path, from: 0, to: UInt64(limits.bytes + 4), chunk: 256 << 10)
+        else { return nil }
+        return ChatToolPreview.$limits.withValue(limits) {
+            ChatToolPreview(capping: String(decoding: data, as: UTF8.self))
+        }
     }
 
     // MARK: Locating

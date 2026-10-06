@@ -319,11 +319,7 @@ private struct ChatToolRow: View {
             }
             if let preview = tool.preview {
                 if !preview.text.isEmpty {
-                    Text(verbatim: preview.text)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(Color(uiColor: .tertiarySystemBackground), in: .rect(cornerRadius: 8))
+                    ChatToolOutputText(text: preview.text)
                 }
                 if preview.imageCount > 0 {
                     Label(
@@ -332,11 +328,15 @@ private struct ChatToolRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if preview.isTruncated {
-                    Text("Output continues in the terminal.")
+                if let continuation = Self.continuation(of: preview, read: tool.outputRead) {
+                    Text(continuation)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            } else if let read = tool.outputRead {
+                Text(Self.missingPreview(read))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } else if tool.output != nil {
                 Text(missingOutputText)
                     .font(.caption)
@@ -346,6 +346,25 @@ private struct ChatToolRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// What follows a preview: the rest loading, why it could not be read,
+    /// or where it goes on. A read starts only for a preview cut short.
+    private static func continuation(of preview: ChatToolPreview, read: ChatToolActivity.OutputRead?) -> String? {
+        switch read {
+        case .loading?: "Loading the full output…"
+        case .failed(let message)?: message
+        case .read?, nil: preview.isTruncated ? "Output continues in the terminal." : nil
+        }
+    }
+
+    /// What a row with no preview says about its read.
+    private static func missingPreview(_ read: ChatToolActivity.OutputRead) -> String {
+        switch read {
+        case .loading: "Loading output…"
+        case .read: "No output."
+        case .failed(let message): message
         }
     }
 
@@ -364,6 +383,27 @@ private struct ChatToolRow: View {
         case .image: "photo"
         case .other: "wrench.and.screwdriver"
         }
+    }
+}
+
+/// A tool's output text: as tall as the text up to a limit, then scrolling
+/// inside, as T3's work log does, so a long output never makes the row a
+/// screen tall.
+private struct ChatToolOutputText: View {
+    let text: String
+    @ScaledMetric(relativeTo: .caption) private var maximumHeight: CGFloat = 240
+
+    var body: some View {
+        ScrollView {
+            Text(verbatim: text)
+                .font(.system(.caption, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: maximumHeight)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Color(uiColor: .tertiarySystemBackground), in: .rect(cornerRadius: 8))
     }
 }
 
