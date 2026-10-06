@@ -37,6 +37,7 @@ struct AgentChatSurfaceView: View {
     @State private var isFollowing = true
     /// The banners' height over the timeline's top edge.
     @State private var bannerHeight: CGFloat = 0
+    @State private var surfaceHeight: CGFloat = 0
     @State private var jumpRequest = 0
     @State private var followRequest = 0
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
@@ -121,6 +122,7 @@ struct AgentChatSurfaceView: View {
             presentedSurface
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { surfaceHeight = $0 }
         // Keyboard avoidance is `TerminalKeyboardInset`'s, as on the
         // terminal, so swapping surfaces never changes the proposal.
         .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -579,9 +581,22 @@ struct AgentChatSurfaceView: View {
                 action: { showAgentTerminal() }),
             sendPolicy: sendPolicy,
             commandMenu: commands,
-            openAgentTerminal: { showAgentTerminal() })
+            openAgentTerminal: { showAgentTerminal() },
+            inputReplacement: blockedCard,
+            focusRequest: chat?.blocked.composerFocusRequest ?? 0)
         .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
+    }
+
+    /// A Blocked Agent's dialog, answered in the Composer's place.
+    private var blockedCard: AnyView? {
+        guard let chat, chat.blocked.content != .none else { return nil }
+        return AnyView(
+            BlockedCardView(
+                store: chat.blocked,
+                // Leaves the conversation room above, keyboard up or not.
+                maxHeight: max(120, (surfaceHeight - composerKeyboardLayout.contentInset) * 0.4),
+                openTerminal: { showAgentTerminal() }))
     }
 
     private var composerActions: AgentComposerActions {

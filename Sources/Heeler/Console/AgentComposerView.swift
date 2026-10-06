@@ -150,6 +150,10 @@ struct AgentComposerView: View {
     var commandMenu: [ChatCommand]? = nil
     /// Offered beside a refusal the terminal can carry out.
     var openAgentTerminal: (() -> Void)? = nil
+    /// Shown in the input's place, above the switcher: Chat's Blocked card.
+    var inputReplacement: AnyView? = nil
+    /// Bumped to put the caret in the input.
+    var focusRequest = 0
     @State private var isInputFocused = false
     /// Why the last Send did not go, until the draft it refused changes.
     @State private var notice: ComposerNotice?
@@ -326,6 +330,7 @@ struct AgentComposerView: View {
                             }
                         }
                     }
+                    .modifier(ComposerInputReplacement(replacement: inputReplacement))
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
                     .padding(.bottom, 8)
@@ -374,6 +379,10 @@ struct AgentComposerView: View {
             else { return }
             setKeyboardPresentation(.system)
             isInputFocused = true
+        }
+        .onChange(of: focusRequest) { _, _ in
+            // A card still in the input's place keeps the keyboard down.
+            if inputReplacement == nil { isInputFocused = true }
         }
         .onChange(of: isInputFocused) { _, isFocused in
             if isFocused {
@@ -672,6 +681,16 @@ private struct AgentComposerSendButtonStyle: ButtonStyle {
             .frame(width: 44, height: 44)
             .opacity(configuration.isPressed && isEnabled ? 0.72 : 1)
             .contentShape(.circle)
+    }
+}
+
+/// Puts another view in the input's place. The draft lives in the store,
+/// so it comes back with the input.
+private struct ComposerInputReplacement: ViewModifier {
+    let replacement: AnyView?
+
+    func body(content: Content) -> some View {
+        if let replacement { replacement } else { content }
     }
 }
 

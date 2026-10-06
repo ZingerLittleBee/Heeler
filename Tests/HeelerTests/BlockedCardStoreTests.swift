@@ -323,6 +323,26 @@ private final class ManualClock: @unchecked Sendable {
     }
 }
 
+@Suite("Agent quick key names")
+struct AgentQuickKeyHerdrNameTests {
+    @Test func everyKeyThePadSendsIsOneHerdrAccepts() {
+        let pad: [AgentQuickKey] = [.escape, .tab, .backspace, .left, .up, .right, .shiftTab, .down, .enter]
+        for key in pad {
+            let name = key.herdrKeyName
+            #expect(name.map(HerdrKeyGrammar.accepts) == true, "\(key) as \(String(describing: name))")
+        }
+        #expect(AgentQuickKey.character("+").herdrKeyName == "plus")
+        #expect(AgentQuickKey.character(" ").herdrKeyName == "space")
+        #expect(AgentQuickKey.function(.f5).herdrKeyName == "f5")
+    }
+
+    @Test func keysHerdrHasNoNameForStayUnsent() {
+        for key: AgentQuickKey in [.home, .end, .insert, .forwardDelete, .pageUp, .pageDown, .character("👍🏽")] {
+            #expect(key.herdrKeyName == nil)
+        }
+    }
+}
+
 @Suite("Blocked request match")
 struct BlockedRequestMatchTests {
     private func dialog(_ stem: String) throws -> BlockedDialog {
