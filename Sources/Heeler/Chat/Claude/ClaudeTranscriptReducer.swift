@@ -18,6 +18,11 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
         case subagent
     }
 
+    /// Bumped whenever the same lines start projecting to different entries,
+    /// so a device cache written by an older build is dropped instead of
+    /// mixed with new entries.
+    static let revision = 1
+
     let role: Role
     private(set) var index = ClaudeTranscriptIndex()
 
