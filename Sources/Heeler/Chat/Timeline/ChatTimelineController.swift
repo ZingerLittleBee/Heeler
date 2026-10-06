@@ -81,10 +81,13 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         fatalError("init(coder:) is unavailable")
     }
 
+    /// The rows' breathing room inside the list's edges.
+    private static let contentInsets = UIEdgeInsets(top: 8, left: 0, bottom: 12, right: 0)
+
     override func loadView() {
         collectionView.backgroundColor = .clear
         collectionView.contentInsetAdjustmentBehavior = .never
-        collectionView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 12, right: 0)
+        collectionView.contentInset = Self.contentInsets
         collectionView.alwaysBounceVertical = true
         collectionView.allowsSelection = false
         collectionView.keyboardDismissMode = .none
@@ -181,6 +184,22 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         layout.forgetMeasurements(keeping: Set(rowsByID.keys))
         reportFirstLayoutIfReady()
+    }
+
+    /// Keeps `height` at the top clear of rows at rest, for chrome that
+    /// floats over the list's top edge; rows still scroll beneath it. A list
+    /// resting at its top stays there.
+    func setTopObstruction(_ height: CGFloat) {
+        loadViewIfNeeded()
+        let top = Self.contentInsets.top + height
+        guard collectionView.contentInset.top != top else { return }
+        let wasAtTop = collectionView.contentOffset.y <= collectionView.minOffsetY + 0.5
+        collectionView.contentInset.top = top
+        collectionView.verticalScrollIndicatorInsets.top = height
+        if wasAtTop, !latch.isFollowing {
+            collectionView.contentOffset.y = collectionView.minOffsetY
+        }
+        collectionView.setNeedsLayout()
     }
 
     private func uniqueIDs(_ rows: [ChatRow]) -> [ChatRowID] {

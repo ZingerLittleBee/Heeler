@@ -7,6 +7,8 @@ struct ChatTimelineView: UIViewControllerRepresentable {
     let jumpRequest: Int
     /// Incremented after a send: follow the newest row again, unanimated.
     let followRequest: Int
+    /// Height of the chrome floating over the list's top edge.
+    var topObstruction: CGFloat = 0
     let actions: ChatTimelineActions
 
     func makeCoordinator() -> Coordinator {
@@ -15,12 +17,14 @@ struct ChatTimelineView: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> ChatTimelineController {
         let controller = ChatTimelineController(actions: actions)
+        controller.setTopObstruction(topObstruction)
         controller.apply(state)
         return controller
     }
 
     func updateUIViewController(_ controller: ChatTimelineController, context: Context) {
         controller.actions = actions
+        controller.setTopObstruction(topObstruction)
         controller.apply(state)
         let coordinator = context.coordinator
         if coordinator.followRequest != followRequest {

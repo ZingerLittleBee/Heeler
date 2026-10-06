@@ -206,6 +206,31 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    @Test func rowsAtRestClearTheChromeOverTheTopEdge() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<40)))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+
+            controller.setTopObstruction(52)
+            await Self.settle(controller)
+            #expect(controller.isFollowing)
+            #expect(abs(view.contentOffset.y - view.maxOffsetY) <= 0.5)
+
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+            let first = try #require(rows.first.flatMap { Self.screenY(of: $0.id, in: controller) })
+            #expect(first >= 52)
+
+            controller.setTopObstruction(96)
+            await Self.settle(controller)
+            let moved = try #require(rows.first.flatMap { Self.screenY(of: $0.id, in: controller) })
+            #expect(abs(moved - first - 44) <= 0.5)
+        }
+    }
+
     // MARK: Helpers
 
     private static func state(_ rows: [ChatRow], revision: Int = 1) -> ChatTimelineState {

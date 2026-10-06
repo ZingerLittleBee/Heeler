@@ -35,6 +35,8 @@ struct AgentChatSurfaceView: View {
     /// conversation while any window shows it.
     @State private var viewerID = UUID()
     @State private var isFollowing = true
+    /// The banners' height over the timeline's top edge.
+    @State private var bannerHeight: CGFloat = 0
     @State private var jumpRequest = 0
     @State private var followRequest = 0
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
@@ -344,26 +346,37 @@ struct AgentChatSurfaceView: View {
         .toolbar(.visible, for: .navigationBar)
     }
 
+    /// The timeline runs under the back header and the banners, which
+    /// float over its top edge; at rest its rows start below them.
     private var conversation: some View {
-        VStack(spacing: 0) {
-            banners
-            ZStack {
-                ChatTimelineView(
-                    state: timeline.state, jumpRequest: jumpRequest, followRequest: followRequest,
-                    actions: timelineActions)
-                .accessibilityHidden(presentation != .timeline)
-                if presentation != .timeline {
-                    GeometryReader { proxy in
-                        ScrollView {
-                            placeholder
-                                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
-                        }
-                        .scrollBounceBehavior(.basedOnSize)
+        ZStack(alignment: .top) {
+            ChatTimelineView(
+                state: timeline.state, jumpRequest: jumpRequest, followRequest: followRequest,
+                topObstruction: headerObstruction + bannerHeight, actions: timelineActions)
+            .accessibilityHidden(presentation != .timeline)
+            if presentation != .timeline {
+                GeometryReader { proxy in
+                    ScrollView {
+                        placeholder
+                            .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                     }
+                    .scrollBounceBehavior(.basedOnSize)
                 }
+                .padding(.top, headerObstruction + bannerHeight)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if headerObstruction > 0 {
+                ChatTopEdgeFade(height: headerObstruction)
+            }
+            banners
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bannerHeight = $0 }
+                .padding(.top, headerObstruction)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The back header's band over the conversation's top edge.
+    private var headerObstruction: CGFloat {
+        showsBackHeader ? 4 + AgentDetailHeader.controlSize + 4 : 0
     }
 
     @ViewBuilder
@@ -387,22 +400,21 @@ struct AgentChatSurfaceView: View {
         }
     }
 
-    @ViewBuilder
+    /// Always present, so its measured height drops to zero with the last
+    /// banner.
     private var banners: some View {
         let banners = bannerContent
-        if !banners.isEmpty {
-            VStack(spacing: 6) {
-                ForEach(banners) { banner in
-                    ChatBanner(
-                        systemImage: banner.systemImage, text: banner.text,
-                        showsProgress: banner.showsProgress, actionTitle: banner.actionTitle,
-                        action: banner.action)
-                }
+        return VStack(spacing: 6) {
+            ForEach(banners) { banner in
+                ChatBanner(
+                    systemImage: banner.systemImage, text: banner.text,
+                    showsProgress: banner.showsProgress, actionTitle: banner.actionTitle,
+                    action: banner.action)
             }
-            .chatContentColumn()
-            .padding(.top, 6)
-            .padding(.bottom, 2)
         }
+        .chatContentColumn()
+        .padding(.top, banners.isEmpty ? 0 : 6)
+        .padding(.bottom, banners.isEmpty ? 0 : 2)
     }
 
     private struct Banner: Identifiable {
@@ -726,5 +738,25 @@ struct AgentChatSurfaceView: View {
         case .idle, .closing:
             break
         }
+    }
+}
+
+/// Fades rows out where the back header floats over the timeline, as the
+/// system's soft scroll edge does under a navigation bar.
+private struct ChatTopEdgeFade: View {
+    let height: CGFloat
+
+    var body: some View {
+        let background = Color(uiColor: .systemBackground)
+        LinearGradient(
+            stops: [
+                .init(color: background, location: 0),
+                .init(color: background.opacity(0.85), location: 0.55),
+                .init(color: background.opacity(0), location: 1),
+            ],
+            startPoint: .top, endPoint: .bottom)
+        .frame(height: height)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
