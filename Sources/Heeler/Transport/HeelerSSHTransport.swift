@@ -693,10 +693,13 @@ actor HeelerSSHTransport: Transport {
     /// otherwise allocate and release an SFTP subsystem channel on every tick.
     /// The lease is held for as long as the channel is (ADR 0011, #148): an
     /// app-side counter that ignored a channel still open would let the
-    /// server's `MaxSessions` be spent while admission looked free. A failed
-    /// read drops both, so the next look opens a fresh one rather than
-    /// reading through a corpse — except a cancelled one, which says nothing
-    /// about the channel and would only cost the next reader its own read.
+    /// server's `MaxSessions` be spent while admission looked free. A read
+    /// that fails because the channel is unusable drops both, so the next
+    /// look opens a fresh one rather than reading through a corpse. A
+    /// cancellation or a file-level SFTP status says nothing about the
+    /// channel, and while another read (Chat shares the channel) still holds
+    /// it, closing would time out behind that read and free the lease of a
+    /// channel still open; that reader's own failure retires it instead.
     /// The channel is returned once nobody has read through it for
     /// `sessionFileClientIdleTimeout`.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
@@ -716,8 +719,9 @@ actor HeelerSSHTransport: Transport {
                 timeout: requestTimeout)
             return RemoteFileSlice(data: slice.data, length: slice.length)
         } catch {
+            let retiresChannel = Self.hostFileFailure(for: error)?.retiresChannel ?? true
             let mapped = await mapOperationError(error)
-            if mapped != .cancelled {
+            if retiresChannel, sessionFileReadsInFlight == 1 {
                 await releaseSessionFileClient()
             }
             throw mapped
