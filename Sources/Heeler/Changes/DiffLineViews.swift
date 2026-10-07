@@ -26,8 +26,11 @@ struct DiffLineRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: DiffLayoutPolicy.numberSpacing) {
                 ForEach(Array(numbers.enumerated()), id: \.offset) { _, number in
+                    // The digit width is an estimate the font can exceed by
+                    // a hair, which must not wrap a number onto two lines.
                     Text(verbatim: number.map(String.init) ?? "")
                         .font(.caption2.monospaced())
+                        .fixedSize()
                         .frame(width: numberWidth, alignment: .trailing)
                 }
             }
