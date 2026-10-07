@@ -217,10 +217,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         var snapshot = projectedSnapshot()
         let changed = changedRows(since: oldRows, in: snapshot)
         snapshot.reconfigureItems(changed)
-        // A row expanded while it ran may have output now. The request
-        // waits for this update to finish, since it changes what the list
-        // is built from.
-        let wanting = changed.filter { wantsOutput($0, retrying: false) }
+        // A row expanded while it ran may have output now, and one a fold
+        // gave back may never have read it. The request waits for this
+        // update to finish, since it changes what the list is built from.
+        let wanting = (changed + revealedRows(since: oldRows, in: snapshot)).filter { wantsOutput($0, retrying: false) }
         if !wanting.isEmpty {
             Task { @MainActor [weak self] in
                 for id in wanting { self?.requestOutput(id) }
@@ -257,6 +257,13 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             guard let old = oldRows[id], let row = rowsByID[id] else { return false }
             return old.revision != row.revision || old.placement != row.placement
         }
+    }
+
+    /// Shown rows the list did not show before.
+    private func revealedRows(
+        since oldRows: [ChatRowID: ChatRow], in snapshot: NSDiffableDataSourceSnapshot<Int, ChatRowID>
+    ) -> [ChatRowID] {
+        snapshot.itemIdentifiers.filter { oldRows[$0] == nil }
     }
 
     /// Keeps the heights of folded rows too, so opening a fold again lays
@@ -331,8 +338,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         case .end:
             pinToEnd()
         case .rows(let rows):
-            // A row a fold took away puts its header where it was.
-            let candidates = rows + rows.compactMap { id, offset in owners[id].map { ($0, offset) } }
+            // A row a fold took away puts its header where it was, or at
+            // the top when the row started above it.
+            let candidates = rows + rows.compactMap { id, offset in owners[id].map { ($0, max(offset, 0)) } }
             for (id, offset) in candidates {
                 guard let index = layout.index(of: id) else { continue }
                 let visibleTop = layout.geometry.minY(at: index) - offset
@@ -430,6 +438,11 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         latch.disclosureSettled(isAtEnd: isAtEnd)
         noteFollowing()
+        // Rows expanded before their turn folded read output that arrived
+        // while they were away.
+        for revealed in revealedRows(since: oldRows, in: snapshot) where wantsOutput(revealed, retrying: false) {
+            requestOutput(revealed)
+        }
         // VoiceOver stays on the header rather than a cell that left.
         if let index = layout.index(of: id),
             let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))

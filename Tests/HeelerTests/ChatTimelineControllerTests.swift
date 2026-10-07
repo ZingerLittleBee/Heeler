@@ -441,7 +441,8 @@ struct ChatTimelineControllerTests {
             controller.apply(Self.foldState(rows, turns: turns, activity: .idle, revision: 2))
             await Self.settle(controller)
             let header = try #require(controller.cellFrame(of: .turn(ChatEntryID("a2"))))
-            #expect(abs(header.minY - (view.contentOffset.y + view.adjustedContentInset.top) - offset) <= 0.5)
+            // Where the first row was, or at the top when it started above it.
+            #expect(abs(header.minY - (view.contentOffset.y + view.adjustedContentInset.top) - max(offset, 0)) <= 0.5)
             #expect(!controller.isFollowing)
         }
     }
@@ -481,6 +482,46 @@ struct ChatTimelineControllerTests {
             await Self.settle(controller)
             #expect(controller.isOpen(group))
             #expect(abs(try #require(controller.cellFrame(of: member)).height - open) <= 0.5)
+        }
+    }
+
+    @Test func aRowExpandedBeforeItsTurnFoldedReadsItsOutputWhenShownAgain() async throws {
+        var requested: [ChatEntryID] = []
+        var actions = ChatTimelineActions()
+        actions.loadOutput = { requested.append($0) }
+        let controller = ChatTimelineController(actions: actions)
+        let builder = ChatRowBuilder()
+        let id = ChatEntryID("step")
+        let start = Date(timeIntervalSince1970: 1_791_266_142)
+        let prompt = ChatEntry(id: ChatEntryID("u0"), sourceOffset: 0, content: .user(ChatUserMessage(text: "Go")))
+        let answer = ChatEntry(id: ChatEntryID("a0"), sourceOffset: 2, content: .assistant(ChatAssistantMessage(text: "Done")))
+        var running = ChatTurn(firstEntryID: ChatEntryID("u0"), startedAt: start)
+        let before = await builder.rows(
+            for: ChatTimelineInput(entries: [prompt, Self.tool("step", preview: nil, output: nil, status: .running)]))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.foldState(before, turns: [running], activity: .working))
+            await Self.settle(controller)
+            controller.toggle(.entry(id))
+
+            // The turn ends and folds the row away as its output arrives.
+            running.endedAt = start + 35
+            running.ending = .completed
+            let after = await builder.rows(
+                for: ChatTimelineInput(entries: [
+                    prompt,
+                    Self.tool(
+                        "step", preview: ChatToolPreview(text: "line 1", isTruncated: true),
+                        output: ChatOutputReference(offset: 0, length: 10)),
+                    answer,
+                ]))
+            controller.apply(Self.foldState(after, turns: [running], revision: 2))
+            await Self.settle(controller)
+            #expect(controller.cellFrame(of: .entry(id)) == nil)
+            #expect(requested.isEmpty)
+
+            controller.toggle(.turn(ChatEntryID("a0")))
+            await Self.settle(controller)
+            #expect(requested == [id])
         }
     }
 
