@@ -25,6 +25,10 @@ struct TranscriptFollower: Sendable {
         /// The largest backward page held in memory. Beyond it the start of a
         /// longer line is searched for without keeping its bytes.
         var maximumOlderPage = 8 << 20
+        /// How far one request for older history reads back while its pages
+        /// add nothing to show: long tool output and records off the
+        /// conversation's branch can fill many pages.
+        var olderSearch = 8 << 20
         /// How far that search goes before older history is reported
         /// unreadable.
         var lineStartSearch = 64 << 20

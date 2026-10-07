@@ -276,31 +276,43 @@ actor ChatConversationEngine {
         return snapshot
     }
 
-    /// Reads one page of history above the oldest line read.
+    /// Reads history above the oldest line read, a page at a time, until
+    /// something new shows, the file's head is reached, or the search
+    /// limit is read.
     func loadOlder(context: ChatProjectionContext) async -> ChatConversationSnapshot {
         setContext(context)
-        guard var follower, follower.hasOlder, !olderUnreadable else { return snapshot }
+        guard let first = follower, first.hasOlder, !olderUnreadable else { return snapshot }
         update { $0.older = .loading }
-        do {
-            switch try await follower.loadOlder(files) {
-            case .lines(let lines):
-                self.follower = follower
-                reducer?.prepend(lines)
-            case .headReached:
-                self.follower = follower
-            case .unreadable:
-                olderUnreadable = true
-            case .missing, .rewritten:
-                return await open(directories: directories, context: context)
+        let shown = snapshot.transcript.entries.count
+        let searchEnd = first.windowStart ?? 0
+        while var follower {
+            do {
+                switch try await follower.loadOlder(files) {
+                case .lines(let lines):
+                    self.follower = follower
+                    reducer?.prepend(lines)
+                case .headReached:
+                    self.follower = follower
+                case .unreadable:
+                    olderUnreadable = true
+                case .missing, .rewritten:
+                    return await open(directories: directories, context: context)
+                }
+                needsProjection = true
+                update { $0.readFailure = nil }
+            } catch {
+                recordFailure(error)
+                let message =
+                    (error as? TransportError)?.presentation.summary
+                    ?? "Earlier messages could not be read"
+                update { $0.older = .failed(message) }
+                break
             }
-            needsProjection = true
-            update { $0.readFailure = nil }
-        } catch {
-            recordFailure(error)
-            let message =
-                (error as? TransportError)?.presentation.summary
-                ?? "Earlier messages could not be read"
-            update { $0.older = .failed(message) }
+            projectIfNeeded()
+            let read = searchEnd - (self.follower?.windowStart ?? 0)
+            guard snapshot.transcript.entries.count == shown, self.follower?.hasOlder == true, !olderUnreadable,
+                read < UInt64(first.limits.olderSearch)
+            else { break }
         }
         projectIfNeeded()
         return snapshot

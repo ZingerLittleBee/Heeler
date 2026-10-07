@@ -443,6 +443,35 @@ struct ChatConversationEngineTests {
         #expect(snapshot.transcript.listedBackgroundWork.first?.endOffset == endOffset)
     }
 
+    @Test func loadingOlderReadsPastPagesThatShowNothing() async throws {
+        let fixture = Fixture()
+        // Records that show nothing, many pages of them.
+        let silent = String(repeating: NumberedChatReducer.end("none"), count: 40)
+        await fixture.files.write(Self.lines(0..<3) + silent + Self.lines(3..<10), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        let opened = await fixture.open(engine)
+        #expect(Self.numbers(opened).first == "n-3")
+
+        // One request reads every page back to the record that shows.
+        let snapshot = await fixture.loadOlder(engine)
+        #expect(Self.numbers(snapshot).prefix(2) == ["n-2", "n-3"])
+    }
+
+    @Test func loadingOlderStopsSearchingAtItsLimit() async throws {
+        var limits = Self.limits
+        limits.olderSearch = 64
+        let fixture = Fixture(limits: limits)
+        let silent = String(repeating: NumberedChatReducer.end("none"), count: 40)
+        await fixture.files.write(Self.lines(0..<3) + silent + Self.lines(3..<6), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        let opened = Self.numbers(await fixture.open(engine))
+
+        let snapshot = await fixture.loadOlder(engine)
+
+        #expect(Self.numbers(snapshot) == opened)
+        #expect(snapshot.older == .available)
+    }
+
     @Test func turnsOpenedAboveALaterWindowComeFromTheSavedDocument() async throws {
         let fixture = Fixture()
         await fixture.files.write(NumberedChatReducer.prompt("a") + Self.lines(0..<6), at: Self.claudePath)
