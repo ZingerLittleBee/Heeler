@@ -28,6 +28,8 @@ not byte-identical to the compact JSON Claude Code writes.
 | CLI | Claude Code 2.1.291 native build | a module of its embedded bundle and a minified identifier in it, for example `chunk-v1gtm86q.js` `uh` |
 | Agent SDK | `@anthropic-ai/claude-agent-sdk` 0.3.291 (`claudeCodeVersion` 2.1.291) | a minified identifier in `sdk.mjs`, for example SDK `Eu`, or `sdk-tools.d.ts:<line>` |
 | Python SDK | `claude-agent-sdk-python` at `1cc862c4`, which bundles CLI 2.1.291 | `src/claude_agent_sdk/_internal/sessions.py:<line>` |
+| CLI, Background Work | Claude Code 2.1.292 native build | `2.1.292` and a minified identifier, for example 2.1.292 `TE`; module boundaries in this build were not resolved, so these citations name no module |
+| Local session | Claude Code 2.1.291, one development session, 2026-10-07 | shapes only, never content or counts |
 | herdr | v0.9.3 (`7b116c05`) | herdr `src/<path>:<line>` |
 | Local scan | transcripts on one development machine, 2026-10-06 | aggregate counts only |
 
@@ -356,6 +358,62 @@ this repository's own sessions; the probe transcripts do not record it, and
   Validate them, for example against `^[A-Za-z0-9_-]{1,64}$`, before building
   a path.
 
+## Background Work
+
+Background agents and Workflows, as the terminal lists them under its input
+box. Unless cited, these shapes were seen in the local 2.1.291 session; no
+fixture captures them yet.
+
+- **Background Agent.** The `Agent` result is `toolUseResult{isAsync: true,
+  status: "async_launched", agentId, description, outputFile, …}`
+  (`probe2-transcript.jsonl:126` has the status and `agentId`). Agents run in
+  the background by default. A `remote_launched` result carries `taskId`,
+  `sessionUrl`, `description`, `prompt` and `outputFile` (2.1.292, the Agent
+  tool's result text); it was not observed. A `teammate_spawned` result is a
+  teammate on a mailbox, not background work, and Chat does not list it.
+- **Workflow.** The `Workflow` call's input is `{script}`. Its result is
+  `toolUseResult{status: "async_launched", taskId, taskType:
+  "local_workflow", workflowName, runId, summary, transcriptDir,
+  scriptPath}`. The run id is `wf_` and the first 12 characters of a random
+  UUID, for example `wf_2d6c7df2-dc3`; a task id is a kind prefix (`a` local
+  agent, `w` local workflow, `b` local bash, `t` in-process teammate) and
+  8 base36 characters (2.1.292 `TE`).
+- **End.** Each piece of work ends with a `<task-notification>` whose
+  `<tool-use-id>` names the launching call and whose `<task-id>` is the
+  agent id or task id. `<status>` is `completed`, `failed`, `killed` or
+  `stopped`. An
+  agent's `<usage>` has `subagent_tokens`, `tool_uses` and `duration_ms`; a
+  Workflow's adds `agent_count`, `agents_done`, `agents_error`,
+  `agents_skipped` and `agents_empty_result`, and its `<diagnostics>` names
+  the journal. The notification's own `<note>` says the same task id may
+  notify more than once, each time the agent stops with no live children.
+- **Carriers.** A notification is first a `queue-operation` `enqueue`, whose
+  `content` is the XML, written when the work ends. Then either a `dequeue`
+  and a user record (`promptSource: "system"`, `origin.kind:
+  "task-notification"`, as in [Special flows](#special-flows)), or a
+  `remove` with `reason: "absorbed_mid_turn"` and a `queued_command`
+  attachment holding the XML under `prompt`, sometimes minutes later. A
+  background shell's `remove` was seen with no attachment after it, so a
+  reader marks work ended at the `enqueue`.
+- **Stopped without notice.** Work stopped from the terminal may end with no
+  notification. A later `system` record with subtype `agents_killed` is the
+  sign, and Chat ends every running item launched before it.
+- **Journal.** `<session>/subagents/workflows/<runId>/journal.jsonl`, beside
+  the run's `agent-<agentId>.jsonl` files (2.1.292 `sn`). One line per event:
+  `launched`; `started` with `key`, `agentId`, `label` and `phase`; `result`
+  with `key`, `agentId` and `result`; `failed` with `key` and `agentId`. Lines
+  are written as an agent starts or ends and carry no time or tokens, so the
+  file's modification time is the last sign of progress. Agents done is the
+  `result` count; the total while running is only the `started` count, since
+  queued agents and later phases are not written yet. Resuming a run rewrites
+  the whole file between `restoring` and `restored` lines (2.1.292
+  `writeRestored`), so a follower must notice a file that no longer
+  continues what it read. Not verified in a capture.
+- **Not recorded.** A running background agent's progress, a paused or
+  queued Workflow agent, and the terminal's streaming token estimate live
+  only in the CLI's memory. A Workflow's per-agent state is written to
+  `<session>/workflows/<runId>.json` only when the run ends (2.1.292).
+
 ## Special flows
 
 The CLI writes these as tagged text or as dedicated records. A tag counts
@@ -517,3 +575,6 @@ mid-file, a file that shrinks and byte offsets that move.
 - Whether `/clear` always starts a new session id and file.
 - Whether parents always precede children.
 - When the CLI creates a new session's file.
+- Background Work: a `remote_launched` result, a Workflow journal rewritten
+  on resume, a second notification for the same task id, and a background
+  agent resumed through SendMessage.

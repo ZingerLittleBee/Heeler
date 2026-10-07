@@ -217,6 +217,15 @@ changed and never resends. A dialog it cannot read gets a generic card with
 the Agent controls.
 _Avoid_: approval sheet, permission prompt (the program's own dialog), alert
 
+**Background Work**:
+The Subagents and Workflows a Claude Code Agent runs in the background, which
+Chat lists over the Composer from their launch and end records in the
+Transcript and, for a Workflow, its journal beside it. Running work comes
+first; finished work stays until the user's next prompt. Chat only shows it
+and stops none of it. A Subagent is one background agent; a Workflow is a
+script that runs many and is listed as one row with its agents done.
+_Avoid_: background task, task list, jobs
+
 **Shell Terminal**:
 The full interactive terminal on an ordinary shell Pane, opened by Agent
 detail's edge-docked Workspace drawer, the Console's Terminals list, or Open

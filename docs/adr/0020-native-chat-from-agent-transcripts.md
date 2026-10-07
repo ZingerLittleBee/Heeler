@@ -44,8 +44,9 @@ or it is in a form Chat does not read.
 Chat follows only the session herdr reports, and only the conversation's
 current branch. It opens on the last 1 MiB of the file, reads older pages as
 the user scrolls up, and reads what the program appends: every second while
-the Agent is Working or Blocked and for 15 seconds after a change, a send or a
-status change, every 4 seconds otherwise. Compaction keeps the history above a
+the Agent is Working or Blocked, while a live read shows Background Work
+running, and for 15 seconds after a change, a send or a status change, every
+4 seconds otherwise. Compaction keeps the history above a
 separator; rolled-back turns are hidden. When a sent message has not appeared
 after 10 seconds, Chat reads the Agent's record again, because the program may
 have moved to a session herdr reports later. The list is a `UICollectionView`
@@ -56,8 +57,10 @@ needs anchoring in the same main-thread turn.
 Tool activity is one row per call. Decoding keeps a preview of at most
 40 lines or 8 KiB; expanding a row reads its record again, at most 1 MiB, and
 shows up to 1,000 lines or 64 KiB. A spilled Claude Code output is read only
-from `<session>/tool-results/` beside the transcript. Chat reads no other path
-a transcript names.
+from `<session>/tool-results/` beside the transcript, and a Workflow's journal
+only from `<session>/subagents/workflows/<runId>/journal.jsonl`, with the run
+id checked to be one `wf_` path component. Chat reads no other path a
+transcript names.
 
 Claude Code's file changes show as its terminal shows them, in the Changes
 view's colors with one column of line numbers. An Edit or Write row expands to
@@ -158,6 +161,37 @@ not know gets a generic card with the Agent controls. Answers the transcript
 does not record join the history as Allowed, Declined, Stopped and Answered
 rows.
 
+## Background Work
+
+Claude Code's terminal lists background agents and Workflows under its input
+box while they run. Chat lists the same Background Work over the Composer: a
+Subagent the Agent tool started in the background and a Workflow, from their
+launch results in the transcript and the `<task-notification>` that reports
+each one's end. A row shows the work's name, its Subagent type or the phase
+its Workflow is in, how long it has run, and for a Workflow the agents done
+of those started. Agent counts come from the Workflow's journal while it runs,
+read beside the transcript a few journals per poll, and from its notification
+once it ends. A running Subagent writes nothing Chat follows, so it shows
+only its time until it ends.
+
+Running work comes first. Finished work stays, with its time and the counts
+its notification reported, until the user's next prompt. The strip shows
+three rows and "+N more", and condenses to one line while the Composer is open
+or a Blocked card stands in its place, so the conversation keeps its room.
+Every row opens a sheet listing all of it, where a Workflow opens to its
+agents by the labels its program gave them. Nothing here stops work: the
+terminal's own commands do that, and a stop the user cannot see confirmed
+would claim more than Chat knows.
+
+A row claims only what a read shows. With the Host away or the read failing,
+running rows stop their clocks and say they are not updating. Running work
+with no sign of it for longer than such work runs, two hours since a
+Workflow started or its journal last changed, or three hours since a Subagent
+started, says when it was last seen instead of running, and no longer holds
+the faster reads. Times use the Host's clock, so
+a Host running ahead of the phone reads zero. The list is rebuilt from the
+transcript on every read and is never cached.
+
 ## Staging and the tools dock
 
 Image and file staging moves from the Attach to the Agent's
@@ -208,7 +242,8 @@ no Attach at all.
   Compressed (`.zst`) and pre-envelope Codex rollouts are not read.
 - Claude Code writes no transcript before the first prompt, and Codex reports
   no session to herdr until after it. The Composer works in both states.
-- Following makes SFTP requests on the Host's connection at every poll.
+- Following makes SFTP requests on the Host's connection at every poll, and
+  up to two more for Workflow journals while a Workflow is listed.
 - Stop interrupts the running turn, unlike the Blocked card's Stop, which
   answers a dialog and leaves a Stopped row. Codex holding queued messages
   takes Esc as interrupt-and-send, so the Agent can stay Working.
@@ -235,3 +270,6 @@ no Attach at all.
     editing, resending, rewinding or forking a conversation.
   - Codex's file changes beyond their counts, and a summary of the files a
     turn changed.
+  - Background Work for Codex; stopping Background Work from Chat; a running
+    Subagent's progress; teammates; and a Subagent resumed through
+    SendMessage, which Chat does not follow past its first end.
