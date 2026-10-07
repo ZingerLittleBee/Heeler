@@ -69,6 +69,8 @@ struct ClaudeRecord: Sendable, Equatable {
     var teamName: String?
     var agentID: String?
     var sessionID: String?
+    /// `timestamp` as written: the Host's clock, for display only.
+    var timestamp: String?
 
     /// The message content of a user or assistant record. A string content
     /// is one text block.
@@ -217,9 +219,18 @@ struct ClaudeToolUseResult: Sendable, Equatable {
     /// The files the call changed: an edit's `structuredPatch` or a created
     /// file's content, or Bash's `bashEditDiff`. Hunks are capped.
     var fileChanges: ChatFileChanges?
-    /// Agent: `completed`, `async_launched`, `remote_launched`.
+    /// Agent: `completed`, `async_launched`, `remote_launched`,
+    /// `teammate_spawned`; Workflow: `async_launched`.
     var status: String?
     var agentID: String?
+    /// Workflow: the id its task notification names, its kind
+    /// (`local_workflow`), its name, the run its journal is filed under
+    /// (`wf_…`), and what it says it does.
+    var taskID: String?
+    var taskType: String?
+    var workflowName: String?
+    var runID: String?
+    var workflowSummary: String?
     /// A completed Agent's final report, capped.
     var agentReport: ChatToolPreview?
     /// AskUserQuestion answers by question text.
@@ -288,7 +299,7 @@ enum ClaudeMetadata: Sendable, Equatable {
     case permissionMode(String)
     case relocated(cwd: String)
     case continuedIn(sessionID: String)
-    case queueOperation(operation: String, content: String?)
+    case queueOperation(operation: String, content: String?, timestamp: String?)
     /// A type with nothing Chat uses.
     case other(String)
 
@@ -319,7 +330,9 @@ enum ClaudeMetadata: Sendable, Equatable {
         case "continued-in":
             self = raw.continuedInSessionID.map { .continuedIn(sessionID: $0) } ?? .other(type)
         case "queue-operation":
-            self = raw.operation.map { .queueOperation(operation: $0, content: raw.content) } ?? .other(type)
+            self =
+                raw.operation.map { .queueOperation(operation: $0, content: raw.content, timestamp: raw.timestamp) }
+                ?? .other(type)
         default:
             self = .other(type)
         }
@@ -346,7 +359,7 @@ extension ClaudeRecord {
             uuid: uuid, parentUUID: raw.parentUUID, kind: kind,
             byteOffset: line.offset, byteLength: line.length,
             isSidechain: raw.isSidechain ?? false, isMeta: raw.isMeta ?? false,
-            teamName: raw.teamName, agentID: raw.agentID, sessionID: raw.sessionID)
+            teamName: raw.teamName, agentID: raw.agentID, sessionID: raw.sessionID, timestamp: raw.timestamp)
         switch kind {
         case .user, .assistant:
             blocks = raw.message?.content.map(ClaudeContentBlock.init) ?? []
@@ -484,6 +497,11 @@ extension ClaudeToolUseResult {
         }
         status = raw.status
         agentID = raw.agentId
+        taskID = raw.taskId
+        taskType = raw.taskType
+        workflowName = raw.workflowName
+        runID = raw.runId
+        workflowSummary = raw.summary
         if let report = raw.contentBlocks?.compactMap({ $0.type == "text" ? $0.text : nil }), !report.isEmpty {
             agentReport = ChatToolPreview(capping: report.joined(separator: "\n"))
         }
@@ -605,6 +623,7 @@ private struct RawLine: Decodable {
     var continuedInSessionID: String?
     var operation: String?
     var cwd: String?
+    var timestamp: String?
 
     private enum CodingKeys: String, CodingKey {
         case type, subtype, uuid, parentUuid, logicalParentUuid, isSidechain, isMeta, teamName
@@ -614,7 +633,7 @@ private struct RawLine: Decodable {
         case toolUseResult, toolDenialKind, userFeedback, toolDenialUnanswered, content
         case compactMetadata, retractedMessageUuids, originalModel, fallbackModel, commandRun
         case attachment, customTitle, aiTitle, summary, permissionMode, relocatedCwd
-        case continuedInSessionId, operation, cwd
+        case continuedInSessionId, operation, cwd, timestamp
     }
 
     init(from decoder: any Decoder) throws {
@@ -662,6 +681,7 @@ private struct RawLine: Decodable {
         continuedInSessionID = c.lenient(String.self, .continuedInSessionId)
         operation = c.lenient(String.self, .operation)
         cwd = c.lenient(String.self, .cwd)
+        timestamp = c.lenient(String.self, .timestamp)
     }
 }
 
@@ -860,6 +880,11 @@ private struct RawToolUseResult: Decodable {
     var bashEditDiff: RawBashEditDiff?
     var status: String?
     var agentId: String?
+    var taskId: String?
+    var taskType: String?
+    var workflowName: String?
+    var runId: String?
+    var summary: String?
     var answers: [String: String]?
     var plan: String?
     var newTodos: [RawTodo]?
@@ -867,6 +892,7 @@ private struct RawToolUseResult: Decodable {
     private enum CodingKeys: String, CodingKey {
         case stdout, stderr, interrupted, backgroundTaskId, persistedOutputPath, type, filePath
         case content, structuredPatch, bashEditDiff, status, agentId, answers, plan, newTodos
+        case taskId, taskType, workflowName, runId, summary
     }
 
     init(from decoder: any Decoder) throws {
@@ -886,6 +912,11 @@ private struct RawToolUseResult: Decodable {
         bashEditDiff = c.lenient(RawBashEditDiff.self, .bashEditDiff)
         status = c.lenient(String.self, .status)
         agentId = c.lenient(String.self, .agentId)
+        taskId = c.lenient(String.self, .taskId)
+        taskType = c.lenient(String.self, .taskType)
+        workflowName = c.lenient(String.self, .workflowName)
+        runId = c.lenient(String.self, .runId)
+        summary = c.lenient(String.self, .summary)
         answers = c.lenient([String: String].self, .answers)
         plan = c.lenient(String.self, .plan)
         newTodos = c.lenient([RawTodo].self, .newTodos)

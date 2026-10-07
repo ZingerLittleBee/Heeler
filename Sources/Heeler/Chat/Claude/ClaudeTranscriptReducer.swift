@@ -21,7 +21,7 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
     /// Bumped whenever the same lines start projecting to different entries,
     /// so a device cache written by an older build is dropped instead of
     /// mixed with new entries.
-    static let revision = 2
+    static let revision = 3
 
     let role: Role
     /// The file being read, whose sidecar directory holds the outputs
@@ -54,7 +54,8 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
     }
 
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
-        ClaudeTranscriptProjection.transcript(index: index, chain: chain(context), role: role, context: context)
+        ClaudeTranscriptProjection.transcript(
+            index: index, chain: chain(context), role: role, context: context, transcriptPath: transcriptPath)
     }
 
     /// The result record's output for the call, built as its row's preview

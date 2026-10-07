@@ -3,8 +3,8 @@ import Foundation
 /// Turns the current branch into Chat entries
 /// (docs/research/claude-code-transcript-format.md, "One API message across
 /// records", "Tool pairing and outcomes" and "Special flows"), plus the
-/// requests a Blocked card matches and the prompts pending-echo matching
-/// looks for.
+/// requests a Blocked card matches, the prompts pending-echo matching looks
+/// for, and the Background Work Chat lists above its Composer.
 ///
 /// Entries follow the selected records in byte-offset order, one per content
 /// block. A tool call's row takes everything from its result (status, note,
@@ -18,18 +18,23 @@ enum ClaudeTranscriptProjection {
     /// typed while a turn was running.
     static let typedPromptSources: Set<String> = ["typed", "queued"]
 
+    /// `transcriptPath` is the file the lines came from, which a Workflow's
+    /// journal sits beside; nil lists no journal.
     static func transcript(
         index: ClaudeTranscriptIndex, chain: ClaudeChain, role: ClaudeTranscriptReducer.Role,
-        context: ChatProjectionContext
+        context: ChatProjectionContext, transcriptPath: String? = nil
     ) -> ChatTranscript {
-        var builder = Builder(chain: chain, indexed: index.records, role: role, activity: context.activity)
+        var builder = Builder(
+            chain: chain, index: index, role: role, activity: context.activity, transcriptPath: transcriptPath)
         builder.build()
         return ChatTranscript(
             entries: builder.entries, title: index.title,
             needsOlderHistory: context.windowStart > 0,
             pendingRequests: builder.pendingRequests,
             recordedPrompts: role == .main ? recordedPrompts(index, entryByRecord: builder.entryByRecord) : [],
-            links: index.links, diagnostics: index.diagnostics)
+            links: index.links, diagnostics: index.diagnostics,
+            backgroundWork: role == .main ? builder.backgroundWork : [],
+            latestPromptOffset: builder.latestPromptOffset)
     }
 
     /// The output `record` holds for the call `use`, as its row's preview
@@ -115,6 +120,14 @@ enum ClaudeTranscriptProjection {
         originKind == nil || originKind == "human"
     }
 
+    /// A record's `timestamp`: ISO 8601 with milliseconds, on the Host's
+    /// clock.
+    static func date(_ timestamp: String?) -> Date? {
+        guard let timestamp else { return nil }
+        return (try? Date(timestamp, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
+            ?? (try? Date(timestamp, strategy: Date.ISO8601FormatStyle()))
+    }
+
     static func modelChangeTitle(from: String?, to: String?) -> String {
         switch (from, to) {
         case (let from?, let to?): "Switched from \(from) to \(to)"
@@ -139,16 +152,27 @@ private struct Builder {
         }
     }
 
+    /// A task notification and the record that delivered it.
+    struct Delivery {
+        var notification: ClaudeTaskNotification
+        var offset: UInt64
+        var timestamp: String?
+    }
+
     let chain: ClaudeChain
     /// Every indexed record, selected or not.
     let indexed: [String: ClaudeRecord]
     let role: ClaudeTranscriptReducer.Role
     let activity: ChatAgentActivity
+    let transcriptPath: String?
 
     private(set) var entries: [ChatEntry] = []
     private(set) var pendingRequests: [ChatPendingRequest] = []
     /// The first entry each record placed.
     private(set) var entryByRecord: [String: ChatEntryID] = [:]
+    private(set) var backgroundWork: [ChatBackgroundWorkItem] = []
+    /// The newest record that placed a message the user sent.
+    private(set) var latestPromptOffset: UInt64?
 
     private var selected: [String: ClaudeRecord] = [:]
     private var children: [String: [ClaudeRecord]] = [:]
@@ -156,11 +180,12 @@ private struct Builder {
     /// Offsets of records that start a new turn or end one, ascending.
     private var turnBoundaries: [UInt64] = []
     /// The latest notification for each background call.
-    private var notifications: [String: ClaudeTaskNotification] = [:]
+    private var notifications: [String: Delivery] = [:]
     /// Notifications shown from user records, so a queued copy is not shown
     /// twice.
     private var notificationKeys: Set<String> = []
-    private var agentsKilled: [UInt64] = []
+    /// `agents_killed` records, in file order.
+    private var agentsKilled: [ClaudeRecord] = []
     /// `plan_mode_exit` paths by the record they follow (the approval).
     private var planExitPaths: [String: String] = [:]
     private var entryIDs: Set<ChatEntryID> = []
@@ -169,13 +194,14 @@ private struct Builder {
     private var compactionEntry: Int?
 
     init(
-        chain: ClaudeChain, indexed: [String: ClaudeRecord], role: ClaudeTranscriptReducer.Role,
-        activity: ChatAgentActivity
+        chain: ClaudeChain, index: ClaudeTranscriptIndex, role: ClaudeTranscriptReducer.Role,
+        activity: ChatAgentActivity, transcriptPath: String?
     ) {
         self.chain = chain
-        self.indexed = indexed
+        indexed = index.records
         self.role = role
         self.activity = activity
+        self.transcriptPath = transcriptPath
         for record in chain.records {
             selected[record.uuid] = record
             if let parent = chain.parents[record.uuid] {
@@ -187,7 +213,7 @@ private struct Builder {
             }
             switch record.kind {
             case .system("agents_killed"):
-                agentsKilled.append(record.byteOffset)
+                agentsKilled.append(record)
             case .attachment("plan_mode_exit"):
                 if let path = record.attachment?.planFilePath, let parent = chain.parents[record.uuid] {
                     planExitPaths[parent] = path
@@ -196,9 +222,24 @@ private struct Builder {
                 break
             }
             if let notification = Self.notification(in: record) {
-                if let callID = notification.toolUseID { notifications[callID] = notification }
+                if let callID = notification.toolUseID {
+                    notifications[callID] = Delivery(
+                        notification: notification, offset: record.byteOffset, timestamp: record.timestamp)
+                }
                 if record.kind == .user { notificationKeys.insert(Self.key(of: notification)) }
             }
+        }
+        // Claude Code queues a notification as soon as the work ends, and
+        // delivers it once the session can take it, which can be minutes
+        // into a busy turn.
+        for operation in index.queueOperations.values where operation.operation == "enqueue" {
+            guard let content = operation.content,
+                case .taskNotification(let notification) = ClaudeUserText.classify(content),
+                let callID = notification.toolUseID,
+                notifications[callID].map({ $0.offset < operation.offset }) ?? true
+            else { continue }
+            notifications[callID] = Delivery(
+                notification: notification, offset: operation.offset, timestamp: operation.timestamp)
         }
     }
 
@@ -282,6 +323,9 @@ private struct Builder {
             placed = add(entryID, at: record, .tool(toolRow(for: use, status: status, answer: answer)))
         }
 
+        if placed, let item = backgroundWorkItem(for: use, in: record, result: structured) {
+            backgroundWork.append(item)
+        }
         guard placed, answer == nil, !turnEnded(after: record.byteOffset) else { return }
         let summary = ClaudeToolSummary(use)
         pendingRequests.append(
@@ -311,8 +355,14 @@ private struct Builder {
             row.fileChanges = ClaudeToolSummary.fileChanges(
                 for: use, details: answer.record.toolResult, outcome: outcome)
         }
+        if Self.isWorkflow(use, result: structured), let name = structured?.workflowName, !name.isEmpty {
+            row.title = name
+            row.subtitle = structured?.workflowSummary
+        }
         // A background agent reports through its notification.
-        if row.preview == nil, !use.id.isEmpty, let report = notifications[use.id]?.result, !report.isEmpty {
+        if row.preview == nil, !use.id.isEmpty, let report = notifications[use.id]?.notification.result,
+            !report.isEmpty
+        {
             row.preview = ChatToolPreview(capping: report)
         }
         if use.name == "AskUserQuestion" {
@@ -339,16 +389,69 @@ private struct Builder {
 
     /// A background agent runs until its task notification arrives.
     private func backgroundStatus(_ callID: String?, launchedAt offset: UInt64) -> ChatToolActivity.Status {
-        if let callID, let notification = notifications[callID] {
-            switch notification.status {
+        if let callID, let delivery = notifications[callID] {
+            switch delivery.notification.status {
             case "failed": return .failed
-            case "killed": return .interrupted
+            case "killed", "stopped": return .interrupted
             case "blocked": return .awaitingApproval
             default: return .succeeded
             }
         }
-        if agentsKilled.contains(where: { $0 > offset }) { return .interrupted }
+        if agentsKilled.contains(where: { $0.byteOffset > offset }) { return .interrupted }
         return .running
+    }
+
+    private static func isWorkflow(_ use: ClaudeToolUse, result: ClaudeToolUseResult?) -> Bool {
+        use.name == "Workflow" || result?.taskType == "local_workflow"
+    }
+
+    /// A Subagent or Workflow the call started in the background, with how
+    /// it ended once its notification arrived. Teammates are left out:
+    /// nothing in the transcript says when one is done.
+    private func backgroundWorkItem(
+        for use: ClaudeToolUse, in record: ClaudeRecord, result: ClaudeToolUseResult?
+    ) -> ChatBackgroundWorkItem? {
+        guard role == .main, !use.id.isEmpty, let result,
+            result.status == "async_launched" || result.status == "remote_launched"
+        else { return nil }
+        var item: ChatBackgroundWorkItem
+        if Self.isWorkflow(use, result: result) {
+            item = ChatBackgroundWorkItem(
+                id: use.id, kind: .workflow, title: result.workflowName.flatMap(\.nonEmpty) ?? "Workflow",
+                subtitle: result.workflowSummary.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
+            if let transcriptPath, let runID = result.runID {
+                item.journalPath = ClaudeTranscriptLocation.workflowJournalPath(
+                    transcriptPath: transcriptPath, runID: runID)
+            }
+        } else if use.name == "Agent" || use.name == "Task" {
+            item = ChatBackgroundWorkItem(
+                id: use.id, kind: .subagent, title: use.input.description.flatMap(\.nonEmpty) ?? "Subagent",
+                subtitle: use.input.subagentType.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
+        } else {
+            return nil
+        }
+        item.launchedAt = ClaudeTranscriptProjection.date(record.timestamp)
+        if let delivery = notifications[use.id] {
+            item.state = Self.state(of: delivery.notification)
+            item.endOffset = delivery.offset
+            item.endedAt = ClaudeTranscriptProjection.date(delivery.timestamp)
+            item.usage = delivery.notification.usage
+        } else if let killed = agentsKilled.first(where: { $0.byteOffset > record.byteOffset }) {
+            item.state = .stopped
+            item.endOffset = killed.byteOffset
+            item.endedAt = ClaudeTranscriptProjection.date(killed.timestamp)
+        }
+        return item
+    }
+
+    /// The same reading `backgroundStatus` gives the call's row.
+    private static func state(of notification: ClaudeTaskNotification) -> ChatBackgroundWorkItem.State {
+        switch notification.status {
+        case "failed": .failed
+        case "killed", "stopped": .stopped
+        case "blocked": .running
+        default: .completed
+        }
     }
 
     private func turnEnded(after offset: UInt64) -> Bool {
@@ -555,6 +658,9 @@ private struct Builder {
         let id = ChatEntryID(rawID)
         guard entryIDs.insert(id).inserted else { return false }
         entries.append(ChatEntry(id: id, sourceOffset: record.byteOffset, content: content))
+        if case .user = content {
+            latestPromptOffset = max(latestPromptOffset ?? 0, record.byteOffset)
+        }
         if entryByRecord[record.uuid] == nil {
             entryByRecord[record.uuid] = id
         }

@@ -15,6 +15,30 @@ struct ClaudeTranscriptLocation: Hashable, Sendable {
             projectDirectory, sessionID, "subagents", "agent-\(agentID).jsonl")
     }
 
+    /// Where a Workflow run records its agents:
+    /// `<session>/subagents/workflows/<runId>/journal.jsonl` beside the
+    /// transcript at `transcriptPath`. Only the run id comes from the
+    /// transcript, so it must stay one path component.
+    static func workflowJournalPath(transcriptPath: String, runID: String) -> String? {
+        guard transcriptPath.hasSuffix(".jsonl"), isWorkflowRunID(runID) else { return nil }
+        let session = String(transcriptPath.dropLast(".jsonl".count))
+        let path = RemoteFilePath.join(session, "subagents", "workflows", runID, "journal.jsonl")
+        return RemoteFilePath.isAcceptable(path) ? path : nil
+    }
+
+    /// `wf_` and up to 61 ASCII letters, digits or hyphens. Claude Code
+    /// writes twelve (`wf_2d6c7df2-dc3`); a longer id still reads.
+    static func isWorkflowRunID(_ id: String) -> Bool {
+        guard id.hasPrefix("wf_") else { return false }
+        let rest = id.utf8.dropFirst(3)
+        return (1...61).contains(rest.count)
+            && rest.allSatisfy { byte in
+                (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
+                    || (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(byte)
+                    || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(byte) || byte == UInt8(ascii: "-")
+            }
+    }
+
     /// Agent ids are short hex strings; anything that could leave the
     /// directory is refused.
     static func isSafeComponent(_ text: String) -> Bool {

@@ -187,27 +187,57 @@ struct ClaudeTranscriptReducerTests {
         #expect(!transcript.entries.contains { if case .notice(let notice) = $0.content { notice.kind == .interrupted } else { false } })
     }
 
-    @Test("A background agent runs until its notification, which also shows as a row (M L125-L132)")
+    @Test("A background agent runs until its notification is queued, which shows as a row once delivered (M L125-L132)")
     func agentAndNotification() throws {
         let report = "成功了。`touch sub.txt` 在 /private/tmp/heeler-tmp-chat2/probe-claude 下执行完毕,没有报错,输出了 \"ok\"。"
+        let callID = "toolu_01VzSQ5ZYf8MrC735NBTyJQ5"
         let launched = ChatToolActivity(
             kind: .agent, name: "Agent", title: "Run touch sub.txt", subtitle: "general-purpose", status: .running,
-            callID: "toolu_01VzSQ5ZYf8MrC735NBTyJQ5", output: ChatOutputReference(offset: 76158, length: 2374))
+            callID: callID, output: ChatOutputReference(offset: 76158, length: 2374))
+        let work = ChatBackgroundWorkItem(
+            id: callID, kind: .subagent, title: "Run touch sub.txt", subtitle: "general-purpose",
+            launchOffset: 74431, launchedAt: Self.date("2026-10-06T05:52:39.055Z"))
 
-        let before = try Self.transcript(activity: .idle) { $0.offset < 82019 }
-        #expect(Self.tool("tool:toolu_01VzSQ5ZYf8MrC735NBTyJQ5", in: before) == launched)
-        #expect(ClaudeSample.entry("notice:6d0ceb41-779d-4bde-a308-858b33b73a13", in: before) == nil)
+        let before = try Self.transcript(activity: .idle) { $0.offset < 80860 }
+        #expect(Self.tool("tool:\(callID)", in: before) == launched)
         #expect(before.pendingRequests.isEmpty)
+        #expect(before.backgroundWork == [work])
+        #expect(before.listedBackgroundWork == [work])
 
-        let after = try Self.transcript()
+        // L130 queues the notification; L132 delivers it.
         var finished = launched
         finished.status = .succeeded
         finished.preview = ChatToolPreview(text: report, isTruncated: false)
-        #expect(Self.tool("tool:toolu_01VzSQ5ZYf8MrC735NBTyJQ5", in: after) == finished)
+        var ended = work
+        ended.state = .completed
+        ended.usage = ChatBackgroundWorkItem.Usage(tokens: 32130, toolUses: 1, durationMilliseconds: 26744)
+        let queued = try Self.transcript(activity: .idle) { $0.offset < 82019 }
+        #expect(Self.tool("tool:\(callID)", in: queued) == finished)
+        #expect(ClaudeSample.entry("notice:6d0ceb41-779d-4bde-a308-858b33b73a13", in: queued) == nil)
+        ended.endOffset = 80860
+        ended.endedAt = Self.date("2026-10-06T05:53:05.873Z")
+        #expect(queued.backgroundWork == [ended])
+
+        let delivered = try Self.transcript { $0.offset < 85786 }
+        ended.endOffset = 82019
+        ended.endedAt = Self.date("2026-10-06T05:53:05.881Z")
+        #expect(delivered.backgroundWork == [ended])
+        #expect(delivered.listedBackgroundWork == [ended])
+
+        // The next prompt, at 85786, takes it off the list.
+        let after = try Self.transcript()
+        #expect(Self.tool("tool:\(callID)", in: after) == finished)
         #expect(
             ClaudeSample.entry("notice:6d0ceb41-779d-4bde-a308-858b33b73a13", in: after)
                 == .notice(
                     ChatNotice(kind: .taskNotification, title: "Agent \"Run touch sub.txt\" finished", detail: report)))
+        #expect(after.backgroundWork == [ended])
+        #expect(after.latestPromptOffset == 98000)
+        #expect(after.listedBackgroundWork.isEmpty)
+    }
+
+    private static func date(_ text: String) -> Date? {
+        try? Date(text, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true))
     }
 
     @Test("Parallel Bash calls both resolve, the dead-end result included (M L160-L163)")

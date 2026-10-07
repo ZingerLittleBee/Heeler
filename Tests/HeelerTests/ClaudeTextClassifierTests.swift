@@ -83,6 +83,7 @@ struct ClaudeTextClassifierTests {
         #expect(notification.taskID == "a9985bf0a8b4ebbe3")
         #expect(notification.result == "成功了。`touch sub.txt` 在 /private/tmp/heeler-tmp-chat2/probe-claude 下执行完毕,没有报错,输出了 \"ok\"。")
         #expect(notification.title == "Agent \"Run touch sub.txt\" finished")
+        #expect(notification.usage == ChatBackgroundWorkItem.Usage(tokens: 32130, toolUses: 1, durationMilliseconds: 26744))
         #expect(ClaudeTaskNotification("<task-notification><status>killed</status></task-notification>").title == "Background task killed")
     }
 

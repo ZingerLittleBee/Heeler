@@ -39,6 +39,10 @@ struct ClaudeToolSummary: Sendable, Equatable {
             self.init(kind: .web, title: input.query ?? use.name)
         case "Agent", "Task":
             self.init(kind: .agent, title: input.description ?? use.name, subtitle: input.subagentType)
+        case "Workflow":
+            // Its input is only a script; the row takes the name and
+            // summary from the launch result.
+            self.init(kind: .agent, title: use.name)
         case "AskUserQuestion":
             let texts = input.questions.map(\.text)
             self.init(kind: .question, title: texts.isEmpty ? use.name : texts.joined(separator: " · "))
@@ -108,7 +112,8 @@ struct ClaudeToolSummary: Sendable, Equatable {
         case "Edit", "MultiEdit", "Write", "NotebookEdit":
             // A recorded patch shows as the row's file changes instead.
             return result.isError ? content : nil
-        case "Agent", "Task":
+        case "Agent", "Task", "Workflow":
+            // Work in the background reports through its notification.
             if structured?.status == "async_launched" || structured?.status == "remote_launched" { return nil }
             return structured?.agentReport ?? content
         case "AskUserQuestion", "ToolSearch", "ExitPlanMode", "EnterPlanMode":

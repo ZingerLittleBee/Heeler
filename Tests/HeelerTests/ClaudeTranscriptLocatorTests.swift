@@ -130,4 +130,15 @@ struct ClaudeTranscriptLocatorTests {
         #expect(location.subagentTranscriptPath(agentID: "../x") == nil)
         #expect(location.subagentTranscriptPath(agentID: "") == nil)
     }
+
+    @Test func workflowJournalsSitInsideTheSessionDirectory() {
+        let transcript = "\(Self.projects)/-k/\(Self.sessionID).jsonl"
+        #expect(
+            ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: transcript, runID: "wf_2d6c7df2-dc3")
+                == "\(Self.projects)/-k/\(Self.sessionID)/subagents/workflows/wf_2d6c7df2-dc3/journal.jsonl")
+        #expect(ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: transcript, runID: "wf_../x") == nil)
+        #expect(ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: transcript, runID: "wf_a\u{0}b") == nil)
+        #expect(ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: "relative/s.jsonl", runID: "wf_1") == nil)
+        #expect(ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: "/x/s.json", runID: "wf_1") == nil)
+    }
 }

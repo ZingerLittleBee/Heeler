@@ -793,6 +793,82 @@ struct ChatRecordedPrompt: Equatable, Sendable {
     }
 }
 
+/// One piece of Background Work: a Subagent or Workflow the program started
+/// beside the conversation, as the transcript records its launch and its
+/// end. Never saved: a launch read from the device could never finish.
+struct ChatBackgroundWorkItem: Identifiable, Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case subagent
+        case workflow
+    }
+
+    enum State: Equatable, Sendable {
+        case running
+        case completed
+        case failed
+        case stopped
+    }
+
+    /// The counts the program reports when the work ends.
+    struct Usage: Equatable, Sendable {
+        var tokens: Int?
+        var toolUses: Int?
+        var durationMilliseconds: Int?
+        /// A Workflow's agents: how many it ran, finished and failed.
+        var agents: Int?
+        var agentsDone: Int?
+        var agentsFailed: Int?
+
+        init(
+            tokens: Int? = nil, toolUses: Int? = nil, durationMilliseconds: Int? = nil, agents: Int? = nil,
+            agentsDone: Int? = nil, agentsFailed: Int? = nil
+        ) {
+            self.tokens = tokens
+            self.toolUses = toolUses
+            self.durationMilliseconds = durationMilliseconds
+            self.agents = agents
+            self.agentsDone = agentsDone
+            self.agentsFailed = agentsFailed
+        }
+    }
+
+    /// The launching call's id, which its row's entry id holds.
+    let id: String
+    var kind: Kind
+    var title: String
+    /// A Subagent's type, or what a Workflow says it does.
+    var subtitle: String?
+    var state: State
+    /// Where a Workflow records its agents, on the Host; nil when it is
+    /// not where Chat may read.
+    var journalPath: String?
+    var launchOffset: UInt64
+    /// Where the record that says it ended starts.
+    var endOffset: UInt64?
+    /// On the Host's clock, from the records' timestamps.
+    var launchedAt: Date?
+    var endedAt: Date?
+    var usage: Usage?
+
+    init(
+        id: String, kind: Kind, title: String, subtitle: String? = nil, state: State = .running,
+        journalPath: String? = nil, launchOffset: UInt64, endOffset: UInt64? = nil, launchedAt: Date? = nil,
+        endedAt: Date? = nil, usage: Usage? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.state = state
+        self.journalPath = journalPath
+        self.launchOffset = launchOffset
+        self.endOffset = endOffset
+        self.launchedAt = launchedAt
+        self.endedAt = endedAt
+        self.usage = usage
+    }
+}
+
 /// Explicit links the transcript records to somewhere else.
 struct ChatTranscriptLinks: Equatable, Sendable {
     /// Claude moved the session to a new working directory (`relocated`).
@@ -833,12 +909,19 @@ struct ChatTranscript: Equatable, Sendable {
     var recordedPrompts: [ChatRecordedPrompt]
     var links: ChatTranscriptLinks
     var diagnostics: ChatTranscriptDiagnostics
+    /// Background Work launched on the current branch of the loaded lines,
+    /// in launch order.
+    var backgroundWork: [ChatBackgroundWorkItem]
+    /// Where the newest message the user sent starts, among the loaded
+    /// lines.
+    var latestPromptOffset: UInt64?
 
     init(
         entries: [ChatEntry] = [], title: String? = nil, needsOlderHistory: Bool = false,
         pendingRequests: [ChatPendingRequest] = [], recordedPrompts: [ChatRecordedPrompt] = [],
         links: ChatTranscriptLinks = ChatTranscriptLinks(),
-        diagnostics: ChatTranscriptDiagnostics = ChatTranscriptDiagnostics()
+        diagnostics: ChatTranscriptDiagnostics = ChatTranscriptDiagnostics(),
+        backgroundWork: [ChatBackgroundWorkItem] = [], latestPromptOffset: UInt64? = nil
     ) {
         self.entries = entries
         self.title = title
@@ -847,6 +930,16 @@ struct ChatTranscript: Equatable, Sendable {
         self.recordedPrompts = recordedPrompts
         self.links = links
         self.diagnostics = diagnostics
+        self.backgroundWork = backgroundWork
+        self.latestPromptOffset = latestPromptOffset
+    }
+
+    /// The Background Work Chat lists: everything still running, and what
+    /// ended after the user's latest message. Without a message among the
+    /// loaded lines, everything they hold came after it.
+    var listedBackgroundWork: [ChatBackgroundWorkItem] {
+        let prompt = latestPromptOffset ?? 0
+        return backgroundWork.filter { $0.state == .running || ($0.endOffset ?? 0) > prompt }
     }
 }
 

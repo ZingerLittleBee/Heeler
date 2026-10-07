@@ -163,19 +163,24 @@ enum ClaudeUserText: Sendable, Equatable {
 /// stopped.
 struct ClaudeTaskNotification: Sendable, Equatable {
     var summary: String?
-    /// `completed`, `failed`, `killed`, …
+    /// `completed`, `failed`, `killed`, `stopped`, …
     var status: String?
     /// The tool call that launched the task.
     var toolUseID: String?
     var taskID: String?
     var result: String?
+    var usage: ChatBackgroundWorkItem.Usage?
 
-    init(summary: String? = nil, status: String? = nil, toolUseID: String? = nil, taskID: String? = nil, result: String? = nil) {
+    init(
+        summary: String? = nil, status: String? = nil, toolUseID: String? = nil, taskID: String? = nil,
+        result: String? = nil, usage: ChatBackgroundWorkItem.Usage? = nil
+    ) {
         self.summary = summary
         self.status = status
         self.toolUseID = toolUseID
         self.taskID = taskID
         self.result = result
+        self.usage = usage
     }
 
     init(_ text: String) {
@@ -184,7 +189,22 @@ struct ClaudeTaskNotification: Sendable, Equatable {
         }
         self.init(
             summary: field("summary"), status: field("status"), toolUseID: field("tool-use-id"),
-            taskID: field("task-id"), result: field("result"))
+            taskID: field("task-id"), result: field("result"),
+            usage: ClaudeText.content(ofTag: "usage", in: text).map(Self.usage))
+    }
+
+    /// `<usage>`: counts for a Subagent, and for a Workflow the counts of
+    /// the agents it ran.
+    private static func usage(_ text: String) -> ChatBackgroundWorkItem.Usage {
+        func count(_ tag: String) -> Int? {
+            ClaudeText.content(ofTag: tag, in: text).flatMap {
+                Int($0.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+        return ChatBackgroundWorkItem.Usage(
+            tokens: count("subagent_tokens"), toolUses: count("tool_uses"),
+            durationMilliseconds: count("duration_ms"), agents: count("agent_count"),
+            agentsDone: count("agents_done"), agentsFailed: count("agents_error"))
     }
 
     /// The notice's title: the summary Claude Code wrote, or the status.

@@ -129,6 +129,8 @@ struct ClaudeSyntheticTranscriptTests {
                 + #"{"type":"system","subtype":"agents_killed","uuid":"k1","parentUuid":"t1","level":"info"}"#)
         #expect(transcript.entries.map(\.id.rawValue) == ["user:p1", "tool:toolu_agent", "text:a2", "notice:k1"])
         #expect(Self.tool("tool:toolu_agent", in: transcript)?.status == .interrupted)
+        #expect(transcript.backgroundWork.map(\.state) == [.stopped])
+        #expect(transcript.backgroundWork.first?.endOffset == transcript.entries.last?.sourceOffset)
         #expect(
             ClaudeSample.entry("notice:k1", in: transcript)
                 == .notice(ChatNotice(kind: .stopped, title: "All background agents stopped")))
@@ -137,6 +139,140 @@ struct ClaudeSyntheticTranscriptTests {
         let running = Self.read(Self.backgroundAgent, activity: .idle).0
         #expect(Self.tool("tool:toolu_agent", in: running)?.status == .running)
         #expect(running.pendingRequests.isEmpty)
+    }
+
+    // MARK: - Background work
+
+    private static let transcriptPath = "/home/dev/.claude/projects/-home-dev-docs/s1.jsonl"
+
+    /// A turn that starts a Workflow, written as 2.1.291 writes one.
+    private static let workflowTurn = #"""
+        {"type":"user","uuid":"p1","parentUuid":null,"timestamp":"2026-10-07T10:00:00.000Z","message":{"role":"user","content":"Audit the guides"},"promptSource":"typed","origin":{"kind":"human"}}
+        {"type":"assistant","uuid":"a1","parentUuid":"p1","timestamp":"2026-10-07T10:00:05.000Z","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_wf","name":"Workflow","input":{"script":"export const meta = { name: 'docs-audit' }"}}]},"apiBlockIndex":0}
+        {"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-10-07T10:00:05.200Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_wf","content":[{"type":"text","text":"Workflow launched in background. Task ID: w1abcdefg"}]}]},"toolUseResult":{"status":"async_launched","taskId":"w1abcdefg","taskType":"local_workflow","workflowName":"docs-audit","runId":"wf_0a1b2c3d-4e5","summary":"Check every guide against the new flow","transcriptDir":"/tmp/elsewhere","scriptPath":"/tmp/elsewhere/docs-audit.js"}}
+        {"type":"assistant","uuid":"a2","parentUuid":"r1","timestamp":"2026-10-07T10:00:09.000Z","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"The audit runs in the background."}]},"apiBlockIndex":0}
+        {"type":"system","subtype":"turn_duration","uuid":"t1","parentUuid":"a2","timestamp":"2026-10-07T10:00:09.010Z","durationMs":9000,"pendingWorkflowCount":1}
+        """#
+
+    private static func workflowNotification(status: String) -> String {
+        #"<task-notification>\n<task-id>w1abcdefg</task-id>\n<tool-use-id>toolu_wf</tool-use-id>\n<status>\#(status)</status>\n<summary>Dynamic workflow \"Check every guide against the new flow\" \#(status)</summary>\n<result>Every guide matches.</result>\n<usage><agent_count>3</agent_count><agents_done>2</agents_done><agents_error>1</agents_error><agents_skipped>0</agents_skipped><agents_empty_result>0</agents_empty_result><subagent_tokens>120000</subagent_tokens><tool_uses>40</tool_uses><duration_ms>1795000</duration_ms></usage>\n</task-notification>"#
+    }
+
+    private static func readWorkflow(_ jsonl: String) -> (ChatTranscript, [ChatLine]) {
+        let lines = ClaudeSample.lines(jsonl)
+        var reducer = ClaudeTranscriptReducer(role: .main, transcriptPath: transcriptPath)
+        reducer.append(lines)
+        return (reducer.transcript(ChatProjectionContext(activity: .idle)), lines)
+    }
+
+    private static func date(_ text: String) -> Date? {
+        ClaudeTranscriptProjection.date(text)
+    }
+
+    @Test("A Workflow runs under its name, its journal beside the transcript, never where the result says")
+    func workflowLaunch() throws {
+        let (transcript, lines) = Self.readWorkflow(Self.workflowTurn)
+        #expect(
+            Self.tool("tool:toolu_wf", in: transcript)
+                == ChatToolActivity(
+                    kind: .agent, name: "Workflow", title: "docs-audit", subtitle: "Check every guide against the new flow",
+                    status: .running, callID: "toolu_wf",
+                    output: ChatOutputReference(offset: lines[2].offset, length: lines[2].length)))
+        let work = ChatBackgroundWorkItem(
+            id: "toolu_wf", kind: .workflow, title: "docs-audit", subtitle: "Check every guide against the new flow",
+            journalPath: "/home/dev/.claude/projects/-home-dev-docs/s1/subagents/workflows/wf_0a1b2c3d-4e5/journal.jsonl",
+            launchOffset: lines[1].offset, launchedAt: Self.date("2026-10-07T10:00:05.000Z"))
+        #expect(transcript.backgroundWork == [work])
+        #expect(transcript.listedBackgroundWork == [work])
+        #expect(transcript.latestPromptOffset == lines[0].offset)
+        #expect(transcript.pendingRequests.isEmpty)
+        #expect(transcript.diagnostics == ChatTranscriptDiagnostics())
+    }
+
+    @Test("A queued notification ends a Workflow at once; its delivery adds the row")
+    func workflowNotificationQueuedFirst() throws {
+        let notification = Self.workflowNotification(status: "completed")
+        let enqueue = #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-10-07T10:30:00.000Z","content":"\#(notification)","sessionId":"s1"}"#
+        let (queued, queuedLines) = Self.readWorkflow([Self.workflowTurn, enqueue].joined(separator: "\n"))
+        #expect(Self.tool("tool:toolu_wf", in: queued)?.status == .succeeded)
+        #expect(Self.tool("tool:toolu_wf", in: queued)?.preview == ChatToolPreview(text: "Every guide matches.", isTruncated: false))
+        #expect(!queued.entries.contains { $0.id.rawValue.hasPrefix("notice:") })
+        let usage = ChatBackgroundWorkItem.Usage(
+            tokens: 120000, toolUses: 40, durationMilliseconds: 1_795_000, agents: 3, agentsDone: 2, agentsFailed: 1)
+        #expect(queued.backgroundWork.map(\.state) == [.completed])
+        #expect(queued.backgroundWork.first?.usage == usage)
+        #expect(queued.backgroundWork.first?.endOffset == queuedLines[5].offset)
+        #expect(queued.backgroundWork.first?.endedAt == Self.date("2026-10-07T10:30:00.000Z"))
+
+        let delivery = #"""
+            {"type":"queue-operation","operation":"dequeue","timestamp":"2026-10-07T10:30:00.010Z","sessionId":"s1"}
+            {"type":"user","uuid":"n1","parentUuid":"t1","timestamp":"2026-10-07T10:30:00.020Z","message":{"role":"user","content":"\#(notification)"},"promptSource":"system","origin":{"kind":"task-notification"}}
+            """#
+        let (delivered, lines) = Self.readWorkflow([Self.workflowTurn, enqueue, delivery].joined(separator: "\n"))
+        #expect(
+            ClaudeSample.entry("notice:n1", in: delivered)
+                == .notice(
+                    ChatNotice(
+                        kind: .taskNotification, title: "Dynamic workflow \"Check every guide against the new flow\" completed",
+                        detail: "Every guide matches.")))
+        #expect(delivered.backgroundWork.first?.endOffset == lines[7].offset)
+        // A notification is not the user's message: the finished Workflow
+        // stays listed.
+        #expect(delivered.latestPromptOffset == lines[0].offset)
+        #expect(delivered.listedBackgroundWork.map(\.id) == ["toolu_wf"])
+
+        // The user's next message, queued mid-turn or typed, clears it.
+        let next = #"{"type":"attachment","uuid":"q2","parentUuid":"n1","attachment":{"type":"queued_command","prompt":"Thanks","commandMode":"prompt","origin":{"kind":"human"}}}"#
+        let (cleared, clearedLines) = Self.readWorkflow([Self.workflowTurn, enqueue, delivery, next].joined(separator: "\n"))
+        #expect(cleared.latestPromptOffset == clearedLines[8].offset)
+        #expect(cleared.backgroundWork.map(\.state) == [.completed])
+        #expect(cleared.listedBackgroundWork.isEmpty)
+    }
+
+    @Test("A stopped Workflow is stopped, not done", arguments: ["stopped", "killed"])
+    func stoppedWorkflow(_ status: String) throws {
+        let queued = #"{"type":"attachment","uuid":"q1","parentUuid":"t1","attachment":{"type":"queued_command","prompt":"\#(Self.workflowNotification(status: status))","commandMode":"task-notification","origin":{"kind":"task-notification"}}}"#
+        let (transcript, _) = Self.readWorkflow([Self.workflowTurn, queued].joined(separator: "\n"))
+        #expect(Self.tool("tool:toolu_wf", in: transcript)?.status == .interrupted)
+        #expect(transcript.backgroundWork.map(\.state) == [.stopped])
+    }
+
+    @Test("A run id that could leave the session's directory names no journal", arguments: [
+        "../../../../etc/passwd", "wf_", "wf_a/b", "wf_a.b", "wf_..", "wf_ä1", "wf_" + String(repeating: "a", count: 62), "w7au92383",
+    ])
+    func unsafeRunID(_ runID: String) throws {
+        let turn = Self.workflowTurn.replacingOccurrences(of: "wf_0a1b2c3d-4e5", with: runID)
+        let (transcript, _) = Self.readWorkflow(turn)
+        #expect(transcript.backgroundWork.map(\.kind) == [.workflow])
+        #expect(transcript.backgroundWork.first?.journalPath == nil)
+    }
+
+    @Test("A background Subagent lists under its description, and ends with its notification")
+    func backgroundSubagent() {
+        let (running, lines) = Self.read(Self.backgroundAgent)
+        #expect(
+            running.backgroundWork == [
+                ChatBackgroundWorkItem(
+                    id: "toolu_agent", kind: .subagent, title: "Find the bug", subtitle: "general-purpose",
+                    launchOffset: lines[1].offset)
+            ])
+        let queued = #"{"type":"attachment","uuid":"q1","parentUuid":"t1","attachment":{"type":"queued_command","prompt":"\#(Self.failedNotification)","commandMode":"task-notification","origin":{"kind":"task-notification"}}}"#
+        let (failed, failedLines) = Self.read([Self.backgroundAgent, queued].joined(separator: "\n"))
+        #expect(failed.backgroundWork.map(\.state) == [.failed])
+        #expect(failed.backgroundWork.first?.endOffset == failedLines[5].offset)
+        #expect(failed.listedBackgroundWork.count == 1)
+    }
+
+    @Test("A teammate is never listed: nothing in the transcript says when one is done")
+    func teammateNotListed() {
+        let (transcript, _) = Self.read(
+            #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Split the work"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_mate","name":"Agent","input":{"description":"Review the parser","name":"parser","subagent_type":"general-purpose","prompt":"Review it.","run_in_background":true}}]},"apiBlockIndex":0}
+            {"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_mate","content":[{"type":"text","text":"Spawned successfully."}]}]},"toolUseResult":{"status":"teammate_spawned","agent_id":"parser@team","name":"parser","team_name":"team"}}
+            """#)
+        #expect(Self.tool("tool:toolu_mate", in: transcript)?.status == .succeeded)
+        #expect(transcript.backgroundWork.isEmpty)
     }
 
     // MARK: - Commands

@@ -34,6 +34,7 @@ struct ClaudeTranscriptIndex: Sendable {
         var offset: UInt64
         var operation: String
         var content: String?
+        var timestamp: String?
     }
 
     /// `system` subtypes this adapter knows, including the ones the CLI's
@@ -83,8 +84,9 @@ struct ClaudeTranscriptIndex: Sendable {
         case .permissionMode(let mode): permissionModeValue.offer(mode, at: offset)
         case .relocated(let cwd): relocatedCwd.offer(cwd, at: offset)
         case .continuedIn(let sessionID): continuedIn.offer(sessionID, at: offset)
-        case .queueOperation(let operation, let content):
-            queueOperations[offset] = QueueOperation(offset: offset, operation: operation, content: content)
+        case .queueOperation(let operation, let content, let timestamp):
+            queueOperations[offset] = QueueOperation(
+                offset: offset, operation: operation, content: content, timestamp: timestamp)
         case .other(let type):
             if !ClaudeMetadata.knownTypes.contains(type) {
                 unknownRecordTypes.insert(type)
