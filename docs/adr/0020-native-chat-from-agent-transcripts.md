@@ -14,7 +14,7 @@ and herdr is unchanged. herdr still owns the Agent's identity and Agent
 Status, submission through `agent.prompt`, and keys through `agent.send_keys`;
 its `agent_session` names the transcript by a Claude Code session id or a
 Codex thread id. Other Agents, and every Agent on a native Windows Host, hide
-the entry. Where the design was open, T3 Code's mobile chat was the reference.
+the entry.
 
 The formats as observed are recorded in
 [Claude Code transcripts](../research/claude-code-transcript-format.md) and
@@ -135,8 +135,7 @@ its first line. Failure, refusal and Stop notices stay below it, and so does
 the line saying Send waits for a dropped image. A tap into the input, or the
 switcher row's keyboard button, opens it in full, with the caret where the
 draft was left; it stays open while the tools dock is up. The status row and
-the Agent switcher row stay in both. T3 Code's mobile composer folds the same
-way.
+the Agent switcher row stay in both.
 
 ## Blocked cards
 

@@ -81,8 +81,8 @@ struct ChatFollowLatchTests {
         }
     }
 
-    /// Every reachable state against every event, as T3's reducer resolves
-    /// it, with the scroll session tracked the way its feed tracks it.
+    /// Every reachable state against every event, with the scroll session
+    /// tracked from a drag's start through the end of its momentum.
     static let transitions: [Transition] = [
         Transition(.following, .reset, following: true, scrolling: false),
         Transition(.following, .userScrollBegan, following: false, scrolling: true),
@@ -127,7 +127,7 @@ struct ChatFollowLatchTests {
         #expect(Self.transitions.count == Start.allCases.count * Event.all.count)
     }
 
-    @Test("Each event moves each reachable state as T3's reducer does", arguments: transitions)
+    @Test("Each event moves each reachable state as the latch defines", arguments: transitions)
     func transition(_ transition: Transition) {
         var latch = transition.start.latch
         transition.event.apply(to: &latch)

@@ -8,7 +8,7 @@ import CoreGraphics
 /// stack with no gaps between them; spacing belongs to the rows. When the
 /// rows are shorter than the visible area, `topPadding` pushes them down so a
 /// short conversation rests on the composer instead of hanging under the
-/// navigation bar, as T3 Code's `alignItemsAtEnd` does.
+/// navigation bar.
 ///
 /// Positions are content coordinates and include `topPadding`. Prefix sums
 /// answer every position in constant time and every search in logarithmic

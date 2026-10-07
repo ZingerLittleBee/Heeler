@@ -608,8 +608,7 @@ private struct ChatToolRow: View {
 }
 
 /// A tool's output text: as tall as the text up to a limit, then scrolling
-/// inside, as T3's work log does, so a long output never makes the row a
-/// screen tall.
+/// inside, so a long output never makes the row a screen tall.
 private struct ChatToolOutputText: View {
     let text: String
     @ScaledMetric(relativeTo: .caption) private var maximumHeight: CGFloat = 240

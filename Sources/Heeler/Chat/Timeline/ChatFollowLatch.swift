@@ -5,8 +5,7 @@ import CoreGraphics
 ///
 /// A geometric "near the end" test alone is not enough: while an answer
 /// streams, a reader who scrolled a few points up would be pulled back down
-/// by every chunk that grows a row. Following is therefore a latch, ported by
-/// semantics from T3 Code's thread-feed live follow (MIT). A user scroll
+/// by every chunk that grows a row. Following is therefore a latch. A user scroll
 /// session, from a drag's start through the end of its momentum, turns it off
 /// at once. It turns back on only when that session comes to rest at the end,
 /// when a scroll outside any session reaches the end, or on an explicit reset
