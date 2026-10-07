@@ -280,12 +280,12 @@ private struct ChatTurnHeaderRow: View {
             switch header.state {
             case .working(let since):
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let elapsed = Self.clock(context.date.timeIntervalSince(since))
-                    Text("Working for \(elapsed)")
+                    let interval = context.date.timeIntervalSince(since)
+                    Text("Working for \(Self.clock(interval))")
                         .monospacedDigit()
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Working")
-                        .accessibilityValue(elapsed)
+                        .accessibilityValue(Self.spoken(interval))
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -306,6 +306,7 @@ private struct ChatTurnHeaderRow: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(duration.map { "Worked for \(Self.spoken($0))" } ?? "Details")
                 .accessibilityValue(header.isOpen ? "Expanded" : "Collapsed")
                 .accessibilityHint(
                     "\(header.isOpen ? "Hides" : "Shows") \(header.stepCount == 1 ? "1 step" : "\(header.stepCount) steps")")
@@ -323,6 +324,12 @@ private struct ChatTurnHeaderRow: View {
         let seconds = max(1, Int(duration.rounded()))
         let formatted = Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
         return "Worked for \(formatted)"
+    }
+
+    /// "1 minute, 5 seconds": what VoiceOver reads for a duration.
+    static func spoken(_ interval: TimeInterval) -> String {
+        Duration.seconds(max(1, Int(interval.rounded())))
+            .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
     }
 
     /// "0:42", "1:05", "1:02:03".
@@ -343,6 +350,7 @@ private struct ChatToolGroupRow: View {
     let toggle: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Button(action: toggle) {
@@ -352,7 +360,8 @@ private struct ChatToolGroupRow: View {
                     .frame(width: 18)
                 Text(verbatim: group.summary)
                     .font(.subheadline)
-                    .lineLimit(2)
+                    // At accessibility sizes two lines hold a word or two.
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 Spacer(minLength: 4)
                 if let added = group.added, let removed = group.removed {
                     ChatDiffBadge(diff: ChatDiffStats(added: added, removed: removed))
