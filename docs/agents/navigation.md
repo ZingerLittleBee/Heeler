@@ -30,10 +30,11 @@ its contract.
 | Task | Follow these owners | Contract and focused coverage |
 | --- | --- | --- |
 | Host setup, preflight, credentials | [HostOnboardingStore](../../Sources/Heeler/Hosts/HostOnboardingStore.swift), [Preflight](../../Sources/Heeler/Hosts/Preflight.swift), [TransportConnector](../../Sources/Heeler/Hosts/TransportConnector.swift) | [HostOnboardingStoreTests](../../Tests/HeelerTests/HostOnboardingStoreTests.swift), [PreflightReportTests](../../Tests/HeelerTests/PreflightReportTests.swift); [RSA ADR 0019](../adr/0019-rsa-sha2-key-authentication.md) |
+| Installed plugin version and feature notes | [HeelerPlugin](../../Sources/Heeler/Hosts/HeelerPlugin.swift) (version, compatibility, presentation), `Transport.readHeelerPlugin` (`plugin.list`, decoded by [HeelerPluginInstallation](../../Sources/Heeler/Transport/HeelerPluginInstallation.swift)), read by `HostOnboardingStore` and [HeelerPluginStatusStore](../../Sources/Heeler/Console/HeelerPluginStatusStore.swift) for Settings | [HeelerPluginTests](../../Tests/HeelerTests/HeelerPluginTests.swift); the shared `plugin/test-vectors/plugin-version-v1.json` pins the bundled version |
 | Requests, subscriptions, reconnect | [Transport](../../Sources/Heeler/Transport/Transport.swift) → [EventsSession](../../Sources/Heeler/Transport/EventsSession.swift) → [HeelerSSHTransport](../../Sources/Heeler/Transport/HeelerSSHTransport.swift); projection follows subscription acknowledgement with a snapshot | [ADR 0011](../adr/0011-libssh2-direct-streamlocal-transport.md), [versioned compatibility evidence](herdr-compatibility.md); [EventsSessionSubscriptionsTests](../../Tests/HeelerTests/EventsSessionSubscriptionsTests.swift), [EventsSessionBufferingTests](../../Tests/HeelerTests/EventsSessionBufferingTests.swift), real-SSH lanes |
 | Native Windows discovery and streams | [RemoteHostEnvironment](../../Sources/Heeler/Transport/RemoteHostEnvironment.swift) → `HeelerSSHTransport` platform branches → [BootstrappedExecChannel](../../Sources/Heeler/Transport/BootstrappedExecChannel.swift) and [WindowsTerminalChannel](../../Sources/Heeler/Transport/WindowsTerminalChannel.swift) | [ADR 0018](../adr/0018-native-windows-hosts.md), [setup](../guides/windows-setup.md), [native acceptance](../guides/native-windows-testing.md); [RemoteHostEnvironmentTests](../../Tests/HeelerTests/RemoteHostEnvironmentTests.swift), [WindowsTerminalChannelTests](../../Tests/HeelerTests/WindowsTerminalChannelTests.swift) |
 | Composer and Direct Input | [AgentDetailView](../../Sources/Heeler/Console/AgentDetailView.swift) → [AgentTerminalView](../../Sources/Heeler/Console/AgentTerminalView.swift), [AgentComposerView](../../Sources/Heeler/Console/AgentComposerView.swift), [AgentComposerStore](../../Sources/Heeler/Console/AgentComposerStore.swift), [AttachTerminalStore](../../Sources/Heeler/Console/AttachTerminalStore.swift) → [TerminalInputController](../../Sources/Heeler/Terminal/TerminalInputController.swift) | [ADR 0013](../adr/0013-live-terminal-with-local-composer.md), [ADR 0016](../adr/0016-direct-input-on-agent-attach.md); [AgentComposerStoreTests](../../Tests/HeelerTests/AgentComposerStoreTests.swift), [AgentDirectInputTests](../../Tests/HeelerTests/AgentDirectInputTests.swift) |
-| Composer Stop and Chat's folded Composer | [AgentComposerStop](../../Sources/Heeler/Console/AgentComposerStop.swift) (`AgentComposerStopStore`, owned by `AgentComposerStore`; `AgentComposerCollapse`), [AgentComposerView](../../Sources/Heeler/Console/AgentComposerView.swift) | [ADR 0020](../adr/0020-native-chat-from-agent-transcripts.md), [ADR 0013](../adr/0013-live-terminal-with-local-composer.md); [AgentComposerStopTests](../../Tests/HeelerTests/AgentComposerStopTests.swift) (suites `AgentComposerPrimaryControlTests`, `AgentComposerCollapseTests`, `AgentComposerStopStoreTests`, `AgentComposerStopOwnershipTests`, `AgentComposerFoldHostedTests`), `AgentComposerSendButtonTests` in [AgentComposerStoreTests](../../Tests/HeelerTests/AgentComposerStoreTests.swift), the terminal's Stop in [AgentDirectInputTests](../../Tests/HeelerTests/AgentDirectInputTests.swift) |
+| Composer Stop and Chat's folded Composer | [AgentComposerStop](../../Sources/Heeler/Console/AgentComposerStop.swift) (`AgentComposerStopStore`, owned by `AgentComposerStore`; `AgentComposerCollapse`), [AgentComposerView](../../Sources/Heeler/Console/AgentComposerView.swift) | [ADR 0021](../adr/0021-native-chat-from-agent-transcripts.md), [ADR 0013](../adr/0013-live-terminal-with-local-composer.md); [AgentComposerStopTests](../../Tests/HeelerTests/AgentComposerStopTests.swift) (suites `AgentComposerPrimaryControlTests`, `AgentComposerCollapseTests`, `AgentComposerStopStoreTests`, `AgentComposerStopOwnershipTests`, `AgentComposerFoldHostedTests`), `AgentComposerSendButtonTests` in [AgentComposerStoreTests](../../Tests/HeelerTests/AgentComposerStoreTests.swift), the terminal's Stop in [AgentDirectInputTests](../../Tests/HeelerTests/AgentDirectInputTests.swift) |
 | Workspace shell selection and retention | [WorkspaceTerminalDrawer](../../Sources/Heeler/Console/WorkspaceTerminalDrawer.swift), [ShellTerminalStore](../../Sources/Heeler/Console/ShellTerminalStore.swift), [TerminalConnectionPool](../../Sources/Heeler/Console/TerminalConnectionPool.swift), [TerminalRetentionBudget](../../Sources/Heeler/Console/TerminalRetentionBudget.swift) | [ADR 0017](../adr/0017-workspace-terminal-inventory-and-retention.md) updates [ADR 0015](../adr/0015-shell-terminal-via-direct-terminal-attach.md); [TerminalConnectionPoolTests](../../Tests/HeelerTests/TerminalConnectionPoolTests.swift), [AttachTerminalStoreTests](../../Tests/HeelerTests/AttachTerminalStoreTests.swift) |
 | Rendering, scroll, keyboard geometry | [TerminalScreenView](../../Sources/Heeler/Terminal/TerminalScreenView.swift), [TerminalTouchScroll](../../Sources/Heeler/Terminal/TerminalTouchScroll.swift), [TerminalScrollControl](../../Sources/Heeler/Terminal/TerminalScrollControl.swift), [TerminalKeyboardInset](../../Sources/Heeler/Terminal/TerminalKeyboardInset.swift) | [ADR 0004](../adr/0004-libghostty-terminal.md), [scroll observations](herdr-compatibility.md); native checks use [simulator-ui.md](simulator-ui.md) |
 
@@ -47,7 +48,8 @@ driver. Package changes need the package lane, even when app tests pass.
 The Agent menu enters [AgentChangesPresentation](../../Sources/Heeler/Changes/AgentChangesPresentation.swift).
 It builds [ChangesStore](../../Sources/Heeler/Changes/ChangesStore.swift) through
 `ConsoleStore`, sharing a [GitExecGate](../../Sources/Heeler/Changes/GitExecGate.swift)
-per Host. `Transport.readChanges`, `readFilePatch`, and `listUntrackedDirectory`
+per Host. One app-wide `GitExecGate` also serializes Notification Registration
+writes, so a change to the gate affects both. `Transport.readChanges`, `readFilePatch`, and `listUntrackedDirectory`
 reach `HeelerSSHTransport.runGitScript`; the watchdog and admission lifetime live
 there. [GitProbe](../../Sources/Heeler/Changes/GitProbe.swift) and its neighboring
 extensions build POSIX scripts and parse byte-framed output.
@@ -77,7 +79,7 @@ whose single loop drives a [ChatConversationEngine](../../Sources/Heeler/Chat/Co
 over the session herdr reports. Host files come through
 [ChatHostFiles](../../Sources/Heeler/Chat/Source/ChatHostFiles.swift) to `Transport.readHostFileRange`,
 `fileStatus`, `listFiles` and `hostHomeDirectory`. Read
-[ADR 0020](../adr/0020-native-chat-from-agent-transcripts.md); the formats are
+[ADR 0021](../adr/0021-native-chat-from-agent-transcripts.md); the formats are
 recorded in [Claude Code transcripts](../research/claude-code-transcript-format.md)
 and [Codex rollouts](../research/codex-rollout-format.md), and herdr's behavior
 in [the compatibility notes](herdr-compatibility.md).
@@ -126,6 +128,18 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [The shared contract](live-activity-contract.md) and vectors own their wire
   agreement; [ADRs 0008](../adr/0008-agent-notifications-via-plugin-hooks-and-push-relay.md)
   and [0014](../adr/0014-lock-screen-live-activities.md) explain the boundaries.
+  Registration state: [NotificationRegistrationFile](../../Sources/Heeler/Notifications/NotificationRegistrationFile.swift)
+  models `notifications.json`, [NotificationRegistrationCeremony](../../Sources/Heeler/Notifications/NotificationRegistrationCeremony.swift)
+  reads and replaces it over SSH, and [NotificationPreferencesStore](../../Sources/Heeler/Notifications/NotificationPreferencesStore.swift)
+  owns the Settings toggles. Entries are scoped to a herdr session and owned by
+  a Host's Notification Key ([ADR 0020](../adr/0020-session-scoped-notification-registrations.md));
+  the plugin side is `plugin/src/session.js`.
+- **Deep links:** `ContentView.onOpenURL` parses `heeler://agent` links with
+  [AgentActivityLink](../../Sources/HeelerActivityCore/AgentActivityLink.swift),
+  which also builds the Live Activity's links. Another app's link names its
+  Host by address or name, and [AgentActivityLink+Hosts](../../Sources/Heeler/Notifications/AgentActivityLink+Hosts.swift)
+  resolves it against the saved Hosts before `AgentSceneDirectory` routes it.
+  Start with [AgentActivityLinkTests](../../Tests/HeelerTests/AgentActivityLinkTests.swift).
 
 ## Sibling deliverables and generated files
 

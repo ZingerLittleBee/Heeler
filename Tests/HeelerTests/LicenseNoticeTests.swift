@@ -486,13 +486,13 @@ struct AcknowledgementsRouteIdentityTests {
             destination.destinationTypeName
                 == String(reflecting: AcknowledgementsView.self))
 
-        // Sibling About rows do not push a SettingsAboutDestination; a decoy
-        // version/repository/privacy row cannot satisfy the mapping.
+        // Sibling About rows never resolve to the Acknowledgements route; a
+        // decoy version/star/privacy row cannot satisfy the mapping.
         for row in SettingsView.aboutRows where row != .acknowledgements {
-            #expect(SettingsView.aboutDestination(for: row) == nil)
+            #expect(SettingsView.aboutDestination(for: row) != .acknowledgements)
         }
         #expect(SettingsView.aboutDestination(for: .version) == nil)
-        #expect(SettingsView.aboutDestination(for: .repository) == nil)
+        #expect(SettingsView.aboutDestination(for: .starOnGitHub) == nil)
         #expect(SettingsView.aboutDestination(for: .privacyPolicy) == nil)
     }
 
@@ -503,7 +503,7 @@ struct AcknowledgementsRouteIdentityTests {
 
         #expect(!decoyIDs.contains(SettingsView.acknowledgementsRouteID))
         #expect(SettingsView.AboutRow.version.id != SettingsView.acknowledgementsRouteID)
-        #expect(SettingsView.AboutRow.repository.id != SettingsView.acknowledgementsRouteID)
+        #expect(SettingsView.AboutRow.starOnGitHub.id != SettingsView.acknowledgementsRouteID)
         #expect(SettingsView.AboutRow.privacyPolicy.id != SettingsView.acknowledgementsRouteID)
     }
 
@@ -536,7 +536,7 @@ struct AcknowledgementsRouteIdentityTests {
     @Test func aboutRowsKeepAcknowledgementsWhenSiblingLinksVary() {
         #expect(SettingsView.aboutRows.first == .version)
         #expect(SettingsView.aboutRows.contains(.acknowledgements))
-        #expect(SettingsView.aboutRows.contains(.repository))
+        #expect(SettingsView.aboutRows.contains(.starOnGitHub))
         #expect(SettingsView.aboutRows.contains(.privacyPolicy))
     }
 
@@ -553,7 +553,7 @@ struct AcknowledgementsRouteIdentityTests {
             throw WiringError.missingAcknowledgementsCase
         }
         let after = fromFunc[start.upperBound...]
-        let endMarkers = ["case .repository:", "case .privacyPolicy:", "case .version:"]
+        let endMarkers = ["case .starOnGitHub:", "case .privacyPolicy:", "case .version:"]
         var endOffset = after.endIndex
         for endMarker in endMarkers {
             if let range = after.range(of: endMarker), range.lowerBound < endOffset {

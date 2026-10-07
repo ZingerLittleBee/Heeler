@@ -639,6 +639,19 @@ struct PaneTarget: Codable, Equatable, Sendable {
     }
 }
 
+/// herdr schema `$defs/PluginListParams`.
+struct PluginListParams: Codable, Equatable, Sendable {
+    let pluginID: String?
+
+    init(pluginID: String? = nil) {
+        self.pluginID = pluginID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pluginID = "plugin_id"
+    }
+}
+
 /// The `"type":"pong"` result payload of herdr's success_response schema.
 struct PongResponse: Codable, Equatable, Sendable {
     let capabilities: ServerCapabilities?

@@ -120,6 +120,19 @@ provisions disposable sshd instances and pins counts for mandatory suites.
 Read `scripts/run-ci-ios-tests.sh` when changing fixture membership or skip gates;
 do not copy old counts from a research note.
 
+For Simulator or plugin acceptance against a throwaway herdr instead of the
+live server, run isolated herdr sessions, a loopback sshd, the repository
+plugin, and a fake Push Relay that logs to `relay.jsonl`:
+
+```sh
+python3 scripts/isolated-herdr-backend.py start --sessions default,work --plugin --relay
+python3 scripts/isolated-herdr-backend.py stop
+```
+
+Its `--help` covers `status`, `run`, and `authorize`. Isolation relies on the
+app deriving the socket from the remote `$HOME`; the sshd allows streamlocal
+forwarding to any socket the user can open, the live herdr included.
+
 For Changes reads on Linux, with Docker running:
 
 ```sh

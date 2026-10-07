@@ -22,6 +22,7 @@ struct HostOnboardingView: View {
     /// A passing preflight not yet acted on: it may restart the Console's
     /// connection once (see `HostOnboardingConsoleRecovery`).
     @State private var isConsoleRecoveryArmed = false
+    @State private var isShowingPluginNotice = false
 
     init(
         host: Host,
@@ -30,7 +31,8 @@ struct HostOnboardingView: View {
         standingFailure: TransportError? = nil,
         syncIssue: String? = nil,
         isManualReconnectInFlight: Bool = false,
-        retryConnection: (@MainActor @Sendable () async -> Void)? = nil
+        retryConnection: (@MainActor @Sendable () async -> Void)? = nil,
+        dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
         self.catalog = catalog
         self.connectionStatus = connectionStatus
@@ -38,7 +40,12 @@ struct HostOnboardingView: View {
         self.syncIssue = syncIssue
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
-        _store = State(initialValue: HostOnboardingStore(host: host))
+        _store = State(
+            initialValue: HostOnboardingStore(
+                host: host,
+                connector: dependencies.connector,
+                knownHosts: dependencies.knownHosts,
+                credentials: dependencies.credentials))
     }
 
     var body: some View {
@@ -49,6 +56,7 @@ struct HostOnboardingView: View {
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
+                pluginRow
             }
 
             if retryConnection != nil {
@@ -151,6 +159,9 @@ struct HostOnboardingView: View {
         .sheet(isPresented: $isEditing) {
             HostFormView(store: catalog, editing: store.host)
         }
+        .pluginNoticeSheet(pluginPresentation.notice, isPresented: $isShowingPluginNotice) {
+            Task { await store.runChecks() }
+        }
         .alert(
             "Trust this Host?",
             isPresented: fingerprintAlertPresented,
@@ -183,9 +194,7 @@ struct HostOnboardingView: View {
         }
         .alert(
             "Could Not Select Session",
-            isPresented: Binding(
-                get: { sessionSelectionError != nil },
-                set: { if !$0 { sessionSelectionError = nil } })
+            isPresented: sessionSelectionErrorPresented
         ) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -236,6 +245,16 @@ struct HostOnboardingView: View {
             set: { _ in })
     }
 
+    /// Out of the body's modifier chain: inline, this closure exceeded
+    /// Xcode 26.6's type-checking limit for the whole body.
+    private var sessionSelectionErrorPresented: Binding<Bool> {
+        Binding(
+            get: { sessionSelectionError != nil },
+            set: { isPresented in
+                if !isPresented { sessionSelectionError = nil }
+            })
+    }
+
     private var addressLine: String {
         "\(store.host.username)@\(store.host.address):\(String(store.host.port))"
     }
@@ -264,6 +283,40 @@ struct HostOnboardingView: View {
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {
         store.report?[check]
+    }
+
+    private var pluginPresentation: HeelerPluginPresentation {
+        HeelerPluginPresentation(store.pluginStatus)
+    }
+
+    /// The installed version. When the user has something to do on the Host
+    /// (install, update, enable, or replace the plugin) the row carries an
+    /// icon and opens the details.
+    @ViewBuilder
+    private var pluginRow: some View {
+        let presentation = pluginPresentation
+        if let notice = presentation.notice {
+            Button {
+                isShowingPluginNotice = true
+            } label: {
+                LabeledContent {
+                    HStack(spacing: 6) {
+                        Text(presentation.value)
+                        PluginNoticeIcon(tone: notice.tone)
+                    }
+                } label: {
+                    // Not the button tint: the row reads like its neighbors.
+                    Text("Heeler Plugin")
+                        .foregroundStyle(Color.primary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(notice.message)
+            .accessibilityIdentifier("hosts.detail.plugin.version")
+        } else {
+            LabeledContent("Heeler Plugin", value: presentation.value)
+                .accessibilityIdentifier("hosts.detail.plugin.version")
+        }
     }
 
     @ViewBuilder
@@ -440,4 +493,9 @@ private struct PreflightCheckRow: View {
                 .foregroundStyle(.secondary)
         }
     }
+}
+
+extension EnvironmentValues {
+    /// Where Host detail preflights connect; see `HostOnboardingDependencies`.
+    @Entry var hostOnboardingDependencies = HostOnboardingDependencies()
 }

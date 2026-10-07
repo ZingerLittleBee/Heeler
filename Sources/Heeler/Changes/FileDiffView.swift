@@ -242,9 +242,13 @@ private struct FileDiffDocumentView<Footer: View>: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        .disabled(decision.toggle == .disabled)
+                        // Content width; unbounded, it fills the bar's free space.
+                        .fixedSize()
                         .accessibilityIdentifier("diff-layout-picker")
                     }
+                    // The segmented control draws its own capsule; the bar's
+                    // shared glass around it would add a second, offset rim.
+                    .toolbarItemBackground(.hidden)
                 }
             }
         }
@@ -344,7 +348,7 @@ private struct FileDiffDocumentView<Footer: View>: View {
         }
         let preference = settings.layout
         guard let usableWidth else {
-            return DiffLayoutDecision(layout: .unified, toggle: .disabled)
+            return DiffLayoutDecision(layout: .unified, toggle: .hidden)
         }
         return DiffLayoutPolicy.resolve(
             preference: preference,

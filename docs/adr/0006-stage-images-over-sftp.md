@@ -1,6 +1,6 @@
 # Stage attachments over SFTP and insert their paths without submitting
 
-Status: Accepted; ADR 0020 moves the staging owner. `ComposerStagingStore` now
+Status: Accepted; ADR 0021 moves the staging owner. `ComposerStagingStore` now
 belongs to the Agent's `AgentComposerSession`, which the Console keeps per Agent
 above the detail and shares between its Attach and Chat. The last detail
 leaving the Agent cancels an upload, and suspension interrupts it with Retry.

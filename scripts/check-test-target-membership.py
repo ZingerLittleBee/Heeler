@@ -4,7 +4,9 @@
 CI builds the committed Heeler.xcodeproj without regenerating it, and the full
 ordinary lane proves only that the tests compiled into HeelerTests executed. A
 Swift file under Tests/HeelerTests that the project omits, or a scheme that
-skips tests, would drop those tests from every lane without failing one.
+skips tests, would drop those tests from every lane without failing one. Shared
+plugin vectors are listed one by one in project.yml, so a new vector file must
+also reach the HeelerTests resources before Swift tests can load it.
 """
 
 from __future__ import annotations
@@ -29,18 +31,29 @@ def object_body(project: str, comment: str, isa: str) -> str:
     return matches[0]
 
 
+def phase_files(project: str, phase_name: str, isa: str, target: str = TARGET) -> set[str]:
+    """Names of the files in one of the target's build phases."""
+    phases = re.search(r"buildPhases = \((.*?)\);", object_body(project, target, "PBXNativeTarget"), re.S)
+    identifiers = re.findall(
+        r"([0-9A-F]{24}) /\* " + phase_name + r" \*/", phases.group(1) if phases else "")
+    if len(identifiers) != 1:
+        raise ValueError(f"{target} needs exactly one {phase_name} build phase")
+    phase = re.search(
+        r"^\s*" + identifiers[0] + r" /\* " + phase_name + r" \*/ = \{\s*isa = " + isa
+        + r";(.*?)^\s*\};", project, re.M | re.S)
+    if phase is None:
+        raise ValueError(f"The {target} {phase_name} build phase is missing")
+    return set(re.findall(r"/\* (.+?) in " + phase_name + r" \*/", phase.group(1)))
+
+
 def target_sources(project: str, target: str = TARGET) -> set[str]:
     """Names of the files in the target's Sources build phase."""
-    phases = re.search(r"buildPhases = \((.*?)\);", object_body(project, target, "PBXNativeTarget"), re.S)
-    identifiers = re.findall(r"([0-9A-F]{24}) /\* Sources \*/", phases.group(1) if phases else "")
-    if len(identifiers) != 1:
-        raise ValueError(f"{target} needs exactly one Sources build phase")
-    phase = re.search(
-        r"^\s*" + identifiers[0] + r" /\* Sources \*/ = \{\s*isa = PBXSourcesBuildPhase;(.*?)^\s*\};",
-        project, re.M | re.S)
-    if phase is None:
-        raise ValueError(f"The {target} Sources build phase is missing")
-    return set(re.findall(r"/\* (.+?) in Sources \*/", phase.group(1)))
+    return phase_files(project, "Sources", "PBXSourcesBuildPhase", target)
+
+
+def target_resources(project: str, target: str = TARGET) -> set[str]:
+    """Names of the files in the target's Resources build phase."""
+    return phase_files(project, "Resources", "PBXResourcesBuildPhase", target)
 
 
 def scheme_problems(scheme: str, target: str = TARGET) -> list[str]:
@@ -68,7 +81,12 @@ def check(root: Path = ROOT) -> int:
     # identify the target's sources without resolving project groups.
     sources = sorted(path.name for path in (root / "Tests" / TARGET).rglob("*.swift"))
     missing = sorted(set(sources) - target_sources(project))
-    problems = [f"{name} is not compiled into {TARGET}" for name in missing] + scheme_problems(scheme)
+    vectors = sorted(path.name for path in (root / "plugin" / "test-vectors").glob("*.json"))
+    unbundled = sorted(set(vectors) - target_resources(project))
+    problems = ([f"{name} is not compiled into {TARGET}" for name in missing]
+                + [f"plugin/test-vectors/{name} is not bundled into {TARGET}; list it in project.yml"
+                   for name in unbundled]
+                + scheme_problems(scheme))
     if problems:
         raise ValueError("; ".join(problems) + ". Run make generate and commit Heeler.xcodeproj.")
     return len(sources)
@@ -81,7 +99,7 @@ def main() -> int:
     except (OSError, ValueError, ElementTree.ParseError) as error:
         print(f"Test target membership check failed: {error}", file=sys.stderr)
         return 1
-    print(f"Test target membership check passed ({count} {TARGET} Swift sources).")
+    print(f"Test target membership check passed ({count} {TARGET} Swift sources and shared vectors).")
     return 0
 
 

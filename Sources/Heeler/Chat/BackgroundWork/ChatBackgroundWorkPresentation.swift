@@ -1,6 +1,6 @@
 import Foundation
 
-/// How Chat shows its Background Work (ADR 0020): the rows over the
+/// How Chat shows its Background Work (ADR 0021): the rows over the
 /// Composer, the line they condense to while the Composer is open, and the
 /// sheet that lists everything. Work a read can't vouch for stops claiming
 /// to run: with the Host away or the read failing its row freezes, and work

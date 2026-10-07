@@ -222,6 +222,12 @@ protocol Transport: Sendable {
     /// itself is absent, matching the other plugin-config reads.
     func readSidebarLayout() async throws -> Data?
 
+    /// Reads the Heeler plugin's entry from herdr's `plugin.list`, under its
+    /// current id or a legacy one; nil when neither is installed. Disabled
+    /// plugins are still reported. Throws `TransportError.hostFeatureUnavailable`
+    /// on Hosts the plugin does not support (native Windows).
+    func readHeelerPlugin() async throws -> HeelerPluginInstallation?
+
     /// Lists the skills / custom slash commands installed for a kind on this
     /// Host: global sources under the remote home plus project sources under
     /// the query's project root, per `SkillSourceCatalog`. Kinds without a
@@ -432,6 +438,13 @@ extension Transport {
     /// Test doubles and alternative transports without a Host-side plugin
     /// report an absent snapshot rather than emulating the plugin CLI.
     func readSidebarLayout() async throws -> Data? { nil }
+
+    /// A transport without herdr's plugin registry cannot tell whether the
+    /// plugin is installed, which is not the same as reporting it absent.
+    func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
+        throw TransportError.channelFailed(
+            detail: "This transport cannot list herdr plugins.")
+    }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
         throw TransportError.channelFailed(

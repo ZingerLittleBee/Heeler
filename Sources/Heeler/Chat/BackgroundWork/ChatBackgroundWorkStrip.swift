@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Chat's Background Work over the Composer (ADR 0020): up to three rows,
+/// Chat's Background Work over the Composer (ADR 0021): up to three rows,
 /// running work first, then "+N more"; one line while the Composer is open
 /// or a Blocked card stands in its place. Every row opens the sheet that
 /// lists it all; nothing here stops work. Empty when there is nothing to

@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Folds the timeline's rows (ADR 0020). A finished turn keeps its prompt,
+/// Folds the timeline's rows (ADR 0021). A finished turn keeps its prompt,
 /// the rows it pins and its final answer; everything between folds behind a
 /// "Worked for" header. Two or more consecutive tool calls show as one
 /// group header. Each header opens on its own, and opening a turn opens

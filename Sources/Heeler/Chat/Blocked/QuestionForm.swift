@@ -13,7 +13,7 @@ enum QuestionFormAnswer: Hashable, Sendable {
 }
 
 /// A dialog asking several questions at once, filled in on the card before
-/// any key goes out (ADR 0020). The transcript spells out every question
+/// any key goes out (ADR 0021). The transcript spells out every question
 /// while the screen shows one page at a time, so each page is checked
 /// against its question before it is answered, and Claude's review page
 /// against the answers before they are submitted.

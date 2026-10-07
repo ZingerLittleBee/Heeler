@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A Blocked Agent's dialog in the Composer's place (ADR 0020): the
+/// A Blocked Agent's dialog in the Composer's place (ADR 0021): the
 /// program's own choices as native buttons, answered with keys. Labels are
 /// the program's text. The first option leads, a decline reads as
 /// destructive, and an option that saves a rule or switches the permission

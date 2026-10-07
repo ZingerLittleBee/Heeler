@@ -58,7 +58,8 @@ Native iOS companion app for [herdr](https://herdr.dev), an agent console over S
   interim upload. The release runner owns version edits and tags.
 - Commits and PRs carry no attribution trailers or email addresses; local hooks
   and CI enforce the [contribution policy](CONTRIBUTING.md#commit-attribution).
-  Reference issues with `refs #<n>`.
+  Commits reference issues with `refs #<n>`; a PR that resolves an issue ends
+  its body with `Closes #<n>`, a partial one with `refs #<n>`.
 
 ## Tracker
 

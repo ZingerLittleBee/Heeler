@@ -21,6 +21,14 @@
             ProcessInfo.processInfo.arguments.contains(chatArgument)
         }
 
+        /// Adds one Host per Heeler plugin state, with notifications already
+        /// on, so Host details and Settings show every plugin notice.
+        static let pluginStatesArgument = "--demo-plugin-states"
+
+        static var showsPluginStates: Bool {
+            ProcessInfo.processInfo.arguments.contains(pluginStatesArgument)
+        }
+
         static var isEnabled: Bool {
             isEnabled(arguments: ProcessInfo.processInfo.arguments)
         }
@@ -97,10 +105,17 @@
             )
             .preferredColorScheme(appearance.preferredColorScheme)
             .environment(\.diffLayoutSettings, diffLayout)
+            .environment(\.hostOnboardingDependencies, DemoScreenshotFixture.onboardingDependencies)
             .task {
                 console.setHosts(hosts.hosts)
                 notificationPreferences.setHosts(hosts.hosts)
                 await console.resume()
+                if DemoScreenshotMode.showsPluginStates {
+                    await notificationPreferences.refresh()
+                    for host in DemoScreenshotFixture.pluginStateHosts {
+                        await notificationPreferences.setNotificationsEnabled(true, for: host)
+                    }
+                }
             }
         }
     }
@@ -127,13 +142,26 @@
         static func make() -> DemoScreenshotComposition {
             let defaults = DemoScreenshotFixture.makeDefaults()
             let console = DemoScreenshotFixture.makeConsoleStore()
-            let pushRegistration = PushRegistrationStore(client: DemoPushRegistrationClient())
+            let showsPluginStates = DemoScreenshotMode.showsPluginStates
+            let pushRegistration = PushRegistrationStore(
+                client: DemoPushRegistrationClient(isAuthorized: showsPluginStates))
+            // Plugin states need registered Hosts: an invented push token and
+            // Notification Keys that never leave this process.
+            if showsPluginStates {
+                pushRegistration.deviceTokenDidArrive(Data(repeating: 0x5A, count: 32))
+            }
             let relaySettings = NotificationRelaySettings(defaults: defaults)
             let notificationRouter = AgentNotificationRouter()
             let notificationPreferences = NotificationPreferencesStore(
                 transports: console,
-                deviceToken: { nil },
-                relayBaseURL: { nil })
+                deviceToken: { showsPluginStates ? pushRegistration.deviceToken : nil },
+                relayBaseURL: { nil },
+                ceremony: NotificationRegistrationCeremony(
+                    keys: NotificationKeyStore(secrets: VolatileSecretStore(), mirror: nil)))
+            let liveActivityPreferences = LiveActivityPreferences(defaults: defaults)
+            for id in DemoScreenshotFixture.pluginStateLiveActivityHostIDs {
+                liveActivityPreferences.setEnabled(true, for: id)
+            }
             let detailSurface = AgentDetailSurfaceSettings(defaults: defaults)
             if DemoScreenshotMode.opensChat { detailSurface.select(.chat) }
             return DemoScreenshotComposition(
@@ -156,7 +184,7 @@
                     playSound: {}),
                 liveActivities: HostLiveActivityCoordinator(
                     controller: ActivityKitLiveActivityController(),
-                    preferences: LiveActivityPreferences(defaults: defaults),
+                    preferences: liveActivityPreferences,
                     transports: console,
                     deviceToken: { nil },
                     knownHostIDs: { Set(DemoScreenshotFixture.hosts.map(\.id)) },
@@ -211,6 +239,82 @@
                     address: "build.demo.invalid",
                     username: "builder"),
             ] + (DemoScreenshotMode.showsHostProblems ? problemHosts : [])
+            + (DemoScreenshotMode.showsPluginStates ? pluginStateHosts : [])
+
+        /// One Host per plugin state, named for it. Only with
+        /// `DemoScreenshotMode.pluginStatesArgument`.
+        static let pluginStates: [(name: String, plugin: Result<HeelerPluginInstallation?, TransportError>)] = [
+            ("Plugin current (0.6.0)", .success(HeelerPluginInstallation(version: "0.6.0"))),
+            ("Plugin newer than app (0.7.0)", .success(HeelerPluginInstallation(version: "0.7.0"))),
+            ("Plugin outdated (0.5.0)", .success(HeelerPluginInstallation(version: "0.5.0"))),
+            ("Plugin outdated (0.4.0)", .success(HeelerPluginInstallation(version: "0.4.0"))),
+            ("Plugin outdated (0.3.0)", .success(HeelerPluginInstallation(version: "0.3.0"))),
+            ("Plugin not installed", .success(nil)),
+            ("Plugin disabled (0.6.0)", .success(HeelerPluginInstallation(version: "0.6.0", isEnabled: false))),
+            ("Plugin disabled + outdated (0.5.0)",
+             .success(HeelerPluginInstallation(version: "0.5.0", isEnabled: false))),
+            ("Plugin under legacy name (0.3.0)",
+             .success(HeelerPluginInstallation(pluginID: "herdr-mobile.pairing", version: "0.3.0"))),
+            ("Plugin with legacy leftover (0.6.0)",
+             .success(HeelerPluginInstallation(version: "0.6.0", leftoverLegacyIDs: ["herdr-mobile.pairing"]))),
+            ("Plugin linked locally (0.5.0)", .success(HeelerPluginInstallation(version: "0.5.0", source: .local))),
+            ("Plugin linked locally (0.6.0)", .success(HeelerPluginInstallation(version: "0.6.0", source: .local))),
+            ("Plugin manifest unreadable",
+             .success(HeelerPluginInstallation(version: "0.6.0", hasManifestWarning: true))),
+            ("Plugin on Windows", .failure(.hostFeatureUnavailable(feature: "The Heeler plugin"))),
+            ("Plugin read failed", .failure(.timedOut)),
+        ]
+
+        static let pluginStateHosts: [Host] = pluginStates.enumerated().map { index, state in
+            Host(
+                id: pluginStateHostID(index),
+                name: state.name,
+                address: "plugin-\(index + 1).demo.invalid",
+                username: "developer")
+        }
+
+        /// The 0.3.0 and 0.4.0 Hosts keep Live Activity on, so its notes show.
+        static let pluginStateLiveActivityHostIDs: [Host.ID] =
+            DemoScreenshotMode.showsPluginStates ? [pluginStateHostID(3), pluginStateHostID(4)] : []
+
+        private static func pluginStateHostID(_ index: Int) -> Host.ID {
+            let byte = UInt8(index + 1)
+            return UUID(
+                uuid: (
+                    0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x46, 0x66,
+                    0x86, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, byte
+                ))
+        }
+
+        private static let pluginStateProfiles: [Host.ID: DemoHostProfile] = Dictionary(
+            uniqueKeysWithValues: pluginStates.enumerated().map { index, state in
+                (
+                    pluginStateHostID(index),
+                    DemoHostProfile(
+                        snapshot: snapshot(agents: [], workspaces: []),
+                        paneSnippets: [:],
+                        terminalOutputs: [:],
+                        plugin: state.plugin)
+                )
+            })
+
+        /// Host detail preflights reach the same invented Hosts as the
+        /// Console, with credentials that never touch the Keychain.
+        static let onboardingDependencies = HostOnboardingDependencies(
+            connector: DemoPreflightConnector(),
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: HostCredentialsProvider(
+                deviceKeys: DeviceKeyStore(secrets: VolatileSecretStore()),
+                rsaKeys: RSAKeyStore(secrets: VolatileSecretStore()),
+                secrets: VolatileSecretStore()))
+
+        static func transport(for host: Host) throws -> any Transport {
+            if let failure = connectFailures[host.id] { throw failure }
+            guard let profile = profiles[host.id] else {
+                throw TransportError.sshUnreachable(detail: "No demo profile for Host.")
+            }
+            return DemoScreenshotTransport(profile: profile, hostID: host.id)
+        }
 
         /// Only with `DemoScreenshotMode.hostProblemsArgument`.
         static let problemHosts = [
@@ -238,7 +342,9 @@
             piHostID: .authenticationFailed,
         ]
 
-        static let profiles: [Host.ID: DemoHostProfile] = [
+        static let profiles = baseProfiles.merging(pluginStateProfiles) { base, _ in base }
+
+        private static let baseProfiles: [Host.ID: DemoHostProfile] = [
             studioHostID: DemoHostProfile(
                 snapshot: snapshot(
                     agents: [
@@ -388,14 +494,7 @@
             ) { host, subscriptions in
                 EventsSession(
                     subscriptions: subscriptions,
-                    connect: {
-                        if let failure = connectFailures[host.id] { throw failure }
-                        guard let profile = profiles[host.id] else {
-                            throw TransportError.sshUnreachable(
-                                detail: "No demo profile for Host.")
-                        }
-                        return DemoScreenshotTransport(profile: profile)
-                    },
+                    connect: { try transport(for: host) },
                     reconnectPolicy: ReconnectPolicy(
                         initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)),
                     keepalive: nil)
@@ -504,6 +603,39 @@
         let terminalOutputs: [String: String]
         /// Connects, then fails every snapshot: a Host out of sync.
         var snapshotFailure: TransportError?
+        /// What `plugin.list` reports for the Heeler plugin.
+        var plugin: Result<HeelerPluginInstallation?, TransportError> = .success(
+            HeelerPluginInstallation(version: HeelerPluginCompatibility.bundled.description))
+    }
+
+    /// Preflight for screenshot Hosts: the Host detail's own connection,
+    /// served like the Console's.
+    private struct DemoPreflightConnector: TransportConnector {
+        func connect(settings: SSHTransportSettings) async throws -> any Transport {
+            guard
+                let host = DemoScreenshotFixture.hosts.first(where: {
+                    $0.address == settings.host
+                })
+            else {
+                throw TransportError.sshUnreachable(detail: "No demo Host at this address.")
+            }
+            return try DemoScreenshotFixture.transport(for: host)
+        }
+    }
+
+    /// Each demo Host's plugin config files, shared by every connection to
+    /// it and gone when the process ends.
+    private actor DemoPluginFiles {
+        static let shared = DemoPluginFiles()
+        private var files: [String: Data] = [:]
+
+        func read(_ name: String, hostID: Host.ID) -> Data? {
+            files["\(hostID.uuidString)/\(name)"]
+        }
+
+        func write(_ data: Data, to name: String, hostID: Host.ID) {
+            files["\(hostID.uuidString)/\(name)"] = data
+        }
     }
 
     /// Invented Changes for screenshot mode, one Checkout per demo Agent
@@ -1043,6 +1175,7 @@
 
     private actor DemoScreenshotTransport: Transport {
         private let profile: DemoHostProfile
+        private let hostID: Host.ID
         private var isClosed = false
         private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
         /// Like the SSH transport, each target admits one live channel.
@@ -1050,8 +1183,9 @@
             TerminalAttachTarget: AsyncThrowingStream<Data, any Error>.Continuation
         ] = [:]
 
-        init(profile: DemoHostProfile) {
+        init(profile: DemoHostProfile, hostID: Host.ID) {
             self.profile = profile
+            self.hostID = hostID
         }
 
         func ping() async throws -> ServerInfo {
@@ -1068,6 +1202,38 @@
 
         func readSidebarLayout() async throws -> Data? {
             DemoScreenshotFixture.sidebarLayoutData
+        }
+
+        func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
+            try profile.plugin.get()
+        }
+
+        /// Plugin config files exist only where an enabled plugin would
+        /// serve them, as the real registration probe requires.
+        private func requireEnabledPlugin() throws {
+            guard try profile.plugin.get()?.isEnabled == true else {
+                throw NotificationRegistrationError.pluginNotInstalled
+            }
+        }
+
+        func readNotificationRegistration() async throws -> Data? {
+            try requireEnabledPlugin()
+            return await DemoPluginFiles.shared.read("notifications.json", hostID: hostID)
+        }
+
+        func replaceNotificationRegistration(_ contents: Data) async throws {
+            try requireEnabledPlugin()
+            await DemoPluginFiles.shared.write(contents, to: "notifications.json", hostID: hostID)
+        }
+
+        func readNotificationConfig() async throws -> Data? {
+            try requireEnabledPlugin()
+            return await DemoPluginFiles.shared.read("notify.json", hostID: hostID)
+        }
+
+        func replaceNotificationConfig(_ contents: Data) async throws {
+            try requireEnabledPlugin()
+            await DemoPluginFiles.shared.write(contents, to: "notify.json", hostID: hostID)
         }
 
         func sessionSnapshot() async throws -> SessionSnapshot {
@@ -1232,8 +1398,13 @@
     }
 
     private struct DemoPushRegistrationClient: PushRegistrationClient {
-        func authorizationStatus() async -> UNAuthorizationStatus { .denied }
-        func requestAuthorization() async throws -> Bool { false }
+        let isAuthorized: Bool
+
+        func authorizationStatus() async -> UNAuthorizationStatus {
+            isAuthorized ? .authorized : .denied
+        }
+
+        func requestAuthorization() async throws -> Bool { isAuthorized }
         @MainActor func registerForRemoteNotifications() {}
     }
 #endif

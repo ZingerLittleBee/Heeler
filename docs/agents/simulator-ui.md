@@ -51,6 +51,9 @@ user operates it. Opening an Agent detail attaches its terminal, which can
 displace the current attach owner. Prefer the existing demo for screenshot
 work, or an isolated herdr + sshd backend for real interactions; a test that
 uses the user's live server needs authorization for its writes.
+`python3 scripts/isolated-herdr-backend.py start` provides that backend and
+prints the Host settings and `knownHostFingerprints` entry to seed; `stop`
+removes it. See its `--help`.
 
 ## Capture and inspect
 

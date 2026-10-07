@@ -6,11 +6,28 @@ import Foundation
 final actor FakeTransport: Transport {
     private let pingResult: Result<ServerInfo, TransportError>
     private let sessions: [HerdrSession]
+    /// nil leaves the plugin read unscripted, like a transport without
+    /// herdr's plugin registry.
+    private let plugin: Result<HeelerPluginInstallation?, TransportError>?
     private(set) var isClosed = false
+    /// Whether the connection was still open at each plugin read.
+    private(set) var pluginReadsWhileOpen: [Bool] = []
 
-    init(pingResult: Result<ServerInfo, TransportError>, sessions: [HerdrSession] = []) {
+    init(
+        pingResult: Result<ServerInfo, TransportError>, sessions: [HerdrSession] = [],
+        plugin: Result<HeelerPluginInstallation?, TransportError>? = nil
+    ) {
         self.pingResult = pingResult
         self.sessions = sessions
+        self.plugin = plugin
+    }
+
+    func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
+        pluginReadsWhileOpen.append(!isClosed)
+        guard let plugin else {
+            throw TransportError.channelFailed(detail: "FakeTransport does not script plugins")
+        }
+        return try plugin.get()
     }
 
     func ping() async throws -> ServerInfo {
@@ -146,16 +163,19 @@ final actor FakeTransportConnector: TransportConnector {
     /// evaluation entirely.
     private let presentedKeyBlob: Data?
     private let sessions: [HerdrSession]
+    private let plugin: Result<HeelerPluginInstallation?, TransportError>?
     private(set) var capturedSettings: [SSHTransportSettings] = []
     private(set) var transports: [FakeTransport] = []
 
     init(
         outcome: Outcome, presentedKeyBlob: Data? = nil,
-        sessions: [HerdrSession] = []
+        sessions: [HerdrSession] = [],
+        plugin: Result<HeelerPluginInstallation?, TransportError>? = nil
     ) {
         self.outcome = outcome
         self.presentedKeyBlob = presentedKeyBlob
         self.sessions = sessions
+        self.plugin = plugin
     }
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
@@ -168,7 +188,8 @@ final actor FakeTransportConnector: TransportConnector {
         case .connectFails(let error):
             throw error
         case .connects(let pingResult):
-            let transport = FakeTransport(pingResult: pingResult, sessions: sessions)
+            let transport = FakeTransport(
+                pingResult: pingResult, sessions: sessions, plugin: plugin)
             transports.append(transport)
             return transport
         }

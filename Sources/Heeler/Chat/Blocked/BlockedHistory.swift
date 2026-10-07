@@ -1,7 +1,7 @@
 import Foundation
 
 /// What answers given on Blocked cards did that the transcript can't tell
-/// (ADR 0020), for the timeline's history rows. Neither program records an
+/// (ADR 0021), for the timeline's history rows. Neither program records an
 /// approval, so one given in Chat reads like an automatic one, and Stop
 /// reads like a decline. Codex records an asynchronous answer only once it
 /// sends it, after its next tool call. Kept while the Chat lives, never

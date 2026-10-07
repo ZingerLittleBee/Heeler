@@ -1,7 +1,7 @@
 import Foundation
 
 extension ComposerDeliveryPolicy {
-    /// Chat's delivery (ADR 0020). Text the rules refuse stays a draft.
+    /// Chat's delivery (ADR 0021). Text the rules refuse stays a draft.
     /// Otherwise the Agent's screen is read first, and the message goes only
     /// into an input box read as empty; a second read `DeliveryCheck.delay`
     /// after `agent.prompt` tells whether Enter took it. Both reads go

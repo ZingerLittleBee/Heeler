@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// The way back from a pushed Agent, on an iPhone or in a compact iPad
-/// window, which the edge swipe alone never showed (#396). Separate glass
-/// pieces float over the terminal: Back at the leading end, any trailing
-/// actions in one capsule, and at the far end a fold button that stays put.
-/// The room between them is left to the terminal, and folding leaves only
-/// that button, so the header can cover almost no output.
+/// Floating controls over an Agent or terminal. Separate glass pieces float
+/// over the terminal: Back at the leading end, any trailing actions in one
+/// capsule, and at the far end a fold button that stays put. The room
+/// between them is left to the terminal, and folding leaves only that
+/// button, so the header can cover almost no output.
+///
+/// Back is the way out of a detail pushed over the list, on an iPhone or in
+/// a compact iPad window, which the edge swipe alone never showed (#396).
+/// Beside an iPad's sidebar there is nothing to go back to, so the header
+/// keeps only its actions and fold button.
 ///
 /// Trailing actions are plain values rather than views, so a screen can
 /// leave out the ones it cannot offer and the capsule goes with the last.
@@ -17,16 +21,28 @@ struct AgentDetailHeader: View {
     private static let capsuleButtonWidth: CGFloat = 36
     private static let capsuleInset: CGFloat = (controlSize - capsuleButtonWidth) / 2
 
+    /// Where the header's top edge sits. Beside an iPad's sidebar it lines
+    /// up with the detail column's bar, level with the sidebar's buttons and
+    /// Show Sidebar, even while output starts below the bar; elsewhere it
+    /// rides just below the output's top. A bar's buttons fill a control's
+    /// height from its top edge, with the bar's remaining height below
+    /// them, so the header starts at that edge rather than centering.
+    static func top(outputTop: CGFloat, barRow: NavigationBarBand?) -> CGFloat {
+        guard let barRow, barRow.bottom - barRow.top >= controlSize else { return outputTop + 4 }
+        return barRow.top
+    }
+
     let palette: TerminalThemePalette
     @Binding var isExpanded: Bool
-    let onBack: () -> Void
+    /// Nil where the detail stands beside the list rather than over it.
+    let onBack: (() -> Void)?
     var actions: [AgentDetailHeaderAction] = []
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
-            if isExpanded {
+            if isExpanded, let onBack {
                 AgentDetailHeaderButton("Back", systemImage: "chevron.left", action: onBack)
                     .headerGlass(in: .circle)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))

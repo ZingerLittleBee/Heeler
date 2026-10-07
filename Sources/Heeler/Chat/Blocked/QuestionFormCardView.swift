@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Several questions at once (ADR 0020), answered on the card one at a time
+/// Several questions at once (ADR 0021), answered on the card one at a time
 /// and sent together: the store then answers the dialog page by page,
 /// checking each page before its keys. Back changes an answer, since
 /// nothing has gone to the program yet.

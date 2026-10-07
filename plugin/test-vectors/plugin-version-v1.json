@@ -1,0 +1,4 @@
+{
+  "description": "Shared Heeler plugin version v1 test vector. Single source of truth for the plugin release the app is built alongside: the Node plugin tests assert herdr-plugin.toml, package.json and package-lock.json carry `version`, and the Swift app tests assert HeelerPluginCompatibility.bundled equals it. A plugin release bumps all of them together; the app then recommends updating Hosts whose plugin is older.",
+  "version": "0.6.0"
+}

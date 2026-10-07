@@ -12,6 +12,12 @@ import UIKit
 /// drop it. Hiding the bar as soon as it is asked keeps that inset out of
 /// the detail's first layout.
 ///
+/// A bridge in a tab off screen gets no updates, and one that kept its own
+/// last request hid the bar of a list that needs it: a window narrowing
+/// from beside the sidebar brought back a tab whose bridge last saw the
+/// sidebar. Every bridge reads the latest request from one shared
+/// `Request`, and holds the bar to it in both directions.
+///
 /// A tab shown for the first time after launch is laid out with the
 /// floating bar inside its top safe area: its split view starts a bar's
 /// height too low, until a later visit or a rotation recomputes it. A change
@@ -25,16 +31,26 @@ import UIKit
 struct ConsoleTabBarBridge: UIViewRepresentable {
     /// The scheme the floating bar renders in; nil follows the app.
     let chromeScheme: ColorScheme?
-    /// Whether the bar should be hidden, as `toolbarVisibility` asks.
+    /// Whether the bar should be hidden.
     let hidesBar: Bool
+    /// Shared by the bridges of every tab of one Console.
+    let request: Request
+
+    /// What the Console last asked of its bar.
+    @MainActor
+    final class Request {
+        fileprivate var chromeScheme: ColorScheme?
+        fileprivate var hidesBar = false
+    }
 
     func makeUIView(context: Context) -> BridgeView {
-        BridgeView()
+        BridgeView(request: request)
     }
 
     func updateUIView(_ view: BridgeView, context: Context) {
-        view.hidesBar = hidesBar
-        view.chromeScheme = chromeScheme
+        request.hidesBar = hidesBar
+        request.chromeScheme = chromeScheme
+        view.applyRequest()
     }
 
     final class BridgeView: UIView {
@@ -44,23 +60,12 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
         private static let owners =
             NSMapTable<UITabBarController, BridgeView>.weakToWeakObjects()
 
-        var chromeScheme: ColorScheme? {
-            didSet {
-                guard chromeScheme != oldValue else { return }
-                applyChromeScheme()
-            }
-        }
-
-        var hidesBar = false {
-            didSet {
-                guard hidesBar, !oldValue else { return }
-                hideBarNow()
-            }
-        }
+        private let request: Request
         private var hasSettledSafeArea = false
         private weak var styledController: UITabBarController?
 
-        init() {
+        init(request: Request) {
+            self.request = request
             super.init(frame: .zero)
             isUserInteractionEnabled = false
             isAccessibilityElement = false
@@ -75,10 +80,10 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
             super.didMoveToWindow()
             // Leaving for Hosts or Settings, whose bar follows the app.
             guard window != nil else { return resetChromeScheme() }
-            // SwiftUI hides the bar only after the first layout, and a bar
-            // hidden then leaves its height in the split view columns' top
-            // insets until the window resizes. Hidden now, it never adds it.
-            if hidesBar { hideBarNow() }
+            // A bar hidden after the first layout leaves its height in the
+            // split view columns' top insets until the window resizes.
+            // Hidden now, it never adds it.
+            applyVisibility()
             applyChromeScheme()
             // The floating bar is regular width's; a compact bar sits at the
             // bottom, outside the safe area in question.
@@ -90,9 +95,18 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
             Task { @MainActor [weak self] in self?.settleSafeArea() }
         }
 
-        private func hideBarNow() {
-            guard let controller = tabBarController, !controller.isTabBarHidden else { return }
-            controller.setTabBarHidden(true, animated: false)
+        func applyRequest() {
+            applyVisibility()
+            applyChromeScheme()
+        }
+
+        /// Without animation either way: hidden at once for the reasons
+        /// above, and shown as SwiftUI shows it.
+        private func applyVisibility() {
+            guard window != nil, let controller = tabBarController,
+                controller.isTabBarHidden != request.hidesBar
+            else { return }
+            controller.setTabBarHidden(request.hidesBar, animated: false)
         }
 
         /// The bar's views can be rebuilt by a rotation or size change.
@@ -126,7 +140,7 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
         private func applyChromeScheme() {
             guard window != nil, let controller = tabBarController else { return }
             let style: UIUserInterfaceStyle =
-                switch chromeScheme {
+                switch request.chromeScheme {
                 case .dark: .dark
                 case .light: .light
                 default: .unspecified

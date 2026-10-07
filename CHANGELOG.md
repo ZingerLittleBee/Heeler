@@ -3,9 +3,11 @@
 All notable changes to Heeler are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Entries reference the issue that motivated them.
+Entries reference the pull request that made the change.
 
 ## [Unreleased]
+
+## [0.1.13] - 2026-10-07
 
 ### Added
 
@@ -27,6 +29,30 @@ Entries reference the issue that motivated them.
   the way Finder names copies ("laya-train copy", then "laya-train copy 2"),
   and saving adds a new Host that goes through onboarding like any other.
   (#413)
+- Settings › About has a Star on GitHub row, replacing the plain GitHub
+  link. Version shows an icon, and external links read like the other rows
+  with a trailing arrow instead of blue text. (#421)
+- A Setup Guide walks through preparing a macOS, Linux, or Windows machine
+  and adding it as a Host, with copyable pairing commands. Open it from the
+  empty Agents and Hosts screens, where it ends in Scan to Pair or Add
+  Manually, or from Settings › About. (#421)
+- Host details show the installed Heeler plugin version. When the plugin is
+  missing, disabled, installed under its old name, or older than the version
+  this app ships with, the version carries an icon that opens how to fix it,
+  with copyable commands unless the plugin is linked from a local checkout.
+  Notification and Agent List Fields settings say which features a Host's
+  older plugin lacks, such as notification session isolation before plugin
+  0.6.0. (#422)
+- Agent and terminal screens beside the iPad sidebar have the floating glass
+  buttons for the Workspace's terminals and an Agent's Changes, folding
+  like on iPhone. They leave out Back, since the list is already beside
+  them. (#421)
+- Other apps can open an Agent in Heeler with a
+  `heeler://agent?host=<address or name>&session=<name>&pane=<pane id>`
+  link. Heeler looks for the saved Host with that address, or else that
+  name, on that herdr session; leaving out `session` means the default one.
+  Without a pane, or when no single Host matches, the link opens the
+  Console. (#423)
 
 ### Fixed
 
@@ -54,11 +80,23 @@ Entries reference the issue that motivated them.
   which open the wrong pane, and one event can arrive twice. (#416)
 - In a narrow iPad window, Agent and terminal screens now show the same
   floating Back button as on iPhone. The edge swipe was the only way back to
-  the list there, and the window's resize edge took it.
+  the list there, and the window's resize edge took it. (#420)
+- A shell terminal stays open when an iPad window is resized between
+  narrow and wide. It used to fail with "This terminal is already open in
+  another window", and Try Again kept failing until Heeler restarted.
+  (#420)
 - Buttons on terminal status cards (Couldn't Open Terminal, Session Ended)
   now use the terminal theme's foreground and background colors instead of
   its blue, which in light-accent themes such as the default Vesper left
-  white labels on pale lavender.
+  white labels on pale lavender. (#420)
+- Widening an iPad window while an Agent or terminal is open no longer
+  brings back the tab bar beside the sidebar, and narrowing it back to a
+  list no longer leaves the list without its tab bar. (#420)
+- Diffs in Changes open Unified by default. On an 11-inch iPad beside the
+  sidebar, the Side by Side / Unified control showed neither choice and
+  could not be switched; it now works there and in portrait, and lost the
+  extra rings around it. A window too narrow for Side by Side hides it.
+  (#421)
 
 ## [0.1.12] - 2026-10-02
 

@@ -1563,15 +1563,20 @@ actor HeelerSSHTransport: Transport {
             throw NotificationRegistrationError.pluginProbeFailed(
                 detail: "The plugin list response was invalid.")
         }
-        let enabledIDs = list.result.plugins.compactMap { plugin in
-            plugin.enabled != false ? plugin.pluginID : nil
-        }
-        let knownIDs = [SSHTransportSettings.notificationPluginID]
-            + SSHTransportSettings.legacyNotificationPluginIDs
-        guard let pluginID = knownIDs.first(where: enabledIDs.contains) else {
+        guard let pluginID = list.result.heelerEntry(enabledOnly: true)?.pluginID else {
             throw NotificationRegistrationError.pluginNotInstalled
         }
         return pluginID
+    }
+
+    func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
+        try await requirePOSIXHost(feature: "The Heeler plugin")
+        // No `plugin_id` filter: one listing covers the current and legacy ids.
+        let result = try await request(
+            method: "plugin.list",
+            params: PluginListParams(),
+            decoding: PluginListResult.self)
+        return HeelerPluginInstallation(result)
     }
 
     private func runNotificationPluginProbe(command: String) async throws -> Data {
@@ -1602,22 +1607,9 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// `herdr plugin list --json` prints the RPC's response envelope.
     private struct NotificationPluginListEnvelope: Decodable {
-        struct ResultBody: Decodable {
-            let plugins: [Entry]
-        }
-
-        struct Entry: Decodable {
-            let pluginID: String?
-            let enabled: Bool?
-
-            private enum CodingKeys: String, CodingKey {
-                case pluginID = "plugin_id"
-                case enabled
-            }
-        }
-
-        let result: ResultBody
+        let result: PluginListResult
     }
 
     private static func notificationReadError(_ error: any Error) throws -> Never {

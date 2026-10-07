@@ -408,6 +408,28 @@ class Server:
             return {"protocol": 17, "version": "fake"}
         if method == "agent.list":
             return {"type": "agent_list", "agents": []}
+        if method == "plugin.list":
+            # herdr's InstalledPluginInfo, with manifest fields the app ignores
+            # (a numeric popup size included) and an unrelated plugin first.
+            return {
+                "type": "plugin_list",
+                "plugins": [
+                    {"plugin_id": "other", "name": "other", "version": "9.9.9",
+                     "manifest_path": "/plugins/other/herdr-plugin.toml",
+                     "plugin_root": "/plugins/other", "enabled": True},
+                    {"plugin_id": "heeler", "name": "heeler", "version": "0.6.0",
+                     "manifest_path": "/plugins/heeler/herdr-plugin.toml",
+                     "plugin_root": "/plugins/heeler", "enabled": True,
+                     "min_herdr_version": "0.7.5", "platforms": ["linux", "macos"],
+                     "panes": [{"id": "pair", "title": "Pair device",
+                                "placement": "popup", "width": 80, "height": "100%",
+                                "command": ["node", "src/pair-popup.js"]}],
+                     "source": {"kind": "github", "owner": "ZingerLittleBee",
+                                "repo": "Heeler", "subdir": "plugin",
+                                "requested_ref": "main"},
+                     "warnings": []},
+                ],
+            }
         if method == "session.snapshot":
             return {
                 "type": "session_snapshot",

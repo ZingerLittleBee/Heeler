@@ -51,9 +51,10 @@ struct ShellTerminalView: View {
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
+    @Environment(\.detailBarRow) private var barRow
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
-    @Environment(\.showsDetailBackHeader) private var showsBackHeader
+    @Environment(\.showsDetailBackButton) private var showsBackButton
     /// Shared with Agent detail's header: folding it is one reading
     /// preference across both kinds of terminal.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
@@ -194,7 +195,7 @@ struct ShellTerminalView: View {
                     let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
                     // The back header's button stands in for the edge handle
                     // while the header is out; folded, the handle comes back.
-                    if showsBackHeader, isBackHeaderExpanded {
+                    if isBackHeaderExpanded {
                         drawer.openedFromHeader(
                             $isHeaderDrawerOpen,
                             panelTop: backHeaderTop + AgentDetailHeader.controlSize + 8)
@@ -255,24 +256,23 @@ struct ShellTerminalView: View {
             // keeps terminal output below the system clock.
             .padding(.top, terminalTopInset)
             .overlay(alignment: .top) {
-                if showsBackHeader {
-                    AgentDetailHeader(
-                        palette: themePalette,
-                        isExpanded: $isBackHeaderExpanded,
-                        onBack: {
+                AgentDetailHeader(
+                    palette: themePalette,
+                    isExpanded: $isBackHeaderExpanded,
+                    onBack: showsBackButton
+                        ? {
                             guard !isReturning else { return }
                             Task { await goBack() }
-                        },
-                        actions: backHeaderActions)
-                    .environment(
-                        \.colorScheme,
-                        terminal.themes.selection(for: colorScheme)
-                            .chromeColorScheme(for: colorScheme))
-                    .padding(.horizontal, 12)
-                    .padding(.top, backHeaderTop)
-                    .onChange(of: isBackHeaderExpanded) { _, expanded in
-                        if !expanded { isHeaderDrawerOpen = false }
-                    }
+                        } : nil,
+                    actions: backHeaderActions)
+                .environment(
+                    \.colorScheme,
+                    terminal.themes.selection(for: colorScheme)
+                        .chromeColorScheme(for: colorScheme))
+                .padding(.horizontal, 12)
+                .padding(.top, backHeaderTop)
+                .onChange(of: isBackHeaderExpanded) { _, expanded in
+                    if !expanded { isHeaderDrawerOpen = false }
                 }
             }
             .onWindowControlsHeightChange { windowControlsHeight = $0 }
@@ -388,14 +388,16 @@ struct ShellTerminalView: View {
         max(statusBarInset, topChromeInset, windowControlsHeight)
     }
 
-    private var backHeaderTop: CGFloat { terminalTopInset + 4 }
+    private var backHeaderTop: CGFloat {
+        AgentDetailHeader.top(outputTop: terminalTopInset, barRow: barRow)
+    }
 
     /// A terminal pushed over the Console list goes back the system's way,
     /// following the finger. One opened from an Agent stands in for that
     /// Agent on the same screen, so a system swipe there would leave the
     /// Agent too; it keeps the edge gesture that returns to it.
     private var usesSystemBackSwipe: Bool {
-        showsBackHeader && !backReturnsToAgent
+        showsBackButton && !backReturnsToAgent
     }
 
     private var backHeaderActions: [AgentDetailHeaderAction] {

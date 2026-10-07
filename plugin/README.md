@@ -81,8 +81,9 @@ Relay** empty to use the production endpoint at
 To update an installed GitHub-managed plugin, run the same `plugin install`
 command again. Plugin 0.6.0 scopes notifications to the herdr session they
 come from; update it on every Host along with the app (see
-[Updating to 0.6.0](#updating-to-060)). To inspect notification or pairing
-failures:
+[Updating to 0.6.0](#updating-to-060)). The app's Host details show the
+installed version and offer this command when it is older than the plugin
+the app was built alongside. To inspect notification or pairing failures:
 
 ```bash
 herdr plugin log list --plugin heeler --limit 20
@@ -415,6 +416,16 @@ every session (see the hook sections below).
 `test-vectors/notification-session-v1.json` pins the name rule, the socket
 path derivation, and the delivery rule; the Node tests here and the Swift
 tests in the app both read it.
+
+### Releasing a plugin version
+
+Bump `version` in `herdr-plugin.toml`, `package.json` and `package-lock.json`
+together with `test-vectors/plugin-version-v1.json` and
+`HeelerPluginCompatibility.bundled` in the app; the Node and Swift tests
+check that they agree. The app recommends updating any Host whose plugin is
+older, and its per-feature notes (`HeelerPluginFeature`) trust the version
+alone, so bump it with every change the app relies on rather than shipping
+behavior under an unchanged number, as 0.3.0 and 0.4.0 did.
 
 ### Updating to 0.6.0
 

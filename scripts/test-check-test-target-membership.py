@@ -18,6 +18,7 @@ SPEC.loader.exec_module(membership)
 
 PROJECT = "Heeler.xcodeproj/project.pbxproj"
 SCHEME = "Heeler.xcodeproj/xcshareddata/xcschemes/Heeler.xcscheme"
+VECTORS = "plugin/test-vectors"
 
 
 class MembershipTests(unittest.TestCase):
@@ -33,6 +34,9 @@ class MembershipTests(unittest.TestCase):
             copy = self.root / "Tests" / "HeelerTests" / source.relative_to(tests)
             copy.parent.mkdir(parents=True, exist_ok=True)
             copy.touch()
+        (self.root / VECTORS).mkdir(parents=True)
+        for vector in (membership.ROOT / VECTORS).glob("*.json"):
+            (self.root / VECTORS / vector.name).touch()
 
     def edit(self, name: str, old: str, new: str) -> None:
         path = self.root / name
@@ -55,6 +59,20 @@ class MembershipTests(unittest.TestCase):
     def test_a_new_source_without_a_regenerated_project_fails(self):
         (self.root / "Tests/HeelerTests/Support/UnregisteredTests.swift").touch()
         with self.assertRaisesRegex(ValueError, "UnregisteredTests.swift is not compiled.*make generate"):
+            membership.check(self.root)
+
+    def test_a_new_shared_vector_without_a_project_entry_fails_by_name(self):
+        (self.root / VECTORS / "unlisted-v1.json").touch()
+        with self.assertRaisesRegex(
+                ValueError, "plugin/test-vectors/unlisted-v1.json is not bundled into HeelerTests"):
+            membership.check(self.root)
+
+    def test_a_vector_dropped_from_the_resources_phase_fails(self):
+        project = (self.root / PROJECT).read_text()
+        entry = next(line for line in project.splitlines()
+                     if "/* sidebar-layout-v1.json in Resources */," in line)
+        self.edit(PROJECT, entry + "\n", "")
+        with self.assertRaisesRegex(ValueError, "sidebar-layout-v1.json is not bundled"):
             membership.check(self.root)
 
     def test_scheme_cannot_skip_or_narrow_the_test_target(self):

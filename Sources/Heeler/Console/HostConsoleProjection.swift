@@ -288,7 +288,7 @@ final class HostConsoleProjection {
         }
     }
 
-    /// Chat's transcript reads (ADR 0020), on this connection's session.
+    /// Chat's transcript reads (ADR 0021), on this connection's session.
     /// Their timeouts and refusals are Chat's own errors, which never redial.
     func chatHostFiles() -> ChatHostFiles {
         let session = session

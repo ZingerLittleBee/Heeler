@@ -40,11 +40,17 @@ suite("sidebar hook process boundary", () => {
     return JSON.parse(readFileSync(join(configDir, "sidebar.json"), "utf8"));
   }
 
-  test("manifest and package agree on 0.6.0 with a 0.7.5 startup hook", () => {
+  test("manifest, package and lockfile agree on the shared version with a 0.7.5 startup hook", () => {
     const manifest = parse(readFileSync(new URL("../herdr-plugin.toml", import.meta.url), "utf8"));
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-    assert.equal(manifest.version, "0.6.0");
+    // The app compares Hosts' plugins against this vector (plugin-version-v1.json).
+    const shared = JSON.parse(readFileSync(new URL("../test-vectors/plugin-version-v1.json", import.meta.url), "utf8"));
+    assert.equal(manifest.version, shared.version);
     assert.equal(pkg.version, manifest.version);
+    const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
+    assert.equal(lock.version, manifest.version);
+    assert.equal(lock.packages[""].version, manifest.version);
+    assert.equal(lock.packages[""].license, pkg.license);
     assert.equal(manifest.min_herdr_version, "0.7.5");
     assert.deepEqual(manifest.startup, [{ command: ["node", "src/sidebar-hook.js"] }]);
     assert.deepEqual(manifest.build, [{ command: ["npm", "ci"] }]);

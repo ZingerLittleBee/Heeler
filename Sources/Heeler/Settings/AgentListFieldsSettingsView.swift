@@ -109,6 +109,7 @@ struct AgentListFieldsHostDetailView: View {
                 AgentListFieldsAddFieldSheet(
                     editor: editor, destination: destination, hostName: host.displayName)
             }
+            .task { await console.refreshPluginStatuses(for: [host.id]) }
     }
 
     private var layout: AgentRowLayout { editor.layout(for: host.id) }
@@ -147,6 +148,17 @@ struct AgentListFieldsHostDetailView: View {
                 Text(AgentListFieldsCopy.detailIntro)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                if let requirement = console.pluginStatuses.status(for: host.id)?
+                    .requirements(for: [.sidebarFields]).first
+                {
+                    // Without a snapshot, Sync from plugin silently fills
+                    // fallback fields; say why before the user tries it.
+                    PluginRequirementNote(text: requirement.note)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier(
+                            "settings.agentList.pluginRequirement.\(host.id.uuidString)")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

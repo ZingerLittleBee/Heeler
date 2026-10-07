@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Agent detail's Chat surface (ADR 0020): the Agent's conversation, read
+/// Agent detail's Chat surface (ADR 0021): the Agent's conversation, read
 /// from the transcript its own program writes, in place of the terminal.
 /// It never types into the Agent's PTY; the terminal stays retained per
 /// ADR 0017 while Chat shows. The geometry, top chrome and Composer copy the
@@ -79,7 +79,7 @@ struct AgentChatSurfaceView: View {
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
-    @Environment(\.showsDetailBackHeader) private var showsBackHeader
+    @Environment(\.showsDetailBackButton) private var showsBackButton
     @Environment(\.detailTopChromeInset) private var topChromeInset
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
 
@@ -347,7 +347,7 @@ struct AgentChatSurfaceView: View {
                 let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(.system)
                 // The back header's button stands in for the edge handle
                 // while the header is out; folded, the handle comes back.
-                if showsBackHeader, isBackHeaderExpanded {
+                if isBackHeaderExpanded {
                     drawer.openedFromHeader(
                         $isHeaderDrawerOpen,
                         panelTop: backHeaderTop + AgentDetailHeader.controlSize + 8)
@@ -359,7 +359,7 @@ struct AgentChatSurfaceView: View {
         // Below the Composer, like the terminal's, so its transparent hit
         // region never covers the Composer's leading controls.
         .overlay(alignment: .leading) {
-            if !showsBackHeader {
+            if !showsBackButton {
                 AgentEdgeBackGesture {
                     if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
                 }
@@ -397,17 +397,15 @@ struct AgentChatSurfaceView: View {
         }
         .padding(.top, topInset)
         .overlay(alignment: .top) {
-            if showsBackHeader {
-                AgentDetailHeader(
-                    palette: .system,
-                    isExpanded: $isBackHeaderExpanded,
-                    onBack: { dismiss() },
-                    actions: backHeaderActions)
-                .padding(.horizontal, 12)
-                .padding(.top, backHeaderTop)
-                .onChange(of: isBackHeaderExpanded) { _, expanded in
-                    if !expanded { isHeaderDrawerOpen = false }
-                }
+            AgentDetailHeader(
+                palette: .system,
+                isExpanded: $isBackHeaderExpanded,
+                onBack: showsBackButton ? { dismiss() } : nil,
+                actions: backHeaderActions)
+            .padding(.horizontal, 12)
+            .padding(.top, backHeaderTop)
+            .onChange(of: isBackHeaderExpanded) { _, expanded in
+                if !expanded { isHeaderDrawerOpen = false }
             }
         }
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
@@ -427,7 +425,7 @@ struct AgentChatSurfaceView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .navigationBarBackButtonHidden(true)
-        .interactivePopGestureEnabled(showsBackHeader)
+        .interactivePopGestureEnabled(showsBackButton)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.clear, for: .navigationBar)
@@ -453,9 +451,7 @@ struct AgentChatSurfaceView: View {
                 }
                 .padding(.top, headerObstruction + bannerHeight)
             }
-            if headerObstruction > 0 {
-                ChatTopEdgeFade(height: headerObstruction)
-            }
+            ChatTopEdgeFade(height: headerObstruction)
             banners
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bannerHeight = $0 }
                 .padding(.top, headerObstruction)
@@ -465,7 +461,7 @@ struct AgentChatSurfaceView: View {
 
     /// The back header's band over the conversation's top edge.
     private var headerObstruction: CGFloat {
-        showsBackHeader ? 4 + AgentDetailHeader.controlSize + 4 : 0
+        4 + AgentDetailHeader.controlSize + 4
     }
 
     @ViewBuilder

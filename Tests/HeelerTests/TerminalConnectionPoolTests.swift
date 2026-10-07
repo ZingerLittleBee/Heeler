@@ -91,6 +91,76 @@ struct TerminalConnectionPoolTests {
         await pool.suspend()
     }
 
+    @Test func aScreenRemountedInTheSameWindowTakesTheTerminalOver() async throws {
+        var date = Date(timeIntervalSince1970: 1_000)
+        let pool = TerminalConnectionPool(now: { date })
+        let probe = PoolSessionProbe()
+        let host = UUID()
+        let shell = identity("one")
+        let window = UUID()
+        // A size-class change remounts the detail: the replaced screen still
+        // reads as selected, so it never releases before its successor asks.
+        let replaced = UUID()
+        let entry = try await pool.select(
+            hostID: host, identity: shell, ownerID: replaced, sceneID: window,
+            generation: 1, runTerminal: runner(probe))
+
+        let successor = UUID()
+        #expect(
+            pool.reclaim(
+                hostID: host, identity: shell, ownerID: successor, sceneID: window,
+                generation: 1) === entry)
+        let selected = try await pool.select(
+            hostID: host, identity: shell, ownerID: successor, sceneID: window,
+            generation: 1, runTerminal: runner(probe))
+        #expect(selected === entry)
+
+        // The replaced screen's late release must not strip the successor.
+        pool.release(hostID: host, identity: shell, ownerID: replaced)
+        date = date.addingTimeInterval(600)
+        await pool.expireIdle()
+        #expect(pool.entries.count == 1)
+        #expect(
+            pool.reclaim(
+                hostID: host, identity: shell, ownerID: UUID(), sceneID: UUID(),
+                generation: 1) == nil)
+
+        pool.release(hostID: host, identity: shell, ownerID: successor)
+        #expect(
+            pool.reclaim(
+                hostID: host, identity: shell, ownerID: UUID(), sceneID: UUID(),
+                generation: 1) === entry)
+        await pool.suspend()
+    }
+
+    @Test func anotherWindowCannotTakeATerminalItsOwnerShows() async throws {
+        let pool = TerminalConnectionPool()
+        let probe = PoolSessionProbe()
+        let host = UUID()
+        let shell = identity("one")
+        _ = try await pool.select(
+            hostID: host, identity: shell, ownerID: UUID(), sceneID: UUID(),
+            generation: 1, runTerminal: runner(probe))
+
+        let otherWindow = UUID()
+        #expect(
+            pool.reclaim(
+                hostID: host, identity: shell, ownerID: UUID(), sceneID: otherWindow,
+                generation: 1) == nil)
+        await #expect(throws: TerminalConnectionPool.Failure.self) {
+            try await pool.select(
+                hostID: host, identity: shell, ownerID: UUID(), sceneID: otherWindow,
+                generation: 1, runTerminal: runner(probe))
+        }
+        // A screen that knows no window keeps the old rule.
+        await #expect(throws: TerminalConnectionPool.Failure.self) {
+            try await pool.select(
+                hostID: host, identity: shell, ownerID: UUID(),
+                generation: 1, runTerminal: runner(probe))
+        }
+        await pool.suspend()
+    }
+
     @Test func idleExpiryDoesNotCloseTheVisibleTerminal() async throws {
         var date = Date(timeIntervalSince1970: 1_000)
         let pool = TerminalConnectionPool(maximumShellsPerHost: 2, now: { date })

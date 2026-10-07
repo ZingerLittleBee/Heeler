@@ -8,25 +8,22 @@ import UIKit
 struct DiffLayoutPolicyTests {
     private let column = DiffLayoutPolicy.defaultColumnWidth
 
-    @Test func defaultTextSizeFitsBesideTheThirteenInchSidebarButNotAnElevenInchPortrait() {
+    @Test func defaultTextSizeFitsAnElevenInchPortraitButNotANarrowWindow() {
         for digits in 1...4 {
             let required = DiffLayoutPolicy.requiredWidth(columnWidth: column, numberDigits: digits)
-            #expect(required > 890)
-            #expect(required < 996)
+            #expect(required > 694)
+            #expect(required < 834)
             // 13-inch: full width, beside a 320 pt and a 380 pt sidebar, portrait.
-            for width: CGFloat in [1376, 1056, 996, 1032] {
+            // 11-inch: portrait, and landscape beside a 320 pt sidebar.
+            for width: CGFloat in [1376, 1056, 996, 1032, 834, 890] {
                 #expect(
                     resolve(width, numberDigits: digits)
                         == DiffLayoutDecision(layout: .sideBySide, toggle: .enabled))
             }
-            // 11-inch: portrait, and landscape beside a 320 pt sidebar.
-            for width: CGFloat in [834, 890] {
-                #expect(
-                    resolve(width, numberDigits: digits)
-                        == DiffLayoutDecision(layout: .unified, toggle: .disabled))
-            }
+            // A half-screen window on a 13-inch iPad in landscape.
+            #expect(resolve(694, numberDigits: digits) == DiffLayoutDecision(layout: .unified, toggle: .hidden))
             #expect(resolve(required, numberDigits: digits) == DiffLayoutDecision(layout: .sideBySide, toggle: .enabled))
-            #expect(resolve(required - 0.5, numberDigits: digits) == DiffLayoutDecision(layout: .unified, toggle: .disabled))
+            #expect(resolve(required - 0.5, numberDigits: digits) == DiffLayoutDecision(layout: .unified, toggle: .hidden))
         }
     }
 
@@ -35,7 +32,7 @@ struct DiffLayoutPolicyTests {
     }
 
     @Test func theRowGutterPinsTheThreshold() {
-        #expect(DiffLayoutPolicy.minimumColumnsPerSide == 50)
+        #expect(DiffLayoutPolicy.minimumColumnsPerSide == 40)
         #expect(DiffLayoutPolicy.defaultColumnWidth == 8.03)
         #expect(DiffLayoutPolicy.gutterLeadingPadding == 10)
         #expect(DiffLayoutPolicy.numberSpacing == 6)
@@ -45,14 +42,14 @@ struct DiffLayoutPolicyTests {
         #expect(DiffLayoutPolicy.dividerWidth == 1)
         // 10 pt lead + 27.2 pt number + 6 pt gap + 14 pt sign + 12 pt trail.
         #expect(abs(DiffLayoutPolicy.sideChrome(digitWidth: 6.8, glyphWidth: 14, numberDigits: 4) - 69.2) < 0.001)
-        // 2 × (chrome + 50 columns) + the 1 pt divider. 50 × 8.03 is 401.5.
-        let expected: [(digits: Int, width: CGFloat)] = [(1, 901.6), (2, 915.2), (3, 928.8), (4, 942.4)]
+        // 2 × (chrome + 40 columns) + the 1 pt divider. 40 × 8.03 is 321.2.
+        let expected: [(digits: Int, width: CGFloat)] = [(1, 741.0), (2, 754.6), (3, 768.2), (4, 781.8)]
         for (digits, width) in expected {
             #expect(abs(DiffLayoutPolicy.requiredWidth(columnWidth: column, numberDigits: digits) - width) < 0.001)
         }
         let eightDigits = DiffLayoutPolicy.requiredWidth(columnWidth: column, numberDigits: 8)
-        #expect(eightDigits > 942.4)
-        #expect(eightDigits < 1056)
+        #expect(eightDigits > 781.8)
+        #expect(eightDigits < 890)
     }
 
     @Test func theGutterHoldsItsNumbersAndTheirSpacing() {
@@ -82,19 +79,21 @@ struct DiffLayoutPolicyTests {
                 numberDigits: digits)
         }
         for digits in [1, 4] {
-            // The largest standard size still fits a 13-inch landscape.
-            #expect(scaledRequired(xxxTraits, digits: digits) < 1376)
-            #expect(scaledRequired(accessibilityTraits, digits: digits) > 1376)
+            // The largest standard size still fits beside a 13-inch sidebar;
+            // the first accessibility size needs the full landscape width.
+            #expect(scaledRequired(xxxTraits, digits: digits) < 1056)
+            #expect(scaledRequired(accessibilityTraits, digits: digits) > 1056)
+            #expect(scaledRequired(accessibilityTraits, digits: digits) < 1376)
             #expect(
                 resolve(
-                    1376,
+                    1056,
                     columnWidth: footnote.scaledValue(for: column, compatibleWith: accessibilityTraits),
                     digitWidth: caption.scaledValue(
                         for: DiffLayoutPolicy.defaultDigitWidth, compatibleWith: accessibilityTraits),
                     glyphWidth: footnote.scaledValue(
                         for: DiffLayoutPolicy.defaultGlyphWidth, compatibleWith: accessibilityTraits),
                     numberDigits: digits)
-                    == DiffLayoutDecision(layout: .unified, toggle: .disabled))
+                    == DiffLayoutDecision(layout: .unified, toggle: .hidden))
         }
 
         let samples: [CGFloat] = [7, column, xxxLarge, accessibility, 40]

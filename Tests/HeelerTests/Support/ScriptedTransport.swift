@@ -128,6 +128,11 @@ final actor ScriptedTransport: Transport {
     private(set) var sidebarLayoutReads = 0
     private var nextSidebarLayoutGate: ScriptedTransportCallGate?
     private var sidebarLayoutReadFailure: (any Error)?
+    /// The Host's `plugin.list` answer for the Heeler plugin; nil scripts
+    /// "not installed".
+    private var heelerPlugin: Result<HeelerPluginInstallation?, any Error> = .success(nil)
+    private(set) var heelerPluginReads = 0
+    private var nextHeelerPluginGate: ScriptedTransportCallGate?
     /// Every untracked-directory listing received, in order.
     private(set) var untrackedDirectoryRequests: [UntrackedDirectoryRequest] = []
     /// Consumed one per listing; an unscripted listing reports Changes as
@@ -402,6 +407,24 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent sidebar layout read throw `failure`.
     func setSidebarLayoutReadFailure(_ failure: (any Error)?) {
         sidebarLayoutReadFailure = failure
+    }
+
+    /// Scripts what every subsequent Heeler plugin read answers.
+    func setHeelerPlugin(_ result: Result<HeelerPluginInstallation?, any Error>) {
+        heelerPlugin = result
+    }
+
+    func gateNextHeelerPluginRead(_ gate: ScriptedTransportCallGate) {
+        nextHeelerPluginGate = gate
+    }
+
+    func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
+        heelerPluginReads += 1
+        let result = heelerPlugin
+        let gate = nextHeelerPluginGate
+        nextHeelerPluginGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        return try result.get()
     }
 
     /// Makes the `ordinal`-th `ping` on this transport throw `failure`. A real

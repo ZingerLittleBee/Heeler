@@ -14,7 +14,7 @@ visible, Composer can switch between the iOS keyboard and a tabbed tools
 keyboard. Its explicit Agent controls send Esc, Tab, Shift-Tab, arrows, Enter,
 and Backspace directly to the PTY; its Snippet and Skill panes edit the local
 draft. While Agent Status is Working and the draft is blank, Send becomes Stop,
-which sends one plain Esc the same way (ADR 0020 describes Stop). The iOS
+which sends one plain Esc the same way (ADR 0021 describes Stop). The iOS
 keyboard remains entirely system-owned, including its native candidate and
 paste area. The tools keyboard reuses that complete measured footprint,
 including the Home Indicator area.

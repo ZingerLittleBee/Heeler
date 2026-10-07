@@ -18,10 +18,12 @@ struct HostOnboardingStoreTests {
         knownHosts: InMemoryKnownHostsStore = InMemoryKnownHostsStore(),
         password: String? = nil,
         sessions: [HerdrSession] = [],
+        plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
         fingerprintTimeout: Duration = .seconds(5)
     ) throws -> (HostOnboardingStore, FakeTransportConnector) {
         let connector = FakeTransportConnector(
-            outcome: outcome, presentedKeyBlob: presentedKeyBlob, sessions: sessions)
+            outcome: outcome, presentedKeyBlob: presentedKeyBlob, sessions: sessions,
+            plugin: plugin)
         let secrets = InMemorySecretStore()
         if let password {
             try secrets.write(
@@ -60,6 +62,44 @@ struct HostOnboardingStoreTests {
         #expect(store.serverInfo == ServerInfo(version: "0.7.5", protocolVersion: 17))
         let transport = try #require(await connector.transports.last)
         #expect(await transport.isClosed)
+    }
+
+    @Test func passingPreflightReadsThePluginBeforeClosing() async throws {
+        let installation = HeelerPluginInstallation(version: "0.5.0")
+        let (store, connector) = try makeStore(plugin: .success(installation))
+        #expect(store.pluginStatus == .checking)
+
+        await store.runChecks()
+
+        #expect(store.pluginStatus == .installed(installation))
+        let transport = try #require(await connector.transports.last)
+        #expect(await transport.pluginReadsWhileOpen == [true])
+        #expect(await transport.isClosed)
+    }
+
+    @Test func aFailedPluginReadLeavesThePreflightGreen() async throws {
+        for (plugin, status) in [
+            (nil, HeelerPluginStatus.unavailable),
+            (.success(nil), .notInstalled),
+            (.failure(.hostFeatureUnavailable(feature: "The Heeler plugin")), .unsupportedPlatform),
+        ] as [(Result<HeelerPluginInstallation?, TransportError>?, HeelerPluginStatus)] {
+            let (store, _) = try makeStore(plugin: plugin)
+            await store.runChecks()
+            #expect(store.report?.isFullyPassed == true)
+            #expect(store.pluginStatus == status)
+        }
+    }
+
+    @Test func aFailedPingSkipsThePluginRead() async throws {
+        let (store, connector) = try makeStore(
+            outcome: .connects(pingResult: .failure(.protocolVersionMismatch(server: 9, supported: 17))),
+            plugin: .success(HeelerPluginInstallation(version: "0.6.0")))
+
+        await store.runChecks()
+
+        #expect(store.pluginStatus == .unavailable)
+        let transport = try #require(await connector.transports.last)
+        #expect(await transport.pluginReadsWhileOpen.isEmpty)
     }
 
     @Test func sessionDiscoveryPublishesDefaultAndNamedSessions() async throws {

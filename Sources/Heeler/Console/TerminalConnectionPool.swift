@@ -32,6 +32,8 @@ final class TerminalConnectionPool {
         fileprivate let retentionID = UUID()
         fileprivate let lifetime: Lifetime
         fileprivate var ownerID: UUID?
+        /// The window the owner shows in; see `mayClaim`.
+        fileprivate var ownerSceneID: UUID?
         fileprivate var isPresented: (@MainActor () -> Bool)?
         fileprivate var selectionID: UUID
         fileprivate var idleSince: Date?
@@ -80,10 +82,13 @@ final class TerminalConnectionPool {
     /// unstarted pipeline. Its first layout supplies the size and opens SSH.
     /// Mutations serialize through teardown, so eviction never temporarily
     /// exceeds the budget and a second tap cannot create another owner.
+    ///
+    /// `sceneID` is the owner's window; see `mayClaim`.
     func select(
         hostID: Host.ID,
         identity: ShellTerminalIdentity,
         ownerID: UUID,
+        sceneID: UUID? = nil,
         generation: UInt64?,
         isPresented: @escaping @MainActor () -> Bool = { true },
         runTerminal: @escaping TerminalSessionRunner
@@ -95,12 +100,12 @@ final class TerminalConnectionPool {
             try Task.checkCancellation()
             let key = Key(hostID: hostID, identity: identity)
             if let entry = entries[key] {
-                guard entry.ownerID == nil || entry.ownerID == ownerID else {
+                guard mayClaim(entry, ownerID: ownerID, sceneID: sceneID) else {
                     throw Failure.alreadyVisible
                 }
                 claim(
-                    entry, key: key, ownerID: ownerID, selectionID: selectionID,
-                    generation: generation, isPresented: isPresented)
+                    entry, key: key, ownerID: ownerID, sceneID: sceneID,
+                    selectionID: selectionID, generation: generation, isPresented: isPresented)
                 return entry
             }
             while entries.keys.filter({ $0.hostID == hostID }).count >= maximumShellsPerHost {
@@ -120,6 +125,7 @@ final class TerminalConnectionPool {
             let entry = Entry(
                 store: store, lifetime: lifetime, ownerID: ownerID, selectionID: selectionID,
                 isPresented: isPresented)
+            entry.ownerSceneID = sceneID
             entries[key] = entry
             do {
                 try await budget.admit(
@@ -162,25 +168,38 @@ final class TerminalConnectionPool {
         hostID: Host.ID,
         identity: ShellTerminalIdentity,
         ownerID: UUID,
+        sceneID: UUID? = nil,
         generation: UInt64?,
         isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry? {
         let key = Key(hostID: hostID, identity: identity)
-        guard let entry = entries[key], entry.ownerID == nil || entry.ownerID == ownerID
+        guard let entry = entries[key], mayClaim(entry, ownerID: ownerID, sceneID: sceneID)
         else { return nil }
         claim(
-            entry, key: key, ownerID: ownerID, selectionID: UUID(), generation: generation,
-            isPresented: isPresented)
+            entry, key: key, ownerID: ownerID, sceneID: sceneID, selectionID: UUID(),
+            generation: generation, isPresented: isPresented)
         return entry
     }
 
+    /// Another window's screen may not take a terminal it shows. A screen in
+    /// the owner's own window may: one window shows one terminal screen, so
+    /// the owner is a screen SwiftUI replaced, as a size-class change does
+    /// by remounting the detail. That screen still reads as selected when it
+    /// disappears, so it never releases; its late release, keyed to its own
+    /// `ownerID`, then finds nothing to undo.
+    private func mayClaim(_ entry: Entry, ownerID: UUID, sceneID: UUID?) -> Bool {
+        guard let owner = entry.ownerID, owner != ownerID else { return true }
+        return sceneID != nil && entry.ownerSceneID == sceneID
+    }
+
     private func claim(
-        _ entry: Entry, key: Key, ownerID: UUID, selectionID: UUID, generation: UInt64?,
-        isPresented: @escaping @MainActor () -> Bool
+        _ entry: Entry, key: Key, ownerID: UUID, sceneID: UUID?, selectionID: UUID,
+        generation: UInt64?, isPresented: @escaping @MainActor () -> Bool
     ) {
         entry.expiry?.cancel()
         entry.expiry = nil
         entry.ownerID = ownerID
+        entry.ownerSceneID = sceneID
         entry.selectionID = selectionID
         entry.isPresented = isPresented
         entry.idleSince = nil
@@ -200,6 +219,7 @@ final class TerminalConnectionPool {
         let key = Key(hostID: hostID, identity: identity)
         guard let entry = entries[key], entry.ownerID == ownerID else { return }
         entry.ownerID = nil
+        entry.ownerSceneID = nil
         entry.isPresented = nil
         entry.idleSince = now()
         let idleID = UUID()

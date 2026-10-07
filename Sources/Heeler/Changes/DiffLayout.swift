@@ -3,8 +3,8 @@ import Observation
 import SwiftUI
 import UIKit
 
-/// How a file diff lays out. Side by Side is the default; Unified is the
-/// remembered alternative. The choice is app-wide.
+/// How a file diff lays out. Unified is the default; Side by Side is the
+/// remembered alternative where it fits. The choice is app-wide.
 enum DiffLayout: String, CaseIterable, Identifiable, Hashable, Sendable {
     case sideBySide
     case unified
@@ -20,10 +20,10 @@ enum DiffLayout: String, CaseIterable, Identifiable, Hashable, Sendable {
 }
 
 /// Whether the layout control is offered. Below the column threshold it
-/// stays on screen, disabled, so the remembered choice is still visible.
+/// is hidden rather than disabled: a disabled segmented control shows no
+/// selection on iPadOS 26, so it read as broken and could not be used.
 enum DiffLayoutToggle: Equatable, Sendable {
     case hidden
-    case disabled
     case enabled
 }
 
@@ -33,13 +33,13 @@ struct DiffLayoutDecision: Equatable, Sendable {
 }
 
 /// Column threshold for Side by Side. The usable width is the width the
-/// diff's rows lay out in, beside or under a sidebar. With four-digit line numbers at the default
-/// text size the threshold is 942 pt, so Side by Side fits a 13-inch iPad in
-/// portrait and beside its sidebar at either width, but not an 11-inch
-/// iPad in portrait (834 pt) or beside its sidebar in landscape.
+/// diff's rows lay out in, beside or under a sidebar. With four-digit line
+/// numbers at the default text size the threshold is 782 pt, so Side by
+/// Side is offered on an 11-inch iPad in portrait (834 pt) and beside its
+/// sidebar in landscape, but not in a narrow window.
 enum DiffLayoutPolicy {
     /// Text columns each side must fit before Side by Side is offered.
-    static let minimumColumnsPerSide = 50
+    static let minimumColumnsPerSide = 40
     /// SF Mono's advance at the 13 pt footnote size (0.618 em).
     /// `@ScaledMetric` grows this with Dynamic Type.
     static let defaultColumnWidth: CGFloat = 8.03
@@ -105,7 +105,7 @@ enum DiffLayoutPolicy {
             glyphWidth: glyphWidth,
             numberDigits: numberDigits)
         guard usableWidth >= required else {
-            return DiffLayoutDecision(layout: .unified, toggle: .disabled)
+            return DiffLayoutDecision(layout: .unified, toggle: .hidden)
         }
         return DiffLayoutDecision(layout: preference, toggle: .enabled)
     }
@@ -129,7 +129,7 @@ final class DiffLayoutSettings {
         self.offersSideBySide = offersSideBySide
         layout =
             defaults.string(forKey: Self.defaultsKey)
-            .flatMap(DiffLayout.init(rawValue:)) ?? .sideBySide
+            .flatMap(DiffLayout.init(rawValue:)) ?? .unified
     }
 
     /// Production value. Tests and demo mode inject their own instance.

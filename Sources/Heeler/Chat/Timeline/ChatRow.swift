@@ -166,7 +166,7 @@ struct ChatTurnHeader: Hashable, Sendable {
     }
 }
 
-/// Consecutive tool calls shown as one summary row (ADR 0020).
+/// Consecutive tool calls shown as one summary row (ADR 0021).
 struct ChatToolGroup: Hashable, Sendable {
     /// "Ran 2 commands, Edited 2 files".
     var summary: String

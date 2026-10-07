@@ -12,13 +12,13 @@ struct DiffLayoutSettingsTests {
         return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
-    @Test func defaultsToSideBySide() throws {
+    @Test func defaultsToUnified() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
 
         let settings = DiffLayoutSettings(defaults: defaults, offersSideBySide: true)
 
-        #expect(settings.layout == .sideBySide)
+        #expect(settings.layout == .unified)
         #expect(settings.offersSideBySide)
         #expect(!DiffLayoutSettings(defaults: defaults, offersSideBySide: false).offersSideBySide)
     }
@@ -28,19 +28,25 @@ struct DiffLayoutSettingsTests {
         defer { cleanup() }
         let settings = DiffLayoutSettings(defaults: defaults, offersSideBySide: true)
 
+        settings.select(.sideBySide)
+
+        #expect(defaults.string(forKey: "changes.diff-layout") == "sideBySide")
+        #expect(DiffLayoutSettings(defaults: defaults, offersSideBySide: true).layout == .sideBySide)
+        // A phone keeps the stored choice; the policy shows it Unified.
+        #expect(DiffLayoutSettings(defaults: defaults, offersSideBySide: false).layout == .sideBySide)
+
         settings.select(.unified)
 
         #expect(defaults.string(forKey: "changes.diff-layout") == "unified")
         #expect(DiffLayoutSettings(defaults: defaults, offersSideBySide: true).layout == .unified)
-        #expect(DiffLayoutSettings(defaults: defaults, offersSideBySide: false).layout == .unified)
     }
 
-    @Test func unknownStoredValueFallsBackToSideBySide() throws {
+    @Test func unknownStoredValueFallsBackToUnified() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         defaults.set("columns", forKey: "changes.diff-layout")
 
-        #expect(DiffLayoutSettings(defaults: defaults, offersSideBySide: true).layout == .sideBySide)
+        #expect(DiffLayoutSettings(defaults: defaults, offersSideBySide: true).layout == .unified)
     }
 
     @Test func segmentsAreSideBySideThenUnified() {

@@ -32,7 +32,7 @@ struct BlockedCard: Equatable, Sendable {
     let request: ChatPendingRequest?
 }
 
-/// Chat's answer to herdr's Blocked (ADR 0020): the dialog on the Agent's
+/// Chat's answer to herdr's Blocked (ADR 0021): the dialog on the Agent's
 /// screen as a native card, answered with keys.
 ///
 /// The screen decides everything a card offers. While Chat shows a Blocked

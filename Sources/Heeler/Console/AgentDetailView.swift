@@ -4,7 +4,7 @@ import SwiftUI
 /// Composer owns authored delivery by default; Direct Input (ADR 0016) is an
 /// explicit opt-in that types the Attach PTY with the system keyboard. A
 /// Claude Code or Codex Agent can show Chat in the terminal's place
-/// (ADR 0020); the two are never mounted together.
+/// (ADR 0021); the two are never mounted together.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore

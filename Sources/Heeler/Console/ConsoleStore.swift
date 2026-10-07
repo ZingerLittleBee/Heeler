@@ -97,6 +97,7 @@ final class ConsoleStore {
     let pins: PinnedAgentsStore
     let rowLayouts: AgentRowLayoutStore
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
+    let pluginStatuses = HeelerPluginStatusStore()
     let terminalConnections: TerminalConnectionPool
     let agentTerminals: AgentTerminalCache
     /// Chat's saved conversations. Volatile unless the app passes the file
@@ -166,6 +167,7 @@ final class ConsoleStore {
         }
         for (id, projection) in projections where incoming[id] != projection.host {
             sidebarSnapshots.invalidate(id)
+            pluginStatuses.invalidate(id)
             terminalSnapshotRevisions[id] = nil
             terminalTransportGenerations[id] = nil
             hostPlatforms[id] = nil
@@ -567,7 +569,7 @@ final class ConsoleStore {
         composerSession(for: agent).composer
     }
 
-    /// The Agent's Chat (ADR 0020), made on first use and kept while the
+    /// The Agent's Chat (ADR 0021), made on first use and kept while the
     /// Agent and its Host entry last. Nil when the Host is not in the
     /// catalog or the program has no transcript adapter.
     func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
@@ -1077,6 +1079,12 @@ final class ConsoleStore {
         await sidebarSnapshots.refresh(transports: self) { [weak self] in
             self?.rebuildAgentOrder()
         }
+    }
+
+    /// Settings' plugin requirement notes: each Host's plugin, read on its
+    /// current connection.
+    func refreshPluginStatuses(for hostIDs: [Host.ID]) async {
+        await pluginStatuses.refresh(hostIDs, transports: self)
     }
 
     /// Settings' Sync from plugin: one Host's layout file, on its current

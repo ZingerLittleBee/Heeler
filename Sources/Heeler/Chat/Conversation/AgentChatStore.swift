@@ -17,7 +17,7 @@ struct AgentChatSource: Sendable {
     var screen: BlockedScreenIO = .unavailable
 }
 
-/// One Agent's Chat (ADR 0020): the conversation herdr says the Agent is
+/// One Agent's Chat (ADR 0021): the conversation herdr says the Agent is
 /// in, followed while Chat shows.
 ///
 /// A single loop makes every engine call in turn. The view's requests, an

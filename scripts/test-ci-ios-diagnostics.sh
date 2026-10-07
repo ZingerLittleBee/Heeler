@@ -80,8 +80,8 @@ import sys
 source = Path(sys.argv[1]).read_text()
 expected_methods = {
     "wideDetailReadsAPairAsRemovedThenAddedAndEnablesTheToggle",
-    "narrowDetailStaysUnifiedAndDisablesTheToggle",
-    "accessibilityTextFallsBackToUnifiedAtTheWideWidth",
+    "narrowDetailStaysUnifiedAndHidesTheToggle",
+    "accessibilityTextFallsBackToUnifiedWhereDefaultTextFits",
     "anIPhoneShowsNoToggle",
     "choosingUnifiedPersistsForTheNextPresentation",
     "aLayoutSwitchKeepsTheTopmostLine",
@@ -134,7 +134,7 @@ for fragment in (
     "initialScrollSettled,",
     "settings.select(.unified)",
     "settings.select(.sideBySide)",
-    "Self.resize(window, to: CGSize(width: 834, height: 1032))",
+    "Self.resize(window, to: CGSize(width: 694, height: 1032))",
     "Self.resize(window, to: CGSize(width: 1376, height: 1032))",
 ):
     require(round_body, fragment)

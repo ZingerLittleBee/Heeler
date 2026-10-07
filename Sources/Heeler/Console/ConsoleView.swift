@@ -128,6 +128,7 @@ struct ConsoleView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.sceneWindow) private var sceneWindow
     @State private var detailCrossfade = DetailCrossfade()
+    @State private var tabBarRequest = ConsoleTabBarBridge.Request()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     /// The window-aware entry into navigation; nil outside a scene root.
@@ -141,7 +142,14 @@ struct ConsoleView: View {
             Tab(value: ConsoleTab.terminals) {
                 // Beside an iPad's sidebar the Terminals list shows in the
                 // Agents tab's split view; see `tabViewSelection`.
-                if !usesSidebarNavigation { splitView(for: .terminals) }
+                if !usesSidebarNavigation {
+                    splitView(for: .terminals)
+                } else {
+                    // Still asking for the bar hidden: a tab's request
+                    // vanishing reads to SwiftUI as asking for the bar, and
+                    // one left by a compact detail would bring it back.
+                    Color.clear.toolbarVisibility(.hidden, for: .tabBar)
+                }
             } label: {
                 // The tab bar fills symbols; filled, this one is a solid
                 // block beside the other tabs' line icons.
@@ -297,7 +305,7 @@ struct ConsoleView: View {
             guard usesSidebar else { return }
             if isHostsTabSelected {
                 hostsTabRequest = hostsTabRequest.map {
-                    HostsTabRequest(hostID: $0.hostID, origin: nil)
+                    HostsTabRequest(hostID: $0.hostID, showsSetupGuide: $0.showsSetupGuide, origin: nil)
                 }
                 isShowingHostsSheet = true
                 isHostsTabSelected = false
@@ -373,6 +381,7 @@ struct ConsoleView: View {
         HostListView(
             store: hosts,
             initialHostID: hostsTabRequest?.hostID,
+            showsSetupGuide: hostsTabRequest?.showsSetupGuide ?? false,
             connectionStatuses: console.hostStatuses,
             standingFailures: console.hostStandingFailures,
             latencies: console.hostLatencies,
@@ -615,10 +624,12 @@ struct ConsoleView: View {
                             .environment(
                                 \.detailTopChromeInset,
                                 horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
+                            .environment(
+                                \.detailBarRow, horizontalSizeClass == .regular ? detailBar : nil)
                             .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                             .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
                             .environment(
-                                \.showsDetailBackHeader, !presentation.usesRegularColumns)
+                                \.showsDetailBackButton, !presentation.usesRegularColumns)
                             .toolbar {
                                 if usesSidebarNavigation,
                                     splitVisibility(for: tab).isSidebarVisible == false
@@ -674,7 +685,8 @@ struct ConsoleView: View {
         .ignoresSafeArea(.container, edges: horizontalSizeClass == .regular ? .top : [])
         // In every width, so a window turning compact drops the style.
         .background {
-            ConsoleTabBarBridge(chromeScheme: tabBarChromeScheme, hidesBar: hidesTabBar)
+            ConsoleTabBarBridge(
+                chromeScheme: tabBarChromeScheme, hidesBar: hidesTabBar, request: tabBarRequest)
         }
         .toolbarVisibility(hidesTabBar ? .hidden : .automatic, for: .tabBar)
     }
@@ -841,7 +853,7 @@ struct ConsoleView: View {
                     shown: tab, lists: [.agents, .terminals],
                     isPresented: $isShowingListMenu, frame: $listMenuTitleFrame)
             }
-            .sidebarItemBackground(.hidden)
+            .toolbarItemBackground(.hidden)
         }
         // A sidebar keeps its list menus at its foot.
         if !usesSidebarNavigation, filtersByHost, !foldsHostFilter {
@@ -871,7 +883,7 @@ struct ConsoleView: View {
                 }
                 .buttonStyle(SidebarIconButtonStyle())
             }
-            .sidebarItemBackground(.hidden)
+            .toolbarItemBackground(.hidden)
         } else if !hosts.hosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 newItemButton(for: tab).hoverEffect(.highlight)
@@ -1348,6 +1360,8 @@ struct ConsoleView: View {
             Button("Add Host") { presentHosts() }
                 .buttonStyle(.borderedProminent)
                 .hoverEffect(.highlight)
+            Button("Setup Guide") { presentHostSetupGuide() }
+                .hoverEffect(.highlight)
         }
     }
 
@@ -1659,7 +1673,9 @@ struct ConsoleView: View {
 
     private struct HostsTabRequest {
         let id = UUID()
-        let hostID: Host.ID
+        var hostID: Host.ID?
+        /// Opens the Setup Guide over the Host list.
+        var showsSetupGuide = false
         /// The tab the Host was opened from; its back button returns there.
         /// Nil when opened from the Hosts tab itself.
         let origin: ConsoleTab?
@@ -1764,6 +1780,13 @@ struct ConsoleView: View {
         showHosts()
     }
 
+    /// Hosts with the Setup Guide over it, so the guide's Scan to Pair and
+    /// Add Manually run where every new Host is added.
+    private func presentHostSetupGuide() {
+        hostsTabRequest = HostsTabRequest(showsSetupGuide: true, origin: nil)
+        showHosts()
+    }
+
     private func reconnectHost(_ id: Host.ID) async {
         guard manualReconnectInFlightHostIDs.insert(id).inserted else { return }
         await console.retryHost(id)
@@ -1772,11 +1795,11 @@ struct ConsoleView: View {
     }
 }
 
-private extension ToolbarContent {
+extension ToolbarContent {
     /// The glass a toolbar item shares with its neighbors; before iOS 26
     /// items draw none.
     @ToolbarContentBuilder
-    func sidebarItemBackground(_ visibility: Visibility) -> some ToolbarContent {
+    func toolbarItemBackground(_ visibility: Visibility) -> some ToolbarContent {
         if #available(iOS 26.0, *) {
             sharedBackgroundVisibility(visibility)
         } else {
@@ -2259,6 +2282,9 @@ extension EnvironmentValues {
     /// column's top edge to clear the chrome above its navigation bar. Zero
     /// in compact width; the screens still clear the status bar themselves.
     @Entry var detailTopChromeInset: CGFloat = 0
+    /// The detail column's navigation bar row in regular width, in the same
+    /// coordinates as `detailTopChromeInset`; nil in compact width.
+    @Entry var detailBarRow: NavigationBarBand? = nil
     /// The edges a detail screen's full-bleed surface fills past the safe
     /// area. Beside an opaque sidebar the leading one lies under the
     /// sidebar; every other edge, an iPhone's landscape insets included, is
@@ -2274,12 +2300,12 @@ extension EnvironmentValues {
     /// no sidebar to show.
     @Entry var revealDetailSidebar: (@MainActor @Sendable () -> Void)? = nil
     /// The detail is pushed over the list, on an iPhone or in a compact iPad
-    /// window, so it shows its own floating header with a Back button. A
-    /// window's resize edge takes touches near its side, so in a narrow iPad
-    /// window an edge swipe alone would leave no way back. False in regular
-    /// columns, including a large iPhone in landscape, where the sidebar
-    /// stands beside the detail.
-    @Entry var showsDetailBackHeader = false
+    /// window, so its floating header carries a Back button. A window's
+    /// resize edge takes touches near its side, so in a narrow iPad window an
+    /// edge swipe alone would leave no way back. False in regular columns,
+    /// including a large iPhone in landscape, where the sidebar stands beside
+    /// the detail and the header keeps only its other buttons.
+    @Entry var showsDetailBackButton = false
 }
 
 /// A navigation bar's vertical extent in its column's own coordinates.

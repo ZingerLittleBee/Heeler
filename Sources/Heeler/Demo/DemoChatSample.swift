@@ -1,7 +1,7 @@
 #if DEBUG && targetEnvironment(simulator)
     import Foundation
 
-    /// Invented Chat conversations for screenshot mode (ADR 0020), one for
+    /// Invented Chat conversations for screenshot mode (ADR 0021), one for
     /// each demo Agent whose program Chat reads. Each is written in its
     /// program's own transcript format and served from memory as the Host
     /// files Chat's locators look for, so the production adapters read it.

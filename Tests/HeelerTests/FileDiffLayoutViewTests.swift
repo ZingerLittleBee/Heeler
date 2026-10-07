@@ -50,12 +50,12 @@ struct FileDiffLayoutViewTests {
         #expect(settings.layout == .sideBySide)
     }
 
-    @Test func narrowDetailStaysUnifiedAndDisablesTheToggle() async throws {
+    @Test func narrowDetailStaysUnifiedAndHidesTheToggle() async throws {
         let (settings, _, cleanup) = try makeSettings(offersSideBySide: true)
         defer { cleanup() }
         let (controller, window) = try await host(
             patch: Self.pairedPatch(), settings: settings,
-            size: CGSize(width: 834, height: 1032))
+            size: CGSize(width: 694, height: 1032))
         defer { window.isHidden = true }
 
         var labels = Set<String>()
@@ -64,21 +64,20 @@ struct FileDiffLayoutViewTests {
             labels = ChangesViewTests.labels(in: controller)
             return labels.contains(Self.removedLabel) && labels.contains(Self.addedLabel)
         })
-        try #require(abs(controller.view.bounds.width - 834) < 1)
+        try #require(abs(controller.view.bounds.width - 694) < 1)
         #expect(!labels.contains(Self.pairedLabel))
         #expect(labels.contains(Self.contextLabel))
-        let control = Self.layoutControl(in: controller.view)
-        #expect(control.present)
-        #expect(control.disabled)
+        #expect(!Self.layoutControl(in: controller.view).present)
+        // The remembered choice survives for a wider window.
         #expect(settings.layout == .sideBySide)
     }
 
-    @Test func accessibilityTextFallsBackToUnifiedAtTheWideWidth() async throws {
+    @Test func accessibilityTextFallsBackToUnifiedWhereDefaultTextFits() async throws {
         let (settings, _, cleanup) = try makeSettings(offersSideBySide: true)
         defer { cleanup() }
         let (controller, window) = try await host(
             patch: Self.pairedPatch(), settings: settings,
-            size: CGSize(width: 1376, height: 1032), dynamicType: .accessibility1)
+            size: CGSize(width: 1032, height: 1376), dynamicType: .accessibility1)
         defer { window.isHidden = true }
 
         var labels = Set<String>()
@@ -88,9 +87,7 @@ struct FileDiffLayoutViewTests {
             return labels.contains(Self.removedLabel) && labels.contains(Self.addedLabel)
         })
         #expect(!labels.contains(Self.pairedLabel))
-        let control = Self.layoutControl(in: controller.view)
-        #expect(control.present)
-        #expect(control.disabled)
+        #expect(!Self.layoutControl(in: controller.view).present)
     }
 
     @Test func anIPhoneShowsNoToggle() async throws {
@@ -262,13 +259,13 @@ struct FileDiffLayoutViewTests {
         settings.select(.sideBySide)
         try await Self.expectTop(expected, in: controller)
         trace.record("side-by-side-settled", controller: controller, window: window)
-        Self.resize(window, to: CGSize(width: 834, height: 1032))
+        Self.resize(window, to: CGSize(width: 694, height: 1032))
         trace.record("resize-narrow", controller: controller, window: window)
         try #require(await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
             return Self.topLineID(in: controller.view, viewport: scroll) == expected
-                && Self.layoutControl(in: controller.view).disabled
+                && !Self.layoutControl(in: controller.view).present
         })
         trace.record("narrow-settled", controller: controller, window: window)
         Self.resize(window, to: CGSize(width: 1376, height: 1032))
@@ -471,12 +468,15 @@ struct FileDiffLayoutViewTests {
         })
     }
 
+    /// Starts from a stored Side by Side choice: most of these tests read
+    /// paired rows, and Unified is already the default.
     private func makeSettings(
         offersSideBySide: Bool
     ) throws -> (DiffLayoutSettings, UserDefaults, () -> Void) {
         let name = "hm-diff-layout-view-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: name))
         let settings = DiffLayoutSettings(defaults: defaults, offersSideBySide: offersSideBySide)
+        settings.select(.sideBySide)
         return (settings, defaults, { defaults.removePersistentDomain(forName: name) })
     }
 

@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Chat's Agent controls: keys pressed in the Agent's program through
-/// `agent.send_keys` (ADR 0020), never through the Attach PTY. One request
+/// `agent.send_keys` (ADR 0021), never through the Attach PTY. One request
 /// at a time, in the order pressed, as typed keys would arrive.
 @MainActor
 @Observable

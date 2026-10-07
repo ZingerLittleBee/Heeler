@@ -103,12 +103,12 @@ struct ContentView: View {
         }
         // Live Activity row links name an Agent; surrounding chrome,
         // compact, and minimal presentations name only the Host and land on
-        // the Console. Notification links share the same URL parser.
+        // the Console. Another app's link names its Host by address or name,
+        // which the saved Hosts resolve.
         .onOpenURL { url in
             guard let link = AgentActivityLink.target(from: url) else { return }
             app.sceneDirectory.open(
-                link.paneID.map { AgentNotificationTarget(hostID: link.hostID, paneID: $0) },
-                preferredSceneID: sceneID)
+                link.agent(in: app.hostStore.hosts), preferredSceneID: sceneID)
         }
         .onContinueUserActivity(AgentRoute.activityType) { activity in
             guard let route = AgentRoute(userActivity: activity) else { return }
