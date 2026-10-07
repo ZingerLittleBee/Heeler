@@ -161,17 +161,29 @@ enum CodexRecordDecoder {
         case malformed
     }
 
+    private static func turnTimes(_ event: CodexRawEvent) -> CodexTurnTimes {
+        func date(_ seconds: Double?) -> Date? {
+            guard let seconds, seconds.isFinite, seconds > 0 else { return nil }
+            return Date(timeIntervalSince1970: seconds)
+        }
+        return CodexTurnTimes(startedAt: date(event.turnStartedAt), completedAt: date(event.turnCompletedAt))
+    }
+
     private static func eventRecord(
         _ type: String, _ event: CodexRawEvent, _ line: ChatLine, _ context: Context
     ) -> EventResult {
         switch type {
         case "task_started", "turn_started":
-            return event.turnID.map { .record(.turnStarted(turnID: $0)) } ?? .malformed
+            return event.turnID.map { .record(.turnStarted(turnID: $0, times: turnTimes(event))) } ?? .malformed
         case "task_complete", "turn_complete":
-            return event.turnID.map { .record(.turnCompleted(turnID: $0, error: event.errorMessage)) } ?? .malformed
+            return event.turnID.map {
+                .record(.turnCompleted(turnID: $0, error: event.errorMessage, times: turnTimes(event)))
+            } ?? .malformed
         case "turn_aborted":
             return .record(
-                .turnAborted(turnID: event.turnID, reason: event.reason ?? .interrupted, error: event.errorMessage))
+                .turnAborted(
+                    turnID: event.turnID, reason: event.reason ?? .interrupted, error: event.errorMessage,
+                    times: turnTimes(event)))
         case "user_message":
             let text = event.message ?? ""
             if CodexMessageFormatter.isContextualLegacyMessage(text, kind: event.kind) {

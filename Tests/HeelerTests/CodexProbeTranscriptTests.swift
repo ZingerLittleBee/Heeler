@@ -41,6 +41,33 @@ struct CodexProbeTranscriptTests {
         #expect(!projection.transcript.needsOlderHistory)
     }
 
+    @Test("P2's turns carry their first entries, times and endings")
+    func probe2Turns() throws {
+        let probe = try CodexProbe.probe2()
+        let projection = probe.reducer().projection(idle)
+        let turns = projection.transcript.turns
+
+        #expect(turns.map(\.firstEntryID) == projection.turns.compactMap(\.entryIDs.first))
+        #expect(turns.count == 6)
+        #expect(turns.map(\.ending) == [.completed, .interrupted, .completed, .completed, .interrupted, .completed])
+        #expect(turns.first?.startedAt == Date(timeIntervalSince1970: 1_791_266_142))
+        #expect(turns.first?.endedAt == Date(timeIntervalSince1970: 1_791_266_155))
+        #expect(turns[1].endedAt == Date(timeIntervalSince1970: 1_791_266_189))
+        #expect(turns.allSatisfy { $0.startedAt != nil && $0.endedAt != nil })
+    }
+
+    @Test("A turn still running has a start and no end")
+    func runningTurn() throws {
+        let probe = try CodexProbe.probe2()
+        // Up to, not including, the first task_complete (P2:L22).
+        let reducer = probe.reducer(Array(probe.lines.prefix(21)))
+        let turns = reducer.projection(ChatProjectionContext(activity: .working)).transcript.turns
+        #expect(turns.count == 1)
+        #expect(turns.first?.startedAt == Date(timeIntervalSince1970: 1_791_266_142))
+        #expect(turns.first?.endedAt == nil)
+        #expect(turns.first?.ending == nil)
+    }
+
     @Test("Response-item twins never render")
     func twinsNeverRender() throws {
         let probe = try CodexProbe.probe2()

@@ -75,6 +75,48 @@ struct ClaudeTranscriptReducerTests {
         #expect(transcript.diagnostics == ChatTranscriptDiagnostics())
     }
 
+    @Test("Turns open at prompts and notifications and close at turn_duration or an interrupt")
+    func turns() throws {
+        let turns = try Self.transcript().turns
+        #expect(
+            turns.map(\.firstEntryID.rawValue) == [
+                "user:e6fda38c-45bf-49c6-b0a2-5e1cf39cbef9", "user:5d423244-b34c-41d2-b8a3-3f1d2bba1c80",
+                "user:3c89eafa-7685-463f-b393-6003ba74e8a1", "user:63c62d22-2742-493c-94d4-f261e6b4fd17",
+                "user:d86a9ffa-a0e7-4235-b495-6120f91de634", "user:d26638ad-4d4a-4f14-aaa1-9efe8d823dfd",
+                "user:c76d88d5-7bd1-44fa-88b4-4da41ae53d8d", "user:f08414f2-99f7-4b63-bf9f-e17b0de76a15",
+                "notice:6d0ceb41-779d-4bde-a308-858b33b73a13", "user:5f97b4a9-198c-402f-8972-030fdd75a7d2",
+                "user:69815460-9420-40ba-9b8e-da8ed41b3f74", "user:9575a22b-9085-43ba-9e3a-220010bc6694",
+            ])
+        // The interrupt marker ends turns 6 and 7 (M L109, L120); the
+        // turn_duration after each keeps that ending.
+        #expect(
+            turns.map(\.ending) == [
+                .completed, .completed, .completed, .completed, .completed, .interrupted, .interrupted,
+                .completed, .completed, .completed, .completed, .completed,
+            ])
+        let date = { (text: String) in ClaudeTranscriptProjection.date(text) }
+        #expect(turns.first?.startedAt == date("2026-10-06T05:46:41.729Z"))
+        #expect(turns.first?.endedAt == date("2026-10-06T05:47:01.885Z"))
+        #expect(turns[5].endedAt == date("2026-10-06T05:51:47.563Z"))
+        #expect(turns.allSatisfy { $0.startedAt != nil && $0.endedAt != nil })
+    }
+
+    @Test("A subagent's transcript records no turns")
+    func subagentTurns() throws {
+        #expect(try Self.transcript("claude/probe2-subagent.jsonl", role: .subagent).turns.isEmpty)
+    }
+
+    @Test("A turn still running has no end")
+    func openTurn() throws {
+        // Up to, not including, the first turn_duration (M L35).
+        let lines = try ChatFixture.lines(Self.probe)
+        let cut = lines[34].offset
+        let turns = try Self.transcript { $0.offset < cut }.turns
+        #expect(turns.count == 1)
+        #expect(turns.first?.ending == nil)
+        #expect(turns.first?.endedAt == nil)
+    }
+
     @Test("A decline with feedback keeps it, and the turn goes on (M L25-L34)")
     func declineWithFeedback() throws {
         let transcript = try Self.transcript()

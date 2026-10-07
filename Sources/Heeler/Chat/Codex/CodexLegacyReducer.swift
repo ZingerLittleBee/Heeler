@@ -61,12 +61,12 @@ struct CodexLegacyBuilder {
 
     private mutating func apply(_ record: CodexRecord, line: CodexStoredLine) {
         switch record {
-        case .turnStarted(let turnID):
+        case .turnStarted(let turnID, _):
             finishCurrent()
             current = Turn(id: turnID, isExplicit: true, status: .inProgress)
-        case .turnCompleted(let turnID, let error):
+        case .turnCompleted(let turnID, let error, _):
             complete(turnID, error: error, line: line)
-        case .turnAborted(let turnID, let reason, let error):
+        case .turnAborted(let turnID, let reason, let error, _):
             abort(turnID, reason: reason, error: error, line: line)
         case .userMessage(let content):
             if let turn = current, !turn.isExplicit, !(turn.sawCompaction && turn.items.isEmpty) {

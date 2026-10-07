@@ -62,7 +62,13 @@ struct ChatTranscriptCacheTests {
     @Test func savedDocumentsLoadBackWhole() async {
         let fixture = Fixture()
         defer { fixture.cleanUp() }
-        let document = Self.document(Self.key())
+        var document = Self.document(Self.key())
+        document.turns = [
+            ChatTurn(
+                firstEntryID: ChatEntryID("e0"), startedAt: Date(timeIntervalSince1970: 1_791_266_142.5),
+                endedAt: Date(timeIntervalSince1970: 1_791_266_155), ending: .interrupted),
+            ChatTurn(firstEntryID: ChatEntryID("e2")),
+        ]
 
         #expect(await fixture.cache.load(Self.key()) == .miss)
         await fixture.cache.save(document)

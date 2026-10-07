@@ -443,6 +443,32 @@ struct ChatConversationEngineTests {
         #expect(snapshot.transcript.listedBackgroundWork.first?.endOffset == endOffset)
     }
 
+    @Test func turnsOpenedAboveALaterWindowComeFromTheSavedDocument() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(NumberedChatReducer.prompt("a") + Self.lines(0..<6), at: Self.claudePath)
+        let first = fixture.makeEngine()
+        var snapshot = await fixture.open(first)
+        var pages = 0
+        while snapshot.older == .available, pages < 50 {
+            snapshot = await fixture.loadOlder(first)
+            pages += 1
+        }
+        #expect(snapshot.transcript.turns.map(\.firstEntryID.rawValue) == ["p-0"])
+        await first.save(force: true)
+
+        // Reopened once the first prompt is above the tail window.
+        await fixture.files.append(Self.lines(6..<8), to: Self.claudePath)
+        let second = UInt64(await fixture.files.contents(of: Self.claudePath)?.count ?? 0)
+        await fixture.files.append(NumberedChatReducer.prompt("b") + Self.lines(8..<10), to: Self.claudePath)
+        let reopened = fixture.makeEngine()
+        let restored = await reopened.restore()
+        #expect(restored.transcript.turns.map(\.firstEntryID.rawValue) == ["p-0"])
+        snapshot = await fixture.open(reopened)
+
+        #expect(snapshot.older == .reachedStart)
+        #expect(snapshot.transcript.turns.map(\.firstEntryID.rawValue) == ["p-0", "p-\(second)"])
+    }
+
     @Test func savedEntriesShowBeforeTheHostAnswers() async throws {
         let fixture = Fixture()
         await fixture.cache.save(

@@ -36,7 +36,8 @@ enum ClaudeTranscriptProjection {
             backgroundWork: role == .main ? builder.backgroundWork : [],
             latestPromptOffset: builder.latestPromptOffset,
             backgroundWorkEnds: role == .main ? builder.backgroundWorkEnds : [:],
-            backgroundWorkStop: role == .main ? builder.end(stoppingAfter: context.windowStart) : nil)
+            backgroundWorkStop: role == .main ? builder.end(stoppingAfter: context.windowStart) : nil,
+            turns: role == .main ? builder.turns : [])
     }
 
     /// The output `record` holds for the call `use`, as its row's preview
@@ -154,6 +155,13 @@ private struct Builder {
         }
     }
 
+    struct TurnDraft {
+        var firstEntryID: ChatEntryID?
+        var startedAt: Date?
+        var endedAt: Date?
+        var ending: ChatTurn.Ending?
+    }
+
     /// A task notification and the record that delivered it.
     struct Delivery {
         var notification: ClaudeTaskNotification
@@ -181,6 +189,10 @@ private struct Builder {
     private var answers: [String: Answer] = [:]
     /// Offsets of records that start a new turn or end one, ascending.
     private var turnBoundaries: [UInt64] = []
+    /// The turns opened so far, in chain order. A turn whose opener placed
+    /// nothing takes the first entry placed after it.
+    private var turnDrafts: [TurnDraft] = []
+    private var turnOpen = false
     /// The latest notification for each background call.
     private var notifications: [String: Delivery] = [:]
     /// Notifications shown from user records, so a queued copy is not shown
@@ -248,6 +260,7 @@ private struct Builder {
     mutating func build() {
         for record in chain.records where !consumed.contains(record.uuid) {
             if role == .main, record.isSidechain || record.teamName != nil { continue }
+            if role == .main { noteTurn(record) }
             switch record.kind {
             case .assistant: addAssistant(record)
             case .user: addUser(record)
@@ -470,6 +483,40 @@ private struct Builder {
         }
     }
 
+    /// Turns that placed an entry, oldest first.
+    var turns: [ChatTurn] {
+        turnDrafts.compactMap { draft in
+            draft.firstEntryID.map {
+                ChatTurn(firstEntryID: $0, startedAt: draft.startedAt, endedAt: draft.endedAt, ending: draft.ending)
+            }
+        }
+    }
+
+    /// Opens a turn at a prompt, command or notification, and closes the
+    /// open one at `turn_duration` or an interrupt marker. An interrupted
+    /// turn keeps that ending through the `turn_duration` after it.
+    private mutating func noteTurn(_ record: ClaudeRecord) {
+        if Self.opensTurn(record) {
+            turnDrafts.append(TurnDraft(startedAt: ClaudeTranscriptProjection.date(record.timestamp)))
+            turnOpen = true
+            return
+        }
+        guard !turnDrafts.isEmpty else { return }
+        let closing: ChatTurn.Ending?
+        switch record.kind {
+        case .system("turn_duration"): closing = .completed
+        case .user where Self.isInterruptMarker(record) && record.toolResults.isEmpty: closing = .interrupted
+        default: closing = nil
+        }
+        let index = turnDrafts.count - 1
+        // Only the `turn_duration` that follows an interrupt closes a turn
+        // already closed.
+        guard let closing, turnOpen || turnDrafts[index].ending == .interrupted else { return }
+        turnDrafts[index].endedAt = ClaudeTranscriptProjection.date(record.timestamp) ?? turnDrafts[index].endedAt
+        if turnDrafts[index].ending != .interrupted { turnDrafts[index].ending = closing }
+        turnOpen = false
+    }
+
     private func turnEnded(after offset: UInt64) -> Bool {
         guard let last = turnBoundaries.last else { return false }
         return last > offset
@@ -674,6 +721,9 @@ private struct Builder {
         let id = ChatEntryID(rawID)
         guard entryIDs.insert(id).inserted else { return false }
         entries.append(ChatEntry(id: id, sourceOffset: record.byteOffset, content: content))
+        if turnOpen, let last = turnDrafts.indices.last, turnDrafts[last].firstEntryID == nil {
+            turnDrafts[last].firstEntryID = id
+        }
         if case .user = content {
             latestPromptOffset = max(latestPromptOffset ?? 0, record.byteOffset)
         }
@@ -770,6 +820,18 @@ private struct Builder {
             }
         default:
             return false
+        }
+    }
+
+    /// Records that open a turn: a prompt, a command, `!` shell input, a
+    /// notification or a message from outside, as a user record.
+    private static func opensTurn(_ record: ClaudeRecord) -> Bool {
+        guard case .user = record.kind, record.toolResults.isEmpty, !record.isMeta, !record.isCompactSummary,
+            record.sourceToolUseID == nil, !isInterruptMarker(record)
+        else { return false }
+        switch ClaudeUserText.classify(record.texts.joined(separator: "\n")) {
+        case .prompt, .command, .bashInput, .taskNotification, .external: return true
+        default: return false
         }
     }
 

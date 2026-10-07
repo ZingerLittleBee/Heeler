@@ -870,6 +870,33 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     }
 }
 
+/// One turn of the conversation, as the program records it: the entries
+/// from its first up to the next turn's first, in display order, and when
+/// it started and ended on the Host's clock.
+struct ChatTurn: Equatable, Codable, Sendable {
+    enum Ending: String, Equatable, Codable, Sendable {
+        case completed
+        case interrupted
+        case failed
+    }
+
+    /// The first entry the turn placed: the prompt, command or notice that
+    /// opened it, or the first thing it wrote after an opener that shows
+    /// nothing.
+    var firstEntryID: ChatEntryID
+    var startedAt: Date?
+    var endedAt: Date?
+    /// How the loaded records say it ended; nil while none does.
+    var ending: Ending?
+
+    init(firstEntryID: ChatEntryID, startedAt: Date? = nil, endedAt: Date? = nil, ending: Ending? = nil) {
+        self.firstEntryID = firstEntryID
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.ending = ending
+    }
+}
+
 /// How a piece of Background Work ended, as one record says.
 struct ChatBackgroundWorkEnd: Equatable, Sendable {
     var state: ChatBackgroundWorkItem.State
@@ -950,6 +977,9 @@ struct ChatTranscript: Equatable, Sendable {
     /// The first record among the loaded lines that stopped all Background
     /// Work, which ends work launched above them with no end of its own.
     var backgroundWorkStop: ChatBackgroundWorkEnd?
+    /// The turns the loaded lines open, oldest first. Entries above the
+    /// first belong to a turn opened above the loaded lines.
+    var turns: [ChatTurn]
 
     init(
         entries: [ChatEntry] = [], title: String? = nil, needsOlderHistory: Bool = false,
@@ -957,7 +987,8 @@ struct ChatTranscript: Equatable, Sendable {
         links: ChatTranscriptLinks = ChatTranscriptLinks(),
         diagnostics: ChatTranscriptDiagnostics = ChatTranscriptDiagnostics(),
         backgroundWork: [ChatBackgroundWorkItem] = [], latestPromptOffset: UInt64? = nil,
-        backgroundWorkEnds: [String: ChatBackgroundWorkEnd] = [:], backgroundWorkStop: ChatBackgroundWorkEnd? = nil
+        backgroundWorkEnds: [String: ChatBackgroundWorkEnd] = [:], backgroundWorkStop: ChatBackgroundWorkEnd? = nil,
+        turns: [ChatTurn] = []
     ) {
         self.entries = entries
         self.title = title
@@ -970,6 +1001,7 @@ struct ChatTranscript: Equatable, Sendable {
         self.latestPromptOffset = latestPromptOffset
         self.backgroundWorkEnds = backgroundWorkEnds
         self.backgroundWorkStop = backgroundWorkStop
+        self.turns = turns
     }
 
     /// The Background Work Chat lists: everything still running, and what

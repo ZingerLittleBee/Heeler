@@ -86,6 +86,9 @@ struct CodexTimelineTurn: Equatable, Sendable {
     var entries: [CodexTimelineEntry]
     /// The Stopped or failure row that ends the turn.
     var ending: CodexTimelineEntry?
+    /// On the Host's clock, from the turn's own events.
+    var startedAt: Date? = nil
+    var endedAt: Date? = nil
 }
 
 /// Everything a projection needs, before display rules.
@@ -111,6 +114,7 @@ enum CodexTimelineProjector {
         var pendingRequests: [ChatPendingRequest] = []
         var recordedPrompts: [ChatRecordedPrompt] = []
         var turns: [CodexTurnSummary] = []
+        var chatTurns: [ChatTurn] = []
         var echoCandidates: [CodexEchoCandidate] = []
     }
 
@@ -149,6 +153,17 @@ enum CodexTimelineProjector {
                 entryIDs.append(chatEntry.id)
             }
             output.turns.append(CodexTurnSummary(id: turn.id, status: turn.status, entryIDs: entryIDs))
+            if let first = entryIDs.first {
+                let ending: ChatTurn.Ending? =
+                    switch turn.status {
+                    case .completed: .completed
+                    case .interrupted: .interrupted
+                    case .failed: .failed
+                    case .inProgress, nil: nil
+                    }
+                output.chatTurns.append(
+                    ChatTurn(firstEntryID: first, startedAt: turn.startedAt, endedAt: turn.endedAt, ending: ending))
+            }
         }
         return output
     }

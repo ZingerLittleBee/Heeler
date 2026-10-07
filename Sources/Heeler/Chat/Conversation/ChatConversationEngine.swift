@@ -209,7 +209,7 @@ actor ChatConversationEngine {
             update {
                 $0.transcript = ChatTranscript(
                     entries: document.entries, title: document.title,
-                    needsOlderHistory: !document.reachedStart)
+                    needsOlderHistory: !document.reachedStart, turns: document.turns ?? [])
                 $0.isFromCache = !document.entries.isEmpty
                 $0.older = document.reachedStart ? .reachedStart : .available
             }
@@ -333,7 +333,7 @@ actor ChatConversationEngine {
             reachedStart: (joined?.reachedStart ?? (windowStart == 0)) || olderUnreadable,
             title: snapshot.transcript.title, entries: snapshot.transcript.entries, savedAt: date,
             backgroundWork: snapshot.transcript.listedBackgroundWork,
-            latestPromptOffset: snapshot.transcript.latestPromptOffset)
+            latestPromptOffset: snapshot.transcript.latestPromptOffset, turns: snapshot.transcript.turns)
         await cache.save(document)
         // What was just saved fills in above a later window: a moved file's
         // fresh tail, or a rewrite's.
@@ -596,6 +596,10 @@ actor ChatConversationEngine {
             let live = Set(transcript.entries.map(\.id))
             let earlier = joined.entries.filter { $0.sourceOffset < windowStart && !live.contains($0.id) }
             transcript.entries = earlier + transcript.entries
+            // Turns opened above the window, ahead of the ones it opens.
+            let earlierIDs = Set(earlier.map(\.id))
+            transcript.turns =
+                (joined.turns ?? []).filter { earlierIDs.contains($0.firstEntryID) } + transcript.turns
             if transcript.title == nil { transcript.title = joined.title }
             // Work launched above the window still runs, or ends in it.
             transcript.carryBackgroundWork(

@@ -122,7 +122,10 @@ struct NumberedChatReducer: ChatTranscriptReducer {
                 continuedInSessionID: records.lazy.compactMap { $0.record?.continued }.last),
             backgroundWork: Self.backgroundWork(records),
             latestPromptOffset: records.last { $0.record?.prompt != nil }?.line.offset,
-            backgroundWorkEnds: Self.backgroundWorkEnds(records))
+            backgroundWorkEnds: Self.backgroundWorkEnds(records),
+            turns: records.compactMap { line, record in
+                record?.prompt.map { _ in ChatTurn(firstEntryID: ChatEntryID("p-\(line.offset)")) }
+            })
     }
 
     private static func backgroundWorkEnds(_ records: [(line: ChatLine, record: Record?)]) -> [String: ChatBackgroundWorkEnd] {

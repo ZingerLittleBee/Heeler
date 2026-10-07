@@ -577,6 +577,9 @@ struct CodexRawEvent: Decodable {
     var item: CodexRawItem?
     var startedAtMilliseconds: Int64?
     var completedAtMilliseconds: Int64?
+    /// A turn event's times, in seconds since 1970.
+    var turnStartedAt: Double?
+    var turnCompletedAt: Double?
     // Legacy messages.
     var message: String?
     var kind: String?
@@ -617,6 +620,8 @@ struct CodexRawEvent: Decodable {
         item = container.lenient("item")
         startedAtMilliseconds = container.lenient("started_at_ms")
         completedAtMilliseconds = container.lenient("completed_at_ms")
+        turnStartedAt = container.lenient("started_at")
+        turnCompletedAt = container.lenient("completed_at")
         message = container.lenient("message")
         kind = container.lenient("kind")
         imageCount =
@@ -989,11 +994,22 @@ enum CodexLegacyPlacement: Equatable, Sendable {
     case review(String?)
 }
 
+/// When a turn event says its turn started and ended, on the Host's clock.
+struct CodexTurnTimes: Equatable, Sendable {
+    var startedAt: Date?
+    var completedAt: Date?
+
+    init(startedAt: Date? = nil, completedAt: Date? = nil) {
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+    }
+}
+
 /// What one line contributes to the transcript.
 enum CodexRecord: Equatable, Sendable {
-    case turnStarted(turnID: String)
-    case turnCompleted(turnID: String, error: String?)
-    case turnAborted(turnID: String?, reason: CodexAbortReason, error: String?)
+    case turnStarted(turnID: String, times: CodexTurnTimes)
+    case turnCompleted(turnID: String, error: String?, times: CodexTurnTimes)
+    case turnAborted(turnID: String?, reason: CodexAbortReason, error: String?, times: CodexTurnTimes)
     case item(turnID: String, CodexItem)
     case questionCall(CodexQuestionCall)
     case verifiedAnswer(CodexVerifiedAnswer)

@@ -72,12 +72,16 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
     /// joins it. Nil in documents saved before Chat listed it.
     var backgroundWork: [ChatBackgroundWorkItem]?
     var latestPromptOffset: UInt64?
+    /// The turns the entries open, so a reopened conversation folds the
+    /// ones above its live window. Nil in documents saved before Chat
+    /// recorded them.
+    var turns: [ChatTurn]?
 
     init(
         key: ChatCacheKey, adapterRevision: Int, transcriptPath: String, head: Data,
         coverageStart: UInt64, coverageEnd: UInt64, reachedStart: Bool, title: String?,
         entries: [ChatEntry], savedAt: Date, backgroundWork: [ChatBackgroundWorkItem]? = nil,
-        latestPromptOffset: UInt64? = nil
+        latestPromptOffset: UInt64? = nil, turns: [ChatTurn]? = nil
     ) {
         formatVersion = Self.currentFormatVersion
         self.key = key
@@ -92,6 +96,7 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
         self.savedAt = savedAt
         self.backgroundWork = backgroundWork
         self.latestPromptOffset = latestPromptOffset
+        self.turns = turns
     }
 }
 

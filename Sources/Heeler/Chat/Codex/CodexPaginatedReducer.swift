@@ -60,6 +60,8 @@ struct CodexPaginatedBuilder {
         var statusSegment = -1
         var ending: CodexTimelineEntry?
         var items: [String: Item] = [:]
+        var startedAt: Date?
+        var endedAt: Date?
     }
 
     private var turns: [String: Turn] = [:]
@@ -112,19 +114,22 @@ struct CodexPaginatedBuilder {
 
     private mutating func apply(_ record: CodexRecord, line: CodexStoredLine, segment: CodexSegment, at position: Position) {
         switch record {
-        case .turnStarted(let turnID):
+        case .turnStarted(let turnID, let times):
             touch(turnID, at: position)
+            note(times, of: turnID)
             setStatus(.inProgress, of: turnID, ending: nil, line: line, segment: segment, at: position)
             currentTurnID = turnID
-        case .turnCompleted(let turnID, let error):
+        case .turnCompleted(let turnID, let error, let times):
             touch(turnID, at: position)
+            note(times, of: turnID)
             if let error {
                 setStatus(.failed, of: turnID, ending: .failed(error), line: line, segment: segment, at: position)
             } else {
                 setStatus(.completed, of: turnID, ending: nil, line: line, segment: segment, at: position)
             }
-        case .turnAborted(let turnID?, let reason, let error):
+        case .turnAborted(let turnID?, let reason, let error, let times):
             touch(turnID, at: position)
+            note(times, of: turnID)
             let ending: CodexTimelineEntry.Content? =
                 reason == .replaced || reason == .reviewEnded ? nil : .stopped(reason, error: error)
             setStatus(.interrupted, of: turnID, ending: ending, line: line, segment: segment, at: position)
@@ -161,7 +166,7 @@ struct CodexPaginatedBuilder {
                 $0.hasOutput = true
                 $0.outputAnswers = output.answers
             }
-        case .turnAborted(nil, _, _), .userMessage, .agentMessage, .reasoning, .contextCompacted, .compacted,
+        case .turnAborted(nil, _, _, _), .userMessage, .agentMessage, .reasoning, .contextCompacted, .compacted,
             .rolledBack, .toolCall, .legacyItem:
             // An abort without a turn id names no turn here; the rest are
             // legacy records.
@@ -173,6 +178,14 @@ struct CodexPaginatedBuilder {
         if turns[turnID] == nil {
             turns[turnID] = Turn(id: turnID, position: position)
         }
+    }
+
+    /// Keeps the first start and the latest end a turn event gives.
+    private mutating func note(_ times: CodexTurnTimes, of turnID: String) {
+        guard var turn = turns[turnID] else { return }
+        if turn.startedAt == nil { turn.startedAt = times.startedAt }
+        if let completedAt = times.completedAt { turn.endedAt = completedAt }
+        turns[turnID] = turn
     }
 
     /// Records a lifecycle status unless the turn already ended in this
@@ -238,7 +251,7 @@ struct CodexPaginatedBuilder {
                         }
                         return entry
                     },
-                    ending: turn.ending)
+                    ending: turn.ending, startedAt: turn.startedAt, endedAt: turn.endedAt)
             })
     }
 }
