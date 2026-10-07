@@ -40,9 +40,11 @@ enum ChatTimelineProjection {
         output.rows.reserveCapacity(rows.count)
         var segments: [Segment] = []
         var pending: [ChatRow] = []
+        var hasOlder = false
         let records = Dictionary(turns.map { (ChatRowID.entry($0.firstEntryID), $0) }, uniquingKeysWith: { _, last in last })
         for row in rows {
-            if case .olderHistory = row.content {
+            if case .olderHistory(let older) = row.content {
+                hasOlder = older != .reachedStart
                 output.rows.append(row)
                 continue
             }
@@ -66,7 +68,10 @@ enum ChatTimelineProjection {
         }
         for index in segments.indices {
             let phase = index == segments.count - 1 ? newestPhase(segments[index].record, signals: signals) : .settled
-            emit(segments[index], phase: phase, signals: signals, open: open, into: &output)
+            // Rows of a turn whose start is still to load show as they
+            // arrive: folded, each page would add nothing to see.
+            let isPartial = index == 0 && segments[0].head == nil && segments[0].record == nil && hasOlder
+            emit(segments[index], phase: phase, folds: !isPartial, signals: signals, open: open, into: &output)
         }
         output.rows.append(contentsOf: pending)
         for index in output.rows.indices {
@@ -84,13 +89,14 @@ enum ChatTimelineProjection {
     }
 
     private static func emit(
-        _ segment: Segment, phase: Phase, signals: ChatTurnSignals, open: Set<ChatRowID>, into output: inout Output
+        _ segment: Segment, phase: Phase, folds: Bool, signals: ChatTurnSignals, open: Set<ChatRowID>,
+        into output: inout Output
     ) {
         if let head = segment.head { output.rows.append(head) }
         // Reasoning with no text says nothing, wherever it is.
         let body = segment.body.filter { !isBlank($0) }
 
-        if phase == .settled, signals.foldsFinishedTurns, let fold = fold(of: body, record: segment.record) {
+        if phase == .settled, folds, signals.foldsFinishedTurns, let fold = fold(of: body, record: segment.record) {
             let steps = body[..<fold.answerStart]
             for row in steps where isPinned(row) { output.rows.append(row) }
             let folded = steps.filter { !isPinned($0) }

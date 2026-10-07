@@ -233,12 +233,20 @@ struct ChatTimelineProjectionTests {
         #expect(Self.ids(output) == ["u1", "q1", "[turn a2]", "a2", "u2", "c2", "a3"])
     }
 
-    @Test func rowsAboveTheFirstLoadedTurnFoldAsATurnOfTheirOwn() {
-        let older = ChatRow(id: .olderHistory, content: .olderHistory(.available), revision: 1, topSpacing: 0)
-        let rows = [older, Self.tool("c0"), Self.text("a0"), Self.user("u1"), Self.text("a1")]
-        let output = Self.project(rows, turns: [Self.turn("u1")])
-        #expect(Self.ids(output) == ["older", "[turn a0]", "a0", "u1", "a1"])
-        #expect(Self.turnHeader(output, .turn(ChatEntryID("a0")))?.state == .worked(nil))
+    @Test func rowsAboveTheFirstLoadedTurnFoldOnceNothingOlderRemains() {
+        func rows(_ older: ChatOlderHistory) -> [ChatRow] {
+            let row = ChatRow(id: .olderHistory, content: .olderHistory(older), revision: 1, topSpacing: 0)
+            return [row, Self.tool("c0"), Self.tool("c1"), Self.text("a0"), Self.user("u1"), Self.text("a1")]
+        }
+        let ended = Self.project(rows(.reachedStart), turns: [Self.turn("u1")])
+        #expect(Self.ids(ended) == ["older", "[turn a0]", "a0", "u1", "a1"])
+        #expect(Self.turnHeader(ended, .turn(ChatEntryID("a0")))?.state == .worked(nil))
+
+        // While its start is still to load, what loads shows.
+        for older in [ChatOlderHistory.available, .loading, .failed("x")] {
+            let partial = Self.project(rows(older), turns: [Self.turn("u1")])
+            #expect(Self.ids(partial) == ["older", "[group c1]", "a0", "u1", "a1"])
+        }
     }
 
     @Test func aTurnOpenedByARowThatIsNotAPromptStillFolds() {
