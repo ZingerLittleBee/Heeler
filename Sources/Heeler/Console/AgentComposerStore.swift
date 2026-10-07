@@ -63,6 +63,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     private(set) var draft = ""
     /// UTF-16 caret/selection, matching the Composer text view.
     private(set) var draftSelection = NSRange(location: 0, length: 0)
+    /// Stop's wait, per Agent like the draft: the other surface, a rebuilt
+    /// one or a reconnect finds an Esc still waiting on the Agent.
+    let stop: AgentComposerStopStore
 
     private let target: String
     private var agentStatus: AgentStatus
@@ -118,11 +121,13 @@ final class AgentComposerStore: ComposerDraftOperations {
         statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>? = nil,
         agentNotReadyRetryDelay: Duration = AgentComposerStore.defaultAgentNotReadyRetryDelay,
         agentNotReadyRetryBudget: Duration = AgentComposerStore.defaultAgentNotReadyRetryBudget,
+        stop: AgentComposerStopStore = AgentComposerStopStore(),
         prompt: @escaping @Sendable (AgentPromptParams) async throws -> Agent
     ) {
         self.target = target
         agentStatus = initialStatus
         self.statusUpdates = statusUpdates
+        self.stop = stop
         self.agentNotReadyRetryDelay = agentNotReadyRetryDelay
         self.agentNotReadyRetryBudget = agentNotReadyRetryBudget
         self.prompt = prompt
@@ -311,6 +316,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             state: .sending)
         draft = ""
         draftSelection = NSRange(location: 0, length: 0)
+        stop.holdAfterSend()
         messages.append(message)
         if let preflight = policy.preflight, let refusal = await preflight(message.text) {
             returnToDraft(message.id)
@@ -361,6 +367,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard agentStatus != status else { return }
         agentStatus = status
         statusRevision &+= 1
+        stop.agentStatusChanged(to: status)
         for index in messages.indices {
             guard messages[index].tracksAgentProgress else { continue }
             if status == .working,

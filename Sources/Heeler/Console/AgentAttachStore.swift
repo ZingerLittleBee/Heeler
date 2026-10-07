@@ -252,8 +252,10 @@ final class AgentAttachStore {
         terminal.send(keystrokes)
     }
 
-    func sendEscapeKey() {
-        _ = input.sendEscapeKey()
+    /// False when no live writer took the byte.
+    @discardableResult
+    func sendEscapeKey() -> Bool {
+        input.sendEscapeKey()
     }
 
     func scroll(_ sequence: Data, rows: Int) {

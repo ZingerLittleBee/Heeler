@@ -1817,12 +1817,46 @@ struct AgentComposerSendButtonTests {
         }
     }
 
+    @Test
+    func stopKeepsSendsDiameterInRedWithAVisibleSquare() async throws {
+        for colorScheme in [ColorScheme.light, .dark] {
+            let image = try await Self.render(colorScheme: colorScheme) {
+                AgentComposerStopButton(isStopping: false) {}
+            }
+            let bounds = try #require(Self.visibleContentBounds(in: image))
+            let width = bounds.width / image.scale
+            #expect(
+                (30...34).contains(width),
+                "Stop should keep Send's 32pt diameter; rendered width was \(width) in \(colorScheme)")
+            let fill = try #require(Self.color(in: image, unitPoint: CGPoint(x: 0.5, y: 0.33)))
+            #expect(
+                fill.red > 0.8 && fill.green < 0.45 && fill.blue < 0.45,
+                "Stop should fill system red in \(colorScheme); sampled \(fill)")
+            let range = try #require(
+                Self.luminanceRange(
+                    in: image,
+                    unitRect: CGRect(x: 0.35, y: 0.35, width: 0.3, height: 0.3)))
+            #expect(
+                range > 0.12,
+                "Stop center has no visible square in \(colorScheme); luminance range was \(range)")
+        }
+    }
+
     private static func render(isEnabled: Bool, colorScheme: ColorScheme) async throws -> UIImage {
+        try await render(colorScheme: colorScheme) {
+            AgentComposerSendButton(isEnabled: isEnabled) {}
+        }
+    }
+
+    private static func render(
+        colorScheme: ColorScheme,
+        @ViewBuilder button: () -> some View
+    ) async throws -> UIImage {
         let bounds = CGRect(x: 0, y: 0, width: 64, height: 64)
         let renderer = ImageRenderer(
             content: ZStack {
                 Color(uiColor: .secondarySystemBackground)
-                AgentComposerSendButton(isEnabled: isEnabled) {}
+                button()
             }
             .environment(\.colorScheme, colorScheme))
         renderer.proposedSize = ProposedViewSize(width: bounds.width, height: bounds.height)
@@ -1896,5 +1930,28 @@ struct AgentComposerSendButtonTests {
         (0.2126 * Double(pixels[offset])
             + 0.7152 * Double(pixels[offset + 1])
             + 0.0722 * Double(pixels[offset + 2])) / 255
+    }
+
+    private static func color(
+        in image: UIImage, unitPoint: CGPoint
+    ) -> (red: Double, green: Double, blue: Double)? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width, height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard
+            let context = CGContext(
+                data: &pixels, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let x = min(width - 1, Int(unitPoint.x * CGFloat(width)))
+        let y = min(height - 1, Int(unitPoint.y * CGFloat(height)))
+        let offset = (y * width + x) * 4
+        return (
+            Double(pixels[offset]) / 255,
+            Double(pixels[offset + 1]) / 255,
+            Double(pixels[offset + 2]) / 255
+        )
     }
 }

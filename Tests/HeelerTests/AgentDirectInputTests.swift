@@ -589,6 +589,82 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func composerStopPressesOnePlainEscAndLeavesAnArmedControl() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let transport = ScriptedTransport()
+        let stopWindow = ScriptedTransportCallGate()
+        let composer = AgentComposerStore(
+            target: "w1:p1", initialStatus: .working,
+            stop: AgentComposerStopStore(sleep: { _ in await stopWindow.waitUntilOpen() })
+        ) { params in
+            try await transport.promptAgent(params)
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: Self.makeAgent(status: .working),
+                attachStore: owner, composer: composer, inputMode: inputMode,
+                keyboardInset: inset, interactionProbe: interactions))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live && interactions.isConnected
+        })
+
+        // Real SwiftUI actions require the hosted accessibility support in
+        // iOS 27; there, ⌃ is armed first and must outlast Stop.
+        let armsControl: Bool
+        if #available(iOS 27, *) { armsControl = true } else { armsControl = false }
+        if armsControl {
+            let editor = try #require(Self.firstView(in: controller.view) {
+                $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+            } as? UITextView)
+            editor.becomeFirstResponder()
+            center.post(
+                name: UIResponder.keyboardWillShowNotification, object: nil,
+                userInfo: [UIResponder.keyboardFrameEndUserInfoKey:
+                    CGRect(x: 0, y: 500, width: 402, height: 370)])
+            try #require(await Self.eventually { editor.isFirstResponder && inset.height == 336 })
+            try #require(try await Self.activateControl(
+                labeled: "Show tools keyboard", in: controller.view, probe: { false }))
+            try #require(try await Self.activateControl(
+                labeled: "Terminal keyboard page", in: controller.view, probe: { false }))
+            try #require(try await Self.activateControl(
+                labeled: "Control modifier", in: controller.view, probe: { false }))
+        }
+
+        try #require(try await Self.activateControl(
+            labeled: "Stop", in: controller.view, probe: { interactions.stopAgent() }))
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(.keystrokes(Data([0x1B])))
+        })
+        #expect(composer.stop.isStopping)
+        _ = try await Self.activateControl(
+            labeled: "Stop", in: controller.view, probe: { interactions.stopAgent() })
+        for _ in 0..<20 { await Task.yield() }
+        #expect(
+            await transport.attachInputs.filter { $0 == .keystrokes(Data([0x1B])) }.count == 1,
+            "a second tap waits for the status")
+
+        if armsControl {
+            try #require(try await Self.activateControl(
+                labeled: "a", in: controller.view, probe: { false }))
+            try #require(await Self.eventually {
+                await transport.attachInputs.contains(.keystrokes(Data([0x01])))
+            })
+        }
+        #expect(await transport.agentPromptParams.isEmpty)
+        await stopWindow.open()
+        await owner.leave().value
+    }
+
     @Test(arguments: [AgentInputMode.composer, .direct], [false, true])
     func toolsSnippetsInsertIntoTheActiveInputWithoutSubmitting(
         mode: AgentInputMode, bracketed: Bool

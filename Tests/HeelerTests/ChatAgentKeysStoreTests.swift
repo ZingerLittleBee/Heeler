@@ -43,6 +43,32 @@ struct ChatAgentKeysStoreTests {
         #expect(store.failure == nil)
         #expect(recorder.sent == [["enter"]])
     }
+
+    /// The Composer's Stop: in line with the Agent page's keys, and told
+    /// whether its Esc went.
+    @Test func deliverQueuesLikeAPressAndSaysWhetherTheKeyWent() async {
+        let gate = ScriptedTransportCallGate()
+        let recorder = KeyRecorder()
+        let store = ChatAgentKeysStore { keys in
+            recorder.calls += 1
+            if recorder.calls == 1 { await gate.waitUntilOpen() }
+            if recorder.calls == 3 { throw TransportError.cancelled }
+            recorder.sent.append(keys)
+        }
+
+        store.press(.enter)
+        async let delivered = store.deliver(.escape)
+        await gate.waitForEntry()
+        for _ in 0..<20 { await Task.yield() }
+        #expect(recorder.calls == 1, "Stop's Esc waits for the key pressed before it")
+
+        await gate.open()
+        #expect(await delivered)
+        #expect(recorder.sent == [["enter"], ["esc"]])
+
+        #expect(await store.deliver(.escape) == false)
+        #expect(store.failure != nil)
+    }
 }
 
 @MainActor

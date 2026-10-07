@@ -15,6 +15,7 @@ final class AgentTerminalInteractionProbe {
     private var switchDirectKeyboardAction: (() -> Void)?
     private var jumpOlderAction: (() -> Void)?
     private var jumpNewerAction: (() -> Void)?
+    private var stopAgentAction: (() -> Void)?
     private(set) var directInputChromeMountCount = 0
 
     var isConnected: Bool { selectInputModeAction != nil }
@@ -81,12 +82,22 @@ final class AgentTerminalInteractionProbe {
         return true
     }
 
+    /// The Composer's Stop, as its button runs it.
+    @discardableResult
+    func stopAgent() -> Bool {
+        guard let stopAgentAction else { return false }
+        stopAgentAction()
+        return true
+    }
+
     fileprivate func connect(
         selectInputMode: @escaping (AgentInputMode) -> Void,
-        switchAgent: @escaping (ConsoleAgent.ID) -> Void
+        switchAgent: @escaping (ConsoleAgent.ID) -> Void,
+        stopAgent: @escaping () -> Void
     ) {
         selectInputModeAction = selectInputMode
         switchAgentAction = switchAgent
+        stopAgentAction = stopAgent
     }
 
     fileprivate func connectMessageJump(
@@ -117,6 +128,7 @@ final class AgentTerminalInteractionProbe {
     fileprivate func disconnect() {
         selectInputModeAction = nil
         switchAgentAction = nil
+        stopAgentAction = nil
         sendQuickKeyAction = nil
         toggleDirectKeyboardAction = nil
         switchDirectKeyboardAction = nil
@@ -747,7 +759,8 @@ struct AgentTerminalView: View {
             if inheritsKeyboardHandoff { detailCrossfade?.contentDidAppear() }
             interactionProbe?.value?.connect(
                 selectInputMode: { mode in selectInputMode(mode) },
-                switchAgent: { id in switchToAgent(id) })
+                switchAgent: { id in switchToAgent(id) },
+                stopAgent: { composer.stop.stop(using: { interruptAgent() }) })
             interactionProbe?.value?.connectMessageJump(
                 jumpOlder: { jumpToOlderMessage() },
                 jumpNewer: { jumpToNewerMessageOrLive() },
@@ -1262,7 +1275,9 @@ struct AgentTerminalView: View {
                     && directToComposerHandoffID == id
             },
             onFirstResponderRequest: composerFirstResponderRequest,
-            onKeyboardHandoffSettled: composerKeyboardHandoffSettled)
+            onKeyboardHandoffSettled: composerKeyboardHandoffSettled,
+            collapsesWithoutKeyboard: false,
+            interruptAgent: { interruptAgent() })
     }
 
     /// Attached to the control itself: a popover on the whole detail anchors
@@ -1342,6 +1357,14 @@ struct AgentTerminalView: View {
             return
         }
         keyboardControl.sendQuickKey(key)
+    }
+
+    /// The Composer's Stop: Esc on the attach fast path, always plain. An
+    /// armed ⌃/⌥ stays for the key it was armed for.
+    private func interruptAgent() -> AgentInterruptOutcome {
+        keyboardControl.noteReliableInputBegan()
+        return attach.sendEscapeKey()
+            ? .sent : .failed("The terminal isn't connected, so Esc wasn't sent.")
     }
 
     private func selectInputMode(_ mode: AgentInputMode) {

@@ -663,7 +663,13 @@ struct AgentChatSurfaceView: View {
             commandMenu: commands,
             openAgentTerminal: { showAgentTerminal() },
             inputReplacement: blockedCard,
-            focusRequest: chat?.blocked.composerFocusRequest ?? 0)
+            focusRequest: chat?.blocked.composerFocusRequest ?? 0,
+            collapsesWithoutKeyboard: true,
+            // In line with the Agent page's keys, as typed keys would arrive.
+            interruptAgent: { [agentKeys] in
+                await agentKeys.deliver(.escape)
+                    ? .sent : .failed("Couldn't reach the Agent, so it may still be working.")
+            })
         .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
     }

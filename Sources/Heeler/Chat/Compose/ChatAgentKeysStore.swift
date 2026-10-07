@@ -10,7 +10,7 @@ final class ChatAgentKeysStore {
     /// Why the last key may not have arrived; cleared once one does.
     private(set) var failure: String?
     @ObservationIgnored private let send: @MainActor ([String]) async throws -> Void
-    @ObservationIgnored private var tail: Task<Void, Never>?
+    @ObservationIgnored private var tail: Task<Bool, Never>?
 
     init(send: @escaping @MainActor ([String]) async throws -> Void) {
         self.send = send
@@ -20,15 +20,28 @@ final class ChatAgentKeysStore {
     /// delivery. A key herdr has no name for sends nothing.
     @discardableResult
     func press(_ key: AgentQuickKey) -> Task<Void, Never>? {
+        guard let delivery = enqueue(key) else { return nil }
+        return Task { _ = await delivery.value }
+    }
+
+    /// Queues the key like `press`, and says whether it reached herdr: the
+    /// Composer's Stop reports a failed Esc beside itself.
+    func deliver(_ key: AgentQuickKey) async -> Bool {
+        await enqueue(key)?.value ?? false
+    }
+
+    private func enqueue(_ key: AgentQuickKey) -> Task<Bool, Never>? {
         guard let name = key.herdrKeyName else { return nil }
         let previous = tail
         let task = Task { @MainActor [weak self, send] in
-            await previous?.value
+            _ = await previous?.value
             do {
                 try await send([name])
                 self?.failure = nil
+                return true
             } catch {
                 self?.failure = "Couldn't reach the Agent, so the key may not have gone."
+                return false
             }
         }
         tail = task

@@ -100,7 +100,8 @@ struct AgentComposerLinkPresentation: Equatable {
 /// stays on device; Send emits one `agent.prompt` request except when Agent
 /// Status is Blocked, in which case it inserts the draft into Attach without
 /// Enter and presents the tools keyboard. Explicit tool-keyboard controls
-/// send terminal sequences through Attach.
+/// send terminal sequences through Attach. While the Agent is Working and
+/// the draft is blank, Send becomes Stop (`AgentComposerStopStore`).
 struct AgentComposerView: View {
     let store: AgentComposerStore
     let status: AgentStatus
@@ -154,6 +155,12 @@ struct AgentComposerView: View {
     var inputReplacement: AnyView? = nil
     /// Bumped to put the caret in the input.
     var focusRequest = 0
+    /// Chat folds the input to one line while the keyboard is down; see
+    /// `AgentComposerCollapse`. The terminal keeps its height, since every
+    /// fold would resize the PTY, so each surface says which it wants.
+    let collapsesWithoutKeyboard: Bool
+    /// Presses Esc in the Agent's program for Stop; nil keeps Send.
+    var interruptAgent: (@MainActor () async -> AgentInterruptOutcome)? = nil
     @State private var isInputFocused = false
     /// Why the last Send did not go, until the draft it refused changes.
     @State private var notice: ComposerNotice?
@@ -180,160 +187,9 @@ struct AgentComposerView: View {
                     chromeColorScheme: chromeColorScheme)
 
                 VStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let commands = commandSuggestions, isInputFocused, !isSuggestionsDismissed {
-                            ChatCommandSuggestions(
-                                commands: commands,
-                                onSelect: { command in
-                                    store.replaceDraft(with: "/\(command.name) ")
-                                },
-                                onDismiss: { isSuggestionsDismissed = true })
-                        } else if let skills, let trigger = suggestionTrigger,
-                            isInputFocused, !isSuggestionsDismissed
-                        {
-                            AgentComposerSkillSuggestions(
-                                skills: skills,
-                                trigger: trigger,
-                                onSelect: { skill in
-                                    store.replaceTrailingToken(
-                                        trigger.token, with: skill.insertionText)
-                                },
-                                onDismiss: { isSuggestionsDismissed = true })
-                        }
-                        ZStack(alignment: .topLeading) {
-                            AgentComposerTextEditor(
-                                text: store.draft,
-                                selectedRange: store.draftSelection,
-                                onEdit: { store.applyEditorDraft($0, selection: $1) },
-                                isFocused: $isInputFocused,
-                                keyboardPresentation: keyboardPresentation,
-                                keyboardHandoffID: keyboardHandoffID,
-                                isKeyboardHandoffCurrent: isKeyboardHandoffCurrent,
-                                onFirstResponderRequest: onFirstResponderRequest,
-                                onKeyboardHandoffSettled: onKeyboardHandoffSettled)
-                            if store.draft.isEmpty {
-                                Text("Message Agent")
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.top, 8)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-                        .frame(minHeight: 36, alignment: .topLeading)
-                        .accessibilityElement(children: .contain)
-
-                        if let failure = latestFailure {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Label(failure.detail, systemImage: "exclamationmark.triangle")
-                                    .font(.footnote)
-                                    .foregroundStyle(.red)
-                                    .lineLimit(2)
-                                HStack(spacing: 8) {
-                                    Button("Retry") {
-                                        Task {
-                                            await deliverDraft {
-                                                await store.retry(failure.id, policy: sendPolicy)
-                                            }
-                                        }
-                                    }
-                                    Button("Edit Draft") {
-                                        store.withdrawToDraft(failure.id)
-                                        isInputFocused = true
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-                        }
-
-                        if let notice, failureIsHidden {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Label(notice.refusal.message, systemImage: "exclamationmark.bubble")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(3)
-                                if notice.refusal.suggestsTerminal, let openAgentTerminal {
-                                    Button("Open in Terminal", action: openAgentTerminal)
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                }
-                            }
-                            .accessibilityElement(children: .contain)
-                            .accessibilityIdentifier("composer.notice")
-                        }
-
-                        HStack(spacing: 8) {
-                            Menu {
-                                AgentActionMenuContent(
-                                    actions: actions,
-                                    sections: AgentActionMenuPolicy.composerAddSections)
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .frame(width: 18, height: 18)
-                                    .accessibilityLabel("Add")
-                            }
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.circle)
-                            .tint(secondaryActionTint)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityHint("Adds an image or file to the draft")
-
-                            Menu {
-                                AgentActionMenuContent(
-                                    actions: actions,
-                                    sections: AgentActionMenuPolicy.composerMoreSections)
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .frame(width: 18, height: 18)
-                                    .accessibilityLabel("More")
-                            }
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.circle)
-                            .tint(secondaryActionTint)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityHint("Opens Agent actions")
-
-                            if let links = linkPresentation {
-                                Button {
-                                    actions.showAttachLinks()
-                                } label: {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "link")
-                                        Text("\(links.count)")
-                                            .monospacedDigit()
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .buttonBorderShape(.capsule)
-                                .tint(secondaryActionTint)
-                                .font(.footnote.weight(.semibold))
-                                .frame(minHeight: 44)
-                                .accessibilityLabel("Attach Links")
-                                .accessibilityValue(links.accessibilityValue)
-                                .modifier(attachLinksPopover)
-                            }
-
-                            Spacer(minLength: 0)
-                            if store.hasPendingDroppedImages {
-                                Text(store.sendAccessibilityHint)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .accessibilityHidden(true)
-                            }
-                            AgentComposerSendButton(
-                                isEnabled: store.canSend,
-                                accessibilityHint: store.sendAccessibilityHint
-                            ) {
-                                Task { await deliverDraft { await store.send(policy: sendPolicy) } }
-                            }
-                        }
-                    }
-                    .modifier(ComposerInputReplacement(replacement: inputReplacement))
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
+                    inputArea
+                        .modifier(ComposerInputReplacement(replacement: inputReplacement))
+                        .padding(inputAreaInsets)
 
                     TerminalAgentSwitcherRow(
                         switcher: focusPreservingSwitcher,
@@ -410,6 +266,257 @@ struct AgentComposerView: View {
                 Task { await skills.loadIfNeeded() }
             }
         }
+    }
+
+    /// The input with its suggestions, notices and actions; a card in its
+    /// place replaces all of it.
+    private var inputArea: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            suggestions
+            editorRow
+            if isCollapsed, store.hasPendingDroppedImages {
+                pendingDropHint
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            if let failure = latestFailure {
+                failureRow(failure)
+            }
+            if let notice, failureIsHidden {
+                noticeRow(notice)
+            }
+            if status == .working, let stopNotice = store.stop.notice {
+                Label(stopNotice, systemImage: "exclamationmark.bubble")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .accessibilityIdentifier("composer.stop-notice")
+            }
+            if !isCollapsed {
+                actionRow
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var suggestions: some View {
+        if let commands = commandSuggestions, isInputFocused, !isSuggestionsDismissed {
+            ChatCommandSuggestions(
+                commands: commands,
+                onSelect: { command in
+                    store.replaceDraft(with: "/\(command.name) ")
+                },
+                onDismiss: { isSuggestionsDismissed = true })
+        } else if let skills, let trigger = suggestionTrigger,
+            isInputFocused, !isSuggestionsDismissed
+        {
+            AgentComposerSkillSuggestions(
+                skills: skills,
+                trigger: trigger,
+                onSelect: { skill in
+                    store.replaceTrailingToken(
+                        trigger.token, with: skill.insertionText)
+                },
+                onDismiss: { isSuggestionsDismissed = true })
+        }
+    }
+
+    /// The input, with Add and Send beside it while it is folded. The
+    /// editor keeps its place in this row in both layouts: a new text view
+    /// would drop the focus and any keyboard handoff in flight.
+    private var editorRow: some View {
+        HStack(spacing: 8) {
+            if isCollapsed {
+                addMenu
+            }
+            ZStack(alignment: .topLeading) {
+                AgentComposerTextEditor(
+                    text: store.draft,
+                    selectedRange: store.draftSelection,
+                    onEdit: { store.applyEditorDraft($0, selection: $1) },
+                    isFocused: $isInputFocused,
+                    keyboardPresentation: keyboardPresentation,
+                    lineLimit: isCollapsed ? 1 : 5,
+                    keyboardHandoffID: keyboardHandoffID,
+                    isKeyboardHandoffCurrent: isKeyboardHandoffCurrent,
+                    onFirstResponderRequest: onFirstResponderRequest,
+                    onKeyboardHandoffSettled: onKeyboardHandoffSettled)
+                if store.draft.isEmpty {
+                    Text("Message Agent")
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .padding(.top, 8)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(minHeight: 36, alignment: .topLeading)
+            .accessibilityElement(children: .contain)
+            if isCollapsed {
+                primaryButton
+            }
+        }
+    }
+
+    private func failureRow(
+        _ failure: (id: AgentComposerStore.Message.ID, detail: String)
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(failure.detail, systemImage: "exclamationmark.triangle")
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .lineLimit(2)
+            HStack(spacing: 8) {
+                Button("Retry") {
+                    Task {
+                        await deliverDraft {
+                            await store.retry(failure.id, policy: sendPolicy)
+                        }
+                    }
+                }
+                Button("Edit Draft") {
+                    store.withdrawToDraft(failure.id)
+                    isInputFocused = true
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    private func noticeRow(_ notice: ComposerNotice) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(notice.refusal.message, systemImage: "exclamationmark.bubble")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+            if notice.refusal.suggestsTerminal, let openAgentTerminal {
+                Button("Open in Terminal", action: openAgentTerminal)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("composer.notice")
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 8) {
+            addMenu
+
+            Menu {
+                AgentActionMenuContent(
+                    actions: actions,
+                    sections: AgentActionMenuPolicy.composerMoreSections)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 18, height: 18)
+                    .accessibilityLabel("More")
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .tint(secondaryActionTint)
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityHint("Opens Agent actions")
+
+            if let links = linkPresentation {
+                Button {
+                    actions.showAttachLinks()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "link")
+                        Text("\(links.count)")
+                            .monospacedDigit()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .tint(secondaryActionTint)
+                .font(.footnote.weight(.semibold))
+                .frame(minHeight: 44)
+                .accessibilityLabel("Attach Links")
+                .accessibilityValue(links.accessibilityValue)
+                .modifier(attachLinksPopover)
+            }
+
+            Spacer(minLength: 0)
+            if store.hasPendingDroppedImages {
+                pendingDropHint
+            }
+            primaryButton
+        }
+    }
+
+    /// Why Send waits; its VoiceOver hint already says so.
+    private var pendingDropHint: some View {
+        Text(store.sendAccessibilityHint)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .accessibilityHidden(true)
+    }
+
+    private var addMenu: some View {
+        Menu {
+            AgentActionMenuContent(
+                actions: actions,
+                sections: AgentActionMenuPolicy.composerAddSections)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 18, height: 18)
+                .accessibilityLabel("Add")
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.circle)
+        .tint(secondaryActionTint)
+        .frame(minWidth: 44, minHeight: 44)
+        .accessibilityHint("Adds an image or file to the draft")
+    }
+
+    /// Send, or Stop while the Agent works and the draft is blank.
+    @ViewBuilder
+    private var primaryButton: some View {
+        switch primaryControl {
+        case .send:
+            AgentComposerSendButton(
+                isEnabled: store.canSend,
+                accessibilityHint: store.sendAccessibilityHint
+            ) {
+                Task { await deliverDraft { await store.send(policy: sendPolicy) } }
+            }
+        case .stop:
+            AgentComposerStopButton(isStopping: store.stop.isStopping) {
+                guard let interruptAgent else { return }
+                store.stop.stop(using: interruptAgent)
+            }
+        }
+    }
+
+    private var primaryControl: AgentComposerPrimaryControl {
+        AgentComposerPrimaryControl(
+            status: status, draft: store.draft,
+            canStop: interruptAgent != nil && !store.stop.isHeldAfterSend)
+    }
+
+    private var inputAreaInsets: EdgeInsets {
+        EdgeInsets(
+            top: isCollapsed ? 6 : 12, leading: 12, bottom: isCollapsed ? 6 : 8, trailing: 12)
+    }
+
+    private var isCollapsed: Bool {
+        AgentComposerCollapse.isCollapsed(
+            isEnabled: collapsesWithoutKeyboard,
+            isInputFocused: isInputFocused,
+            keyboardPresentation: keyboardPresentation,
+            inheritsKeyboard: inheritsPendingKeyboard,
+            hasInputReplacement: inputReplacement != nil)
+    }
+
+    /// A keyboard handed over by the screen this one replaces, read without
+    /// consuming it (`onAppear` does), so the first frame is already open.
+    private var inheritsPendingKeyboard: Bool {
+        guard inheritsKeyboardHandoff, let selectedID = switcher.selectedID else { return false }
+        return keyboardHandoff.mode(for: selectedID) != nil
     }
 
     /// The invocation token at the end of the draft, when this agent has
@@ -684,6 +791,49 @@ private struct AgentComposerSendButtonStyle: ButtonStyle {
     }
 }
 
+/// Send's place while the Agent works on a blank draft: one Esc per tap,
+/// then a spinner until Agent Status leaves Working or the store's window
+/// passes.
+struct AgentComposerStopButton: View {
+    let isStopping: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                if isStopping {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 12, weight: .bold))
+                }
+            }
+            .frame(width: 18, height: 18)
+        }
+        .buttonStyle(AgentComposerStopButtonStyle())
+        .disabled(isStopping)
+        .accessibilityLabel("Stop")
+        .accessibilityValue(isStopping ? "Stopping" : "")
+        .accessibilityHint("Presses Esc to interrupt the Agent")
+    }
+}
+
+/// Send's geometry in system red, which stays apart from Blocked's red in
+/// `AgentStatusPalette`.
+private struct AgentComposerStopButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .frame(width: 32, height: 32)
+            .background(Color(uiColor: .systemRed), in: Circle())
+            .frame(width: 44, height: 44)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .contentShape(.circle)
+    }
+}
+
 /// Puts another view in the input's place. The draft lives in the store,
 /// so it comes back with the input.
 private struct ComposerInputReplacement: ViewModifier {
@@ -700,6 +850,9 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     let onEdit: (String, NSRange) -> Void
     @Binding var isFocused: Bool
     let keyboardPresentation: AgentComposerKeyboardPresentation
+    /// How many lines show before the draft scrolls; one folds it to its
+    /// first line.
+    let lineLimit: Int
     let keyboardHandoffID: UUID?
     let isKeyboardHandoffCurrent: (UUID) -> Bool
     let onFirstResponderRequest: (UUID, Bool) -> Void
@@ -730,6 +883,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         if textView.selectedRange != selectedRange {
             textView.selectedRange = selectedRange
         }
+        textView.updateLineLimit(lineLimit)
         textView.updateKeyboard(presentation: keyboardPresentation)
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         let shouldFocus = isFocused
@@ -778,11 +932,11 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         let measured = uiView.sizeThatFits(
             CGSize(width: width, height: .greatestFiniteMagnitude))
         let lineHeight = uiView.font?.lineHeight ?? 20
-        let maximumHeight = lineHeight * 5
+        let maximumHeight = lineHeight * CGFloat(lineLimit)
             + uiView.textContainerInset.top
             + uiView.textContainerInset.bottom
         let height = min(max(36, measured.height), maximumHeight)
-        uiView.isScrollEnabled = measured.height > maximumHeight
+        uiView.isScrollEnabled = lineLimit > 1 && measured.height > maximumHeight
         return CGSize(width: width, height: height)
     }
 
@@ -793,6 +947,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         /// deferred focus change can recheck it before acting.
         var wantsFocus = false
         private var isFocused: Binding<Bool>
+        private var foldedSelection: NSRange?
 
         init(onEdit: @escaping (String, NSRange) -> Void, isFocused: Binding<Bool>) {
             self.onEdit = onEdit
@@ -808,9 +963,28 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
             onEdit(textView.text, textView.selectedRange)
         }
 
-        func textViewDidBeginEditing(_: UITextView) {
+        /// A tap into the folded input lands in the one line it shows; the
+        /// caret goes back where the draft was left.
+        func textViewShouldBeginEditing(_ textView: UITextView) -> Bool {
+            foldedSelection = textView.textContainer.maximumNumberOfLines == 1
+                ? textView.selectedRange : nil
+            return true
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
             wantsFocus = true
             isFocused.wrappedValue = true
+            guard let selection = foldedSelection else { return }
+            foldedSelection = nil
+            // UIKit places a tap's caret after editing begins.
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView, textView.isFirstResponder,
+                      NSMaxRange(selection) <= (textView.text as NSString).length
+                else { return }
+                textView.selectedRange = selection
+                onEdit(textView.text, selection)
+                textView.scrollRangeToVisible(selection)
+            }
         }
 
         func textViewDidEndEditing(_: UITextView) {
@@ -842,6 +1016,7 @@ final class AgentComposerUITextView: UITextView {
     /// and presenting it again a turn later. `HeelerTerminalView` claims an
     /// inherited keyboard the same way from `didMoveToWindow`.
     var claimsKeyboardWhenReady = false
+    private var laidOutHeight: CGFloat = 0
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -928,6 +1103,30 @@ final class AgentComposerUITextView: UITextView {
             activeKeyboardHandoffID = nil
         }
         return accepted
+    }
+
+    /// Folding scrolls the draft to its top, so a caret further down comes
+    /// back into view as the open Composer grows the view.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        defer { laidOutHeight = bounds.height }
+        guard laidOutHeight > 0, bounds.height > laidOutHeight, isFirstResponder,
+              textContainer.maximumNumberOfLines == 0
+        else { return }
+        scrollRangeToVisible(selectedRange)
+    }
+
+    /// One line truncates the draft after its first line, shown from the
+    /// top; more wraps it in full, as typing needs.
+    func updateLineLimit(_ lineLimit: Int) {
+        let maximumLines = lineLimit == 1 ? 1 : 0
+        guard textContainer.maximumNumberOfLines != maximumLines else { return }
+        textContainer.maximumNumberOfLines = maximumLines
+        textContainer.lineBreakMode = maximumLines == 1 ? .byTruncatingTail : .byWordWrapping
+        if maximumLines == 1 {
+            setContentOffset(.zero, animated: false)
+        }
+        invalidateIntrinsicContentSize()
     }
 
     func updateKeyboard(presentation: AgentComposerKeyboardPresentation) {
