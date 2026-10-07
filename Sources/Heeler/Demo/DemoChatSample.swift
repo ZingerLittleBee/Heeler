@@ -10,6 +10,8 @@
         static let home = "/Users/developer"
 
         private static let docsSession = "5f0c2a8e-3b1d-4c6a-9e27-8d4f1b6a0c35"
+        /// The Workflow docs:p2 runs in the background.
+        private static let docsAuditRun = "wf_7c2e9a41-b3d"
         private static let checkoutSession = "c3a9d1f4-7e2b-4a58-b6d0-2f8e5c1a9b47"
         /// A version 7 id created 2026-10-06T09:30:00Z, so the locator's
         /// date search reaches its rollout's directory.
@@ -33,6 +35,8 @@
         /// The transcripts by absolute Host path.
         static let files: [String: Data] = [
             claudePath(directory: "/workspace/product-docs", session: docsSession): docsConversation(),
+            "\(home)/.claude/projects/\(ClaudeProjectKey.key(forDirectory: "/workspace/product-docs"))/\(docsSession)"
+                + "/subagents/workflows/\(docsAuditRun)/journal.jsonl": docsAuditJournal(),
             claudePath(directory: "/workspace/storefront", session: checkoutSession): checkoutConversation(),
             home + "/.codex/sessions/2026/10/06/rollout-2026-10-06T09-30-00-\(attachThread).jsonl":
                 attachConversation(),
@@ -301,7 +305,81 @@
                 Everything else matches the screenshot.
                 """)
             session.turnEnded(seconds: 21)
+            // Background Work, stamped against the live clock so its rows
+            // read minutes, not days.
+            let now = Date().timeIntervalSince1970
+            session.resume(at: now - 240)
+            session.prompt("Before I publish, check the rest of the guide against the new flow.")
+            session.reply("I'll run the checks in the background, so you can keep going.")
+            session.tool(
+                "Agent",
+                [
+                    "description": "Find old pairing steps", "subagent_type": "Explore",
+                    "prompt": "Find every page that still has people type the host's address.",
+                ],
+                result: "Async agent launched successfully.",
+                details: Self.backgroundAgent("Find old pairing steps", id: "a3f1c08e2d7b4a91"))
+            let screenshots = session.tool(
+                "Agent",
+                [
+                    "description": "Check screenshots", "subagent_type": "general-purpose",
+                    "prompt": "Compare each screenshot in docs/images with the pairing steps.",
+                ],
+                result: "Async agent launched successfully.",
+                details: Self.backgroundAgent("Check screenshots", id: "b7e2d19c4f0a6b38"))
+            let anchors = session.tool(
+                "Agent",
+                [
+                    "description": "Check link anchors", "subagent_type": "Explore",
+                    "prompt": "Check that every link to the pairing section still resolves.",
+                ],
+                result: "Async agent launched successfully.",
+                details: Self.backgroundAgent("Check link anchors", id: "c9a4e27b1d3f5c62"))
+            session.tool(
+                "Workflow", ["script": "export const meta = { name: 'docs-audit' }"],
+                result: "Workflow launched in background. Task ID: w5k2p8r1t",
+                details: #"{"status":"async_launched","taskId":"w5k2p8r1t","taskType":"local_workflow","workflowName":"docs-audit","runId":"\#(docsAuditRun)","summary":"Check every guide page against the QR code flow","transcriptDir":"/workspace/product-docs/.audit","scriptPath":"/workspace/product-docs/.audit/docs-audit.js"}"#)
+            session.reply(
+                "Three subagents and the **docs-audit** workflow are checking the guide. I'll sum up as they finish.")
+            session.turnEnded(seconds: 16)
+            session.resume(at: now - 150)
+            session.taskNotification(
+                toolID: anchors, taskID: "c9a4e27b1d3f5c62", status: "completed",
+                summary: #"Agent "Check link anchors" completed"#,
+                result: "Every link to the pairing section resolves.",
+                usage: "<subagent_tokens>18400</subagent_tokens><tool_uses>6</tool_uses><duration_ms>71000</duration_ms>")
+            session.reply("The link check passed: every link to the pairing section resolves.")
+            session.turnEnded(seconds: 5)
+            session.resume(at: now - 95)
+            session.taskNotification(
+                toolID: screenshots, taskID: "b7e2d19c4f0a6b38", status: "completed",
+                summary: #"Agent "Check screenshots" completed"#,
+                result: "Two screenshots still show the address field: setup-2.png and setup-3.png.",
+                usage: "<subagent_tokens>41250</subagent_tokens><tool_uses>14</tool_uses><duration_ms>124000</duration_ms>")
+            session.reply(
+                "Two screenshots still show the address field, **setup-2.png** and **setup-3.png**, so they need new captures."
+            )
+            session.turnEnded(seconds: 7)
             return session.data
+        }
+
+        /// A Subagent's launch in the background, as Claude Code records it.
+        private static func backgroundAgent(_ description: String, id: String) -> String {
+            #"{"isAsync":true,"status":"async_launched","agentId":"\#(id)","description":\#(sampleJSON(description))}"#
+        }
+
+        /// docs-audit's journal: three agents started, two finished.
+        private static func docsAuditJournal() -> Data {
+            func key(_ n: Int) -> String { "v2:" + String(repeating: "\(n)e", count: 32) }
+            let lines = [
+                #"{"type":"launched"}"#,
+                #"{"type":"started","key":"\#(key(1))","agentId":"d1a7","label":"audit:setup","phase":"Audit"}"#,
+                #"{"type":"started","key":"\#(key(2))","agentId":"d2b8","label":"audit:troubleshooting","phase":"Audit"}"#,
+                #"{"type":"started","key":"\#(key(3))","agentId":"d3c9","label":"audit:index","phase":"Audit"}"#,
+                #"{"type":"result","key":"\#(key(1))","agentId":"d1a7","result":"setup.md matches the new flow."}"#,
+                #"{"type":"result","key":"\#(key(3))","agentId":"d3c9","result":"The index links every pairing page."}"#,
+            ]
+            return Data(lines.map { $0 + "\n" }.joined().utf8)
         }
 
         /// An edit's structured result, as Claude Code records it: the patch,
@@ -322,7 +400,18 @@
             var session = ClaudeSessionWriter(
                 sessionID: checkoutSession, directory: "/workspace/storefront", start: 1_791_299_400)
             session.prompt("Review the payment retry change before I commit it. A declined card must never empty the cart.")
-            session.reply("I'll read the retry path, then run the checkout tests.")
+            session.reply(
+                "I'll read the retry path and look for its other callers in the background, then run the checkout tests.")
+            // Stamped against the live clock, as docs:p2's Background Work is.
+            session.resume(at: Date().timeIntervalSince1970 - 75)
+            session.tool(
+                "Agent",
+                [
+                    "description": "Find other retry callers", "subagent_type": "Explore",
+                    "prompt": "Find every caller of retryPayment() and how each one handles a decline.",
+                ],
+                result: "Async agent launched successfully.",
+                details: Self.backgroundAgent("Find other retry callers", id: "e4b8a17c3d9f2e05"))
             session.tool(
                 "Read", ["file_path": "/workspace/storefront/Sources/Checkout/PaymentCoordinator.swift"],
                 result: """
@@ -524,15 +613,16 @@
 
         /// A tool call, and its result unless the call is still waiting.
         /// `details` is the result's structured record as JSON; a Bash call
-        /// without one records its output.
+        /// without one records its output. Returns the call's id.
+        @discardableResult
         mutating func tool(
             _ name: String, _ input: KeyValuePairs<String, String>, result: String?, details: String? = nil
-        ) {
+        ) -> String {
             tools += 1
             let id = "toolu_demo_\(sessionID.prefix(8))_\(tools)"
             let fields = input.map { #"\#(sampleJSON($0.key)):\#(sampleJSON($0.value))"# }.joined(separator: ",")
             assistant(#"{"type":"tool_use","id":"\#(id)","name":\#(sampleJSON(name)),"input":{\#(fields)}}"#)
-            guard let result else { return }
+            guard let result else { return id }
             advance(2)
             let call = parent ?? ""
             let structured =
@@ -544,6 +634,28 @@
                 #""message":{"role":"user","content":[{"tool_use_id":"\#(id)","type":"tool_result","content":\#(sampleJSON(result)),"is_error":false}]}\#(detailsField),"sourceToolAssistantUUID":"\#(call)""#
             )
             advance(1)
+            return id
+        }
+
+        /// A background task's notification, delivered once the session
+        /// can take it. `usage` is the `<usage>` element's content.
+        mutating func taskNotification(
+            toolID: String, taskID: String, status: String, summary: String, result: String, usage: String
+        ) {
+            let text = [
+                "<task-notification>", "<task-id>\(taskID)</task-id>", "<tool-use-id>\(toolID)</tool-use-id>",
+                "<status>\(status)</status>", "<summary>\(summary)</summary>", "<result>\(result)</result>",
+                "<usage>\(usage)</usage>", "</task-notification>",
+            ].joined(separator: "\n")
+            user(
+                #""message":{"role":"user","content":\#(sampleJSON(text))},"promptSource":"system","origin":{"kind":"task-notification"}"#
+            )
+            advance(1)
+        }
+
+        /// Moves the clock on to `time`, never back.
+        mutating func resume(at time: TimeInterval) {
+            self.time = max(self.time, time)
         }
 
         /// An automatic compaction: the boundary restarts the chain, linked

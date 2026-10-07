@@ -79,6 +79,18 @@
             #expect(request.toolName == "Bash")
         }
 
+        @Test func theDocsSampleRunsBackgroundWorkWithAJournal() async throws {
+            let (snapshot, engine) = try await Self.openEngine("docs:p2")
+            let work = snapshot.transcript.listedBackgroundWork
+            #expect(work.map(\.title) == ["Find old pairing steps", "Check screenshots", "Check link anchors", "docs-audit"])
+            #expect(work.map(\.state) == [.running, .completed, .completed, .running])
+            let audit = try #require(work.last)
+            // The demo serves the journal where Chat derives it.
+            let progress = try #require(await engine.followWorkflows()[audit.id])
+            #expect(progress.done == 2)
+            #expect(progress.started == 3)
+        }
+
         @Test func samplesUseInventedNamesOnly() async throws {
             let forbidden = [
                 "heeler", "herdr", "github", "anthropic", "openai", "stripe",
@@ -123,6 +135,12 @@
         // MARK: Helpers
 
         private static func open(_ paneID: String) async throws -> ChatConversationSnapshot {
+            try await openEngine(paneID).snapshot
+        }
+
+        private static func openEngine(
+            _ paneID: String
+        ) async throws -> (snapshot: ChatConversationSnapshot, engine: ChatConversationEngine) {
             let agent = try #require(agents.first { $0.paneID == paneID })
             guard case .bound(let reference) = ConversationReference.resolve(agent.agentSession) else {
                 throw SampleMissing(paneID: paneID)
@@ -134,9 +152,10 @@
                     hostID: UUID(), herdrSession: "", program: reference.program,
                     conversationID: reference.sessionID),
                 files: DemoChatSample.hostFiles, cache: VolatileChatTranscriptCache(), adapter: adapter)
-            return await engine.open(
+            let snapshot = await engine.open(
                 directories: [agent.cwd].compactMap(\.self),
                 context: ChatProjectionContext(activity: ChatAgentActivity(agent.agentStatus)))
+            return (snapshot, engine)
         }
 
         private struct SampleMissing: Error {
