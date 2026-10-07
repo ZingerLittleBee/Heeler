@@ -205,17 +205,22 @@ continue, since its end could sit in the gap.
 A long turn of tool calls is hard to read back, so Chat folds what a finished
 turn did behind one row and keeps its answer in view. A turn runs from the prompt, command or
 notification that opened it to the next one, as the program records it:
-Claude Code from its user records to its `turn_duration` or interrupt marker,
-Codex from its turn events. The newest turn runs while herdr reports the
-Agent Working, Blocked or unknown and no record has closed it, or while a
-message sent from Chat waits for the transcript; every other turn is
-finished. A running turn shows "Working for 1:05" under its prompt, counted
+Claude Code from its user records, or a local command or visible message
+between turns, to its `turn_duration` or interrupt marker, Codex from its
+turn events. A Claude Code turn whose last reply is an API error failed.
+The newest turn runs while herdr reports the Agent Working, Blocked or
+unknown and no record has closed it; every other turn is finished. A message
+sent from Chat opens no turn of its own, since the program may hold it until
+the running turn ends, and shows after every turn. When the loaded lines
+start inside a turn, the saved record of that turn takes the end they give
+it. A running turn shows "Working for 1:05" under its prompt, counted
 from its first record on the Host's clock.
 
 A finished turn keeps its prompt, the rows it pins and its final answer, the
 model's text at its end. Everything between folds behind one "Worked for 35s"
-row above the answer, wall time from the turn's first record to its last, or
-"Details" when the records give none. Pinned rows stay above that row: plans,
+row above the answer, wall time from the record that opened the turn to the
+one that closed it (Claude Code's `turn_duration` or interrupt marker,
+Codex's turn-complete event), or "Details" when the records give none. Pinned rows stay above that row: plans,
 questions, queued messages, compaction separators, task notifications,
 interruptions, stops, errors, calls waiting on the user, and Subagent
 launches. A turn with nothing before its answer, with no answer, or that was
@@ -226,13 +231,15 @@ Turns in Settings turns folding off.
 
 Two or more consecutive tool calls show as one group row: the first call's
 symbol, what the calls did ("Ran 2 commands, Edited 2 files", files counted
-once per path), their lines changed, and a spinner or a count of failures.
+once per path, a write over an existing file as an edit), their lines changed, and a spinner or a count of failures.
 Reasoning between calls joins the group; reasoning with no text shows
 nowhere. Subagent launches, questions, calls waiting on the user and Codex's
 user shell commands are never grouped. While a turn runs, its last group
 keeps its newest call as its own row below the group, so its status and
 output stay in reach, and settles into one row, under a new identity and
-closed, once anything else follows.
+closed, once anything else follows. A call waiting on the user after the
+group keeps it live, with every call inside, so the group keeps its identity
+through the dialog.
 
 Folding is a projection of the built rows, made on the main actor each time
 rows or an open header change, so a header opens or closes in the same
