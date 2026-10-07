@@ -229,6 +229,34 @@ struct ClaudeSyntheticTranscriptTests {
         #expect(cleared.listedBackgroundWork.isEmpty)
     }
 
+    @Test("A window holding only work's end still says how it ended, for work launched above it")
+    func endsBelowTheirLaunch() {
+        let enqueue = #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-10-07T10:30:00.000Z","content":"\#(Self.workflowNotification(status: "completed"))","sessionId":"s1"}"#
+        let killed = #"{"type":"system","subtype":"agents_killed","uuid":"k1","parentUuid":"t9","timestamp":"2026-10-07T10:40:00.000Z","level":"info"}"#
+        let windowStart: UInt64 = 4_096
+        let after = #"{"type":"assistant","uuid":"a9","parentUuid":"k1","timestamp":"2026-10-07T10:40:01.000Z","message":{"id":"m9","role":"assistant","content":[{"type":"text","text":"Stopped."}]},"apiBlockIndex":0}"#
+        let lines = ClaudeSample.lines([enqueue, killed, after].joined(separator: "\n")).map {
+            ChatLine(offset: $0.offset + windowStart, data: $0.data)
+        }
+        var reducer = ClaudeTranscriptReducer(role: .main, transcriptPath: Self.transcriptPath)
+        reducer.append(lines)
+        let transcript = reducer.transcript(ChatProjectionContext(windowStart: windowStart, activity: .idle))
+
+        #expect(transcript.backgroundWork.isEmpty)
+        #expect(
+            transcript.backgroundWorkEnds == [
+                "toolu_wf": ChatBackgroundWorkEnd(
+                    state: .completed, offset: lines[0].offset, endedAt: Self.date("2026-10-07T10:30:00.000Z"),
+                    usage: ChatBackgroundWorkItem.Usage(
+                        tokens: 120000, toolUses: 40, durationMilliseconds: 1_795_000, agents: 3, agentsDone: 2,
+                        agentsFailed: 1))
+            ])
+        #expect(
+            transcript.backgroundWorkStop
+                == ChatBackgroundWorkEnd(
+                    state: .stopped, offset: lines[1].offset, endedAt: Self.date("2026-10-07T10:40:00.000Z")))
+    }
+
     @Test("A stopped Workflow is stopped, not done", arguments: ["stopped", "killed"])
     func stoppedWorkflow(_ status: String) throws {
         let queued = #"{"type":"attachment","uuid":"q1","parentUuid":"t1","attachment":{"type":"queued_command","prompt":"\#(Self.workflowNotification(status: status))","commandMode":"task-notification","origin":{"kind":"task-notification"}}}"#

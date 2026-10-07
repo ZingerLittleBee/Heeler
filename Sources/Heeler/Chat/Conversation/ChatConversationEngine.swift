@@ -331,7 +331,9 @@ actor ChatConversationEngine {
             key: cacheKey, adapterRevision: adapter.revision, transcriptPath: path, head: head,
             coverageStart: coverageStart, coverageEnd: follower.readOffset,
             reachedStart: (joined?.reachedStart ?? (windowStart == 0)) || olderUnreadable,
-            title: snapshot.transcript.title, entries: snapshot.transcript.entries, savedAt: date)
+            title: snapshot.transcript.title, entries: snapshot.transcript.entries, savedAt: date,
+            backgroundWork: snapshot.transcript.listedBackgroundWork,
+            latestPromptOffset: snapshot.transcript.latestPromptOffset)
         await cache.save(document)
         // What was just saved fills in above a later window: a moved file's
         // fresh tail, or a rewrite's.
@@ -595,6 +597,10 @@ actor ChatConversationEngine {
             let earlier = joined.entries.filter { $0.sourceOffset < windowStart && !live.contains($0.id) }
             transcript.entries = earlier + transcript.entries
             if transcript.title == nil { transcript.title = joined.title }
+            // Work launched above the window still runs, or ends in it.
+            transcript.carryBackgroundWork(
+                joined.backgroundWork ?? [], launchedBefore: windowStart,
+                latestPromptOffset: joined.latestPromptOffset)
             reachedStart = joined.reachedStart
         } else if olderUnreadable {
             transcript.entries.insert(

@@ -221,6 +221,27 @@ struct ChatBackgroundWorkTests {
         #expect(!allStale.holdsActivePace)
     }
 
+    @Test func workAnEarlierReadListedCarriesIntoALaterWindow() {
+        var transcript = ChatTranscript(
+            backgroundWork: [Self.item("loaded", at: 50)],
+            backgroundWorkEnds: ["ends": ChatBackgroundWorkEnd(state: .failed, offset: 60)],
+            backgroundWorkStop: ChatBackgroundWorkEnd(state: .stopped, offset: 70))
+        transcript.carryBackgroundWork(
+            [
+                Self.item("ends", at: 5), Self.item("stops", at: 6),
+                Self.item("done", state: .completed, at: 7, endedAt: 45),
+                // Its launch is loaded again, as the window shows it.
+                Self.item("loaded", state: .completed, at: 50, endedAt: 55),
+            ],
+            launchedBefore: 40, latestPromptOffset: 30)
+
+        #expect(transcript.backgroundWork.map(\.id) == ["ends", "stops", "done", "loaded"])
+        #expect(transcript.backgroundWork.map(\.state) == [.failed, .stopped, .completed, .running])
+        #expect(transcript.backgroundWork.map(\.endOffset) == [60, 70, 45, nil])
+        // No message is loaded, so the earlier read's latest stands.
+        #expect(transcript.latestPromptOffset == 30)
+    }
+
     @Test func onlyALiveReadHoldsTheActivePace() {
         let transcript = ChatTranscript(backgroundWork: [Self.item("b", at: 20)])
         #expect(!ChatBackgroundWork(transcript: transcript, progress: [:], isLive: false, now: Self.now).holdsActivePace)

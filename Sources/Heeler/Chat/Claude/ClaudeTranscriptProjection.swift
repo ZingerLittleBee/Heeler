@@ -34,7 +34,9 @@ enum ClaudeTranscriptProjection {
             recordedPrompts: role == .main ? recordedPrompts(index, entryByRecord: builder.entryByRecord) : [],
             links: index.links, diagnostics: index.diagnostics,
             backgroundWork: role == .main ? builder.backgroundWork : [],
-            latestPromptOffset: builder.latestPromptOffset)
+            latestPromptOffset: builder.latestPromptOffset,
+            backgroundWorkEnds: role == .main ? builder.backgroundWorkEnds : [:],
+            backgroundWorkStop: role == .main ? builder.end(stoppingAfter: context.windowStart) : nil)
     }
 
     /// The output `record` holds for the call `use`, as its row's preview
@@ -431,17 +433,31 @@ private struct Builder {
             return nil
         }
         item.launchedAt = ClaudeTranscriptProjection.date(record.timestamp)
-        if let delivery = notifications[use.id] {
-            item.state = Self.state(of: delivery.notification)
-            item.endOffset = delivery.offset
-            item.endedAt = ClaudeTranscriptProjection.date(delivery.timestamp)
-            item.usage = delivery.notification.usage
-        } else if let killed = agentsKilled.first(where: { $0.byteOffset > record.byteOffset }) {
-            item.state = .stopped
-            item.endOffset = killed.byteOffset
-            item.endedAt = ClaudeTranscriptProjection.date(killed.timestamp)
+        if let end = notifications[use.id].map(Self.end(of:)) ?? end(stoppingAfter: record.byteOffset) {
+            item.apply(end)
         }
         return item
+    }
+
+    /// How each background call ended, by its id, as its latest
+    /// notification says.
+    var backgroundWorkEnds: [String: ChatBackgroundWorkEnd] {
+        notifications.mapValues(Self.end(of:))
+    }
+
+    private static func end(of delivery: Delivery) -> ChatBackgroundWorkEnd {
+        ChatBackgroundWorkEnd(
+            state: state(of: delivery.notification), offset: delivery.offset,
+            endedAt: ClaudeTranscriptProjection.date(delivery.timestamp), usage: delivery.notification.usage)
+    }
+
+    /// The first `agents_killed` record past `offset`, which stops work
+    /// launched before it.
+    func end(stoppingAfter offset: UInt64) -> ChatBackgroundWorkEnd? {
+        agentsKilled.first(where: { $0.byteOffset > offset }).map { killed in
+            ChatBackgroundWorkEnd(
+                state: .stopped, offset: killed.byteOffset, endedAt: ClaudeTranscriptProjection.date(killed.timestamp))
+        }
     }
 
     /// The same reading `backgroundStatus` gives the call's row.

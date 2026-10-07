@@ -121,7 +121,16 @@ struct NumberedChatReducer: ChatTranscriptReducer {
             links: ChatTranscriptLinks(
                 continuedInSessionID: records.lazy.compactMap { $0.record?.continued }.last),
             backgroundWork: Self.backgroundWork(records),
-            latestPromptOffset: records.last { $0.record?.prompt != nil }?.line.offset)
+            latestPromptOffset: records.last { $0.record?.prompt != nil }?.line.offset,
+            backgroundWorkEnds: Self.backgroundWorkEnds(records))
+    }
+
+    private static func backgroundWorkEnds(_ records: [(line: ChatLine, record: Record?)]) -> [String: ChatBackgroundWorkEnd] {
+        var ends: [String: ChatBackgroundWorkEnd] = [:]
+        for (line, record) in records {
+            if let id = record?.ended { ends[id] = ChatBackgroundWorkEnd(state: .completed, offset: line.offset) }
+        }
+        return ends
     }
 
     private static func backgroundWork(_ records: [(line: ChatLine, record: Record?)]) -> [ChatBackgroundWorkItem] {

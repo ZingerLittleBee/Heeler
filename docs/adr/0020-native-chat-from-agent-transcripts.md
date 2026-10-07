@@ -188,9 +188,16 @@ running rows stop their clocks and say they are not updating. Running work
 with no sign of it for longer than such work runs, two hours since a
 Workflow started or its journal last changed, or three hours since a Subagent
 started, says when it was last seen instead of running, and no longer holds
-the faster reads. Times use the Host's clock, so
-a Host running ahead of the phone reads zero. The list is rebuilt from the
-transcript on every read and is never cached.
+the faster reads. Times use the Host's clock, so a Host running ahead of the
+phone reads zero.
+
+The list is rebuilt from the loaded lines on every read, but a launch can sit
+far above the tail window a later open reads. The saved conversation keeps
+the list it last showed, and when its entries join the live window, work
+launched above the window comes back with it: a notification or stop among
+the loaded lines ends it, and otherwise it still runs. Nothing saved shows
+before a live read, and a saved launch never joins a window it does not
+continue, since its end could sit in the gap.
 
 ## Staging and the tools dock
 
@@ -270,6 +277,9 @@ no Attach at all.
     editing, resending, rewinding or forking a conversation.
   - Codex's file changes beyond their counts, and a summary of the files a
     turn changed.
+  - Background Work launched above the tail window of a conversation this
+    device never read that far, until the user loads earlier messages past
+    the launch.
   - Background Work for Codex; stopping Background Work from Chat; a running
     Subagent's progress; teammates; and a Subagent resumed through
     SendMessage, which Chat does not follow past its first end.

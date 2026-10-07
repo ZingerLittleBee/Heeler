@@ -795,14 +795,15 @@ struct ChatRecordedPrompt: Equatable, Sendable {
 
 /// One piece of Background Work: a Subagent or Workflow the program started
 /// beside the conversation, as the transcript records its launch and its
-/// end. Never saved: a launch read from the device could never finish.
-struct ChatBackgroundWorkItem: Identifiable, Equatable, Sendable {
-    enum Kind: Equatable, Sendable {
+/// end. Saved with the conversation only to carry a launch above a later
+/// read's window into it, where that read's records can still end it.
+struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
+    enum Kind: Equatable, Codable, Sendable {
         case subagent
         case workflow
     }
 
-    enum State: Equatable, Sendable {
+    enum State: Equatable, Codable, Sendable {
         case running
         case completed
         case failed
@@ -810,7 +811,7 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Sendable {
     }
 
     /// The counts the program reports when the work ends.
-    struct Usage: Equatable, Sendable {
+    struct Usage: Equatable, Codable, Sendable {
         var tokens: Int?
         var toolUses: Int?
         var durationMilliseconds: Int?
@@ -869,6 +870,34 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Sendable {
     }
 }
 
+/// How a piece of Background Work ended, as one record says.
+struct ChatBackgroundWorkEnd: Equatable, Sendable {
+    var state: ChatBackgroundWorkItem.State
+    /// Where the record starts.
+    var offset: UInt64
+    var endedAt: Date?
+    var usage: ChatBackgroundWorkItem.Usage?
+
+    init(
+        state: ChatBackgroundWorkItem.State, offset: UInt64, endedAt: Date? = nil,
+        usage: ChatBackgroundWorkItem.Usage? = nil
+    ) {
+        self.state = state
+        self.offset = offset
+        self.endedAt = endedAt
+        self.usage = usage
+    }
+}
+
+extension ChatBackgroundWorkItem {
+    mutating func apply(_ end: ChatBackgroundWorkEnd) {
+        state = end.state
+        endOffset = end.offset
+        endedAt = end.endedAt
+        usage = end.usage
+    }
+}
+
 /// Explicit links the transcript records to somewhere else.
 struct ChatTranscriptLinks: Equatable, Sendable {
     /// Claude moved the session to a new working directory (`relocated`).
@@ -915,13 +944,20 @@ struct ChatTranscript: Equatable, Sendable {
     /// Where the newest message the user sent starts, among the loaded
     /// lines.
     var latestPromptOffset: UInt64?
+    /// Every end the loaded lines record, by the launching call's id,
+    /// including ends of work launched above them.
+    var backgroundWorkEnds: [String: ChatBackgroundWorkEnd]
+    /// The first record among the loaded lines that stopped all Background
+    /// Work, which ends work launched above them with no end of its own.
+    var backgroundWorkStop: ChatBackgroundWorkEnd?
 
     init(
         entries: [ChatEntry] = [], title: String? = nil, needsOlderHistory: Bool = false,
         pendingRequests: [ChatPendingRequest] = [], recordedPrompts: [ChatRecordedPrompt] = [],
         links: ChatTranscriptLinks = ChatTranscriptLinks(),
         diagnostics: ChatTranscriptDiagnostics = ChatTranscriptDiagnostics(),
-        backgroundWork: [ChatBackgroundWorkItem] = [], latestPromptOffset: UInt64? = nil
+        backgroundWork: [ChatBackgroundWorkItem] = [], latestPromptOffset: UInt64? = nil,
+        backgroundWorkEnds: [String: ChatBackgroundWorkEnd] = [:], backgroundWorkStop: ChatBackgroundWorkEnd? = nil
     ) {
         self.entries = entries
         self.title = title
@@ -932,6 +968,8 @@ struct ChatTranscript: Equatable, Sendable {
         self.diagnostics = diagnostics
         self.backgroundWork = backgroundWork
         self.latestPromptOffset = latestPromptOffset
+        self.backgroundWorkEnds = backgroundWorkEnds
+        self.backgroundWorkStop = backgroundWorkStop
     }
 
     /// The Background Work Chat lists: everything still running, and what
@@ -940,6 +978,26 @@ struct ChatTranscript: Equatable, Sendable {
     var listedBackgroundWork: [ChatBackgroundWorkItem] {
         let prompt = latestPromptOffset ?? 0
         return backgroundWork.filter { $0.state == .running || ($0.endOffset ?? 0) > prompt }
+    }
+
+    /// Puts work an earlier read listed, launched above `windowStart`, ahead
+    /// of the work launched in the loaded lines, ending what they end. The
+    /// earlier read's latest message stands when none is loaded.
+    mutating func carryBackgroundWork(
+        _ earlier: [ChatBackgroundWorkItem], launchedBefore windowStart: UInt64, latestPromptOffset earlierPrompt: UInt64?
+    ) {
+        let loaded = Set(backgroundWork.map(\.id))
+        let carried = earlier.filter { $0.launchOffset < windowStart && !loaded.contains($0.id) }.map { item in
+            var item = item
+            if let end = backgroundWorkEnds[item.id], end.offset > (item.endOffset ?? item.launchOffset) {
+                item.apply(end)
+            } else if item.state == .running, let stop = backgroundWorkStop {
+                item.apply(stop)
+            }
+            return item
+        }
+        backgroundWork = carried + backgroundWork
+        if latestPromptOffset == nil { latestPromptOffset = earlierPrompt }
     }
 }
 

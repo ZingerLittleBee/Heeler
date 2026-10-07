@@ -411,6 +411,38 @@ struct ChatConversationEngineTests {
 
     // MARK: Cache
 
+    @Test func workLaunchedAboveALaterWindowStaysListedAndEndsInIt() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(
+            Self.lines(0..<2) + NumberedChatReducer.launch("w1", journal: nil), at: Self.claudePath)
+        let first = fixture.makeEngine()
+        var snapshot = await fixture.open(first)
+        var pages = 0
+        while snapshot.older == .available, pages < 50 {
+            snapshot = await fixture.loadOlder(first)
+            pages += 1
+        }
+        #expect(snapshot.transcript.listedBackgroundWork.map(\.id) == ["w1"])
+        await first.save(force: true)
+
+        // Reopened once the launch is above the tail window.
+        await fixture.files.append(Self.lines(2..<8), to: Self.claudePath)
+        let second = fixture.makeEngine()
+        _ = await second.restore()
+        snapshot = await fixture.open(second)
+        // The launch line is above the window; the saved entries fill in.
+        #expect(Self.numbers(snapshot) == Self.ids(0..<8))
+        let listed = snapshot.transcript.listedBackgroundWork
+        #expect(listed.map(\.id) == ["w1"])
+        #expect(listed.first?.state == .running)
+
+        let endOffset = UInt64(await fixture.files.contents(of: Self.claudePath)?.count ?? 0)
+        await fixture.files.append(NumberedChatReducer.end("w1"), to: Self.claudePath)
+        snapshot = await fixture.poll(second)
+        #expect(snapshot.transcript.listedBackgroundWork.first?.state == .completed)
+        #expect(snapshot.transcript.listedBackgroundWork.first?.endOffset == endOffset)
+    }
+
     @Test func savedEntriesShowBeforeTheHostAnswers() async throws {
         let fixture = Fixture()
         await fixture.cache.save(

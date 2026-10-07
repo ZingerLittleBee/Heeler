@@ -67,11 +67,17 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
     var title: String?
     var entries: [ChatEntry]
     var savedAt: Date
+    /// The Background Work listed when saved, and the latest message it is
+    /// listed against, which a later window carries in when this document
+    /// joins it. Nil in documents saved before Chat listed it.
+    var backgroundWork: [ChatBackgroundWorkItem]?
+    var latestPromptOffset: UInt64?
 
     init(
         key: ChatCacheKey, adapterRevision: Int, transcriptPath: String, head: Data,
         coverageStart: UInt64, coverageEnd: UInt64, reachedStart: Bool, title: String?,
-        entries: [ChatEntry], savedAt: Date
+        entries: [ChatEntry], savedAt: Date, backgroundWork: [ChatBackgroundWorkItem]? = nil,
+        latestPromptOffset: UInt64? = nil
     ) {
         formatVersion = Self.currentFormatVersion
         self.key = key
@@ -84,6 +90,8 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
         self.title = title
         self.entries = entries
         self.savedAt = savedAt
+        self.backgroundWork = backgroundWork
+        self.latestPromptOffset = latestPromptOffset
     }
 }
 
