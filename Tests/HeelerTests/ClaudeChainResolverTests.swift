@@ -193,6 +193,47 @@ struct ClaudeChainResolverTests {
         ])
     }
 
+    /// 2.1.291's geometry: the preserved run ends in a record written after
+    /// the boundary, under the summary, and the boundary names that record
+    /// as its logical parent.
+    private static func boundaryNamingItsPreservedTail(_ metadata: String) -> String {
+        #"""
+        {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"First question"},"promptSource":"typed","origin":{"kind":"human"}}
+        {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"text","text":"First answer"}]},"apiBlockIndex":0}
+        {"type":"system","subtype":"turn_duration","uuid":"t1","parentUuid":"a1","durationMs":900}
+        {"type":"user","uuid":"p2","parentUuid":"t1","message":{"role":"user","content":"Second question"},"promptSource":"typed","origin":{"kind":"human"}}
+        {"type":"assistant","uuid":"a2","parentUuid":"p2","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"Second answer"}]},"apiBlockIndex":0}
+        {"type":"system","subtype":"compact_boundary","uuid":"b1","parentUuid":null,"logicalParentUuid":"x1","content":"Conversation compacted","compactMetadata":\#(metadata)}
+        {"type":"user","uuid":"s1","parentUuid":"b1","isCompactSummary":true,"isVisibleInTranscriptOnly":true,"message":{"role":"user","content":"Summary"}}
+        {"type":"attachment","uuid":"x1","parentUuid":"s1","attachment":{"type":"skill_listing"}}
+        {"type":"user","uuid":"p3","parentUuid":"x1","message":{"role":"user","content":"Third question"},"promptSource":"typed","origin":{"kind":"human"}}
+        {"type":"assistant","uuid":"a3","parentUuid":"p3","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"Third answer"}]},"apiBlockIndex":0}
+        """#
+    }
+
+    @Test("A boundary that names its preserved tail, written after it, keeps the history above it")
+    func boundaryNamingItsPreservedTail() {
+        let transcript = ClaudeSample.transcript(
+            Self.boundaryNamingItsPreservedTail(
+                #"{"trigger":"auto","preservedMessages":{"anchorUuid":"s1","uuids":["p2","a2","x1"]},"preservedSegment":{"headUuid":"p2","anchorUuid":"s1","tailUuid":"x1"}}"#
+            ))
+        #expect(transcript.entries.map(\.id.rawValue) == [
+            "user:p1", "text:a1", "user:p2", "text:a2", "compact:b1", "user:p3", "text:a3",
+        ])
+    }
+
+    @Test("With only the segment form, such a boundary still keeps the history above it")
+    func segmentNamingATailAfterTheBoundary() {
+        let transcript = ClaudeSample.transcript(
+            Self.boundaryNamingItsPreservedTail(
+                #"{"trigger":"auto","preservedSegment":{"headUuid":"p2","anchorUuid":"s1","tailUuid":"x1"}}"#))
+        // The segment names no record between its head and a tail written
+        // under the summary, so what lies between stays off the branch.
+        #expect(transcript.entries.map(\.id.rawValue) == [
+            "user:p1", "text:a1", "user:p2", "compact:b1", "user:p3", "text:a3",
+        ])
+    }
+
     // MARK: - Branches and damage
 
     @Test("A rewind hides the old branch; its prompt stays recorded without an entry")

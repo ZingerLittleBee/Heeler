@@ -51,7 +51,7 @@ Each line is one JSON object with a `type`. Chain records carry `uuid` and
 | Envelope field | Meaning |
 | --- | --- |
 | `uuid`, `parentUuid` | The tree edge. `parentUuid` is null at the root (`probe2-transcript.jsonl:5`) and on `compact_boundary`. |
-| `logicalParentUuid` | Only on `compact_boundary`: the last message before the compaction (CLI `chunk-v1gtm86q.js`). |
+| `logicalParentUuid` | Only on `compact_boundary`: the last message before the compaction (CLI `chunk-v1gtm86q.js`). In 2.1.291 transcripts it names the preserved run's tail instead, a record written after the boundary whose parents lead back to it. |
 | `isSidechain` | True on every record of a subagent file (`probe2-subagent.jsonl`). Sidechain records never join the main conversation. |
 | `isMeta` | Model-only input, such as skill bodies, caveats and reminders. |
 | `sessionId` | The file's session id. In a subagent file it is the parent session's id (`probe2-subagent.jsonl:1`). A `session_id` field, where present, differs from it in 9,834 user records of the local scan and is not an identity. |
@@ -180,8 +180,12 @@ with one extension so history before a compaction stays reachable:
    `local_command` or queued command on the branch.
 5. **Segments** (the extension). The SDK stops where the walk reaches a
    `compact_boundary`. To keep earlier history, mark the boundary and continue
-   from the newest unvisited eligible terminal positioned before it, with the
-   same walk-up, stopping at visited records. Over 159 transcripts in the
+   from its `logicalParentUuid` when that record is positioned before it;
+   otherwise from the newest `preservedMessages` entry (or the
+   `preservedSegment` head) positioned before it, which continues the branch
+   it was copied from; otherwise from the newest unvisited eligible terminal
+   positioned before it. The walk-up follows written parents and stops at
+   visited records. Over 159 transcripts in the
    local scan, this reached 98.0% of non-sidechain user and assistant records
    with no duplicates. Boundary geometry in a capture is Not verified.
 6. **Siblings.** Add off-chain `assistant` records that share a `message.id`

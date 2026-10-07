@@ -116,19 +116,36 @@ enum ClaudeChainResolver {
             }
             return nil
         }
-        /// Where history continues above `boundary`. The CLI writes the
-        /// record the boundary would have followed as its
-        /// `logicalParentUuid`: the branch tip before compaction. Without
-        /// one, or with the file's head loaded and that record unreadable,
-        /// the newest terminal before the boundary stands in.
+        /// Where history continues above `boundary`: the branch tip before
+        /// compaction. Older CLIs name it as the boundary's
+        /// `logicalParentUuid`. 2.1.291 names the preserved run's tail
+        /// there, a record written after the boundary whose parents lead
+        /// back to it, so a logical parent counts only when it comes before
+        /// the boundary; otherwise the newest preserved message written
+        /// before the boundary continues the branch it was copied from.
+        /// Without either, or with the file's head loaded and the logical
+        /// parent unreadable, the newest terminal before the boundary
+        /// stands in.
         func olderSegment(before boundary: ClaudeRecord) -> ClaudeRecord? {
-            guard expandedBoundaries.insert(boundary.uuid).inserted else { return nil }
-            if let logicalParent = boundary.system?.logicalParentUUID {
-                if let record = records[logicalParent] { return record }
-                if chain.missingParent == nil { chain.missingParent = logicalParent }
-                guard bridgesMissingParents else { return nil }
+            guard expandedBoundaries.insert(boundary.uuid).inserted, let limit = rank[boundary.uuid] else {
+                return nil
             }
-            return segmentTerminal(before: boundary)
+            func beforeBoundary(_ uuid: String) -> ClaudeRecord? {
+                guard let position = rank[uuid], position < limit else { return nil }
+                return records[uuid]
+            }
+            if let logicalParent = boundary.system?.logicalParentUUID {
+                if let record = beforeBoundary(logicalParent) { return record }
+                if records[logicalParent] == nil {
+                    if chain.missingParent == nil { chain.missingParent = logicalParent }
+                    guard bridgesMissingParents else { return nil }
+                }
+            }
+            let compaction = boundary.system?.compaction
+            let preserved =
+                (compaction?.preservedMessages?.uuids ?? []).reversed().lazy.compactMap(beforeBoundary).first
+                ?? compaction?.preservedSegment.flatMap { beforeBoundary($0.headUUID) }
+            return preserved ?? segmentTerminal(before: boundary)
         }
         // The first segment follows relinked parents, so it runs through the
         // messages a compaction preserved. Older segments follow the parents
@@ -200,7 +217,9 @@ enum ClaudeChainResolver {
                 segment.headUUID != segment.anchorUUID
             {
                 reparent(segment.headUUID, to: segment.anchorUUID)
-                for child in children[segment.anchorUUID] ?? [] where child != segment.headUUID {
+                // 2.1.291 writes the tail after the boundary, under the anchor.
+                for child in children[segment.anchorUUID] ?? []
+                where child != segment.headUUID && child != segment.tailUUID {
                     reparent(child, to: segment.tailUUID)
                 }
             }
