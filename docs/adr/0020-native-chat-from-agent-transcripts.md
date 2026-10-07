@@ -107,6 +107,33 @@ request, under rules that stand in for the screen the user cannot see:
 A sent message shows at once as a local echo, matched conservatively against
 the transcript.
 
+While Agent Status is Working and the draft is blank, Send becomes Stop, in
+system red. In Chat, Stop presses Esc through `agent.send_keys`, in line with
+the Agent page's keys; the terminal's Composer sends it on the Attach PTY (ADR
+0013). Then Stop waits. The acknowledgement means only that the key reached
+the PTY, and an Esc that lands after the turn ended can open the program's own
+history menus, so Stop shows a spinner until Agent Status leaves Working.
+After three seconds it works again and says the Agent still shows Working;
+background agents and shells, which Esc does not end, can keep it there. A
+failed request may still have pressed the key, so Stop then says so and works
+again at once. The wait belongs to the Agent's Composer, not to a surface:
+switching between Chat and the terminal, or a rebuilt detail, keeps it. With
+text in the draft the button stays Send, so a prompt still queues behind the
+running turn, and ⌘↩ only ever sends. A send that empties the draft keeps Stop
+back for a second, so the second tap of a double tap cannot interrupt the turn
+the prompt was meant to queue behind. Stop is not offered while Blocked, where
+Esc answers the dialog and, on Claude Code's folder trust dialog, exits the
+program.
+
+With the keyboard down, Chat folds the Composer: the actions row goes, and Add
+and Send or Stop sit beside a one-line input, a longer draft truncated after
+its first line. Failure, refusal and Stop notices stay below it, and so does
+the line saying Send waits for a dropped image. A tap into the input, or the
+switcher row's keyboard button, opens it in full, with the caret where the
+draft was left; it stays open while the tools dock is up. The status row and
+the Agent switcher row stay in both. T3 Code's mobile composer folds the same
+way.
+
 ## Blocked cards
 
 While Agent Status is Blocked, Chat answers the dialog on the Agent's screen
@@ -182,6 +209,9 @@ no Attach at all.
 - Claude Code writes no transcript before the first prompt, and Codex reports
   no session to herdr until after it. The Composer works in both states.
 - Following makes SFTP requests on the Host's connection at every poll.
+- Stop interrupts the running turn, unlike the Blocked card's Stop, which
+  answers a dialog and leaves a Stopped row. Codex holding queued messages
+  takes Esc as interrupt-and-send, so the Agent can stay Working.
 - Chat never resizes the pane, and herdr keeps the last attached client's
   size, so cards are parsed at the phone's last grid, usually 40 to
   64 columns, where Claude Code leaves stale text.

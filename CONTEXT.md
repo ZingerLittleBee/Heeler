@@ -152,12 +152,18 @@ Blocked: Send then inserts the draft into Attach without Enter, and the tools
 keyboard submits or cancels. Delivered means the Host accepted the text into
 the pane — whether the Agent queues or acts on it is the Agent's business,
 and the Composer never claims otherwise.
+While Agent Status is Working and the draft is blank, Send becomes Stop: one
+Esc in the Agent's program, then a wait of up to three seconds for the status
+to leave Working rather than a second Esc. The wait is per Agent, shared by
+Chat and the terminal. With text, Send still delivers, so a prompt can queue
+behind the turn.
 Composer remains the default authored-input path on Agent detail. Direct Input
 is an explicit, opt-in alternative that hides the Composer card without
 clearing or submitting the draft.
 Chat shows the same Composer, draft and staging below the conversation. There
-Send follows Chat's rules instead, and while Agent Status is Blocked a Blocked
-Card takes the Composer's place.
+Send follows Chat's rules instead, while Agent Status is Blocked a Blocked
+Card takes the Composer's place, and with the keyboard down the Composer folds
+to its input row.
 _Avoid_: reply bar, compose bar (the shelved predecessors), input box, message box
 
 **Attach**:
@@ -169,9 +175,9 @@ lets the system keyboard type that same Attach PTY.
 Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
 which case Composer Send inserts the draft into Attach without Enter and the
 tools keyboard submits or cancels. Only Composer's explicit tools-keyboard
-controls (and Direct Input's shortcut row / system Return) send terminal
-control sequences. The directly interactive surface on an ordinary shell is
-the Shell Terminal, never unqualified "Attach".
+controls and its Stop (and Direct Input's shortcut row / system Return) send
+terminal control sequences. The directly interactive surface on an ordinary
+shell is the Shell Terminal, never unqualified "Attach".
 Chat holds no Attach: while Chat shows in its place, the Agent's Attach is
 retained like any terminal the user has left, and nothing types into or
 resizes it.
@@ -190,8 +196,9 @@ Composer and draft are the terminal's. Send is one `agent.prompt` request, made
 only after a screen read shows the program's input box empty, and refused for
 text the program would run rather than read. Its `/` menu offers the Agent's
 skills and `/compact`. Chat never resends: text left in the box after sending
-marks the message Not delivered. The choice between Chat and the terminal is
-app-wide, Terminal by default. Not offered on native Windows Hosts.
+marks the message Not delivered. Stop presses Esc through `agent.send_keys`.
+The choice between Chat and the terminal is app-wide, Terminal by default. Not
+offered on native Windows Hosts.
 _Avoid_: chat mode, conversation view, Monitor (ADR 0012's removed surface)
 
 **Transcript**:
