@@ -4,13 +4,22 @@ import SwiftUI
 /// headings as text, list items after their markers, quotes with a bar,
 /// code and tables in a monospaced box that wraps rather than scrolls
 /// sideways (a horizontal scroll would fight the edge back gesture).
+///
+/// Blocks sit on the next line or a blank line apart wherever Claude Code's
+/// terminal puts them. A blank line before a heading is wider and one after
+/// it narrower, so a heading stays with the text it introduces.
 struct ChatMarkdownView: View {
     let blocks: [ChatMarkdownBlock]
+    @ScaledMetric(relativeTo: .body) private var nextLineGap: CGFloat = 4
+    @ScaledMetric(relativeTo: .body) private var blankLineGap: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var aboveHeadingGap: CGFloat = 24
+    @ScaledMetric(relativeTo: .body) private var belowHeadingGap: CGFloat = 12
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(blocks.indices, id: \.self) { index in
                 ChatMarkdownBlockView(block: blocks[index])
+                    .padding(.top, gap(before: index))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -19,6 +28,44 @@ struct ChatMarkdownView: View {
         .environment(\.openURL, OpenURLAction { url in
             ChatLinkPolicy.allows(url) ? .systemAction : .discarded
         })
+    }
+
+    private func gap(before index: Int) -> CGFloat {
+        guard index > 0 else { return 0 }
+        let block = blocks[index]
+        guard block.blankLineBefore else { return nextLineGap }
+        if case .heading = blocks[index - 1].kind {
+            return belowHeadingGap
+        }
+        if case .heading = block.kind {
+            return aboveHeadingGap
+        }
+        return blankLineGap
+    }
+
+    /// The content with its strong emphasis bold in `font`.
+    ///
+    /// `Text` draws the strong intent with `Font.bold()`, which gives a text
+    /// style only semibold: Chinese strokes gain about a third of a point,
+    /// and with Bold Text on, strong text looks the same as the rest. A run
+    /// font of an explicit bold weight draws real bold, which the intent
+    /// would override, so the intent goes. Emphasis, code and strikethrough
+    /// stay intents.
+    nonisolated static func boldingStrongEmphasis(_ content: AttributedString, in font: Font) -> AttributedString {
+        guard content.runs.contains(where: { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true }) else {
+            return content
+        }
+        var result = AttributedString()
+        for run in content.runs {
+            var piece = AttributedString(content[run.range])
+            if var intent = run.inlinePresentationIntent, intent.contains(.stronglyEmphasized) {
+                intent.remove(.stronglyEmphasized)
+                piece.inlinePresentationIntent = intent.isEmpty ? nil : intent
+                piece.font = font.weight(.bold)
+            }
+            result.append(piece)
+        }
+        return result
     }
 }
 
@@ -54,12 +101,9 @@ private struct ChatMarkdownBlockView: View {
     private var content: some View {
         switch block.kind {
         case .paragraph:
-            Text(block.content)
-                .font(.body)
+            styledText(in: .body)
         case .heading(let level):
-            Text(block.content)
-                .font(Self.headingFont(level))
-                .padding(.top, level <= 2 ? 4 : 0)
+            styledText(in: Self.headingFont(level))
                 .accessibilityAddTraits(.isHeader)
         case .listItem(let marker):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -67,8 +111,7 @@ private struct ChatMarkdownBlockView: View {
                     .font(.body.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(minWidth: indent - 6, alignment: .trailing)
-                Text(block.content)
-                    .font(.body)
+                styledText(in: .body)
             }
         case .code(let language):
             VStack(alignment: .leading, spacing: 4) {
@@ -90,7 +133,12 @@ private struct ChatMarkdownBlockView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 10))
         case .thematicBreak:
-            Divider()
+            // A `Divider` would follow the axis of the `HStack` in `body`
+            // and stand upright.
+            Rectangle()
+                .fill(Color(uiColor: .separator))
+                .frame(height: 1 / 3)
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
         case .html:
             Text(verbatim: block.text)
@@ -98,11 +146,18 @@ private struct ChatMarkdownBlockView: View {
         }
     }
 
+    private func styledText(in font: Font) -> some View {
+        Text(ChatMarkdownView.boldingStrongEmphasis(block.content, in: font))
+            .font(font)
+    }
+
+    /// Every level is bold, as Claude Code's terminal draws them, and the
+    /// top two are larger than the text.
     private static func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: .title3.weight(.semibold)
-        case 2: .headline
-        default: .subheadline.weight(.semibold)
+        case 1: .title2.weight(.bold)
+        case 2: .title3.weight(.bold)
+        default: .body.weight(.bold)
         }
     }
 }

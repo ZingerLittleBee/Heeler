@@ -44,13 +44,21 @@ struct ChatMarkdownBlock: Sendable, Equatable {
     let listDepth: Int
     /// How many block quotes contain the block.
     let quoteDepth: Int
+    /// Whether Claude Code's terminal shows a blank line between this block
+    /// and the one before (see `ChatMarkdown`); otherwise it starts on the
+    /// next line. Always false for the first block.
+    let blankLineBefore: Bool
 
-    init(kind: Kind, content: AttributedString, text: String, listDepth: Int = 0, quoteDepth: Int = 0) {
+    init(
+        kind: Kind, content: AttributedString, text: String, listDepth: Int = 0, quoteDepth: Int = 0,
+        blankLineBefore: Bool = false
+    ) {
         self.kind = kind
         self.content = content
         self.text = text
         self.listDepth = listDepth
         self.quoteDepth = quoteDepth
+        self.blankLineBefore = blankLineBefore
     }
 }
 
@@ -62,6 +70,19 @@ struct ChatMarkdownBlock: Sendable, Equatable {
 /// from the intents that enclose it. Nothing is fetched or interpreted:
 /// images keep only their alt text, HTML stays text, and links that fail
 /// `ChatLinkPolicy` keep their text but stop being links.
+///
+/// Lines follow Claude Code's terminal, which keeps the source's: a single
+/// line break stays a line break, and blocks are a blank line apart only
+/// where the source has one or more blank lines between them. On top of
+/// that, a heading is followed by a blank line (in a top-level list, only
+/// before the rest of its item and the items after it), and a table or
+/// quote at the top level has one around it. A table inside a quote has
+/// one below it before the rest of the quote; one in a list item has one
+/// below it before the next item and none before the rest of its item.
+/// List items stay together unless at least two blank lines part them.
+/// Codex's terminal spaces blocks differently in several ways, among them a
+/// blank line between every two top-level blocks; Chat follows Claude
+/// Code's for every Agent.
 ///
 /// Parsing is pure and safe off the main actor; callers memoize the result
 /// per entry revision.
@@ -119,7 +140,8 @@ enum ChatLinkPolicy {
 }
 
 /// Turns one parsed message into blocks. A value made per call: the parse,
-/// the source lines and the list items whose marker has been placed.
+/// the source lines, and the list items whose marker has been placed with
+/// the lists they belong to.
 private struct BlockBuilder {
     /// A run of consecutive runs that form one block.
     private struct Group {
@@ -146,6 +168,7 @@ private struct BlockBuilder {
     let parsed: AttributedString
     let lines: [Substring]
     private var markedItems: Set<Int> = []
+    private var markedLists: Set<Int> = []
 
     init(parsed: AttributedString, lines: [Substring]) {
         self.parsed = parsed
@@ -156,8 +179,11 @@ private struct BlockBuilder {
         let groups = groups()
         var blocks: [ChatMarkdownBlock] = []
         for (index, group) in groups.enumerated() {
-            let marker = placeMarkers(for: group, into: &blocks)
-            blocks.append(block(for: group, at: index, in: groups, marker: marker))
+            // The first block the group adds takes the blank line: a marker
+            // placed before it, or its own block.
+            var blankLine = index > 0 && startsAfterBlankLine(group, after: groups[index - 1])
+            let marker = placeMarkers(for: group, into: &blocks, blankLineBefore: &blankLine)
+            blocks.append(block(for: group, at: index, in: groups, marker: marker, blankLineBefore: blankLine))
         }
         return blocks
     }
@@ -180,29 +206,235 @@ private struct BlockBuilder {
                 role = .html
                 key = ordinal
             }
-            let position = run.markdownSourcePosition
+            let covered = run.markdownSourcePosition.map(Self.lines(of:))
             if let last = groups.last, last.role == role, last.key == key {
                 groups[groups.count - 1].range = last.range.lowerBound..<run.range.upperBound
-                if let position {
-                    groups[groups.count - 1].firstLine = min(last.firstLine ?? position.startLine, position.startLine)
-                    groups[groups.count - 1].lastLine = max(last.lastLine ?? position.endLine, position.endLine)
+                if let covered {
+                    groups[groups.count - 1].firstLine = min(last.firstLine ?? covered.lowerBound, covered.lowerBound)
+                    groups[groups.count - 1].lastLine = max(last.lastLine ?? covered.upperBound, covered.upperBound)
                 }
             } else {
                 groups.append(
                     Group(
                         role: role, key: key, chain: chain, range: run.range,
-                        firstLine: position?.startLine, lastLine: position?.endLine))
+                        firstLine: covered?.lowerBound, lastLine: covered?.upperBound))
             }
         }
+        correctLines(in: &groups)
         return groups
+    }
+
+    /// The lines a run covers. One that ends at the start of a line, as an
+    /// indented code block does on the blank line after it, ends on the
+    /// line before.
+    private static func lines(of position: AttributedString.MarkdownSourcePosition) -> ClosedRange<Int> {
+        let last = position.endColumn == 0 ? position.endLine - 1 : position.endLine
+        return position.startLine...max(last, position.startLine)
+    }
+
+    /// Corrects the lines the parser reports wrongly or not at all, in
+    /// reading order:
+    /// - A table that interrupts a paragraph has its header row reported on
+    ///   the paragraph's first line, and the paragraph from line 0. The
+    ///   table starts above its delimiter row instead, and the paragraph
+    ///   runs from there up to the nearest blank line or earlier block.
+    /// - A fence left open in a list item runs on to the next block's line.
+    ///   The code ends at its last line with text.
+    /// - A setext heading's runs leave out its underline.
+    /// - Thematic breaks have no position. Each is on the first line before
+    ///   the next block that reads as one.
+    private func correctLines(in groups: inout [Group]) {
+        // The first line reported after each group, which bounds the
+        // searches below.
+        var nextStart = Array(repeating: lines.count + 1, count: groups.count)
+        for index in groups.indices.dropLast().reversed() {
+            let next = groups[index + 1].firstLine.flatMap { $0 >= 1 ? $0 : nil } ?? nextStart[index + 1]
+            nextStart[index] = min(nextStart[index + 1], next)
+        }
+        var reached = 0
+        var scanned = 0
+        var interrupted: Int?
+        for index in groups.indices {
+            if let first = groups[index].firstLine, first < 1 {
+                groups[index].firstLine = nil
+                groups[index].lastLine = nil
+                interrupted = index
+            }
+            let depth = groups[index].chain.filter(Self.isQuote).count
+            switch (groups[index].role, groups[index].chain.first?.kind) {
+            case (.table, _):
+                guard let firstCell = groups[index].firstLine,
+                    let delimiter = delimiterRow(near: firstCell, quoteDepth: depth)
+                else { break }
+                let header = max(delimiter - 1, 1)
+                groups[index].firstLine = header
+                groups[index].lastLine = max(groups[index].lastLine ?? delimiter, delimiter)
+                if interrupted == index - 1, header - 1 > reached {
+                    var first = header - 1
+                    while first - 1 > reached, !isBlankLine(first - 1, quoteDepth: depth) {
+                        first -= 1
+                    }
+                    groups[index - 1].firstLine = first
+                    groups[index - 1].lastLine = header - 1
+                }
+            case (.leaf, .codeBlock?):
+                guard let first = groups[index].firstLine, var last = groups[index].lastLine else { break }
+                last = min(last, nextStart[index] - 1)
+                while last > first, isBlankLine(last, quoteDepth: depth) {
+                    last -= 1
+                }
+                groups[index].lastLine = max(last, first)
+            case (.leaf, .header?):
+                if let last = groups[index].lastLine, last < lines.count, isUnderlinedHeading(groups[index]) {
+                    groups[index].lastLine = last + 1
+                }
+            case (.leaf, .thematicBreak?) where groups[index].firstLine == nil:
+                // Lines already searched are skipped, so the searches
+                // together stay linear.
+                let start = max(reached, scanned)
+                let end = min(nextStart[index] - 1, lines.count)
+                if start < end, let found = (start..<end).first(where: { Self.readsAsThematicBreak(lines[$0]) }) {
+                    groups[index].firstLine = found + 1
+                    groups[index].lastLine = found + 1
+                    scanned = found + 1
+                } else {
+                    scanned = max(scanned, end)
+                }
+            default:
+                break
+            }
+            reached = max(reached, groups[index].lastLine ?? reached)
+        }
+    }
+
+    /// The delimiter row of a table whose first reported cell is on `line`.
+    ///
+    /// Only cells carry source positions, and the header row's are wrong
+    /// when the table interrupts a paragraph (body rows stay right). The
+    /// delimiter row is searched for over the unbroken lines from there,
+    /// downward and then upward, since a table holds no blank line.
+    private func delimiterRow(near line: Int, quoteDepth: Int) -> Int? {
+        guard !lines.isEmpty else { return nil }
+        func search(from line: Int, step: Int) -> Int? {
+            var line = line
+            while (1...lines.count).contains(line), !isBlankLine(line, quoteDepth: quoteDepth) {
+                if Self.isDelimiterRow(Self.droppingQuoteMarkers(lines[line - 1], depth: quoteDepth)) {
+                    return line
+                }
+                line += step
+            }
+            return nil
+        }
+        let first = min(max(line, 1), lines.count)
+        return search(from: first, step: 1) ?? search(from: first - 1, step: -1)
+    }
+
+    /// Whether a heading is set with an underline (`Title` over `---`)
+    /// rather than `#` marks: no `#` comes before its text on its line.
+    private func isUnderlinedHeading(_ group: Group) -> Bool {
+        guard let start = parsed[group.range].runs.lazy.compactMap({ $0.markdownSourcePosition }).first,
+            lines.indices.contains(start.startLine - 1)
+        else { return false }
+        let before = lines[start.startLine - 1].utf8.prefix(max(start.startColumn - 1, 0))
+        return !before.contains(UInt8(ascii: "#"))
+    }
+
+    /// Whether the terminal shows a blank line between the group and the
+    /// one before it. See `ChatMarkdown` for the rules.
+    private func startsAfterBlankLine(_ group: Group, after previous: Group) -> Bool {
+        let laterItem = startsLaterItem(group)
+        if previous.role == .leaf, case .header? = previous.chain.first?.kind,
+            Self.keepsBlankLineAfterHeading(previous, before: group, laterItem: laterItem)
+        {
+            return true
+        }
+        if Self.isTopLevelTable(group) || Self.isTopLevelTable(previous)
+            || Self.isInTopLevelQuote(group) != Self.isInTopLevelQuote(previous)
+        {
+            return true
+        }
+        if previous.role == .table, let decided = Self.blankLineAfterTable(previous, before: group, laterItem: laterItem) {
+            return decided
+        }
+        guard let last = previous.lastLine, let first = group.firstLine else { return !laterItem }
+        let depth = max(group.chain.filter(Self.isQuote).count, previous.chain.filter(Self.isQuote).count)
+        let blankLines = first > last + 1 ? ((last + 1)..<first).filter { isBlankLine($0, quoteDepth: depth) }.count : 0
+        return blankLines >= (laterItem ? 2 : 1)
+    }
+
+    /// Whether the terminal keeps the blank line after a heading before the
+    /// group. Its text keeps it everywhere but in a top-level list, which it
+    /// lays out item by item: there the blank line reaches only the rest of
+    /// the heading's item (or of its quote, for a heading in a quote in the
+    /// item) and the items after it.
+    private static func keepsBlankLineAfterHeading(_ heading: Group, before group: Group, laterItem: Bool) -> Bool {
+        guard let outermost = heading.chain.last, isList(outermost),
+            let item = heading.chain.firstIndex(where: isListItem)
+        else { return true }
+        if let quote = heading.chain[..<item].last(where: isQuote) {
+            return group.chain.contains { $0.identity == quote.identity }
+        }
+        return laterItem || group.chain.contains { $0.identity == heading.chain[item].identity }
+    }
+
+    private static func isTopLevelTable(_ group: Group) -> Bool {
+        group.role == .table && group.chain.last.map(isTable) == true
+    }
+
+    /// Whether the group is in a quote outside every list.
+    private static func isInTopLevelQuote(_ group: Group) -> Bool {
+        group.chain.last.map(isQuote) ?? false
+    }
+
+    /// Whether the terminal shows a blank line between a table inside a
+    /// list or quote and the group, where the source does not decide: one
+    /// before the rest of the table's quote, one before the next item after
+    /// an item the table ends, and none before the rest of that item (the
+    /// terminal's parser takes any blank lines there into the table).
+    private static func blankLineAfterTable(_ table: Group, before group: Group, laterItem: Bool) -> Bool? {
+        guard let position = table.chain.firstIndex(where: isTable) else { return nil }
+        let containers = table.chain[(position + 1)...]
+        if let quote = containers.first(where: isQuote) {
+            return group.chain.contains { $0.identity == quote.identity } ? true : nil
+        }
+        guard let item = containers.first, isListItem(item) else { return nil }
+        if laterItem {
+            return true
+        }
+        return group.chain.contains { $0.identity == item.identity } ? false : nil
+    }
+
+    /// Whether the group starts an item that follows another item of its
+    /// list, rather than a list's first item or more of an item. The
+    /// outermost item it starts decides; any inside that one start nested
+    /// lists.
+    private func startsLaterItem(_ group: Group) -> Bool {
+        let chain = group.chain
+        guard
+            let position = chain.indices.last(where: { index in
+                Self.isListItem(chain[index]) && !markedItems.contains(chain[index].identity)
+            }),
+            chain.indices.contains(position + 1)
+        else { return false }
+        return markedLists.contains(chain[position + 1].identity)
+    }
+
+    /// Whether a source line, numbered from 1, is blank once `quoteDepth`
+    /// quote markers are removed.
+    private func isBlankLine(_ number: Int, quoteDepth: Int) -> Bool {
+        guard lines.indices.contains(number - 1) else { return false }
+        return Self.droppingQuoteMarkers(lines[number - 1], depth: quoteDepth).allSatisfy(\.isWhitespace)
     }
 
     /// Places the marker of every list item the group starts. A paragraph
     /// directly inside its item carries the marker itself, which it returns.
     /// Anything else (a code block, a table, a nested list's first item)
     /// gets an empty block with the marker before it, so no item loses its
-    /// bullet or number.
-    private mutating func placeMarkers(for group: Group, into blocks: inout [ChatMarkdownBlock]) -> String? {
+    /// bullet or number. The first marker block placed takes the group's
+    /// blank line.
+    private mutating func placeMarkers(
+        for group: Group, into blocks: inout [ChatMarkdownBlock], blankLineBefore: inout Bool
+    ) -> String? {
         let chain = group.chain
         let itemPositions = chain.indices.filter { Self.isListItem(chain[$0]) }.reversed()
         var ownMarker: String?
@@ -211,6 +443,9 @@ private struct BlockBuilder {
             guard markedItems.insert(item.identity).inserted else { continue }
             let depth = depthIndex + 1
             let list = chain.indices.contains(position + 1) ? chain[position + 1] : nil
+            if let list {
+                markedLists.insert(list.identity)
+            }
             let marker = Self.marker(for: item, in: list, depth: depth)
             if group.role == .leaf, position == 1, Self.isParagraph(chain[0]) {
                 ownMarker = marker
@@ -219,20 +454,23 @@ private struct BlockBuilder {
                 blocks.append(
                     ChatMarkdownBlock(
                         kind: .listItem(marker: marker), content: AttributedString(), text: marker,
-                        listDepth: depth, quoteDepth: outerQuotes))
+                        listDepth: depth, quoteDepth: outerQuotes, blankLineBefore: blankLineBefore))
+                blankLineBefore = false
             }
         }
         return ownMarker
     }
 
-    private func block(for group: Group, at index: Int, in groups: [Group], marker: String?) -> ChatMarkdownBlock {
+    private func block(
+        for group: Group, at index: Int, in groups: [Group], marker: String?, blankLineBefore: Bool
+    ) -> ChatMarkdownBlock {
         let chain = group.chain
         let listDepth = chain.filter(Self.isListItem).count
         let quoteDepth = chain.filter(Self.isQuote).count
         func make(_ kind: ChatMarkdownBlock.Kind, _ text: String) -> ChatMarkdownBlock {
             ChatMarkdownBlock(
                 kind: kind, content: AttributedString(text), text: text,
-                listDepth: listDepth, quoteDepth: quoteDepth)
+                listDepth: listDepth, quoteDepth: quoteDepth, blankLineBefore: blankLineBefore)
         }
 
         switch group.role {
@@ -265,7 +503,8 @@ private struct BlockBuilder {
                 text = plain
             }
             return ChatMarkdownBlock(
-                kind: kind, content: content, text: text, listDepth: listDepth, quoteDepth: quoteDepth)
+                kind: kind, content: content, text: text, listDepth: listDepth, quoteDepth: quoteDepth,
+                blankLineBefore: blankLineBefore)
         }
     }
 
@@ -286,14 +525,12 @@ private struct BlockBuilder {
             var text = String(slice[run.range].characters)
             if var intent = attributes.inlinePresentationIntent {
                 // `Text` ignores both break intents and draws the characters,
-                // so the characters must be the break.
-                if intent.contains(.softBreak) {
-                    text = " "
-                    intent.remove(.softBreak)
-                }
-                if intent.contains(.lineBreak) {
+                // so the characters must be the break. A soft break breaks
+                // the line too, as in both programs' terminals; a space would
+                // also wrongly part two Chinese sentences.
+                if !intent.isDisjoint(with: [.softBreak, .lineBreak]) {
                     text = "\n"
-                    intent.remove(.lineBreak)
+                    intent.subtract([.softBreak, .lineBreak])
                 }
                 attributes.inlinePresentationIntent = intent.isEmpty ? nil : intent
             }
@@ -303,41 +540,23 @@ private struct BlockBuilder {
     }
 
     /// A table's source lines, with quote markers and the common indent
-    /// removed so the table reads as if written on its own.
-    ///
-    /// Only cells carry source positions, and not all of them reliably: when
-    /// a table interrupts a paragraph, the parser reports the paragraph and
-    /// the header row on lines that are too low (body rows stay right). The
-    /// delimiter row anchors the table instead. It is searched for over the
-    /// unbroken lines from the first reported cell, downward and then upward
-    /// (a table holds no blank line), and the header row is the line above
-    /// it. The end grows from the last reported cell over unbroken lines
-    /// (rows of empty cells report nothing) until the next block's start.
+    /// removed so the table reads as if written on its own. It starts at
+    /// its header row (see `correctLines`), and its end grows from the last
+    /// reported row over unbroken lines (rows of empty cells report nothing)
+    /// until the next block's start.
     private func tableText(for group: Group, at index: Int, in groups: [Group], quoteDepth: Int) -> String {
-        guard let firstCell = group.firstLine, let lastCell = group.lastLine, !lines.isEmpty else {
+        guard let firstLine = group.firstLine, let lastLine = group.lastLine, !lines.isEmpty else {
             return cellText(group.range)
         }
         func content(_ number: Int) -> Substring {
             Self.droppingQuoteMarkers(lines[number - 1], depth: quoteDepth)
         }
-        func isBlank(_ number: Int) -> Bool { content(number).allSatisfy(\.isWhitespace) }
-        func delimiterRow(from line: Int, step: Int) -> Int? {
-            var line = line
-            while (1...lines.count).contains(line), !isBlank(line) {
-                if Self.isDelimiterRow(content(line)) { return line }
-                line += step
-            }
-            return nil
-        }
 
-        let first = min(max(firstCell, 1), lines.count)
-        let delimiter = delimiterRow(from: first, step: 1) ?? delimiterRow(from: first - 1, step: -1)
-        let start = delimiter.map { max($0 - 1, 1) } ?? first
-        var end = min(max(lastCell, delimiter ?? start), lines.count)
-        // Positions that go backward are the misreported ones above.
+        let start = min(max(firstLine, 1), lines.count)
+        var end = min(max(lastLine, start), lines.count)
         let nextBlock = groups[(index + 1)...].compactMap(\.firstLine).filter { $0 > end }.min()
         let limit = min(nextBlock.map { $0 - 1 } ?? lines.count, lines.count)
-        while end + 1 <= limit, !isBlank(end + 1) { end += 1 }
+        while end + 1 <= limit, !isBlankLine(end + 1, quoteDepth: quoteDepth) { end += 1 }
 
         var rows = (start...end).map(content)
         while let row = rows.last, row.allSatisfy(\.isWhitespace) { rows.removeLast() }
@@ -408,13 +627,55 @@ private struct BlockBuilder {
         }
     }
 
-    /// Removes up to `depth` block quote markers: up to three spaces, `>`,
-    /// and one optional space each.
+    /// A thematic break's line: three or more of one of `-`, `*` and `_`,
+    /// with nothing else but spaces and tabs.
+    private static func isThematicBreak(_ line: Substring) -> Bool {
+        let marks = line.filter { $0 != " " && $0 != "\t" }
+        guard let mark = marks.first, "-*_".contains(mark), marks.count >= 3 else { return false }
+        return marks.allSatisfy { $0 == mark }
+    }
+
+    /// Whether a line is a thematic break once any quote and list markers
+    /// before it are removed, as in `> ***` or `- ***`.
+    private static func readsAsThematicBreak(_ line: Substring) -> Bool {
+        var rest = line
+        while !isThematicBreak(rest) {
+            let marked = rest.drop { $0 == " " || $0 == "\t" }
+            if marked.first == ">" {
+                rest = marked.dropFirst()
+            } else if let marker = listMarkerLength(marked) {
+                rest = marked.dropFirst(marker)
+            } else {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// The length of the list item marker the text starts with: `-`, `*`
+    /// or `+`, or up to nine digits and `.` or `)`, then a space, a tab or
+    /// the end of the line.
+    private static func listMarkerLength(_ text: Substring) -> Int? {
+        let digits = text.prefix { $0.isASCII && $0.isNumber }.count
+        let length: Int
+        if digits > 0 {
+            guard digits <= 9, let delimiter = text.dropFirst(digits).first, delimiter == "." || delimiter == ")"
+            else { return nil }
+            length = digits + 1
+        } else {
+            guard let bullet = text.first, "-*+".contains(bullet) else { return nil }
+            length = 1
+        }
+        let after = text.dropFirst(length).first
+        return after == nil || after == " " || after == "\t" ? length : nil
+    }
+
+    /// Removes up to `depth` block quote markers: any indent (in a list item,
+    /// the item's content is indented), `>`, and one optional space each.
     private static func droppingQuoteMarkers(_ line: Substring, depth: Int) -> Substring {
         var rest = line
         for _ in 0..<depth {
-            let indent = rest.prefix { $0 == " " }.prefix(3).count
-            let marked = rest.dropFirst(indent)
+            let marked = rest.drop { $0 == " " || $0 == "\t" }
             guard marked.first == ">" else { break }
             rest = marked.dropFirst()
             if rest.first == " " {
@@ -433,6 +694,13 @@ private struct BlockBuilder {
     private static func isListItem(_ component: PresentationIntent.IntentType) -> Bool {
         if case .listItem = component.kind { return true }
         return false
+    }
+
+    private static func isList(_ component: PresentationIntent.IntentType) -> Bool {
+        switch component.kind {
+        case .orderedList, .unorderedList: return true
+        default: return false
+        }
     }
 
     private static func isQuote(_ component: PresentationIntent.IntentType) -> Bool {

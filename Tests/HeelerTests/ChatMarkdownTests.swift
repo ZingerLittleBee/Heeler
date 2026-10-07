@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -213,9 +214,12 @@ struct ChatMarkdownTests {
             name: "A table after several paragraph lines",
             source: "one\ntwo\nthree\n| a | b |\n| - | - |\n| 1 | 2 |\n\nafter",
             expected: [
-                Shape(.paragraph, "one two three"), Shape(.table, "| a | b |\n| - | - |\n| 1 | 2 |"),
+                Shape(.paragraph, "one\ntwo\nthree"), Shape(.table, "| a | b |\n| - | - |\n| 1 | 2 |"),
                 Shape(.paragraph, "after"),
             ]),
+        Vector(
+            name: "A table ends at a thematic break right below it", source: "| a |\n| - |\n| 1 |\n---\nend",
+            expected: [Shape(.table, "| a |\n| - |\n| 1 |"), Shape(.thematicBreak, ""), Shape(.paragraph, "end")]),
         Vector(
             name: "A header-only aligned table after a paragraph line", source: "# H\n\npara\n| x | y |\n|:--|--:|",
             expected: [
@@ -255,8 +259,8 @@ struct ChatMarkdownTests {
             name: "Images show their alt text", source: "see ![alt text](https://example.com/a.png) here",
             expected: [Shape(.paragraph, "see alt text here")]),
         Vector(
-            name: "A soft break is a space", source: "line one\nline two",
-            expected: [Shape(.paragraph, "line one line two")]),
+            name: "A soft break is a line break", source: "line one\nline two\n第一行\n第二行",
+            expected: [Shape(.paragraph, "line one\nline two\n第一行\n第二行")]),
         Vector(
             name: "Hard breaks are newlines", source: "line one  \nline two\\\nline three",
             expected: [Shape(.paragraph, "line one\nline two\nline three")]),
@@ -269,7 +273,7 @@ struct ChatMarkdownTests {
         Vector(
             name: "CRLF and CR line endings", source: "first\r\nsecond\r\n\r\n```c\r\nint x;\r\n```\r| a |\r| - |",
             expected: [
-                Shape(.paragraph, "first second"), Shape(.code(language: "c"), "int x;"),
+                Shape(.paragraph, "first\nsecond"), Shape(.code(language: "c"), "int x;"),
                 Shape(.table, "| a |\n| - |"),
             ]),
         Vector(
@@ -283,6 +287,125 @@ struct ChatMarkdownTests {
     func structure(_ vector: Vector) {
         let shapes = ChatMarkdown.blocks(from: vector.source).map(Shape.init)
         #expect(shapes == vector.expected)
+    }
+
+    struct SpacingVector: Sendable, CustomTestStringConvertible {
+        let name: String
+        let source: String
+        /// Each block's `blankLineBefore`, in order.
+        let expected: [Bool]
+        var testDescription: String { name }
+    }
+
+    // The expectations follow Claude Code 2.1.291's terminal.
+    static let spacingVectors: [SpacingVector] = [
+        SpacingVector(
+            name: "Any number of blank lines between blocks is one", source: "one\n\ntwo\n\n\n\nthree",
+            expected: [false, true, true]),
+        SpacingVector(
+            name: "A list right below its lead-in starts on the next line", source: "Intro:\n- a\n- b\n\nAfter",
+            expected: [false, false, false, true]),
+        SpacingVector(
+            name: "A list after a blank line", source: "Intro:\n\n- a\n- b",
+            expected: [false, true, false]),
+        SpacingVector(
+            name: "A heading is always followed by a blank line", source: "## Title\nBody\n\n## Next\n\n\nText",
+            expected: [false, true, true, true]),
+        SpacingVector(
+            name: "A heading right below a paragraph starts on the next line", source: "Para\n## Heading",
+            expected: [false, false]),
+        SpacingVector(
+            name: "One blank line between list items keeps them together", source: "- one\n\n- two\n\n\n- three",
+            expected: [false, false, true]),
+        SpacingVector(
+            name: "An item's later paragraph follows a blank line, and the next item does not",
+            source: "- first\n\n  second\n- next",
+            expected: [false, true, false]),
+        SpacingVector(
+            name: "Nested items stay together", source: "- a\n  - b\n- c",
+            expected: [false, false, false]),
+        SpacingVector(
+            name: "A top-level quote has blank lines around it", source: "Para\n> quote\n>\n> more\n\nafter",
+            expected: [false, true, true, true]),
+        SpacingVector(
+            name: "A top-level table has blank lines around it", source: "intro\n| a |\n| - |\n| 1 |\n\nafter",
+            expected: [false, true, true]),
+        SpacingVector(
+            name: "A paragraph a table interrupts keeps the blank line above it",
+            source: "Intro\n\nResults:\n| a |\n| - |\n| 1 |",
+            expected: [false, true, true]),
+        SpacingVector(
+            name: "A paragraph a table interrupts stays below a block it follows directly",
+            source: "```sh\nls\n```\nResults:\n| a |\n| - |\n| 1 |",
+            expected: [false, false, true]),
+        SpacingVector(
+            name: "A table in a list item follows the source above it, and the next item comes after a blank line",
+            source: "- item\n\n  Results:\n  | a |\n  | - |\n  | 1 |\n- next",
+            expected: [false, true, false, true]),
+        SpacingVector(
+            name: "The rest of a table's list item follows the table directly",
+            source: "- Results:\n\n  | a | b |\n  |---|---|\n  | 1 | 2 |\n\n  All passed.\n- next",
+            expected: [false, true, false, false]),
+        SpacingVector(
+            name: "A table that ends a nested item puts a blank line before the next outer item",
+            source: "1. a\n   - Data:\n     | x |\n     | - |\n2. b",
+            expected: [false, false, false, true]),
+        SpacingVector(
+            name: "A table in a quote follows the source above it",
+            source: "> Intro\n>\n> Results:\n> | a |\n> | - |\n> | 1 |",
+            expected: [false, true, false]),
+        SpacingVector(
+            name: "A table in a quote has a blank line below it", source: "> | a |\n> | - |\n> - item",
+            expected: [false, true]),
+        SpacingVector(
+            name: "A quote in a list item follows the source", source: "- item\n  > note\n- next\n\n  > more\n\n- last",
+            expected: [false, false, false, true, false]),
+        SpacingVector(
+            name: "Quote markers behind a nested item's indent", source: "- a\n  - b\n    > x\n    >\n    > y\n- c",
+            expected: [false, false, false, true, false]),
+        SpacingVector(
+            name: "Code blocks follow the source", source: "Before:\n```sh\nls\n```\nAfter\n\n```\nx\n```\n\nEnd",
+            expected: [false, false, false, true, true]),
+        SpacingVector(
+            name: "A fence left open in a list item ends at its last line with text",
+            source: "1. Run:\n   ```sh\n   make\n\n\nAfter text",
+            expected: [false, false, true]),
+        // Claude Code's parser takes the blank line below into the code, so
+        // its terminal draws "End" right below. Chat keeps the source's.
+        SpacingVector(
+            name: "An indented code block ends before the blank line below it", source: "Text\n\n    code\n\nEnd",
+            expected: [false, true, true]),
+        SpacingVector(
+            name: "Thematic breaks follow the source", source: "above\n\n---\n\nbelow\n***\nafter",
+            expected: [false, true, true, false, false]),
+        SpacingVector(
+            name: "A thematic break below a setext heading is not its underline", source: "Title\n---\n\n---\nText",
+            expected: [false, true, false]),
+        SpacingVector(
+            name: "A thematic break as a list item is found on its own line",
+            source: "- ***\n\nPara one\n\n---\n\nPara two",
+            expected: [false, false, true, true, true]),
+        SpacingVector(
+            name: "A marker placed before an item's code takes the item's blank line",
+            source: "Steps:\n\n1. ```sh\n   ls\n   ```\n2. after",
+            expected: [false, true, false, false]),
+        SpacingVector(
+            name: "An item after an item's heading", source: "- # Title\n- next",
+            expected: [false, false, true]),
+        SpacingVector(
+            name: "A heading that ends a list keeps no blank line below it", source: "- l\n\n  ### h\np text",
+            expected: [false, true, false]),
+        SpacingVector(
+            name: "HTML blocks follow the source", source: "Text\n<div>a</div>\n\n<p>b</p>",
+            expected: [false, false, true]),
+        SpacingVector(
+            name: "CRLF line endings", source: "one\r\n\r\ntwo\r\n- item",
+            expected: [false, true, false]),
+    ]
+
+    @Test("Blank lines between blocks follow the terminal", arguments: spacingVectors)
+    func blankLines(_ vector: SpacingVector) {
+        #expect(ChatMarkdown.blocks(from: vector.source).map(\.blankLineBefore) == vector.expected)
     }
 
     @Test("Blocks carry no block attributes or source positions", arguments: vectors)
@@ -312,13 +435,38 @@ struct ChatMarkdownTests {
         ])
     }
 
+    @Test("Strong emphasis is bold in the block's font, and its other styles stay intents")
+    func strongEmphasisWeight() throws {
+        let block = try #require(ChatMarkdown.blocks(from: "plain **strong** ***both*** **`code`** *em*").first)
+        let font = Font.title3.weight(.bold)
+        let bold = font.weight(.bold)
+        let content = ChatMarkdownView.boldingStrongEmphasis(block.content, in: font)
+        #expect(String(content.characters) == String(block.content.characters))
+        let runs = content.runs.map { run in
+            Drawn(
+                String(content[run.range].characters), run.inlinePresentationIntent,
+                run[AttributeScopes.SwiftUIAttributes.FontAttribute.self].map { $0 == bold ? "bold" : "another font" })
+        }
+        #expect(runs == [
+            Drawn("plain ", nil, nil), Drawn("strong", nil, "bold"), Drawn(" ", nil, nil),
+            Drawn("both", .emphasized, "bold"), Drawn(" ", nil, nil),
+            Drawn("code", .code, "bold"), Drawn(" ", nil, nil), Drawn("em", .emphasized, nil),
+        ])
+    }
+
+    @Test("Content without strong emphasis is drawn as parsed")
+    func noStrongEmphasis() throws {
+        let block = try #require(ChatMarkdown.blocks(from: "plain *em* `code`").first)
+        #expect(ChatMarkdownView.boldingStrongEmphasis(block.content, in: .body) == block.content)
+    }
+
     @Test("A soft break inside emphasis keeps the emphasis and loses the break intent")
     func softBreakInEmphasis() throws {
         let block = try #require(ChatMarkdown.blocks(from: "*a\nb*").first)
         let runs = Array(block.content.runs)
         #expect(runs.count == 1)
         #expect(runs.first?.inlinePresentationIntent == .emphasized)
-        #expect(String(block.content.characters) == "a b")
+        #expect(String(block.content.characters) == "a\nb")
     }
 
     @Test("A hard break leaves no break intent behind")
@@ -431,6 +579,24 @@ struct ChatMarkdownTests {
         }
 
         var description: String { "\(text.debugDescription) \(intent.map { String($0.rawValue) } ?? "-")" }
+    }
+
+    /// A run's text, inline intent and font, as `Text` draws it. The test
+    /// names the font, since every weighted `Font` prints the same.
+    struct Drawn: Equatable, CustomStringConvertible {
+        let text: String
+        let intent: InlinePresentationIntent?
+        let font: String?
+
+        init(_ text: String, _ intent: InlinePresentationIntent?, _ font: String?) {
+            self.text = text
+            self.intent = intent
+            self.font = font
+        }
+
+        var description: String {
+            "\(text.debugDescription) \(intent.map { String($0.rawValue) } ?? "-") \(font ?? "-")"
+        }
     }
 
     private func intents(in content: AttributedString) -> [Styled] {
