@@ -62,6 +62,8 @@ struct CodexPaginatedBuilder {
         var items: [String: Item] = [:]
         var startedAt: Date?
         var endedAt: Date?
+        /// A loaded line started the turn.
+        var sawStart = false
     }
 
     private var turns: [String: Turn] = [:]
@@ -116,6 +118,7 @@ struct CodexPaginatedBuilder {
         switch record {
         case .turnStarted(let turnID, let times):
             touch(turnID, at: position)
+            turns[turnID]?.sawStart = true
             note(times, of: turnID)
             setStatus(.inProgress, of: turnID, ending: nil, line: line, segment: segment, at: position)
             currentTurnID = turnID
@@ -251,7 +254,7 @@ struct CodexPaginatedBuilder {
                         }
                         return entry
                     },
-                    ending: turn.ending, startedAt: turn.startedAt, endedAt: turn.endedAt)
+                    ending: turn.ending, startedAt: turn.startedAt, endedAt: turn.endedAt, opensInWindow: turn.sawStart)
             })
     }
 }

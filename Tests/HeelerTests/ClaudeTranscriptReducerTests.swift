@@ -117,6 +117,23 @@ struct ClaudeTranscriptReducerTests {
         #expect(turns.first?.endedAt == nil)
     }
 
+    @Test("Lines that start inside a turn report how it ended, and open no turn for it")
+    func precedingTurnEnd() throws {
+        let full = try Self.transcript().turns
+        let date = { (text: String) in ClaudeTranscriptProjection.date(text) }
+        // Past the first prompt (at 391), before its turn_duration (M L35).
+        let first = try Self.transcript { $0.offset > Self.entryOffsets[0] }
+        #expect(first.turns.map(\.firstEntryID) == full.dropFirst().map(\.firstEntryID))
+        #expect(first.precedingTurnEnd == ChatTurnEnd(ending: .completed, endedAt: date("2026-10-06T05:47:01.885Z")))
+
+        // Inside turn 6, which an interrupt ended.
+        let sixth = try Self.transcript { $0.offset > 59_000 }
+        #expect(sixth.turns.first?.firstEntryID == full[6].firstEntryID)
+        #expect(sixth.precedingTurnEnd == ChatTurnEnd(ending: .interrupted, endedAt: full[5].endedAt))
+
+        #expect(try Self.transcript().precedingTurnEnd == nil)
+    }
+
     @Test("A decline with feedback keeps it, and the turn goes on (M L25-L34)")
     func declineWithFeedback() throws {
         let transcript = try Self.transcript()

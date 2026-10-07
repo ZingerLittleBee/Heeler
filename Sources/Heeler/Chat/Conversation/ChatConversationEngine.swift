@@ -598,8 +598,16 @@ actor ChatConversationEngine {
             transcript.entries = earlier + transcript.entries
             // Turns opened above the window, ahead of the ones it opens.
             let earlierIDs = Set(earlier.map(\.id))
-            transcript.turns =
-                (joined.turns ?? []).filter { earlierIDs.contains($0.firstEntryID) } + transcript.turns
+            var earlierTurns = (joined.turns ?? []).filter { earlierIDs.contains($0.firstEntryID) }
+            // The saved record of the turn the window opens inside may
+            // predate its end.
+            if let end = transcript.precedingTurnEnd, let last = earlierTurns.indices.last,
+                earlierTurns[last].ending != .interrupted
+            {
+                earlierTurns[last].ending = end.ending
+                earlierTurns[last].endedAt = end.endedAt ?? earlierTurns[last].endedAt
+            }
+            transcript.turns = earlierTurns + transcript.turns
             if transcript.title == nil { transcript.title = joined.title }
             // Work launched above the window still runs, or ends in it.
             transcript.carryBackgroundWork(

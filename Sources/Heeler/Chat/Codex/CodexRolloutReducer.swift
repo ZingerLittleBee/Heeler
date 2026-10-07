@@ -67,7 +67,7 @@ struct CodexProjection: Equatable, Sendable {
 struct CodexRolloutReducer: ChatTranscriptReducer {
     /// Bumped when the normalization changes, so entries cached by an
     /// older build are dropped instead of mixed with new ones.
-    static let revision = 2
+    static let revision = 3
 
     let rolloutID: String
     private(set) var support: CodexRolloutSupport = .pending
@@ -182,7 +182,7 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
         let transcript = ChatTranscript(
             entries: output.entries, needsOlderHistory: context.windowStart > 0 || pendingHistoryBase != nil,
             pendingRequests: output.pendingRequests, recordedPrompts: output.recordedPrompts,
-            diagnostics: diagnostics, turns: output.chatTurns)
+            diagnostics: diagnostics, turns: output.chatTurns, precedingTurnEnd: output.precedingTurnEnd)
         return CodexProjection(
             transcript: transcript, turns: output.turns, echoCandidates: output.echoCandidates, ordinals: ordinals)
     }

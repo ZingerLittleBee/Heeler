@@ -75,6 +75,12 @@ struct CodexIncrementalTests {
         #expect(tail.transcript.pendingRequests == whole.transcript.pendingRequests)
         #expect(tail.transcript.needsOlderHistory)
         #expect(tail.ordinals == CodexOrdinalDiagnostics())
+        // T4 started at L56, above the window: the window reports its end
+        // and opens no turn for it.
+        #expect(tail.transcript.turns == Array(whole.transcript.turns[4...]))
+        #expect(
+            tail.transcript.precedingTurnEnd
+                == ChatTurnEnd(ending: .completed, endedAt: whole.transcript.turns[3].endedAt))
     }
 
     @Test("A tail window plus older pages equals the whole file")

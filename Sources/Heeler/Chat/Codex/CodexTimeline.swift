@@ -89,6 +89,9 @@ struct CodexTimelineTurn: Equatable, Sendable {
     /// On the Host's clock, from the turn's own events.
     var startedAt: Date? = nil
     var endedAt: Date? = nil
+    /// False when the turn started above the loaded lines, so its first
+    /// loaded row is not where it began.
+    var opensInWindow = true
 }
 
 /// Everything a projection needs, before display rules.
@@ -115,6 +118,7 @@ enum CodexTimelineProjector {
         var recordedPrompts: [ChatRecordedPrompt] = []
         var turns: [CodexTurnSummary] = []
         var chatTurns: [ChatTurn] = []
+        var precedingTurnEnd: ChatTurnEnd?
         var echoCandidates: [CodexEchoCandidate] = []
     }
 
@@ -153,14 +157,18 @@ enum CodexTimelineProjector {
                 entryIDs.append(chatEntry.id)
             }
             output.turns.append(CodexTurnSummary(id: turn.id, status: turn.status, entryIDs: entryIDs))
-            if let first = entryIDs.first {
-                let ending: ChatTurn.Ending? =
-                    switch turn.status {
-                    case .completed: .completed
-                    case .interrupted: .interrupted
-                    case .failed: .failed
-                    case .inProgress, nil: nil
-                    }
+            let ending: ChatTurn.Ending? =
+                switch turn.status {
+                case .completed: .completed
+                case .interrupted: .interrupted
+                case .failed: .failed
+                case .inProgress, nil: nil
+                }
+            if index == 0, !turn.opensInWindow {
+                // A turn the window opens inside is the one the rows above
+                // it began; only its end is news.
+                output.precedingTurnEnd = ending.map { ChatTurnEnd(ending: $0, endedAt: turn.endedAt) }
+            } else if let first = entryIDs.first {
                 output.chatTurns.append(
                     ChatTurn(firstEntryID: first, startedAt: turn.startedAt, endedAt: turn.endedAt, ending: ending))
             }

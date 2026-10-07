@@ -897,6 +897,12 @@ struct ChatTurn: Equatable, Codable, Sendable {
     }
 }
 
+/// How a turn ended, as the records that close it say.
+struct ChatTurnEnd: Equatable, Codable, Sendable {
+    var ending: ChatTurn.Ending
+    var endedAt: Date?
+}
+
 /// How a piece of Background Work ended, as one record says.
 struct ChatBackgroundWorkEnd: Equatable, Sendable {
     var state: ChatBackgroundWorkItem.State
@@ -980,6 +986,9 @@ struct ChatTranscript: Equatable, Sendable {
     /// The turns the loaded lines open, oldest first. Entries above the
     /// first belong to a turn opened above the loaded lines.
     var turns: [ChatTurn]
+    /// How the turn opened above the loaded lines ended, when they close
+    /// it before opening one of their own.
+    var precedingTurnEnd: ChatTurnEnd?
 
     init(
         entries: [ChatEntry] = [], title: String? = nil, needsOlderHistory: Bool = false,
@@ -988,7 +997,7 @@ struct ChatTranscript: Equatable, Sendable {
         diagnostics: ChatTranscriptDiagnostics = ChatTranscriptDiagnostics(),
         backgroundWork: [ChatBackgroundWorkItem] = [], latestPromptOffset: UInt64? = nil,
         backgroundWorkEnds: [String: ChatBackgroundWorkEnd] = [:], backgroundWorkStop: ChatBackgroundWorkEnd? = nil,
-        turns: [ChatTurn] = []
+        turns: [ChatTurn] = [], precedingTurnEnd: ChatTurnEnd? = nil
     ) {
         self.entries = entries
         self.title = title
@@ -1002,6 +1011,7 @@ struct ChatTranscript: Equatable, Sendable {
         self.backgroundWorkEnds = backgroundWorkEnds
         self.backgroundWorkStop = backgroundWorkStop
         self.turns = turns
+        self.precedingTurnEnd = precedingTurnEnd
     }
 
     /// The Background Work Chat lists: everything still running, and what

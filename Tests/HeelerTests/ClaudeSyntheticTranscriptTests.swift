@@ -322,6 +322,8 @@ struct ClaudeSyntheticTranscriptTests {
             ChatRecordedPrompt(offset: lines[3].offset, text: "/model opus", entryID: ChatEntryID("notice:c1")),
         ])
         #expect(transcript.diagnostics == ChatTranscriptDiagnostics())
+        // Between turns, the command opens one: it is not the answer's.
+        #expect(transcript.turns.map(\.firstEntryID.rawValue) == ["user:p1", "notice:c1"])
     }
 
     @Test("A local command in older releases' user records reads the same")
@@ -419,6 +421,19 @@ struct ClaudeSyntheticTranscriptTests {
                     ChatNotice(
                         kind: .error,
                         title: #"API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#)))
+        #expect(transcript.turns.map(\.ending) == [.failed])
+    }
+
+    @Test("A reply after an API error, as Claude Code retries, completes the turn")
+    func apiErrorRetried() {
+        let (transcript, _) = Self.read(
+            #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Summarize the log"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"e1","parentUuid":"p1","isApiErrorMessage":true,"message":{"id":"e-1","role":"assistant","content":[{"type":"text","text":"API Error: 529 Overloaded"}]}}
+            {"type":"assistant","uuid":"a1","parentUuid":"e1","message":{"id":"m1","role":"assistant","content":[{"type":"text","text":"The log is clean."}]},"apiBlockIndex":0}
+            {"type":"system","subtype":"turn_duration","uuid":"t1","parentUuid":"a1","durationMs":900}
+            """#)
+        #expect(transcript.turns.map(\.ending) == [.completed])
     }
 
     private static let abortedStream = #"""
@@ -529,6 +544,8 @@ struct ClaudeSyntheticTranscriptTests {
             ClaudeSample.entry("notice:e2", in: transcript)
                 == .notice(ChatNotice(kind: .system, title: "Continue from where you left off.")))
         #expect(transcript.recordedPrompts.map(\.text) == ["Hello"])
+        // A message between turns opens one; the reminder inside it does not.
+        #expect(transcript.turns.map(\.firstEntryID.rawValue) == ["user:p1", "notice:e1", "notice:e2"])
     }
 
     // MARK: - Model changes and reasoning

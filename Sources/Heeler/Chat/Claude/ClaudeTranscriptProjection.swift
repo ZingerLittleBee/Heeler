@@ -37,7 +37,8 @@ enum ClaudeTranscriptProjection {
             latestPromptOffset: builder.latestPromptOffset,
             backgroundWorkEnds: role == .main ? builder.backgroundWorkEnds : [:],
             backgroundWorkStop: role == .main ? builder.end(stoppingAfter: context.windowStart) : nil,
-            turns: role == .main ? builder.turns : [])
+            turns: role == .main ? builder.turns : [],
+            precedingTurnEnd: role == .main ? builder.precedingTurnEnd : nil)
     }
 
     /// The output `record` holds for the call `use`, as its row's preview
@@ -160,6 +161,8 @@ private struct Builder {
         var startedAt: Date?
         var endedAt: Date?
         var ending: ChatTurn.Ending?
+        /// The newest reply was an API error.
+        var failed = false
     }
 
     /// A task notification and the record that delivered it.
@@ -193,6 +196,8 @@ private struct Builder {
     /// nothing takes the first entry placed after it.
     private var turnDrafts: [TurnDraft] = []
     private var turnOpen = false
+    /// How the turn opened above the loaded lines ended, when they say.
+    private(set) var precedingTurnEnd: ChatTurnEnd?
     /// The latest notification for each background call.
     private var notifications: [String: Delivery] = [:]
     /// Notifications shown from user records, so a queued copy is not shown
@@ -483,32 +488,45 @@ private struct Builder {
         }
     }
 
-    /// Turns that placed an entry, oldest first.
+    /// Turns that placed an entry, oldest first. A turn whose last reply
+    /// was an API error failed, unless it was interrupted.
     var turns: [ChatTurn] {
         turnDrafts.compactMap { draft in
             draft.firstEntryID.map {
-                ChatTurn(firstEntryID: $0, startedAt: draft.startedAt, endedAt: draft.endedAt, ending: draft.ending)
+                let ending = draft.ending == .completed && draft.failed ? .failed : draft.ending
+                return ChatTurn(firstEntryID: $0, startedAt: draft.startedAt, endedAt: draft.endedAt, ending: ending)
             }
         }
     }
 
     /// Opens a turn at a prompt, command or notification, and closes the
     /// open one at `turn_duration` or an interrupt marker. An interrupted
-    /// turn keeps that ending through the `turn_duration` after it.
+    /// turn keeps that ending through the `turn_duration` after it. A
+    /// close before any opener ends the turn opened above the loaded lines.
     private mutating func noteTurn(_ record: ClaudeRecord) {
-        if Self.opensTurn(record) {
+        if Self.opensTurn(record, whileOpen: turnOpen) {
             turnDrafts.append(TurnDraft(startedAt: ClaudeTranscriptProjection.date(record.timestamp)))
             turnOpen = true
             return
         }
-        guard !turnDrafts.isEmpty else { return }
         let closing: ChatTurn.Ending?
         switch record.kind {
         case .system("turn_duration"): closing = .completed
         case .user where Self.isInterruptMarker(record) && record.toolResults.isEmpty: closing = .interrupted
         default: closing = nil
         }
+        guard !turnDrafts.isEmpty else {
+            guard let closing, precedingTurnEnd.map({ $0.ending == .interrupted }) ?? true else { return }
+            let endedAt = ClaudeTranscriptProjection.date(record.timestamp) ?? precedingTurnEnd?.endedAt
+            precedingTurnEnd = ChatTurnEnd(ending: precedingTurnEnd?.ending ?? closing, endedAt: endedAt)
+            return
+        }
         let index = turnDrafts.count - 1
+        if turnOpen, case .assistant = record.kind, !record.blocks.isEmpty {
+            // Claude Code retries a failed request; a reply after the
+            // error clears it.
+            turnDrafts[index].failed = record.isAPIError
+        }
         // Only the `turn_duration` that follows an interrupt closes a turn
         // already closed.
         guard let closing, turnOpen || turnDrafts[index].ending == .interrupted else { return }
@@ -824,12 +842,33 @@ private struct Builder {
     }
 
     /// Records that open a turn: a prompt, a command, `!` shell input, a
-    /// notification or a message from outside, as a user record.
-    private static func opensTurn(_ record: ClaudeRecord) -> Bool {
-        guard case .user = record.kind, record.toolResults.isEmpty, !record.isMeta, !record.isCompactSummary,
-            record.sourceToolUseID == nil, !isInterruptMarker(record)
+    /// notification or a message from outside, as a user record. Between
+    /// turns, a local command and a message Chat shows from a visible
+    /// origin open one too: what follows them is not the turn before.
+    private static func opensTurn(_ record: ClaudeRecord, whileOpen: Bool) -> Bool {
+        switch record.kind {
+        case .system("local_command"):
+            guard !whileOpen, case .command = ClaudeUserText.classify(record.system?.content ?? "") else { return false }
+            return true
+        case .user:
+            break
+        default:
+            return false
+        }
+        guard record.toolResults.isEmpty, !record.isCompactSummary, record.sourceToolUseID == nil,
+            !isInterruptMarker(record)
         else { return false }
-        switch ClaudeUserText.classify(record.texts.joined(separator: "\n")) {
+        let text = ClaudeUserText.classify(record.texts.joined(separator: "\n"))
+        if record.isMeta {
+            guard !whileOpen, let origin = record.originKind,
+                ClaudeTranscriptProjection.visibleMetaOrigins.contains(origin)
+            else { return false }
+            switch text {
+            case .prompt, .external: return true
+            default: return false
+            }
+        }
+        switch text {
         case .prompt, .command, .bashInput, .taskNotification, .external: return true
         default: return false
         }

@@ -12,6 +12,8 @@ import Foundation
 /// keeping a preview, as a saved entry does. `{"workflow":"<id>",
 /// "journal":"<path>","at":<epoch>}` launches Background Work, a Subagent
 /// when it names no journal, and `{"ended":"<id>"}` ends it.
+/// `{"turnEnded":true}` completes the turn the last prompt opened, or the
+/// one opened above the loaded lines.
 struct NumberedChatReducer: ChatTranscriptReducer {
     private struct Record: Codable {
         var n: Int?
@@ -25,6 +27,7 @@ struct NumberedChatReducer: ChatTranscriptReducer {
         var journal: String?
         var at: Double?
         var ended: String?
+        var turnEnded: Bool?
     }
 
     let seed: ChatReducerSeed
@@ -64,6 +67,8 @@ struct NumberedChatReducer: ChatTranscriptReducer {
     }
 
     static let compaction = #"{"compacted":true}"# + "\n"
+
+    static let turnEnd = #"{"turnEnded":true}"# + "\n"
 
     static func launch(_ id: String, journal: String?, at date: Date? = nil) -> String {
         let record = Record(workflow: id, journal: journal, at: date?.timeIntervalSince1970)
@@ -123,9 +128,24 @@ struct NumberedChatReducer: ChatTranscriptReducer {
             backgroundWork: Self.backgroundWork(records),
             latestPromptOffset: records.last { $0.record?.prompt != nil }?.line.offset,
             backgroundWorkEnds: Self.backgroundWorkEnds(records),
-            turns: records.compactMap { line, record in
-                record?.prompt.map { _ in ChatTurn(firstEntryID: ChatEntryID("p-\(line.offset)")) }
-            })
+            turns: Self.turns(records).turns, precedingTurnEnd: Self.turns(records).precedingEnd)
+    }
+
+    private static func turns(_ records: [(line: ChatLine, record: Record?)]) -> (turns: [ChatTurn], precedingEnd: ChatTurnEnd?) {
+        var turns: [ChatTurn] = []
+        var precedingEnd: ChatTurnEnd?
+        for (line, record) in records {
+            if record?.prompt != nil {
+                turns.append(ChatTurn(firstEntryID: ChatEntryID("p-\(line.offset)")))
+            } else if record?.turnEnded == true {
+                if turns.isEmpty {
+                    precedingEnd = ChatTurnEnd(ending: .completed)
+                } else {
+                    turns[turns.count - 1].ending = .completed
+                }
+            }
+        }
+        return (turns, precedingEnd)
     }
 
     private static func backgroundWorkEnds(_ records: [(line: ChatLine, record: Record?)]) -> [String: ChatBackgroundWorkEnd] {

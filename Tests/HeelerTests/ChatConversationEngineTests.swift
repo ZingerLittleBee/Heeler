@@ -456,8 +456,9 @@ struct ChatConversationEngineTests {
         #expect(snapshot.transcript.turns.map(\.firstEntryID.rawValue) == ["p-0"])
         await first.save(force: true)
 
-        // Reopened once the first prompt is above the tail window.
-        await fixture.files.append(Self.lines(6..<8), to: Self.claudePath)
+        // Reopened once the first prompt is above the tail window, which
+        // holds the end of its turn.
+        await fixture.files.append(NumberedChatReducer.turnEnd, to: Self.claudePath)
         let second = UInt64(await fixture.files.contents(of: Self.claudePath)?.count ?? 0)
         await fixture.files.append(NumberedChatReducer.prompt("b") + Self.lines(8..<10), to: Self.claudePath)
         let reopened = fixture.makeEngine()
@@ -467,6 +468,7 @@ struct ChatConversationEngineTests {
 
         #expect(snapshot.older == .reachedStart)
         #expect(snapshot.transcript.turns.map(\.firstEntryID.rawValue) == ["p-0", "p-\(second)"])
+        #expect(snapshot.transcript.turns.map(\.ending) == [.completed, nil])
     }
 
     @Test func savedEntriesShowBeforeTheHostAnswers() async throws {
