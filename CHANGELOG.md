@@ -7,6 +7,16 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Chat for Claude Code and Codex Agents: the Agent's conversation as native
+  rows in the terminal's place, read from the transcript its program writes on
+  the Host, with nothing installed there. Chat folds finished turns, groups
+  tool calls, shows file changes as diffs, answers Blocked dialogs with native
+  cards, lists background agents and Workflows, and stays readable offline
+  from its cache. Sending checks the Agent's input box before and after and
+  never resends. (#425)
+
 ## [0.1.13] - 2026-10-07
 
 ### Added
