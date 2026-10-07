@@ -112,13 +112,44 @@ struct ChatTranscriptAdapter: Sendable {
 
 /// One conversation's transcript on its Host: finds the file, follows it,
 /// feeds the program's reducer, and keeps what it showed in the device
-/// cache.
+/// cache. It also reads the journals of the Workflows the transcript lists.
 ///
 /// The owner makes one call at a time and waits for it. Each call may read
 /// the Host several times, and a second call interleaved at one of those
 /// awaits would follow the file from a stale offset. `output(of:)` is the
 /// exception: it changes nothing, so it may run alongside.
 actor ChatConversationEngine {
+    /// How Workflow journals are read beside the transcript.
+    struct WorkflowLimits: Sendable {
+        var follower = WorkflowJournalFollower.Limits()
+        /// The most one journal reads in one call.
+        var journalBudget = 128 << 10
+        /// The most all journals read in one call, and how many are looked
+        /// at, least recently looked at first.
+        var callBudget = 256 << 10
+        var journalsPerCall = 2
+        /// Waits after a failed look at a journal, one per failure; the
+        /// last repeats.
+        var backoff: [TimeInterval] = [2, 4, 8, 16, 30]
+    }
+
+    /// One Workflow journal and what it showed.
+    private struct FollowedJournal {
+        var follower: WorkflowJournalFollower
+        var journal = ClaudeWorkflowJournal()
+        /// What shows: the journal as of the last time it was read to its
+        /// end, so counts never climb through a first read.
+        var progress: ChatWorkflowProgress?
+        /// The call that last looked at it.
+        var lastLook = 0
+        var failures = 0
+        var nextLook: Date?
+        /// Read to its end after the Workflow ended: nothing more comes.
+        var isSettled = false
+        /// Too large, or the Host refuses it: not looked at again.
+        var isUnreadable = false
+    }
+
     let reference: ConversationReference
     let cacheKey: ChatCacheKey
     private let files: ChatHostFiles
@@ -143,6 +174,11 @@ actor ChatConversationEngine {
     private var needsProjection = false
     private var snapshot = ChatConversationSnapshot()
     private var lastSave: (revision: Int, date: Date)?
+    private let workflowLimits: WorkflowLimits
+    /// Journals by the Workflow's id, for the Workflows the transcript
+    /// lists.
+    private var journals: [String: FollowedJournal] = [:]
+    private var journalCalls = 0
 
     init(
         reference: ConversationReference,
@@ -151,6 +187,7 @@ actor ChatConversationEngine {
         cache: any ChatTranscriptCache,
         adapter: ChatTranscriptAdapter,
         saveInterval: TimeInterval = 10,
+        workflowLimits: WorkflowLimits = WorkflowLimits(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.reference = reference
@@ -159,6 +196,7 @@ actor ChatConversationEngine {
         self.cache = cache
         self.adapter = adapter
         self.saveInterval = saveInterval
+        self.workflowLimits = workflowLimits
         self.now = now
     }
 
@@ -299,6 +337,90 @@ actor ChatConversationEngine {
         // fresh tail, or a rewrite's.
         cached = document
         lastSave = (snapshot.revision, date)
+    }
+
+    // MARK: Workflows
+
+    /// Reads the journals of the Workflows the transcript lists, a few per
+    /// call and within a budget, and returns what each shows by the
+    /// Workflow's id. Only while the transcript itself reads: a journal
+    /// adds nothing to work Chat cannot see. Never throws and never changes
+    /// the snapshot, so a journal that cannot be read only stops showing
+    /// progress.
+    func followWorkflows() async -> [String: ChatWorkflowProgress] {
+        guard case .following = snapshot.phase, !snapshot.isFromCache, snapshot.readFailure == nil else {
+            return workflowProgress
+        }
+        var listed: [String: String] = [:]
+        for item in snapshot.transcript.listedBackgroundWork where item.kind == .workflow {
+            if let path = item.journalPath { listed[item.id] = path }
+        }
+        journals = journals.filter { listed[$0.key] == $0.value.follower.path }
+        for (id, path) in listed where journals[id] == nil {
+            journals[id] = FollowedJournal(follower: WorkflowJournalFollower(path: path, limits: workflowLimits.follower))
+        }
+        let running = Set(snapshot.transcript.listedBackgroundWork.filter { $0.state == .running }.map(\.id))
+        journalCalls += 1
+        let date = now()
+        let due = journals
+            .filter { !$0.value.isSettled && !$0.value.isUnreadable && $0.value.nextLook.map { date >= $0 } ?? true }
+            .sorted { ($0.value.lastLook, $0.key) < ($1.value.lastLook, $1.key) }
+            .prefix(workflowLimits.journalsPerCall)
+        var budget = workflowLimits.callBudget
+        for (id, var followed) in due where budget > 0 {
+            followed.lastLook = journalCalls
+            var follower = followed.follower
+            let before = follower.readOffset
+            do {
+                let change = try await follower.poll(files, budget: min(budget, workflowLimits.journalBudget))
+                budget -= Int(follower.readOffset >= before ? follower.readOffset - before : follower.readOffset)
+                followed.follower = follower
+                switch change {
+                case .unchanged:
+                    break
+                case .appended(let lines):
+                    followed.journal.apply(lines)
+                case .restarted(let lines):
+                    followed.journal = ClaudeWorkflowJournal()
+                    followed.journal.apply(lines)
+                case .missing:
+                    // Whatever showed stays, and ages toward stale.
+                    backOff(&followed, at: date)
+                    journals[id] = followed
+                    continue
+                case .tooLarge:
+                    followed.isUnreadable = true
+                }
+                followed.failures = 0
+                followed.nextLook = nil
+                if follower.isCaughtUp {
+                    followed.progress = followed.journal.progress(
+                        updatedAt: follower.modificationTime.map { Date(timeIntervalSince1970: TimeInterval($0)) })
+                    // One last read to its end after the Workflow ended.
+                    if !running.contains(id) { followed.isSettled = true }
+                }
+            } catch {
+                if error is CancellationError || error as? TransportError == .cancelled { return workflowProgress }
+                if case .hostFileUnreadable? = error as? TransportError {
+                    followed.isUnreadable = true
+                } else {
+                    backOff(&followed, at: date)
+                }
+            }
+            journals[id] = followed
+        }
+        return workflowProgress
+    }
+
+    private var workflowProgress: [String: ChatWorkflowProgress] {
+        journals.compactMapValues(\.progress)
+    }
+
+    private func backOff(_ followed: inout FollowedJournal, at date: Date) {
+        let delays = workflowLimits.backoff
+        let delay = delays.isEmpty ? 0 : delays[min(followed.failures, delays.count - 1)]
+        followed.failures += 1
+        followed.nextLook = date.addingTimeInterval(delay)
     }
 
     // MARK: Output

@@ -41,6 +41,7 @@ final class AgentChatStore {
         /// How long after delivery a sent prompt may stay unrecorded before
         /// its echo says so.
         var echoTimeout: TimeInterval = 10
+        var backgroundWorkStaleness = ChatBackgroundWork.Staleness()
     }
 
     /// A message in Chat's Composer, as the store matches it against the
@@ -80,6 +81,9 @@ final class AgentChatStore {
     let blocked: BlockedCardStore
     /// Output read again for expanded tool rows in this conversation.
     private(set) var outputs = ChatToolOutputs()
+    /// The Subagents and Workflows the conversation's program runs beside
+    /// it, as last read.
+    private(set) var backgroundWork = ChatBackgroundWork()
 
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
@@ -118,6 +122,8 @@ final class AgentChatStore {
     @ObservationIgnored private var waitingOutputs: Set<ChatEntryID> = []
     /// The latest read for each row, kept so tests can wait for them.
     @ObservationIgnored private var outputReads: [ChatEntryID: Task<Void, Never>] = [:]
+    /// What each listed Workflow's journal showed, by the Workflow's id.
+    @ObservationIgnored private var workflowProgress: [String: ChatWorkflowProgress] = [:]
 
     private struct TrackedSend {
         let id: UUID
@@ -310,12 +316,14 @@ final class AgentChatStore {
     // MARK: Loop
 
     /// One turn of the loop: re-reads the Agent's record when due, then
-    /// makes at most one read of the transcript. Internal for tests, which
+    /// makes at most one read of the transcript, and after a poll that
+    /// worked, a few reads of Workflow journals. Internal for tests, which
     /// drive turns directly.
     func step() async {
         if needsAgentRefresh || sessionRecheckIsDue { await refreshAgent() }
         guard let engine else {
             matchSends()
+            refreshBackgroundWork()
             return
         }
         let context = projectionContext
@@ -324,11 +332,13 @@ final class AgentChatStore {
             apply(await engine.restore(), from: engine)
         }
         let snapshot: ChatConversationSnapshot
+        var polled = false
         if olderRequested {
             olderRequested = false
             snapshot = await engine.loadOlder(context: context)
         } else if case .following = conversation.phase {
             snapshot = await engine.poll(context: context)
+            polled = true
         } else if openIsDue {
             snapshot = await engine.open(directories: directories, context: context)
             scheduleNextOpen(after: snapshot)
@@ -337,6 +347,13 @@ final class AgentChatStore {
         }
         apply(snapshot, from: engine)
         matchSends()
+        // A journal read adds a deadline of its own, so a round whose
+        // transcript read failed leaves the journals for later.
+        if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
+            let progress = await engine.followWorkflows()
+            if engine === self.engine { workflowProgress = progress }
+        }
+        refreshBackgroundWork()
         await engine.save()
     }
 
@@ -385,12 +402,16 @@ final class AgentChatStore {
         }
     }
 
-    private var interval: Duration {
+    /// The pause after each turn. Internal for tests.
+    var interval: Duration {
         if engine == nil { return .seconds(timing.sessionRecheck) }
         if [.working, .blocked].contains(agent.status) { return timing.activeInterval }
         if let lastActivity, now().timeIntervalSince(lastActivity) < timing.activeLinger {
             return timing.activeInterval
         }
+        // herdr can report the Agent idle while its program still runs
+        // work in the background.
+        if backgroundWork.holdsActivePace { return timing.activeInterval }
         return timing.idleInterval
     }
 
@@ -442,6 +463,8 @@ final class AgentChatStore {
         // Reads still running for the last conversation drop their results.
         outputs = ChatToolOutputs()
         waitingOutputs = []
+        workflowProgress = [:]
+        backgroundWork = ChatBackgroundWork()
         if target == nil {
             showUnavailable()
         } else {
@@ -499,6 +522,15 @@ final class AgentChatStore {
     private var isUnavailable: Bool {
         if case .unavailable = conversation.phase { return true }
         return false
+    }
+
+    private func refreshBackgroundWork() {
+        var isLive = conversation.readFailure == nil && !conversation.isFromCache
+        if case .following = conversation.phase {} else { isLive = false }
+        let next = ChatBackgroundWork(
+            transcript: conversation.transcript, progress: workflowProgress, isLive: isLive, now: now(),
+            staleness: timing.backgroundWorkStaleness)
+        if next != backgroundWork { backgroundWork = next }
     }
 
     private var isFailedOlder: Bool {

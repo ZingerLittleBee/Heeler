@@ -30,10 +30,15 @@ struct ChatConversationEngineTests {
         let clock = Clock()
         let program: ChatProgram
         let revision: Int
+        let limits: TranscriptFollower.Limits
 
-        init(program: ChatProgram = .claude, revision: Int = 1) {
+        init(
+            program: ChatProgram = .claude, revision: Int = 1,
+            limits: TranscriptFollower.Limits = ChatConversationEngineTests.limits
+        ) {
             self.program = program
             self.revision = revision
+            self.limits = limits
         }
 
         var path: String { program == .claude ? claudePath : codexPath }
@@ -44,14 +49,16 @@ struct ChatConversationEngineTests {
                 conversationID: program == .claude ? sessionID : thread)
         }
 
-        func makeEngine() -> ChatConversationEngine {
+        func makeEngine(
+            workflowLimits: ChatConversationEngine.WorkflowLimits = ChatConversationEngine.WorkflowLimits()
+        ) -> ChatConversationEngine {
             let clock = clock
             return ChatConversationEngine(
                 reference: ConversationReference(program: program, sessionID: key.conversationID),
                 cacheKey: key, files: files.hostFiles(), cache: cache,
                 adapter: NumberedChatReducer.adapter(
                     revision: revision, limits: limits, wantsFirstLine: program == .codex),
-                now: { clock.now })
+                workflowLimits: workflowLimits, now: { clock.now })
         }
 
         func open(_ engine: ChatConversationEngine) async -> ChatConversationSnapshot {
@@ -269,6 +276,137 @@ struct ChatConversationEngineTests {
         #expect(snapshot.phase == .following(path: Self.codexPath))
         #expect(snapshot.older == .available)
         #expect(snapshot.transcript.title == meta)
+    }
+
+    // MARK: Workflow journals
+
+    private static func journal(_ run: Int) -> String {
+        "/home/dev/.claude/projects/-home-dev-proj/\(sessionID)/subagents/workflows/wf_\(run)/journal.jsonl"
+    }
+
+    private static let launched = #"{"type":"launched"}"# + "\n"
+
+    private static func started(_ key: String) -> String {
+        #"{"type":"started","key":"\#(key)","agentId":"a-\#(key)","label":"audit:\#(key)","phase":"Audit"}"# + "\n"
+    }
+
+    private static func result(_ key: String) -> String {
+        #"{"type":"result","key":"\#(key)","agentId":"a-\#(key)","result":"Done."}"# + "\n"
+    }
+
+    /// A transcript that launched `runs` Workflows, each with a journal of
+    /// one started agent, opened and polled once.
+    private static func following(
+        _ runs: Range<Int>, workflowLimits: ChatConversationEngine.WorkflowLimits = .init()
+    ) async -> (Fixture, ChatConversationEngine) {
+        let fixture = Fixture(limits: TranscriptFollower.Limits())
+        let launches = runs.map { NumberedChatReducer.launch("w\($0)", journal: journal($0)) }.joined()
+        await fixture.files.write(lines(0..<2) + launches, at: claudePath)
+        for run in runs {
+            await fixture.files.write(launched + started("k\(run)"), at: journal(run))
+        }
+        let engine = fixture.makeEngine(workflowLimits: workflowLimits)
+        _ = await fixture.open(engine)
+        return (fixture, engine)
+    }
+
+    private static func journalLooks(_ fixture: Fixture) async -> [String] {
+        await fixture.files.statuses.filter { $0.hasSuffix("journal.jsonl") }
+    }
+
+    @Test func aListedWorkflowsJournalIsReadOnlyWhileTheTranscriptIs() async throws {
+        let fixture = Fixture(limits: TranscriptFollower.Limits())
+        await fixture.files.write(Self.lines(0..<2) + NumberedChatReducer.launch("w1", journal: Self.journal(1)), at: Self.claudePath)
+        await fixture.files.write(Self.launched + Self.started("k1"), at: Self.journal(1))
+        let engine = fixture.makeEngine()
+
+        // Nothing is followed yet.
+        #expect(await engine.followWorkflows().isEmpty)
+        #expect(await Self.journalLooks(fixture).isEmpty)
+
+        _ = await fixture.open(engine)
+        let progress = await engine.followWorkflows()
+
+        #expect(progress["w1"]?.agents == [ChatWorkflowProgress.Agent(id: "k1", label: "audit:k1", phase: "Audit", state: .running)])
+        #expect(progress["w1"]?.updatedAt != nil)
+
+        // A transcript read that failed leaves the journals alone.
+        await fixture.files.failNext(.status, path: Self.claudePath, with: TransportError.hostFileTimedOut)
+        _ = await fixture.poll(engine)
+        await fixture.files.clearRecords()
+        #expect(await engine.followWorkflows() == progress)
+        #expect(await Self.journalLooks(fixture).isEmpty)
+    }
+
+    @Test func aQuietJournalCostsOneStatAndAnEndedWorkflowIsReadToItsEndOnce() async throws {
+        let (fixture, engine) = await Self.following(1..<2)
+        _ = await engine.followWorkflows()
+        await fixture.files.clearRecords()
+
+        _ = await engine.followWorkflows()
+        #expect(await fixture.files.statuses == [Self.journal(1)])
+        #expect(await fixture.files.reads.isEmpty)
+
+        await fixture.files.append(Self.result("k1"), to: Self.journal(1))
+        await fixture.files.append(NumberedChatReducer.end("w1"), to: Self.claudePath)
+        _ = await fixture.poll(engine)
+        let final = await engine.followWorkflows()
+        #expect(final["w1"]?.done == 1)
+
+        await fixture.files.clearRecords()
+        #expect(await engine.followWorkflows() == final)
+        #expect(await Self.journalLooks(fixture).isEmpty)
+
+        // The next prompt takes it off the list, and it is forgotten.
+        await fixture.files.append(NumberedChatReducer.prompt("Thanks"), to: Self.claudePath)
+        _ = await fixture.poll(engine)
+        #expect(await engine.followWorkflows().isEmpty)
+    }
+
+    @Test func aJournalThatFailsWaitsAndNeverTouchesTheTranscript() async throws {
+        let (fixture, engine) = await Self.following(1..<2)
+        await fixture.files.failNext(.status, path: Self.journal(1), with: TransportError.hostFileTimedOut)
+
+        #expect(await engine.followWorkflows().isEmpty)
+        let polled = await fixture.poll(engine)
+        #expect(polled.readFailure == nil)
+
+        // Within the backoff nothing is asked.
+        await fixture.files.clearRecords()
+        #expect(await engine.followWorkflows().isEmpty)
+        #expect(await Self.journalLooks(fixture).isEmpty)
+
+        fixture.clock.now = Self.start.addingTimeInterval(2)
+        #expect(await engine.followWorkflows()["w1"]?.started == 1)
+    }
+
+    @Test func eachCallLooksAtTheLeastRecentlyReadJournalsFirst() async throws {
+        let (fixture, engine) = await Self.following(1..<4)
+
+        let first = await engine.followWorkflows()
+        #expect(first.keys.sorted() == ["w1", "w2"])
+        await fixture.files.clearRecords()
+
+        let second = await engine.followWorkflows()
+        #expect(second.keys.sorted() == ["w1", "w2", "w3"])
+        #expect(await Self.journalLooks(fixture) == [Self.journal(3), Self.journal(1)])
+    }
+
+    @Test func aJournalCatchesUpOverSeveralCallsAndShowsOnlyOnceRead() async throws {
+        var limits = ChatConversationEngine.WorkflowLimits()
+        limits.follower.readChunk = 64
+        limits.journalBudget = 64
+        let (fixture, engine) = await Self.following(1..<2, workflowLimits: limits)
+        await fixture.files.append(Self.started("k2") + Self.started("k3"), to: Self.journal(1))
+
+        var calls = 0
+        var progress: [String: ChatWorkflowProgress] = [:]
+        while progress["w1"] == nil, calls < 10 {
+            progress = await engine.followWorkflows()
+            calls += 1
+        }
+        #expect(calls > 1)
+        #expect(progress["w1"]?.started == 3)
     }
 
     // MARK: Cache

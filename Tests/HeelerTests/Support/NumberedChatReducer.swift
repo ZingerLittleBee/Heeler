@@ -9,7 +9,9 @@ import Foundation
 /// `{"prompt":"<text>"}` is a typed prompt the file records,
 /// `{"compacted":true}` a compaction, and `{"tool":k,"output":"<text>"}`
 /// tool row `t-k`, which references its line for the output instead of
-/// keeping a preview, as a saved entry does.
+/// keeping a preview, as a saved entry does. `{"workflow":"<id>",
+/// "journal":"<path>","at":<epoch>}` launches Background Work, a Subagent
+/// when it names no journal, and `{"ended":"<id>"}` ends it.
 struct NumberedChatReducer: ChatTranscriptReducer {
     private struct Record: Codable {
         var n: Int?
@@ -19,6 +21,10 @@ struct NumberedChatReducer: ChatTranscriptReducer {
         var compacted: Bool?
         var tool: Int?
         var output: String?
+        var workflow: String?
+        var journal: String?
+        var at: Double?
+        var ended: String?
     }
 
     let seed: ChatReducerSeed
@@ -58,6 +64,16 @@ struct NumberedChatReducer: ChatTranscriptReducer {
     }
 
     static let compaction = #"{"compacted":true}"# + "\n"
+
+    static func launch(_ id: String, journal: String?, at date: Date? = nil) -> String {
+        let record = Record(workflow: id, journal: journal, at: date?.timeIntervalSince1970)
+        let data = (try? JSONEncoder().encode(record)) ?? Data()
+        return String(decoding: data, as: UTF8.self) + "\n"
+    }
+
+    static func end(_ id: String) -> String {
+        #"{"ended":"\#(id)"}"# + "\n"
+    }
 
     static func tool(_ n: Int, output: String) -> String {
         let data = (try? JSONEncoder().encode(Record(tool: n, output: output))) ?? Data()
@@ -103,7 +119,27 @@ struct NumberedChatReducer: ChatTranscriptReducer {
                 }
             },
             links: ChatTranscriptLinks(
-                continuedInSessionID: records.lazy.compactMap { $0.record?.continued }.last))
+                continuedInSessionID: records.lazy.compactMap { $0.record?.continued }.last),
+            backgroundWork: Self.backgroundWork(records),
+            latestPromptOffset: records.last { $0.record?.prompt != nil }?.line.offset)
+    }
+
+    private static func backgroundWork(_ records: [(line: ChatLine, record: Record?)]) -> [ChatBackgroundWorkItem] {
+        var items: [ChatBackgroundWorkItem] = []
+        for (line, record) in records {
+            if let id = record?.workflow {
+                items.append(
+                    ChatBackgroundWorkItem(
+                        id: id, kind: record?.journal == nil ? .subagent : .workflow, title: id,
+                        journalPath: record?.journal, launchOffset: line.offset,
+                        launchedAt: record?.at.map { Date(timeIntervalSince1970: $0) }))
+            }
+            if let id = record?.ended, let index = items.firstIndex(where: { $0.id == id }) {
+                items[index].state = .completed
+                items[index].endOffset = line.offset
+            }
+        }
+        return items
     }
 
     var unsupportedFormat: String? {

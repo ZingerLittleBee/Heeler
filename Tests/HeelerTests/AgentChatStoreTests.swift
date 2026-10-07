@@ -56,7 +56,11 @@ struct AgentChatStoreTests {
         let server: Server
         let store: AgentChatStore
 
-        init(session: String?, limits: TranscriptFollower.Limits = TranscriptFollower.Limits()) {
+        init(
+            session: String?, limits: TranscriptFollower.Limits = TranscriptFollower.Limits(),
+            timing: AgentChatStore.Timing = AgentChatStore.Timing(
+                activeInterval: .milliseconds(5), idleInterval: .milliseconds(5))
+        ) {
             let agent = AgentChatStoreTests.agent(session: session)
             let server = Server(agent)
             let clock = clock
@@ -68,9 +72,7 @@ struct AgentChatStoreTests {
                     hostID: AgentChatStoreTests.host, socketLocation: .defaultSession,
                     files: files.hostFiles(), agentInfo: { await server.read() }, cache: cache,
                     adapter: NumberedChatReducer.adapter(limits: limits)),
-                timing: AgentChatStore.Timing(
-                    activeInterval: .milliseconds(5), idleInterval: .milliseconds(5)),
-                now: { clock.now })
+                timing: timing, now: { clock.now })
         }
 
         func advance(_ seconds: TimeInterval) {
@@ -80,6 +82,83 @@ struct AgentChatStoreTests {
 
     private static func ids(_ store: AgentChatStore) -> [String] {
         store.conversation.transcript.entries.map(\.id.rawValue)
+    }
+
+    // MARK: Background work
+
+    private static let journal =
+        "/home/dev/.claude/projects/-home-dev-proj/\(first)/subagents/workflows/wf_1/journal.jsonl"
+
+    private static func paced() -> Fixture {
+        Fixture(
+            session: first,
+            timing: AgentChatStore.Timing(
+                activeInterval: .seconds(1), idleInterval: .seconds(4),
+                backgroundWorkStaleness: ChatBackgroundWork.Staleness(workflowQuiet: 7_200, subagentRun: 10_800)))
+    }
+
+    @Test func runningBackgroundWorkKeepsTheActivePaceUntilItEnds() async throws {
+        let fixture = Self.paced()
+        let launch = NumberedChatReducer.launch("s1", journal: nil, at: fixture.clock.now)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2) + launch, at: Self.path(Self.first))
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.map(\.id) == ["s1"])
+        #expect(fixture.store.backgroundWork.isLive)
+
+        // Past the linger after the last change, the running Subagent
+        // still holds the active pace.
+        fixture.advance(60)
+        await fixture.store.step()
+        #expect(fixture.store.interval == .seconds(1))
+
+        await fixture.files.append(NumberedChatReducer.end("s1"), to: Self.path(Self.first))
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.map(\.item.state) == [.completed])
+        #expect(fixture.store.interval == .seconds(4))
+    }
+
+    @Test func workRunningLongerThanItCouldIsStaleAndHoldsNothing() async throws {
+        let fixture = Self.paced()
+        let launch = NumberedChatReducer.launch("s1", journal: nil, at: fixture.clock.now.addingTimeInterval(-4 * 3_600))
+        await fixture.files.write(NumberedChatReducer.lines(0..<2) + launch, at: Self.path(Self.first))
+        await fixture.store.step()
+        fixture.advance(60)
+        await fixture.store.step()
+
+        #expect(fixture.store.backgroundWork.rows.map(\.isStale) == [true])
+        #expect(fixture.store.interval == .seconds(4))
+    }
+
+    @Test func aFailedReadFreezesTheListInsteadOfHoldingThePace() async throws {
+        let fixture = Self.paced()
+        let launch = NumberedChatReducer.launch("s1", journal: nil, at: fixture.clock.now)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2) + launch, at: Self.path(Self.first))
+        await fixture.store.step()
+        fixture.advance(60)
+
+        await fixture.files.failNext(.status, with: TransportError.hostFileTimedOut)
+        await fixture.store.step()
+
+        #expect(fixture.store.backgroundWork.rows.map(\.id) == ["s1"])
+        #expect(!fixture.store.backgroundWork.isLive)
+        #expect(fixture.store.interval == .seconds(4))
+    }
+
+    @Test func aWorkflowShowsItsJournalAndTheListResetsWithTheConversation() async throws {
+        let fixture = Self.paced()
+        let launch = NumberedChatReducer.launch("w1", journal: Self.journal, at: fixture.clock.now)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2) + launch, at: Self.path(Self.first))
+        await fixture.files.write(
+            #"{"type":"launched"}"# + "\n"
+                + #"{"type":"started","key":"k1","agentId":"a1","label":"audit:one","phase":"Audit"}"# + "\n",
+            at: Self.journal)
+        await fixture.store.step()
+        // The first poll after opening reads the journal.
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.first?.progress?.started == 1)
+
+        fixture.store.agentDidChange(Self.agent(session: Self.second))
+        #expect(fixture.store.backgroundWork == ChatBackgroundWork())
     }
 
     @Test func followsTheSessionHerdrReports() async throws {

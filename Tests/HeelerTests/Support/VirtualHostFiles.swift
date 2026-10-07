@@ -23,6 +23,8 @@ actor VirtualHostFiles {
     private var modificationTimes: [String: UInt32] = [:]
     private var clock: UInt32 = 1_780_000_000
     private var faults: [Operation: [any Error]] = [:]
+    /// Faults for one path, taken before any for the operation as a whole.
+    private var pathFaults: [Operation: [(path: String, error: any Error)]] = [:]
     private var readLimit: Int?
 
     private(set) var reads: [RemoteFileRange] = []
@@ -101,6 +103,11 @@ actor VirtualHostFiles {
         faults[operation, default: []] += Array(repeating: error, count: count)
     }
 
+    /// Fails the next `count` stats or reads of `path` alone.
+    func failNext(_ operation: Operation, path: String, with error: any Error, count: Int = 1) {
+        pathFaults[operation, default: []] += Array(repeating: (path, error), count: count)
+    }
+
     // MARK: Operations
 
     func home() throws -> String {
@@ -109,7 +116,7 @@ actor VirtualHostFiles {
     }
 
     func fileStatus(atPath path: String) throws -> RemoteFileStatus? {
-        try throwFault(.status)
+        try throwFault(.status, path: path)
         statuses.append(path)
         guard let (resolved, node) = resolve(path) else { return nil }
         return status(of: node, at: resolved)
@@ -143,7 +150,7 @@ actor VirtualHostFiles {
     }
 
     func readRange(_ range: RemoteFileRange) throws -> RemoteFileSlice {
-        try throwFault(.read)
+        try throwFault(.read, path: range.path)
         reads.append(range)
         guard let (_, node) = resolve(range.path), case .file(let data) = node else {
             return RemoteFileSlice(data: Data(), length: nil)
@@ -173,7 +180,12 @@ actor VirtualHostFiles {
 
     // MARK: Helpers
 
-    private func throwFault(_ operation: Operation) throws {
+    private func throwFault(_ operation: Operation, path: String? = nil) throws {
+        if let path, var pending = pathFaults[operation], let index = pending.firstIndex(where: { $0.path == path }) {
+            let error = pending.remove(at: index).error
+            pathFaults[operation] = pending
+            throw error
+        }
         guard var pending = faults[operation], !pending.isEmpty else { return }
         let error = pending.removeFirst()
         faults[operation] = pending
