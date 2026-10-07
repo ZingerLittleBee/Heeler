@@ -226,6 +226,13 @@ and stops none of it. A Subagent is one background agent; a Workflow is a
 script that runs many and is listed as one row with its agents done.
 _Avoid_: background task, task list, jobs
 
+**Turn**:
+One prompt, command or notification and everything the Agent did in answer,
+as its program records it. Chat folds a finished turn's steps behind a
+"Worked for" row above its final answer, and shows two or more consecutive
+tool calls as one group row; a running turn shows how long it has worked.
+_Avoid_: exchange, round, step (one row within a turn)
+
 **Shell Terminal**:
 The full interactive terminal on an ordinary shell Pane, opened by Agent
 detail's edge-docked Workspace drawer, the Console's Terminals list, or Open

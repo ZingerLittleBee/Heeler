@@ -54,7 +54,8 @@ of hosted SwiftUI rows with its own single-column layout: it opens at the
 newest row and keeps the reader's place while rows above it measure, which
 needs anchoring in the same main-thread turn.
 
-Tool activity is one row per call. Decoding keeps a preview of at most
+Tool activity is one row per call, and two or more calls in a row share a
+group row (see Turns and tool groups). Decoding keeps a preview of at most
 40 lines or 8 KiB; expanding a row reads its record again, at most 1 MiB, and
 shows up to 1,000 lines or 64 KiB. A spilled Claude Code output is read only
 from `<session>/tool-results/` beside the transcript, and a Workflow's journal
@@ -199,6 +200,47 @@ the loaded lines ends it, and otherwise it still runs. Nothing saved shows
 before a live read, and a saved launch never joins a window it does not
 continue, since its end could sit in the gap.
 
+## Turns and tool groups
+
+A long turn of tool calls is hard to read back, so Chat folds what a finished
+turn did behind one row and keeps its answer in view. A turn runs from the prompt, command or
+notification that opened it to the next one, as the program records it:
+Claude Code from its user records to its `turn_duration` or interrupt marker,
+Codex from its turn events. The newest turn runs while herdr reports the
+Agent Working, Blocked or unknown and no record has closed it, or while a
+message sent from Chat waits for the transcript; every other turn is
+finished. A running turn shows "Working for 1:05" under its prompt, counted
+from its first record on the Host's clock.
+
+A finished turn keeps its prompt, the rows it pins and its final answer, the
+model's text at its end. Everything between folds behind one "Worked for 35s"
+row above the answer, wall time from the turn's first record to its last, or
+"Details" when the records give none. Pinned rows stay above that row: plans,
+questions, queued messages, compaction separators, task notifications,
+interruptions, stops, errors, calls waiting on the user, and Subagent
+launches. A turn with nothing before its answer, with no answer, or that was
+interrupted or failed does not fold, and neither does the newest one while
+Background Work runs. Opening a fold opens none of the rows or groups inside
+it; the model's text there reads in the secondary color. Fold Finished
+Turns in Settings turns folding off.
+
+Two or more consecutive tool calls show as one group row: the first call's
+symbol, what the calls did ("Ran 2 commands, Edited 2 files", files counted
+once per path), their lines changed, and a spinner or a count of failures.
+Reasoning between calls joins the group; reasoning with no text shows
+nowhere. Subagent launches, questions, calls waiting on the user and Codex's
+user shell commands are never grouped. While a turn runs, its last group
+keeps its newest call as its own row below the group, so its status and
+output stay in reach, and settles into one row, under a new identity and
+closed, once anything else follows.
+
+Folding is a projection of the built rows, made on the main actor each time
+rows or an open header change, so a header opens or closes in the same
+main-thread turn as the tap. The header keeps its top edge, even while the
+list follows its end; a row folded away under the reader puts its header
+where the row was. Nothing about what is open is saved, and folded rows keep
+their measured heights and what they have open.
+
 ## Staging and the tools dock
 
 Image and file staging moves from the Attach to the Agent's
@@ -258,6 +300,12 @@ no Attach at all.
 - Chat never resizes the pane, and herdr keeps the last attached client's
   size, so cards are parsed at the phone's last grid, usually 40 to
   64 columns, where Claude Code leaves stale text.
+- Folding trusts the programs' turn records. A turn no record closes, such as
+  one Claude Code wrote no `turn_duration` for, finishes only when herdr
+  reports the Agent idle, and Chat takes no turn times from Codex's legacy
+  rollouts, whose turns fold under "Details". Claude Code's own `durationMs` can be far
+  shorter than a turn's wall time, so "Worked for" can read longer than the
+  program's figure.
 - Conversation text now rests on the device, in the protected cache that
   [PRIVACY.md](../../PRIVACY.md) describes.
 - Not in this version:
