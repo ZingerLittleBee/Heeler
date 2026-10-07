@@ -127,10 +127,14 @@ private struct ChatBackgroundWorkRowLabel: View {
                 }
                 Spacer(minLength: 0)
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                // The caption shows whole or not at all: squeezed, it
+                // clips to a sliver of a letter.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        title
+                        caption
+                    }
                     title
-                        .layoutPriority(1)
-                    caption
                 }
                 Spacer(minLength: 8)
                 meta
