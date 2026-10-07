@@ -60,6 +60,12 @@ struct AgentChatSurfaceView: View {
     @State private var closeErrorMessage: String?
     /// The Workspace drawer's panel, while the back header's button owns it.
     @State private var isHeaderDrawerOpen = false
+    /// The Background Work strip's height over the staging bar; zero while
+    /// it lists nothing.
+    @State private var backgroundWorkHeight: CGFloat = 0
+    @State private var isShowingBackgroundWork = false
+    /// The row the Background Work sheet opened from.
+    @State private var backgroundWorkFocus: String?
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @State private var windowControlsHeight: CGFloat = 0
@@ -148,7 +154,7 @@ struct AgentChatSurfaceView: View {
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
                 || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
                 || viewingSkill != nil || isRenamingAgent || isRenamingWorkspace
-                || closeErrorMessage != nil,
+                || closeErrorMessage != nil || isShowingBackgroundWork,
             isOnStage: { @MainActor in isOnStage() },
             toggleInputMode: nil,
             inputMode: .composer))
@@ -196,6 +202,15 @@ struct AgentChatSurfaceView: View {
                     })
                 .modifier(ConsoleSheetPresentationModifier(
                     presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
+            }
+        }
+        .sheet(isPresented: $isShowingBackgroundWork) {
+            if let chat {
+                ConsoleSheetContent(ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)) {
+                    ChatBackgroundWorkSheet(
+                        chat: chat, isHostConnected: isHostConnected, focus: backgroundWorkFocus,
+                        sheetPresentation: $0)
+                }
             }
         }
         .sheet(item: $viewingSkill) { skill in
@@ -348,6 +363,10 @@ struct AgentChatSurfaceView: View {
                     if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
                 }
             }
+        }
+        // Above the staging bar, which stays next to the Composer it feeds.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            backgroundWorkStrip
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
@@ -680,9 +699,48 @@ struct AgentChatSurfaceView: View {
         return AnyView(
             BlockedCardView(
                 store: chat.blocked,
-                // Leaves the conversation room above, keyboard up or not.
-                maxHeight: max(120, (surfaceHeight - composerKeyboardLayout.contentInset) * 0.4),
+                // Leaves the conversation room above, keyboard up or not;
+                // the Background Work line comes out of the card's share.
+                maxHeight: max(
+                    120, (surfaceHeight - composerKeyboardLayout.contentInset) * 0.4 - backgroundWorkHeight),
                 openTerminal: { showAgentTerminal() }))
+    }
+
+    // MARK: Background Work
+
+    /// Claude Code's Subagents and Workflows, over the Composer while the
+    /// conversation shows. Always present, so its measured height drops to
+    /// zero with the last row.
+    private var backgroundWorkStrip: some View {
+        VStack(spacing: 0) {
+            if let chat, presentation == .timeline {
+                BackgroundWorkInset(
+                    chat: chat, isHostConnected: isHostConnected, isCondensed: condensesBackgroundWork
+                ) { focus in
+                    backgroundWorkFocus = focus
+                    isShowingBackgroundWork = true
+                }
+            }
+        }
+        .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { backgroundWorkHeight = $0 }
+    }
+
+    /// One line while the Composer is open or a Blocked card stands in its
+    /// place: the Composer's own fold, inverted, from what this surface
+    /// holds. Focus always moves the keyboard presentation off `.hidden`.
+    private var condensesBackgroundWork: Bool {
+        !AgentComposerCollapse.isCollapsed(
+            isEnabled: true,
+            isInputFocused: false,
+            keyboardPresentation: composerKeyboardPresentation,
+            inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil,
+            hasInputReplacement: chat.map { $0.blocked.content != .none } ?? false)
+    }
+
+    private var isHostConnected: Bool {
+        console.hostStatuses[agent.hostID] == .connected
     }
 
     private var composerActions: AgentComposerActions {
@@ -837,6 +895,20 @@ struct AgentChatSurfaceView: View {
         case .idle, .closing:
             break
         }
+    }
+}
+
+/// Reads the Background Work itself, so a change redraws the strip, not the
+/// whole surface.
+private struct BackgroundWorkInset: View {
+    let chat: AgentChatStore
+    let isHostConnected: Bool
+    let isCondensed: Bool
+    let open: (String?) -> Void
+
+    var body: some View {
+        ChatBackgroundWorkStrip(
+            work: chat.backgroundWork, isHostConnected: isHostConnected, isCondensed: isCondensed, open: open)
     }
 }
 
