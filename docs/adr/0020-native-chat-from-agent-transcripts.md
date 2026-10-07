@@ -59,12 +59,27 @@ shows up to 1,000 lines or 64 KiB. A spilled Claude Code output is read only
 from `<session>/tool-results/` beside the transcript. Chat reads no other path
 a transcript names.
 
+Claude Code's file changes show as its terminal shows them, in the Changes
+view's colors with one column of line numbers. An Edit or Write row expands to
+its diff. A Bash row lists the files its command changed, from the
+`bashEditDiff` Claude Code records in some permission modes: a line per file
+with its path relative to the record's working directory and its counts, whose
+diff opens in place up to 40 lines, with View All for the rest. A row holds at
+most 40 diff lines or 32 KiB; opening more reads the record again, up to
+2,000 lines or 512 KiB. Claude Code's notes stay: files named without a diff,
+a skipped or unavailable diff, a command that ran beside another, and a git
+step that can move the working tree. Chat looks for that step in more of a
+command than the terminal does, so it may note one the terminal doesn't
+rather than miss one. The terminal hides that command's hunks until its view
+is expanded; Chat's diffs are closed until tapped, so it lists them under the
+note.
+
 Conversations persist in Caches with Complete file protection: decoded entries
-and read cursors, never tool output, which an expanded row fetches again. The
-cache is limited to 300 MB, pruned least recently used, drops documents unused
-for 30 days, forgets a Host's documents when the Host is deleted, and can be
-cleared in Settings. A cached conversation opens at once, stays readable
-offline, and survives the remote file's removal.
+and read cursors, never tool output or diff lines, which an expanded row
+fetches again. The cache is limited to 300 MB, pruned least recently used,
+drops documents unused for 30 days, forgets a Host's documents when the Host
+is deleted, and can be cleared in Settings. A cached conversation opens at
+once, stays readable offline, and survives the remote file's removal.
 
 ## Sending
 
@@ -188,3 +203,5 @@ no Attach at all.
     sends text as typed while the user watches the terminal.
   - Search, export, a usage meter, a command palette, a model picker, and
     editing, resending, rewinding or forking a conversation.
+  - Codex's file changes beyond their counts, and a summary of the files a
+    turn changed.

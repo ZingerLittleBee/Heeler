@@ -262,7 +262,7 @@ approval: a manual approval looks the same as an automatic allow.
 
 | Tool | `input` | `toolUseResult` |
 | --- | --- | --- |
-| Bash | `description`, `command` | `stdout`, `stderr`, `interrupted`, `backgroundTaskId`, `persistedOutputPath`, `persistedOutputSize` (`sdk-tools.d.ts:3267`) |
+| Bash | `description`, `command` | `stdout`, `stderr`, `interrupted`, `backgroundTaskId`, `persistedOutputPath`, `persistedOutputSize` (`sdk-tools.d.ts:3267`); `bashEditDiff` when recorded ([below](#files-a-bash-command-changed)) |
 | Edit | `file_path` | `structuredPatch[{oldStart, oldLines, newStart, newLines, lines}]`; changed lines start with `+` or `-` (`sdk-tools.d.ts:3400`) |
 | Write | `file_path` | `type` `create` with `content` (`probe2-transcript.jsonl:75` adds 2 lines, `:93` adds 1), or `update` with `structuredPatch` (`:85` adds 2 and removes 2) (`sdk-tools.d.ts:3452`) |
 | Read | `file_path` | `type: "text"` with `file{numLines, startLine, totalLines}`; images, PDFs and notebooks have other shapes (`sdk-tools.d.ts:208`) |
@@ -280,6 +280,53 @@ names it, in the session's `tool-results` directory
 without `.jsonl` followed by `/tool-results/` (CLI `chunk-1g0h7ksr.js` `Ft`;
 also seen with the installed 2.1.292 CLI). `persistedOutputSize` is the full
 output's size in bytes (`sdk-tools.d.ts:3324-3331`).
+
+### Files a Bash command changed
+
+Observed on 2026-10-07 in the installed 2.1.292 CLI and in Bash results of
+this repository's own sessions; the probe transcripts do not record it, and
+2.1.282 already did. The result's `bashEditDiff`:
+
+- **Shape.** `{files: [{filePath, hunks, created?, deleted?}], moreFiles,
+  changedFiles?, unavailable?, skipped?, shared?}`. `filePath` is absolute.
+  `hunks` has Edit's `structuredPatch` schema, but lines keep literal tabs,
+  where Edit and Write turn leading tabs into two spaces. `changedFiles` names
+  at most 200 absolute paths.
+- **Gate.** The `CLAUDE_CODE_BASH_EDIT_DIFF` environment variable, else the
+  `bashEditDiffEnabled` setting, which only user, flag and policy settings can
+  turn on, else on in auto and bypassPermissions modes while the "bash-first"
+  prompt gate is on. That gate also steers the model to edit files through
+  Bash, so these sessions show few Edit calls.
+- **Coverage.** Only the git repository the command runs in, tracked and
+  untracked files that are not ignored. macOS compares snapshots of the
+  working tree; Linux watches files and writes jsdiff hunks, with
+  `\ No newline at end of file` lines and other zero-length hunk starts.
+  Nothing is recorded for background, interrupted, failed or read-only
+  commands, outside a repository, or for the Windows PowerShell tool. A
+  subagent's commands record in its own transcript.
+- **Caps.** At most five files carry hunks. A file whose diff reaches
+  400 lines or 64,000 characters is only named, and `moreFiles` counts the
+  changed files `files` leaves out. `shared` means another recording command
+  ran in the same repository at the same time; `unavailable` and `skipped`
+  mean the diff was not taken.
+- **Terminal.** Renderer `B` (beside `te=40`) shows one note when `skipped`,
+  or when `unavailable` or `shared` comes without files. Otherwise each file
+  shows `Created`, `Deleted` or `Updated`, its path relative to the working
+  directory and `(+a -b)` counted from its hunk lines, then at most 40 hunk
+  lines (`oe`, which counts marker lines too) and `… N more lines`. Then come
+  `… N more files changed` (with no files,
+  `N files changed (binary, mode only or too large to show)`), with
+  ` (part of the diff is unavailable)` when `unavailable`; a git-step note;
+  and the shared note. The git-step note shows when `XKr`
+  (`chunk-pwkr374y.js`) finds a simple command whose words, after one leading
+  `sudo`, are `git` and a first non-option word in `NEn`: `checkout`,
+  `switch`, `stash`, `pull`, `merge`, `rebase`, `reset`, `restore`, `clean`,
+  `cherry-pick` or `revert`. Only `-C` and `-c` take the next word. It
+  reads the simple commands of the permission analysis (`MG`,
+  `chunk-acz3memr.js`), which include those inside `$(…)` in double quotes;
+  when that analysis isn't simple, or the command is over 10,000 characters
+  (`DM`), it reads only the top-level statements (`jd`, `Pu`). While that
+  note shows, the hunks stay hidden until the view is expanded.
 
 ## Subagents
 
