@@ -203,13 +203,25 @@ struct ChatTimelineProjectionTests {
         #expect(Self.ids(output) == ["u1", "[group c2]", "a1"])
     }
 
-    @Test func aPendingMessageOpensARunningTurnAndFinishesTheOneBefore() {
+    @Test func aPendingMessageLeavesTheRunningTurnRunning() {
         let pending = ChatRow(
             id: .pending(UUID()), content: .pending(ChatPendingEcho(id: UUID(), text: "next", state: .sending)),
             revision: 1, topSpacing: 0)
-        let rows = [Self.user("u1"), Self.tool("c1"), Self.text("a1"), pending]
+        let rows = [Self.user("u1"), Self.tool("c1"), Self.tool("c2"), Self.tool("c3", status: .running), pending]
         let output = Self.project(rows, turns: [Self.turn("u1", ended: false)], signals: Self.working)
-        #expect(Self.ids(output) == ["u1", "[turn a1]", "a1", "pending"])
+        // The program may hold the message until the turn ends: the turn's
+        // timer and its live group stay as they were.
+        #expect(Self.ids(output) == ["u1", "[working]", "[live group c1]", "c3", "pending"])
+
+        let finished = [Self.user("u1"), Self.tool("c1"), Self.text("a1"), pending]
+        #expect(Self.ids(Self.project(finished, turns: [Self.turn("u1")], signals: Self.working)) == ["u1", "[turn a1]", "a1", "pending"])
+    }
+
+    @Test func aQuestionStaysAboveTheFoldOfItsTurn() {
+        let rows = [
+            Self.user("u1"), Self.tool("c1"), Self.tool("q1", .question, name: "AskUserQuestion"), Self.tool("c2"), Self.text("a1"),
+        ]
+        #expect(Self.ids(Self.project(rows, turns: [Self.turn("u1")])) == ["u1", "q1", "[turn a1]", "a1"])
     }
 
     @Test func withoutRecordedTurnsAPromptOpensOne() {
@@ -279,6 +291,17 @@ struct ChatTimelineProjectionTests {
         #expect(Self.group(settled, .group(ChatEntryID("c3")))?.isRunning == true)
     }
 
+    @Test func aRunKeepsItsLiveGroupWhileItsNewestCallWaitsForApproval() {
+        let rows = [Self.user("u1"), Self.tool("c1"), Self.tool("c2"), Self.tool("c3", status: .running)]
+        let running = Self.project(rows, turns: [Self.turn("u1", ended: false)], signals: Self.working)
+        #expect(Self.ids(running) == ["u1", "[working]", "[live group c1]", "c3"])
+
+        let asking = rows.dropLast() + [Self.tool("c3"), Self.thought("r1"), Self.tool("c4", status: .awaitingApproval)]
+        let waiting = Self.project(Array(asking), turns: [Self.turn("u1", ended: false)], signals: Self.working)
+        #expect(Self.ids(waiting) == ["u1", "[working]", "[live group c1]", "r1", "c4"])
+        #expect(Self.group(waiting, .liveGroup(ChatEntryID("c1")))?.summary == "Ran 3 commands")
+    }
+
     @Test func aGroupHeaderSumsItsDiffsAndCountsFailures() {
         let rows = [
             Self.user("u1"), Self.tool("e1", .fileEdit, name: "Edit", diff: ChatDiffStats(added: 3, removed: 1)),
@@ -315,6 +338,12 @@ struct ChatTimelineProjectionTests {
         var again = tool(.fileEdit)
         again.fileChanges = ChatFileChanges(files: [ChatFileChange(path: "a", kind: .updated, added: 1, removed: 0, lineCount: 1)])
         #expect(summary([edit, again]) == "Edited 5 files")
+
+        var created = tool(.fileWrite)
+        created.fileChanges = ChatFileChanges(files: [ChatFileChange(path: "new", kind: .created, added: 1, removed: 0, lineCount: 1)])
+        var overwritten = tool(.fileWrite)
+        overwritten.fileChanges = ChatFileChanges(files: [ChatFileChange(path: "old", kind: .updated, added: 1, removed: 1, lineCount: 1)])
+        #expect(summary([created, overwritten]) == "Edited 1 file, Created 1 file")
     }
 
     // MARK: Layout

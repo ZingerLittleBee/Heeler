@@ -27,11 +27,10 @@ enum ChatTimelineProjection {
     }
 
     private struct Segment {
-        /// The prompt, pending message or notice that opened the turn.
+        /// The prompt or notice that opened the turn.
         var head: ChatRow?
         var body: [ChatRow] = []
         var record: ChatTurn?
-        var isPending = false
     }
 
     static func project(
@@ -40,14 +39,18 @@ enum ChatTimelineProjection {
         var output = Output(rows: [], owners: [:])
         output.rows.reserveCapacity(rows.count)
         var segments: [Segment] = []
+        var pending: [ChatRow] = []
         let records = Dictionary(turns.map { (ChatRowID.entry($0.firstEntryID), $0) }, uniquingKeysWith: { _, last in last })
         for row in rows {
             if case .olderHistory = row.content {
                 output.rows.append(row)
                 continue
             }
+            // A message sent from Chat opens no turn of its own: one the
+            // program holds, or that never arrived, would otherwise settle
+            // the turn still running above it. It follows every turn.
             if case .pending = row.content {
-                segments.append(Segment(head: row, isPending: true))
+                pending.append(row)
             } else if let record = records[row.id] {
                 segments.append(Segment(head: holdsHead(row) ? row : nil, body: holdsHead(row) ? [] : [row], record: record))
             } else if turns.isEmpty, case .user(let message) = row.content, !message.wasQueued {
@@ -62,9 +65,10 @@ enum ChatTimelineProjection {
             }
         }
         for index in segments.indices {
-            let phase = index == segments.count - 1 ? newestPhase(segments[index], signals: signals) : .settled
+            let phase = index == segments.count - 1 ? newestPhase(segments[index].record, signals: signals) : .settled
             emit(segments[index], phase: phase, signals: signals, open: open, into: &output)
         }
+        output.rows.append(contentsOf: pending)
         for index in output.rows.indices {
             output.rows[index].topSpacing = ChatRowBuilder.spacing(
                 before: output.rows[index].content, after: index > 0 ? output.rows[index - 1].content : nil)
@@ -72,16 +76,11 @@ enum ChatTimelineProjection {
         return output
     }
 
-    static func newestPhase(_ turn: ChatTurn?, isPending: Bool, signals: ChatTurnSignals) -> Phase {
-        if isPending { return .running }
+    static func newestPhase(_ turn: ChatTurn?, signals: ChatTurnSignals) -> Phase {
         // A turn its records closed is over: any new work is a turn the
         // transcript does not show yet.
         if turn?.ending == nil, signals.activity != .idle { return .running }
         return signals.isBackgroundWorkRunning ? .held : .settled
-    }
-
-    private static func newestPhase(_ segment: Segment, signals: ChatTurnSignals) -> Phase {
-        newestPhase(segment.record, isPending: segment.isPending, signals: signals)
     }
 
     private static func emit(
@@ -168,9 +167,14 @@ enum ChatTimelineProjection {
             }
             let run = Array(rows[index...last])
             let calls = run.filter(isGroupable).count
-            let isLiveRun = isLive && rows[(last + 1)...].allSatisfy(isReasoning)
+            // A call waiting on the user is the run's newest while it waits,
+            // so the group keeps its identity through the dialog.
+            let tail = rows[(last + 1)...]
+            let isLiveRun = isLive && tail.allSatisfy { isReasoning($0) || isAwaiting($0) }
             if calls < 2 {
                 output.rows.append(contentsOf: run.map(plain))
+            } else if isLiveRun, tail.contains(where: isAwaiting), case .entry(let first) = run[0].id {
+                emitGroup(run, id: .liveGroup(first), open: open, plain: plain, into: &output)
             } else if isLiveRun {
                 let members = Array(run.dropLast())
                 if case .entry(let first) = members[0].id {
@@ -250,7 +254,7 @@ enum ChatTimelineProjection {
             default: false
             }
         case .tool(let tool):
-            tool.status == .awaitingApproval || tool.kind == .agent
+            tool.status == .awaitingApproval || tool.kind == .agent || tool.kind == .question
         case .assistant, .reasoning, .turnHeader, .toolGroup:
             false
         }
@@ -267,6 +271,10 @@ enum ChatTimelineProjection {
         }
     }
 
+    private static func isAwaiting(_ row: ChatRow) -> Bool {
+        if case .tool(let tool) = row.content { tool.status == .awaitingApproval } else { false }
+    }
+
     private static func isReasoning(_ row: ChatRow) -> Bool {
         if case .reasoning = row.content { true } else { false }
     }
@@ -278,25 +286,34 @@ enum ChatTimelineProjection {
     // MARK: Summary
 
     /// "Ran 2 commands, Edited 2 files": what the calls did, in a fixed
-    /// order. Files count once per path.
+    /// order. Files count once per path; a write over an existing file, as
+    /// its recorded change says, counts as an edit.
     static func summary(of tools: [ChatToolActivity]) -> String {
         func count(_ kind: ChatToolActivity.Kind) -> Int {
             tools.filter { $0.kind == kind }.count
         }
-        func files(_ kind: ChatToolActivity.Kind) -> Int {
-            var paths = Set<String>()
-            var more = 0
-            for (index, tool) in tools.enumerated() where tool.kind == kind {
-                if let changes = tool.fileChanges, !changes.files.isEmpty || changes.moreFiles > 0 {
-                    paths.formUnion(changes.files.map(\.path))
-                    more += changes.moreFiles
-                } else if !tool.title.isEmpty {
-                    paths.insert(tool.title)
-                } else {
-                    paths.insert("\u{0}\(index)")
-                }
+        enum FileVerb { case edited, created, read }
+        var paths: [FileVerb: Set<String>] = [:]
+        var more: [FileVerb: Int] = [:]
+        for (index, tool) in tools.enumerated() {
+            let verb: FileVerb
+            switch tool.kind {
+            case .fileEdit: verb = .edited
+            case .fileWrite: verb = .created
+            case .fileRead: verb = .read
+            default: continue
             }
-            return paths.count + more
+            if let changes = tool.fileChanges, !changes.files.isEmpty || changes.moreFiles > 0 {
+                for file in changes.files {
+                    paths[verb == .created && file.kind != .created ? .edited : verb, default: []].insert(file.path)
+                }
+                more[verb, default: 0] += changes.moreFiles
+            } else {
+                paths[verb, default: []].insert(tool.title.isEmpty ? "\u{0}\(index)" : tool.title)
+            }
+        }
+        func files(_ verb: FileVerb) -> Int {
+            (paths[verb]?.count ?? 0) + (more[verb] ?? 0)
         }
         func plural(_ count: Int, _ one: String, _ many: String) -> String {
             count == 1 ? "1 \(one)" : "\(count) \(many)"
@@ -307,9 +324,9 @@ enum ChatTimelineProjection {
 
         var parts: [String] = []
         if case let n = count(.command), n > 0 { parts.append("Ran \(plural(n, "command", "commands"))") }
-        if case let n = files(.fileEdit), n > 0 { parts.append("Edited \(plural(n, "file", "files"))") }
-        if case let n = files(.fileWrite), n > 0 { parts.append("Created \(plural(n, "file", "files"))") }
-        if case let n = files(.fileRead), n > 0 { parts.append("Read \(plural(n, "file", "files"))") }
+        if case let n = files(.edited), n > 0 { parts.append("Edited \(plural(n, "file", "files"))") }
+        if case let n = files(.created), n > 0 { parts.append("Created \(plural(n, "file", "files"))") }
+        if case let n = files(.read), n > 0 { parts.append("Read \(plural(n, "file", "files"))") }
         if case let n = count(.search), n > 0 { parts.append("Ran \(plural(n, "search", "searches"))") }
         let web = tools.filter { $0.kind == .web }.map { $0.name.lowercased() }
         let searches = web.filter { $0.contains("search") }.count
