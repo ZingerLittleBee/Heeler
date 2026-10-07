@@ -111,6 +111,23 @@ struct WorkflowJournalFollowerTests {
         #expect(try await follower.poll(files.hostFiles(), budget: 4_096) == .tooLarge)
     }
 
+    @Test func aFollowedJournalReadsWhatItAppendsPastTheCap() async throws {
+        let files = VirtualHostFiles()
+        let started = Journal.started("1", label: "audit:pairing")
+        let text = String(repeating: started, count: 4_000 / started.utf8.count)
+        await files.write(text, at: Journal.path)
+        var follower = WorkflowJournalFollower(path: Journal.path, limits: Self.limits)
+        _ = try await follower.poll(files.hostFiles(), budget: 4_096)
+
+        await files.append(Journal.result("1") + Journal.result("2"), to: Journal.path)
+        let appended = try await follower.poll(files.hostFiles(), budget: 4_096)
+        #expect(Self.texts(appended).count == 2)
+
+        // Read again from its start, it is over the cap.
+        await files.write("x" + text + Journal.result("1") + Journal.result("2"), at: Journal.path)
+        #expect(try await follower.poll(files.hostFiles(), budget: 4_096) == .tooLarge)
+    }
+
     @Test func aFailedReadKeepsTheLastGoodPosition() async throws {
         let files = VirtualHostFiles()
         await files.write(Journal.launched, at: Journal.path)

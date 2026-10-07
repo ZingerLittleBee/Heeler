@@ -20,7 +20,8 @@ struct WorkflowJournalFollower: Sendable {
         /// and only its start, which names the agent, is kept.
         var lineCap = 4 << 10
         var prefixCap = 1 << 10
-        /// A journal larger than this is not read at all.
+        /// A journal larger than this is not read from its start. One
+        /// already followed past it still reads what it appends.
         var maximumBytes = 8 << 20
     }
 
@@ -61,7 +62,6 @@ struct WorkflowJournalFollower: Sendable {
         guard let status = try await files.status(path) else { return .missing }
         var restarted = false
         if let size = status.size {
-            guard size <= UInt64(limits.maximumBytes) else { return .tooLarge }
             if size < readOffset {
                 restart()
                 restarted = true
@@ -81,6 +81,7 @@ struct WorkflowJournalFollower: Sendable {
                 restart()
                 restarted = true
             }
+            guard readOffset > 0 || size <= UInt64(limits.maximumBytes) else { return .tooLarge }
         }
         let end = status.size ?? readOffset + UInt64(budget)
         var lines: [ChatLine] = []
@@ -92,7 +93,7 @@ struct WorkflowJournalFollower: Sendable {
                 RemoteFileRange(
                     path: path, offset: readOffset - UInt64(anchor.count), maxBytes: anchor.count + length))
             guard let reported = slice.length else { return .missing }
-            guard reported <= UInt64(limits.maximumBytes) else { return .tooLarge }
+            guard readOffset > 0 || reported <= UInt64(limits.maximumBytes) else { return .tooLarge }
             knownSize = reported
             guard slice.data.prefix(anchor.count) == anchor else {
                 // Rewritten since the last look: read it again from the
