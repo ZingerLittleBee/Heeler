@@ -58,6 +58,9 @@ struct ChatBackgroundWorkPresentation: Equatable {
         let time: String?
         /// Why a running row shows no time.
         let note: String?
+        /// The note in the strip's room: a quiet row's day without its time
+        /// unless it is today.
+        let shortNote: String?
         /// The counts the program reported as the work ended.
         let usage: String?
         let agents: [Agent]
@@ -141,11 +144,18 @@ struct ChatBackgroundWorkPresentation: Equatable {
                 case .quiet: lastSeen.map { "No updates since \($0)" } ?? "No recent updates"
                 default: nil
                 }
+            let shortNote: String? =
+                switch status {
+                case .quiet: row.lastActivity.map { "Last seen \(day(of: $0))" } ?? note
+                default: note
+                }
+            let started = row.progress?.agents ?? []
             let caption =
                 switch item.kind {
                 case .subagent: item.subtitle ?? "Subagent"
-                // The phase of the agent it started last.
-                case .workflow: row.progress?.agents.last?.phase ?? "Workflow"
+                // The phase it is in: its last running agent's, or with none
+                // running, its last agent's.
+                case .workflow: (started.last { $0.state == .running } ?? started.last)?.phase ?? "Workflow"
                 }
             var spoken = [item.title, kindPhrase(item), statePhrase(status, lastSeen: lastSeen)]
             if let fraction { spoken.append("\(fraction.done) of \(fraction.total) agents done") }
@@ -154,7 +164,7 @@ struct ChatBackgroundWorkPresentation: Equatable {
                 id: item.id, kind: item.kind, status: status, title: item.title, caption: caption,
                 detail: item.kind == .workflow ? item.subtitle : nil, fraction: fraction,
                 time: seconds.map { ChatBackgroundWorkPresentation.duration($0, width: .narrow, locale: locale) },
-                note: note, usage: usage(item.usage), agents: agents(of: row, status: status),
+                note: note, shortNote: shortNote, usage: usage(item.usage), agents: agents(of: row, status: status),
                 accessibilityLabel: spoken.joined(separator: ", "))
         }
 
@@ -239,6 +249,14 @@ struct ChatBackgroundWorkPresentation: Equatable {
             case .failed: "failed"
             case .stopped: "stopped"
             }
+        }
+
+        /// A time of day if it is today, otherwise only the day.
+        private func day(of date: Date) -> String {
+            guard !calendar.isDate(date, inSameDayAs: now) else { return time(of: date) }
+            return date.formatted(
+                Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone).month(.abbreviated)
+                    .day())
         }
 
         /// A time of day, with its date unless it is today.

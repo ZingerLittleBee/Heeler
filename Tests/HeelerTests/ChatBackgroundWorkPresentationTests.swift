@@ -80,6 +80,7 @@ struct ChatBackgroundWorkPresentationTests {
             #expect(presentation.rows.map(\.status) == [.unconfirmed, .failed])
             #expect(presentation.rows[0].time == nil)
             #expect(presentation.rows[0].note == "Not updating")
+            #expect(presentation.rows[0].shortNote == "Not updating")
             // The last read's count still stands.
             #expect(presentation.rows[0].fraction == .init(done: 2, total: 3))
             #expect(presentation.rows[0].agents.map(\.status) == [.completed, .completed, .unconfirmed])
@@ -101,8 +102,26 @@ struct ChatBackgroundWorkPresentationTests {
                 "No updates since 1:16\u{202F}PM", "No updates since Oct 5, 2026 at 3:20\u{202F}PM",
                 "No recent updates",
             ])
+        #expect(presentation.rows.map(\.shortNote) == ["Last seen 1:16\u{202F}PM", "Last seen Oct 5", "No recent updates"])
         #expect(presentation.rows[0].accessibilityLabel == "today, Workflow, no updates since 1:16\u{202F}PM")
         #expect(!presentation.ticks)
+    }
+
+    @Test func aWorkflowIsInItsLastRunningAgentsPhase() {
+        // A retry keeps the agent's place among those started.
+        let retried = ChatWorkflowProgress(agents: [
+            .init(id: "k1", label: "audit:setup", phase: "Audit", state: .running),
+            .init(id: "k2", label: "verify:setup", phase: "Verify", state: .failed),
+        ])
+        let ended = ChatWorkflowProgress(agents: [
+            .init(id: "k1", label: "audit:setup", phase: "Audit", state: .done),
+            .init(id: "k2", label: "verify:setup", phase: "Verify", state: .done),
+        ])
+        let presentation = Self.present([
+            Self.row("retried", kind: .workflow, progress: retried),
+            Self.row("ended", kind: .workflow, progress: ended),
+        ])
+        #expect(presentation.rows.map(\.caption) == ["Audit", "Verify"])
     }
 
     @Test func aHostClockAheadOfThePhoneReadsZero() {
@@ -185,18 +204,40 @@ struct ChatBackgroundWorkStripHostedTests {
         return work
     }
 
-    private static func height(_ work: ChatBackgroundWork, isCondensed: Bool) async throws -> CGFloat {
+    private static func size(_ work: ChatBackgroundWork, isCondensed: Bool, width: CGFloat = 402) async throws -> CGSize {
         let controller = UIHostingController(
             rootView: ChatBackgroundWorkStrip(work: work, isHostConnected: true, isCondensed: isCondensed, open: { _ in })
                 .environment(\.locale, Locale(identifier: "en_US")))
-        // The strip's own height, without the window's insets.
+        // The strip's own size, without the window's insets.
         controller.safeAreaRegions = []
-        var height: CGFloat = 0
-        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller) { _ in
+        var size = CGSize.zero
+        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: width, height: 874), rootViewController: controller) { _ in
             controller.view.layoutIfNeeded()
-            height = controller.sizeThatFits(in: CGSize(width: 402, height: CGFloat.greatestFiniteMagnitude)).height
+            size = controller.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
         }
-        return height
+        return size
+    }
+
+    private static func height(_ work: ChatBackgroundWork, isCondensed: Bool) async throws -> CGFloat {
+        try await size(work, isCondensed: isCondensed).height
+    }
+
+    @Test func aRowQuietSinceAnotherDayFitsANarrowPhone() async throws {
+        var work = ChatBackgroundWork()
+        work.isLive = true
+        let progress = ChatWorkflowProgress(agents: [
+            .init(id: "k1", label: "audit:setup", phase: "Audit", state: .done),
+            .init(id: "k2", label: "audit:index", phase: "Audit", state: .running),
+        ])
+        work.rows = [
+            ChatBackgroundWork.Row(
+                item: ChatBackgroundWorkItem(
+                    id: "quiet", kind: .workflow, title: "docs-audit", launchOffset: 0,
+                    launchedAt: Date().addingTimeInterval(-2 * 86_400)),
+                progress: progress, isStale: true, lastActivity: Date().addingTimeInterval(-2 * 86_400))
+        ]
+        let size = try await Self.size(work, isCondensed: false, width: 375)
+        #expect(size.width <= 375, "\(size.width)")
     }
 
     @Test func theStripCondensesToOneLineAndTakesNoRoomEmpty() async throws {

@@ -163,7 +163,8 @@ private struct ChatBackgroundWorkRowLabel: View {
     private var meta: some View {
         HStack(spacing: 6) {
             if let fraction = row.fraction {
-                if !row.status.isFinished {
+                // Only work a read shows running is moving along.
+                if row.status == .running {
                     ProgressView(value: Double(min(fraction.done, fraction.total)), total: Double(max(fraction.total, 1)))
                         .progressViewStyle(.linear)
                         .tint(.secondary)
@@ -173,7 +174,7 @@ private struct ChatBackgroundWorkRowLabel: View {
             }
             if let time = row.time {
                 Text(verbatim: time)
-            } else if let note = row.note {
+            } else if let note = row.shortNote {
                 Text(verbatim: note)
             }
         }

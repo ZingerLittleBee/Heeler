@@ -127,12 +127,19 @@ private struct ChatBackgroundWorkSheetRow: View {
                         .fontDesign(row.kind == .workflow ? .monospaced : nil)
                         .lineLimit(2)
                     Spacer(minLength: 0)
-                    if let trailing = row.time ?? row.note {
-                        Text(verbatim: trailing)
+                    if let time = row.time {
+                        Text(verbatim: time)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                             .fixedSize()
                     }
+                }
+                // A note can carry a date: it takes its own line rather
+                // than the title's room.
+                if let note = row.note {
+                    Text(verbatim: note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Text(verbatim: row.detail ?? row.caption)
                     .font(.subheadline)
