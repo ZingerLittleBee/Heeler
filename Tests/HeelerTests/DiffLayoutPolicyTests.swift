@@ -104,6 +104,14 @@ struct DiffLayoutPolicyTests {
         }
     }
 
+    @Test func deepIndentationLeavesTheCodeHalfTheWidth() {
+        #expect(DiffHangingIndentLayout.indentWidth(30, within: 300) == 30)
+        #expect(DiffHangingIndentLayout.indentWidth(200, within: 300) == 150)
+        #expect(DiffHangingIndentLayout.indentWidth(200, within: 301) == 150)
+        #expect(DiffHangingIndentLayout.indentWidth(200, within: nil) == 200)
+        #expect(DiffHangingIndentLayout.indentWidth(200, within: .infinity) == 200)
+    }
+
     @Test func unifiedPreferenceWinsWhereSideBySideWouldFit() {
         #expect(
             resolve(1376, preference: .unified)
