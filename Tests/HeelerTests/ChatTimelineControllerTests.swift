@@ -229,6 +229,56 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    @Test func openingAChangedFileGrowsTheRowAndReadsOnlyLinesItLacks() async throws {
+        var requested: [ChatEntryID] = []
+        var actions = ChatTimelineActions()
+        actions.loadOutput = { requested.append($0) }
+        let controller = ChatTimelineController(actions: actions)
+        let reference = ChatOutputReference(offset: 0, length: 10)
+        let held = ChatFileChange(
+            path: "/p/held.txt", kind: .created,
+            recorded: [
+                ChatDiffHunk(
+                    oldStart: 0, oldLines: 0, newStart: 1, newLines: 20, lines: (1...20).map { "+line \($0)" })
+            ])
+        // As the device cache keeps a file: its counts without its lines.
+        let saved = ChatFileChange(path: "/p/saved.txt", kind: .updated, added: 4, removed: 2, lineCount: 9)
+        let command = ChatToolActivity(
+            kind: .command, name: "Bash", title: "python3 gen.py", status: .succeeded,
+            fileChanges: ChatFileChanges(files: [held, saved], directory: "/p"),
+            preview: ChatToolPreview(text: "done", isTruncated: false), output: reference)
+        let edit = ChatToolActivity(
+            kind: .fileEdit, name: "Edit", title: "/p/saved.txt", status: .succeeded,
+            fileChanges: ChatFileChanges(files: [saved]), output: reference)
+        let rows = await ChatRowBuilder().rows(
+            for: ChatTimelineInput(entries: [
+                ChatEntry(id: ChatEntryID("command"), sourceOffset: 0, content: .tool(command)),
+                ChatEntry(id: ChatEntryID("edit"), sourceOffset: 1, content: .tool(edit)),
+            ]))
+        let commandRow = ChatRowID.entry(ChatEntryID("command"))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let folded = try #require(controller.cellFrame(of: commandRow)).height
+
+            controller.toggleFile(commandRow, path: "/p/held.txt")
+            await Self.settle(controller)
+            #expect(controller.isFileExpanded(commandRow, path: "/p/held.txt"))
+            #expect(requested.isEmpty)
+            // Twenty numbered lines open in place.
+            #expect(try #require(controller.cellFrame(of: commandRow)).height > folded + 150)
+
+            controller.toggleFile(commandRow, path: "/p/saved.txt")
+            #expect(requested == [ChatEntryID("command")])
+            controller.toggle(.entry(ChatEntryID("edit")))
+            #expect(requested == [ChatEntryID("command"), ChatEntryID("edit")])
+
+            controller.toggleFile(commandRow, path: "/p/held.txt")
+            await Self.settle(controller)
+            #expect(!controller.isFileExpanded(commandRow, path: "/p/held.txt"))
+        }
+    }
+
     @Test func aLongOutputScrollsInsideABoxOfItsOwn() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let short = ChatRowID.entry(ChatEntryID("short"))

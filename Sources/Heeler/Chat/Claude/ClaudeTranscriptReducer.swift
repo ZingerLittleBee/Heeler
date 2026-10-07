@@ -21,7 +21,7 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
     /// Bumped whenever the same lines start projecting to different entries,
     /// so a device cache written by an older build is dropped instead of
     /// mixed with new entries.
-    static let revision = 1
+    static let revision = 2
 
     let role: Role
     /// The file being read, whose sidecar directory holds the outputs
@@ -66,8 +66,9 @@ struct ClaudeTranscriptReducer: ChatTranscriptReducer {
             index.records.values.lazy.flatMap(\.toolUses).first { $0.id == callID }
             ?? ClaudeToolUse(id: callID, name: tool.name, input: ClaudeToolInput())
         switch ClaudeTranscriptProjection.output(of: use, in: record) {
-        case .file(let path, let fallback)?:
-            return isSpilledOutput(path) ? .file(path, fallback: fallback) : .preview(fallback)
+        case .file(let path, let fallback, let fileChanges)?:
+            return isSpilledOutput(path)
+                ? .file(path, fallback: fallback, fileChanges: fileChanges) : .preview(fallback, fileChanges: fileChanges)
         case let output:
             return output
         }

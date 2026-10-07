@@ -168,7 +168,7 @@ struct ChatToolOutputTests {
 
         let result = await engine.output(of: row)
 
-        #expect(result == .success(ChatToolPreview(text: Self.numbered(100), isTruncated: false)))
+        #expect(result == .success(ChatExpandedOutput(preview: ChatToolPreview(text: Self.numbered(100), isTruncated: false))))
     }
 
     @Test func aSpilledOutputIsReadFromTheSessionsToolResults() async throws {
@@ -180,7 +180,7 @@ struct ChatToolOutputTests {
 
         let result = await engine.output(of: row)
 
-        #expect(result == .success(ChatToolPreview(text: Self.numbered(1_000), isTruncated: true)))
+        #expect(result == .success(ChatExpandedOutput(preview: ChatToolPreview(text: Self.numbered(1_000), isTruncated: true))))
     }
 
     @Test func aSpilledFileThatIsGoneLeavesTheLinesOwnCopy() async throws {
@@ -190,7 +190,7 @@ struct ChatToolOutputTests {
 
         let result = await engine.output(of: row)
 
-        #expect(result == .success(ChatToolPreview(text: "line 1", isTruncated: false)))
+        #expect(result == .success(ChatExpandedOutput(preview: ChatToolPreview(text: "line 1", isTruncated: false))))
     }
 
     @Test func anOutputSpilledOutsideTheSessionIsNeverRead() async throws {
@@ -202,7 +202,7 @@ struct ChatToolOutputTests {
 
         let result = await engine.output(of: row)
 
-        #expect(result == .success(ChatToolPreview(text: "line 1", isTruncated: false)))
+        #expect(result == .success(ChatExpandedOutput(preview: ChatToolPreview(text: "line 1", isTruncated: false))))
         #expect(await !files.reads.contains { $0.path == elsewhere })
     }
 
@@ -283,7 +283,7 @@ struct ChatToolOutputTests {
         #expect(Self.marked(outputs, entry)?.preview == Self.start)
 
         let whole = ChatToolPreview(text: Self.numbered(2), isTruncated: false)
-        outputs.finish(entry.id, at: Self.reference, with: .success(whole))
+        outputs.finish(entry.id, at: Self.reference, with: .success(ChatExpandedOutput(preview: whole)))
         #expect(Self.marked(outputs, entry)?.outputRead == .read)
         #expect(Self.marked(outputs, entry)?.preview == whole)
         #expect(!outputs.needsRead(entry.id, at: Self.reference))
@@ -298,7 +298,7 @@ struct ChatToolOutputTests {
     @Test func aReadThatFoundNothingKeepsTheRowsOwnPreview() {
         var outputs = ChatToolOutputs()
         outputs.begin(ChatEntryID("tool:toolu_seq"), at: Self.reference)
-        outputs.finish(ChatEntryID("tool:toolu_seq"), at: Self.reference, with: .success(nil))
+        outputs.finish(ChatEntryID("tool:toolu_seq"), at: Self.reference, with: .success(ChatExpandedOutput()))
 
         let kept = Self.marked(outputs, Self.entry(preview: Self.start))
         #expect(kept?.preview == Self.start)
@@ -312,10 +312,22 @@ struct ChatToolOutputTests {
         let id = ChatEntryID("tool:toolu_seq")
         var outputs = ChatToolOutputs()
         outputs.begin(id, at: Self.reference)
-        outputs.finish(id, at: Self.reference, with: .failure(.gone))
+        outputs.finish(id, at: Self.reference, with: .failure(.unreadable("The connection closed.")))
 
-        #expect(Self.marked(outputs, Self.entry(preview: nil))?.outputRead == .failed("Output is no longer available."))
+        #expect(
+            Self.marked(outputs, Self.entry(preview: nil))?.outputRead
+                == .failed("Couldn't load output: The connection closed."))
         #expect(outputs.needsRead(id, at: Self.reference))
+    }
+
+    @Test func aReadThatCannotSucceedSaysWhyAndIsNotTriedAgain() {
+        let id = ChatEntryID("tool:toolu_seq")
+        var outputs = ChatToolOutputs()
+        outputs.begin(id, at: Self.reference)
+        outputs.finish(id, at: Self.reference, with: .failure(.gone))
+        #expect(
+            Self.marked(outputs, Self.entry(preview: nil))?.outputRead == .unavailable("Output is no longer available."))
+        #expect(!outputs.needsRead(id, at: Self.reference))
 
         outputs.begin(id, at: Self.reference)
         outputs.finish(id, at: Self.reference, with: .failure(.tooLong))
@@ -323,6 +335,20 @@ struct ChatToolOutputTests {
         #expect(Self.marked(outputs, Self.entry(preview: Self.start))?.outputRead == .read)
         #expect(
             Self.marked(outputs, Self.entry(preview: nil))?.outputRead
-                == .failed("This output is too long to show here."))
+                == .unavailable("This output is too long to show here."))
+        #expect(!outputs.needsRead(id, at: Self.reference))
+
+        // An edit holding the start of its diff still says why the rest
+        // stays out.
+        let edit = ChatToolActivity(
+            kind: .fileEdit, name: "Edit", title: "/p/a.swift", status: .succeeded,
+            fileChanges: ChatFileChanges(files: [
+                ChatFileChange(
+                    path: "/p/a.swift", kind: .updated, added: 60, removed: 0, lineCount: 60,
+                    hunks: [ChatDiffHunk(oldStart: 0, oldLines: 0, newStart: 1, newLines: 60, lines: ["+a"])])
+            ]),
+            callID: "toolu_seq", output: Self.reference)
+        let marked = Self.marked(outputs, ChatEntry(id: id, sourceOffset: 0, content: .tool(edit)))
+        #expect(marked?.outputRead == .unavailable("This output is too long to show here."))
     }
 }

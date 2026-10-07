@@ -113,7 +113,7 @@ struct ClaudeTranscriptRecordTests {
         #expect(record.toolResult?.userFeedback == "Do not create it; reply with the single word skipped")
     }
 
-    @Test("A write keeps line counts and a capped patch, never the file")
+    @Test("A write keeps line counts and capped hunks, never the file")
     func writeReduction() throws {
         let big = String(repeating: "line of a large file\n", count: 5_000)
         let json = """
@@ -125,7 +125,12 @@ struct ClaudeTranscriptRecordTests {
         let record = try Self.record(json)
         let result = try #require(record.toolResult?.result)
         #expect(result.diff == ChatDiffStats(added: 2, removed: 1))
-        #expect(result.diffPreview == ChatToolPreview(text: "@@ -3,2 +3,3 @@\n keep\n-old\n+new\n+added", isTruncated: false))
+        let hunk = ChatDiffHunk(oldStart: 3, oldLines: 2, newStart: 3, newLines: 3, lines: [" keep", "-old", "+new", "+added"])
+        #expect(
+            result.fileChanges
+                == ChatFileChanges(files: [
+                    ChatFileChange(path: "/w/big.txt", kind: .updated, added: 2, removed: 1, lineCount: 4, hunks: [hunk])
+                ]))
         #expect(result.filePath == "/w/big.txt")
         #expect(record.blocks.count == 1)
 
@@ -137,10 +142,13 @@ struct ClaudeTranscriptRecordTests {
             """)
         let creation = try #require(created.toolResult?.result)
         #expect(creation.diff == ChatDiffStats(added: 5_000, removed: 0))
-        let preview = try #require(creation.diffPreview)
-        #expect(preview.isTruncated)
-        #expect(preview.text.utf8.count <= ChatToolPreview.rowLimits.bytes)
-        #expect(preview.text.split(separator: "\n", omittingEmptySubsequences: false).count <= ChatToolPreview.rowLimits.lines + 1)
+        let file = try #require(creation.fileChanges?.files.first)
+        #expect(file.kind == .created)
+        #expect(file.added == 5_000 && file.removed == 0 && file.lineCount == 5_000)
+        #expect(file.heldLineCount == ChatFileChanges.rowLimits.lines)
+        #expect(file.hunks.first?.lines.first == "+line of a large file")
+        #expect(file.hunks.first?.newStart == 1 && file.hunks.first?.newLines == 5_000)
+        #expect(!file.isComplete)
     }
 
     @Test("Images keep only their count")

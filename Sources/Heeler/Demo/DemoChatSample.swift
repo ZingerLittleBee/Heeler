@@ -163,19 +163,73 @@
                         18\t3. Confirm the fingerprint shown on both screens.
                     """)
             session.tool(
-                "Edit",
+                "Write",
                 [
                     "file_path": "/workspace/product-docs/docs/setup.md",
-                    "old_string": "1. Find the host's address", "new_string": "1. Open **Settings → Devices**",
+                    "content": "# Setup\n\nInstall the desktop app, then pair your phone with it.\n",
                 ],
-                result: "The file /workspace/product-docs/docs/setup.md has been updated successfully.")
+                result: "The file /workspace/product-docs/docs/setup.md has been updated successfully.",
+                details: Self.editResult(
+                    "/workspace/product-docs/docs/setup.md",
+                    hunks: [
+                        (
+                            14, 6, 14, 6,
+                            [
+                                " ## Pair your phone",
+                                " ",
+                                "-1. Find the host's address in **Settings → Network**.",
+                                "-2. Type the address and port into the app.",
+                                "-3. Confirm the fingerprint shown on both screens.",
+                                "+1. Open **Settings → Devices** on the computer and choose **Show Pairing Code**.",
+                                "+2. In the app, tap **Add Host** and point the camera at the code.",
+                                "+3. Check that the fingerprint matches on both screens, then tap **Trust**.",
+                                " ",
+                            ]
+                        ),
+                        (
+                            51, 3, 51, 7,
+                            [
+                                " ",
+                                " If pairing fails, check that both devices share a network.",
+                                " ",
+                                "+> **Advanced:** to pair without a camera, open **Settings → Devices → Add Manually**",
+                                "+> and type the host's address and port.",
+                                "+",
+                                "+See [Troubleshooting](troubleshooting.md) for other pairing problems.",
+                            ]
+                        ),
+                    ]))
             session.tool(
-                "Edit",
+                "Bash",
                 [
-                    "file_path": "/workspace/product-docs/docs/troubleshooting.md",
-                    "old_string": "### Pairing code expired", "new_string": "### Code expired",
+                    "command": """
+                        python3 - <<'EOF'
+                        from pathlib import Path
+                        for name in ["docs/troubleshooting.md", "docs/index.md"]:
+                            page = Path(name)
+                            text = page.read_text().replace("Pairing code expired", "Code expired")
+                            page.write_text(text.replace("#pairing-code-expired", "#code-expired"))
+                        EOF
+                        """,
+                    "description": "Rename the expired code entry",
                 ],
-                result: "The file /workspace/product-docs/docs/troubleshooting.md has been updated successfully.")
+                result: "",
+                details: """
+                    {"stdout":"","stderr":"","interrupted":false,"isImage":false,"bashEditDiff":{"files":[\
+                    {"filePath":"/workspace/product-docs/docs/troubleshooting.md","hunks":[{"oldStart":6,"oldLines":7,\
+                    "newStart":6,"newLines":10,"lines":[" ## Pairing"," ","-### Pairing code expired","+### Code expired",\
+                    " ","-Codes expire. Show a new one and try again.",\
+                    "+A pairing code lasts five minutes. On the computer, open **Settings → Devices**",\
+                    "+and choose **Show Pairing Code** again to get a new one.","+",\
+                    "+If the camera can't read the code, see the [network checklist](https://docs.example.com/network-checklist).",\
+                    " "," ### Firewall"]}]},\
+                    {"filePath":"/workspace/product-docs/docs/index.md","hunks":[{"oldStart":9,"oldLines":3,"newStart":9,\
+                    "newLines":3,"lines":["   - [Pair your phone](setup.md#pair-your-phone)",\
+                    "-  - [Pairing code expired](troubleshooting.md#pairing-code-expired)",\
+                    "+  - [Code expired](troubleshooting.md#code-expired)","   - [Firewall](troubleshooting.md#firewall)"]}]}],\
+                    "moreFiles":0,"changedFiles":["/workspace/product-docs/docs/troubleshooting.md",\
+                    "/workspace/product-docs/docs/index.md"]}}
+                    """)
             session.tool(
                 "Bash", ["command": "npm run docs:check", "description": "Check links and anchors"],
                 result: "✓ 42 pages checked\n✓ 0 broken links")
@@ -221,7 +275,23 @@
                     "file_path": "/workspace/product-docs/docs/setup.md",
                     "old_string": "tap **Add Host**", "new_string": "tap **Scan Code**",
                 ],
-                result: "The file /workspace/product-docs/docs/setup.md has been updated successfully.")
+                result: "The file /workspace/product-docs/docs/setup.md has been updated successfully.",
+                details: Self.editResult(
+                    "/workspace/product-docs/docs/setup.md",
+                    hunks: [
+                        (
+                            14, 6, 14, 6,
+                            [
+                                " ## Pair your phone",
+                                " ",
+                                " 1. Open **Settings → Devices** on the computer and choose **Show Pairing Code**.",
+                                "-2. In the app, tap **Add Host** and point the camera at the code.",
+                                "+2. In the app, tap **Scan Code** and point the camera at the code.",
+                                " 3. Check that the fingerprint matches on both screens, then tap **Trust**.",
+                                " ",
+                            ]
+                        )
+                    ]))
             session.reply(
                 """
                 Step 2 now reads:
@@ -232,6 +302,18 @@
                 """)
             session.turnEnded(seconds: 21)
             return session.data
+        }
+
+        /// An edit's structured result, as Claude Code records it: the patch,
+        /// without the file's text.
+        private static func editResult(
+            _ path: String, hunks: [(oldStart: Int, oldLines: Int, newStart: Int, newLines: Int, lines: [String])]
+        ) -> String {
+            let patch = hunks.map { hunk in
+                let lines = hunk.lines.map(sampleJSON).joined(separator: ",")
+                return #"{"oldStart":\#(hunk.oldStart),"oldLines":\#(hunk.oldLines),"newStart":\#(hunk.newStart),"newLines":\#(hunk.newLines),"lines":[\#(lines)]}"#
+            }
+            return #"{"filePath":\#(sampleJSON(path)),"structuredPatch":[\#(patch.joined(separator: ","))],"userModified":false,"replaceAll":false}"#
         }
 
         /// checkout:p3, blocked: a review that stops on a command waiting for
@@ -441,7 +523,11 @@
         }
 
         /// A tool call, and its result unless the call is still waiting.
-        mutating func tool(_ name: String, _ input: KeyValuePairs<String, String>, result: String?) {
+        /// `details` is the result's structured record as JSON; a Bash call
+        /// without one records its output.
+        mutating func tool(
+            _ name: String, _ input: KeyValuePairs<String, String>, result: String?, details: String? = nil
+        ) {
             tools += 1
             let id = "toolu_demo_\(sessionID.prefix(8))_\(tools)"
             let fields = input.map { #"\#(sampleJSON($0.key)):\#(sampleJSON($0.value))"# }.joined(separator: ",")
@@ -449,12 +535,13 @@
             guard let result else { return }
             advance(2)
             let call = parent ?? ""
-            let details =
-                name == "Bash"
-                ? #","toolUseResult":{"stdout":\#(sampleJSON(result)),"stderr":"","interrupted":false,"isImage":false}"#
-                : ""
+            let structured =
+                details
+                ?? (name == "Bash"
+                    ? #"{"stdout":\#(sampleJSON(result)),"stderr":"","interrupted":false,"isImage":false}"# : nil)
+            let detailsField = structured.map { #","toolUseResult":\#($0)"# } ?? ""
             user(
-                #""message":{"role":"user","content":[{"tool_use_id":"\#(id)","type":"tool_result","content":\#(sampleJSON(result)),"is_error":false}]}\#(details),"sourceToolAssistantUUID":"\#(call)""#
+                #""message":{"role":"user","content":[{"tool_use_id":"\#(id)","type":"tool_result","content":\#(sampleJSON(result)),"is_error":false}]}\#(detailsField),"sourceToolAssistantUUID":"\#(call)""#
             )
             advance(1)
         }

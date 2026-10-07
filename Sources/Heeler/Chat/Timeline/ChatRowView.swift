@@ -21,6 +21,8 @@ extension View {
 struct ChatRowView: View {
     let row: ChatRow
     let isExpanded: Bool
+    /// The changed files whose diffs are open, by recorded path.
+    var expandedFiles: Set<String> = []
     let actions: ChatRowActions
 
     var body: some View {
@@ -46,8 +48,9 @@ struct ChatRowView: View {
             ChatReasoningRow(reasoning: reasoning, isExpanded: isExpanded) { actions.toggle(row.id) }
         case .tool(let tool):
             ChatToolRow(
-                tool: tool, isExpanded: isExpanded, missingOutputText: actions.missingOutputText
-            ) { actions.toggle(row.id) }
+                tool: tool, isExpanded: isExpanded, expandedFiles: expandedFiles,
+                missingOutputText: actions.missingOutputText, toggle: { actions.toggle(row.id) },
+                files: fileActions, textActions: row.hasInnerControls ? textActions : nil)
         case .plan(let plan, let blocks):
             ChatPlanRow(plan: plan, blocks: blocks)
         case .questions(let questions):
@@ -62,16 +65,32 @@ struct ChatRowView: View {
             ChatOlderHistoryRow(older: older, loadOlder: actions.loadOlder)
         }
     }
+
+    private var fileActions: ChatFileActions {
+        let id = row.id
+        let actions = actions
+        return ChatFileActions(
+            toggle: { actions.toggleFile(id, $0) }, showAll: { actions.showFile(id, $0) },
+            retry: { actions.retryOutput(id) })
+    }
+
+    /// Copy and Select Text for a row VoiceOver can't read as one element.
+    private var textActions: ChatToolRow.TextActions? {
+        guard let text = row.copyText else { return nil }
+        let actions = actions
+        return ChatToolRow.TextActions(copy: { actions.copy(text) }, selectText: { actions.selectText(text) })
+    }
 }
 
 /// Who said it, then what, for VoiceOver; Copy and Select Text mirror the
-/// long-press menu.
+/// long-press menu. A row with controls of its own keeps them reachable,
+/// and its header carries Copy and Select Text instead.
 private struct ChatRowAccessibility: ViewModifier {
     let row: ChatRow
     let actions: ChatRowActions
 
     func body(content: Content) -> some View {
-        if let text = row.copyText {
+        if let text = row.copyText, !row.hasInnerControls {
             content
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier(identifier)
@@ -238,10 +257,20 @@ private struct ChatReasoningRow: View {
 }
 
 private struct ChatToolRow: View {
+    struct TextActions {
+        var copy: () -> Void
+        var selectText: () -> Void
+    }
+
     let tool: ChatToolActivity
     let isExpanded: Bool
+    let expandedFiles: Set<String>
     let missingOutputText: String
     let toggle: () -> Void
+    let files: ChatFileActions
+    /// Set when the row's own controls keep VoiceOver from reading it as
+    /// one element, so the header carries them.
+    let textActions: TextActions?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -274,15 +303,42 @@ private struct ChatToolRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(isExpanded ? "Hides the output" : "Shows the output")
+            .accessibilityHint(hint)
+            .accessibilityActions {
+                if let textActions {
+                    Button("Copy", action: textActions.copy)
+                    Button("Select Text", action: textActions.selectText)
+                }
+            }
             if isExpanded {
                 details
+                    .padding(.leading, 26)
+            }
+            if let changes = tool.fileChanges, !tool.showsDiffAsOutput {
+                ChatFileChangesList(
+                    changes: changes, expandedFiles: expandedFiles, read: tool.outputRead,
+                    missingOutputText: fileMissingOutputText, actions: files)
                     .padding(.leading, 26)
             }
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+    }
+
+    /// What an open diff says while its lines were never read; nil for a
+    /// row with no record to read them from.
+    private var fileMissingOutputText: String? {
+        tool.output == nil ? nil : missingOutputText
+    }
+
+    private var hint: String {
+        switch (isExpanded, tool.showsDiffAsOutput) {
+        case (true, true): "Hides the diff"
+        case (false, true): "Shows the diff"
+        case (true, false): "Hides the output"
+        case (false, false): "Shows the output"
+        }
     }
 
     /// Commands, paths and patterns read as code. A command row with a
@@ -317,7 +373,20 @@ private struct ChatToolRow: View {
             if !tool.questions.isEmpty {
                 ChatQuestionsView(questions: tool.questions)
             }
-            if let preview = tool.preview {
+            if tool.showsDiffAsOutput, let changes = tool.fileChanges {
+                ForEach(changes.files.indices, id: \.self) { index in
+                    let file = changes.files[index]
+                    if file.lineCount > 0 {
+                        ChatInlineFileDiff(
+                            file: file, read: tool.outputRead, missingOutputText: fileMissingOutputText,
+                            actions: files)
+                    } else {
+                        Text("No lines changed.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if let preview = tool.preview {
                 if !preview.text.isEmpty {
                     ChatToolOutputText(text: preview.text)
                 }
@@ -354,7 +423,7 @@ private struct ChatToolRow: View {
     private static func continuation(of preview: ChatToolPreview, read: ChatToolActivity.OutputRead?) -> String? {
         switch read {
         case .loading?: "Loading the full output…"
-        case .failed(let message)?: message
+        case .failed(let message)?, .unavailable(let message)?: message
         case .read?, nil: preview.isTruncated ? "Output continues in the terminal." : nil
         }
     }
@@ -364,7 +433,7 @@ private struct ChatToolRow: View {
         switch read {
         case .loading: "Loading output…"
         case .read: "No output."
-        case .failed(let message): message
+        case .failed(let message), .unavailable(let message): message
         }
     }
 
@@ -407,7 +476,7 @@ private struct ChatToolOutputText: View {
     }
 }
 
-private struct ChatDiffBadge: View {
+struct ChatDiffBadge: View {
     let diff: ChatDiffStats
 
     var body: some View {

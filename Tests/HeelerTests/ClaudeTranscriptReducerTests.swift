@@ -152,15 +152,18 @@ struct ClaudeTranscriptReducerTests {
                     callID: "toolu_01CV6HHFQmyxCu6gXqLc4vgE"))
     }
 
-    @Test("Creating a file counts its lines (M L91-L93)")
+    @Test("Creating a file counts its lines and opens to them (M L91-L93)")
     func writeCreate() throws {
+        let created = ChatFileChange(
+            path: "/private/tmp/heeler-tmp-chat2/probe-claude/q.txt", kind: .created, added: 1, removed: 0,
+            lineCount: 1, hunks: [ChatDiffHunk(oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: ["+probe"])])
         #expect(
             Self.tool("tool:toolu_01VAL7noTGaKa2T9YSi4fdXT", in: try Self.transcript())
                 == ChatToolActivity(
                     kind: .fileWrite, name: "Write", title: "/private/tmp/heeler-tmp-chat2/probe-claude/q.txt",
                     status: .succeeded, diff: ChatDiffStats(added: 1, removed: 0),
+                    fileChanges: ChatFileChanges(files: [created], directory: "/private/tmp/heeler-tmp-chat2/probe-claude"),
                     callID: "toolu_01VAL7noTGaKa2T9YSi4fdXT",
-                    preview: ChatToolPreview(text: "probe\n", isTruncated: false),
                     output: ChatOutputReference(offset: 54848, length: 1051)))
     }
 

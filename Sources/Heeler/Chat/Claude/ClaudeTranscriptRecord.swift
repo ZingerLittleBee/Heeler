@@ -214,8 +214,9 @@ struct ClaudeToolUseResult: Sendable, Equatable {
     var filePath: String?
     /// Line counts from `structuredPatch`, or a created file's lines.
     var diff: ChatDiffStats?
-    /// The patch as unified-diff hunks, or a created file's start, capped.
-    var diffPreview: ChatToolPreview?
+    /// The files the call changed: an edit's `structuredPatch` or a created
+    /// file's content, or Bash's `bashEditDiff`. Hunks are capped.
+    var fileChanges: ChatFileChanges?
     /// Agent: `completed`, `async_launched`, `remote_launched`.
     var status: String?
     var agentID: String?
@@ -362,7 +363,7 @@ extension ClaudeRecord {
                 toolResult = ClaudeToolResultDetails(
                     denialKind: raw.toolDenialKind, userFeedback: raw.userFeedback,
                     isDenialUnanswered: raw.toolDenialUnanswered,
-                    result: raw.toolUseResult.map(ClaudeToolUseResult.init))
+                    result: raw.toolUseResult.map { ClaudeToolUseResult($0, directory: raw.cwd) })
             }
         case .system:
             system = ClaudeSystemDetails(
@@ -456,7 +457,8 @@ extension ClaudeTodo {
 }
 
 extension ClaudeToolUseResult {
-    fileprivate init(_ raw: RawToolUseResult) {
+    /// `directory` is the record's `cwd`, which file paths read relative to.
+    fileprivate init(_ raw: RawToolUseResult, directory: String?) {
         self.init()
         let output = [raw.stdout, raw.stderr].compactMap { $0 }.filter { !$0.isEmpty }
         if !output.isEmpty {
@@ -468,23 +470,17 @@ extension ClaudeToolUseResult {
         type = raw.type
         filePath = raw.filePath
         if let hunks = raw.structuredPatch, !hunks.isEmpty {
-            var added = 0
-            var removed = 0
-            var lines: [String] = []
-            for hunk in hunks {
-                lines.append(
-                    "@@ -\(hunk.oldStart ?? 0),\(hunk.oldLines ?? 0) +\(hunk.newStart ?? 0),\(hunk.newLines ?? 0) @@")
-                for line in hunk.lines ?? [] {
-                    if line.hasPrefix("+") { added += 1 }
-                    if line.hasPrefix("-") { removed += 1 }
-                    lines.append(line)
-                }
-            }
-            diff = ChatDiffStats(added: added, removed: removed)
-            diffPreview = ChatToolPreview(capping: lines.joined(separator: "\n"))
+            let change = ChatFileChange(
+                path: raw.filePath ?? "", kind: .updated, recorded: hunks.map(ChatDiffHunk.init))
+            diff = ChatDiffStats(added: change.added, removed: change.removed)
+            fileChanges = ChatFileChanges(files: [change], directory: directory)
         } else if raw.type == "create", let content = raw.contentText {
-            diff = ChatDiffStats(added: Self.lineCount(content), removed: 0)
-            diffPreview = ChatToolPreview(capping: content)
+            let change = Self.creation(at: raw.filePath ?? "", of: content)
+            diff = ChatDiffStats(added: change.added, removed: 0)
+            fileChanges = ChatFileChanges(files: [change], directory: directory)
+        }
+        if let recorded = raw.bashEditDiff, let changes = Self.fileChanges(recorded, directory: directory) {
+            fileChanges = changes
         }
         status = raw.status
         agentID = raw.agentId
@@ -502,6 +498,45 @@ extension ClaudeToolUseResult {
         guard !text.isEmpty else { return 0 }
         let newlines = text.utf8.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
         return text.utf8.last == 0x0A ? newlines : newlines + 1
+    }
+
+    /// A created file as one hunk of added lines. Only the lines a row can
+    /// keep are split out; the counts cover the whole text.
+    private static func creation(at path: String, of content: String) -> ChatFileChange {
+        let count = lineCount(content)
+        let lines = content.utf8
+            .split(separator: 0x0A, maxSplits: ChatFileChanges.limits.lines, omittingEmptySubsequences: false)
+            .prefix(min(count, ChatFileChanges.limits.lines))
+            .map { "+" + String(decoding: $0, as: UTF8.self) }
+        let hunks = lines.isEmpty ? [] : [ChatDiffHunk(oldStart: 0, oldLines: 0, newStart: 1, newLines: count, lines: lines)]
+        var change = ChatFileChange(path: path, kind: .created, recorded: hunks)
+        change.added = count
+        change.lineCount = count
+        return change
+    }
+
+    /// The changes a Bash command made, or nil when the record says nothing
+    /// a row shows: no file, no count and no note.
+    private static func fileChanges(_ recorded: RawBashEditDiff, directory: String?) -> ChatFileChanges? {
+        var changes = ChatFileChanges(
+            files: [], moreFiles: max(recorded.moreFiles ?? 0, 0), directory: directory,
+            isShared: recorded.shared ?? false, isUnavailable: recorded.unavailable ?? false,
+            isSkipped: recorded.skipped ?? false)
+        for file in recorded.files ?? [] {
+            guard let path = file.filePath, !path.isEmpty else { continue }
+            guard changes.files.count < ChatFileChanges.maximumFiles else {
+                changes.moreFiles += 1
+                continue
+            }
+            let kind: ChatFileChange.Kind =
+                file.created == true ? .created : file.deleted == true ? .deleted : .updated
+            changes.files.append(
+                ChatFileChange(path: path, kind: kind, recorded: (file.hunks ?? []).map(ChatDiffHunk.init)))
+        }
+        guard !changes.files.isEmpty || changes.moreFiles > 0 || changes.isShared || changes.isUnavailable
+            || changes.isSkipped
+        else { return nil }
+        return changes
     }
 }
 
@@ -569,6 +604,7 @@ private struct RawLine: Decodable {
     var relocatedCwd: String?
     var continuedInSessionID: String?
     var operation: String?
+    var cwd: String?
 
     private enum CodingKeys: String, CodingKey {
         case type, subtype, uuid, parentUuid, logicalParentUuid, isSidechain, isMeta, teamName
@@ -578,7 +614,7 @@ private struct RawLine: Decodable {
         case toolUseResult, toolDenialKind, userFeedback, toolDenialUnanswered, content
         case compactMetadata, retractedMessageUuids, originalModel, fallbackModel, commandRun
         case attachment, customTitle, aiTitle, summary, permissionMode, relocatedCwd
-        case continuedInSessionId, operation
+        case continuedInSessionId, operation, cwd
     }
 
     init(from decoder: any Decoder) throws {
@@ -625,6 +661,7 @@ private struct RawLine: Decodable {
         relocatedCwd = c.lenient(String.self, .relocatedCwd)
         continuedInSessionID = c.lenient(String.self, .continuedInSessionId)
         operation = c.lenient(String.self, .operation)
+        cwd = c.lenient(String.self, .cwd)
     }
 }
 
@@ -820,6 +857,7 @@ private struct RawToolUseResult: Decodable {
     var contentText: String?
     var contentBlocks: [RawBlock]?
     var structuredPatch: [Hunk]?
+    var bashEditDiff: RawBashEditDiff?
     var status: String?
     var agentId: String?
     var answers: [String: String]?
@@ -828,7 +866,7 @@ private struct RawToolUseResult: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         case stdout, stderr, interrupted, backgroundTaskId, persistedOutputPath, type, filePath
-        case content, structuredPatch, status, agentId, answers, plan, newTodos
+        case content, structuredPatch, bashEditDiff, status, agentId, answers, plan, newTodos
     }
 
     init(from decoder: any Decoder) throws {
@@ -845,11 +883,59 @@ private struct RawToolUseResult: Decodable {
             contentBlocks = c.lenient([RawBlock].self, .content)
         }
         structuredPatch = c.lenient([Hunk].self, .structuredPatch)
+        bashEditDiff = c.lenient(RawBashEditDiff.self, .bashEditDiff)
         status = c.lenient(String.self, .status)
         agentId = c.lenient(String.self, .agentId)
         answers = c.lenient([String: String].self, .answers)
         plan = c.lenient(String.self, .plan)
         newTodos = c.lenient([RawTodo].self, .newTodos)
+    }
+}
+
+/// What a Bash command changed in its repository, as Claude Code records it
+/// when its Bash edit diff is on.
+private struct RawBashEditDiff: Decodable {
+    struct File: Decodable {
+        var filePath: String?
+        var hunks: [RawToolUseResult.Hunk]?
+        var created: Bool?
+        var deleted: Bool?
+
+        private enum CodingKeys: String, CodingKey { case filePath, hunks, created, deleted }
+
+        init(from decoder: any Decoder) throws {
+            guard let c = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+            filePath = c.lenient(String.self, .filePath)
+            hunks = c.lenient([RawToolUseResult.Hunk].self, .hunks)
+            created = c.lenient(Bool.self, .created)
+            deleted = c.lenient(Bool.self, .deleted)
+        }
+    }
+
+    var files: [File]?
+    /// Changed files with no diff recorded.
+    var moreFiles: Int?
+    var unavailable: Bool?
+    var skipped: Bool?
+    var shared: Bool?
+
+    private enum CodingKeys: String, CodingKey { case files, moreFiles, unavailable, skipped, shared }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        files = c.lenient([File].self, .files)
+        moreFiles = c.lenient(Int.self, .moreFiles)
+        unavailable = c.lenient(Bool.self, .unavailable)
+        skipped = c.lenient(Bool.self, .skipped)
+        shared = c.lenient(Bool.self, .shared)
+    }
+}
+
+extension ChatDiffHunk {
+    fileprivate init(_ hunk: RawToolUseResult.Hunk) {
+        self.init(
+            oldStart: hunk.oldStart ?? 0, oldLines: hunk.oldLines ?? 0,
+            newStart: hunk.newStart ?? 0, newLines: hunk.newLines ?? 0, lines: hunk.lines ?? [])
     }
 }
 

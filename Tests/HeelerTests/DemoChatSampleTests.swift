@@ -50,6 +50,14 @@
                 #expect(Self.kinds(entries).isSuperset(of: ["user", "assistant", "reasoning", "tool", "compaction"]))
             }
             #expect(docs.contains { if case .user(let user) = $0.content { user.imageCount == 1 } else { false } })
+            let docsTools = docs.compactMap { entry -> ChatToolActivity? in
+                guard case .tool(let tool) = entry.content else { return nil }
+                return tool
+            }
+            // A command that changed two files lists them, and an edit's row
+            // opens to its diff.
+            #expect(docsTools.contains { $0.kind == .command && $0.fileChanges?.files.count == 2 })
+            #expect(docsTools.contains { $0.showsDiffAsOutput && $0.fileChanges?.files.first?.hunks.count == 2 })
             #expect(attach.contains { if case .tool(let tool) = $0.content { tool.diff != nil } else { false } })
             #expect(attach.contains { if case .tool(let tool) = $0.content { tool.status == .failed } else { false } })
             guard case .tool(let pending) = checkout.last?.content else {
@@ -158,7 +166,7 @@
             case .assistant(let assistant): [assistant.text]
             case .reasoning(let reasoning): [reasoning.text]
             case .tool(let tool):
-                [tool.title, tool.subtitle, tool.note, tool.preview?.text].compactMap(\.self)
+                [tool.title, tool.subtitle, tool.note, tool.preview?.text, tool.fileChanges?.copyText].compactMap(\.self)
                     + tool.questions.flatMap(questionTexts)
             case .plan(let plan): [plan.text, plan.note].compactMap(\.self)
             case .questions(let set): set.questions.flatMap(questionTexts)

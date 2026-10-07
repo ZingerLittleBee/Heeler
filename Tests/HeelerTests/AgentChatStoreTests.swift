@@ -397,7 +397,7 @@ struct AgentChatStoreTests {
         fixture.store.loadOutput(id)
         await fixture.store.outputReadsSettled()
 
-        #expect(fixture.store.outputs.loads[id]?.state == .read(ChatToolPreview(text: "built\nok", isTruncated: false)))
+        #expect(fixture.store.outputs.loads[id]?.state == .read(ChatExpandedOutput(preview: ChatToolPreview(text: "built\nok", isTruncated: false))))
         fixture.store.loadOutput(id)
         await fixture.store.outputReadsSettled()
         #expect(await fixture.files.reads.count == 1)
@@ -426,7 +426,7 @@ struct AgentChatStoreTests {
         fixture.store.retry()
         await fixture.store.step()
         await fixture.store.outputReadsSettled()
-        #expect(fixture.store.outputs.loads[id]?.state == .read(ChatToolPreview(text: "built", isTruncated: false)))
+        #expect(fixture.store.outputs.loads[id]?.state == .read(ChatExpandedOutput(preview: ChatToolPreview(text: "built", isTruncated: false))))
     }
 
     @Test func aReadForAnEarlierConversationIsDropped() async throws {

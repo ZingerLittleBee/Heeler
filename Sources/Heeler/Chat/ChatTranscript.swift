@@ -194,8 +194,12 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         /// `preview` holds what the read found, or the earlier preview when
         /// it found none.
         case read
-        /// Why the output could not be read, as the row says it.
+        /// Why the output could not be read, as the row says it. Reading
+        /// again may succeed.
         case failed(String)
+        /// Why the output can't be shown, as the row says it. Reading again
+        /// would find the same.
+        case unavailable(String)
     }
 
     var kind: Kind
@@ -210,6 +214,8 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     /// approval.
     var note: String?
     var diff: ChatDiffStats?
+    /// The files the call changed, as the program recorded them.
+    var fileChanges: ChatFileChanges?
     var exitCode: Int?
     /// Questions a question tool asked, with the answers once given.
     var questions: [ChatQuestion]
@@ -231,8 +237,8 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     init(
         kind: Kind, name: String, title: String, subtitle: String? = nil,
         status: Status, note: String? = nil, diff: ChatDiffStats? = nil,
-        exitCode: Int? = nil, questions: [ChatQuestion] = [], callID: String? = nil,
-        preview: ChatToolPreview? = nil, output: ChatOutputReference? = nil
+        fileChanges: ChatFileChanges? = nil, exitCode: Int? = nil, questions: [ChatQuestion] = [],
+        callID: String? = nil, preview: ChatToolPreview? = nil, output: ChatOutputReference? = nil
     ) {
         self.kind = kind
         self.name = name
@@ -241,6 +247,7 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         self.status = status
         self.note = note
         self.diff = diff
+        self.fileChanges = fileChanges
         self.exitCode = exitCode
         self.questions = questions
         self.callID = callID
@@ -248,10 +255,22 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         self.output = output
     }
 
+    /// Whether the row's output is its file's diff: an edit or a write whose
+    /// patch was recorded.
+    var showsDiffAsOutput: Bool {
+        (kind == .fileEdit || kind == .fileWrite) && fileChanges != nil
+    }
+
+    /// Whether an expanded row has more output text to read: none was kept,
+    /// or only its start. A row whose output is a diff reads for the diff.
+    var previewIsIncomplete: Bool {
+        showsDiffAsOutput ? false : preview?.isTruncated ?? true
+    }
+
     // `preview`, `cardAnswer` and `outputRead` are deliberately absent:
     // decoding leaves them nil.
     private enum CodingKeys: String, CodingKey {
-        case kind, name, title, subtitle, status, note, diff, exitCode, questions, callID, output
+        case kind, name, title, subtitle, status, note, diff, fileChanges, exitCode, questions, callID, output
     }
 }
 
@@ -265,6 +284,216 @@ struct ChatDiffStats: Equatable, Codable, Sendable {
         self.added = added
         self.removed = removed
         self.files = files
+    }
+}
+
+/// The files a tool call changed, as the program recorded them: Claude
+/// Code's diff of what a Bash command changed in its repository, or an
+/// edit's patch. Chat lists them under the call, as Claude Code's terminal
+/// does.
+struct ChatFileChanges: Equatable, Codable, Sendable {
+    var files: [ChatFileChange]
+    /// Changed files recorded without a diff: binary or mode-only changes,
+    /// diffs too large to record, and files past the program's limit.
+    var moreFiles = 0
+    /// The directory the call ran in. Paths inside it read relative to it.
+    var directory: String?
+    /// Another command ran in the same repository at the same time, so a
+    /// change made by either may show under either.
+    var isShared = false
+    /// Part of the diff, or all of it, could not be taken.
+    var isUnavailable = false
+    /// The command was a single git command that moves the working tree,
+    /// which Claude Code takes no diff of.
+    var isSkipped = false
+    /// The command runs a git step that can move the working tree, so the
+    /// changes may be that step's rather than edits.
+    var movesWorkingTree = false
+
+    /// What every decoded row keeps of each file's hunks: as much as a file
+    /// shows when it opens in its row.
+    static let rowLimits = ChatToolPreview.Limits(lines: 40, bytes: 32 * 1_024)
+    /// What each file keeps when an expanded row reads its record again.
+    static let expandedLimits = ChatToolPreview.Limits(lines: 2_000, bytes: 512 * 1_024)
+    /// The most files a row lists; the rest count in `moreFiles`.
+    static let maximumFiles = 20
+
+    /// The limits `ChatFileChange.init(path:kind:recorded:)` applies:
+    /// `rowLimits`, except while an expanded row's record is decoded again.
+    @TaskLocal static var limits = rowLimits
+
+    /// How a file's path reads under its call: relative to the directory
+    /// the call ran in when inside it, otherwise as recorded.
+    func displayPath(of file: ChatFileChange) -> String {
+        guard let directory, !directory.isEmpty else { return file.path }
+        let prefix = directory.hasSuffix("/") ? directory : directory + "/"
+        guard file.path.hasPrefix(prefix), file.path.count > prefix.count else { return file.path }
+        return String(file.path.dropFirst(prefix.count))
+    }
+
+    /// The changes as Copy and Select Text take them: each file's line, then
+    /// the hunks the row holds.
+    var copyText: String {
+        files.map { file in
+            var lines = ["\(file.kind.label) \(displayPath(of: file)) (+\(file.added) -\(file.removed))"]
+            for hunk in file.hunks {
+                lines.append("@@ -\(hunk.oldStart),\(hunk.oldLines) +\(hunk.newStart),\(hunk.newLines) @@")
+                lines.append(contentsOf: hunk.lines)
+            }
+            return lines.joined(separator: "\n")
+        }.joined(separator: "\n\n")
+    }
+}
+
+/// One file a tool call changed.
+struct ChatFileChange: Equatable, Codable, Sendable {
+    enum Kind: String, Codable, Sendable {
+        case updated
+        case created
+        case deleted
+
+        /// The word Claude Code's terminal puts before the path.
+        var label: String {
+            switch self {
+            case .updated: "Updated"
+            case .created: "Created"
+            case .deleted: "Deleted"
+            }
+        }
+    }
+
+    /// The path as recorded: absolute for Claude Code.
+    var path: String
+    var kind: Kind
+    var added: Int
+    var removed: Int
+    /// The diff lines of the recorded hunks, kept or not.
+    var lineCount: Int
+    /// The recorded hunks, up to `ChatFileChanges.limits` of their lines.
+    /// Held in memory only: the cache stores entries without tool output.
+    var hunks: [ChatDiffHunk] = []
+    /// The last kept line was cut short. Held in memory only.
+    var isLineCut = false
+
+    /// Whether `hunks` holds every recorded line in full.
+    var isComplete: Bool {
+        !isLineCut && hunks.reduce(0) { $0 + $1.diffLineCount } >= lineCount
+    }
+
+    init(path: String, kind: Kind, added: Int, removed: Int, lineCount: Int, hunks: [ChatDiffHunk] = []) {
+        self.path = path
+        self.kind = kind
+        self.added = added
+        self.removed = removed
+        self.lineCount = lineCount
+        self.hunks = hunks
+    }
+
+    /// A change from its recorded hunks: every line counts, and `hunks`
+    /// keeps them up to `ChatFileChanges.limits`.
+    init(path: String, kind: Kind, recorded: [ChatDiffHunk]) {
+        var added = 0
+        var removed = 0
+        var lineCount = 0
+        for line in recorded.lazy.flatMap(\.lines) where !ChatDiffHunk.isNewlineMarker(line) {
+            lineCount += 1
+            if line.hasPrefix("+") { added += 1 }
+            if line.hasPrefix("-") { removed += 1 }
+        }
+        self.init(path: path, kind: kind, added: added, removed: removed, lineCount: lineCount)
+        let kept = Self.keeping(recorded, within: ChatFileChanges.limits)
+        hunks = kept.hunks
+        isLineCut = kept.isLineCut
+    }
+
+    /// The change with no more of its hunks than `limits` allow, as a row
+    /// shows it.
+    func keeping(_ limits: ChatToolPreview.Limits) -> ChatFileChange {
+        let kept = Self.keeping(hunks, within: limits)
+        guard !kept.isAll else { return self }
+        var change = self
+        change.hunks = kept.hunks
+        change.isLineCut = kept.isLineCut
+        return change
+    }
+
+    /// The start of `hunks` within `limits`, never splitting a character:
+    /// whether that is all of them, and whether its last line was cut
+    /// short. A first line longer than the limit keeps its start.
+    private static func keeping(
+        _ hunks: [ChatDiffHunk], within limits: ChatToolPreview.Limits
+    ) -> (hunks: [ChatDiffHunk], isAll: Bool, isLineCut: Bool) {
+        var result: [ChatDiffHunk] = []
+        var isLineCut = false
+        var keptLines = 0
+        var keptBytes = 0
+        for hunk in hunks {
+            var kept = hunk
+            kept.lines = []
+            var isFull = false
+            for line in hunk.lines {
+                let isMarker = ChatDiffHunk.isNewlineMarker(line)
+                if !isMarker, keptLines == limits.lines {
+                    isFull = true
+                    break
+                }
+                let size = line.utf8.count
+                if keptBytes + size > limits.bytes {
+                    if keptLines == 0, !isMarker {
+                        kept.lines.append(Self.prefix(of: line, bytes: limits.bytes))
+                        keptLines += 1
+                        isLineCut = true
+                    }
+                    isFull = true
+                    break
+                }
+                kept.lines.append(line)
+                keptBytes += size
+                if !isMarker { keptLines += 1 }
+            }
+            if !kept.lines.isEmpty { result.append(kept) }
+            if isFull { return (result, false, isLineCut) }
+        }
+        return (result, true, false)
+    }
+
+    private static func prefix(of line: String, bytes: Int) -> String {
+        var end = line.startIndex
+        var size = 0
+        for index in line.indices {
+            let next = size + line[index].utf8.count
+            guard next <= bytes else { break }
+            size = next
+            end = line.index(after: index)
+        }
+        return String(line[..<end])
+    }
+
+    // `hunks` and `isLineCut` are deliberately absent: decoding leaves the
+    // change without its lines, which an expanded row reads again.
+    private enum CodingKeys: String, CodingKey {
+        case path, kind, added, removed, lineCount
+    }
+}
+
+/// A hunk as the program recorded it.
+struct ChatDiffHunk: Equatable, Sendable {
+    var oldStart: Int
+    var oldLines: Int
+    var newStart: Int
+    var newLines: Int
+    /// Each line starts with ` `, `-` or `+`; a line starting with `\` says
+    /// the line before it has no final newline.
+    var lines: [String]
+
+    /// The lines that are lines of the file, without newline markers.
+    var diffLineCount: Int {
+        lines.reduce(0) { Self.isNewlineMarker($1) ? $0 : $0 + 1 }
+    }
+
+    /// `\ No newline at end of file`, which belongs to the line before.
+    static func isNewlineMarker(_ line: String) -> Bool {
+        line.hasPrefix("\\")
     }
 }
 
@@ -343,14 +572,31 @@ struct ChatOutputReference: Equatable, Codable, Sendable {
     }
 }
 
-/// A tool's output decoded again from the line its row references.
+/// A tool's output decoded again from the line its row references. Either
+/// form carries the files the call changed, kept up to
+/// `ChatFileChanges.limits`, when the line records any.
 enum ChatToolOutput: Equatable, Sendable {
     /// The output as `ChatToolPreview.limits` caps it; nil when the call
     /// recorded none.
-    case preview(ChatToolPreview?)
+    case preview(ChatToolPreview?, fileChanges: ChatFileChanges? = nil)
     /// The program moved the output to this file. `fallback` is what the
     /// line itself keeps.
-    case file(String, fallback: ChatToolPreview?)
+    case file(String, fallback: ChatToolPreview?, fileChanges: ChatFileChanges? = nil)
+}
+
+/// What reading a tool's line again for an expanded row found.
+struct ChatExpandedOutput: Equatable, Sendable {
+    /// The output up to `ChatToolPreview.expandedLimits`; nil when it has
+    /// nothing to show.
+    var preview: ChatToolPreview?
+    /// The files the call changed, each up to
+    /// `ChatFileChanges.expandedLimits`; nil when the line records none.
+    var fileChanges: ChatFileChanges?
+
+    init(preview: ChatToolPreview? = nil, fileChanges: ChatFileChanges? = nil) {
+        self.preview = preview
+        self.fileChanges = fileChanges
+    }
 }
 
 /// A plan the Agent proposed, rendered as Markdown.

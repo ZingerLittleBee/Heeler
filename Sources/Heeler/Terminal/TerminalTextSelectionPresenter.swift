@@ -116,7 +116,9 @@ final class TerminalTextSelectionViewController: UIViewController {
 }
 
 extension UIView {
-    fileprivate var nearestPresentingViewController: UIViewController? {
+    /// The view controller a sheet presents from: the one showing this view,
+    /// or whatever it already presents.
+    var nearestPresentingViewController: UIViewController? {
         var responder: UIResponder? = self
         while let current = responder {
             if let viewController = current as? UIViewController {

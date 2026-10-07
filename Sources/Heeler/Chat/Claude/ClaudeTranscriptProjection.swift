@@ -40,10 +40,12 @@ enum ClaudeTranscriptProjection {
         }
         let preview = ClaudeToolSummary.preview(
             for: use, result: answer.result, details: record.toolResult, outcome: answer.outcome)
+        let fileChanges = ClaudeToolSummary.fileChanges(
+            for: use, details: record.toolResult, outcome: answer.outcome)
         if let path = record.toolResult?.result?.persistedOutputPath {
-            return .file(path, fallback: preview)
+            return .file(path, fallback: preview, fileChanges: fileChanges)
         }
-        return .preview(preview)
+        return .preview(preview, fileChanges: fileChanges)
     }
 
     // MARK: - Recorded prompts
@@ -306,6 +308,8 @@ private struct Builder {
             if case .succeeded = outcome {
                 row.diff = structured?.diff
             }
+            row.fileChanges = ClaudeToolSummary.fileChanges(
+                for: use, details: answer.record.toolResult, outcome: outcome)
         }
         // A background agent reports through its notification.
         if row.preview == nil, !use.id.isEmpty, let report = notifications[use.id]?.result, !report.isEmpty {

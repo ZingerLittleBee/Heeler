@@ -21,6 +21,12 @@ struct ChatRowActions {
     var copy: @MainActor (String) -> Void
     var selectText: @MainActor (String) -> Void
     var missingOutputText: String
+    /// Opens or closes one changed file's diff, by its recorded path.
+    var toggleFile: @MainActor (ChatRowID, String) -> Void = { _, _ in }
+    /// Shows one changed file's whole diff.
+    var showFile: @MainActor (ChatRowID, String) -> Void = { _, _ in }
+    /// Tries a failed output read again.
+    var retryOutput: @MainActor (ChatRowID) -> Void = { _ in }
 }
 
 /// The Chat timeline: a collection view of hosted SwiftUI rows that opens at
@@ -47,6 +53,12 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     private var applied: ChatTimelineState?
     private var rowsByID: [ChatRowID: ChatRow] = [:]
     private var expanded: Set<ChatRowID> = []
+    /// The changed files whose diffs are open, by recorded path.
+    private var expandedFiles: [ChatRowID: Set<String>] = [:]
+    /// Bumped from one counter whenever a row opens or closes anything, so
+    /// a height measured before can't pass for the new layout.
+    private var disclosures: [ChatRowID: Int] = [:]
+    private var lastDisclosure = 0
     private var latch = ChatFollowLatch()
     private var reportedFollowing = true
     private var isJumpAnimating = false
@@ -102,10 +114,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         layout.itemIDs = { [weak self] in self?.dataSource?.snapshot().itemIdentifiers ?? [] }
         layout.rowInfo = { [weak self] id in
-            guard let row = self?.rowsByID[id] else { return nil }
-            let expanded = self?.expanded.contains(id) == true
-            // An expanded row is a different measurement of the same content.
-            return (row.seed, row.revision * 2 + (expanded ? 1 : 0))
+            guard let self, let row = rowsByID[id] else { return nil }
+            // What is open makes a different measurement of the same content.
+            return (row.seed, row.revision << 32 | (disclosures[id] ?? 0))
         }
         layout.isFollowing = { [weak self] in self?.latch.isFollowing ?? true }
 
@@ -113,9 +124,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             [weak self] cell, _, id in
             guard let self, let row = rowsByID[id] else { return }
             let isExpanded = expanded.contains(id)
+            let files = expandedFiles[id] ?? []
             let actions = rowActions
             cell.contentConfiguration = UIHostingConfiguration {
-                ChatRowView(row: row, isExpanded: isExpanded, actions: actions)
+                ChatRowView(row: row, isExpanded: isExpanded, expandedFiles: files, actions: actions)
             }
             .margins(.all, 0)
             .minSize(width: 0, height: 0)
@@ -138,7 +150,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             loadOlder: { [weak self] in self?.actions.loadOlder() },
             copy: { text in UIPasteboard.general.string = text },
             selectText: { [weak self] text in self?.selectText(text) },
-            missingOutputText: actions.missingOutputText)
+            missingOutputText: actions.missingOutputText,
+            toggleFile: { [weak self] id, path in self?.toggleFile(id, path: path) },
+            showFile: { [weak self] id, path in self?.showFile(id, path: path) },
+            retryOutput: { [weak self] id in self?.retryOutput(id) })
     }
 
     // MARK: Updates
@@ -159,6 +174,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
 
         guard let previous, previous.generation == state.generation else {
             expanded = []
+            expandedFiles = [:]
+            disclosures = [:]
             requestedOlderAtRowCount = nil
             latch.reset()
             noteFollowing()
@@ -179,10 +196,12 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         snapshot.reconfigureItems(changed)
         expanded.formIntersection(rowsByID.keys)
+        expandedFiles = expandedFiles.filter { rowsByID[$0.key] != nil }
+        disclosures = disclosures.filter { rowsByID[$0.key] != nil }
         // A row expanded while it ran may have output now. The request
         // waits for this update to finish, since it changes what the list
         // is built from.
-        let wanting = changed.filter { expanded.contains($0) && wantsOutput($0, retrying: false) }
+        let wanting = changed.filter { wantsOutput($0, retrying: false) }
         if !wanting.isEmpty {
             Task { @MainActor [weak self] in
                 for id in wanting { self?.requestOutput(id) }
@@ -284,14 +303,43 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
 
     /// Expands or folds a row, keeping its top edge where it is.
     func toggle(_ id: ChatRowID) {
-        guard let dataSource, rowsByID[id]?.isExpandable == true else { return }
-        let anchor: ScrollAnchor = latch.isFollowing ? .end : .rows([(id, rowTop(id))])
-        if expanded.contains(id) {
-            expanded.remove(id)
-        } else {
-            expanded.insert(id)
-            if wantsOutput(id, retrying: true) { requestOutput(id) }
+        guard rowsByID[id]?.isExpandable == true else { return }
+        disclose(id) {
+            if expanded.remove(id) == nil {
+                expanded.insert(id)
+            }
         }
+    }
+
+    /// Opens or closes one changed file's diff in a tool row, keeping the
+    /// row's top edge where it is.
+    func toggleFile(_ id: ChatRowID, path: String) {
+        guard case .tool(let tool)? = rowsByID[id]?.content,
+            tool.fileChanges?.files.contains(where: { $0.path == path }) == true
+        else { return }
+        disclose(id) {
+            var files = expandedFiles[id] ?? []
+            if files.remove(path) == nil {
+                files.insert(path)
+            }
+            expandedFiles[id] = files.isEmpty ? nil : files
+        }
+    }
+
+    /// Whether a changed file's diff is open, for tests.
+    func isFileExpanded(_ id: ChatRowID, path: String) -> Bool {
+        expandedFiles[id]?.contains(path) == true
+    }
+
+    /// Applies a change to what a row shows open, reads what it now needs,
+    /// and lays the row out again in place.
+    private func disclose(_ id: ChatRowID, _ change: () -> Void) {
+        guard let dataSource else { return }
+        let anchor: ScrollAnchor = latch.isFollowing ? .end : .rows([(id, rowTop(id))])
+        change()
+        lastDisclosure += 1
+        disclosures[id] = lastDisclosure
+        if wantsOutput(id, retrying: true) { requestOutput(id) }
         var snapshot = dataSource.snapshot()
         snapshot.reconfigureItems([id])
         UIView.performWithoutAnimation {
@@ -303,17 +351,35 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         noteFollowing()
     }
 
-    /// Whether an expanded tool row should read its output again: it has
-    /// none to show, or only the start, and no read has answered. Only a
-    /// tap tries a failed read again.
+    private func retryOutput(_ id: ChatRowID) {
+        if wantsOutput(id, retrying: true) { requestOutput(id) }
+    }
+
+    /// Shows a changed file's whole diff, as far as the row holds it.
+    private func showFile(_ id: ChatRowID, path: String) {
+        guard case .tool(let tool)? = rowsByID[id]?.content, let changes = tool.fileChanges,
+            let file = changes.files.first(where: { $0.path == path })
+        else { return }
+        ChatFileDiffPresenter.present(file, path: changes.displayPath(of: file), from: collectionView)
+    }
+
+    /// Whether a tool row should read its output again: what is open needs
+    /// more than the row holds (output text cut short or never read, or a
+    /// diff's lines), and no read has answered. Only a tap tries a failed
+    /// read again.
     private func wantsOutput(_ id: ChatRowID, retrying: Bool) -> Bool {
-        guard case .tool(let tool)? = rowsByID[id]?.content, tool.output != nil,
-            tool.preview?.isTruncated ?? true
-        else { return false }
+        guard case .tool(let tool)? = rowsByID[id]?.content, tool.output != nil else { return false }
+        let isExpanded = expanded.contains(id)
+        let openFiles = expandedFiles[id] ?? []
+        let wantsText = isExpanded && tool.previewIsIncomplete
+        let wantsDiff = tool.fileChanges?.files.contains { file in
+            !file.isComplete && (tool.showsDiffAsOutput ? isExpanded : openFiles.contains(file.path))
+        } ?? false
+        guard wantsText || wantsDiff else { return false }
         switch tool.outputRead {
         case nil: return true
         case .failed?: return retrying
-        case .loading?, .read?: return false
+        case .loading?, .read?, .unavailable?: return false
         }
     }
 

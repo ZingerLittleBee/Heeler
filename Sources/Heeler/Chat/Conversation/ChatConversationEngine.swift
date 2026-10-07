@@ -51,6 +51,15 @@ enum ChatToolOutputFailure: Error, Equatable, Sendable {
         case .unreadable(let reason): "Couldn't load output: \(reason)"
         }
     }
+
+    /// Whether reading again could succeed: a line too long, or no longer
+    /// there, stays so.
+    var canRetry: Bool {
+        switch self {
+        case .notFollowing, .unreadable: true
+        case .tooLong, .gone: false
+        }
+    }
 }
 
 /// What one conversation looks like after its engine's last step.
@@ -295,10 +304,10 @@ actor ChatConversationEngine {
     // MARK: Output
 
     /// A tool's output read again for an expanded row: the line its row
-    /// references, decoded up to `ChatToolPreview.expandedLimits`, or the
-    /// start of the file the program moved a long output to. Nil when the
-    /// output has nothing to show.
-    func output(of tool: ChatToolActivity) async -> Result<ChatToolPreview?, ChatToolOutputFailure> {
+    /// references, decoded up to `ChatToolPreview.expandedLimits` and
+    /// `ChatFileChanges.expandedLimits`, or the start of the file the
+    /// program moved a long output to.
+    func output(of tool: ChatToolActivity) async -> Result<ChatExpandedOutput, ChatToolOutputFailure> {
         guard let reference = tool.output, let reducer, let path = reference.path ?? follower?.path else {
             return .failure(.notFollowing)
         }
@@ -312,13 +321,16 @@ actor ChatConversationEngine {
             else { return .failure(.gone) }
             let line = ChatLine(offset: reference.offset, data: data)
             let output = ChatToolPreview.$limits.withValue(ChatToolPreview.expandedLimits) {
-                reducer.output(of: line, for: tool)
+                ChatFileChanges.$limits.withValue(ChatFileChanges.expandedLimits) {
+                    reducer.output(of: line, for: tool)
+                }
             }
             switch output {
-            case .preview(let preview)?:
-                return .success(preview)
-            case .file(let file, let fallback)?:
-                return .success(try await spilledOutput(file) ?? fallback)
+            case .preview(let preview, let fileChanges)?:
+                return .success(ChatExpandedOutput(preview: preview, fileChanges: fileChanges))
+            case .file(let file, let fallback, let fileChanges)?:
+                return .success(
+                    ChatExpandedOutput(preview: try await spilledOutput(file) ?? fallback, fileChanges: fileChanges))
             case nil:
                 return .failure(.gone)
             }

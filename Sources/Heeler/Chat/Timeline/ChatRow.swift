@@ -65,6 +65,14 @@ struct ChatRow: Identifiable, Sendable {
         }
     }
 
+    /// Whether the row holds controls besides its own disclosure, which
+    /// VoiceOver must reach one by one rather than as one element: changed
+    /// files to open, or a diff with View All.
+    var hasInnerControls: Bool {
+        guard case .tool(let tool) = content, let changes = tool.fileChanges else { return false }
+        return tool.showsDiffAsOutput || !changes.files.isEmpty
+    }
+
     /// Whether a tap shows more of the row.
     var isExpandable: Bool {
         switch content {
@@ -82,7 +90,9 @@ struct ChatRow: Identifiable, Sendable {
             case .user(let message): message.displayText
             case .assistant(let source, _): source
             case .reasoning(let reasoning): reasoning.text
-            case .tool(let tool): [tool.title, tool.subtitle, tool.preview?.text].compactMap { $0 }.joined(separator: "\n\n")
+            case .tool(let tool):
+                [tool.title, tool.subtitle, tool.preview?.text, tool.fileChanges?.copyText]
+                    .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
             case .plan(let plan, _): plan.text
             case .questions(let questions): questions.map(\.text).joined(separator: "\n\n")
             case .notice(let notice): [notice.title, notice.detail].compactMap { $0 }.joined(separator: "\n")
