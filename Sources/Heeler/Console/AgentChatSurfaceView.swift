@@ -71,6 +71,7 @@ struct AgentChatSurfaceView: View {
     @State private var windowControlsHeight: CGFloat = 0
     /// Shared with the terminal: one reading preference across surfaces.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
+    @AppStorage(ChatFoldSettings.defaultsKey) private var foldsFinishedTurns = true
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -295,7 +296,7 @@ struct AgentChatSurfaceView: View {
             timeline.update(
                 conversation: feed.generation,
                 input: ChatTimelineInput(entries: feed.outputs.marking(entries), pending: feed.pending, older: feed.older),
-                isReady: feed.isReady)
+                turns: chat?.conversation.transcript.turns ?? [], signals: feed.signals, isReady: feed.isReady)
         }
         .onChange(of: sentMessages, initial: true) { previous, messages in
             chat?.updateSends(messages)
@@ -577,6 +578,8 @@ struct AgentChatSurfaceView: View {
         var history: BlockedHistory
         /// Output expanded rows read again.
         var outputs: ChatToolOutputs
+        /// What decides whether a turn runs or folds.
+        var signals: ChatTurnSignals
         var isReady: Bool
     }
 
@@ -584,16 +587,21 @@ struct AgentChatSurfaceView: View {
         guard let chat else {
             return TimelineFeed(
                 generation: 0, revision: 0, older: .reachedStart, pending: [], history: BlockedHistory(),
-                outputs: ChatToolOutputs(), isReady: false)
+                outputs: ChatToolOutputs(), signals: ChatTurnSignals(), isReady: false)
         }
         let conversation = chat.conversation
         let pending = pendingEchoes
         var isReady = !conversation.transcript.entries.isEmpty || !pending.isEmpty
         if case .locating = conversation.phase {} else { isReady = true }
+        // Work that has shown no sign of itself for hours keeps no turn open.
+        let signals = ChatTurnSignals(
+            activity: ChatAgentActivity(agent.agent.status),
+            isBackgroundWorkRunning: chat.backgroundWork.rows.contains { $0.isRunning && !$0.isStale },
+            foldsFinishedTurns: foldsFinishedTurns)
         return TimelineFeed(
             generation: chat.conversationGeneration, revision: conversation.revision,
             older: conversation.older, pending: pending, history: chat.blocked.history, outputs: chat.outputs,
-            isReady: isReady)
+            signals: signals, isReady: isReady)
     }
 
     private var timelineActions: ChatTimelineActions {

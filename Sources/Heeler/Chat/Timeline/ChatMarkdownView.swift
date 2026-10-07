@@ -10,6 +10,9 @@ import SwiftUI
 /// it narrower, so a heading stays with the text it introduces.
 struct ChatMarkdownView: View {
     let blocks: [ChatMarkdownBlock]
+    /// Text that reads as the process rather than the answer, in the
+    /// secondary color as quotes are.
+    var isMuted = false
     @ScaledMetric(relativeTo: .body) private var nextLineGap: CGFloat = 4
     @ScaledMetric(relativeTo: .body) private var blankLineGap: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var aboveHeadingGap: CGFloat = 24
@@ -18,7 +21,7 @@ struct ChatMarkdownView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(blocks.indices, id: \.self) { index in
-                ChatMarkdownBlockView(block: blocks[index])
+                ChatMarkdownBlockView(block: blocks[index], isMuted: isMuted)
                     .padding(.top, gap(before: index))
             }
         }
@@ -71,6 +74,7 @@ struct ChatMarkdownView: View {
 
 private struct ChatMarkdownBlockView: View {
     let block: ChatMarkdownBlock
+    let isMuted: Bool
     @ScaledMetric(relativeTo: .body) private var indent: CGFloat = 18
 
     var body: some View {
@@ -81,7 +85,7 @@ private struct ChatMarkdownBlockView: View {
                     .frame(width: 3)
             }
             content
-                .foregroundStyle(block.quoteDepth > 0 ? .secondary : .primary)
+                .foregroundStyle(block.quoteDepth > 0 || isMuted ? .secondary : .primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.leading, leadingIndent)

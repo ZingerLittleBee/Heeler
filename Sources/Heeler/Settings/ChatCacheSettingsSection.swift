@@ -35,11 +35,17 @@ final class ChatCacheSettingsModel {
     }
 }
 
-/// Settings' Chat section: the cache size and Clear. Three rows do not
-/// earn a navigation level.
+/// Where Fold Finished Turns is kept. On by default.
+enum ChatFoldSettings {
+    static let defaultsKey = "chat.fold-finished-turns"
+}
+
+/// Settings' Chat section: Fold Finished Turns, the cache size and Clear.
+/// Four rows do not earn a navigation level.
 struct ChatCacheSettingsSection: View {
     @State private var model: ChatCacheSettingsModel
     @State private var confirmsClear = false
+    @AppStorage(ChatFoldSettings.defaultsKey) private var foldsFinishedTurns = true
 
     init(cache: any ChatTranscriptCache) {
         _model = State(initialValue: ChatCacheSettingsModel(cache: cache))
@@ -47,6 +53,8 @@ struct ChatCacheSettingsSection: View {
 
     var body: some View {
         Section {
+            Toggle("Fold Finished Turns", isOn: $foldsFinishedTurns)
+                .accessibilityIdentifier("settings.chat.foldFinishedTurns")
             LabeledContent("Cached Messages") {
                 switch model.state {
                 case .measured(let bytes):
@@ -74,7 +82,9 @@ struct ChatCacheSettingsSection: View {
             Text("Chat")
         } footer: {
             Text(
-                "Recent Chat messages stay on this device for up to 30 days, within 300 MB. "
+                "A finished turn's steps fold behind one line above its answer; a turn stays open "
+                    + "while it runs or while its background work does. "
+                    + "Recent Chat messages stay on this device for up to 30 days, within 300 MB. "
                     + "Removing a Host deletes its messages.")
         }
         .task { await model.refresh() }

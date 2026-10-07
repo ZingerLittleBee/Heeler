@@ -32,6 +32,8 @@ struct ChatRowView: View {
             // flexibility and can cut a line from one text even though the
             // total fits, so rows always take their ideal height.
             .fixedSize(horizontal: false, vertical: true)
+            // Under its group's header, as its member.
+            .padding(.leading, row.isNested ? 12 : 0)
             .padding(.top, row.topSpacing)
             .chatContentColumn()
             .modifier(ChatRowAccessibility(row: row, actions: actions))
@@ -43,7 +45,7 @@ struct ChatRowView: View {
         case .user(let message):
             ChatUserBubble(message: message)
         case .assistant(_, let blocks):
-            ChatMarkdownView(blocks: blocks)
+            ChatMarkdownView(blocks: blocks, isMuted: row.isMuted)
         case .reasoning(let reasoning):
             ChatReasoningRow(reasoning: reasoning, isExpanded: isExpanded) { actions.toggle(row.id) }
         case .tool(let tool):
@@ -63,6 +65,10 @@ struct ChatRowView: View {
             ChatPendingBubble(echo: echo)
         case .olderHistory(let older):
             ChatOlderHistoryRow(older: older, loadOlder: actions.loadOlder)
+        case .turnHeader(let header):
+            ChatTurnHeaderRow(header: header) { actions.toggle(row.id) }
+        case .toolGroup(let group):
+            ChatToolGroupRow(group: group) { actions.toggle(row.id) }
         }
     }
 
@@ -108,6 +114,10 @@ private struct ChatRowAccessibility: ViewModifier {
         case .entry(let id): "chat.message.\(id.rawValue)"
         case .pending(let id): "chat.pending.\(id.uuidString)"
         case .olderHistory: "chat.older-status"
+        case .liveTurn: "chat.turn.live"
+        case .turn(let id): "chat.turn.\(id.rawValue)"
+        case .group(let id): "chat.group.\(id.rawValue)"
+        case .liveGroup(let id): "chat.group.live.\(id.rawValue)"
         }
     }
 }
@@ -253,6 +263,139 @@ private struct ChatReasoningRow: View {
         }
         let duration = Duration.milliseconds(milliseconds)
         return "Thought for \(duration.formatted(.units(allowed: [.minutes, .seconds], width: .narrow)))"
+    }
+}
+
+/// A turn's header: "Working for 1:05" while it runs, which ticks inside
+/// the cell and never changes the row; "Worked for 35s" over a finished
+/// turn's folded steps. A hairline closes it, as the answer follows.
+private struct ChatTurnHeaderRow: View {
+    let header: ChatTurnHeader
+    let toggle: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch header.state {
+            case .working(let since):
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let elapsed = Self.clock(context.date.timeIntervalSince(since))
+                    Text("Working for \(elapsed)")
+                        .monospacedDigit()
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Working")
+                        .accessibilityValue(elapsed)
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.updatesFrequently)
+            case .worked(let duration):
+                Button(action: toggle) {
+                    HStack(spacing: 4) {
+                        Text(Self.title(duration))
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(header.isOpen ? 90 : 0))
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: header.isOpen)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(header.isOpen ? "Expanded" : "Collapsed")
+                .accessibilityHint(
+                    "\(header.isOpen ? "Hides" : "Shows") \(header.stepCount == 1 ? "1 step" : "\(header.stepCount) steps")")
+            }
+            Rectangle()
+                .fill(Color(uiColor: .separator))
+                .frame(height: 1 / 3)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// "Worked for 35s", or "Details" when the records give no duration.
+    static func title(_ duration: TimeInterval?) -> String {
+        guard let duration else { return "Details" }
+        let seconds = max(1, Int(duration.rounded()))
+        let formatted = Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
+        return "Worked for \(formatted)"
+    }
+
+    /// "0:42", "1:05", "1:02:03".
+    static func clock(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval))
+        let (hours, minutes, rest) = (seconds / 3_600, seconds / 60 % 60, seconds % 60)
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, rest)
+            : String(format: "%d:%02d", minutes, rest)
+    }
+}
+
+/// Two or more consecutive tool calls as one card: what they did, their
+/// lines changed, and whether any is running or failed. Opening it shows
+/// each call's own card below it.
+private struct ChatToolGroupRow: View {
+    let group: ChatToolGroup
+    let toggle: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: ChatToolRow.symbol(for: group.kind))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                Text(verbatim: group.summary)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                Spacer(minLength: 4)
+                if let added = group.added, let removed = group.removed {
+                    ChatDiffBadge(diff: ChatDiffStats(added: added, removed: removed))
+                }
+                if group.isRunning {
+                    ProgressView()
+                        .controlSize(.mini)
+                } else if group.failed > 0 {
+                    Label("\(group.failed) failed", systemImage: "xmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .labelStyle(.titleAndIcon)
+                        .fixedSize()
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(group.isOpen ? 90 : 0))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: group.isOpen)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(group.isOpen ? "Expanded" : "Collapsed")
+        .accessibilityHint("\(group.isOpen ? "Hides" : "Shows") \(group.calls == 1 ? "1 call" : "\(group.calls) calls")")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var accessibilityLabel: String {
+        var parts = [group.summary]
+        if let added = group.added, let removed = group.removed { parts.append("\(added) added, \(removed) removed") }
+        if group.isRunning {
+            parts.append("Running")
+        } else if group.failed > 0 {
+            parts.append("\(group.failed) failed")
+        }
+        return parts.joined(separator: ", ")
     }
 }
 

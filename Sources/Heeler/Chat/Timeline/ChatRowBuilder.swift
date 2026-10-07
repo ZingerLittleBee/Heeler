@@ -125,11 +125,13 @@ actor ChatRowBuilder {
         switch content {
         case .user, .pending:
             return 24
-        case .tool, .reasoning:
+        case .tool, .reasoning, .toolGroup:
             switch previous {
-            case .tool, .reasoning: return 4
+            case .tool, .reasoning, .toolGroup: return 4
             default: return 10
             }
+        case .turnHeader:
+            return 10
         case .divider:
             return 20
         case .olderHistory:

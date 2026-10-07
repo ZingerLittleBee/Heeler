@@ -399,11 +399,12 @@
         private static func checkoutConversation() -> Data {
             var session = ClaudeSessionWriter(
                 sessionID: checkoutSession, directory: "/workspace/storefront", start: 1_791_299_400)
+            // Stamped against the live clock, as docs:p2's Background Work
+            // is, so the running turn's header reads seconds, not days.
+            session.resume(at: Date().timeIntervalSince1970 - 80)
             session.prompt("Review the payment retry change before I commit it. A declined card must never empty the cart.")
             session.reply(
                 "I'll read the retry path and look for its other callers in the background, then run the checkout tests.")
-            // Stamped against the live clock, as docs:p2's Background Work is.
-            session.resume(at: Date().timeIntervalSince1970 - 75)
             session.tool(
                 "Agent",
                 [
@@ -543,6 +544,9 @@
             rollout.compaction()
             rollout.endTurn(lastMessage: nil)
 
+            // The running turn, stamped against the live clock so its
+            // header reads seconds, not days.
+            rollout.resume(at: Date().timeIntervalSince1970 - 95)
             rollout.startTurn()
             rollout.prompt("Now check the toolbar at the largest text size.")
             rollout.reasoning(
@@ -732,6 +736,11 @@
         }
 
         var data: Data { Data(lines.map { $0 + "\n" }.joined().utf8) }
+
+        /// Moves the clock on to `time`, never back.
+        mutating func resume(at time: TimeInterval) {
+            self.time = max(self.time, time)
+        }
 
         mutating func startTurn() {
             turns += 1

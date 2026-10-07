@@ -51,7 +51,17 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     private lazy var collectionView = ChatCollectionView(frame: .zero, collectionViewLayout: layout)
     private var dataSource: UICollectionViewDiffableDataSource<Int, ChatRowID>?
     private var applied: ChatTimelineState?
+    /// Every built row, folded ones included, so what a folded row has
+    /// open survives its fold.
+    private var allRows: [ChatRowID: ChatRow] = [:]
+    /// The rows the list shows: built rows a fold leaves out of view are
+    /// absent, and fold and group headers are present.
     private var rowsByID: [ChatRowID: ChatRow] = [:]
+    /// Each folded row, by the shown header that holds it.
+    private var owners: [ChatRowID: ChatRowID] = [:]
+    /// Turn and group headers the reader opened. Never kept past the
+    /// conversation, so every finished turn opens folded.
+    private var openHeaders: Set<ChatRowID> = []
     private var expanded: Set<ChatRowID> = []
     /// The changed files whose diffs are open, by recorded path.
     private var expandedFiles: [ChatRowID: Set<String>] = [:]
@@ -115,8 +125,14 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         layout.itemIDs = { [weak self] in self?.dataSource?.snapshot().itemIdentifiers ?? [] }
         layout.rowInfo = { [weak self] id in
             guard let self, let row = rowsByID[id] else { return nil }
-            // What is open makes a different measurement of the same content.
-            return (row.seed, row.revision << 32 | (disclosures[id] ?? 0))
+            // What is open, and where the row sits, make a different
+            // measurement of the same content.
+            var key = Hasher()
+            key.combine(row.revision)
+            key.combine(disclosures[id] ?? 0)
+            key.combine(row.topSpacing)
+            key.combine(row.isNested)
+            return (row.seed, key.finalize())
         }
         layout.isFollowing = { [weak self] in self?.latch.isFollowing ?? true }
 
@@ -167,37 +183,40 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         let previous = applied
         let oldRows = rowsByID
         applied = state
-        rowsByID = Dictionary(state.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var snapshot = NSDiffableDataSourceSnapshot<Int, ChatRowID>()
-        snapshot.appendSections([0])
-        snapshot.appendItems(uniqueIDs(state.rows))
+        allRows = Dictionary(state.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         guard let previous, previous.generation == state.generation else {
             expanded = []
             expandedFiles = [:]
             disclosures = [:]
+            openHeaders = []
             requestedOlderAtRowCount = nil
             latch.reset()
             noteFollowing()
+            let snapshot = projectedSnapshot()
             UIView.performWithoutAnimation {
                 dataSource.applySnapshotUsingReloadData(snapshot)
                 collectionView.layoutIfNeeded()
                 pinToEnd()
             }
-            layout.forgetMeasurements(keeping: Set(rowsByID.keys))
+            forgetMeasurements()
             reportFirstLayoutIfReady()
             return
         }
 
         let anchor = captureAnchor()
-        let changed = state.rows.compactMap { row -> ChatRowID? in
-            guard let old = oldRows[row.id], old.revision != row.revision else { return nil }
-            return row.id
+        expanded.formIntersection(allRows.keys)
+        expandedFiles = expandedFiles.filter { allRows[$0.key] != nil }
+        disclosures = disclosures.filter { allRows[$0.key] != nil }
+        openHeaders = openHeaders.filter { header in
+            switch header {
+            case .turn(let id), .group(let id), .liveGroup(let id): allRows[.entry(id)] != nil
+            case .liveTurn, .entry, .pending, .olderHistory: false
+            }
         }
+        var snapshot = projectedSnapshot()
+        let changed = changedRows(since: oldRows, in: snapshot)
         snapshot.reconfigureItems(changed)
-        expanded.formIntersection(rowsByID.keys)
-        expandedFiles = expandedFiles.filter { rowsByID[$0.key] != nil }
-        disclosures = disclosures.filter { rowsByID[$0.key] != nil }
         // A row expanded while it ran may have output now. The request
         // waits for this update to finish, since it changes what the list
         // is built from.
@@ -212,8 +231,38 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             collectionView.layoutIfNeeded()
             restore(anchor)
         }
-        layout.forgetMeasurements(keeping: Set(rowsByID.keys))
+        forgetMeasurements()
         reportFirstLayoutIfReady()
+    }
+
+    /// Folds the applied rows as the open headers say, and makes the
+    /// result what the list shows.
+    private func projectedSnapshot() -> NSDiffableDataSourceSnapshot<Int, ChatRowID> {
+        let output = ChatTimelineProjection.project(
+            applied?.rows ?? [], turns: applied?.turns ?? [], signals: applied?.signals ?? ChatTurnSignals(),
+            open: openHeaders)
+        rowsByID = Dictionary(output.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        owners = output.owners
+        var snapshot = NSDiffableDataSourceSnapshot<Int, ChatRowID>()
+        snapshot.appendSections([0])
+        snapshot.appendItems(uniqueIDs(output.rows))
+        return snapshot
+    }
+
+    /// Shown rows whose content, place or style changed.
+    private func changedRows(
+        since oldRows: [ChatRowID: ChatRow], in snapshot: NSDiffableDataSourceSnapshot<Int, ChatRowID>
+    ) -> [ChatRowID] {
+        snapshot.itemIdentifiers.filter { id in
+            guard let old = oldRows[id], let row = rowsByID[id] else { return false }
+            return old.revision != row.revision || old.placement != row.placement
+        }
+    }
+
+    /// Keeps the heights of folded rows too, so opening a fold again lays
+    /// out what was measured rather than guesses.
+    private func forgetMeasurements() {
+        layout.forgetMeasurements(keeping: Set(allRows.keys).union(rowsByID.keys))
     }
 
     /// Keeps `height` at the top clear of rows at rest, for chrome that
@@ -282,7 +331,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         case .end:
             pinToEnd()
         case .rows(let rows):
-            for (id, offset) in rows {
+            // A row a fold took away puts its header where it was.
+            let candidates = rows + rows.compactMap { id, offset in owners[id].map { ($0, offset) } }
+            for (id, offset) in candidates {
                 guard let index = layout.index(of: id) else { continue }
                 let visibleTop = layout.geometry.minY(at: index) - offset
                 let target = visibleTop - collectionView.adjustedContentInset.top
@@ -304,6 +355,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// Expands or folds a row, keeping its top edge where it is.
     func toggle(_ id: ChatRowID) {
         guard rowsByID[id]?.isExpandable == true else { return }
+        if id.isHeader {
+            toggleFold(id)
+            return
+        }
         disclose(id) {
             if expanded.remove(id) == nil {
                 expanded.insert(id)
@@ -349,6 +404,38 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         latch.disclosureSettled(isAtEnd: isAtEnd)
         noteFollowing()
+    }
+
+    /// Whether a turn or group header is open, for tests.
+    func isOpen(_ id: ChatRowID) -> Bool {
+        openHeaders.contains(id)
+    }
+
+    /// Opens or closes a turn or group header. The rows it holds come and
+    /// go below it, unanimated, and its top edge stays where it is even
+    /// while the list follows: the reader asked to see what is under it.
+    private func toggleFold(_ id: ChatRowID) {
+        guard let dataSource else { return }
+        let anchor = ScrollAnchor.rows([(id, rowTop(id))])
+        if openHeaders.remove(id) == nil {
+            openHeaders.insert(id)
+        }
+        let oldRows = rowsByID
+        var snapshot = projectedSnapshot()
+        snapshot.reconfigureItems(changedRows(since: oldRows, in: snapshot))
+        UIView.performWithoutAnimation {
+            dataSource.apply(snapshot, animatingDifferences: false)
+            collectionView.layoutIfNeeded()
+            restore(anchor)
+        }
+        latch.disclosureSettled(isAtEnd: isAtEnd)
+        noteFollowing()
+        // VoiceOver stays on the header rather than a cell that left.
+        if let index = layout.index(of: id),
+            let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
+        {
+            UIAccessibility.post(notification: .layoutChanged, argument: cell)
+        }
     }
 
     private func retryOutput(_ id: ChatRowID) {
@@ -470,7 +557,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             requestedOlderAtRowCount = nil
             return
         }
-        let count = rowsByID.count
+        // Built rows, so opening or closing a fold does not ask again.
+        let count = allRows.count
         guard requestedOlderAtRowCount != count,
             collectionView.contentOffset.y - collectionView.minOffsetY < collectionView.bounds.height
         else { return }

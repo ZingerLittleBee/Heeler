@@ -175,12 +175,12 @@ struct ChatTimelineControllerTests {
         actions.loadOutput = { requested.append($0) }
         let controller = ChatTimelineController(actions: actions)
         let reference = ChatOutputReference(offset: 0, length: 10)
-        let entries = [
+        let entries = Self.apart([
             Self.tool("cut", preview: ChatToolPreview(text: "line 1", isTruncated: true), output: reference),
             Self.tool("whole", preview: ChatToolPreview(text: "line 1", isTruncated: false), output: reference),
             Self.tool("saved", preview: nil, output: reference),
             Self.tool("running", preview: nil, output: nil, status: .running),
-        ]
+        ])
         let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: entries))
         try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
             controller.apply(Self.state(rows))
@@ -251,10 +251,11 @@ struct ChatTimelineControllerTests {
             kind: .fileEdit, name: "Edit", title: "/p/saved.txt", status: .succeeded,
             fileChanges: ChatFileChanges(files: [saved]), output: reference)
         let rows = await ChatRowBuilder().rows(
-            for: ChatTimelineInput(entries: [
-                ChatEntry(id: ChatEntryID("command"), sourceOffset: 0, content: .tool(command)),
-                ChatEntry(id: ChatEntryID("edit"), sourceOffset: 1, content: .tool(edit)),
-            ]))
+            for: ChatTimelineInput(
+                entries: Self.apart([
+                    ChatEntry(id: ChatEntryID("command"), sourceOffset: 0, content: .tool(command)),
+                    ChatEntry(id: ChatEntryID("edit"), sourceOffset: 1, content: .tool(edit)),
+                ])))
         let commandRow = ChatRowID.entry(ChatEntryID("command"))
         try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
             controller.apply(Self.state(rows))
@@ -284,10 +285,11 @@ struct ChatTimelineControllerTests {
         let short = ChatRowID.entry(ChatEntryID("short"))
         let long = ChatRowID.entry(ChatEntryID("long"))
         let rows = await ChatRowBuilder().rows(
-            for: ChatTimelineInput(entries: [
-                Self.tool("short", preview: ChatToolPreview(text: Self.outputLines(3), isTruncated: false), output: nil),
-                Self.tool("long", preview: ChatToolPreview(text: Self.outputLines(200), isTruncated: false), output: nil),
-            ]))
+            for: ChatTimelineInput(
+                entries: Self.apart([
+                    Self.tool("short", preview: ChatToolPreview(text: Self.outputLines(3), isTruncated: false), output: nil),
+                    Self.tool("long", preview: ChatToolPreview(text: Self.outputLines(200), isTruncated: false), output: nil),
+                ])))
         try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
             controller.apply(Self.state(rows))
             await Self.settle(controller)
@@ -369,10 +371,185 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    // MARK: Folds
+
+    @Test func openingAFinishedTurnKeepsItsHeaderWhereItWas() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let (rows, turns) = await Self.turns(0..<12)
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.foldState(rows, turns: turns))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.maxOffsetY - 900)
+            await Self.settle(controller)
+            let header = try #require(Self.firstFullyVisibleRow(controller, where: { if case .turn = $0 { true } else { false } }))
+            guard case .turn(let answer) = header.0 else { return }
+            let index = try #require(Int(answer.rawValue.dropFirst()))
+
+            controller.toggle(header.0)
+            await Self.settle(controller)
+            #expect(controller.isOpen(header.0))
+            #expect(abs(try #require(Self.screenY(of: header.0, in: controller)) - header.1) <= 0.5)
+            // Its group shows below it, closed.
+            #expect(controller.visibleRowIDs.contains(.group(ChatEntryID("c\(index)b"))))
+            #expect(!controller.visibleRowIDs.contains(.entry(ChatEntryID("c\(index)a"))))
+
+            controller.toggle(header.0)
+            await Self.settle(controller)
+            #expect(!controller.isOpen(header.0))
+            #expect(abs(try #require(Self.screenY(of: header.0, in: controller)) - header.1) <= 0.5)
+            #expect(!controller.visibleRowIDs.contains(.group(ChatEntryID("c\(index)b"))))
+        }
+    }
+
+    @Test func openingTheLastTurnWhileFollowingShowsWhatItHeld() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let (rows, turns) = await Self.turns(0..<6)
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.foldState(rows, turns: turns))
+            await Self.settle(controller)
+            #expect(controller.isFollowing)
+            let header = ChatRowID.turn(ChatEntryID("a5"))
+            let before = try #require(Self.screenY(of: header, in: controller))
+
+            controller.toggle(header)
+            await Self.settle(controller)
+            #expect(abs(try #require(Self.screenY(of: header, in: controller)) - before) <= 0.5)
+            #expect(!controller.isFollowing)
+        }
+    }
+
+    @Test func aTurnThatFinishesUnderTheReaderPutsItsHeaderWhereTheyWere() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let (rows, turns) = await Self.turns(0..<3, steps: 16, answerLength: 120)
+        var running = turns
+        running[running.count - 1].endedAt = nil
+        running[running.count - 1].ending = nil
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.foldState(rows, turns: running, activity: .working))
+            await Self.settle(controller)
+            let view = controller.timeline
+            // Among the last turn's steps, its answer out of sight.
+            let answer = try #require(controller.cellFrame(of: .entry(ChatEntryID("a2"))))
+            Self.drag(controller, to: answer.minY - view.bounds.height - 600)
+            await Self.settle(controller)
+            #expect(!controller.visibleRowIDs.contains(.entry(ChatEntryID("a2"))))
+            let top = view.contentOffset.y + view.adjustedContentInset.top
+            let first = try #require(controller.visibleRowIDs.first)
+            let offset = try #require(controller.cellFrame(of: first)).minY - top
+
+            controller.apply(Self.foldState(rows, turns: turns, activity: .idle, revision: 2))
+            await Self.settle(controller)
+            let header = try #require(controller.cellFrame(of: .turn(ChatEntryID("a2"))))
+            #expect(abs(header.minY - (view.contentOffset.y + view.adjustedContentInset.top) - offset) <= 0.5)
+            #expect(!controller.isFollowing)
+        }
+    }
+
+    @Test func aFoldKeepsWhatItsRowsHadOpenAndTheirHeights() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        // Steps enough to run past the screen, where nothing measures again.
+        let (rows, turns) = await Self.turns(0..<4, steps: 12)
+        let header = ChatRowID.turn(ChatEntryID("a1"))
+        let group = ChatRowID.group(ChatEntryID("c1b"))
+        let member = ChatRowID.entry(ChatEntryID("c1a"))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.foldState(rows, turns: turns))
+            await Self.settle(controller)
+            Self.drag(controller, to: controller.timeline.minOffsetY)
+            await Self.settle(controller)
+            controller.toggle(header)
+            controller.toggle(group)
+            await Self.settle(controller)
+            let closed = try #require(controller.cellFrame(of: member)).height
+            controller.toggle(member)
+            await Self.settle(controller)
+            let open = try #require(controller.cellFrame(of: member)).height
+            #expect(open > closed + 40)
+            let height = controller.timeline.contentSize.height
+
+            controller.toggle(header)
+            await Self.settle(controller)
+            #expect(controller.cellFrame(of: member) == nil)
+            // The transcript moves on while the turn is folded.
+            controller.apply(Self.foldState(rows, turns: turns, revision: 2))
+            await Self.settle(controller)
+
+            controller.toggle(header)
+            // Laid out from what was measured, before any cell measures again.
+            #expect(abs(controller.timeline.contentSize.height - height) <= 0.5)
+            await Self.settle(controller)
+            #expect(controller.isOpen(group))
+            #expect(abs(try #require(controller.cellFrame(of: member)).height - open) <= 0.5)
+        }
+    }
+
     // MARK: Helpers
 
+    private static func foldState(
+        _ rows: [ChatRow], turns: [ChatTurn], activity: ChatAgentActivity = .idle, revision: Int = 1
+    ) -> ChatTimelineState {
+        ChatTimelineState(
+            generation: 1, revision: revision, rows: rows, isReady: true, turns: turns,
+            signals: ChatTurnSignals(activity: activity))
+    }
+
+    /// Finished turns: a prompt, two commands, narration, `steps` more
+    /// calls each after narration, and an answer.
+    private static func turns(
+        _ range: Range<Int>, steps: Int = 1, answerLength: Int = 4
+    ) async -> ([ChatRow], [ChatTurn]) {
+        let start = Date(timeIntervalSince1970: 1_791_266_142)
+        var entries: [ChatEntry] = []
+        var turns: [ChatTurn] = []
+        func add(_ id: String, _ content: ChatEntry.Content) {
+            entries.append(ChatEntry(id: ChatEntryID(id), sourceOffset: UInt64(entries.count), content: content))
+        }
+        func command(_ title: String) -> ChatEntry.Content {
+            .tool(
+                ChatToolActivity(
+                    kind: .command, name: "Bash", title: title, status: .succeeded,
+                    preview: ChatToolPreview(text: outputLines(12), isTruncated: false)))
+        }
+        for index in range {
+            turns.append(
+                ChatTurn(
+                    firstEntryID: ChatEntryID("u\(index)"), startedAt: start, endedAt: start + 35, ending: .completed))
+            add("u\(index)", .user(ChatUserMessage(text: "Question \(index)")))
+            add("c\(index)a", command("ls \(index)"))
+            add("c\(index)b", command("make \(index)"))
+            add("n\(index)", .assistant(ChatAssistantMessage(text: "Looking at step \(index).")))
+            for step in 0..<steps {
+                add("m\(index)-\(step)", .assistant(ChatAssistantMessage(text: "Step \(step) of turn \(index) next.")))
+                add("s\(index)-\(step)", command("swift test \(index) \(step)"))
+            }
+            add(
+                "a\(index)",
+                .assistant(
+                    ChatAssistantMessage(
+                        text: "Answer \(index). " + String(repeating: "This sentence adds length. ", count: answerLength))))
+        }
+        return (await ChatRowBuilder().rows(for: ChatTimelineInput(entries: entries)), turns)
+    }
+
     private static func state(_ rows: [ChatRow], revision: Int = 1) -> ChatTimelineState {
-        ChatTimelineState(generation: 1, revision: revision, rows: rows, isReady: true)
+        // Every finished turn here would fold its tool row away.
+        ChatTimelineState(
+            generation: 1, revision: revision, rows: rows, isReady: true,
+            signals: ChatTurnSignals(foldsFinishedTurns: false))
+    }
+
+    /// `entries` with a line of the model's text after each, so consecutive
+    /// tool calls show as their own rows rather than one group.
+    nonisolated static func apart(_ entries: [ChatEntry]) -> [ChatEntry] {
+        entries.flatMap { entry in
+            [
+                entry,
+                ChatEntry(
+                    id: ChatEntryID("after-\(entry.id.rawValue)"), sourceOffset: entry.sourceOffset,
+                    content: .assistant(ChatAssistantMessage(text: "Next."))),
+            ]
+        }
     }
 
     /// A conversation of user prompts, tool calls and answers of varied
@@ -446,10 +623,12 @@ struct ChatTimelineControllerTests {
         controller.cellFrame(of: id).map { $0.minY - controller.timeline.contentOffset.y }
     }
 
-    private static func firstFullyVisibleRow(_ controller: ChatTimelineController) -> (ChatRowID, CGFloat)? {
+    private static func firstFullyVisibleRow(
+        _ controller: ChatTimelineController, where include: (ChatRowID) -> Bool = { _ in true }
+    ) -> (ChatRowID, CGFloat)? {
         let view = controller.timeline
         let top = view.contentOffset.y + view.adjustedContentInset.top
-        for id in controller.visibleRowIDs {
+        for id in controller.visibleRowIDs where include(id) {
             guard let frame = controller.cellFrame(of: id), frame.minY >= top else { continue }
             return (id, frame.minY - view.contentOffset.y)
         }
