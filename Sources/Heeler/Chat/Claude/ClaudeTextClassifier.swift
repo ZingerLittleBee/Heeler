@@ -190,7 +190,14 @@ struct ClaudeTaskNotification: Sendable, Equatable {
         self.init(
             summary: field("summary"), status: field("status"), toolUseID: field("tool-use-id"),
             taskID: field("task-id"), result: field("result"),
-            usage: ClaudeText.content(ofTag: "usage", in: text).map(Self.usage))
+            usage: Self.usageText(in: text).map(Self.usage))
+    }
+
+    /// The program writes `<usage>` after `<result>`, the agent's own report,
+    /// which can quote one; the last is the program's.
+    private static func usageText(in text: String) -> String? {
+        guard let open = text.range(of: "<usage>", options: .backwards) else { return nil }
+        return ClaudeText.content(ofTag: "usage", in: String(text[open.lowerBound...]))
     }
 
     /// `<usage>`: counts for a Subagent, and for a Workflow the counts of

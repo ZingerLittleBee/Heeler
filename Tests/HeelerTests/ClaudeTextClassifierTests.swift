@@ -85,6 +85,11 @@ struct ClaudeTextClassifierTests {
         #expect(notification.title == "Agent \"Run touch sub.txt\" finished")
         #expect(notification.usage == ChatBackgroundWorkItem.Usage(tokens: 32130, toolUses: 1, durationMilliseconds: 26744))
         #expect(ClaudeTaskNotification("<task-notification><status>killed</status></task-notification>").title == "Background task killed")
+        // A report that quotes the format does not stand in for the counts.
+        let quoting = ClaudeTaskNotification(
+            "<task-notification><result>It ends with <usage><subagent_tokens>1</subagent_tokens></usage>.</result>\n"
+                + "<usage><subagent_tokens>350180</subagent_tokens><tool_uses>104</tool_uses></usage></task-notification>")
+        #expect(quoting.usage == ChatBackgroundWorkItem.Usage(tokens: 350180, toolUses: 104))
     }
 
     @Test("Interrupt markers match by prefix")
