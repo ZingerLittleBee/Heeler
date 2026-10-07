@@ -18,7 +18,7 @@ struct ChatConversationEngineTests {
     /// Small limits so a few hundred bytes exercise windows and pages.
     private static let limits = TranscriptFollower.Limits(
         tailWindow: 64, readChunk: 16, pollBudget: 1_024, olderPage: 32, maximumOlderPage: 128,
-        lineStartSearch: 1_024, anchorLength: 8, headLength: 32, lineCap: 4_096, prefixCap: 16)
+        olderSearchPage: 32, lineStartSearch: 1_024, anchorLength: 8, headLength: 32, lineCap: 4_096, prefixCap: 16)
 
     private final class Clock: @unchecked Sendable {
         var now = start
@@ -445,16 +445,36 @@ struct ChatConversationEngineTests {
 
     @Test func loadingOlderReadsPastPagesThatShowNothing() async throws {
         let fixture = Fixture()
-        // Records that show nothing, many pages of them.
+        // Records that show nothing, many pages of them, inside one turn.
         let silent = String(repeating: NumberedChatReducer.end("none"), count: 40)
-        await fixture.files.write(Self.lines(0..<3) + silent + Self.lines(3..<10), at: Self.claudePath)
+        await fixture.files.write(
+            NumberedChatReducer.prompt("a") + Self.lines(0..<3) + silent + Self.lines(3..<10), at: Self.claudePath)
         let engine = fixture.makeEngine()
         let opened = await fixture.open(engine)
         #expect(Self.numbers(opened).first == "n-3")
 
-        // One request reads every page back to the record that shows.
+        // One request reads every page back to the turn's prompt.
         let snapshot = await fixture.loadOlder(engine)
-        #expect(Self.numbers(snapshot).prefix(2) == ["n-2", "n-3"])
+        #expect(Self.numbers(snapshot).first == "p-0")
+        #expect(snapshot.older == .reachedStart)
+    }
+
+    @Test func loadingOlderReadsBackToTheOldestTurnsOpener() async throws {
+        let fixture = Fixture()
+        let first = NumberedChatReducer.prompt("a") + Self.lines(0..<4)
+        let second = UInt64(first.utf8.count)
+        await fixture.files.write(first + NumberedChatReducer.prompt("b") + Self.lines(4..<14), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        let opened = await fixture.open(engine)
+        #expect(Self.numbers(opened).first?.hasPrefix("n-") == true)
+
+        // The window opened inside the second turn: one request reads back
+        // to its prompt, maybe past it, and the next to the first turn's.
+        var snapshot = await fixture.loadOlder(engine)
+        #expect(snapshot.transcript.turns.map(\.firstEntryID.rawValue) == ["p-\(second)"])
+        #expect(!Self.numbers(snapshot).contains("n-0"))
+        snapshot = await fixture.loadOlder(engine)
+        #expect(Self.numbers(snapshot).first == "p-0")
     }
 
     @Test func loadingOlderStopsSearchingAtItsLimit() async throws {

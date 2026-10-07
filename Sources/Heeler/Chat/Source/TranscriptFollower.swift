@@ -25,10 +25,12 @@ struct TranscriptFollower: Sendable {
         /// The largest backward page held in memory. Beyond it the start of a
         /// longer line is searched for without keeping its bytes.
         var maximumOlderPage = 8 << 20
-        /// How far one request for older history reads back while its pages
-        /// add nothing to show: long tool output and records off the
-        /// conversation's branch can fill many pages.
-        var olderSearch = 8 << 20
+        /// How far one request for older history reads back looking for the
+        /// start of the oldest turn: a turn of many tool calls can span
+        /// tens of MiB.
+        var olderSearch = 32 << 20
+        /// The largest page such a search reads at once.
+        var olderSearchPage = 4 << 20
         /// How far that search goes before older history is reported
         /// unreadable.
         var lineStartSearch = 64 << 20
@@ -142,10 +144,11 @@ struct TranscriptFollower: Sendable {
         return lines.isEmpty ? .unchanged : .appended(lines)
     }
 
-    /// Reads the lines just before the window, oldest first.
-    mutating func loadOlder(_ files: ChatHostFiles) async throws -> OlderPage {
+    /// Reads the lines just before the window, oldest first: at least
+    /// `length` bytes when given, up to the largest page.
+    mutating func loadOlder(_ files: ChatHostFiles, length: Int? = nil) async throws -> OlderPage {
         guard let end = windowStart, end > 0 else { return .headReached }
-        var pageLength = UInt64(limits.olderPage)
+        var pageLength = UInt64(min(max(limits.olderPage, length ?? 0), limits.maximumOlderPage))
         var page = Data()
         var start = end
         while true {

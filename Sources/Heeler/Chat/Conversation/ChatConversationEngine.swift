@@ -277,17 +277,22 @@ actor ChatConversationEngine {
     }
 
     /// Reads history above the oldest line read, a page at a time, until
-    /// something new shows, the file's head is reached, or the search
-    /// limit is read.
+    /// it brings the opener of a turn not shown before, the file's head or
+    /// the saved entries are reached, or the search limit is read. A turn's
+    /// steps fold under its header, so pages that end inside a turn would
+    /// add nothing to see.
     func loadOlder(context: ChatProjectionContext) async -> ChatConversationSnapshot {
         setContext(context)
         guard let first = follower, first.hasOlder, !olderUnreadable else { return snapshot }
         update { $0.older = .loading }
-        let shown = snapshot.transcript.entries.count
+        let oldestOpener = snapshot.transcript.turns.first?.firstEntryID
         let searchEnd = first.windowStart ?? 0
+        // Each page projects everything loaded again, so a long search
+        // reads larger pages.
+        var pageLength = first.limits.olderPage
         while var follower {
             do {
-                switch try await follower.loadOlder(files) {
+                switch try await follower.loadOlder(files, length: pageLength) {
                 case .lines(let lines):
                     self.follower = follower
                     reducer?.prepend(lines)
@@ -309,9 +314,10 @@ actor ChatConversationEngine {
                 break
             }
             projectIfNeeded()
+            pageLength = min(pageLength * 2, first.limits.olderSearchPage)
             let read = searchEnd - (self.follower?.windowStart ?? 0)
-            guard snapshot.transcript.entries.count == shown, self.follower?.hasOlder == true, !olderUnreadable,
-                read < UInt64(first.limits.olderSearch)
+            guard snapshot.transcript.turns.first?.firstEntryID == oldestOpener, snapshot.older != .reachedStart,
+                self.follower?.hasOlder == true, !olderUnreadable, read < UInt64(first.limits.olderSearch)
             else { break }
         }
         projectIfNeeded()

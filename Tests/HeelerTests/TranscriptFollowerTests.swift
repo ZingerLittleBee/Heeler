@@ -203,6 +203,27 @@ struct TranscriptFollowerTests {
         #expect(try await follower.loadOlder(files.hostFiles()) == .headReached)
     }
 
+    @Test func aLongerPageReadsFurtherBackUpToTheLargest() async throws {
+        let text = Self.lines(0..<40)
+        var (follower, files, opened) = try await Self.makeFollower(text)
+        let end = try #require(opened.first?.offset)
+
+        guard case .lines(let page) = try await follower.loadOlder(files.hostFiles(), length: 96) else {
+            Issue.record("expected an older page")
+            return
+        }
+        let start = try #require(page.first?.offset)
+        #expect(end - start > 64)
+        #expect(end - start <= 96)
+
+        // Never past the largest page.
+        guard case .lines(let capped) = try await follower.loadOlder(files.hostFiles(), length: 1_000) else {
+            Issue.record("expected an older page")
+            return
+        }
+        #expect(start - (capped.first?.offset ?? 0) <= 128)
+    }
+
     @Test func aLineLongerThanTheLargestPageArrivesTruncated() async throws {
         let long = #"{"blob":""# + String(repeating: "z", count: 300) + #""}"#
         let text = Self.lines(0..<2) + long + "\n" + Self.lines(2..<4)
