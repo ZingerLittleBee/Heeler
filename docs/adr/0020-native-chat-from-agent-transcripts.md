@@ -249,8 +249,9 @@ no Attach at all.
   Compressed (`.zst`) and pre-envelope Codex rollouts are not read.
 - Claude Code writes no transcript before the first prompt, and Codex reports
   no session to herdr until after it. The Composer works in both states.
-- Following makes SFTP requests on the Host's connection at every poll, and
-  up to two more for Workflow journals while a Workflow is listed.
+- Following makes SFTP requests on the Host's connection at every poll. While
+  a Workflow is listed, each poll also looks at up to two journals: a stat
+  each, and for one that grew, reads of what it added, up to 128 KiB.
 - Stop interrupts the running turn, unlike the Blocked card's Stop, which
   answers a dialog and leaves a Stopped row. Codex holding queued messages
   takes Esc as interrupt-and-send, so the Agent can stay Working.
@@ -282,4 +283,5 @@ no Attach at all.
     the launch.
   - Background Work for Codex; stopping Background Work from Chat; a running
     Subagent's progress; teammates; and a Subagent resumed through
-    SendMessage, which Chat does not follow past its first end.
+    SendMessage, which stays listed as finished while it runs again and
+    takes its next end's counts when that arrives.
