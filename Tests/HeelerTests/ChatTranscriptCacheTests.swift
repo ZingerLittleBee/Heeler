@@ -248,4 +248,143 @@ struct ChatTranscriptCacheTests {
         await cache.save(Self.document(Self.key(Self.hostB)))
         #expect(await cache.load(Self.key(Self.hostB)) == .hit(Self.document(Self.key(Self.hostB))))
     }
+
+    private static func cachedAgent(
+        for host: Host, sessionID: String = "e951205e-24af-4a5e-baa7-3ccbebd2de2c"
+    ) -> ChatCachedAgent {
+        ChatCachedAgent(ConsoleAgent(
+            hostID: host.id, hostName: host.displayName,
+            agent: Agent(
+                terminalID: "terminal-1", kind: "codex", title: "Implement caching",
+                status: .working, workspaceID: "workspace-1", tabID: "tab-1",
+                paneID: "pane-1", cwd: "/home/dev/project", revision: 42, name: "Worker",
+                paneTitle: "Chat", agentSession: AgentSessionInfo(
+                    agent: "codex", kind: .id, source: "herdr:codex", value: sessionID),
+                tokens: ["context": "1000"], stateLabels: ["working": "Busy"], stateChangeSeq: 42,
+                foregroundCwd: "/home/dev/project/src"),
+            workspaceLabel: "Project", repositoryCheckout: nil, hostUsername: host.username,
+            tabLabel: "Work", tabPosition: 2, workspaceTabCount: 3, snapshotOrder: 1,
+            paneLabel: "Worker pane"))
+    }
+
+    @Test func agentDirectorySurvivesRelaunchWithoutRestoringLiveStatus() async throws {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        let host = Host(id: Self.hostA, address: "host.example", username: "dev")
+        let cached = Self.cachedAgent(for: host)
+        await fixture.cache.saveAgentDirectory([cached], for: host)
+
+        let reopened = FileChatTranscriptCache(root: fixture.root)
+        let entries = await reopened.loadAgentDirectory(for: host)
+        #expect(entries == [cached])
+        let restored = try #require(entries.first).consoleAgent(for: host)
+        #expect(restored.id == ConsoleAgent.ID(hostID: host.id, paneID: "pane-1"))
+        #expect(restored.agent.agentSession == cached.agentSession)
+        #expect(restored.agent.status == .unknown)
+        #expect(restored.agent.tokens.isEmpty)
+        #expect(restored.agent.stateLabels.isEmpty)
+        #expect(restored.agent.stateChangeSeq == nil)
+        #expect(restored.agent.name == "Worker")
+        #expect(restored.agent.title == "Implement caching")
+        #expect(restored.directory == "/home/dev/project/src")
+        #expect(restored.workspaceLabel == "Project")
+        #expect(restored.tabLabel == "Work")
+        #expect(restored.paneLabel == "Worker pane")
+        #expect(restored.tabPosition == 2)
+    }
+
+    @Test(arguments: [false, true])
+    func agentDirectoryRejectsChangedConnectionCoordinates(volatile: Bool) async {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        let cache: any ChatTranscriptCache = volatile ? VolatileChatTranscriptCache() : fixture.cache
+        let host = Host(id: Self.hostA, address: "host.example", username: "dev")
+        let cached = Self.cachedAgent(for: host)
+        await cache.saveAgentDirectory([cached], for: host)
+
+        var changed = host
+        changed.address = "other.example"
+        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        changed = host
+        changed.sessionName = "other"
+        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        changed = host
+        changed.port = 2222
+        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        changed = host
+        changed.username = "other"
+        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        changed = host
+        changed.jumpAddress = "jump.example"
+        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        changed = host
+        changed.jumpPort = 2222
+        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        changed = host
+        changed.jumpUsername = "jump-user"
+        #expect(await cache.loadAgentDirectory(for: changed).isEmpty)
+        changed = host
+        changed.name = "Renamed Host"
+        let renamed = await cache.loadAgentDirectory(for: changed)
+        #expect(renamed == [cached])
+        #expect(renamed.first?.consoleAgent(for: changed).hostName == "Renamed Host")
+    }
+
+    @Test(arguments: [false, true])
+    func clearingAndRemovingHostsAlsoRemovesAgentDirectories(volatile: Bool) async {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        let cache: any ChatTranscriptCache = volatile ? VolatileChatTranscriptCache() : fixture.cache
+        let host = Host(id: Self.hostA, address: "host.example", username: "dev")
+        let cached = Self.cachedAgent(for: host)
+        await cache.saveAgentDirectory([cached], for: host)
+        await cache.removeAll()
+        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        await cache.saveAgentDirectory([cached], for: host)
+        #expect(await cache.loadAgentDirectory(for: host) == [cached])
+        await cache.retainHosts([Self.hostB])
+        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+        await cache.saveAgentDirectory([cached], for: host)
+        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+    }
+
+    @Test(arguments: [false, true])
+    func agentDirectoryRejectsUnboundAndForeignAgents(volatile: Bool) async {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        let cache: any ChatTranscriptCache = volatile ? VolatileChatTranscriptCache() : fixture.cache
+        let host = Host(id: Self.hostA, address: "host.example", username: "dev")
+        let other = Host(id: Self.hostB, address: "other.example", username: "dev")
+        let valid = Self.cachedAgent(for: host)
+        await cache.saveAgentDirectory([
+            valid, Self.cachedAgent(for: host, sessionID: "../invalid"), Self.cachedAgent(for: other),
+        ], for: host)
+        #expect(await cache.loadAgentDirectory(for: host) == [valid])
+        await cache.saveAgentDirectory([], for: host)
+        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+    }
+
+    @Test func agentDirectoriesCountTowardUsageAndExpire() async throws {
+        let fixture = Fixture(policy: ChatCachePolicy(maxAge: 60))
+        defer { fixture.cleanUp() }
+        let host = Host(id: Self.hostA, address: "host.example", username: "dev")
+        await fixture.cache.saveAgentDirectory([Self.cachedAgent(for: host)], for: host)
+        #expect(await fixture.cache.diskUsage() > 0)
+        let directoryURL = fixture.root.appending(path: "v1/\(host.id.uuidString.lowercased())/agents.json")
+        try FileManager.default.setAttributes(
+            [.modificationDate: fixture.clock.now], ofItemAtPath: directoryURL.path)
+        fixture.clock.now.addTimeInterval(120)
+        await fixture.cache.prune()
+        #expect(await fixture.cache.loadAgentDirectory(for: host).isEmpty)
+        #expect(await fixture.cache.diskUsage() == 0)
+    }
+
+    @Test func agentDirectoriesRespectTheTotalBudget() async {
+        let fixture = Fixture(policy: ChatCachePolicy(totalBudget: 1, lowWater: 0))
+        defer { fixture.cleanUp() }
+        let host = Host(id: Self.hostA, address: "host.example", username: "dev")
+        await fixture.cache.saveAgentDirectory([Self.cachedAgent(for: host)], for: host)
+        #expect(await fixture.cache.diskUsage() == 0)
+        #expect(await fixture.cache.loadAgentDirectory(for: host).isEmpty)
+    }
 }

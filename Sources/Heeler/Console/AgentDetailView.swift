@@ -192,8 +192,7 @@ struct AgentDetailView: View {
     /// The program whose transcript Chat would read; nil while this Agent
     /// cannot show Chat, which hides every way to it.
     private var chatProgram: ChatProgram? {
-        AgentChatAvailability.program(
-            for: agent.agent, platform: console.hostPlatforms[agent.hostID])
+        console.chatProgram(for: agent)
     }
 
     /// The chosen surface, or the terminal while Chat is unavailable. The

@@ -43,6 +43,10 @@ actor FileChatTranscriptCache: ChatTranscriptCache {
         hostDirectory(key.hostID).appending(path: "\(key.storageName).json", directoryHint: .notDirectory)
     }
 
+    private func agentDirectoryURL(_ hostID: UUID) -> URL {
+        hostDirectory(hostID).appending(path: "agents.json", directoryHint: .notDirectory)
+    }
+
     // MARK: ChatTranscriptCache
 
     func load(_ key: ChatCacheKey) -> ChatCacheLoadResult {
@@ -75,11 +79,50 @@ actor FileChatTranscriptCache: ChatTranscriptCache {
             removeFile(url)
             return
         }
+        write(data, to: url, hostID: document.key.hostID)
+    }
+
+    func loadAgentDirectory(for host: Host) async -> [ChatCachedAgent] {
+        let url = agentDirectoryURL(host.id)
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return []
+        } catch {
+            Self.logFailure("read", error)
+            return []
+        }
+        guard let directory = try? Self.decoder.decode(ChatAgentDirectory.self, from: data) else {
+            removeFile(url)
+            return []
+        }
+        let entries = directory.entries(for: host)
+        if !entries.isEmpty {
+            try? fileManager.setAttributes([.modificationDate: now()], ofItemAtPath: url.path)
+        }
+        return entries
+    }
+
+    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async {
+        if let allowedHosts, !allowedHosts.contains(host.id) { return }
+        let url = agentDirectoryURL(host.id)
+        let directory = ChatAgentDirectory(agents, for: host)
+        guard !directory.agents.isEmpty,
+            let data = try? Self.encoder.encode(directory), data.count <= policy.maxDocumentBytes
+        else {
+            removeFile(url)
+            return
+        }
+        write(data, to: url, hostID: host.id)
+    }
+
+    private func write(_ data: Data, to url: URL, hostID: UUID) {
         // The first save after launch measures what is already stored.
         if knownTotalBytes == nil { prune() }
         let previousSize = fileSize(url)
         do {
-            try ensureDirectory(hostDirectory(document.key.hostID))
+            try ensureDirectory(hostDirectory(hostID))
             try data.write(to: url, options: [.atomic, .completeFileProtection])
             var values = URLResourceValues()
             values.isExcludedFromBackup = true

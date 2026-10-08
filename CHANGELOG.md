@@ -19,6 +19,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Chat preloads conversations after connecting, restores saved conversations
+  before contacting the Host, and keeps them available from the Agent list
+  after an offline relaunch while reconnecting. (#425)
 - Chat previews recorded image files on long press, opens them with zoom, and
   aligns tool icons with their titles above subtitles. (#425)
 - Chat groups each Subagent's activity into one card per turn, with

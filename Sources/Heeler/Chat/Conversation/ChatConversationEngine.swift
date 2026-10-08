@@ -209,7 +209,10 @@ actor ChatConversationEngine {
             update {
                 $0.transcript = ChatTranscript(
                     entries: document.entries, title: document.title,
-                    needsOlderHistory: !document.reachedStart, turns: document.turns ?? [])
+                    needsOlderHistory: !document.reachedStart,
+                    backgroundWork: document.backgroundWork ?? [], latestPromptOffset: document.latestPromptOffset,
+                    turns: document.turns ?? [])
+                $0.readOffset = document.coverageEnd
                 $0.isFromCache = !document.entries.isEmpty
                 $0.older = document.reachedStart ? .reachedStart : .available
             }

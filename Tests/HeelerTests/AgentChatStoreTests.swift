@@ -30,15 +30,31 @@ struct AgentChatStoreTests {
         var agent: Agent
         private(set) var reads = 0
         var failure: TransportError?
+        private var shouldSuspend = false
+        private var pendingRead: CheckedContinuation<Void, Never>?
 
         init(_ agent: Agent) {
             self.agent = agent
         }
 
-        func read() throws -> Agent {
+        func read() async throws -> Agent {
             reads += 1
+            let answer = agent
+            if shouldSuspend {
+                shouldSuspend = false
+                await withCheckedContinuation { pendingRead = $0 }
+            }
             if let failure { throw failure }
-            return agent
+            return answer
+        }
+
+        func suspendNextRead() {
+            shouldSuspend = true
+        }
+
+        func releaseRead() {
+            pendingRead?.resume()
+            pendingRead = nil
         }
 
         func fail(with failure: TransportError?) {
@@ -268,6 +284,174 @@ struct AgentChatStoreTests {
         #expect(fixture.store.conversation.readFailure == nil)
     }
 
+    private static func seedCache(_ fixture: Fixture, session: String, numbers: Range<Int>) async throws {
+        let previous = Fixture(session: session)
+        await previous.files.write(NumberedChatReducer.lines(numbers), at: path(session))
+        await previous.store.step()
+        let key = ChatCacheKey(hostID: host, herdrSession: "", program: .claude, conversationID: session)
+        guard case .hit(let document) = await previous.cache.load(key) else {
+            Issue.record("Expected the first transcript read to be saved immediately")
+            return
+        }
+        await fixture.cache.save(document)
+    }
+
+    @Test func cachedMessagesShowWhileTheFirstAgentQueryIsStillWaiting() async throws {
+        let fixture = Fixture(session: Self.first)
+        try await Self.seedCache(fixture, session: Self.first, numbers: 0..<3)
+        await fixture.server.suspendNextRead()
+        let step = Task { await fixture.store.step() }
+        try await Self.waitUntil { await fixture.server.reads == 1 }
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversation.phase == .locating)
+        #expect(await fixture.files.reads.isEmpty)
+        let generation = fixture.store.conversationGeneration
+        await fixture.files.write(NumberedChatReducer.lines(0..<4), at: Self.path(Self.first))
+        await fixture.server.releaseRead()
+        await step.value
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4))
+        #expect(!fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversationGeneration == generation)
+        await fixture.files.append(NumberedChatReducer.lines(4..<5), to: Self.path(Self.first))
+        await fixture.store.step()
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<5))
+        #expect(fixture.store.conversationGeneration == generation)
+    }
+
+    @Test func refreshedSessionRestoresOnlyItsOwnCachedMessages() async throws {
+        let fixture = Fixture(session: Self.first)
+        try await Self.seedCache(fixture, session: Self.first, numbers: 0..<3)
+        try await Self.seedCache(fixture, session: Self.second, numbers: 10..<12)
+        await fixture.server.set(Self.agent(session: Self.second))
+        await fixture.files.failNext(.home, with: TransportError.hostFileTimedOut)
+
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(10..<12))
+        #expect(fixture.store.conversation.isFromCache)
+    }
+
+    @Test(arguments: [false, true])
+    func anUnreportedSessionKeepsCachedMessagesUntilTheSameBindingReturns(viaSnapshot: Bool) async throws {
+        let fixture = Fixture(session: Self.first)
+        try await Self.seedCache(fixture, session: Self.first, numbers: 0..<3)
+        await fixture.server.set(Self.agent(session: nil))
+        let generation = fixture.store.conversationGeneration
+
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(fixture.store.conversation.phase == .unavailable(.noSession(.claude)))
+        #expect(fixture.store.conversation.isFromCache)
+        #expect(await fixture.files.reads.isEmpty)
+        #expect(await fixture.files.statuses.isEmpty)
+        #expect(fixture.store.conversationGeneration == generation)
+
+        await fixture.files.write(NumberedChatReducer.lines(0..<4), at: Self.path(Self.first))
+        await fixture.server.set(Self.agent(session: Self.first))
+        if viaSnapshot { fixture.store.agentDidChange(Self.agent(session: Self.first)) }
+        fixture.store.retry()
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4))
+        #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.first)))
+        #expect(!fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversationGeneration == generation)
+    }
+
+    @Test func aSnapshotWithoutSessionStopsReadingTheOldFileUntilAnExplicitBinding() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        let generation = fixture.store.conversationGeneration
+        fixture.store.agentDidChange(Self.agent(session: nil))
+        await fixture.server.set(Self.agent(session: nil))
+        await fixture.files.clearRecords()
+        await fixture.files.append(NumberedChatReducer.lines(3..<4), to: Self.path(Self.first))
+        fixture.store.retry()
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversation.phase == .unavailable(.noSession(.claude)))
+        #expect(await fixture.files.reads.isEmpty)
+        #expect(await fixture.files.statuses.isEmpty)
+        #expect(fixture.store.conversationGeneration == generation)
+
+        fixture.store.agentDidChange(Self.agent(session: Self.second))
+        #expect(fixture.store.conversation.transcript.entries.isEmpty)
+        #expect(fixture.store.conversationGeneration == generation + 1)
+        await fixture.files.write(NumberedChatReducer.lines(10..<12), at: Self.path(Self.second))
+        await fixture.server.set(Self.agent(session: Self.second))
+        await fixture.store.step()
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(10..<12))
+    }
+
+    @Test(arguments: ["terminal", "workspace", "tab", "kind", "pane"], [false, true])
+    func aReplacementAgentWithoutSessionDoesNotInheritThePreviousCache(
+        changed: String, queried: Bool
+    ) async throws {
+        let fixture = Fixture(session: Self.first)
+        try await Self.seedCache(fixture, session: Self.first, numbers: 0..<3)
+        await fixture.store.step()
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        let replacement = Agent(
+            terminalID: changed == "terminal" ? "term-2" : "term-1",
+            kind: changed == "kind" ? "codex" : "claude", title: "", status: .idle,
+            workspaceID: changed == "workspace" ? "w2" : "w1",
+            tabID: changed == "tab" ? "t2" : "t1",
+            paneID: changed == "pane" ? "w1:p2" : "w1:p1", cwd: Self.cwd, revision: 2)
+        await fixture.server.set(replacement)
+        if queried {
+            fixture.store.retry()
+            await fixture.store.step()
+        } else {
+            fixture.store.agentDidChange(replacement)
+        }
+
+        #expect(fixture.store.conversation.transcript.entries.isEmpty)
+        #expect(!fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversation.phase == .unavailable(.noSession(.claude)))
+    }
+
+    @Test func aSessionQueryCannotOverwriteANewerConsoleSession() async throws {
+        let fixture = Fixture(session: Self.first)
+        try await Self.seedCache(fixture, session: Self.first, numbers: 0..<3)
+        try await Self.seedCache(fixture, session: Self.second, numbers: 10..<12)
+        await fixture.server.suspendNextRead()
+        let step = Task { await fixture.store.step() }
+        try await Self.waitUntil { await fixture.server.reads == 1 }
+        fixture.store.agentDidChange(Self.agent(session: Self.second))
+        let generation = fixture.store.conversationGeneration
+        await fixture.server.releaseRead()
+        await step.value
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(10..<12))
+        #expect(fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversationGeneration == generation)
+    }
+
+    @Test func cancellingAWaitingRefreshKeepsTheCacheAndSkipsRemoteFileReads() async throws {
+        let fixture = Fixture(session: Self.first)
+        try await Self.seedCache(fixture, session: Self.first, numbers: 0..<3)
+        await fixture.server.set(Self.agent(session: Self.second))
+        await fixture.server.suspendNextRead()
+        let step = Task { await fixture.store.step() }
+        try await Self.waitUntil { await fixture.server.reads == 1 }
+        let generation = fixture.store.conversationGeneration
+        step.cancel()
+        await fixture.server.releaseRead()
+        await step.value
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(fixture.store.conversation.readFailure == nil)
+        #expect(await fixture.files.reads.isEmpty)
+    }
+
     @Test func sessionQueryRecoveryDoesNotHideATranscriptFailure() async throws {
         let fixture = Fixture(session: Self.first)
         await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
@@ -397,6 +581,90 @@ struct AgentChatStoreTests {
         await fixture.store.step()
 
         #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.first)))
+    }
+
+    @Test func prefetchSavesWithoutOpeningChatOrContinuingToPoll() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        let key = ChatCacheKey(
+            hostID: Self.host, herdrSession: "", program: .claude, conversationID: Self.first)
+
+        await fixture.store.prefetch()
+
+        #expect(!fixture.store.isVisible)
+        #expect(await Self.savedIDs(fixture.cache, key) == NumberedChatReducer.ids(0..<3))
+        let reads = await fixture.files.reads.count
+        await fixture.files.append(NumberedChatReducer.lines(3..<4), to: Self.path(Self.first))
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(await fixture.files.reads.count == reads)
+
+        // Another fresh snapshot must persist its update even within the
+        // normal visible loop's save interval.
+        await fixture.store.prefetch()
+        #expect(await Self.savedIDs(fixture.cache, key) == NumberedChatReducer.ids(0..<4))
+        #expect(!fixture.store.isVisible)
+    }
+
+    @Test func showingChatDuringPrefetchContinuesTheSameSerializedReader() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.server.suspendNextRead()
+        let prefetch = Task { await fixture.store.prefetch() }
+        try await Self.waitUntil { await fixture.server.reads == 1 }
+
+        fixture.store.show()
+        await fixture.store.prefetch()
+        #expect(await fixture.server.reads == 1)
+        await fixture.server.releaseRead()
+        _ = await prefetch.value
+        try await Self.waitUntil { Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3) }
+        await fixture.files.append(NumberedChatReducer.lines(3..<4), to: Self.path(Self.first))
+        try await Self.waitUntil { Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4) }
+        fixture.store.hide()
+    }
+
+    @Test func cancellingPrefetchStopsBeforeFilesAndAllowsTheNextSnapshot() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.server.suspendNextRead()
+        let prefetch = Task { await fixture.store.prefetch() }
+        try await Self.waitUntil { await fixture.server.reads == 1 }
+
+        prefetch.cancel()
+        await fixture.server.releaseRead()
+        _ = await prefetch.value
+
+        #expect(await fixture.files.reads.isEmpty)
+        #expect(!fixture.store.isVisible)
+        await fixture.store.prefetch()
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(await fixture.server.reads == 2)
+    }
+
+    @Test func reconnectRetriesAfterACancelledPrefetchStillOwnsTheReader() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        #expect(await fixture.store.prefetch())
+        await fixture.files.append(NumberedChatReducer.lines(3..<4), to: Self.path(Self.first))
+        await fixture.server.suspendNextRead()
+        let oldPrefetch = Task { await fixture.store.prefetch() }
+        try await Self.waitUntil { await fixture.server.reads == 2 }
+
+        // Disconnect cancels the caller, but the old remote request has
+        // not returned yet. A fast reconnect must not accept its stale,
+        // previously successful snapshot as a newly completed prefetch.
+        oldPrefetch.cancel()
+        #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.first)))
+        #expect(fixture.store.conversation.readFailure == nil)
+        #expect(!(await fixture.store.prefetch()))
+        #expect(await fixture.server.reads == 2)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+
+        await fixture.server.releaseRead()
+        #expect(!(await oldPrefetch.value))
+        #expect(await fixture.store.prefetch())
+        #expect(await fixture.server.reads == 3)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4))
     }
 
     @Test func leavingChatSavesWhatShowed() async throws {

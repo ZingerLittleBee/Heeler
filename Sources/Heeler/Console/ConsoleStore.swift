@@ -104,6 +104,9 @@ final class ConsoleStore {
     /// cache: demo mode and tests build Console stores in the app's own
     /// container, and their `setHosts` would otherwise clear the real one.
     @ObservationIgnored let chatCache: any ChatTranscriptCache
+    let cachedChats: ConsoleChatCache
+    @ObservationIgnored private var chatPrefetchTasks: [Host.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var chatPrefetched: [ConsoleAgent.ID: String] = [:]
     @ObservationIgnored private var chatCacheRetention: Task<Void, Never>?
     /// How Chat reads each program's transcripts; nil leaves the program
     /// without Chat.
@@ -126,6 +129,7 @@ final class ConsoleStore {
         }
     ) {
         self.chatCache = chatCache
+        cachedChats = ConsoleChatCache(cache: chatCache)
         self.chatAdapter = chatAdapter
         let terminalBudget = TerminalRetentionBudget()
         terminalConnections = TerminalConnectionPool(budget: terminalBudget)
@@ -147,6 +151,12 @@ final class ConsoleStore {
     /// projection because its connection coordinates may have changed.
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
+        cachedChats.setHosts(hosts)
+        for id in projections.keys where incoming[id] != projections[id]?.host {
+            chatPrefetchTasks[id]?.cancel()
+            chatPrefetchTasks[id] = nil
+            chatPrefetched = chatPrefetched.filter { $0.key.hostID != id }
+        }
         for (id, session) in composerSessions where incoming[id.hostID] == nil {
             session.leaveStaging()
             composerSessions[id] = nil
@@ -397,6 +407,7 @@ final class ConsoleStore {
         }
         guard projections[hostID] === projection else { return }
         if hostPlatforms[hostID] != platform { hostPlatforms[hostID] = platform }
+        reconcileChatCache()
     }
 
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
@@ -635,7 +646,20 @@ final class ConsoleStore {
     }
 
     private func liveChatAgentInfo(hostID: Host.ID, paneID: String) async throws -> Agent {
-        try await projection(for: hostID).agentInfo(paneID: paneID)
+        let origin = try projection(for: hostID)
+        let generation = origin.transportGeneration
+        let snapshot = origin.agentsByPane[paneID]
+        let fresh = try await origin.agentInfo(paneID: paneID)
+        guard projections[hostID] === origin, origin.transportGeneration == generation,
+            !origin.isAwaitingSnapshot else { throw TransportError.cancelled }
+        if hostPlatforms[hostID] == .posix, let snapshot,
+            origin.agentsByPane[paneID]?.agent.agentSession == snapshot.agent.agentSession,
+            origin.agentsByPane[paneID]?.agent.terminalID == snapshot.agent.terminalID,
+            origin.agentsByPane[paneID]?.agent.workspaceID == snapshot.agent.workspaceID,
+            origin.agentsByPane[paneID]?.agent.tabID == snapshot.agent.tabID {
+            cachedChats.confirm(fresh, for: snapshot, on: origin.host)
+        }
+        return fresh
     }
 
     /// A latest-value view of the existing `pane.agent_status_changed`
@@ -989,6 +1013,7 @@ final class ConsoleStore {
         rebuildAgentOrder()
         publishAgentStatuses()
         publishChatAgents()
+        reconcileChatCache()
         // A reconnecting Host's empty projection is not proof its Agents
         // exited, so their row totals stay until its snapshot says so.
         let liveAgents = Set(agents.map(\.id))
@@ -1105,6 +1130,80 @@ final class ConsoleStore {
                 .map { (agent.id, $0) }
         })
         agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
+    }
+
+    /// Live rows plus saved Chat entry points while a Host is unproven. The
+    /// separate `agents` property remains the only realtime inventory.
+    var chatDisplayAgents: [ConsoleAgent] {
+        let live = Set(agents.map(\.id))
+        let saved = projections.values.flatMap { projection -> [ConsoleAgent] in
+            guard projection.status != .connected || projection.isAwaitingSnapshot else { return [] }
+            return cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
+        }
+        return agents + saved.consoleSorted(sortByHost: [:]) { [pins] in
+            pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
+        }
+    }
+
+    func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {
+        let platform = hostPlatforms[agent.hostID]
+        if let platform { return AgentChatAvailability.program(for: agent.agent, platform: platform) }
+        guard let host = projections[agent.hostID]?.host,
+            cachedChats.agents(on: host).contains(where: { $0.id == agent.id }) else { return nil }
+        return AgentChatAvailability.program(for: agent.agent, platform: .posix)
+    }
+
+    private func reconcileChatCache() {
+        for projection in projections.values {
+            let host = projection.host
+            guard isActive, projection.status == .connected, !projection.isAwaitingSnapshot else {
+                chatPrefetchTasks[host.id]?.cancel()
+                chatPrefetchTasks[host.id] = nil
+                chatPrefetched = chatPrefetched.filter { $0.key.hostID != host.id }
+                continue
+            }
+            guard hostPlatforms[host.id] == .posix else { continue }
+            cachedChats.observe(Array(projection.agentsByPane.values), on: host)
+            guard chatPrefetchTasks[host.id] == nil else { continue }
+            let generation = projection.transportGeneration
+            let candidates = projection.agentsByPane.values.filter { agent in
+                guard AgentChatAvailability.mayOfferChat(for: agent.agent) else { return false }
+                return chatPrefetched[agent.id] != chatPrefetchKey(agent, generation: generation)
+            }
+            guard !candidates.isEmpty else { continue }
+            chatPrefetchTasks[host.id] = Task { [weak self, weak projection] in
+                guard let self, let projection else { return }
+                var needsRetry = false
+                for agent in candidates {
+                    guard !Task.isCancelled, isActive, projections[host.id] === projection,
+                        projection.status == .connected, !projection.isAwaitingSnapshot,
+                        projection.transportGeneration == generation else { break }
+                    guard let program = ChatProgram(rawValue: agent.agent.kind),
+                        let chat = chatStore(for: agent, program: program) else { continue }
+                    chatPrefetched[agent.id] = chatPrefetchKey(agent, generation: generation)
+                    let prefetched = await chat.prefetch()
+                    guard !Task.isCancelled else { return }
+                    let snapshot = chat.conversation
+                    let waiting: Bool = switch snapshot.phase {
+                    case .locating: true
+                    case .unavailable(.noSession), .unavailable(.notFound): true
+                    default: false
+                    }
+                    if !prefetched || snapshot.readFailure != nil || waiting {
+                        chatPrefetched[agent.id] = nil
+                        needsRetry = true
+                    }
+                }
+                if needsRetry { try? await Task.sleep(for: .seconds(5)) }
+                guard !Task.isCancelled, projections[host.id] === projection else { return }
+                chatPrefetchTasks[host.id] = nil
+                reconcileChatCache()
+            }
+        }
+    }
+
+    private func chatPrefetchKey(_ agent: ConsoleAgent, generation: UInt64) -> String {
+        "\(generation):\(agent.agent.terminalID):\(agent.agent.kind):\(agent.agent.status):\(agent.agent.agentSession?.value ?? "")"
     }
 
     /// Hands each Chat its Agent's latest record, and ends the Chats of

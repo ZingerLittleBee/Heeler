@@ -777,7 +777,7 @@ struct AgentChatSurfaceView: View {
 
     private var agentSwitcher: TerminalAgentSwitcher {
         TerminalAgentSwitcher(
-            items: console.agents.map {
+            items: console.chatDisplayAgents.map {
                 TerminalAgentSwitcherItem(
                     agent: $0, pins: console.pins, layout: console.rowLayout(for: $0.hostID))
             },

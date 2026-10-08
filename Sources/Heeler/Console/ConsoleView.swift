@@ -1169,7 +1169,7 @@ struct ConsoleView: View {
         if let id = notificationRouter.path.last {
             if let receipt = matchingRemovedWorktreeReceipt(for: id) {
                 removedWorktreeSurface(receipt)
-            } else if let agent = console.agents.first(where: { $0.id == id }) {
+            } else if let agent = console.chatDisplayAgents.first(where: { $0.id == id }) {
                 AgentDetailView(
                     agent: agent,
                     console: console,
@@ -1186,7 +1186,7 @@ struct ConsoleView: View {
                         // terminal on a spurious reappearance.
                         isVisible: { [notificationRouter] in
                             notificationRouter.path.last == id
-                                && console.agents.contains(where: { $0.id == id })
+                                && console.chatDisplayAgents.contains(where: { $0.id == id })
                                 && currentTab == tab
                         },
                         terminalAccess: { [sceneRouting] in
@@ -1641,9 +1641,9 @@ struct ConsoleView: View {
     private var filteredAgents: [ConsoleAgent] {
         let hostFiltered: [ConsoleAgent]
         if let hostFilter {
-            hostFiltered = console.agents.filter { $0.hostID == hostFilter }
+            hostFiltered = console.chatDisplayAgents.filter { $0.hostID == hostFilter }
         } else {
-            hostFiltered = console.agents
+            hostFiltered = console.chatDisplayAgents
         }
         let needle = agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return hostFiltered }

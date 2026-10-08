@@ -124,6 +124,8 @@ protocol ChatTranscriptCache: Sendable {
     func load(_ key: ChatCacheKey) async -> ChatCacheLoadResult
     func save(_ document: ChatCacheDocument) async
     func remove(_ key: ChatCacheKey) async
+    func loadAgentDirectory(for host: Host) async -> [ChatCachedAgent]
+    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async
     /// Deletes every Host's documents except these Hosts', and refuses later
     /// saves for any other Host, so a save racing a Host's removal cannot
     /// bring its messages back.
@@ -133,10 +135,16 @@ protocol ChatTranscriptCache: Sendable {
     func prune() async
 }
 
+extension ChatTranscriptCache {
+    func loadAgentDirectory(for host: Host) async -> [ChatCachedAgent] { [] }
+    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async {}
+}
+
 /// A cache that lives only as long as the process: the default for demo
 /// mode and tests, which build Console stores inside the app's container.
 actor VolatileChatTranscriptCache: ChatTranscriptCache {
     private var documents: [ChatCacheKey: ChatCacheDocument] = [:]
+    private var agentDirectories: [UUID: ChatAgentDirectory] = [:]
     private var allowedHosts: Set<UUID>?
 
     init() {}
@@ -154,13 +162,24 @@ actor VolatileChatTranscriptCache: ChatTranscriptCache {
         documents[key] = nil
     }
 
+    func loadAgentDirectory(for host: Host) async -> [ChatCachedAgent] {
+        agentDirectories[host.id]?.entries(for: host) ?? []
+    }
+
+    func saveAgentDirectory(_ agents: [ChatCachedAgent], for host: Host) async {
+        if let allowedHosts, !allowedHosts.contains(host.id) { return }
+        agentDirectories[host.id] = ChatAgentDirectory(agents, for: host)
+    }
+
     func retainHosts(_ hostIDs: Set<UUID>) {
         allowedHosts = hostIDs
         documents = documents.filter { hostIDs.contains($0.key.hostID) }
+        agentDirectories = agentDirectories.filter { hostIDs.contains($0.key) }
     }
 
     func removeAll() {
         documents = [:]
+        agentDirectories = [:]
     }
 
     func diskUsage() -> Int64 { 0 }

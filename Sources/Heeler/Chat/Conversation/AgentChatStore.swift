@@ -99,6 +99,8 @@ final class AgentChatStore {
     @ObservationIgnored private var restored = false
     @ObservationIgnored private var appliedRevision: Int?
     @ObservationIgnored private var needsAgentRefresh = true
+    /// Rejects an Agent query overtaken by a newer Console session record.
+    @ObservationIgnored private var sessionRecordRevision = 0
     @ObservationIgnored private var lastAgentRefresh: Date?
     /// Agent queries and transcript reads recover independently.
     @ObservationIgnored private var agentRefreshFailure: TransportError?
@@ -109,6 +111,7 @@ final class AgentChatStore {
     @ObservationIgnored private var lastActivity: Date?
     @ObservationIgnored private var isSuspended = false
     @ObservationIgnored private var loop: Task<Void, Never>?
+    @ObservationIgnored private var loopID: UUID?
     /// The last loop's end, saving included; a new loop waits for it.
     @ObservationIgnored private var finishing: Task<Void, Never>?
     @ObservationIgnored private var sleeper: Task<Void, Never>?
@@ -207,6 +210,43 @@ final class AgentChatStore {
         isVisible = false
         stopLoop()
         blocked.end()
+    }
+
+    /// Warms the local document once after a fresh Host snapshot, without
+    /// opening Chat or starting permanent polling. A view appearing during
+    /// this read takes over the same serialized loop when it finishes.
+    /// Returns whether an active visible reader handles the refresh, or this
+    /// call completed its own pass without cancellation. Callers still check
+    /// the snapshot for read failures. Busy hidden readers return false so
+    /// reconnect can retry after a cancelled earlier pass finishes.
+    @discardableResult
+    func prefetch() async -> Bool {
+        guard !isSuspended, !Task.isCancelled else { return false }
+        if isVisible { return loop.map { !$0.isCancelled } ?? false }
+        guard loop == nil else { return false }
+        needsAgentRefresh = true
+        let previous = finishing
+        let id = UUID()
+        loopID = id
+        let task = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            if !Task.isCancelled {
+                await self.step()
+                await self.engine?.save(force: true)
+            }
+            guard self.loopID == id else { return }
+            self.loop = nil
+            self.loopID = nil
+            self.startLoop()
+        }
+        loop = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        return !Task.isCancelled && !task.isCancelled
     }
 
     // MARK: Requests
@@ -308,8 +348,14 @@ final class AgentChatStore {
     func agentDidChange(_ next: Agent) {
         let statusChanged = next.status != agent.status
         let sessionChanged = next.agentSession != agent.agentSession
+        let identityChanged = !sameIdentity(agent, next)
+        let bindingReturned = isAwaitingSession && next.agentSession != nil
         agent = next
-        if sessionChanged { adopt(ConversationReference.resolve(next.agentSession)) }
+        if sessionChanged || identityChanged || bindingReturned {
+            sessionRecordRevision += 1
+            adopt(ConversationReference.resolve(next.agentSession), replacingAgent: identityChanged)
+            wake()
+        }
         guard statusChanged else { return }
         blocked.update(activity: ChatAgentActivity(next.status))
         // A turn starting or ending is when a session changes (`/clear`,
@@ -323,22 +369,25 @@ final class AgentChatStore {
 
     // MARK: Loop
 
-    /// One turn of the loop: re-reads the Agent's record when due, then
-    /// makes at most one read of the transcript, and after a poll that
+    /// One turn of the loop: restores local entries before asking the Host,
+    /// then makes at most one read of the transcript, and after a poll that
     /// worked, a few reads of Workflow journals. Internal for tests, which
     /// drive turns directly.
     func step() async {
+        await restoreIfNeeded()
+        guard !Task.isCancelled else { return }
         if needsAgentRefresh || sessionRecheckIsDue { await refreshAgent() }
-        guard let engine else {
+        guard !Task.isCancelled else { return }
+        // The query may select another session. Restore that session's own
+        // document before waiting for its transcript, too.
+        await restoreIfNeeded()
+        guard !Task.isCancelled else { return }
+        guard let engine, !isAwaitingSession else {
             matchSends()
             refreshBackgroundWork()
             return
         }
         let context = projectionContext
-        if !restored {
-            restored = true
-            apply(await engine.restore(), from: engine)
-        }
         let snapshot: ChatConversationSnapshot
         var polled = false
         if olderRequested {
@@ -349,12 +398,17 @@ final class AgentChatStore {
             polled = true
         } else if openIsDue {
             snapshot = await engine.open(directories: directories, context: context)
-            scheduleNextOpen(after: snapshot)
+            if !Task.isCancelled, engine === self.engine { scheduleNextOpen(after: snapshot) }
         } else {
             snapshot = await engine.reproject(context: context)
         }
+        guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         apply(snapshot, from: engine)
         matchSends()
+        // Persist the transcript before optional journal requests can wait
+        // on an unavailable connection.
+        await engine.save()
+        guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         // A journal read adds a deadline of its own, so a round whose
         // transcript read failed leaves the journals for later.
         if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
@@ -362,17 +416,32 @@ final class AgentChatStore {
             if engine === self.engine { workflowProgress = progress }
         }
         refreshBackgroundWork()
-        await engine.save()
+    }
+
+    private func restoreIfNeeded() async {
+        while !restored, let engine {
+            let snapshot = await engine.restore()
+            guard !Task.isCancelled else { return }
+            // A Console update can switch sessions during a disk read.
+            // Finish restoring the new identity before doing remote work.
+            guard engine === self.engine else { continue }
+            restored = true
+            apply(snapshot, from: engine)
+            matchSends()
+            refreshBackgroundWork()
+        }
     }
 
     private func startLoop() {
         guard isVisible, !isSuspended, loop == nil else { return }
         let previous = finishing
+        loopID = UUID()
         loop = Task { [weak self] in
             await previous?.value
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.step()
+                guard !Task.isCancelled else { return }
                 await self.pause(self.interval)
             }
         }
@@ -383,6 +452,7 @@ final class AgentChatStore {
         loop.cancel()
         sleeper?.cancel()
         self.loop = nil
+        loopID = nil
         let engine = engine
         finishing = Task {
             await loop.value
@@ -434,38 +504,77 @@ final class AgentChatStore {
     private func refreshAgent() async {
         needsAgentRefresh = false
         lastAgentRefresh = now()
+        let recordRevision = sessionRecordRevision
         // The Console's record keeps whatever its last snapshot said; herdr's
         // answer here is newer, and only a later change to that record
         // overrides it.
         do {
             let fresh = try await source.agentInfo()
+            guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return }
             agentRefreshFailure = nil
             updateReadFailure()
-            adopt(ConversationReference.resolve(fresh.agentSession))
+            let identityChanged = !sameIdentity(agent, fresh)
+            if identityChanged {
+                agent = fresh
+                blocked.update(activity: ChatAgentActivity(fresh.status))
+            }
+            adopt(ConversationReference.resolve(fresh.agentSession), replacingAgent: identityChanged)
         } catch {
-            guard !(error is CancellationError), error as? TransportError != .cancelled else { return }
+            guard !Task.isCancelled, recordRevision == sessionRecordRevision,
+                !(error is CancellationError), error as? TransportError != .cancelled
+            else { return }
             agentRefreshFailure = error as? TransportError
                 ?? .channelFailed(detail: String(describing: type(of: error)))
             updateReadFailure()
         }
     }
 
-    private func adopt(_ next: ConversationReference.Resolution) {
-        guard next != resolution else { return }
+    private func sameIdentity(_ lhs: Agent, _ rhs: Agent) -> Bool {
+        lhs.terminalID == rhs.terminalID && lhs.workspaceID == rhs.workspaceID
+            && lhs.tabID == rhs.tabID && lhs.kind == rhs.kind && lhs.paneID == rhs.paneID
+    }
+
+    /// An unreported binding does not prove that this Agent changed its
+    /// conversation. Keep its last document readable, but stop remote reads
+    /// until the Host supplies an explicit binding again.
+    private var isAwaitingSession: Bool {
+        resolution == .noSession && followed != nil
+    }
+
+    private func adopt(_ next: ConversationReference.Resolution, replacingAgent: Bool = false) {
+        guard next != resolution || replacingAgent else { return }
         resolution = next
+        if !replacingAgent, isAwaitingSession {
+            conversation.phase = .unavailable(.noSession(program))
+            conversation.isFromCache = !conversation.transcript.entries.isEmpty
+            if conversation.older == .loading { conversation.older = .available }
+            olderRequested = false
+            appliedRevision = nil
+            refreshBackgroundWork()
+            return
+        }
         continuedSession = nil
-        followReference()
+        followReference(force: replacingAgent)
     }
 
     /// Points the engine at the conversation to follow, starting a new one
     /// when it changed.
-    private func followReference() {
+    private func followReference(force: Bool = false) {
         var target: ConversationReference?
         if case .bound(let reference) = resolution, reference.program == program {
             target = continuedSession ?? reference
         }
-        guard target != followed else {
-            if target == nil { showUnavailable() }
+        guard target != followed || force else {
+            if target == nil {
+                showUnavailable()
+            } else if case .unavailable(.noSession) = conversation.phase {
+                // Resume the same timeline rather than changing its identity
+                // or clearing the entries while the Host is being read.
+                conversation.phase = .locating
+                appliedRevision = nil
+                nextOpen = nil
+                failedOpens = 0
+            }
             return
         }
         if let engine { Task { await engine.save(force: true) } }
@@ -516,12 +625,15 @@ final class AgentChatStore {
 
     private func apply(_ snapshot: ChatConversationSnapshot, from origin: ChatConversationEngine) {
         // A session switch may have replaced the engine during the read.
-        guard origin === engine, snapshot.revision != appliedRevision else { return }
+        guard origin === engine, snapshot.revision != appliedRevision,
+            !isAwaitingSession || snapshot.isFromCache
+        else { return }
         if snapshot.transcript.entries != conversation.transcript.entries { lastActivity = now() }
         appliedRevision = snapshot.revision
         transcriptReadFailure = snapshot.readFailure
         var next = snapshot
         next.readFailure = transcriptReadFailure ?? agentRefreshFailure
+        if isAwaitingSession { next.phase = .unavailable(.noSession(program)) }
         if olderRequested, next.older == .available { next.older = .loading }
         conversation = next
         blocked.update(transcript: next.transcript)

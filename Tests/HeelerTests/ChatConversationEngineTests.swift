@@ -531,7 +531,27 @@ struct ChatConversationEngineTests {
         #expect(restored.phase == .locating)
         #expect(restored.isFromCache)
         #expect(restored.older == .reachedStart)
+        #expect(restored.readOffset == Self.offset(of: 3))
         #expect(Self.numbers(restored) == Self.ids(0..<3))
+        #expect(await fixture.files.reads.isEmpty)
+        #expect(await fixture.files.statuses.isEmpty)
+    }
+
+    @Test func restoringBackgroundWorkKeepsTheOfflineTranscriptComplete() async throws {
+        let fixture = Fixture(limits: TranscriptFollower.Limits())
+        let launch = NumberedChatReducer.launch("s1", journal: nil, at: Self.start)
+        await fixture.files.write(Self.lines(0..<3) + launch, at: Self.claudePath)
+        let first = fixture.makeEngine()
+        let original = await fixture.open(first)
+        await first.save()
+        let reopened = fixture.makeEngine()
+
+        let restored = await reopened.restore()
+
+        #expect(restored.isFromCache)
+        #expect(restored.transcript.listedBackgroundWork == original.transcript.listedBackgroundWork)
+        #expect(restored.transcript.listedBackgroundWork.map(\.id) == ["s1"])
+        #expect(restored.readOffset == original.readOffset)
     }
 
     @Test func savedEntriesFillInAboveTheLiveWindow() async throws {
