@@ -211,6 +211,11 @@ final class AgentChatStore {
 
     // MARK: Requests
 
+    /// Preview reads use the same Host connection as the transcript.
+    func readImage(at path: String) async throws -> Data {
+        try await ChatImagePreviewReader.read(path: path, files: source.files)
+    }
+
     /// Reads one page above the oldest message shown.
     func loadOlder() {
         guard conversation.older == .available || isFailedOlder,

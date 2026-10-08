@@ -210,6 +210,8 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     }
 
     var subagentActivity: ChatSubagentActivity?
+    /// The image's absolute path on the transcript Host, never its display title.
+    var imagePath: String?
     var kind: Kind
     /// The program's own tool name: `Bash`, `Edit`, `exec_command`.
     var name: String
@@ -247,9 +249,10 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         status: Status, note: String? = nil, diff: ChatDiffStats? = nil,
         fileChanges: ChatFileChanges? = nil, exitCode: Int? = nil, questions: [ChatQuestion] = [],
         callID: String? = nil, preview: ChatToolPreview? = nil, output: ChatOutputReference? = nil,
-        subagentActivity: ChatSubagentActivity? = nil
+        subagentActivity: ChatSubagentActivity? = nil, imagePath: String? = nil
     ) {
         self.subagentActivity = subagentActivity
+        self.imagePath = imagePath
         self.kind = kind
         self.name = name
         self.title = title
@@ -280,7 +283,7 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     // `preview`, `cardAnswer` and `outputRead` are deliberately absent:
     // decoding leaves them nil.
     private enum CodingKeys: String, CodingKey {
-        case kind, name, title, subtitle, status, note, diff, fileChanges, exitCode, questions, callID, output, subagentActivity
+        case kind, name, title, subtitle, status, note, diff, fileChanges, exitCode, questions, callID, output, subagentActivity, imagePath
     }
 }
 

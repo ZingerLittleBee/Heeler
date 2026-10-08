@@ -11,6 +11,34 @@ import UIKit
 struct ChatTimelineControllerTests {
     private static let frame = CGRect(x: 0, y: 0, width: 390, height: 640)
 
+    @Test func imageContextMenuUsesRecordedPathAndCommitsToPreviewSheet() async throws {
+        let path = "/tmp/actual.png"
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let entry = ChatEntry(id: ChatEntryID("image"), sourceOffset: 0, content: .tool(ChatToolActivity(
+            kind: .image, name: "ImageView", title: "display-only.png", status: .succeeded, imagePath: path)))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [entry]))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let menu = try #require(controller.collectionView(controller.timeline,
+                contextMenuConfigurationForItemsAt: [IndexPath(item: 0, section: 0)], point: .zero))
+            #expect(menu.identifier as? String == path)
+            let preview = ChatImagePreviewController(path: path) { _ in throw ChatImagePreviewError.missing }
+            let animator = ImagePreviewCommitAnimator(preview: preview)
+            controller.collectionView(controller.timeline, willPerformPreviewActionForMenuWith: menu, animator: animator)
+            #expect(controller.presentedViewController == nil)
+            animator.complete()
+            let navigation = try #require(controller.presentedViewController as? UINavigationController)
+            #expect(navigation.topViewController === preview)
+            #expect(preview.path == path)
+            // Let UIKit finish presenting before the window is retired.
+            try await Task.sleep(for: .milliseconds(500))
+            await withCheckedContinuation { continuation in
+                controller.dismiss(animated: false) { continuation.resume() }
+            }
+        }
+    }
+
     @Test func subagentHistoryStaysOpenWhenMoreEventsArrive() async throws {
         var outputRequests: [ChatEntryID] = []
         let controller = ChatTimelineController(actions: ChatTimelineActions(loadOutput: { outputRequests.append($0) }))
@@ -838,4 +866,17 @@ struct ChatRowViewTests {
             }
         }
     }
+}
+
+/// Exercises UIKit's commit callback without completing the animation early.
+@MainActor
+private final class ImagePreviewCommitAnimator: NSObject, UIContextMenuInteractionCommitAnimating {
+    let previewViewController: UIViewController?
+    var preferredCommitStyle: UIContextMenuInteractionCommitStyle = .dismiss
+    private var completions: [() -> Void] = []
+
+    init(preview: UIViewController) { previewViewController = preview }
+    func addAnimations(_ animations: @escaping () -> Void) { animations() }
+    func addCompletion(_ completion: @escaping () -> Void) { completions.append(completion) }
+    func complete() { completions.forEach { $0() } }
 }

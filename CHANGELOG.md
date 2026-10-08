@@ -19,6 +19,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Chat previews recorded image files on long press, opens them with zoom, and
+  aligns tool icons with their titles above subtitles. (#425)
 - Chat groups each Subagent's activity into one card per turn, with
   a Lucide Bot icon beside its title and expandable history, and no longer marks message exchanges
   as completed work. (#425)

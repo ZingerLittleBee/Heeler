@@ -10,6 +10,88 @@ import Testing
 struct CodexMessageDisplayTests {
     private let idle = ChatProjectionContext(activity: .idle)
 
+    @Test("Image rows retain the Host path separately from their display title", arguments: [false, true])
+    func imageHostPath(legacy: Bool) throws {
+        var builder = CodexRolloutBuilder(legacy ? .legacy : .paginated, cwd: "/work")
+        builder.turnStarted("t1")
+        if legacy {
+            builder.legacyCall("view_image", callID: "image-1", arguments: ["path": "/work/screenshots/shot.png"])
+            builder.legacyOutput(callID: "image-1", output: "Image displayed")
+        } else {
+            builder.item("t1", ["type": "ImageView", "id": "image-1", "path": "/work/screenshots/shot.png"])
+        }
+        let tool = try #require(builder.reducer().transcript(idle).entries.first?.tool)
+        #expect(tool.title == "screenshots/shot.png")
+        #expect(tool.imagePath == "/work/screenshots/shot.png")
+        #expect(tool.kind == .image)
+        #expect(tool.status == .succeeded)
+        #expect(tool.output != nil)
+        if legacy { #expect(tool.preview?.text == "Image displayed") }
+    }
+
+    @Test("Image paths resolve from recorded context without guessing", arguments: [false, true])
+    func imagePathResolution(legacy: Bool) throws {
+        let cases: [(path: String, cwd: String, expected: String?)] = [
+            ("screenshots/shot.png", "/work", "/work/screenshots/shot.png"),
+            ("./shot.png", "/work", "/work/./shot.png"),
+            ("../shot.png", "/work/symlink", "/work/symlink/../shot.png"),
+            ("screenshots/shot.png", "", nil),
+            ("screenshots/shot.png", "relative", nil),
+            ("file:///tmp/my%20shot.png", "/work", "/tmp/my shot.png"),
+            ("file://localhost/tmp/shot.png", "/work", "/tmp/shot.png"),
+            ("file://another-host/tmp/shot.png", "/work", nil),
+            ("file:///tmp/shot.png?download=yes", "/work", nil),
+            ("https://example.com/shot.png", "/work", nil),
+            ("data:image/png;base64,AAAA", "/work", nil),
+            ("~/shot.png", "/work", nil),
+            ("", "/work", nil),
+        ]
+        for sample in cases {
+            var builder = CodexRolloutBuilder(legacy ? .legacy : .paginated, cwd: sample.cwd)
+            builder.turnStarted("t1")
+            if legacy {
+                builder.legacyCall("view_image", callID: "image-1", arguments: ["path": .string(sample.path)])
+                builder.legacyOutput(callID: "image-1", output: "Image displayed")
+            } else {
+                builder.item("t1", ["type": "ImageView", "id": "image-1", "path": .string(sample.path)])
+            }
+            let tool = try #require(builder.reducer().transcript(idle).entries.first?.tool)
+            #expect(tool.imagePath == sample.expected, "Recorded path: \(sample.path), cwd: \(sample.cwd)")
+        }
+    }
+
+    @Test("Generated images retain a recorded saved path", arguments: [false, true])
+    func generatedImagePath(legacy: Bool) throws {
+        var builder = CodexRolloutBuilder(legacy ? .legacy : .paginated, cwd: "/work")
+        builder.turnStarted("t1")
+        if legacy {
+            builder.legacyCall("image_generation", callID: "image-1", arguments: [:])
+            builder.event("image_generation_end", [
+                ("call_id", "image-1"), ("saved_path", "generated/shot.png"), ("status", "completed"),
+            ])
+        } else {
+            builder.item("t1", [
+                "type": "ImageGeneration", "id": "image-1", "savedPath": "generated/shot.png", "status": "completed",
+            ])
+        }
+        let tools = builder.reducer().transcript(idle).entries.compactMap(\.tool)
+        #expect(tools.count == 1)
+        let tool = try #require(tools.first)
+        #expect(tool.imagePath == "/work/generated/shot.png")
+        #expect(tool.status == .succeeded)
+        #expect(tool.output != nil)
+    }
+
+    @Test func imagesWithoutRecordedPathsRemainTextOnly() throws {
+        var builder = CodexRolloutBuilder()
+        builder.turnStarted("t1")
+        builder.item("t1", ["type": "ImageView", "id": "image-1"])
+        builder.item("t1", ["type": "ImageGeneration", "id": "image-2", "status": "completed"])
+        let tools = builder.reducer().transcript(idle).entries.compactMap(\.tool)
+        #expect(tools.count == 2)
+        #expect(tools.allSatisfy { $0.imagePath == nil })
+    }
+
     @Test("Subagent events preserve identity without treating every update as success", arguments: [false, true])
     func subagentActivity(legacy: Bool) throws {
         var builder = CodexRolloutBuilder(legacy ? .legacy : .paginated)

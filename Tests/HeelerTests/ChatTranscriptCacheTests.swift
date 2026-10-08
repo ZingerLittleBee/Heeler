@@ -91,10 +91,24 @@ struct ChatTranscriptCacheTests {
         #expect(await fixture.cache.load(Self.key()) == .hit(document))
     }
 
+    @Test func imageHostPathsSurviveTheDiskCache() async {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        var document = Self.document(Self.key())
+        document.entries = [ChatEntry(
+            id: ChatEntryID("image"), sourceOffset: 100,
+            content: .tool(ChatToolActivity(
+                kind: .image, name: "ImageView", title: "shot.png", status: .succeeded,
+                imagePath: "/work/shot.png")))]
+        await fixture.cache.save(document)
+        #expect(await fixture.cache.load(Self.key()) == .hit(document))
+    }
+
     @Test func olderCachedToolsDecodeWithoutSubagentMetadata() throws {
         let json = #"{"kind":"agent","name":"Agent","title":"Task","status":"succeeded","questions":[]}"#
         let tool = try JSONDecoder().decode(ChatToolActivity.self, from: Data(json.utf8))
         #expect(tool.subagentActivity == nil)
+        #expect(tool.imagePath == nil)
     }
 
     @Test func fileNamesRevealNoIdentifiers() {

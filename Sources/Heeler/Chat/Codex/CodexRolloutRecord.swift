@@ -874,6 +874,7 @@ struct CodexSyncQuestion: Equatable, Sendable {
 /// call shows from the turn and herdr's activity.
 struct CodexToolSnapshot: Equatable, Sendable {
     var subagentActivity: ChatSubagentActivity?
+    var imagePath: String?
     var kind: ChatToolActivity.Kind
     var name: String
     var title: String
@@ -890,9 +891,10 @@ struct CodexToolSnapshot: Equatable, Sendable {
         kind: ChatToolActivity.Kind, name: String, title: String, subtitle: String? = nil,
         status: ChatToolActivity.Status?, note: String? = nil, diff: ChatDiffStats? = nil,
         exitCode: Int? = nil, callID: String? = nil, preview: ChatToolPreview? = nil,
-        output: ChatOutputReference? = nil, subagentActivity: ChatSubagentActivity? = nil
+        output: ChatOutputReference? = nil, subagentActivity: ChatSubagentActivity? = nil, imagePath: String? = nil
     ) {
         self.subagentActivity = subagentActivity
+        self.imagePath = imagePath
         self.kind = kind
         self.name = name
         self.title = title

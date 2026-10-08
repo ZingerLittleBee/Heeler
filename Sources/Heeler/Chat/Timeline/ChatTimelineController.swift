@@ -12,6 +12,7 @@ struct ChatTimelineActions {
     var loadOutput: @MainActor (ChatEntryID) -> Void = { _ in }
     /// Shown in an expanded tool row whose output was never read.
     var missingOutputText: String = "Output is available when connected."
+    var loadImage: ChatImagePreviewController.Loader = { _ in throw ChatImagePreviewError.unavailable }
 }
 
 /// Hands a row's interactions back to the controller that owns the list.
@@ -589,17 +590,42 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard indexPaths.count == 1, let indexPath = indexPaths.first,
-            let id = dataSource?.itemIdentifier(for: indexPath), let text = rowsByID[id]?.copyText
+            let id = dataSource?.itemIdentifier(for: indexPath), let row = rowsByID[id], let text = row.copyText
         else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            UIMenu(children: [
+        let path = row.imagePath
+        let loader = actions.loadImage
+        let preview: UIContextMenuContentPreviewProvider? = path.map { path in
+            { ChatImagePreviewController(path: path, loadImage: loader) }
+        }
+        return UIContextMenuConfiguration(identifier: path as NSString?, previewProvider: preview) { [weak self] _ in
+            var items: [UIMenuElement] = []
+            if let path {
+                items.append(UIAction(title: "Preview Image", image: UIImage(systemName: "photo")) { [weak self] _ in
+                    guard let self else { return }
+                    ChatImagePreviewController(path: path, loadImage: loader).present(from: self)
+                })
+            }
+            items += [
                 UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
                     UIPasteboard.general.string = text
                 },
                 UIAction(title: "Select Text", image: UIImage(systemName: "selection.pin.in.out")) { _ in
                     self?.selectText(text)
                 },
-            ])
+            ]
+            return UIMenu(children: items)
+        }
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        willPerformPreviewActionForMenuWith configuration: UIContextMenuConfiguration,
+        animator: any UIContextMenuInteractionCommitAnimating
+    ) {
+        guard let preview = animator.previewViewController as? ChatImagePreviewController else { return }
+        animator.addCompletion { [weak self] in
+            guard let self else { return }
+            preview.present(from: self)
         }
     }
 

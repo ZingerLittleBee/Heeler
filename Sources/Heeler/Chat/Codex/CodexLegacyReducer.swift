@@ -342,6 +342,7 @@ extension CodexToolSnapshot {
         snapshot.preview = end.preview ?? preview
         snapshot.status = end.status ?? status
         snapshot.note = end.note ?? note
+        snapshot.imagePath = end.imagePath ?? imagePath
         return snapshot
     }
 }

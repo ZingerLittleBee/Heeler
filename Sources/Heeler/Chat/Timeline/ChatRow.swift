@@ -117,6 +117,11 @@ struct ChatRow: Identifiable, Sendable {
         }
     }
 
+    var imagePath: String? {
+        guard case .tool(let tool) = content else { return nil }
+        return tool.imagePath
+    }
+
     /// What Copy and Select Text take: the whole message as written, the
     /// Markdown source for the model's text. Nil for rows without text.
     var copyText: String? {

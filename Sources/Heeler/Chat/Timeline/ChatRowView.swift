@@ -573,28 +573,29 @@ private struct ChatToolRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: toggle) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Self.icon(for: tool.kind)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18)
-                    VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .center, spacing: 8) {
+                        Self.icon(for: tool.kind)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18)
                         Text(verbatim: tool.title)
                             .font(.subheadline)
                             .fontDesign(titleIsCode ? .monospaced : nil)
                             .lineLimit(isExpanded ? nil : 2)
-                        if let subtitle = tool.subtitle, !subtitle.isEmpty {
-                            Text(verbatim: subtitle)
-                                .font(.caption)
-                                .fontDesign(subtitleIsCode ? .monospaced : nil)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(isExpanded ? nil : 1)
+                        Spacer(minLength: 4)
+                        if let diff = tool.diff {
+                            ChatDiffBadge(diff: diff)
                         }
+                        ChatToolStatusBadge(status: tool.status, exitCode: tool.exitCode, cardAnswer: tool.cardAnswer)
                     }
-                    Spacer(minLength: 4)
-                    if let diff = tool.diff {
-                        ChatDiffBadge(diff: diff)
+                    if let subtitle = tool.subtitle, !subtitle.isEmpty {
+                        Text(verbatim: subtitle)
+                            .font(.caption)
+                            .fontDesign(subtitleIsCode ? .monospaced : nil)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(isExpanded ? nil : 1)
+                            .padding(.leading, 26)
                     }
-                    ChatToolStatusBadge(status: tool.status, exitCode: tool.exitCode, cardAnswer: tool.cardAnswer)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)

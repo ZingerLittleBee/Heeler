@@ -606,7 +606,11 @@ struct AgentChatSurfaceView: View {
             followingChanged: { isFollowing = $0 },
             firstPositionedLayout: { detailCrossfade?.contentDidAppear() },
             loadOutput: { chat?.loadOutput($0) },
-            missingOutputText: missingOutputText)
+            missingOutputText: missingOutputText,
+            loadImage: { [weak chat] path in
+                guard let chat else { throw ChatImagePreviewError.unavailable }
+                return try await chat.readImage(at: path)
+            })
     }
 
     /// What an expanded row whose output was never read says until it can

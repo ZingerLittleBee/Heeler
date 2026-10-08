@@ -276,7 +276,7 @@ enum CodexTimelineProjector {
                     kind: snapshot.kind, name: snapshot.name, title: snapshot.title, subtitle: snapshot.subtitle,
                     status: status, note: snapshot.note, diff: snapshot.diff, exitCode: snapshot.exitCode,
                     callID: snapshot.callID, preview: snapshot.preview, output: reference,
-                    subagentActivity: snapshot.subagentActivity))
+                    subagentActivity: snapshot.subagentActivity, imagePath: snapshot.imagePath))
             if status == .running || status == .awaitingApproval {
                 output.pendingRequests.append(
                     ChatPendingRequest(

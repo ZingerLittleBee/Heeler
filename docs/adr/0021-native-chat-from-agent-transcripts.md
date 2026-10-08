@@ -82,6 +82,8 @@ drops documents unused for 30 days, forgets a Host's documents when the Host
 is deleted, and can be cleared in Settings. A cached conversation opens at
 once, stays readable offline, and survives the remote file's removal.
 
+Image tool rows with a recorded Host file path offer a native long-press preview. Tapping the preview opens a zoomable sheet. Paths come from transcript metadata, resolving relative paths only against the recorded working directory; display titles are never treated as paths. Reads use the existing read-only SFTP connection on demand, stop at 20 MiB, and decode off the main actor to at most 4,096 pixels on the long edge. Image bytes are not cached with transcripts. Missing, changed, unsupported or disconnected files show a retryable explanation.
+
 ## Sending
 
 Chat shares the terminal's Composer and its draft. Send is one `agent.prompt`
