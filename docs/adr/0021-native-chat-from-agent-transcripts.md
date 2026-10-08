@@ -34,10 +34,7 @@ feeding the retained surface and nothing resizes it; switching back shows that
 terminal, or attaches again if it was evicted. Direct Input stays on the
 terminal, and ⌘E is disabled while Chat shows.
 
-When Chat cannot show a conversation it says why and keeps the terminal one
-tap away: herdr reports no session (Chat shows `herdr integration install` to
-copy and never runs it), the transcript is not found or holds another session,
-or it is in a form Chat does not read.
+When Chat cannot show a conversation it says why and keeps the terminal one tap away: herdr reports no session ID, the transcript is not found or holds another session, or it is in a form Chat does not read. A missing session ID does not establish whether the integration is installed, so Chat waits for the identity and offers Check Again without an installation command. A failed Agent query appears as a read failure, preserves any messages already shown, and retries; a successful query clears only its own failure, leaving transcript read failures visible.
 
 ## Reading and caching
 

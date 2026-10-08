@@ -3,8 +3,8 @@ import Foundation
 /// Why Chat cannot show a conversation from the Host. Each case has its own
 /// explanation; none of them is an error the user caused.
 enum ChatUnavailableReason: Equatable, Sendable {
-    /// herdr has reported no session for the Agent. Codex reports one only
-    /// after the first prompt, and only with herdr's integration installed.
+    /// herdr has reported no session ID for the Agent. This does not establish
+    /// whether the program's integration is installed.
     case noSession(ChatProgram)
     /// The session record names something other than a session id, such as
     /// a Codex thread name after `resume <name>`.

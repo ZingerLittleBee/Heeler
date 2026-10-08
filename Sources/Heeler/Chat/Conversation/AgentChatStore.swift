@@ -100,6 +100,9 @@ final class AgentChatStore {
     @ObservationIgnored private var appliedRevision: Int?
     @ObservationIgnored private var needsAgentRefresh = true
     @ObservationIgnored private var lastAgentRefresh: Date?
+    /// Agent queries and transcript reads recover independently.
+    @ObservationIgnored private var agentRefreshFailure: TransportError?
+    @ObservationIgnored private var transcriptReadFailure: TransportError?
     @ObservationIgnored private var olderRequested = false
     @ObservationIgnored private var nextOpen: Date?
     @ObservationIgnored private var failedOpens = 0
@@ -418,7 +421,7 @@ final class AgentChatStore {
     // MARK: Session
 
     private var sessionRecheckIsDue: Bool {
-        guard engine == nil || isUnavailable else { return false }
+        guard engine == nil || isUnavailable || agentRefreshFailure != nil else { return false }
         guard let lastAgentRefresh else { return true }
         return now().timeIntervalSince(lastAgentRefresh) >= timing.sessionRecheck
     }
@@ -429,8 +432,17 @@ final class AgentChatStore {
         // The Console's record keeps whatever its last snapshot said; herdr's
         // answer here is newer, and only a later change to that record
         // overrides it.
-        guard let fresh = try? await source.agentInfo() else { return }
-        adopt(ConversationReference.resolve(fresh.agentSession))
+        do {
+            let fresh = try await source.agentInfo()
+            agentRefreshFailure = nil
+            updateReadFailure()
+            adopt(ConversationReference.resolve(fresh.agentSession))
+        } catch {
+            guard !(error is CancellationError), error as? TransportError != .cancelled else { return }
+            agentRefreshFailure = error as? TransportError
+                ?? .channelFailed(detail: String(describing: type(of: error)))
+            updateReadFailure()
+        }
     }
 
     private func adopt(_ next: ConversationReference.Resolution) {
@@ -453,6 +465,7 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        transcriptReadFailure = nil
         conversationGeneration += 1
         engine = target.map(makeEngine)
         restored = false
@@ -469,6 +482,7 @@ final class AgentChatStore {
             showUnavailable()
         } else {
             conversation = ChatConversationSnapshot()
+            updateReadFailure()
         }
     }
 
@@ -481,6 +495,7 @@ final class AgentChatStore {
             }
         var next = ChatConversationSnapshot()
         next.phase = .unavailable(reason)
+        next.readFailure = agentRefreshFailure
         if conversation != next { conversation = next }
     }
 
@@ -499,7 +514,9 @@ final class AgentChatStore {
         guard origin === engine, snapshot.revision != appliedRevision else { return }
         if snapshot.transcript.entries != conversation.transcript.entries { lastActivity = now() }
         appliedRevision = snapshot.revision
+        transcriptReadFailure = snapshot.readFailure
         var next = snapshot
+        next.readFailure = transcriptReadFailure ?? agentRefreshFailure
         if olderRequested, next.older == .available { next.older = .loading }
         conversation = next
         blocked.update(transcript: next.transcript)
@@ -517,6 +534,10 @@ final class AgentChatStore {
             continuedSession = ConversationReference(program: program, sessionID: linked)
             followReference()
         }
+    }
+
+    private func updateReadFailure() {
+        conversation.readFailure = transcriptReadFailure ?? agentRefreshFailure
     }
 
     private var isUnavailable: Bool {

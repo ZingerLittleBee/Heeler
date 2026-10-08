@@ -17,6 +17,12 @@ Entries reference the pull request that made the change.
   from its cache. Sending checks the Agent's input box before and after and
   never resends. (#425)
 
+### Fixed
+
+- Chat explains a missing session ID without incorrectly suggesting that the
+  integration needs installing, and shows failed session queries with a retry
+  while keeping messages already loaded. (#425)
+
 ## [0.1.13] - 2026-10-07
 
 ### Added

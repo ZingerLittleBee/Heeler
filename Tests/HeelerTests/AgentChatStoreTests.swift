@@ -29,14 +29,20 @@ struct AgentChatStoreTests {
     private actor Server {
         var agent: Agent
         private(set) var reads = 0
+        var failure: TransportError?
 
         init(_ agent: Agent) {
             self.agent = agent
         }
 
-        func read() -> Agent {
+        func read() throws -> Agent {
             reads += 1
+            if let failure { throw failure }
             return agent
+        }
+
+        func fail(with failure: TransportError?) {
+            self.failure = failure
         }
 
         func set(_ agent: Agent) {
@@ -70,7 +76,7 @@ struct AgentChatStoreTests {
                 agent: agent, program: .claude,
                 source: AgentChatSource(
                     hostID: AgentChatStoreTests.host, socketLocation: .defaultSession,
-                    files: files.hostFiles(), agentInfo: { await server.read() }, cache: cache,
+                    files: files.hostFiles(), agentInfo: { try await server.read() }, cache: cache,
                     adapter: NumberedChatReducer.adapter(limits: limits)),
                 timing: timing, now: { clock.now })
         }
@@ -180,6 +186,112 @@ struct AgentChatStoreTests {
         #expect(fixture.store.conversation.phase == .unavailable(.noSession(.claude)))
         #expect(await fixture.files.statuses.isEmpty)
         #expect(await fixture.files.reads.isEmpty)
+    }
+
+    @Test(arguments: [ChatProgram.claude, .codex])
+    func missingSessionExplainsTheMissingIdentityWithoutAnInstallDiagnosis(program: ChatProgram) {
+        let reason = ChatUnavailableReason.noSession(program)
+        #expect(reason.title == "Waiting for Conversation")
+        #expect(reason.explanation.contains("session ID"))
+        #expect(!reason.explanation.lowercased().contains("install"))
+        #expect(reason.offersRetry)
+    }
+
+    @Test func aFailedSessionQueryIsVisibleAndRetryClearsItWithoutReadingFiles() async throws {
+        let fixture = Fixture(session: nil)
+        await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
+
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
+        #expect(fixture.store.conversation.phase == .unavailable(.noSession(.claude)))
+        #expect(await fixture.files.reads.isEmpty)
+
+        await fixture.server.fail(with: nil)
+        fixture.store.retry()
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.readFailure == nil)
+        #expect(await fixture.server.reads == 2)
+        #expect(await fixture.files.reads.isEmpty)
+    }
+
+    @Test func aFailedSessionQueryKeepsMessagesAndRetriesWhileFollowing() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
+        fixture.store.retry()
+
+        await fixture.store.step()
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
+        #expect(await fixture.server.reads == 2)
+
+        await fixture.server.fail(with: nil)
+        fixture.advance(5)
+        await fixture.store.step()
+
+        #expect(await fixture.server.reads == 3)
+        #expect(fixture.store.conversation.readFailure == nil)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+    }
+
+    @Test func aFailedSessionQueryKeepsRestoredMessagesWhenTheTranscriptIsMissing() async throws {
+        let previous = Fixture(session: Self.first)
+        await previous.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await previous.store.step()
+        let key = ChatCacheKey(
+            hostID: Self.host, herdrSession: "", program: .claude, conversationID: Self.first)
+        guard case .hit(let document) = await previous.cache.load(key) else {
+            Issue.record("Expected a saved conversation")
+            return
+        }
+        let fixture = Fixture(session: Self.first)
+        await fixture.cache.save(document)
+        await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
+
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
+
+        await fixture.server.fail(with: nil)
+        fixture.store.retry()
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func sessionQueryRecoveryDoesNotHideATranscriptFailure() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
+        fixture.store.retry()
+        await fixture.store.step()
+        await fixture.server.fail(with: nil)
+        await fixture.files.failNext(.status, with: TransportError.hostFileTimedOut)
+        fixture.store.retry()
+
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.readFailure == .hostFileTimedOut)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+    }
+
+    @Test func aCancelledSessionQueryDoesNotShowAReadFailure() async throws {
+        let fixture = Fixture(session: nil)
+        await fixture.server.fail(with: .cancelled)
+
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.readFailure == nil)
     }
 
     @Test func aSessionThatIsNotAnIDIsExplained() async throws {

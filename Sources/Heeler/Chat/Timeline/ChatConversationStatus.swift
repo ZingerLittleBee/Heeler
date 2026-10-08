@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// How Chat explains a conversation it cannot show (ADR 0021). Each reason
 /// leaves the terminal one tap away; none is something Heeler fixes on the
@@ -7,7 +6,7 @@ import UIKit
 extension ChatUnavailableReason {
     var title: String {
         switch self {
-        case .noSession: "No Conversation Yet"
+        case .noSession: "Waiting for Conversation"
         case .unidentifiedSession: "Conversation Not Identified"
         case .notFound, .mismatched: "Conversation Not Found"
         case .compressed: "Conversation Compressed"
@@ -26,9 +25,9 @@ extension ChatUnavailableReason {
     var explanation: String {
         switch self {
         case .noSession(.claude):
-            "herdr hasn't reported a Claude Code session for this Agent. herdr's Claude Code integration reports it. To install it, run this on the Host:"
+            "herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal."
         case .noSession(.codex):
-            "Codex reports its conversation to herdr after the first prompt, through herdr's Codex integration. Send a message below, or install the integration by running this on the Host:"
+            "herdr hasn't reported a Codex session ID for this Agent. If this is a new conversation, send the first prompt. Chat will keep checking, and you can continue in the Agent terminal."
         case .unidentifiedSession:
             "herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own."
         case .unsupportedSession:
@@ -60,13 +59,6 @@ extension ChatUnavailableReason {
         }
     }
 
-    /// herdr's integration for the program, which reports the session. Shown
-    /// to copy; Heeler never runs it.
-    var integrationCommand: String? {
-        guard case .noSession(let program) = self else { return nil }
-        return "herdr integration install \(program.rawValue)"
-    }
-
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
@@ -88,9 +80,6 @@ struct ChatUnavailableView: View {
         } description: {
             Text(reason.explanation)
         } actions: {
-            if let command = reason.integrationCommand {
-                ChatCopyableCommand(command: command)
-            }
             Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
                 .buttonStyle(.bordered)
             if reason.offersRetry {
@@ -98,34 +87,6 @@ struct ChatUnavailableView: View {
             }
         }
         .accessibilityIdentifier("chat.unavailable")
-    }
-}
-
-/// A command for the user to run on the Host, with a Copy button.
-struct ChatCopyableCommand: View {
-    let command: String
-    @State private var isCopied = false
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(verbatim: command)
-                .font(.callout.monospaced())
-                .textSelection(.enabled)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            Button {
-                UIPasteboard.general.string = command
-                isCopied = true
-            } label: {
-                Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                    .frame(minWidth: 24, minHeight: 24)
-            }
-            .accessibilityLabel(isCopied ? "Copied" : "Copy Command")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.quaternary, in: .rect(cornerRadius: 10))
-        .accessibilityElement(children: .contain)
     }
 }
 
