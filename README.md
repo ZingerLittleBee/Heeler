@@ -114,6 +114,26 @@ code carries the addresses, the host key fingerprint, and SSH key enrollment.
 The same [plugin](plugin/README.md) delivers the encrypted notifications once
 you enable them for the Host in the app.
 
+## Chat and Codex sessions
+
+On macOS and Linux Hosts, Chat displays Claude Code and Codex conversations from their transcript files over SSH. Saved conversations remain readable while reconnecting. Chat needs the conversation ID reported by herdr to identify the correct transcript; installing the integration alone does not prove that the current Agent has reported one.
+
+### Codex shows “Waiting for Conversation”
+
+Codex CLI 0.161.0 normally starts or reuses a shared background server for interactive sessions. With herdr 0.9.3 and Codex integration v8, that server can retain another terminal's environment. The integration can then report a conversation ID to the wrong herdr pane, leaving Chat waiting even after prompts have been sent. See the [versioned compatibility observations](docs/agents/herdr-compatibility.md#versioned-observations).
+
+For this combination, start Codex inside the herdr pane with:
+
+```bash
+codex --no-daemon
+```
+
+To resume an existing conversation, use `codex --no-daemon resume` and select it. If you already use `--yolo`, keep it alongside the new flag: `codex --no-daemon --yolo`.
+
+`--no-daemon` uses an independent backend with the current terminal's environment. It retains access to your existing login, configuration, and saved conversations. The shared backend supports multiple clients and remote access; the trade-off here is an additional independent backend for each CLI invocation.
+
+This flag applies only when launching Codex. Changing a shell alias or function does not migrate an already-running session: let its work finish, exit it, then resume with the flag. Heeler does not add this flag to your shell automatically. Cached messages can still be shown when a previously known ID is temporarily missing, but caching cannot establish an Agent's first conversation binding. For a genuinely new conversation, send its first prompt before checking again.
+
 ## Opening an Agent from another app
 
 Another app can open an Agent in Heeler with a link:
