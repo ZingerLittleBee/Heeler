@@ -14,6 +14,14 @@ final class ConsoleChatCache {
     @ObservationIgnored private var writes: [Host.ID: Task<Void, Never>] = [:]
     @ObservationIgnored private var revisions: [Host.ID: Int] = [:]
     @ObservationIgnored private var confirmed: [ConsoleAgent.ID: ConfirmedSession] = [:]
+    /// Live updates must merge with the disk directory, not cancel its
+    /// restore before a missing session field can reuse a known binding.
+    @ObservationIgnored private var pendingUpdates: [Host.ID: [Update]] = [:]
+
+    private enum Update {
+        case snapshot([ConsoleAgent])
+        case confirmation(Agent, ConsoleAgent)
+    }
 
     private struct ConfirmedSession {
         let terminalID: String
@@ -32,6 +40,7 @@ final class ConsoleChatCache {
             loads[id]?.cancel()
             loads[id] = nil
             records[id] = nil
+            pendingUpdates[id] = nil
             revisions[id, default: 0] += 1
             confirmed = confirmed.filter { $0.key.hostID != id }
         }
@@ -45,6 +54,14 @@ final class ConsoleChatCache {
                     revisions[host.id, default: 0] == revision else { return }
                 records[host.id] = saved
                 loads[host.id] = nil
+                // Apply everything that arrived during the disk read before
+                // another task can use the restored entries.
+                for update in pendingUpdates.removeValue(forKey: host.id) ?? [] {
+                    switch update {
+                    case .snapshot(let agents): observe(agents, on: host)
+                    case .confirmation(let fresh, let snapshot): confirm(fresh, for: snapshot, on: host)
+                    }
+                }
             }
         }
     }
@@ -53,6 +70,10 @@ final class ConsoleChatCache {
     /// empty one. An unchanged older session field must not undo agent.get.
     func observe(_ agents: [ConsoleAgent], on host: Host) {
         guard hosts[host.id] == host else { return }
+        if loads[host.id] != nil {
+            pendingUpdates[host.id, default: []].append(.snapshot(agents))
+            return
+        }
         let ids = Set(agents.map(\.id))
         confirmed = confirmed.filter { $0.key.hostID != host.id || ids.contains($0.key) }
         let next = agents.compactMap { agent -> ChatCachedAgent? in
@@ -80,6 +101,10 @@ final class ConsoleChatCache {
         guard hosts[host.id] == host, fresh.paneID == snapshot.agent.paneID,
             fresh.terminalID == snapshot.agent.terminalID, fresh.workspaceID == snapshot.agent.workspaceID,
             fresh.tabID == snapshot.agent.tabID, fresh.kind == snapshot.agent.kind else { return }
+        if loads[host.id] != nil {
+            pendingUpdates[host.id, default: []].append(.confirmation(fresh, snapshot))
+            return
+        }
         confirmed[snapshot.id] = ConfirmedSession(
             terminalID: fresh.terminalID, workspaceID: fresh.workspaceID, tabID: fresh.tabID, kind: fresh.kind,
             snapshot: snapshot.agent.agentSession, current: fresh.agentSession)
@@ -99,6 +124,19 @@ final class ConsoleChatCache {
     func agents(on host: Host) -> [ConsoleAgent] {
         guard hosts[host.id] == host else { return [] }
         return (records[host.id] ?? []).map { $0.consoleAgent(for: host) }
+    }
+
+    /// Local-only binding lookup for a live Agent that has not reported its
+    /// session yet. Await the initial disk read and its queued live updates,
+    /// then require the complete pane identity on the unchanged Host.
+    func cachedSession(for agent: Agent, on host: Host) async -> AgentSessionInfo? {
+        await loads[host.id]?.value
+        guard !Task.isCancelled, hosts[host.id] == host else { return nil }
+        return records[host.id]?.first {
+            $0.hostID == host.id && $0.paneID == agent.paneID && $0.terminalID == agent.terminalID
+                && $0.workspaceID == agent.workspaceID && $0.tabID == agent.tabID && $0.kind == agent.kind
+                && $0.isValid(for: host)
+        }?.agentSession
     }
 
     /// Test and lifecycle boundary: no queued disk work remains.

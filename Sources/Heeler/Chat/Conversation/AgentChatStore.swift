@@ -13,6 +13,9 @@ struct AgentChatSource: Sendable {
     let agentInfo: @Sendable () async throws -> Agent
     let cache: any ChatTranscriptCache
     let adapter: ChatTranscriptAdapter
+    /// Looks up only a saved binding for this exact Agent identity, waiting
+    /// for the local directory to load. It never confirms a live session.
+    var cachedSession: @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil }
     /// The Agent's pane, which a Blocked card reads and answers.
     var screen: BlockedScreenIO = .unavailable
 }
@@ -419,6 +422,20 @@ final class AgentChatStore {
     }
 
     private func restoreIfNeeded() async {
+        while engine == nil, resolution == .noSession {
+            let recordRevision = sessionRecordRevision
+            let session = await source.cachedSession(agent)
+            guard !Task.isCancelled else { return }
+            // Retry the local lookup if inventory replaced this Agent while
+            // the directory was loading. Its cache must precede remote work.
+            guard recordRevision == sessionRecordRevision else { continue }
+            guard engine == nil, resolution == .noSession,
+                case .bound(let reference) = ConversationReference.resolve(session), reference.program == program
+            else { break }
+            // Keep resolution unresolved: a saved binding permits local
+            // display, never remote reads of an unconfirmed session.
+            followReference(cachedReference: reference)
+        }
         while !restored, let engine {
             let snapshot = await engine.restore()
             guard !Task.isCancelled else { return }
@@ -559,8 +576,8 @@ final class AgentChatStore {
 
     /// Points the engine at the conversation to follow, starting a new one
     /// when it changed.
-    private func followReference(force: Bool = false) {
-        var target: ConversationReference?
+    private func followReference(force: Bool = false, cachedReference: ConversationReference? = nil) {
+        var target = cachedReference
         if case .bound(let reference) = resolution, reference.program == program {
             target = continuedSession ?? reference
         }
@@ -596,6 +613,7 @@ final class AgentChatStore {
             showUnavailable()
         } else {
             conversation = ChatConversationSnapshot()
+            if isAwaitingSession { conversation.phase = .unavailable(.noSession(program)) }
             updateReadFailure()
         }
     }

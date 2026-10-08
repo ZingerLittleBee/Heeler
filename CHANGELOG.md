@@ -19,6 +19,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Chat restores a saved conversation when a live Agent temporarily omits its
+  session ID, including while the local directory is still loading. (#425)
 - Chat keeps disclosure headers in place while expanding downward, including
   short conversations, and aligns tool icons with the first title line. (#425)
 - Chat preloads conversations after connecting, restores saved conversations

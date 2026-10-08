@@ -601,6 +601,10 @@ final class ConsoleStore {
                     return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
                 },
                 cache: chatCache, adapter: adapter,
+                cachedSession: { [weak self] agent in
+                    guard let self else { return nil }
+                    return await self.cachedChats.cachedSession(for: agent, on: host)
+                },
                 screen: BlockedScreenIO(
                     readScreen: { [weak self] in
                         guard let self else { throw TransportError.cancelled }

@@ -81,7 +81,8 @@ struct AgentChatStoreTests {
         init(
             session: String?, limits: TranscriptFollower.Limits = TranscriptFollower.Limits(),
             timing: AgentChatStore.Timing = AgentChatStore.Timing(
-                activeInterval: .milliseconds(5), idleInterval: .milliseconds(5))
+                activeInterval: .milliseconds(5), idleInterval: .milliseconds(5)),
+            cachedSession: @escaping @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil }
         ) {
             let agent = AgentChatStoreTests.agent(session: session)
             let server = Server(agent)
@@ -93,7 +94,7 @@ struct AgentChatStoreTests {
                 source: AgentChatSource(
                     hostID: AgentChatStoreTests.host, socketLocation: .defaultSession,
                     files: files.hostFiles(), agentInfo: { try await server.read() }, cache: cache,
-                    adapter: NumberedChatReducer.adapter(limits: limits)),
+                    adapter: NumberedChatReducer.adapter(limits: limits), cachedSession: cachedSession),
                 timing: timing, now: { clock.now })
         }
 
@@ -319,6 +320,49 @@ struct AgentChatStoreTests {
         await fixture.store.step()
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<5))
         #expect(fixture.store.conversationGeneration == generation)
+    }
+
+    @Test func anInitiallyMissingLiveSessionRestoresTheLocalBindingBeforeTheHostAnswers() async throws {
+        let binding = Self.agent(session: Self.first).agentSession
+        let fixture = Fixture(session: nil, cachedSession: { _ in binding })
+        try await Self.seedCache(fixture, session: Self.first, numbers: 0..<3)
+        await fixture.files.write(NumberedChatReducer.lines(0..<4), at: Self.path(Self.first))
+        await fixture.server.suspendNextRead()
+        let step = Task { await fixture.store.step() }
+        try await Self.waitUntil { await fixture.server.reads == 1 }
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(fixture.store.conversation.phase == .unavailable(.noSession(.claude)))
+        #expect(fixture.store.conversation.isFromCache)
+        #expect(await fixture.files.reads.isEmpty)
+        #expect(await fixture.files.statuses.isEmpty)
+        let generation = fixture.store.conversationGeneration
+        await fixture.server.releaseRead()
+        await step.value
+
+        // The Host still reports nil. The old remote file must remain unread.
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+        #expect(await fixture.files.reads.isEmpty)
+        #expect(await fixture.files.statuses.isEmpty)
+        await fixture.server.set(Self.agent(session: Self.first))
+        fixture.store.retry()
+        await fixture.store.step()
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4))
+        #expect(!fixture.store.conversation.isFromCache)
+        #expect(fixture.store.conversationGeneration == generation)
+    }
+
+    @Test func aNewExplicitSessionReplacesTheInitiallyInferredCacheBinding() async throws {
+        let binding = Self.agent(session: Self.first).agentSession
+        let fixture = Fixture(session: nil, cachedSession: { _ in binding })
+        try await Self.seedCache(fixture, session: Self.first, numbers: 0..<3)
+        try await Self.seedCache(fixture, session: Self.second, numbers: 10..<12)
+        await fixture.server.set(Self.agent(session: Self.second))
+
+        await fixture.store.step()
+
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(10..<12))
+        #expect(fixture.store.conversationGeneration == 2)
     }
 
     @Test func refreshedSessionRestoresOnlyItsOwnCachedMessages() async throws {
