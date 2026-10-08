@@ -15,6 +15,42 @@ final actor ScriptedTransport: Transport {
     /// resubscribe-on-membership-change behavior asserts on this.
     private(set) var capturedSubscriptions: [[EventSubscription]] = []
     private(set) var paneReadParams: [PaneReadParams] = []
+    private var chatFiles: ChatHostFiles?
+    private var chatAgent: Agent?
+    private(set) var chatAgentReads: [AgentTarget] = []
+
+    func scriptChat(files: ChatHostFiles, agent: Agent) {
+        chatFiles = files
+        chatAgent = agent
+    }
+
+    func agentInfo(_ target: AgentTarget) async throws -> Agent {
+        chatAgentReads.append(target)
+        guard let chatAgent, chatAgent.paneID == target.target else {
+            throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        }
+        return chatAgent
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        guard let chatFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await chatFiles.home()
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        guard let chatFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await chatFiles.status(path)
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        guard let chatFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await chatFiles.list(request)
+    }
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        guard let chatFiles else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return try await chatFiles.read(range)
+    }
     private(set) var agentPromptParams: [AgentPromptParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.

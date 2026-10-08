@@ -17,8 +17,10 @@ public struct SSHSFTPFileSlice: Sendable, Equatable {
 
 /// One SFTP subsystem channel owned by an authenticated SSH connection.
 ///
-/// The surface is intentionally limited to Heeler's atomic file-staging needs.
-/// Native handles and remote paths never leave `SessionDriver` diagnostics.
+/// The surface is intentionally limited to Heeler's atomic file-staging needs
+/// and read-only access to Agent transcripts (stat, filtered listings, ranged
+/// reads). Native handles and remote paths never leave `SessionDriver`
+/// diagnostics.
 public final class SSHSFTPClient: Sendable {
     private let id: UInt64
     private let driver: SessionDriver
@@ -103,6 +105,36 @@ public final class SSHSFTPClient: Sendable {
         try await driver.listSFTPDirectories(
             id: id,
             path: path,
+            timeout: timeout)
+    }
+
+    /// Stats one path, following a symlink unless `followSymlinks` is false.
+    /// A missing path is nil, so a follower can tell "gone" from "failed";
+    /// every other SFTP status surfaces as a path-free `SSHError`.
+    public func fileStatus(
+        at path: String,
+        followSymlinks: Bool = true,
+        timeout: Duration
+    ) async throws -> SSHSFTPFileStatus? {
+        try await driver.sftpFileStatus(
+            id: id,
+            path: path,
+            followSymlinks: followSymlinks,
+            timeout: timeout)
+    }
+
+    /// Lists the entries of one directory that match `query`, sorted by name
+    /// and capped by the query. A missing directory is nil. Read-only: it
+    /// exists so a transcript reader can find a session file by name.
+    public func listEntries(
+        at path: String,
+        matching query: SSHSFTPEntryQuery,
+        timeout: Duration
+    ) async throws -> SSHSFTPEntryListing? {
+        try await driver.listSFTPEntries(
+            id: id,
+            path: path,
+            query: query,
             timeout: timeout)
     }
 

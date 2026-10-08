@@ -45,6 +45,11 @@ protocol Transport: Sendable {
     /// herdr's own spellings, shared with `pane.send_keys` / `pane.send_input`.
     func sendAgentKeys(_ params: AgentSendKeysParams) async throws
 
+    /// Types text into a Pane (`pane.send_input`), bracketed as a paste when
+    /// the program enabled bracketed paste. herdr passes it on unchecked, so
+    /// callers send one line of safe text and never keys this way.
+    func sendPaneInput(_ params: PaneSendInputParams) async throws
+
     /// Starts a new Agent: the new-agent flow (#12, User Story 8 — dispatch
     /// work from the road). Creates a fresh herdr tab in the chosen workspace,
     /// starts the requested agent in its root pane, and returns the Agent once
@@ -242,6 +247,33 @@ protocol Transport: Sendable {
     /// the whole file on every look.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
 
+    /// Reads one byte range of an Agent transcript for Chat. Unlike
+    /// `readFileSlice`, a read past its deadline throws `.hostFileTimedOut`
+    /// rather than the link-failure `.timedOut`, so a slow read on a weak link
+    /// never redials the Host; a refused read throws `.hostFileUnreadable`.
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice
+
+    /// Stats one Host path for Chat, following symlinks. Nil when the path
+    /// does not exist. Errors follow `readHostFileRange`.
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus?
+
+    /// Lists the matching entries of one Host directory for Chat. Nil when
+    /// the directory does not exist. Errors follow `readHostFileRange`.
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing?
+
+    /// The Host's home directory as its SSH account sees it, for Chat to
+    /// find transcripts under. A probe past its deadline throws
+    /// `.hostFileTimedOut`, like the file operations.
+    func hostHomeDirectory() async throws -> String
+
+    /// The Host's operating system family, known once the transport has
+    /// resolved the remote environment.
+    func hostPlatform() async throws -> HostPlatform
+
+    /// Reads one Agent's current record (`agent.get`). Chat re-reads it to
+    /// notice the Agent's session changing, which no event reports.
+    func agentInfo(_ target: AgentTarget) async throws -> Agent
+
     /// The context window, in tokens, of the model an Agent's session names
     /// as `provider/model`, as the Agent's own CLI on the Host reports it.
     /// `nil` when the CLI is absent or does not know the model; a session
@@ -322,6 +354,34 @@ extension Transport {
 
     /// A transport without Host commands knows no model windows.
     func modelContextWindow(selector: String) async throws -> Int? { nil }
+
+    /// Transports without Host files decline Chat outright, never with a
+    /// link-failure error that would make the Host reconnect.
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func hostPlatform() async throws -> HostPlatform { .posix }
+
+    func agentInfo(_ target: AgentTarget) async throws -> Agent {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func sendPaneInput(_ params: PaneSendInputParams) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
 
     /// A transport without Host commands cannot list an untracked directory.
     func listUntrackedDirectory(
@@ -1026,6 +1086,13 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// link health and must not trigger a redial or an automatic retry: the
     /// exec can remain alive until its remote watchdog ends the process group.
     case gitTimedOut
+    /// A Chat transcript operation exceeded its own deadline. Like
+    /// `.gitTimedOut` this says nothing about link health: a slow file read
+    /// over a weak link must not redial the Host and rebuild its terminals.
+    case hostFileTimedOut
+    /// The Host refused a Chat transcript operation with an SFTP status other
+    /// than "no such file", such as permission denied.
+    case hostFileUnreadable(status: UInt64)
     /// The request's task was cancelled before completing. Resource cleanup
     /// may outlive the caller; a dispatched git exec waits for its bounded
     /// remote exit instead of abandoning the channel.
@@ -1057,7 +1124,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
             .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
-            .streamLocalOpenFailed, .gitTimedOut, .hostFeatureUnavailable,
+            .streamLocalOpenFailed, .gitTimedOut, .hostFileTimedOut, .hostFileUnreadable,
+            .hostFeatureUnavailable,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

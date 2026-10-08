@@ -15,6 +15,7 @@ struct ConsoleView: View {
     let console: ConsoleStore
     let terminal: TerminalSettings
     let inputMode: AgentInputModeSettings
+    let detailSurface: AgentDetailSurfaceSettings
     let appearance: AppAppearanceSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
@@ -63,6 +64,9 @@ struct ConsoleView: View {
     /// The Agent whose detail shows Changes in place of its terminal; the
     /// window's chrome then follows the app, not the terminal theme.
     @State private var agentShowingChanges: ConsoleAgent.ID?
+    /// The Agent whose detail shows Chat in place of its terminal, for the
+    /// same reason.
+    @State private var agentShowingChat: ConsoleAgent.ID?
     /// Each list tab's last selection. In regular width both lists sit
     /// beside their own detail, so a list tab comes back to what it showed
     /// rather than to the other list's pick.
@@ -1144,7 +1148,9 @@ struct ConsoleView: View {
             return terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme)
         }
-        guard let id = notificationRouter.path.last, agentShowingChanges != id else { return nil }
+        guard let id = notificationRouter.path.last, agentShowingChanges != id,
+            agentShowingChat != id
+        else { return nil }
         let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
             && MissingAgentPresentation(agentID: id, console: console, hosts: hosts)
@@ -1163,12 +1169,13 @@ struct ConsoleView: View {
         if let id = notificationRouter.path.last {
             if let receipt = matchingRemovedWorktreeReceipt(for: id) {
                 removedWorktreeSurface(receipt)
-            } else if let agent = console.agents.first(where: { $0.id == id }) {
+            } else if let agent = console.chatDisplayAgents.first(where: { $0.id == id }) {
                 AgentDetailView(
                     agent: agent,
                     console: console,
                     terminal: terminal,
                     inputMode: inputMode,
+                    detailSurface: detailSurface,
                     hosts: hosts.hosts,
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,
@@ -1179,7 +1186,7 @@ struct ConsoleView: View {
                         // terminal on a spurious reappearance.
                         isVisible: { [notificationRouter] in
                             notificationRouter.path.last == id
-                                && console.agents.contains(where: { $0.id == id })
+                                && console.chatDisplayAgents.contains(where: { $0.id == id })
                                 && currentTab == tab
                         },
                         terminalAccess: { [sceneRouting] in
@@ -1193,6 +1200,13 @@ struct ConsoleView: View {
                             agentShowingChanges = id
                         } else if agentShowingChanges == id {
                             agentShowingChanges = nil
+                        }
+                    },
+                    onShowsChat: { shows in
+                        if shows {
+                            agentShowingChat = id
+                        } else if agentShowingChat == id {
+                            agentShowingChat = nil
                         }
                     }
                 )
@@ -1627,9 +1641,9 @@ struct ConsoleView: View {
     private var filteredAgents: [ConsoleAgent] {
         let hostFiltered: [ConsoleAgent]
         if let hostFilter {
-            hostFiltered = console.agents.filter { $0.hostID == hostFilter }
+            hostFiltered = console.chatDisplayAgents.filter { $0.hostID == hostFilter }
         } else {
-            hostFiltered = console.agents
+            hostFiltered = console.chatDisplayAgents
         }
         let needle = agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return hostFiltered }

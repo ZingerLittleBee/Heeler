@@ -1,0 +1,30 @@
+  narrow-probe-file.txt in the current
+  directory
+ 
+ 
+[0m[2m• [0m我会在当前目录创建 [0m[38;2;99;168;248mx5-narrow-probe-[0m
+  [0m[38;2;99;168;248mfile.txt[0m。
+
+[0m[1m[38;2;128;128;128m•[0m [0m[1mRunning[0m [0m[38;2;255;255;255mtouch x5-narrow-probe-file.txt[0m
+ 
+ 
+  [0m[1mWould you like to run the following[0m
+  [0m[1mcommand?[0m
+ 
+  Environment: [0m[1mlocal[0m
+ 
+  Reason: [0m[3m允许在当前目录创建[0m
+  [0m[3mx5-narrow-probe-file.txt 吗？[0m
+ 
+  $ [0m[38;2;255;255;255mtouch x5-narrow-probe-file.txt[0m
+
+ 
+[0m[1m[7m› 1. Yes, proceed (y)                   [0m
+  2. Yes, and don't ask again for
+     commands that start with `touch x5-
+     narrow-probe-file.txt` ([0m[1mp[0m)
+  3. No, and tell Codex what to do
+     differently ([0m[1mesc[0m)
+
+  [0m[2mPress [0m[1menter[0m[2m to confirm or [0m[1mesc[0m[2m to      [0m
+  [0m[2mcancel                                [0m

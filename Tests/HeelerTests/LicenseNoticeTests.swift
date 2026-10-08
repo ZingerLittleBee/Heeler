@@ -19,6 +19,7 @@ struct LicenseNoticeInventoryTests {
         "GhosttyTheme",
         "IBMPlexMono",
         "JetBrainsMono",
+        "Lucide",
         "MSDisplayLink",
         "OpenSSL",
         "libghostty-spm",

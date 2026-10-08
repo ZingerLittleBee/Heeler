@@ -81,8 +81,10 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
-    @Test(arguments: [TransportError.gitTimedOut, .cancelled])
-    func gitOverrunAndCancellationPreserveTheSessionWithoutRetrying(
+    @Test(arguments: [
+        TransportError.gitTimedOut, .hostFileTimedOut, .hostFileUnreadable(status: 3), .cancelled,
+    ])
+    func nonLinkFailuresPreserveTheSessionWithoutRetrying(
         failure: TransportError
     ) async throws {
         let transport = ScriptedTransport()

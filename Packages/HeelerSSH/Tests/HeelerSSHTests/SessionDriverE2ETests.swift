@@ -1248,6 +1248,76 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    @Test("SFTP stats and filtered listings report kinds, sizes and times")
+    func sftpStatsAndFilteredListings() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let rootResult = try await connection.execute(
+            "mktemp -d /tmp/heeler-sftp-entries.XXXXXXXX",
+            timeout: .seconds(5))
+        let root = String(decoding: rootResult.stdout, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // A name longer than the 512-byte buffers the directories-only
+        // listing uses for its long entry, plus a symlink to a rollout.
+        let longName = "rollout-" + String(repeating: "x", count: 230) + "-0199.jsonl"
+        _ = try await connection.execute(
+            "cd '\(root)' && printf 'abc' > rollout-a-0199.jsonl && touch -t 202610060930.00 rollout-a-0199.jsonl"
+                + " && : > '\(longName)' && ln -s rollout-a-0199.jsonl rollout-b-0199.jsonl"
+                + " && : > other.txt && mkdir sub",
+            timeout: .seconds(5))
+
+        let sftp = try await connection.openSFTP(timeout: .seconds(5))
+        #expect(try await sftp.fileStatus(at: "\(root)/missing.jsonl", timeout: .seconds(5)) == nil)
+        #expect(try await sftp.fileStatus(at: "\(root)/no/such/dir", timeout: .seconds(5)) == nil)
+
+        let file = try #require(
+            try await sftp.fileStatus(at: "\(root)/rollout-a-0199.jsonl", timeout: .seconds(5)))
+        #expect(file.kind == .regular)
+        #expect(file.size == 3)
+        let touched = try #require(file.modificationTime)
+        // 2026-10-06 09:30 in the Host's local zone: within a day of UTC.
+        #expect(abs(Int64(touched) - 1_791_279_000) <= 86_400)
+
+        let followed = try #require(
+            try await sftp.fileStatus(at: "\(root)/rollout-b-0199.jsonl", timeout: .seconds(5)))
+        #expect(followed.kind == .regular)
+        #expect(followed.size == 3)
+        let link = try #require(
+            try await sftp.fileStatus(
+                at: "\(root)/rollout-b-0199.jsonl", followSymlinks: false, timeout: .seconds(5)))
+        #expect(link.kind == .symlink)
+        #expect(try await sftp.fileStatus(at: "\(root)/sub", timeout: .seconds(5))?.kind == .directory)
+
+        let listing = try #require(
+            try await sftp.listEntries(
+                at: root,
+                matching: SSHSFTPEntryQuery(
+                    kinds: [.regular, .symlink], nameSuffixes: [".jsonl"], nameContains: "0199"),
+                timeout: .seconds(5)))
+        #expect(listing.entries.map(\.name) == ["rollout-a-0199.jsonl", "rollout-b-0199.jsonl", longName])
+        #expect(listing.entries.map(\.status.kind) == [.regular, .symlink, .regular])
+        #expect(listing.entries.first?.status.size == 3)
+        #expect(!listing.truncated)
+        #expect(!listing.scanIncomplete)
+
+        let capped = try #require(
+            try await sftp.listEntries(
+                at: root, matching: SSHSFTPEntryQuery(maximumEntries: 2), timeout: .seconds(5)))
+        #expect(capped.entries.count == 2)
+        #expect(capped.truncated)
+        let scanned = try #require(
+            try await sftp.listEntries(
+                at: root, matching: SSHSFTPEntryQuery(maximumScanned: 1), timeout: .seconds(5)))
+        #expect(scanned.scanIncomplete)
+        #expect(
+            try await sftp.listEntries(
+                at: "\(root)/missing", matching: SSHSFTPEntryQuery(), timeout: .seconds(5)) == nil)
+
+        try await sftp.close(timeout: .seconds(5))
+        _ = try await connection.execute("rm -rf -- '\(root)'", timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
     @Test("SFTP directory listings return only sorted directories")
     func sftpDirectoryListingsReturnOnlySortedDirectories() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

@@ -26,8 +26,11 @@ struct DiffLineRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: DiffLayoutPolicy.numberSpacing) {
                 ForEach(Array(numbers.enumerated()), id: \.offset) { _, number in
+                    // The digit width is an estimate the font can exceed by
+                    // a hair, which must not wrap a number onto two lines.
                     Text(verbatim: number.map(String.init) ?? "")
                         .font(.caption2.monospaced())
+                        .fixedSize()
                         .frame(width: numberWidth, alignment: .trailing)
                 }
             }
@@ -57,6 +60,44 @@ struct DiffLineRow: View {
     }
 }
 
+/// A line's leading whitespace, then its code, which wraps under its own
+/// first character. The whitespace takes at most half the width, so deep
+/// indentation in a narrow column or at a large text size still leaves the
+/// code room; the whitespace draws nothing, so it may overlap the code.
+struct DiffHangingIndentLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let code = subviews.last else { return .zero }
+        let indent = indentWidth(of: subviews, within: proposal.width)
+        let size = code.sizeThatFits(ProposedViewSize(width: proposal.width.map { max($0 - indent, 0) }, height: nil))
+        return CGSize(width: indent + size.width, height: size.height)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+        guard let code = subviews.last else { return }
+        let indent = indentWidth(of: subviews, within: bounds.width)
+        if subviews.count > 1 {
+            subviews[0].place(at: bounds.origin, proposal: .unspecified)
+        }
+        code.place(
+            at: CGPoint(x: bounds.minX + indent, y: bounds.minY),
+            proposal: ProposedViewSize(width: max(bounds.width - indent, 0), height: nil))
+    }
+
+    /// The whitespace's width: as written, but no more than half of
+    /// `width`.
+    static func indentWidth(_ written: CGFloat, within width: CGFloat?) -> CGFloat {
+        guard let width, width.isFinite else { return written }
+        return min(written, (width / 2).rounded(.down))
+    }
+
+    private func indentWidth(of subviews: Subviews, within width: CGFloat?) -> CGFloat {
+        guard subviews.count > 1 else { return 0 }
+        return Self.indentWidth(subviews[0].sizeThatFits(.unspecified).width, within: width)
+    }
+}
+
 /// A line's code in the label colour. Leading indentation is a fixed prefix,
 /// so a long line wraps under its own first character rather than the
 /// margin. Changed words carry a fill and a 1 pt outline.
@@ -70,7 +111,7 @@ struct DiffCodeText: View {
     var body: some View {
         let parts = Self.split(line.text)
         VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
+            DiffHangingIndentLayout {
                 if !parts.indent.isEmpty {
                     Text(verbatim: parts.indent)
                         .fixedSize()

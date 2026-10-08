@@ -6,6 +6,8 @@ import SwiftUI
 enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
     case addImage
     case addFile
+    case showChat
+    case showAgentTerminal
     case openTerminal
     case changes
     case newAgent
@@ -20,6 +22,8 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         switch self {
         case .addImage: "Add Image"
         case .addFile: "Add File"
+        case .showChat: AgentDetailSurface.chat.showTitle
+        case .showAgentTerminal: AgentDetailSurface.terminal.showTitle
         case .openTerminal: "Open Terminal"
         case .changes: "Changes"
         case .newAgent: "New Agent"
@@ -36,6 +40,8 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         switch self {
         case .addImage: "photo"
         case .addFile: "doc"
+        case .showChat: AgentDetailSurface.chat.showSystemImage
+        case .showAgentTerminal: AgentDetailSurface.terminal.showSystemImage
         case .openTerminal: "apple.terminal"
         case .changes: "plus.forwardslash.minus"
         case .newAgent: "plus"
@@ -61,8 +67,8 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         switch self {
         case .addImage, .addFile, .skills, .snippets:
             true
-        case .openTerminal, .changes, .newAgent, .worktreeDetails, .renameAgent,
-            .renameWorkspace, .closeAgent:
+        case .showChat, .showAgentTerminal, .openTerminal, .changes, .newAgent,
+            .worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent:
             false
         }
     }
@@ -71,7 +77,8 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
 enum AgentActionMenuSection: Equatable, Hashable, Sendable, CaseIterable {
     /// Attachments for the draft.
     case addAttachments
-    /// Session tools — Skills before Snippets matches the Keys keyboard tab order.
+    /// Session tools: the Chat/terminal switch first, then the rest; Skills
+    /// before Snippets matches the Keys keyboard tab order.
     case sessionTools
     /// Rename / close / worktree lifecycle.
     case agentLifecycle
@@ -81,7 +88,7 @@ enum AgentActionMenuSection: Equatable, Hashable, Sendable, CaseIterable {
         case .addAttachments:
             [.addImage, .addFile]
         case .sessionTools:
-            [.openTerminal, .changes, .newAgent, .skills, .snippets]
+            [.showChat, .showAgentTerminal, .openTerminal, .changes, .newAgent, .skills, .snippets]
         case .agentLifecycle:
             [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent]
         }
@@ -105,6 +112,10 @@ enum AgentActionMenuPolicy {
         actions: AgentComposerActions
     ) -> Bool {
         switch item {
+        case .showChat:
+            actions.showChat != nil
+        case .showAgentTerminal:
+            actions.showAgentTerminal != nil
         case .changes:
             actions.showChanges != nil
         case .skills:
@@ -139,6 +150,10 @@ enum AgentActionMenuPolicy {
             actions.addImage()
         case .addFile:
             actions.addFile()
+        case .showChat:
+            actions.showChat?()
+        case .showAgentTerminal:
+            actions.showAgentTerminal?()
         case .openTerminal:
             actions.openTerminal?()
         case .changes:

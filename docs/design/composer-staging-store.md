@@ -1,6 +1,36 @@
 # Composer Staging Store
 
-Status: Proposed for review
+Status: Implemented. [ADR 0021](../adr/0021-native-chat-from-agent-transcripts.md)
+later moved the module's owner; the sections after Current ownership record
+the original decision.
+
+## Current ownership
+
+`ComposerStagingStore` belongs, with its Composer, to the Agent's
+[AgentComposerSession](../../Sources/Heeler/Console/AgentComposerSession.swift).
+`ConsoleStore` keeps one session per Agent above the detail, and the Agent
+terminal and Chat both use it: the third seam below, once rejected. Two
+findings reversed that. Every detail value SwiftUI builds makes a placeholder
+`AgentAttachStore`, and binding the Composer to the placeholder's staging kept
+a drop after a parent re-render, after returning to a retained terminal, or on
+a first appear from ever starting; `ComposerStagingOwnershipTests` reproduced
+all three. And Chat shows the Composer without any Attach.
+
+Invariants 9 and 10 now read:
+
+- Each window's detail registers with the session. A disappearing detail
+  first yields and asks its window's router whether the Agent still shows,
+  which replaces the false-disappear guard; only the last detail leaving the
+  Agent calls `staging.leave()`. Leaves run in order, and only the latest lets
+  drops start again.
+- Replacing or evicting the terminal, a reconnect, pushing Changes, opening a
+  Shell Terminal in the detail, and switching between the terminal and Chat
+  leave an upload alone.
+- `ConsoleStore.suspend()` calls `didSuspend()` before tearing down terminals,
+  so an upload ends background-interrupted, with Retry, instead of cancelled
+  by the teardown.
+- Removing the Agent's Host from the catalog leaves the staging and drops the
+  session.
 
 ## Decision
 

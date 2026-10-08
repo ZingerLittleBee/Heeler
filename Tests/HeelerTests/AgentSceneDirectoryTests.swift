@@ -516,6 +516,57 @@ struct AgentSceneDirectoryTests {
                 == .liveInAnotherWindow(canTakeOver: false))
     }
 
+    /// Chat reads the Agent's transcript, not its PTY: the window showing it
+    /// hands its Host's channel to the window that wants it, and takes it
+    /// back as the window being worked in once it returns to the terminal.
+    @Test func aChatWindowLeavesItsHostToTheOtherWindow() {
+        let directory = AgentSceneDirectory()
+        let (first, second) = makeSharedHostWindows(directory)
+        #expect(
+            directory.terminalAccess(sceneID: first, hostID: hostID)
+                == .liveInAnotherWindow(canTakeOver: true))
+
+        directory.chatSurfaceDidChange(sceneID: second, agent: target("w1:p2").agentID)
+
+        #expect(directory.terminalAccess(sceneID: first, hostID: hostID) == .holds)
+        #expect(directory.terminalAccess(sceneID: second, hostID: hostID) == .holds)
+
+        directory.chatSurfaceDidChange(sceneID: second, agent: nil)
+
+        #expect(directory.terminalAccess(sceneID: second, hostID: hostID) == .holds)
+        #expect(
+            directory.terminalAccess(sceneID: first, hostID: hostID)
+                == .liveInAnotherWindow(canTakeOver: true))
+    }
+
+    @Test func aShellTerminalOpenedFromChatClaimsItsHost() {
+        let directory = AgentSceneDirectory()
+        let (first, second) = makeSharedHostWindows(directory)
+        let agent = target("w1:p2").agentID
+        directory.chatSurfaceDidChange(sceneID: second, agent: agent)
+
+        directory.shellTerminalDidChange(sceneID: second, agent: agent)
+
+        #expect(directory.terminalAccess(sceneID: second, hostID: hostID) == .holds)
+        #expect(
+            directory.terminalAccess(sceneID: first, hostID: hostID)
+                == .liveInAnotherWindow(canTakeOver: false))
+    }
+
+    /// Chat reported for an Agent the window has moved away from no longer
+    /// counts: the Agent it shows now claims as usual.
+    @Test func chatForAnotherAgentLeavesTheClaimInPlace() {
+        let directory = AgentSceneDirectory()
+        let (first, second) = makeSharedHostWindows(directory)
+
+        directory.chatSurfaceDidChange(sceneID: second, agent: target("w1:p1").agentID)
+
+        #expect(directory.terminalAccess(sceneID: second, hostID: hostID) == .holds)
+        #expect(
+            directory.terminalAccess(sceneID: first, hostID: hostID)
+                == .liveInAnotherWindow(canTakeOver: true))
+    }
+
     /// A deep link that lands an Agent of the shared Host in the key window
     /// makes that window live, like navigating there by hand.
     @Test func aDeepLinkIntoTheKeyWindowTakesTheHost() {

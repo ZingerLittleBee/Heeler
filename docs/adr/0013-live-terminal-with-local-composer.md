@@ -13,9 +13,11 @@ and other authored input do not reach the PTY. While an input surface is
 visible, Composer can switch between the iOS keyboard and a tabbed tools
 keyboard. Its explicit Agent controls send Esc, Tab, Shift-Tab, arrows, Enter,
 and Backspace directly to the PTY; its Snippet and Skill panes edit the local
-draft. The iOS keyboard remains entirely system-owned, including its native
-candidate and paste area. The tools keyboard reuses that complete measured
-footprint, including the Home Indicator area.
+draft. While Agent Status is Working and the draft is blank, Send becomes Stop,
+which sends one plain Esc the same way (ADR 0021 describes Stop). The iOS
+keyboard remains entirely system-owned, including its native candidate and
+paste area. The tools keyboard reuses that complete measured footprint,
+including the Home Indicator area.
 The tools surface is an app-owned dock that remains in that fixed footprint,
 transparent behind the iOS keyboard until selected. Tools mode gives the same
 first-responder text view a zero-height `inputView`; when UIKit removes its
@@ -55,7 +57,9 @@ and leaves Enter and Esc to the tools keyboard.
   terminal rows. It is presentation only; the native Composer is the sole
   input control.
 - Terminal size changes continue to resize the remote PTY, including changes
-  caused by the Composer and software keyboard.
+  caused by the Composer and software keyboard. For that reason the terminal's
+  Composer keeps its full height with the keyboard down, where Chat's folds
+  to one line.
 - Features whose only insertion path was direct terminal input are not exposed
   on this surface until they can insert into Composer instead.
 - Send delivers the complete draft through one `agent.prompt` request, except

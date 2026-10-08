@@ -15,6 +15,7 @@ final class AgentTerminalInteractionProbe {
     private var switchDirectKeyboardAction: (() -> Void)?
     private var jumpOlderAction: (() -> Void)?
     private var jumpNewerAction: (() -> Void)?
+    private var stopAgentAction: (() -> Void)?
     private(set) var directInputChromeMountCount = 0
 
     var isConnected: Bool { selectInputModeAction != nil }
@@ -81,12 +82,22 @@ final class AgentTerminalInteractionProbe {
         return true
     }
 
+    /// The Composer's Stop, as its button runs it.
+    @discardableResult
+    func stopAgent() -> Bool {
+        guard let stopAgentAction else { return false }
+        stopAgentAction()
+        return true
+    }
+
     fileprivate func connect(
         selectInputMode: @escaping (AgentInputMode) -> Void,
-        switchAgent: @escaping (ConsoleAgent.ID) -> Void
+        switchAgent: @escaping (ConsoleAgent.ID) -> Void,
+        stopAgent: @escaping () -> Void
     ) {
         selectInputModeAction = selectInputMode
         switchAgentAction = switchAgent
+        stopAgentAction = stopAgent
     }
 
     fileprivate func connectMessageJump(
@@ -117,6 +128,7 @@ final class AgentTerminalInteractionProbe {
     fileprivate func disconnect() {
         selectInputModeAction = nil
         switchAgentAction = nil
+        stopAgentAction = nil
         sendQuickKeyAction = nil
         toggleDirectKeyboardAction = nil
         switchDirectKeyboardAction = nil
@@ -194,7 +206,11 @@ struct AgentTerminalView: View {
     private let showChanges: (() -> Void)?
     /// Opens Changes for a Worktree directory after its sheet has dismissed.
     private let showWorktreeChanges: ((String) -> Void)?
-    private let composer: AgentComposerStore
+    /// Swaps this screen for Chat in place; nil for an Agent without Chat,
+    /// which hides the switcher button and the menu entry.
+    private let showChat: (() -> Void)?
+    private let session: AgentComposerSession
+    private var composer: AgentComposerStore { session.composer }
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
     private let retainedSurface: TerminalSurfaceRetention?
     /// Called with whether the next screen takes the keyboard over, so the
@@ -312,7 +328,8 @@ struct AgentTerminalView: View {
         openTerminal: @escaping () -> Void = {},
         showChanges: (() -> Void)? = nil,
         showWorktreeChanges: ((String) -> Void)? = nil,
-        composer: AgentComposerStore,
+        showChat: (() -> Void)? = nil,
+        session: AgentComposerSession,
         attachStore: AgentAttachStore? = nil,
         retainedSurface: TerminalSurfaceRetention? = nil,
         onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)? = nil,
@@ -340,7 +357,8 @@ struct AgentTerminalView: View {
         self.openTerminal = openTerminal
         self.showChanges = showChanges
         self.showWorktreeChanges = showWorktreeChanges
-        self.composer = composer
+        self.showChat = showChat
+        self.session = session
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
         self.retainedSurface = retainedSurface
         self.onRetainDeparture = onRetainDeparture
@@ -351,10 +369,7 @@ struct AgentTerminalView: View {
                 paneTitle: Self.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: isOnStage,
-                runTerminal: console.terminalRunner(for: agent.hostID),
-                stageImage: console.imageStager(for: agent.hostID),
-                stageFile: console.fileStager(for: agent.hostID),
-                composer: composer
+                runTerminal: console.terminalRunner(for: agent.hostID)
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
@@ -367,7 +382,7 @@ struct AgentTerminalView: View {
     /// The Skills pane's store, or nil when this agent's kind has no skills
     /// source catalog. Captures launch-time context on purpose: the project
     /// root is the worktree checkout or launch cwd, never the live cwd.
-    private static func makeSkillsStore(
+    static func makeSkillsStore(
         for agent: ConsoleAgent, console: ConsoleStore
     ) -> SkillsPaneStore? {
         guard let kind = SupportedAgentKind(rawValue: agent.agent.kind) else { return nil }
@@ -557,7 +572,7 @@ struct AgentTerminalView: View {
             allowedContentTypes: [.data]
         ) { result in
             guard case .success(let url) = result else { return }
-            attach.staging.begin(.file(url))
+            session.staging.begin(.file(url))
         }
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
@@ -719,14 +734,7 @@ struct AgentTerminalView: View {
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             selectedPhoto = nil
-            attach.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
-        }
-        // Follows the grace period, not the raw scene phase: a staging operation
-        // is exactly the work worth finishing while the app is briefly out of
-        // sight, and it is cancelled only once the app really suspends.
-        .onChange(of: activity.phase) { _, phase in
-            guard phase == .suspended else { return }
-            attach.staging.didEnterBackground()
+            session.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the
@@ -752,7 +760,8 @@ struct AgentTerminalView: View {
             if inheritsKeyboardHandoff { detailCrossfade?.contentDidAppear() }
             interactionProbe?.value?.connect(
                 selectInputMode: { mode in selectInputMode(mode) },
-                switchAgent: { id in switchToAgent(id) })
+                switchAgent: { id in switchToAgent(id) },
+                stopAgent: { composer.stop.stop(using: { interruptAgent() }) })
             interactionProbe?.value?.connectMessageJump(
                 jumpOlder: { jumpToOlderMessage() },
                 jumpNewer: { jumpToNewerMessageOrLive() },
@@ -932,7 +941,7 @@ struct AgentTerminalView: View {
 
     private var composerActions: AgentComposerActions {
         AgentComposerActions(
-            canBegin: attach.staging.canBegin,
+            canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
             addImage: { isSelectingPhoto = true },
             addFile: { isSelectingFile = true },
@@ -956,7 +965,15 @@ struct AgentTerminalView: View {
                 } : nil,
             renameAgent: { isRenamingAgent = true },
             renameWorkspace: { isRenamingWorkspace = true },
-            closeAgent: { isConfirmingClose = true })
+            closeAgent: { isConfirmingClose = true },
+            showChat: showChat.map { showChat in
+                {
+                    // Chat takes over in place, so a raised keyboard moves
+                    // to its Composer rather than going down.
+                    armSameAgentKeyboardHandoffIfKeyboardIsUp()
+                    showChat()
+                }
+            })
     }
 
     private func makeWorktreeStore(checkout: RepositoryCheckout) -> WorktreeDetailStore {
@@ -1031,7 +1048,7 @@ struct AgentTerminalView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            attachmentStatus
+            ComposerStagingStatusBar(staging: session.staging)
         }
         // Below the keyboard's own inset, so the strip rides above the
         // keyboard while it is up and rests on the screen's edge once it is
@@ -1251,6 +1268,7 @@ struct AgentTerminalView: View {
             keyboardPresentation: $composerKeyboardPresentation,
             prepareKeyboardPresentation: prepareComposerKeyboardPresentation,
             modeControl: composerModeControl,
+            surfaceControl: chatSurfaceControl,
             keyboardHandoffID: directToComposerHandoffID,
             isKeyboardHandoffCurrent: { id in
                 isOnStage()
@@ -1258,7 +1276,9 @@ struct AgentTerminalView: View {
                     && directToComposerHandoffID == id
             },
             onFirstResponderRequest: composerFirstResponderRequest,
-            onKeyboardHandoffSettled: composerKeyboardHandoffSettled)
+            onKeyboardHandoffSettled: composerKeyboardHandoffSettled,
+            collapsesWithoutKeyboard: false,
+            interruptAgent: { interruptAgent() })
     }
 
     /// Attached to the control itself: a popover on the whole detail anchors
@@ -1270,6 +1290,16 @@ struct AgentTerminalView: View {
             links: attach.attachLinks,
             open: { link in openAttachLink(link) },
             copy: { link in UIPasteboard.general.string = link.target })
+    }
+
+    private var chatSurfaceControl: TerminalAgentSwitcherModeControl? {
+        composerActions.showChat.map { showChat in
+            .button(
+                systemImage: AgentDetailSurface.chat.showSystemImage,
+                accessibilityLabel: AgentDetailSurface.chat.showTitle,
+                accessibilityHint: AgentDetailSurface.chat.showAccessibilityHint,
+                action: showChat)
+        }
     }
 
     private var composerModeControl: TerminalAgentSwitcherModeControl {
@@ -1328,6 +1358,14 @@ struct AgentTerminalView: View {
             return
         }
         keyboardControl.sendQuickKey(key)
+    }
+
+    /// The Composer's Stop: Esc on the attach fast path, always plain. An
+    /// armed ⌃/⌥ stays for the key it was armed for.
+    private func interruptAgent() -> AgentInterruptOutcome {
+        keyboardControl.noteReliableInputBegan()
+        return attach.sendEscapeKey()
+            ? .sent : .failed("The terminal isn't connected, so Esc wasn't sent.")
     }
 
     private func selectInputMode(_ mode: AgentInputMode) {
@@ -1636,6 +1674,13 @@ struct AgentTerminalView: View {
             for: id, mode: isDirectInput && usesDirectToolsKeyboard ? .controls : .text)
     }
 
+    /// For Chat replacing this screen on the same Agent. Chat always types
+    /// through its Composer, so the keyboard it inherits is the text one.
+    private func armSameAgentKeyboardHandoffIfKeyboardIsUp() {
+        guard keyboardIsUpForHandoff else { return }
+        keyboardHandoff.arm(for: agent.id, mode: .text)
+    }
+
     /// A Shell Terminal opened from here comes up with the keyboard in the
     /// state this screen leaves it: up stays up, down stays down.
     private func armShellTerminalKeyboardHandoffIfKeyboardIsUp() {
@@ -1805,35 +1850,6 @@ struct AgentTerminalView: View {
     }
 
     @ViewBuilder
-    private var attachmentStatus: some View {
-        if let presentation = attach.staging.presentation {
-            AttachmentStatusBar(
-                icon: presentation.icon,
-                title: presentation.title,
-                accessibilityLabel: presentation.accessibilityLabel
-            ) {
-                ForEach(presentation.commands, id: \.self) { command in
-                    stagingCommandButton(command)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func stagingCommandButton(_ command: ComposerStagingStore.Command) -> some View {
-        switch command {
-        case .cancel:
-            Button("Cancel", role: .cancel) { attach.staging.perform(command) }
-        case .retry:
-            Button("Retry") { attach.staging.perform(command) }
-        case .copyPath:
-            Button("Copy Path") { attach.staging.perform(command) }
-        case .dismiss:
-            Button("Dismiss", role: .cancel) { attach.staging.perform(command) }
-        }
-    }
-
-    @ViewBuilder
     private var pasteReviewSheet: some View {
         if let review = attach.pendingPaste {
             NavigationStack {
@@ -1879,7 +1895,7 @@ struct AgentTerminalView: View {
 
 /// Preserve edge-swipe navigation after the title bar is removed. Beside
 /// an iPad's sidebar the swipe brings the sidebar out instead of going back.
-private struct AgentEdgeBackGesture: View {
+struct AgentEdgeBackGesture: View {
     let dismiss: @MainActor () -> Void
 
     var body: some View {
@@ -1979,46 +1995,6 @@ private struct AttachLinksView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .frame(idealWidth: 460, idealHeight: 520)
-    }
-}
-
-private struct AttachmentStatusBar<Actions: View>: View {
-    let icon: String
-    let title: String
-    let accessibilityLabel: String
-    let actions: Actions
-
-    init(
-        icon: String,
-        title: String,
-        accessibilityLabel: String,
-        @ViewBuilder actions: () -> Actions
-    ) {
-        self.icon = icon
-        self.title = title
-        self.accessibilityLabel = accessibilityLabel
-        self.actions = actions()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: icon)
-                .font(.subheadline)
-                .lineLimit(3)
-            HStack(spacing: 12) {
-                Spacer()
-                actions
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial)
-        .overlay(alignment: .top) { Divider() }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilityLabel)
     }
 }
 

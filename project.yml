@@ -207,7 +207,15 @@ targets:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - Tests/HeelerTests
+      - path: Tests/HeelerTests
+        excludes:
+          # Bundled as a folder reference below so the captured transcripts
+          # and screens keep their directory layout instead of flattening
+          # (and colliding) at the bundle root.
+          - ChatFixtures
+      - path: Tests/HeelerTests/ChatFixtures
+        type: folder
+        buildPhase: resources
       # Shared Pairing Code vectors (ADR 0007): the same file the Node plugin
       # tests consume, bundled so the Swift tests cannot drift from it.
       - path: plugin/test-vectors/pairing-code-v1.json

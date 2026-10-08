@@ -2,12 +2,15 @@ import SwiftUI
 
 /// The default Agent detail surface. Ghostty renders the live Attach stream.
 /// Composer owns authored delivery by default; Direct Input (ADR 0016) is an
-/// explicit opt-in that types the Attach PTY with the system keyboard.
+/// explicit opt-in that types the Attach PTY with the system keyboard. A
+/// Claude Code or Codex Agent can show Chat in the terminal's place
+/// (ADR 0021); the two are never mounted together.
 struct AgentDetailView: View {
     let agent: ConsoleAgent
     private let console: ConsoleStore
     private let terminal: TerminalSettings
     private let inputMode: AgentInputModeSettings
+    private let detailSurface: AgentDetailSurfaceSettings
     private let hosts: [Host]
     private let activity: AppActivityCoordinator
     private let keyboardHandoff: TerminalKeyboardHandoff
@@ -20,10 +23,18 @@ struct AgentDetailView: View {
     /// Told whether Changes is shown in place of the terminal, so the
     /// Console stops dressing the window's chrome for a terminal.
     private let onShowsChanges: ((Bool) -> Void)?
+    /// Told whether Chat is shown in place of the terminal, for the same
+    /// reason.
+    private let onShowsChat: ((Bool) -> Void)?
+    /// This detail's own copy of the remembered surface, taken when it
+    /// opens: a choice made in another window leaves this one alone.
+    @State private var surface: AgentDetailSurface
     @State private var focus = AgentFocusCoordinator()
     @State private var hasAppeared = false
     @Environment(\.scenePhase) private var scenePhase
-    @State private var composer: AgentComposerStore
+    @State private var session: AgentComposerSession
+    /// This detail's presence in `session`, outside a scene root.
+    @State private var presenceToken = UUID()
     @State private var attach: AgentAttachStore
     @State private var openTerminal: AgentOpenTerminalStore
     @State private var changes: AgentChangesPresentation
@@ -38,12 +49,15 @@ struct AgentDetailView: View {
     /// Which window holds this Host's terminal channel; nil outside a scene
     /// root, where this detail always holds it.
     @Environment(\.agentSceneRouting) private var sceneRouting
+    @Environment(\.sceneWindow) private var sceneWindow
+    @Environment(\.detailCrossfade) private var detailCrossfade
 
     init(
         agent: ConsoleAgent,
         console: ConsoleStore,
         terminal: TerminalSettings,
         inputMode: AgentInputModeSettings,
+        detailSurface: AgentDetailSurfaceSettings,
         hosts: [Host],
         activity: AppActivityCoordinator,
         keyboardHandoff: TerminalKeyboardHandoff,
@@ -53,7 +67,8 @@ struct AgentDetailView: View {
         onClosed: @escaping () -> Void,
         onSelectTerminal: ((ConsoleTerminal) -> Void)? = nil,
         onShowsChanges: ((Bool) -> Void)? = nil,
-        composerStore: AgentComposerStore? = nil,
+        onShowsChat: ((Bool) -> Void)? = nil,
+        composerSession: AgentComposerSession? = nil,
         attachStore: AgentAttachStore? = nil,
         openTerminalStore: AgentOpenTerminalStore? = nil,
         changesPresentation: AgentChangesPresentation? = nil
@@ -62,6 +77,8 @@ struct AgentDetailView: View {
         self.console = console
         self.terminal = terminal
         self.inputMode = inputMode
+        self.detailSurface = detailSurface
+        _surface = State(initialValue: detailSurface.preferred)
         self.hosts = hosts
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
@@ -73,8 +90,8 @@ struct AgentDetailView: View {
         self.onClosed = onClosed
         self.onSelectTerminal = onSelectTerminal
         self.onShowsChanges = onShowsChanges
-        let composer = composerStore ?? console.composerStore(for: agent)
-        _composer = State(initialValue: composer)
+        self.onShowsChat = onShowsChat
+        _session = State(initialValue: composerSession ?? console.composerSession(for: agent))
         let ownerID = UUID()
         _retentionOwnerID = State(initialValue: ownerID)
         permitsRetention = attachStore == nil && openTerminalStore == nil
@@ -86,10 +103,7 @@ struct AgentDetailView: View {
                 paneTitle: AgentTerminalView.displayTitle(for: agent),
                 transportGeneration: console.hostConnectionGenerations[agent.hostID],
                 isOnStage: { !retainsSessions && isOnStage() },
-                runTerminal: console.terminalRunner(for: agent.hostID),
-                stageImage: console.imageStager(for: agent.hostID),
-                stageFile: console.fileStager(for: agent.hostID),
-                composer: composer
+                runTerminal: console.terminalRunner(for: agent.hostID)
             ) {
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             }
@@ -114,7 +128,12 @@ struct AgentDetailView: View {
                     },
                     runTerminal: console.terminalRunner(for: agent.hostID),
                     leaveAgent: { reference.store.leaveForTerminalHandoff() },
-                    rejoinAgent: { reference.store.rejoin() },
+                    // Back to Chat, nothing shows the Agent's terminal; it
+                    // rejoins when the terminal does.
+                    rejoinAgent: {
+                        guard !reference.showsChat else { return }
+                        reference.store.rejoin()
+                    },
                     recallTerminal: { [console] in
                         console.recallShellTerminal(
                             forWorkspaceID: workspaceID, on: hostID)
@@ -137,6 +156,12 @@ struct AgentDetailView: View {
 
     private var terminalAccess: HostTerminalAccess {
         sceneRouting?.terminalAccess(for: agent.hostID) ?? .holds
+    }
+
+    /// One per window, so a detail SwiftUI remounts, as a size-class change
+    /// does, takes its predecessor's place instead of outliving it.
+    private var presenceKey: UUID {
+        sceneRouting?.sceneID ?? presenceToken
     }
 
     private var changesRoute: Binding<ChangesRoute<ChangesStore>?> {
@@ -164,9 +189,41 @@ struct AgentDetailView: View {
             })
     }
 
-    /// The terminal is on screen: no Shell Terminal and no Changes over it.
+    /// The program whose transcript Chat would read; nil while this Agent
+    /// cannot show Chat, which hides every way to it.
+    private var chatProgram: ChatProgram? {
+        console.chatProgram(for: agent)
+    }
+
+    /// The chosen surface, or the terminal while Chat is unavailable. The
+    /// choice itself is kept, so Chat comes back once it is available again.
+    private var effectiveSurface: AgentDetailSurface {
+        chatProgram == nil ? .terminal : surface
+    }
+
+    /// The terminal is on screen: no Shell Terminal, no Changes over it, and
+    /// not Chat in its place.
     private var showsAgentTerminal: Bool {
-        openTerminal.shell == nil && changes.store == nil
+        openTerminal.shell == nil && changes.store == nil && effectiveSurface == .terminal
+    }
+
+    /// Chat is on screen in the terminal's place, with nothing over it.
+    private var showsChatSurface: Bool {
+        openTerminal.shell == nil && changes.store == nil && effectiveSurface == .chat
+    }
+
+    /// Swaps Chat and the Agent terminal in place. A surface whose keyboard
+    /// is up arms the handoff before calling this; only it knows.
+    private func selectSurface(_ next: AgentDetailSurface) {
+        guard next != effectiveSurface, next == .terminal || chatProgram != nil else { return }
+        if let window = sceneWindow?.window { detailCrossfade?.beginSwap(in: window) }
+        surface = next
+        detailSurface.select(next)
+        attachReference.showsChat = next == .chat
+        // Claim the Host's channel before the terminal asks whether it
+        // holds it, so the first build uses the retained Attach.
+        sceneRouting?.chatSurfaceDidChange(agent: next == .chat ? agent.id : nil)
+        if next == .terminal { applyTerminalAccess() }
     }
 
     private func applyTerminalAccess() {
@@ -195,8 +252,7 @@ struct AgentDetailView: View {
         }
         if retainedAgent == nil { attach.leaveForTerminalHandoff() }
         let entry = console.agentTerminals.acquire(
-            agent: agent, console: console, composer: composer, ownerID: retentionOwnerID,
-            isPresented: { isOnStage() })
+            agent: agent, console: console, ownerID: retentionOwnerID, isPresented: { isOnStage() })
         retainedAgent = entry
         attach = entry.attach
         attachReference.store = attach
@@ -212,9 +268,6 @@ struct AgentDetailView: View {
             transportGeneration: console.hostConnectionGenerations[agent.hostID],
             isOnStage: isOnStage,
             runTerminal: console.terminalRunner(for: agent.hostID),
-            stageImage: console.imageStager(for: agent.hostID),
-            stageFile: console.fileStager(for: agent.hostID),
-            composer: composer,
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
                 try await console.closePane(paneID, on: hostID)
@@ -262,6 +315,27 @@ struct AgentDetailView: View {
                     await openTerminal.returnToAgent()
                 }
                 .id(openTerminal.destination)
+            } else if effectiveSurface == .chat, let chatProgram {
+                AgentChatSurfaceView(
+                    agent: agent,
+                    program: chatProgram,
+                    console: console,
+                    terminal: terminal,
+                    hosts: hosts,
+                    session: session,
+                    keyboardHandoff: keyboardHandoff,
+                    keyboardInset: keyboardInset,
+                    // Chat holds no terminal channel, so a detail that lost
+                    // it to another window still shows Chat.
+                    isOnStage: { isVisible() && showsChatSurface },
+                    onSwitch: onSwitch,
+                    onClosed: onClosed,
+                    canOpenTerminal: (!workspaceShells.isEmpty || openTerminal.canOpen) && terminalAccess == .holds,
+                    isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
+                    openTerminal: { openWorkspaceTerminal() },
+                    showChanges: agent.directory == nil ? nil : { changes.open() },
+                    workspaceDrawer: workspaceDrawer,
+                    selectSurface: { selectSurface($0) })
             } else {
                 AgentTerminalView(
                     agent: agent,
@@ -291,7 +365,8 @@ struct AgentDetailView: View {
                     showWorktreeChanges: { directory in
                         changes.open(directory: directory)
                     },
-                    composer: composer,
+                    showChat: chatProgram == nil ? nil : { selectSurface(.chat) },
+                    session: session,
                     attachStore: attach,
                     retainedSurface: retainedAgent?.surfaceRetention,
                     onRetainDeparture: retainedAgent.map { entry in
@@ -316,6 +391,7 @@ struct AgentDetailView: View {
         }
         .onAppear {
             hasAppeared = true
+            session.detailDidAppear(presenceKey)
             prepareRetainedAgent()
             updateFocus()
         }
@@ -325,6 +401,15 @@ struct AgentDetailView: View {
         .onDisappear {
             hasAppeared = false
             focus.leave()
+            // The router's truth, not SwiftUI's: a spurious disappear, or
+            // Changes pushed over the detail, keeps the upload going.
+            let key = presenceKey
+            let session = session
+            Task { @MainActor in
+                await Task.yield()
+                guard !isVisible() else { return }
+                session.detailDidDisappear(key)
+            }
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             prepareRetainedAgent()
@@ -365,13 +450,23 @@ struct AgentDetailView: View {
             if showsTerminal {
                 applyTerminalAccess()
                 if let text = changes.takePendingInsertion() {
-                    if inputMode.isDirect {
+                    // Chat always writes through the Composer.
+                    if inputMode.isDirect && effectiveSurface == .terminal {
                         attach.insertReference(text)
                     } else {
-                        composer.insertIntoDraft(text)
+                        session.composer.insertIntoDraft(text)
                     }
                 }
             }
+        }
+        // Availability can move the surface too: Chat appears once the
+        // Host's platform is known, and goes when the Agent stops being one
+        // Chat can read.
+        .onChange(of: effectiveSurface, initial: true) { previous, current in
+            attachReference.showsChat = current == .chat
+            sceneRouting?.chatSurfaceDidChange(agent: current == .chat ? agent.id : nil)
+            onShowsChat?(current == .chat)
+            if previous != current { applyTerminalAccess() }
         }
         .onChange(of: openTerminal.shell != nil || openTerminal.isOpening, initial: true) {
             _, showsShellTerminal in
@@ -485,5 +580,8 @@ struct AgentDetailView: View {
 @MainActor
 private final class AgentDetailAttachReference {
     var store: AgentAttachStore
+    /// Chat shows in the terminal's place; read by the Shell Terminal
+    /// return, which must not rejoin an Attach nothing shows.
+    var showsChat = false
     init(_ store: AgentAttachStore) { self.store = store }
 }

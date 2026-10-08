@@ -7,6 +7,34 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Chat for Claude Code and Codex Agents: the Agent's conversation as native
+  rows in the terminal's place, read from the transcript its program writes on
+  the Host, with nothing installed there. Chat folds finished turns, groups
+  tool calls, shows file changes as diffs, answers Blocked dialogs with native
+  cards, lists background agents and Workflows, and stays readable offline
+  from its cache. Sending checks the Agent's input box before and after and
+  never resends. (#425)
+
+### Fixed
+
+- Chat restores a saved conversation when a live Agent temporarily omits its
+  session ID, including while the local directory is still loading. (#425)
+- Chat keeps disclosure headers in place while expanding downward, including
+  short conversations, and aligns tool icons with the first title line. (#425)
+- Chat preloads conversations after connecting, restores saved conversations
+  before contacting the Host, and keeps them available from the Agent list
+  after an offline relaunch while reconnecting. (#425)
+- Chat previews recorded image files on long press, opens them with zoom, and
+  aligns tool icons with their titles above subtitles. (#425)
+- Chat groups each Subagent's activity into one card per turn, with
+  a Lucide Bot icon beside its title and expandable history, and no longer marks message exchanges
+  as completed work. (#425)
+- Chat explains a missing session ID without incorrectly suggesting that the
+  integration needs installing, and shows failed session queries with a retry
+  while keeping messages already loaded. (#425)
+
 ## [0.1.13] - 2026-10-07
 
 ### Added

@@ -112,8 +112,13 @@ struct AgentControlKeyboard: View {
     }
 }
 
-private struct AgentQuickKeyPad: View {
+/// Esc, Tab, Backspace, the arrows, Shift-Tab and Enter: the tools dock's
+/// Agent page, and the keys a Blocked card offers for a prompt it can't
+/// read.
+struct AgentQuickKeyPad: View {
     let isEnabled: Bool
+    /// The dock's margins; a card lines the keys up with its own content.
+    var insets = EdgeInsets(top: 4, leading: 10, bottom: 8, trailing: 10)
     let send: (AgentQuickKey) -> Void
 
     private static let rows: [[AgentQuickKey]] = [
@@ -147,9 +152,7 @@ private struct AgentQuickKeyPad: View {
                 .frame(maxHeight: .infinity)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 4)
-        .padding(.bottom, 8)
+        .padding(insets)
     }
 
     private func keyButton(_ key: AgentQuickKey) -> some View {

@@ -153,6 +153,8 @@ struct SettingsView: View {
                     }
                 }
 
+                ChatCacheSettingsSection(cache: console.chatCache)
+
                 Section {
                     ForEach(Self.aboutRows) { row in
                         aboutRow(row)

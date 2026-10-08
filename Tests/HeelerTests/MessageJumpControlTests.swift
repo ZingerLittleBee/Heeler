@@ -662,7 +662,7 @@ struct MessageJumpAgentTerminalWiringTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             throw TransportError.cancelled
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -702,7 +702,7 @@ struct MessageJumpAgentTerminalWiringTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             throw TransportError.cancelled
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -739,10 +739,7 @@ struct MessageJumpAgentTerminalWiringTests {
         return (settings, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
-    private static func makeLiveAttach(
-        transport: ScriptedTransport,
-        composer: AgentComposerStore
-    ) async throws -> AgentAttachStore {
+    private static func makeLiveAttach(transport: ScriptedTransport) async throws -> AgentAttachStore {
         let owner = AgentAttachStore(
             target: "w1:p1",
             paneTitle: "Claude",
@@ -752,9 +749,6 @@ struct MessageJumpAgentTerminalWiringTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: { _, _ in throw TransportError.cancelled },
-            stageFile: { _, _ in throw TransportError.cancelled },
-            composer: composer,
             closePane: {})
         owner.viewDidResize(cols: 80, rows: 24)
         try #require(await Self.eventually {
@@ -806,7 +800,7 @@ struct MessageJumpAgentTerminalWiringTests {
             isOnStage: { true },
             onSwitch: { _ in },
             onClosed: {},
-            composer: composer,
+            session: AgentComposerSession(composer: composer),
             attachStore: attachStore,
             interactionProbe: interactionProbe)
     }
