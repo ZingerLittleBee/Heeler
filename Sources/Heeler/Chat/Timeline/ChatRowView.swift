@@ -486,28 +486,20 @@ private struct ChatSubagentActivityRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: toggle) {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 10) {
-                                agentIcon.frame(width: 20, height: 20)
-                                typeLabel
-                                Spacer(minLength: 4)
-                                disclosureIcon
-                            }
-                            identity
-                        }
-                    } else {
-                        HStack(alignment: .top, spacing: 10) {
-                            agentIcon.frame(width: iconWidth, height: iconWidth)
-                            VStack(alignment: .leading, spacing: 4) {
-                                typeLabel
-                                identity
-                            }
-                            Spacer(minLength: 4)
-                            disclosureIcon
-                        }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .center, spacing: 10) {
+                        agentIcon.frame(width: displayedIconWidth, height: displayedIconWidth)
+                        Text(verbatim: presentation.name)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(isExpanded ? nil : 2)
+                        Spacer(minLength: 4)
+                        disclosureIcon
                     }
+                    Text("\(presentation.status) · \(presentation.eventCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, detailIndent)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
@@ -530,7 +522,7 @@ private struct ChatSubagentActivityRow: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.leading, dynamicTypeSize.isAccessibilitySize ? 0 : iconWidth + 10)
+                .padding(.leading, detailIndent)
             }
         }
         .padding(12)
@@ -545,22 +537,12 @@ private struct ChatSubagentActivityRow: View {
             .accessibilityHidden(true)
     }
 
-    private var typeLabel: some View {
-        Text("Subagent")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
+    private var displayedIconWidth: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 20 : iconWidth
     }
 
-    private var identity: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(verbatim: presentation.name)
-                .font(.subheadline.weight(.medium))
-                .lineLimit(isExpanded ? nil : 2)
-            Text("\(presentation.status) · \(presentation.eventCount)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+    private var detailIndent: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 0 : displayedIconWidth + 10
     }
 
     private var disclosureIcon: some View {
@@ -596,11 +578,6 @@ private struct ChatToolRow: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 2) {
-                        if tool.kind == .agent {
-                            Text("Subagent")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                        }
                         Text(verbatim: tool.title)
                             .font(.subheadline)
                             .fontDesign(titleIsCode ? .monospaced : nil)

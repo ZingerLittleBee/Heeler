@@ -19,8 +19,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Chat groups each Subagent's activity into one labeled card per turn, with
-  a Lucide Bot icon and expandable history, and no longer marks message exchanges
+- Chat groups each Subagent's activity into one card per turn, with
+  a Lucide Bot icon beside its title and expandable history, and no longer marks message exchanges
   as completed work. (#425)
 - Chat explains a missing session ID without incorrectly suggesting that the
   integration needs installing, and shows failed session queries with a retry
