@@ -19,6 +19,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Chat keeps disclosure headers in place while expanding downward, including
+  short conversations, and aligns tool icons with the first title line. (#425)
 - Chat preloads conversations after connecting, restores saved conversations
   before contacting the Host, and keeps them available from the Agent list
   after an offline relaunch while reconnecting. (#425)

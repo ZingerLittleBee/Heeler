@@ -477,6 +477,7 @@ struct ChatSubagentPresentation {
 private struct ChatSubagentActivityRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .title3) private var iconWidth = 24
+    @ScaledMetric(relativeTo: .subheadline) private var titleCapHeight = UIFont.systemFont(ofSize: 15).capHeight
     let activity: ChatSubagentActivity
     let isExpanded: Bool
     let toggle: () -> Void
@@ -487,8 +488,11 @@ private struct ChatSubagentActivityRow: View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: toggle) {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .center, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
                         agentIcon.frame(width: displayedIconWidth, height: displayedIconWidth)
+                            .alignmentGuide(.firstTextBaseline) { dimensions in
+                                dimensions[VerticalAlignment.center] + titleCapHeight / 2
+                            }
                         Text(verbatim: presentation.name)
                             .font(.subheadline.weight(.medium))
                             .lineLimit(isExpanded ? nil : 2)
@@ -574,7 +578,7 @@ private struct ChatToolRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: toggle) {
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .center, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Self.icon(for: tool.kind)
                             .foregroundStyle(.secondary)
                             .frame(width: 18)

@@ -230,6 +230,134 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    @Test("Opening at latest keeps the chosen top and pushes later rows down",
+          arguments: ["tool", "subagent", "group"], [false, true])
+    func expandingAtLatestPreservesTheDisclosureTop(kind: String, shortConversation: Bool) async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        var entries = shortConversation ? [] : Self.entries(0..<40)
+        let target: ChatRowID
+        if kind == "subagent" {
+            let id = ChatEntryID("worker")
+            entries.append(ChatEntry(id: id, sourceOffset: 4_000, content: .tool(ChatToolActivity(
+                kind: .agent, name: "SubAgentActivity", title: "Subagent: worker", status: .noResult,
+                subagentActivity: .init(agentPath: "/root/worker", events: [
+                    "started", "interacted", "completed", "started", "interacted", "completed",
+                ])))))
+            target = .entry(id)
+        } else {
+            let count = kind == "group" ? 5 : 1
+            for index in 0..<count {
+                var entry = Self.tool("preview-\(index)",
+                    preview: ChatToolPreview(text: Self.outputLines(20), isTruncated: false), output: nil)
+                if kind == "tool", !shortConversation, case .tool(var tool) = entry.content {
+                    tool.title = (1...20).map { "sed -n '\($0),\($0 + 20)p' Sources/Heeler/Chat/Timeline/ChatRowView.swift" }
+                        .joined(separator: "\n")
+                    entry.content = .tool(tool)
+                }
+                entries.append(entry)
+            }
+            target = kind == "group" ? .group(ChatEntryID("preview-4")) : .entry(ChatEntryID("preview-0"))
+        }
+        entries.append(ChatEntry(id: ChatEntryID("after"), sourceOffset: 5_000,
+            content: .assistant(ChatAssistantMessage(text: "The next row stays below the expanded content."))))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: entries))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            #expect(controller.isFollowing)
+            let before = try #require(Self.screenY(of: target, in: controller))
+            let afterRowBefore = controller.geometry.minY(at: controller.geometry.count - 1)
+            @MainActor func capture(_ state: String) {
+                guard kind == "tool", !shortConversation else { return }
+                let renderer = UIGraphicsImageRenderer(bounds: controller.view.bounds)
+                let image = renderer.image { _ in
+                    controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+                }
+                Attachment.record(image, named: "chat-long-command-\(state)", as: .png)
+            }
+            capture("collapsed")
+
+            controller.toggle(target)
+            await Self.settle(controller)
+            capture("expanded")
+            #expect(abs(try #require(Self.screenY(of: target, in: controller)) - before) <= 0.5)
+            #expect(controller.geometry.minY(at: controller.geometry.count - 1) > afterRowBefore + 40)
+            #expect(!controller.isFollowing)
+
+            // A later layout must not quietly re-arm bottom following.
+            controller.timeline.setNeedsLayout()
+            await Self.settle(controller)
+            #expect(abs(try #require(Self.screenY(of: target, in: controller)) - before) <= 0.5)
+
+            controller.toggle(target)
+            await Self.settle(controller)
+            #expect(controller.isFollowing)
+            #expect(abs(try #require(Self.screenY(of: target, in: controller)) - before) <= 0.5)
+            controller.toggle(target)
+            await Self.settle(controller)
+            controller.followLatest()
+            await Self.settle(controller)
+            #expect(controller.isFollowing)
+            #expect(abs(controller.timeline.contentOffset.y - controller.timeline.maxOffsetY) <= 0.5)
+        }
+    }
+
+    @Test func outputArrivingAfterExpansionKeepsTheChosenTop() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let builder = ChatRowBuilder()
+        let id = ChatRowID.entry(ChatEntryID("loading"))
+        let reference = ChatOutputReference(offset: 0, length: 10)
+        func entries(_ preview: ChatToolPreview?) -> [ChatEntry] {
+            Self.entries(0..<40) + Self.apart([Self.tool("loading", preview: preview, output: reference)])
+        }
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(await builder.rows(for: ChatTimelineInput(entries: entries(nil)))))
+            await Self.settle(controller)
+            let before = try #require(Self.screenY(of: id, in: controller))
+            controller.toggle(id)
+            await Self.settle(controller)
+            #expect(abs(try #require(Self.screenY(of: id, in: controller)) - before) <= 0.5)
+            #expect(!controller.isFollowing)
+
+            let loaded = ChatToolPreview(text: Self.outputLines(40), isTruncated: false)
+            controller.apply(Self.state(await builder.rows(for: ChatTimelineInput(entries: entries(loaded))), revision: 2))
+            await Self.settle(controller)
+            #expect(abs(try #require(Self.screenY(of: id, in: controller)) - before) <= 0.5)
+            #expect(!controller.isFollowing)
+        }
+    }
+
+    @Test func aPartiallyClippedDisclosureGrowsDownwardWhenOutputArrives() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let builder = ChatRowBuilder()
+        let id = ChatRowID.entry(ChatEntryID("e21"))
+        var entries = Self.entries(0..<60)
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(await builder.rows(for: ChatTimelineInput(entries: entries))))
+            await Self.settle(controller)
+            // Leave the top few points of the tool outside the viewport.
+            Self.drag(controller, to: controller.geometry.minY(at: 21) + 8)
+            await Self.settle(controller)
+            let before = try #require(Self.screenY(of: id, in: controller))
+            #expect(before < controller.timeline.adjustedContentInset.top)
+            controller.toggle(id)
+            await Self.settle(controller)
+            #expect(abs(try #require(Self.screenY(of: id, in: controller)) - before) <= 0.5)
+
+            guard case .tool(var tool) = entries[21].content else { return }
+            tool.preview = ChatToolPreview(text: Self.outputLines(60), isTruncated: false)
+            entries[21].content = .tool(tool)
+            controller.apply(Self.state(await builder.rows(for: ChatTimelineInput(entries: entries)), revision: 2))
+            await Self.settle(controller)
+            #expect(abs(try #require(Self.screenY(of: id, in: controller)) - before) <= 0.5)
+
+            // A real drag releases the disclosure anchor and can resume follow.
+            Self.drag(controller, to: controller.timeline.maxOffsetY)
+            await Self.settle(controller)
+            #expect(controller.isFollowing)
+        }
+    }
+
     @Test func expandingAToolRowAsksForOutputItHasNoneOrOnlyTheStartOf() async throws {
         var requested: [ChatEntryID] = []
         var actions = ChatTimelineActions()
@@ -322,10 +450,12 @@ struct ChatTimelineControllerTests {
             controller.apply(Self.state(rows))
             await Self.settle(controller)
             let folded = try #require(controller.cellFrame(of: commandRow)).height
+            let before = try #require(Self.screenY(of: commandRow, in: controller))
 
             controller.toggleFile(commandRow, path: "/p/held.txt")
             await Self.settle(controller)
             #expect(controller.isFileExpanded(commandRow, path: "/p/held.txt"))
+            #expect(abs(try #require(Self.screenY(of: commandRow, in: controller)) - before) <= 0.5)
             #expect(requested.isEmpty)
             // Twenty numbered lines open in place.
             #expect(try #require(controller.cellFrame(of: commandRow)).height > folded + 150)

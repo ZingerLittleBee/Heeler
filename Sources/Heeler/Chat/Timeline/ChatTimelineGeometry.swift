@@ -22,6 +22,9 @@ struct ChatTimelineGeometry: Sendable, Equatable {
     /// The height rows can show in: the viewport less its top and bottom
     /// insets. It decides `topPadding` and nothing else.
     var visibleHeight: CGFloat
+    /// A reader-opened row can retain the blank space above a short
+    /// conversation, so expanding it adds content below instead of lifting it.
+    var minimumTopPadding: CGFloat = 0
 
     init(heights: [CGFloat] = [], visibleHeight: CGFloat = 0) {
         self.heights = heights.map(Self.sanitized)
@@ -37,7 +40,7 @@ struct ChatTimelineGeometry: Sendable, Equatable {
 
     /// Space above the first row that rests short content at the bottom of
     /// the visible area. Zero once the rows fill it.
-    var topPadding: CGFloat { max(0, visibleHeight - contentHeight) }
+    var topPadding: CGFloat { max(minimumTopPadding, visibleHeight - contentHeight, 0) }
 
     /// The layout's content height: the rows plus `topPadding`, so never
     /// shorter than the visible area.

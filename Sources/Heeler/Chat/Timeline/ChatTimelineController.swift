@@ -71,6 +71,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     private var disclosures: [ChatRowID: Int] = [:]
     private var lastDisclosure = 0
     private var latch = ChatFollowLatch()
+    /// A disclosure is an explicit request to read from this row's top.
+    /// Keep it stable through later self-sizing and asynchronously read output,
+    /// until the reader scrolls, follows latest, or changes conversations.
+    private var disclosureAnchor: ChatRowID?
     private var reportedFollowing = true
     private var isJumpAnimating = false
     private var hasReportedFirstLayout = false
@@ -136,6 +140,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             return (row.seed, key.finalize())
         }
         layout.isFollowing = { [weak self] in self?.latch.isFollowing ?? true }
+        layout.disclosureAnchor = { [weak self] in self?.disclosureAnchor }
 
         let registration = UICollectionView.CellRegistration<ChatHostingCell, ChatRowID> {
             [weak self] cell, _, id in
@@ -192,6 +197,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             disclosures = [:]
             openHeaders = []
             requestedOlderAtRowCount = nil
+            disclosureAnchor = nil
             latch.reset()
             noteFollowing()
             let snapshot = projectedSnapshot()
@@ -244,6 +250,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             open: openHeaders)
         rowsByID = Dictionary(output.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         owners = output.owners
+        if let id = disclosureAnchor, rowsByID[id] == nil {
+            disclosureAnchor = owners[id]
+        }
         var snapshot = NSDiffableDataSourceSnapshot<Int, ChatRowID>()
         snapshot.appendSections([0])
         snapshot.appendItems(uniqueIDs(output.rows))
@@ -297,6 +306,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// Back to the newest row and following, as after a send. Waits for the
     /// layout the send's inset changes cause before pinning.
     func followLatest() {
+        disclosureAnchor = nil
         latch.reset()
         noteFollowing()
         collectionView.setNeedsLayout()
@@ -306,6 +316,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// above the end from far away, so no blank screen of unmeasured rows
     /// scrolls past.
     func jumpToLatest() {
+        disclosureAnchor = nil
         latch.reset()
         noteFollowing()
         collectionView.layoutIfNeeded()
@@ -323,6 +334,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     private func captureAnchor() -> ScrollAnchor {
+        if let id = disclosureAnchor, layout.index(of: id) != nil {
+            return .rows([(id, rowTop(id))])
+        }
         if latch.isFollowing { return .end }
         let visibleTop = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
         let visibleBottom = collectionView.contentOffset.y + collectionView.bounds.height
@@ -368,7 +382,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             toggleFold(id)
             return
         }
-        disclose(id) {
+        disclose(id, expanding: !expanded.contains(id)) {
             if expanded.remove(id) == nil {
                 expanded.insert(id)
             }
@@ -381,7 +395,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         guard case .tool(let tool)? = rowsByID[id]?.content,
             tool.fileChanges?.files.contains(where: { $0.path == path }) == true
         else { return }
-        disclose(id) {
+        disclose(id, expanding: expandedFiles[id]?.contains(path) != true) {
             var files = expandedFiles[id] ?? []
             if files.remove(path) == nil {
                 files.insert(path)
@@ -397,9 +411,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
 
     /// Applies a change to what a row shows open, reads what it now needs,
     /// and lays the row out again in place.
-    private func disclose(_ id: ChatRowID, _ change: () -> Void) {
+    private func disclose(_ id: ChatRowID, expanding: Bool, _ change: () -> Void) {
         guard let dataSource else { return }
-        let anchor: ScrollAnchor = latch.isFollowing ? .end : .rows([(id, rowTop(id))])
+        let anchor = beginDisclosure(id)
         change()
         lastDisclosure += 1
         disclosures[id] = lastDisclosure
@@ -411,8 +425,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             collectionView.layoutIfNeeded()
             restore(anchor)
         }
-        latch.disclosureSettled(isAtEnd: isAtEnd)
-        noteFollowing()
+        finishDisclosure(expanding: expanding)
     }
 
     /// Whether a turn or group header is open, for tests.
@@ -425,7 +438,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// while the list follows: the reader asked to see what is under it.
     private func toggleFold(_ id: ChatRowID) {
         guard let dataSource else { return }
-        let anchor = ScrollAnchor.rows([(id, rowTop(id))])
+        let anchor = beginDisclosure(id)
+        let expanding = !openHeaders.contains(id)
         if openHeaders.remove(id) == nil {
             openHeaders.insert(id)
         }
@@ -437,8 +451,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             collectionView.layoutIfNeeded()
             restore(anchor)
         }
-        latch.disclosureSettled(isAtEnd: isAtEnd)
-        noteFollowing()
+        finishDisclosure(expanding: expanding)
         // Rows expanded before their turn folded read output that arrived
         // while they were away.
         for revealed in revealedRows(since: oldRows, in: snapshot) where wantsOutput(revealed, retrying: false) {
@@ -450,6 +463,29 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         {
             UIAccessibility.post(notification: .layoutChanged, argument: cell)
         }
+    }
+
+    private func beginDisclosure(_ id: ChatRowID) -> ScrollAnchor {
+        let anchor = ScrollAnchor.rows([(id, rowTop(id))])
+        disclosureAnchor = id
+        layout.holdTopPadding()
+        // Stop before UIKit measures anything. Otherwise the collection's
+        // layout pass can pin to the old end before the anchor is restored.
+        isJumpAnimating = false
+        latch.disclosureSettled(isAtEnd: false)
+        collectionView.setContentOffset(collectionView.contentOffset, animated: false)
+        noteFollowing()
+        return anchor
+    }
+
+    private func finishDisclosure(expanding: Bool) {
+        // Even a short loading row can grow after output arrives. Expanding
+        // keeps its top fixed; collapsing may naturally return to latest.
+        if !expanding, isAtEnd {
+            disclosureAnchor = nil
+            latch.disclosureSettled(isAtEnd: true)
+        }
+        noteFollowing()
     }
 
     private func retryOutput(_ id: ChatRowID) {
@@ -513,6 +549,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// SwiftUI update, which must not mutate state.
     private func noteFollowing() {
         let following = latch.isFollowing
+        if following { layout.releaseTopPadding() }
         guard following != reportedFollowing else { return }
         reportedFollowing = following
         Task { @MainActor [weak self] in
@@ -523,29 +560,31 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     // MARK: Scrolling
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        disclosureAnchor = nil
         isJumpAnimating = false
         latch.userScrollBegan()
         noteFollowing()
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        latch.scrolled(isAtEnd: isAtEnd)
+        if disclosureAnchor == nil { latch.scrolled(isAtEnd: isAtEnd) }
         noteFollowing()
         requestOlderIfNear()
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         guard !decelerate else { return }
-        latch.userScrollEnded(isAtEnd: isAtEnd)
+        latch.userScrollEnded(isAtEnd: disclosureAnchor == nil && isAtEnd)
         noteFollowing()
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-        latch.userScrollEnded(isAtEnd: isAtEnd)
+        latch.userScrollEnded(isAtEnd: disclosureAnchor == nil && isAtEnd)
         noteFollowing()
     }
 
     func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
+        disclosureAnchor = nil
         isJumpAnimating = false
         latch.userScrollBegan()
         noteFollowing()
@@ -553,7 +592,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {
-        latch.userScrollEnded(isAtEnd: isAtEnd)
+        latch.userScrollEnded(isAtEnd: disclosureAnchor == nil && isAtEnd)
         noteFollowing()
     }
 

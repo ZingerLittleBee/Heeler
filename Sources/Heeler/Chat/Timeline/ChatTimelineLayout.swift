@@ -18,6 +18,9 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     var itemIDs: () -> [ChatRowID] = { [] }
     var rowInfo: (ChatRowID) -> (seed: ChatRowSeed, revision: Int)? = { _ in nil }
     var isFollowing: () -> Bool = { true }
+    /// The row the reader explicitly opened, including when its top is
+    /// partially clipped. Its own growth must extend downward.
+    var disclosureAnchor: () -> ChatRowID? = { nil }
 
     private(set) var geometry = ChatTimelineGeometry()
     private var ids: [ChatRowID] = []
@@ -32,6 +35,19 @@ final class ChatTimelineLayout: UICollectionViewLayout {
 
     func id(at index: Int) -> ChatRowID? {
         ids.indices.contains(index) ? ids[index] : nil
+    }
+
+    /// A short conversation normally rests at the bottom. Once the reader
+    /// opens a row, its existing blank space belongs above that row until
+    /// following resumes, just like already-scrolled content would.
+    func holdTopPadding() {
+        geometry.minimumTopPadding = geometry.topPadding
+    }
+
+    func releaseTopPadding() {
+        guard geometry.minimumTopPadding != 0 else { return }
+        geometry.minimumTopPadding = 0
+        invalidateLayout()
     }
 
     /// Drops measurements for rows no longer shown, so the cache follows the
@@ -107,6 +123,9 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     /// none does. A row cut off at the top grows upward, off screen, rather
     /// than pushing what is below it.
     private func stableAnchor(in collectionView: UICollectionView) -> ChatTimelineAnchor? {
+        if let id = disclosureAnchor(), let index = indexByID[id] {
+            return ChatTimelineAnchor(index: index, minY: geometry.minY(at: index))
+        }
         let visibleTop = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
         guard let first = geometry.anchor(visibleTop: visibleTop) else { return nil }
         let next = first.index + 1
