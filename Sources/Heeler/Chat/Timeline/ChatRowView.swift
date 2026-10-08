@@ -359,7 +359,7 @@ private struct ChatToolGroupRow: View {
     var body: some View {
         Button(action: toggle) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: ChatToolRow.symbol(for: group.kind))
+                ChatToolRow.icon(for: group.kind)
                     .foregroundStyle(.secondary)
                     .frame(width: 18)
                 Text(verbatim: group.summary)
@@ -414,7 +414,7 @@ private struct ChatToolGroupRow: View {
 
 /// Recorded lifecycle events, not successful tool calls or a live worker status.
 struct ChatSubagentPresentation {
-    static let symbol = "brain.head.profile"
+    static let icon = Image("LucideBot").renderingMode(.template)
     let activity: ChatSubagentActivity
 
     var name: String {
@@ -490,7 +490,7 @@ private struct ChatSubagentActivityRow: View {
                     if dynamicTypeSize.isAccessibilitySize {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 10) {
-                                agentIcon.font(.system(size: 20))
+                                agentIcon.frame(width: 20, height: 20)
                                 typeLabel
                                 Spacer(minLength: 4)
                                 disclosureIcon
@@ -499,7 +499,7 @@ private struct ChatSubagentActivityRow: View {
                         }
                     } else {
                         HStack(alignment: .top, spacing: 10) {
-                            agentIcon.font(.title3).frame(width: iconWidth)
+                            agentIcon.frame(width: iconWidth, height: iconWidth)
                             VStack(alignment: .leading, spacing: 4) {
                                 typeLabel
                                 identity
@@ -538,7 +538,9 @@ private struct ChatSubagentActivityRow: View {
     }
 
     private var agentIcon: some View {
-        Image(systemName: ChatSubagentPresentation.symbol)
+        ChatSubagentPresentation.icon
+            .resizable()
+            .scaledToFit()
             .foregroundStyle(.secondary)
             .accessibilityHidden(true)
     }
@@ -590,7 +592,7 @@ private struct ChatToolRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: toggle) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: Self.symbol(for: tool.kind))
+                    Self.icon(for: tool.kind)
                         .foregroundStyle(.secondary)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 2) {
@@ -756,20 +758,20 @@ private struct ChatToolRow: View {
         }
     }
 
-    static func symbol(for kind: ChatToolActivity.Kind) -> String {
+    static func icon(for kind: ChatToolActivity.Kind) -> Image {
         switch kind {
-        case .command: "terminal"
-        case .fileEdit: "pencil"
-        case .fileWrite: "doc.badge.plus"
-        case .fileRead: "doc.text"
-        case .search: "magnifyingglass"
-        case .web: "globe"
-        case .agent: ChatSubagentPresentation.symbol
-        case .question: "questionmark.bubble"
-        case .todo: "checklist"
-        case .mcp: "puzzlepiece.extension"
-        case .image: "photo"
-        case .other: "wrench.and.screwdriver"
+        case .command: Image(systemName: "terminal")
+        case .fileEdit: Image(systemName: "pencil")
+        case .fileWrite: Image(systemName: "doc.badge.plus")
+        case .fileRead: Image(systemName: "doc.text")
+        case .search: Image(systemName: "magnifyingglass")
+        case .web: Image(systemName: "globe")
+        case .agent: ChatSubagentPresentation.icon
+        case .question: Image(systemName: "questionmark.bubble")
+        case .todo: Image(systemName: "checklist")
+        case .mcp: Image(systemName: "puzzlepiece.extension")
+        case .image: Image(systemName: "photo")
+        case .other: Image(systemName: "wrench.and.screwdriver")
         }
     }
 }

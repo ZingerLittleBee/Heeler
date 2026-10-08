@@ -31,7 +31,7 @@ struct ChatSubagentPresentationTests {
     }
 
     @Test func cardsRenderAtNarrowAndAccessibleSizes() throws {
-        #expect(UIImage(systemName: ChatSubagentPresentation.symbol) != nil)
+        #expect(UIImage(named: "LucideBot") != nil)
         for accessible in [false, true] {
             for dark in [false, true] {
                 let width: CGFloat = accessible ? 320 : 390

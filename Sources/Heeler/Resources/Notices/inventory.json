@@ -20,6 +20,14 @@
   },
   "components": [
     {
+      "id": "Lucide",
+      "displayName": "Lucide (Bot icon)",
+      "version": "a04f228cd01185e09c188b7227b9600c08c565ec",
+      "source": "https://github.com/lucide-icons/lucide/blob/a04f228cd01185e09c188b7227b9600c08c565ec/icons/bot.svg",
+      "spdx": "ISC",
+      "notice": "Lucide-ISC.txt"
+    },
+    {
       "id": "Ghostty",
       "displayName": "Ghostty",
       "version": "82938b633ba646db38591d969c3c526332bd7e65",
