@@ -275,7 +275,8 @@ enum CodexTimelineProjector {
                 ChatToolActivity(
                     kind: snapshot.kind, name: snapshot.name, title: snapshot.title, subtitle: snapshot.subtitle,
                     status: status, note: snapshot.note, diff: snapshot.diff, exitCode: snapshot.exitCode,
-                    callID: snapshot.callID, preview: snapshot.preview, output: reference))
+                    callID: snapshot.callID, preview: snapshot.preview, output: reference,
+                    subagentActivity: snapshot.subagentActivity))
             if status == .running || status == .awaitingApproval {
                 output.pendingRequests.append(
                     ChatPendingRequest(

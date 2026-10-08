@@ -11,6 +11,39 @@ import UIKit
 struct ChatTimelineControllerTests {
     private static let frame = CGRect(x: 0, y: 0, width: 390, height: 640)
 
+    @Test func subagentHistoryStaysOpenWhenMoreEventsArrive() async throws {
+        var outputRequests: [ChatEntryID] = []
+        let controller = ChatTimelineController(actions: ChatTimelineActions(loadOutput: { outputRequests.append($0) }))
+        let builder = ChatRowBuilder()
+        func event(_ id: String, _ kind: String) -> ChatEntry {
+            ChatEntry(id: ChatEntryID(id), sourceOffset: 0, content: .tool(ChatToolActivity(
+                kind: .agent, name: "SubAgentActivity", title: "Subagent: worker", status: .noResult,
+                subagentActivity: .init(agentPath: "/root/worker", events: [kind]))))
+        }
+        let first = event("start", "started")
+        let id = ChatRowID.entry(first.id)
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(await builder.rows(for: ChatTimelineInput(entries: [first]))))
+            await Self.settle(controller)
+            let collapsed = try #require(controller.cellFrame(of: id)).height
+            controller.toggle(id)
+            await Self.settle(controller)
+            let expanded = try #require(controller.cellFrame(of: id)).height
+            #expect(expanded > collapsed)
+
+            let rows = await builder.rows(for: ChatTimelineInput(entries: [first, event("message", "interacted")]))
+            controller.apply(Self.state(rows, revision: 2))
+            await Self.settle(controller)
+            #expect(controller.visibleRowIDs == [id])
+            #expect(try #require(controller.cellFrame(of: id)).height > expanded)
+            #expect(outputRequests.isEmpty)
+
+            controller.toggle(id)
+            await Self.settle(controller)
+            #expect(try #require(controller.cellFrame(of: id)).height < expanded)
+        }
+    }
+
     @Test func opensAtTheNewestRowWithVisibleRowsMeasured() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<60)))

@@ -146,6 +146,13 @@ struct ChatReasoning: Equatable, Codable, Sendable {
     }
 }
 
+/// Recorded collaboration events for one subagent. Identity is the complete
+/// path; the display name is not unique across nested tasks.
+struct ChatSubagentActivity: Equatable, Codable, Sendable {
+    var agentPath: String?
+    var events: [String]
+}
+
 /// One tool call, shown as a single row that expands to its output.
 struct ChatToolActivity: Equatable, Codable, Sendable {
     enum Kind: String, Codable, Sendable {
@@ -202,6 +209,7 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         case unavailable(String)
     }
 
+    var subagentActivity: ChatSubagentActivity?
     var kind: Kind
     /// The program's own tool name: `Bash`, `Edit`, `exec_command`.
     var name: String
@@ -238,8 +246,10 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         kind: Kind, name: String, title: String, subtitle: String? = nil,
         status: Status, note: String? = nil, diff: ChatDiffStats? = nil,
         fileChanges: ChatFileChanges? = nil, exitCode: Int? = nil, questions: [ChatQuestion] = [],
-        callID: String? = nil, preview: ChatToolPreview? = nil, output: ChatOutputReference? = nil
+        callID: String? = nil, preview: ChatToolPreview? = nil, output: ChatOutputReference? = nil,
+        subagentActivity: ChatSubagentActivity? = nil
     ) {
+        self.subagentActivity = subagentActivity
         self.kind = kind
         self.name = name
         self.title = title
@@ -270,7 +280,7 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     // `preview`, `cardAnswer` and `outputRead` are deliberately absent:
     // decoding leaves them nil.
     private enum CodingKeys: String, CodingKey {
-        case kind, name, title, subtitle, status, note, diff, fileChanges, exitCode, questions, callID, output
+        case kind, name, title, subtitle, status, note, diff, fileChanges, exitCode, questions, callID, output, subagentActivity
     }
 }
 

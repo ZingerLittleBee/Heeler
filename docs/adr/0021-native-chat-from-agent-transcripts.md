@@ -237,6 +237,8 @@ closed, once anything else follows. A call waiting on the user after the
 group keeps it live, with every call inside, so the group keeps its identity
 through the dialog.
 
+Codex collaboration events with the same full Subagent path share one pinned card within a turn, stopping at a user message or divider. The card keeps its first row identity, shows an AI icon and an explicit Subagent label, and opens to the full path and recorded history. Consecutive repeated events show a count. The latest event describes recorded activity, not live worker status: a message exchange is never shown as completed work. Missing identities stay separate, and copying a card includes its path and history.
+
 Folding is a projection of the built rows, made on the main actor each time
 rows or an open header change, so a header opens or closes in the same
 main-thread turn as the tap. The header keeps its top edge, even while the

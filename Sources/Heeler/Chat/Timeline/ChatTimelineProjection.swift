@@ -94,7 +94,7 @@ enum ChatTimelineProjection {
     ) {
         if let head = segment.head { output.rows.append(head) }
         // Reasoning with no text says nothing, wherever it is.
-        let body = segment.body.filter { !isBlank($0) }
+        let body = coalescingSubagents(segment.body, owners: &output.owners).filter { !isBlank($0) }
 
         if phase == .settled, folds, signals.foldsFinishedTurns, let fold = fold(of: body, record: segment.record) {
             let steps = body[..<fold.answerStart]
@@ -122,6 +122,49 @@ enum ChatTimelineProjection {
                 ChatRow(id: .liveTurn, content: .turnHeader(header), revision: revision(header), topSpacing: 0))
         }
         emitGrouped(body, skipping: { _ in false }, isLive: phase == .running, isMuted: false, open: open, into: &output)
+    }
+
+    /// Keep collaboration updates together even when other tasks interleave.
+    /// A prompt cuts the identity scope, including queued prompts within a turn.
+    private static func coalescingSubagents(
+        _ rows: [ChatRow], owners: inout [ChatRowID: ChatRowID]
+    ) -> [ChatRow] {
+        var result: [ChatRow] = []
+        var indices: [String: Int] = [:]
+        for row in rows {
+            if case .user = row.content { indices.removeAll() }
+            if case .divider = row.content { indices.removeAll() }
+            guard case .tool(let tool) = row.content, let activity = tool.subagentActivity,
+                let path = activity.agentPath, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                result.append(row)
+                continue
+            }
+            guard let index = indices[path], case .tool(let previous) = result[index].content,
+                let previousActivity = previous.subagentActivity
+            else {
+                indices[path] = result.count
+                result.append(row)
+                continue
+            }
+            var merged = tool
+            merged.subagentActivity = ChatSubagentActivity(
+                agentPath: path, events: previousActivity.events + activity.events)
+            merged.preview = nil
+            merged.output = nil
+            var hasher = Hasher()
+            hasher.combine(result[index].revision)
+            hasher.combine(row.revision)
+            hasher.combine(merged.title)
+            hasher.combine(merged.status)
+            hasher.combine(merged.subagentActivity?.events)
+            let first = result[index]
+            result[index] = ChatRow(
+                id: first.id, content: .tool(merged), revision: hasher.finalize(), topSpacing: first.topSpacing,
+                isNested: first.isNested, isMuted: first.isMuted)
+            owners[row.id] = result[index].id
+        }
+        return result
     }
 
     /// Where a finished turn's final answer starts: the model's text at its

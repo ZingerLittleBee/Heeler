@@ -243,7 +243,7 @@ enum CodexRecordDecoder {
             return .record(.legacyItem(CodexItem(id: callID, content: .tool(snapshot)), .current))
         case "sub_agent_activity":
             guard let id = event.eventID else { return .malformed }
-            let snapshot = subAgentActivity(path: event.agentPath, kind: event.kind, line: line)
+            let snapshot = subAgentActivity(path: event.agentPath, kind: event.kind)
             return .record(.legacyItem(CodexItem(id: id, content: .tool(snapshot)), .current))
         case "entered_review_mode", "exited_review_mode":
             let entered = type == "entered_review_mode"
@@ -424,7 +424,7 @@ enum CodexRecordDecoder {
                     subtitle: prompt == nil ? nil : tool, status: raw.status?.chatStatus, callID: raw.id,
                     output: reference(line)))
         case .subAgentActivity:
-            return .tool(subAgentActivity(path: raw.agentPath, kind: raw.kind, line: line))
+            return .tool(subAgentActivity(path: raw.agentPath, kind: raw.kind))
         case .enteredReviewMode:
             return .review(title: "Review started", detail: raw.userFacingHint ?? "Review requested.")
         case .exitedReviewMode:
@@ -712,11 +712,17 @@ enum CodexRecordDecoder {
             callID: id, output: reference(line))
     }
 
-    private static func subAgentActivity(path: String?, kind: String?, line: ChatLine) -> CodexToolSnapshot {
-        let status: ChatToolActivity.Status = kind == "interrupted" ? .interrupted : .succeeded
-        let title = [path ?? "Subagent", kind].compactMap { $0 }.joined(separator: " ")
+    private static func subAgentActivity(path: String?, kind: String?) -> CodexToolSnapshot {
+        let status: ChatToolActivity.Status = switch kind {
+        case "completed": .succeeded
+        case "interrupted": .interrupted
+        default: .noResult
+        }
+        let name = path?.split(separator: "/").last.map(String.init)
+        let title = name.map { "Subagent: \($0)" } ?? "Subagent"
         return CodexToolSnapshot(
-            kind: .agent, name: "SubAgentActivity", title: title, status: status, output: reference(line))
+            kind: .agent, name: "SubAgentActivity", title: title, status: status,
+            subagentActivity: ChatSubagentActivity(agentPath: path, events: [kind ?? "unknown"]))
     }
 
     private static func sleepTitle(_ milliseconds: Int?) -> String {

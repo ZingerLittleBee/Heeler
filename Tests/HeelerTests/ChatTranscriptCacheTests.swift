@@ -78,6 +78,25 @@ struct ChatTranscriptCacheTests {
         // report it back, so it is checked on a device only.
     }
 
+    @Test func subagentActivitySurvivesTheDiskCache() async {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        var document = Self.document(Self.key())
+        document.entries = [ChatEntry(
+            id: ChatEntryID("subagent"), sourceOffset: 100,
+            content: .tool(ChatToolActivity(
+                kind: .agent, name: "SubAgentActivity", title: "Subagent: task", status: .noResult,
+                subagentActivity: ChatSubagentActivity(agentPath: "/root/task", events: ["started", "interacted"]))))]
+        await fixture.cache.save(document)
+        #expect(await fixture.cache.load(Self.key()) == .hit(document))
+    }
+
+    @Test func olderCachedToolsDecodeWithoutSubagentMetadata() throws {
+        let json = #"{"kind":"agent","name":"Agent","title":"Task","status":"succeeded","questions":[]}"#
+        let tool = try JSONDecoder().decode(ChatToolActivity.self, from: Data(json.utf8))
+        #expect(tool.subagentActivity == nil)
+    }
+
     @Test func fileNamesRevealNoIdentifiers() {
         let key = ChatCacheKey(
             hostID: Self.hostA, socketLocation: .namedSession("work"),

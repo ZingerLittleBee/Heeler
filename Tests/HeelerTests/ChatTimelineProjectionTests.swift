@@ -354,6 +354,87 @@ struct ChatTimelineProjectionTests {
         #expect(summary([created, overwritten]) == "Edited 1 file, Created 1 file")
     }
 
+    // MARK: Subagents
+
+    private static func subagent(_ id: String, path: String?, event: String) -> ChatRow {
+        let status: ChatToolActivity.Status = event == "completed" ? .succeeded : .noResult
+        return row(id, .tool(ChatToolActivity(
+            kind: .agent, name: "SubAgentActivity", title: "Subagent: task", status: status,
+            subagentActivity: ChatSubagentActivity(agentPath: path, events: [event]))))
+    }
+
+    private static func activityTool(_ output: ChatTimelineProjection.Output, _ id: String) -> ChatToolActivity? {
+        guard case .tool(let tool)? = output.rows.first(where: { $0.id == entry(id) })?.content else { return nil }
+        return tool
+    }
+
+    @Test func interleavedSubagentEventsMergeByFullPathAndKeepTheLatestStatus() {
+        let rows = [
+            Self.user("u1"), Self.subagent("a1", path: "/root/a/task", event: "started"),
+            Self.subagent("b1", path: "/root/b/task", event: "started"),
+            Self.tool("call", .agent, name: "Agent", title: "Subagent: task"),
+            Self.subagent("a2", path: "/root/a/task", event: "completed"),
+            Self.subagent("b2", path: "/root/b/task", event: "completed"),
+            Self.subagent("a3", path: "/root/a/task", event: "interacted"),
+        ]
+        let output = Self.project(rows, turns: [Self.turn("u1")])
+        #expect(Self.ids(output) == ["u1", "a1", "b1", "call"])
+        #expect(Self.activityTool(output, "a1")?.subagentActivity?.events == ["started", "completed", "interacted"])
+        #expect(Self.activityTool(output, "a1")?.status == .noResult)
+        #expect(Self.activityTool(output, "b1")?.status == .succeeded)
+        #expect(Self.activityTool(output, "a1")?.output == nil)
+        #expect(output.owners[Self.entry("a2")] == Self.entry("a1"))
+        #expect(output.owners[Self.entry("a3")] == Self.entry("a1"))
+        #expect(output.owners[Self.entry("b2")] == Self.entry("b1"))
+    }
+
+    @Test func unknownSubagentIdentityDoesNotMerge() {
+        let rows = [
+            Self.subagent("a", path: nil, event: "started"), Self.subagent("b", path: nil, event: "completed"),
+            Self.subagent("c", path: "", event: "started"), Self.subagent("d", path: "", event: "interacted"),
+        ]
+        let output = Self.project(rows, turns: [])
+        #expect(Self.ids(output) == ["a", "b", "c", "d"])
+        #expect(output.owners.isEmpty)
+    }
+
+    @Test func subagentCardsKeepIdentityAndChangeRevisionWhenAnEventArrives() {
+        let rows = [Self.user("u1"), Self.subagent("a1", path: "/root/task", event: "started")]
+        let before = Self.project(rows, turns: [Self.turn("u1")])
+        let appended = Self.project(
+            rows + [Self.subagent("a2", path: "/root/task", event: "interacted")], turns: [Self.turn("u1")])
+        let repeated = Self.project(
+            rows + [Self.subagent("a2", path: "/root/task", event: "interacted")], turns: [Self.turn("u1")])
+        #expect(Self.ids(before) == Self.ids(appended))
+        #expect(before.rows.last?.revision != appended.rows.last?.revision)
+        #expect(appended.rows.last?.revision == repeated.rows.last?.revision)
+    }
+
+    @Test func subagentMergingStopsAtTurnsAndUserMessages() {
+        let rows = [
+            Self.user("u1"), Self.subagent("a1", path: "/root/task", event: "started"),
+            Self.user("queued", queued: true), Self.subagent("a2", path: "/root/task", event: "interacted"),
+            Self.user("u2"), Self.subagent("a3", path: "/root/task", event: "completed"),
+        ]
+        let output = Self.project(rows, turns: [Self.turn("u1"), Self.turn("u2")])
+        #expect(Self.ids(output) == ["u1", "a1", "queued", "a2", "u2", "a3"])
+        #expect(output.owners.isEmpty)
+    }
+
+    @Test func mergedSubagentStaysPinnedAndKeepsAnchorsWhenToolsAndTurnsFold() {
+        let rows = [
+            Self.user("u1"), Self.subagent("a1", path: "/root/task", event: "started"),
+            Self.tool("c1"), Self.tool("c2"), Self.subagent("a2", path: "/root/task", event: "completed"),
+            Self.text("answer"),
+        ]
+        let closed = Self.project(rows, turns: [Self.turn("u1")])
+        #expect(Self.ids(closed) == ["u1", "a1", "[turn answer]", "answer"])
+        #expect(closed.owners[Self.entry("a2")] == Self.entry("a1"))
+        let open = Self.project(rows, turns: [Self.turn("u1")], open: [.turn(ChatEntryID("answer"))])
+        #expect(Self.ids(open) == ["u1", "a1", "[turn answer]", "[group c2]", "answer"])
+        #expect(open.owners[Self.entry("a2")] == Self.entry("a1"))
+    }
+
     // MARK: Layout
 
     @Test func shownRowsAreSpacedForTheirShownNeighbors() {

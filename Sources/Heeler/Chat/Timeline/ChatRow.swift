@@ -126,8 +126,12 @@ struct ChatRow: Identifiable, Sendable {
             case .assistant(let source, _): source
             case .reasoning(let reasoning): reasoning.text
             case .tool(let tool):
-                [tool.title, tool.subtitle, tool.preview?.text, tool.fileChanges?.copyText]
-                    .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+                if let activity = tool.subagentActivity {
+                    ChatSubagentPresentation(activity: activity).copyText
+                } else {
+                    [tool.title, tool.subtitle, tool.preview?.text, tool.fileChanges?.copyText]
+                        .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+                }
             case .plan(let plan, _): plan.text
             case .questions(let questions): questions.map(\.text).joined(separator: "\n\n")
             case .notice(let notice): [notice.title, notice.detail].compactMap { $0 }.joined(separator: "\n")

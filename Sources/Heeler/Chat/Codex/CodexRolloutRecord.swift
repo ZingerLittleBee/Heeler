@@ -873,6 +873,7 @@ struct CodexSyncQuestion: Equatable, Sendable {
 /// while Codex has recorded no outcome; the projection decides what an open
 /// call shows from the turn and herdr's activity.
 struct CodexToolSnapshot: Equatable, Sendable {
+    var subagentActivity: ChatSubagentActivity?
     var kind: ChatToolActivity.Kind
     var name: String
     var title: String
@@ -889,8 +890,9 @@ struct CodexToolSnapshot: Equatable, Sendable {
         kind: ChatToolActivity.Kind, name: String, title: String, subtitle: String? = nil,
         status: ChatToolActivity.Status?, note: String? = nil, diff: ChatDiffStats? = nil,
         exitCode: Int? = nil, callID: String? = nil, preview: ChatToolPreview? = nil,
-        output: ChatOutputReference? = nil
+        output: ChatOutputReference? = nil, subagentActivity: ChatSubagentActivity? = nil
     ) {
+        self.subagentActivity = subagentActivity
         self.kind = kind
         self.name = name
         self.title = title

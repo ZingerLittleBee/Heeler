@@ -67,7 +67,7 @@ struct CodexProjection: Equatable, Sendable {
 struct CodexRolloutReducer: ChatTranscriptReducer {
     /// Bumped when the normalization changes, so entries cached by an
     /// older build are dropped instead of mixed with new ones.
-    static let revision = 3
+    static let revision = 4
 
     let rolloutID: String
     private(set) var support: CodexRolloutSupport = .pending

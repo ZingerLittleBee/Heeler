@@ -49,10 +49,14 @@ struct ChatRowView: View {
         case .reasoning(let reasoning):
             ChatReasoningRow(reasoning: reasoning, isExpanded: isExpanded) { actions.toggle(row.id) }
         case .tool(let tool):
-            ChatToolRow(
-                tool: tool, isExpanded: isExpanded, expandedFiles: expandedFiles,
-                missingOutputText: actions.missingOutputText, toggle: { actions.toggle(row.id) },
-                files: fileActions, textActions: row.hasInnerControls ? textActions : nil)
+            if let activity = tool.subagentActivity {
+                ChatSubagentActivityRow(activity: activity, isExpanded: isExpanded) { actions.toggle(row.id) }
+            } else {
+                ChatToolRow(
+                    tool: tool, isExpanded: isExpanded, expandedFiles: expandedFiles,
+                    missingOutputText: actions.missingOutputText, toggle: { actions.toggle(row.id) },
+                    files: fileActions, textActions: row.hasInnerControls ? textActions : nil)
+            }
         case .plan(let plan, let blocks):
             ChatPlanRow(plan: plan, blocks: blocks)
         case .questions(let questions):
@@ -408,6 +412,164 @@ private struct ChatToolGroupRow: View {
     }
 }
 
+/// Recorded lifecycle events, not successful tool calls or a live worker status.
+struct ChatSubagentPresentation {
+    static let symbol = "brain.head.profile"
+    let activity: ChatSubagentActivity
+
+    var name: String {
+        activity.agentPath?.split(separator: "/").last.map(String.init) ?? "Unnamed subagent"
+    }
+
+    var status: String { Self.label(for: activity.events.last ?? "unknown") }
+    var eventCount: String { activity.events.count == 1 ? "1 event" : "\(activity.events.count) events" }
+
+    var copyText: String {
+        (["Subagent: \(name)", activity.agentPath].compactMap { $0 }
+            + history.map(\.label)).joined(separator: "\n")
+    }
+
+    struct EventRun: Identifiable {
+        let id: Int
+        let kind: String
+        var count: Int
+
+        var label: String {
+            let label = ChatSubagentPresentation.label(for: kind)
+            return count == 1 ? label : "\(label) ×\(count)"
+        }
+    }
+
+    /// Repeated message exchanges stay available without another wall of rows.
+    var history: [EventRun] {
+        var runs: [EventRun] = []
+        for (index, kind) in activity.events.enumerated() {
+            if runs.last?.kind == kind {
+                runs[runs.count - 1].count += 1
+            } else {
+                runs.append(EventRun(id: index, kind: kind, count: 1))
+            }
+        }
+        return runs
+    }
+
+    static func label(for kind: String) -> String {
+        switch kind {
+        case "started": "Started"
+        case "interacted": "Message exchanged"
+        case "completed": "Completed"
+        case "interrupted": "Interrupted"
+        default: "Activity recorded"
+        }
+    }
+
+    static func symbol(for kind: String) -> String {
+        switch kind {
+        case "started": "play.circle"
+        case "interacted": "bubble.left.and.bubble.right"
+        case "completed": "checkmark.circle"
+        case "interrupted": "pause.circle"
+        default: "ellipsis.circle"
+        }
+    }
+}
+
+private struct ChatSubagentActivityRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title3) private var iconWidth = 24
+    let activity: ChatSubagentActivity
+    let isExpanded: Bool
+    let toggle: () -> Void
+
+    private var presentation: ChatSubagentPresentation { ChatSubagentPresentation(activity: activity) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: toggle) {
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                agentIcon.font(.system(size: 20))
+                                typeLabel
+                                Spacer(minLength: 4)
+                                disclosureIcon
+                            }
+                            identity
+                        }
+                    } else {
+                        HStack(alignment: .top, spacing: 10) {
+                            agentIcon.font(.title3).frame(width: iconWidth)
+                            VStack(alignment: .leading, spacing: 4) {
+                                typeLabel
+                                identity
+                            }
+                            Spacer(minLength: 4)
+                            disclosureIcon
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Subagent, \(presentation.name)")
+            .accessibilityValue("\(presentation.status), \(presentation.eventCount), \(isExpanded ? "Expanded" : "Collapsed")")
+            .accessibilityHint(isExpanded ? "Hides activity history" : "Shows activity history")
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let path = activity.agentPath, !path.isEmpty {
+                        Text(verbatim: path)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(presentation.history) { event in
+                        Label(event.label, systemImage: ChatSubagentPresentation.symbol(for: event.kind))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.leading, dynamicTypeSize.isAccessibilitySize ? 0 : iconWidth + 10)
+            }
+        }
+        .padding(12)
+        .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+    }
+
+    private var agentIcon: some View {
+        Image(systemName: ChatSubagentPresentation.symbol)
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+    }
+
+    private var typeLabel: some View {
+        Text("Subagent")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+    }
+
+    private var identity: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(verbatim: presentation.name)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(isExpanded ? nil : 2)
+            Text("\(presentation.status) · \(presentation.eventCount)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var disclosureIcon: some View {
+        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+    }
+
+}
+
 private struct ChatToolRow: View {
     struct TextActions {
         var copy: () -> Void
@@ -432,6 +594,11 @@ private struct ChatToolRow: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 2) {
+                        if tool.kind == .agent {
+                            Text("Subagent")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
                         Text(verbatim: tool.title)
                             .font(.subheadline)
                             .fontDesign(titleIsCode ? .monospaced : nil)
@@ -597,7 +764,7 @@ private struct ChatToolRow: View {
         case .fileRead: "doc.text"
         case .search: "magnifyingglass"
         case .web: "globe"
-        case .agent: "person.2"
+        case .agent: ChatSubagentPresentation.symbol
         case .question: "questionmark.bubble"
         case .todo: "checklist"
         case .mcp: "puzzlepiece.extension"

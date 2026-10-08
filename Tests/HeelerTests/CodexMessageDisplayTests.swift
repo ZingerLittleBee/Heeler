@@ -10,6 +10,45 @@ import Testing
 struct CodexMessageDisplayTests {
     private let idle = ChatProjectionContext(activity: .idle)
 
+    @Test("Subagent events preserve identity without treating every update as success", arguments: [false, true])
+    func subagentActivity(legacy: Bool) throws {
+        var builder = CodexRolloutBuilder(legacy ? .legacy : .paginated)
+        builder.turnStarted("t1")
+        let kinds = ["started", "interacted", "completed", "interrupted", "future_event"]
+        for (index, kind) in kinds.enumerated() {
+            if legacy {
+                builder.event("sub_agent_activity", [
+                    ("event_id", .string("e\(index)")), ("agent_path", "/root/task"), ("kind", .string(kind)),
+                ])
+            } else {
+                builder.item("t1", [
+                    "type": "SubAgentActivity", "id": .string("e\(index)"),
+                    "agent_path": "/root/task", "kind": .string(kind),
+                ])
+            }
+        }
+        let transcript = builder.reducer().transcript(ChatProjectionContext(activity: .working))
+        let tools = transcript.entries.compactMap(\.tool)
+        #expect(tools.count == kinds.count)
+        #expect(tools.map(\.status) == [.noResult, .noResult, .succeeded, .interrupted, .noResult])
+        #expect(tools.map(\.title) == Array(repeating: "Subagent: task", count: kinds.count))
+        #expect(tools.compactMap(\.subagentActivity) == kinds.map {
+            ChatSubagentActivity(agentPath: "/root/task", events: [$0])
+        })
+        #expect(tools.allSatisfy { $0.output == nil && $0.preview == nil })
+        #expect(transcript.pendingRequests.isEmpty)
+    }
+
+    @Test func subagentActivityWithoutIdentityOrKindRemainsExplicitlyUnknown() throws {
+        var builder = CodexRolloutBuilder()
+        builder.turnStarted("t1")
+        builder.item("t1", ["type": "SubAgentActivity", "id": "e1"])
+        let tool = try #require(builder.reducer().transcript(idle).entries.first?.tool)
+        #expect(tool.title == "Subagent")
+        #expect(tool.subagentActivity == ChatSubagentActivity(agentPath: nil, events: ["unknown"]))
+        #expect(tool.status == .noResult)
+    }
+
     @Test("A recognized $skill prompt reads as a slash command", arguments: CodexSkillCase.allCases)
     func skillDisplay(_ skill: CodexSkillCase) throws {
         var builder = CodexRolloutBuilder()
