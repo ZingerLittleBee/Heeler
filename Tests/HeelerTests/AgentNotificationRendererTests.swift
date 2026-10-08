@@ -201,4 +201,115 @@ struct AgentNotificationRendererTests {
         #expect(AgentNotificationRenderer.fallback.title == "Heeler")
         #expect(AgentNotificationRenderer.fallback.body == "Agent update")
     }
+
+    // MARK: Detailed alerts (#428)
+
+    /// Off is the default: the same push renders exactly the #260 wording
+    /// and carries no custom action.
+    @Test func detailedAlertsOffKeepTheDefaultWording() throws {
+        let vector = try Self.vector(named: "done agent with a tab label and launch directory (#428)")
+        let record = try Self.record(forVector: vector, named: "mac-studio")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record])
+
+        #expect(alert == AgentNotificationAlert(title: "Github · OMP", body: "Done"))
+        #expect(alert.actionTitle == nil)
+    }
+
+    /// On for the Host whose key opened the envelope: tab in the title, kind
+    /// and launch directory in the body, and an action naming the Agent.
+    @Test func detailedAlertsOnNameTabDirectoryAndDestination() throws {
+        let vector = try Self.vector(named: "done agent with a tab label and launch directory (#428)")
+        let record = try Self.record(forVector: vector, named: "mac-studio")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record],
+            detailed: { $0 == record.hostID })
+
+        #expect(alert.title == "Github · FIRSTMATE")
+        #expect(alert.body == "Done · OMP in ~/Github")
+        #expect(alert.actionTitle == "Open Github · FIRSTMATE")
+    }
+
+    /// A plugin that predates the new fields degrades one step at a time.
+    @Test func detailedAlertsFallBackWithoutTabOrDirectory() throws {
+        let vector = try Self.vector(named: "blocked agent with a project and a task title")
+        let record = try Self.record(forVector: vector, named: "mac-studio")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record], detailed: { _ in true })
+
+        #expect(alert.title == "Caterm · Claude")
+        #expect(alert.body == "Blocked · Claude")
+        #expect(alert.actionTitle == "Open Caterm · Claude")
+        // The terminal title stays out (#260).
+        #expect(!alert.body.contains("排查"))
+    }
+}
+
+@Suite("Agent notification detail (#428)")
+struct AgentNotificationDetailTests {
+    @Test func titleUsesTabWhenKnown() {
+        #expect(AgentNotificationDetail.title(workspace: "Github", tab: "FIRSTMATE", kind: "omp")
+            == "Github · FIRSTMATE")
+    }
+
+    @Test func titleFallsBackToWorkspaceAndKind() {
+        #expect(AgentNotificationDetail.title(workspace: "Github", tab: nil, kind: "omp")
+            == "Github · OMP")
+        #expect(AgentNotificationDetail.title(workspace: "Github", tab: "  ", kind: "omp")
+            == "Github · OMP")
+        #expect(AgentNotificationDetail.title(workspace: nil, tab: "FIRSTMATE", kind: "claude")
+            == "Claude")
+    }
+
+    @Test func bodyNamesStatusKindAndDirectory() {
+        #expect(AgentNotificationDetail.body(status: .done, kind: "omp", directory: "~/Github")
+            == "Done · OMP in ~/Github")
+        #expect(AgentNotificationDetail.body(status: .blocked, kind: "codex", directory: nil)
+            == "Blocked · Codex")
+        #expect(AgentNotificationDetail.body(
+            status: AgentStatus(rawValue: "exited"), kind: "claude", directory: "")
+            == "Status: exited · Claude")
+    }
+
+    @Test func actionNamesTheDestination() {
+        #expect(AgentNotificationDetail.actionTitle(workspace: "Github", tab: "FIRSTMATE", kind: "omp")
+            == "Open Github · FIRSTMATE")
+        #expect(AgentNotificationDetail.categoryIdentifier(actionTitle: "Open Github · OMP")
+            == "dev.bybee.heeler.agent.open.Open Github · OMP")
+    }
+
+    @Test func categoryMergeKeepsOthersAndCapsDetailCategories() {
+        let prefix = AgentNotificationDetail.openAgentCategoryPrefix
+        let limit = AgentNotificationDetail.categoryLimit
+        let old = (0..<limit).map { "\(prefix)\($0)" }
+        let merged = AgentNotificationDetail.mergedCategoryIdentifiers(
+            existing: ["other"] + old, adding: "\(prefix)new")
+        #expect(merged.first == "other")
+        #expect(merged.count == limit + 1)
+        #expect(!merged.contains("\(prefix)0"))
+        #expect(merged.last == "\(prefix)new")
+
+        let moved = AgentNotificationDetail.mergedCategoryIdentifiers(
+            existing: ["\(prefix)a", "\(prefix)b"], adding: "\(prefix)a")
+        #expect(moved == ["\(prefix)b", "\(prefix)a"])
+    }
+
+    @Test func preferenceIsOffByDefaultAndPerHost() throws {
+        let suite = "heeler.tests.detailed-alerts.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AgentNotificationDetailPreferences(defaults: defaults)
+        let host = UUID()
+        let other = UUID()
+
+        #expect(!preferences.isEnabled(forHost: host))
+        preferences.setEnabled(true, forHost: host)
+        #expect(preferences.isEnabled(forHost: host))
+        #expect(!preferences.isEnabled(forHost: other))
+        preferences.setEnabled(false, forHost: host)
+        #expect(!preferences.isEnabled(forHost: host))
+    }
 }

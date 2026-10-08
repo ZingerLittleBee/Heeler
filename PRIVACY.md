@@ -70,9 +70,15 @@ cleartext so iOS can update or end the activity without launching Heeler:
 - when present, stale and dismissal timestamps.
 
 These values describe the activity update but do not identify an individual
-agent. Project names, task titles, agent types and names, Host names, pane IDs,
-and per-agent details remain inside the encrypted envelope. The relay and APNs
+agent. Project names, task titles, tab labels, launch directories, agent types
+and names, Host names, pane IDs, and per-agent details remain inside the
+encrypted envelope. The relay and APNs
 do not receive the Notification Key used to decrypt that envelope.
+
+The Agent Notification envelope also carries the Agent's tab label and launch
+directory, with the Host user's home shortened to `~`. Heeler shows them only
+when the user turns on Detailed Alerts for that Host. The setting is stored on
+the device and is off by default.
 
 If a notification cannot be decrypted, Heeler shows a generic fallback instead
 of displaying unverified content.

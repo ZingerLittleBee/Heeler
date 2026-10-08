@@ -13,6 +13,11 @@ struct NotificationSettingsView: View {
     let refreshPluginStatuses: @MainActor ([Host.ID]) async -> Void
     @Environment(\.openURL) private var openURL
     @State private var isShowingExplainer = false
+    /// Detailed alerts (#428) live in the shared app group, not in the
+    /// registration file: only this device's Notification Service Extension
+    /// reads them. Toggles echo here so the switch redraws at once.
+    @State private var detailedAlerts: [Host.ID: Bool] = [:]
+    private let detailPreferences = AgentNotificationDetailPreferences()
 
     var body: some View {
         Form {
@@ -181,6 +186,20 @@ struct NotificationSettingsView: View {
                     get: { liveActivities.isEnabled(for: host.id) },
                     set: { liveActivities.setEnabled($0, for: host.id) }))
                 .disabled(isUpdating)
+            Toggle(
+                "Detailed Alerts",
+                isOn: Binding(
+                    get: {
+                        detailedAlerts[host.id]
+                            ?? detailPreferences.isEnabled(forHost: host.id)
+                    },
+                    set: { enabled in
+                        detailPreferences.setEnabled(enabled, forHost: host.id)
+                        detailedAlerts[host.id] = enabled
+                    }))
+                .disabled(isUpdating)
+                .accessibilityIdentifier(
+                    "settings.notifications.detailedAlerts.\(host.id.uuidString)")
         }
     }
 
@@ -197,6 +216,7 @@ struct NotificationSettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             if registered {
                 Text(NotificationPrivacyCopy.liveActivityFooter)
+                Text(NotificationPrivacyCopy.detailedAlertsFooter)
                 if !liveActivities.areActivitiesEnabled {
                     Text(NotificationPrivacyCopy.liveActivityDisabledHint)
                 }

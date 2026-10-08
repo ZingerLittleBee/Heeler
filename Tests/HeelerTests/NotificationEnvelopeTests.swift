@@ -34,6 +34,8 @@ struct NotificationEnvelopeTests {
                 == Date(timeIntervalSince1970: TimeInterval(vector.payload.timestamp)))
         #expect(payload.project == vector.payload.project)
         #expect(payload.title == vector.payload.title)
+        #expect(payload.tab == vector.payload.tab)
+        #expect(payload.directory == vector.payload.directory)
     }
 
     /// The key id is derived, never stored: both ends must agree on the
