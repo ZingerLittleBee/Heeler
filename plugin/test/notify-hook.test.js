@@ -98,9 +98,14 @@ function writeHerdrStub({
   agent = "claude",
   title = undefined,
   workspaceLabel = "Proj",
+  tabId = undefined,
+  cwd = undefined,
+  tabs = undefined,
 }) {
   const binPath = join(stubDir, "herdr");
   const agentInfo = { agent, agent_status: status, pane_id: PANE_ID, workspace_id: "w1" };
+  if (tabId !== undefined) agentInfo.tab_id = tabId;
+  if (cwd !== undefined) agentInfo.cwd = cwd;
   if (title !== undefined) {
     agentInfo.terminal_title = `⠂ ${title}`;
     agentInfo.terminal_title_stripped = title;
@@ -136,6 +141,11 @@ function writeHerdrStub({
             code: 0,
           },
   };
+  // `tab list` is answered only when a test provides tabs; otherwise the stub
+  // fails it like an unknown subcommand, which the hook must tolerate.
+  if (tabs !== undefined) {
+    response.tab = { out: { id: "cli:tab:list", result: { tabs, type: "tab_list" } }, code: 0 };
+  }
   writeFileSync(join(stubDir, "response.json"), JSON.stringify(response));
   // The stub is CommonJS on purpose: it lives outside the plugin package, so
   // no "type": "module" applies to it.
@@ -350,6 +360,65 @@ suite("notify-hook: sending", () => {
     assert.equal(payload.title, "排查修复 split 按钮 UI 结构问题");
     // The label is resolved for the workspace the re-check reports.
     assert.deepEqual(stubInvocationsOf("workspace")[0].args, ["workspace", "get", "w1"]);
+  });
+
+  test("the payload carries the tab label and launch directory (#428)", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    writeHerdrStub({
+      status: "done",
+      workspaceLabel: "Github",
+      tabId: "w1:t2",
+      cwd: "/srv/work/Github ",
+      tabs: [
+        { tab_id: "w1:t1", workspace_id: "w1", label: "1" },
+        { tab_id: "w1:t2", workspace_id: "w1", label: "FIRSTMATE" },
+        { tab_id: "w9:t1", workspace_id: "w9", label: "elsewhere" },
+      ],
+    });
+
+    const result = await runHook(statusEvent("done"));
+
+    assert.equal(result.status, 0, result.stderr);
+    const { payload } = decryptEnvelope(relay.requests[0].body.envelope, KEY_A);
+    assert.equal(payload.project, "Github");
+    assert.equal(payload.tab, "FIRSTMATE");
+    assert.equal(payload.directory, "/srv/work/Github");
+    assert.deepEqual(stubInvocationsOf("tab")[0].args, ["tab", "list", "--workspace", "w1"]);
+  });
+
+  test("a lone tab with its default positional label is omitted", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    writeHerdrStub({
+      status: "done",
+      tabId: "w1:t1",
+      tabs: [{ tab_id: "w1:t1", workspace_id: "w1", label: "1" }],
+    });
+
+    const result = await runHook(statusEvent("done"));
+
+    assert.equal(result.status, 0, result.stderr);
+    const { payload } = decryptEnvelope(relay.requests[0].body.envelope, KEY_A);
+    assert.equal("tab" in payload, false);
+    assert.equal("directory" in payload, false);
+  });
+
+  test("a failing tab lookup still notifies without the tab", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    writeHerdrStub({ status: "blocked", tabId: "w1:t1", cwd: "/srv/work" });
+
+    const result = await runHook(statusEvent("blocked"));
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(relay.requests.length, 1);
+    const { payload } = decryptEnvelope(relay.requests[0].body.envelope, KEY_A);
+    assert.equal("tab" in payload, false);
+    assert.equal(payload.directory, "/srv/work");
   });
 
   test("a title longer than the display limit is trimmed with an ellipsis", async () => {

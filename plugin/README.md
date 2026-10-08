@@ -311,6 +311,8 @@ plaintext is compact JSON:
 | `ts`     | integer | Unix-seconds of the status transition. Positive. |
 | `project`| string  | Optional, display only: the workspace label the Agent runs in — the project name the app's alert leads with. Omitted when the Host cannot resolve it. At most 256 characters (the hook trims to 80 before encrypting). |
 | `title`  | string  | Optional, display only: the Agent's terminal title with status glyphs stripped — what it is working on. Same absence and length rules as `project`. |
+| `tab`    | string  | Optional, display only: the label of the tab the Agent runs in, sent only when it tells tabs apart (the Live Activity `tab` field rule). Same absence and length rules as `project`. |
+| `directory` | string | Optional, display only: the Agent's launch directory (herdr's `cwd`), with the Host user's home shortened to `~`. Same absence and length rules as `project`. |
 
 A plaintext that is not JSON or violates these rules is rejected
 (`bad_payload`). Every rejection is a typed error on the app side; the
