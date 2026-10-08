@@ -7,6 +7,13 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Detailed Alerts, a per-Host notification setting that is off by default.
+  When it is on, an Agent Notification shows `workspace · tab` as its title,
+  the status, Agent kind, and launch directory as its body, and an Open
+  action that names the Agent. Requires the updated Heeler plugin. (#429)
+
 ## [0.1.13] - 2026-10-07
 
 ### Added

@@ -63,6 +63,14 @@ enum NotificationPrivacyCopy {
         "The Lock Screen shows aggregate status counts and update timing. Agent, Host, and task "
         + "details stay encrypted."
 
+    /// Per-Host Detailed Alerts toggle footer (#428). The extra names are
+    /// decrypted on this device and shown in the alert, including on the
+    /// Lock Screen when iOS shows previews there.
+    static let detailedAlertsFooter =
+        "Detailed Alerts name the tab and launch folder, for example \"Done · Claude in ~/project\", "
+        + "and add an Open action that names the Agent. They are decrypted on this device and "
+        + "follow your notification preview setting."
+
     /// Shown under the Live Activity toggle when the system-wide permission
     /// is off. Mirrors the Agent Notifications denied-state wording.
     static let liveActivityDisabledHint =

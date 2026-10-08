@@ -5,7 +5,7 @@
 // format: a compact JSON object `{"v":1,"kid":...,"n":...,"ct":...}` whose
 // `ct` is the AES-256-GCM ciphertext (plus tag) of a compact JSON plaintext
 // `{"pane":...,"kind":...,"status":...,"ts":...}` plus the optional display
-// fields `project` and `title`. See README.md for the
+// fields `project`, `title`, `tab`, and `directory`. See README.md for the
 // schema and test-vectors/notification-payload-v1.json for the
 // cross-implementation vectors: this side proves the encrypt direction, the
 // Swift side proves the decrypt direction. Breaking changes bump the
@@ -54,8 +54,8 @@ export function notificationKeyId(key) {
 const DISPLAY_FIELD_MAX = 256;
 
 /**
- * Validate the notification payload shape. `project` and `title` are the
- * optional display fields: omit them (or pass null) and the app renders one
+ * Validate the notification payload shape. `project`, `title`, `tab`, and
+ * `directory` are the optional display fields: omit them (or pass null) and the app renders one
  * step less specific.
  *
  * @param {object} payload
@@ -65,6 +65,10 @@ const DISPLAY_FIELD_MAX = 256;
  * @param {number} payload.timestamp unix-seconds of the status transition
  * @param {string|null} [payload.project] workspace label the Agent runs in
  * @param {string|null} [payload.title] Agent terminal title, glyphs stripped
+ * @param {string|null} [payload.tab] tab label the Agent runs in, when it
+ *   tells tabs apart (the Live Activity `tab` field rule)
+ * @param {string|null} [payload.directory] the Agent's launch directory, with
+ *   the Host user's home shortened to `~`
  */
 function validatePayload(payload) {
   const { paneId, agentKind, status, timestamp } = payload;
@@ -80,7 +84,7 @@ function validatePayload(payload) {
   if (!Number.isInteger(timestamp) || timestamp <= 0) {
     fail("bad_payload", `timestamp must be a positive unix-seconds integer, got ${timestamp}`);
   }
-  for (const field of ["project", "title"]) {
+  for (const field of ["project", "title", "tab", "directory"]) {
     const value = payload[field];
     if (value === undefined || value === null) continue;
     if (typeof value !== "string") fail("bad_payload", `${field} must be a string when present`);
@@ -117,6 +121,8 @@ export function encryptNotificationEnvelope(payload, key, { nonce } = {}) {
     ts: payload.timestamp,
     ...(payload.project ? { project: payload.project } : {}),
     ...(payload.title ? { title: payload.title } : {}),
+    ...(payload.tab ? { tab: payload.tab } : {}),
+    ...(payload.directory ? { directory: payload.directory } : {}),
   });
   return sealEnvelope(plaintext, key, AAD, { nonce });
 }

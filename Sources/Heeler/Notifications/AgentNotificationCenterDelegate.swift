@@ -44,13 +44,17 @@ final class AgentNotificationCenterDelegate: NSObject, UNUserNotificationCenterD
     }
 
     /// A tap (the default action) deep-links to the Agent's Attach through
-    /// the single-window rule; explicit dismissal routes nowhere.
+    /// the single-window rule; so does the Detailed alerts `Open …` action
+    /// (#428), which only names the same destination. Explicit dismissal
+    /// routes nowhere.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let isDefaultTap = response.actionIdentifier == UNNotificationDefaultActionIdentifier
+        let isDefaultTap =
+            response.actionIdentifier == UNNotificationDefaultActionIdentifier
+            || response.actionIdentifier == AgentNotificationDetail.openAgentActionIdentifier
         let target: AgentNotificationTarget? =
             isDefaultTap
             ? AgentNotificationRouting.target(

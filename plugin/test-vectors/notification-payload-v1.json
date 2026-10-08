@@ -52,6 +52,21 @@
       }
     },
     {
+      "name": "done agent with a tab label and launch directory (#428)",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"MDEyMzQ1Njc4OTo7\",\"ct\":\"yBdBoYcKaDkIRNjWYqscRL5MJjmnHH4nSNMhbsSRDUoiFHkXDvq5w8FKd2tW5KdejHZsfh2H9RedcFFkbGohhj8M2-zgiw0dt3LtPhMNXuwerVFhof8wmUy0aOYuEUut6Zt0fTkKYm4qxmkpJs3LbxAjJy04MwHKT7-tPkNewzrcFavYY9oJsTI\"}",
+      "payload": {
+        "paneId": "wV:p2",
+        "agentKind": "omp",
+        "status": "done",
+        "timestamp": 1766000000,
+        "project": "Github",
+        "tab": "FIRSTMATE",
+        "directory": "~/Github"
+      }
+    },
+    {
       "name": "unknown plaintext field is ignored (additive v1 metadata)",
       "decodeOnly": true,
       "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",

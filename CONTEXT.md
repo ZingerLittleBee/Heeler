@@ -245,7 +245,7 @@ name the user gives it, shown above its text wherever Snippets are listed.
 _Avoid_: macro, template, shortcut, quick reply, tip
 
 **Agent Notification**:
-A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface.
+A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface. By default it names the workspace, Agent kind, and status. A Host's opt-in Detailed Alerts setting names the tab and launch directory instead and adds an Open action that names the Agent; neither form uses terminal titles.
 _Avoid_: alert, push message, task notification
 
 **Push Relay**:

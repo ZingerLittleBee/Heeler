@@ -35,7 +35,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { encryptNotificationEnvelope } from "./notification-envelope.js";
 import { readNotificationConfig } from "./notification-config.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
-import { forDisplay, optionalText } from "./display-text.js";
+import { displayDirectory, forDisplay, optionalText } from "./display-text.js";
 import { deliversToSession, hookSession, sessionStateDir } from "./session.js";
 
 // Statuses that notify (ADR 0008: Working/Idle transitions never do), keyed
@@ -195,6 +195,10 @@ async function currentAgentStatus(binPath, paneId) {
     status: agent.agent_status.toLowerCase(),
     agentKind: optionalText(agent.agent),
     workspaceId: optionalText(agent.workspace_id),
+    tabId: optionalText(agent.tab_id),
+    // herdr's `cwd` is the launch directory (the Live Activity `directory`
+    // field reads the same value).
+    directory: optionalText(typeof agent.cwd === "string" ? agent.cwd.trim() : null),
     // Prefer the stripped title: the raw one carries herdr's spinner glyphs.
     title: optionalText(agent.terminal_title_stripped) ?? optionalText(agent.terminal_title),
   };
@@ -214,6 +218,35 @@ async function workspaceLabel(binPath, workspaceId) {
     const result = await runHerdr(binPath, ["workspace", "get", workspaceId]);
     if (result.code !== 0) return null;
     return optionalText(JSON.parse(result.stdout)?.result?.workspace?.label);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the label of the tab the Agent runs in (`herdr tab list
+ * --workspace <id>` answers `{"result":{"tabs":[{"tab_id","workspace_id",
+ * "label"},...]}}`). Same rule as the Live Activity `tab` field: a lone tab
+ * still carrying its default positional label ("1") names nothing, so it
+ * yields null. Decorative like the workspace label: every failure is null.
+ */
+async function tabLabel(binPath, workspaceId, tabId) {
+  if (workspaceId === null || tabId === null) return null;
+  try {
+    const result = await runHerdr(binPath, ["tab", "list", "--workspace", workspaceId]);
+    if (result.code !== 0) return null;
+    const entries = JSON.parse(result.stdout)?.result?.tabs;
+    if (!Array.isArray(entries)) return null;
+    const unique = [
+      ...new Map(
+        entries.filter((entry) => entry?.workspace_id === workspaceId).map((entry) => [entry.tab_id, entry]),
+      ).values(),
+    ];
+    const index = unique.findIndex((entry) => entry.tab_id === tabId);
+    if (index < 0) return null;
+    const label = optionalText(unique[index].label);
+    if (label === null) return null;
+    return unique.length > 1 || label !== String(index + 1) ? label : null;
   } catch {
     return null;
   }
@@ -324,6 +357,9 @@ async function main() {
     timestamp,
     project: forDisplay(await workspaceLabel(binPath, workspaceId)),
     title: forDisplay(current.title ?? event.title),
+    // For the app's opt-in Detailed alerts (#428); older apps ignore them.
+    tab: forDisplay(await tabLabel(binPath, workspaceId, current.tabId)),
+    directory: forDisplay(displayDirectory(current.directory)),
   };
   const pruned = new Set();
   const failures = [];

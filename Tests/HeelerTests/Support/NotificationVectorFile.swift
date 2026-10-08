@@ -34,6 +34,8 @@ struct NotificationVectorFile: Decodable, Sendable {
         /// The optional display fields; absent from vectors predating them.
         let project: String?
         let title: String?
+        let tab: String?
+        let directory: String?
     }
 
     struct Invalid: Decodable, Sendable, CustomStringConvertible {

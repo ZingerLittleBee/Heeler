@@ -19,10 +19,17 @@ struct NotificationPayload: Sendable, Equatable {
     /// The Agent's terminal title, stripped of status glyphs: what the agent
     /// is working on. Nil under the same conditions as `project`.
     let title: String?
+    /// The label of the tab the Agent runs in, sent only when it tells tabs
+    /// apart. Read by opt-in Detailed alerts (#428). Nil when absent.
+    let tab: String?
+    /// The Agent's launch directory, home shortened to `~` by the Host.
+    /// Read by opt-in Detailed alerts (#428). Nil when absent.
+    let directory: String?
 
     init(
         paneID: String, agentKind: String, status: AgentStatus, timestamp: Date,
-        project: String? = nil, title: String? = nil
+        project: String? = nil, title: String? = nil, tab: String? = nil,
+        directory: String? = nil
     ) {
         self.paneID = paneID
         self.agentKind = agentKind
@@ -30,6 +37,8 @@ struct NotificationPayload: Sendable, Equatable {
         self.timestamp = timestamp
         self.project = project
         self.title = title
+        self.tab = tab
+        self.directory = directory
     }
 }
 
@@ -136,7 +145,8 @@ enum NotificationEnvelope {
         return NotificationPayload(
             paneID: pane, agentKind: kind, status: AgentStatus(rawValue: status),
             timestamp: Date(timeIntervalSince1970: TimeInterval(timestamp)),
-            project: nonEmpty(wire.project), title: nonEmpty(wire.title))
+            project: nonEmpty(wire.project), title: nonEmpty(wire.title),
+            tab: nonEmpty(wire.tab), directory: nonEmpty(wire.directory))
     }
 
     private static func nonEmpty(_ text: String?) -> String? {
@@ -144,9 +154,9 @@ enum NotificationEnvelope {
         return text
     }
 
-    /// Decrypted JSON wire shape, lenient for the same reason. `project` and
-    /// `title` are the additive v1 display fields: absent from older plugins,
-    /// and never load-bearing for anything but copy.
+    /// Decrypted JSON wire shape, lenient for the same reason. `project`,
+    /// `title`, `tab`, and `directory` are the additive v1 display fields:
+    /// absent from older plugins, and never load-bearing for anything but copy.
     private struct WirePlaintext: Decodable {
         var pane: String?
         var kind: String?
@@ -154,6 +164,8 @@ enum NotificationEnvelope {
         var ts: Double?
         var project: String?
         var title: String?
+        var tab: String?
+        var directory: String?
     }
 }
 
