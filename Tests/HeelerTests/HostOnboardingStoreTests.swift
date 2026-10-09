@@ -350,4 +350,260 @@ struct HostOnboardingStoreTests {
         #expect(hint.contains("password"))
         #expect(await connector.capturedSettings.isEmpty)
     }
+
+    // MARK: Herdr endpoint (ADR 0021)
+
+    private static let endpointSocketPath =
+        "/Users/ada/Library/Application Support/Example/herdr/herdr.sock"
+    private static let endpointLauncherPath =
+        "/Users/ada/Library/Application Support/Example/bin/herdr"
+
+    private func endpointHost() throws -> Host {
+        let endpoint = try #require(
+            HerdrEndpoint(
+                socketPath: Self.endpointSocketPath,
+                executablePath: Self.endpointLauncherPath))
+        return Host(address: "mac.example", username: "ada", herdrEndpoint: endpoint)
+    }
+
+    /// An endpoint Host whose launcher probe (its session list) and ping
+    /// answer as scripted.
+    private func makeEndpointStore(
+        probe: Result<[HerdrSession], TransportError>,
+        ping: Result<ServerInfo, TransportError> = healthyPing
+    ) throws -> (HostOnboardingStore, LauncherProbeTransport) {
+        let host = try endpointHost()
+        let transport = LauncherProbeTransport(sessions: probe, pingResult: ping)
+        let store = HostOnboardingStore(
+            host: host,
+            connector: SingleTransportConnector(transport: transport),
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: HostCredentialsProvider(
+                deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+                rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+                secrets: InMemorySecretStore()))
+        return (store, transport)
+    }
+
+    @Test func endpointHostConnectsThroughItsLauncher() async throws {
+        let (store, connector) = try makeStore(host: endpointHost())
+
+        await store.runChecks()
+
+        let settings = try #require(await connector.capturedSettings.first)
+        let launcher = try #require(settings.herdrLauncher)
+        #expect(settings.socket == .absolutePath(Self.endpointSocketPath))
+        #expect(launcher.executablePath == Self.endpointLauncherPath)
+        #expect(settings.sessionListCommand == launcher.sessionListCommand)
+    }
+
+    /// The probe's sessions are discarded: the endpoint's socket already fixes
+    /// the session, so the picker never appears and ping still runs.
+    @Test func endpointProbeSuccessKeepsTheSessionSectionEmptyAndStillPings() async throws {
+        let (store, _) = try makeStore(
+            host: endpointHost(),
+            sessions: [
+                HerdrSession(name: "default", isDefault: true, isRunning: true),
+                HerdrSession(name: "work", isDefault: false, isRunning: true),
+            ])
+
+        await store.runChecks()
+
+        #expect(store.availableSessions.isEmpty)
+        #expect(store.sessionDiscoveryError == nil)
+        #expect(store.serverInfo == ServerInfo(version: "0.7.5", protocolVersion: 17))
+        #expect(store.report?.isFullyPassed == true)
+    }
+
+    @Test func endpointProbeRunsOnceBeforePing() async throws {
+        let (store, transport) = try makeEndpointStore(probe: .success([]))
+
+        await store.runChecks()
+
+        #expect(await transport.sessionListCount == 1)
+        #expect(await transport.pingCount == 1)
+        #expect(store.report?.isFullyPassed == true)
+    }
+
+    @Test func missingLauncherFailsHerdrInstalledWithoutPinging() async throws {
+        let (store, transport) = try makeEndpointStore(
+            probe: .failure(.herdrLauncherNotFound(path: Self.endpointLauncherPath)))
+
+        await store.runChecks()
+
+        let report = try #require(store.report)
+        #expect(report[.remoteEnvironment] == .passed)
+        #expect(
+            report[.herdrInstalled]
+                == .failed(
+                    hint: "The herdr launcher at \(Self.endpointLauncherPath) could not run. "
+                        + "Open the app that provides herdr on the Host, or pair the Host again."))
+        #expect(await transport.pingCount == 0)
+        #expect(await transport.isClosed)
+        #expect(store.availableSessions.isEmpty)
+        #expect(store.sessionDiscoveryError == nil)
+        #expect(store.serverInfo == nil)
+        #expect(store.pluginStatus == .unavailable)
+    }
+
+    @Test func launcherThatDoesNotAnswerLikeHerdrFailsHerdrInstalled() async throws {
+        let (store, transport) = try makeEndpointStore(
+            probe: .failure(
+                .malformedResponse("herdr session list returned invalid JSON: hello")))
+
+        await store.runChecks()
+
+        let report = try #require(store.report)
+        #expect(
+            report[.herdrInstalled]
+                == .failed(
+                    hint: "The herdr launcher at \(Self.endpointLauncherPath) did not answer "
+                        + "like herdr. (herdr session list returned invalid JSON: hello)"))
+        #expect(await transport.pingCount == 0)
+        #expect(store.sessionDiscoveryError == nil)
+    }
+
+    @Test func otherLauncherProbeFailuresUseTheNormalMapping() async throws {
+        let (store, transport) = try makeEndpointStore(probe: .failure(.timedOut))
+
+        await store.runChecks()
+
+        let report = try #require(store.report)
+        #expect(
+            report[.connection]
+                == .failed(
+                    hint: "The Host did not answer in time. Check the connection and try again."))
+        #expect(await transport.pingCount == 0)
+    }
+
+    @Test func endpointPingFailuresPointAtTheProvidingApp() async throws {
+        let (store, _) = try makeEndpointStore(
+            probe: .success([]),
+            ping: .failure(.socketNotFound(path: Self.endpointSocketPath)))
+
+        await store.runChecks()
+
+        let report = try #require(store.report)
+        #expect(
+            report[.herdrInstalled]
+                == .failed(
+                    hint: "No herdr socket at \(Self.endpointSocketPath). Open the app that "
+                        + "provides herdr on the Host, then run the checks again."))
+    }
+}
+
+/// Scripted Transport for an endpoint Host's preflight: its session list
+/// stands in for the launcher probe, and both calls are counted.
+private final actor LauncherProbeTransport: Transport {
+    private let sessions: Result<[HerdrSession], TransportError>
+    private let pingResult: Result<ServerInfo, TransportError>
+    private(set) var sessionListCount = 0
+    private(set) var pingCount = 0
+    private(set) var isClosed = false
+
+    init(
+        sessions: Result<[HerdrSession], TransportError>,
+        pingResult: Result<ServerInfo, TransportError>
+    ) {
+        self.sessions = sessions
+        self.pingResult = pingResult
+    }
+
+    func listSessions() async throws -> [HerdrSession] {
+        sessionListCount += 1
+        return try sessions.get()
+    }
+
+    func ping() async throws -> ServerInfo {
+        pingCount += 1
+        return try pingResult.get()
+    }
+
+    func listAgents() async throws -> [Agent] {
+        []
+    }
+
+    func sessionSnapshot() async throws -> SessionSnapshot {
+        throw Self.unscripted
+    }
+
+    func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
+        throw Self.unscripted
+    }
+
+    func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
+        throw Self.unscripted
+    }
+
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        throw Self.unscripted
+    }
+
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        throw Self.unscripted
+    }
+
+    func subscribeToEvents(_ subscriptions: [EventSubscription]) async throws -> HerdrEventStream {
+        throw Self.unscripted
+    }
+
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        throw Self.unscripted
+    }
+
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
+        throw Self.unscripted
+    }
+
+    func startAgentInNewWorktree(
+        _ request: AgentLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> Agent {
+        throw Self.unscripted
+    }
+
+    func startAgentInNewWorkspace(
+        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> Agent {
+        throw Self.unscripted
+    }
+
+    func closePane(_ params: PaneTarget) async throws {
+        throw Self.unscripted
+    }
+
+    func closeTab(_ params: TabTarget) async throws {
+        throw Self.unscripted
+    }
+
+    func focusAgent(_ target: AgentTarget) async throws {
+        throw Self.unscripted
+    }
+
+    func renameAgent(_ params: AgentRenameParams) async throws {
+        throw Self.unscripted
+    }
+
+    func renameWorkspace(_ params: WorkspaceRenameParams) async throws {
+        throw Self.unscripted
+    }
+
+    var isConnected: Bool {
+        !isClosed
+    }
+
+    func close() async throws {
+        isClosed = true
+    }
+
+    private static let unscripted = TransportError.channelFailed(
+        detail: "LauncherProbeTransport scripts only the preflight")
+}
+
+/// Hands every connect the same scripted transport.
+private struct SingleTransportConnector: TransportConnector {
+    let transport: LauncherProbeTransport
+
+    func connect(settings: SSHTransportSettings) async throws -> any Transport {
+        transport
+    }
 }

@@ -478,6 +478,8 @@ final class AttachTerminalStore {
             "The Host did not answer in time."
         case TransportError.herdrBinaryNotFound:
             TransportError.herdrBinaryNotFound.presentation.message
+        case TransportError.herdrLauncherNotFound(let path):
+            TransportError.herdrLauncherNotFound(path: path).presentation.message
         default:
             "The session failed: \(error)"
         }

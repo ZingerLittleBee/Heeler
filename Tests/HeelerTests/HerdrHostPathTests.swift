@@ -107,6 +107,22 @@ struct HerdrHostPathTests {
                 == nil)
     }
 
+    /// Today's full strings for a Host without a herdr endpoint, so the
+    /// endpoint branch cannot drift them (ADR 0021).
+    @Test func defaultHerdrCommandsKeepTheirFullStrings() {
+        #expect(
+            HerdrHostPath.wrappingBareHerdr(SSHTransportSettings.defaultSessionListCommand)
+                == "/bin/sh -c '\(HerdrHostPath.pathExport); exec herdr session list --json'")
+        #expect(
+            HerdrHostPath.wrappingBareHerdr(SSHTransportSettings.defaultPluginListCommand)
+                == "/bin/sh -c '\(HerdrHostPath.pathExport); exec herdr plugin list --json'")
+        #expect(
+            SSHTransportSettings.defaultNotificationConfigDirCommand
+                == #"/bin/sh -c '\#(HerdrHostPath.pathExport); "#
+                + #"printf "__HEELER_PLUGIN_CONFIG_DIR__=%s\n" "#
+                + #""$(herdr plugin config-dir __HEELER_PLUGIN_ID__)"'"#)
+    }
+
     @Test func notificationConfigDirDefaultExportsTheExtraPATH() {
         let command = SSHTransportSettings.defaultNotificationConfigDirCommand
         #expect(command.contains(HerdrHostPath.pathExport))
@@ -138,5 +154,179 @@ struct HerdrHostPathTests {
         #expect(
             !HerdrHostPath.isBareHerdrCommand(
                 "/home/linuxbrew/.linuxbrew/bin/herdr agent attach"))
+    }
+}
+
+/// The launcher of a Pairing Code v2 herdr endpoint (ADR 0021). Paths carry
+/// spaces, as a macOS app's Application Support directory does.
+@Suite("Herdr endpoint launcher")
+struct HerdrLauncherTests {
+    private static let launcherPath = "/Users/ada/Library/Application Support/Example/bin/herdr"
+    private static let socketPath =
+        "/Users/ada/Library/Application Support/Example/herdr/herdr.sock"
+    private static let quotedArguments =
+        "'/Users/ada/Library/Application Support/Example/bin/herdr' "
+        + "'/Users/ada/Library/Application Support/Example/herdr/herdr.sock'"
+
+    private func makeLauncher() throws -> HerdrLauncher {
+        try #require(
+            HerdrLauncher(executablePath: Self.launcherPath, socketPath: Self.socketPath))
+    }
+
+    private func makeSettings(for host: Host) -> SSHTransportSettings {
+        SSHTransportSettings(
+            host: host,
+            credentials: .password("unused"),
+            hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in false })
+    }
+
+    @Test func keepsBothPathsAsGiven() throws {
+        let launcher = try makeLauncher()
+        #expect(launcher.executablePath == Self.launcherPath)
+        #expect(launcher.socketPath == Self.socketPath)
+    }
+
+    @Test func refusesPathsThatAreNotOneAbsoluteShellWord() {
+        let invalid: [(executablePath: String, socketPath: String)] = [
+            ("bin/herdr", Self.socketPath),
+            (Self.launcherPath, "herdr/herdr.sock"),
+            ("", Self.socketPath),
+            ("/opt/it's/herdr", Self.socketPath),
+            (#"/opt/back\slash/herdr"#, Self.socketPath),
+            ("/opt/new\nline/herdr", Self.socketPath),
+            (Self.launcherPath, "/tmp/it's/herdr/herdr.sock"),
+            (Self.launcherPath, "/tmp/tab\t/herdr/herdr.sock"),
+        ]
+        for paths in invalid {
+            #expect(
+                HerdrLauncher(executablePath: paths.executablePath, socketPath: paths.socketPath)
+                    == nil,
+                "\(paths)")
+        }
+    }
+
+    @Test func sessionListRunsTheLauncherAgainstTheEndpointSocket() throws {
+        let launcher = try makeLauncher()
+        #expect(
+            launcher.sessionListCommand
+                == #"/bin/sh -c 'export HERDR_SOCKET_PATH="$2"; exec "$1" session list --json' "#
+                + "herdr \(Self.quotedArguments)")
+    }
+
+    @Test func pluginListRunsTheLauncherAgainstTheEndpointSocket() throws {
+        let launcher = try makeLauncher()
+        #expect(
+            launcher.pluginListCommand
+                == #"/bin/sh -c 'export HERDR_SOCKET_PATH="$2"; exec "$1" plugin list --json' "#
+                + "herdr \(Self.quotedArguments)")
+    }
+
+    @Test func pluginConfigDirRunsTheLauncherInsideTheMarkerPrintf() throws {
+        let command = try makeLauncher().notificationConfigDirCommand
+        #expect(
+            command
+                == #"/bin/sh -c 'export HERDR_SOCKET_PATH="$2"; "#
+                + #"printf "__HEELER_PLUGIN_CONFIG_DIR__=%s\n" "#
+                + #""$("$1" plugin config-dir __HEELER_PLUGIN_ID__)"' "#
+                + "herdr \(Self.quotedArguments)")
+        // The probe swaps the token for the matched plugin id, as it does for
+        // the default command.
+        #expect(command.contains(SSHTransportSettings.notificationPluginIDToken))
+    }
+
+    /// No PATH export and no PATH fallback: the launcher is the only herdr,
+    /// and the exec sites must not wrap it as a bare `herdr`.
+    @Test func launcherCommandsNeverReachForPATH() throws {
+        let launcher = try makeLauncher()
+        for command in [
+            launcher.sessionListCommand,
+            launcher.pluginListCommand,
+            launcher.notificationConfigDirCommand,
+        ] {
+            #expect(!command.contains("export PATH="))
+            #expect(!command.contains(HerdrHostPath.extraPATH))
+            #expect(!HerdrHostPath.isBareHerdrCommand(command))
+            #expect(HerdrHostPath.wrappingBareHerdr(command) == command)
+        }
+    }
+
+    @Test func launcherExit126Or127IsAMissingLauncherWhateverTheCommandWord() throws {
+        let launcher = try makeLauncher()
+        for exitStatus: Int32 in [126, 127] {
+            #expect(
+                HerdrHostPath.missingBinaryError(
+                    exitStatus: exitStatus, command: launcher.sessionListCommand,
+                    launcher: launcher)
+                    == .herdrLauncherNotFound(path: Self.launcherPath))
+            #expect(
+                HerdrHostPath.missingBinaryError(
+                    exitStatus: exitStatus, command: "herdr session list --json",
+                    launcher: launcher)
+                    == .herdrLauncherNotFound(path: Self.launcherPath))
+        }
+        #expect(
+            HerdrHostPath.missingBinaryError(
+                exitStatus: 1, command: launcher.sessionListCommand, launcher: launcher)
+                == nil)
+        #expect(
+            HerdrHostPath.missingBinaryError(
+                exitStatus: 0, command: launcher.sessionListCommand, launcher: launcher)
+                == nil)
+    }
+
+    @Test func withoutALauncherOnlyBareHerdrExit127IsAMissingBinary() throws {
+        let launcherCommand = try makeLauncher().sessionListCommand
+        #expect(
+            HerdrHostPath.missingBinaryError(
+                exitStatus: 127, command: launcherCommand, launcher: nil)
+                == nil)
+        #expect(
+            HerdrHostPath.missingBinaryError(
+                exitStatus: 126, command: "herdr session list --json", launcher: nil)
+                == nil)
+        #expect(
+            HerdrHostPath.missingBinaryError(
+                exitStatus: 127, command: "herdr session list --json", launcher: nil)
+                == .herdrBinaryNotFound)
+    }
+
+    @Test func endpointHostSettingsRunTheLauncher() throws {
+        let endpoint = try #require(
+            HerdrEndpoint(socketPath: Self.socketPath, executablePath: Self.launcherPath))
+        // The endpoint wins over a leftover session name.
+        let host = Host(
+            address: "mac.example", username: "ada", sessionName: "work",
+            herdrEndpoint: endpoint)
+        let launcher = try makeLauncher()
+
+        let settings = makeSettings(for: host)
+
+        #expect(settings.socket == .absolutePath(Self.socketPath))
+        #expect(settings.herdrLauncher == launcher)
+        #expect(settings.sessionListCommand == launcher.sessionListCommand)
+        #expect(settings.pluginListCommand == launcher.pluginListCommand)
+        #expect(settings.notificationConfigDirCommand == launcher.notificationConfigDirCommand)
+    }
+
+    @Test func hostWithoutAnEndpointKeepsEveryDefaultCommand() {
+        let settings = makeSettings(
+            for: Host(address: "box.example", username: "dev", sessionName: "work"))
+
+        #expect(settings.socket == .namedSession("work"))
+        #expect(settings.herdrLauncher == nil)
+        #expect(settings.wakeCommand == SSHTransportSettings.defaultWakeCommand)
+        #expect(settings.sessionListCommand == SSHTransportSettings.defaultSessionListCommand)
+        #expect(
+            settings.agentDiscoveryCommand == SSHTransportSettings.defaultAgentDiscoveryCommand)
+        #expect(settings.attachCommand == SSHTransportSettings.defaultAttachCommand)
+        #expect(
+            settings.terminalAttachCommand == SSHTransportSettings.defaultTerminalAttachCommand)
+        #expect(settings.homeCommand == SSHTransportSettings.defaultHomeCommand)
+        #expect(
+            settings.stageDirectoryCommand == SSHTransportSettings.defaultStageDirectoryCommand)
+        #expect(settings.pluginListCommand == SSHTransportSettings.defaultPluginListCommand)
+        #expect(
+            settings.notificationConfigDirCommand
+                == SSHTransportSettings.defaultNotificationConfigDirCommand)
     }
 }
