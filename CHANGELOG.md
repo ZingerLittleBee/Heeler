@@ -7,6 +7,15 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Pair a Host whose herdr runs outside your own config, such as one bundled
+  in a desktop app, from a version 2 Pairing Code. The Host keeps that
+  herdr's socket and launcher, shows them in Host detail, and runs every
+  connection and herdr command through them. macOS and Linux Hosts only.
+  A Pairing Code version this app does not know now asks you to update
+  Heeler. (#430)
+
 ## [0.1.13] - 2026-10-07
 
 ### Added
