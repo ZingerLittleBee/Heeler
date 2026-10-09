@@ -162,11 +162,17 @@ struct HerdrLauncher: Sendable, Equatable {
 
     /// Starts or reaches the endpoint's server through
     /// `remote-client-bridge`. `socket` is the already quoted socket the
-    /// request is waiting on (`$1`); the launcher is `$2`.
+    /// request is waiting on (`$1`); the launcher is `$2`. A named-session
+    /// socket also exports its session (`$3`), as the regular named-session
+    /// wake does, so the spawned server uses that session's state.
     func wakeCommand(quotedSocketPath socket: String) -> String {
-        "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; "
+        // A non-empty name passed HerdrSessionName.isValid: one shell word.
+        let session = HerdrEndpoint.session(fromSocketPath: socketPath) ?? ""
+        let sessionExport = session.isEmpty ? "" : "export HERDR_SESSION=\"$3\"; "
+        let sessionArgument = session.isEmpty ? "" : " \(session)"
+        return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; \(sessionExport)"
             + "\"$2\" remote-client-bridge < /dev/null' wake "
-            + "\(socket) \(quotedExecutablePath)"
+            + "\(socket) \(quotedExecutablePath)\(sessionArgument)"
     }
 
     /// Attaches the already validated `target` (`$1`) with `subcommand`,

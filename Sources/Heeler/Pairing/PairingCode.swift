@@ -36,6 +36,12 @@ struct PairingCode: Sendable, Equatable {
     /// (a v1 code carrying `sock`/`herdr` still decodes without one).
     var endpoint: HerdrEndpoint? = nil
 
+    /// Whether pairing waits for the user (ADR 0021). A code that names a
+    /// launcher but carries no Bootstrap Key proves nothing about who wrote
+    /// it, and pairing runs that launcher as the user. A Bootstrap Key works
+    /// only once its line is in that account's authorized_keys.
+    var needsConfirmation: Bool { endpoint != nil && bootstrap == nil }
+
     /// The single-use Enrollment credential carried inside a Pairing Code.
     /// Lives in memory only; never enters the Keychain (ADR 0007).
     struct Bootstrap: Sendable, Equatable {

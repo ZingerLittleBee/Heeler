@@ -276,17 +276,23 @@ The launcher must:
   its own to stdout or stderr. `session list --json` and `plugin list --json`
   output is parsed as one JSON document, and attach runs on a PTY whose output
   goes straight to the terminal.
-- Run herdr with the endpoint's own `XDG_CONFIG_HOME`, so `plugin config-dir`
-  and `session list` resolve this instance and its `notifications.json` is not
-  shared with the user's own herdr. A shared file would let the endpoint Host's
-  Notification Registration evict the user's existing Host for the same
-  machine.
+- Run herdr, and the server behind `sock`, with the endpoint's own
+  `XDG_CONFIG_HOME` and `XDG_STATE_HOME`, so `plugin config-dir` and
+  `session list` resolve this instance and neither `notifications.json` nor
+  the plugin's state is shared with the user's own herdr. A shared
+  `notifications.json` would let the endpoint Host's Notification Registration
+  evict the user's existing Host for the same machine. `HERDR_PLUGIN_STATE_DIR`
+  depends only on `XDG_STATE_HOME`, and with a shared one the two default
+  sessions overwrite each other's notification markers and Live Activity
+  state.
 - Give herdr a `PATH` on which this plugin's `node` and the user's agents
-  resolve. The app exports only `HERDR_SOCKET_PATH`, so a server that the
-  launcher starts otherwise inherits sshd's minimal `PATH`, and the hooks it
-  runs cannot find `node`.
+  resolve. The app sets no `PATH`, so a server that the launcher starts
+  otherwise inherits sshd's minimal `PATH`, and the hooks it runs cannot find
+  `node`.
 - Let `remote-client-bridge` start or reach the endpoint's server. The app runs
-  it to wake herdr only when the socket file exists but refuses connections.
+  it to wake herdr only when the socket file exists but refuses connections,
+  and for a `sessions/<name>` socket it also exports `HERDR_SESSION`, as for a
+  regular named session.
 
 An exit status of 126 or 127 from the launcher's `session list`, `plugin list`
 or attach is reported as a missing launcher, not as herdr missing from `PATH`.
