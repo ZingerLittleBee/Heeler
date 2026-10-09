@@ -4,7 +4,8 @@ status: accepted
 
 # A Herdr Endpoint travels in Pairing Code v2
 
-This decision is tracked in [Issue #380](https://github.com/ZingerLittleBee/Heeler/issues/380).
+This decision is tracked in [Issue #380](https://github.com/ZingerLittleBee/Heeler/issues/380)
+and shipped in [PR #430](https://github.com/ZingerLittleBee/Heeler/pull/430).
 
 A desktop app can bundle its own herdr and run it with an isolated
 `XDG_CONFIG_HOME`, with the binary inside its app bundle. Such a Host serves
