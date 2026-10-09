@@ -13,6 +13,12 @@ export const LEGACY_DEFAULT_RELAY_URLS = new Set([
 const DEFAULT_DEBOUNCE_MS = 5000;
 const DEFAULT_ACTIVITY_DEBOUNCE_MS = 1500;
 const DEFAULT_RETRY_DELAY_MS = 1000;
+// Conversational-mode push hygiene (docs/agents/live-activity-contract.md,
+// "Push volume"). Apple does not publish its hourly budget; these are
+// conservative defaults, not a measured allowance.
+const DEFAULT_ACTIVITY_MIN_INTERVAL_MS = 15_000;
+const DEFAULT_ACTIVITY_P10_PER_HOUR = 6;
+const DEFAULT_ACTIVITY_CONTENT_PER_HOUR = 60;
 
 function normalizeRelayURL(value) {
   if (typeof value !== "string") return null;
@@ -41,5 +47,10 @@ export function readNotificationConfig(configDir) {
     debounceMs: positiveInt(parsed.debounce_ms, DEFAULT_DEBOUNCE_MS),
     activityDebounceMs: positiveInt(parsed.activity_debounce_ms, DEFAULT_ACTIVITY_DEBOUNCE_MS),
     retryDelayMs: positiveInt(parsed.retry_delay_ms, DEFAULT_RETRY_DELAY_MS),
+    activityRows: parsed.activity_rows === "conversational" ? "conversational" : "layout",
+    activityTimeZone: typeof parsed.activity_time_zone === "string" ? parsed.activity_time_zone : null,
+    activityMinIntervalMs: positiveInt(parsed.activity_min_interval_ms, DEFAULT_ACTIVITY_MIN_INTERVAL_MS),
+    activityP10PerHour: positiveInt(parsed.activity_p10_per_hour, DEFAULT_ACTIVITY_P10_PER_HOUR),
+    activityContentPerHour: positiveInt(parsed.activity_content_per_hour, DEFAULT_ACTIVITY_CONTENT_PER_HOUR),
   };
 }

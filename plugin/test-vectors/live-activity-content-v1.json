@@ -327,6 +327,318 @@
         "host": "studio",
         "v": 1
       }
+    },
+    {
+      "name": "conversational rows: hostile title is literal text and an unknown start says so",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"oKGio6Slpqeoqaqr\",\"ct\":\"nTodSiCldsxAX9yoJRGpsBSOYzLx2yMZ-GsEql3FFGy3VH3dzkU2UyuxZeolWPOYKX5kckCnK0QxbylyhgLqx8eevzRr3saCm46bOrW6vs-oJ4nQoLntWNRXX_3U9Dm57qZWh3iM-_7mryRqp6gvnwRyHIKlF-9ZV7v8npYdlyipdMJdrh-sTEx7iu5qPrPsqovYBZ6M2OGcptjVzbJdR6JEPZHqNmBi6m9FAlOwiJIfT42kLQSQAaKoXEA58TV9FG00lEi5z5mDLnrgZkEcwTeakMEfk0cgbeGxcdzkpzpECkkD2wK1W-KGNi03bmxdf9i6S6toUtAE38YDC1QK7ztE6_OKtNbCXIF3R9AbTq4Uaig00tfhEIwVY7_OkvBI4zxkmAJ3DamEGStI056yZOsm_gBfJeHeL_1Bj-b51HegrTHq3AJaZfixBW61KPbTErfqdLR0FaItcbSWSlelJiQzwCW_XUwE2OFfwFPXe6ujzDIzu05qqdQ4YnLj2PPDALLESd9otlgABYwAX9nYuCXIM_3_T-AIXseGOPP58gNu1cFqYpWF5VESUI6uPO1IN5mG5BLRsgLBOtiX3hpL1iCMjM6ZovSJrPq7YYFfca_r88s1ES6xCl52t9SjWX3E6vFKrWmMSwE\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "name": "agent-a",
+            "pane": "w1:p1",
+            "status": "working",
+            "title": "Run \"make build\" \\ then <b>ship</b>? **yes** [x](https://e.test) 😀 锁",
+            "workspace": "Heeler",
+            "rows": [
+              [
+                {
+                  "bold": true,
+                  "text": "agent-a"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "text": "Heeler"
+                }
+              ],
+              [
+                {
+                  "text": "Run \"make build\" \\ then <b>ship</b>? **yes** [x](https://e.test) 😀 锁"
+                }
+              ],
+              [
+                {
+                  "bold": true,
+                  "text": "Working"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "dim": true,
+                  "text": "updated 14:31 UTC"
+                }
+              ]
+            ]
+          }
+        ],
+        "host": "example-host",
+        "v": 1
+      },
+      "conversational": {
+        "timeZone": "UTC",
+        "agents": [
+          {
+            "asOfMs": 1791556260000,
+            "sinceMs": null,
+            "workspace": "Heeler",
+            "status": "working",
+            "agent": {
+              "agent": "claude",
+              "agent_status": "working",
+              "name": "agent-a",
+              "terminal_title_stripped": "Run \"make build\" \\ then <b>ship</b>? **yes** [x](https://e.test) 😀 锁"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "conversational rows: 80-grapheme title fits, 81-grapheme title ends in an ellipsis at 80",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"sLGys7S1tre4ubq7\",\"ct\":\"4nc7zImjzyxlwszZ7zbhrOAec_B2Qu5AOqug3X7yk3hgaRkYFO-cyJd5jGhO1vXGD1dMnGAZIJ8h7k4KcOlVmp7KStFyyETgO7_OP-tihxM7vLKQ3B0NqdfBWrDp7i-dHowFebqyTmJ8dDiU97-s5X-UyspfqLYYDGKPrTw0DcvdLE4agucHr4vBjM-4ntiPAlTQUSL3wvQlcMpJyChoFRtGQBWr5rylcfLXM6TQalim0fklHQfVPbyHymgUAmDK3D4wcRyTxWK8tYVNhom5FCO9B5nKt8RQ0t_UFCqhaPXugWDjERia5dqBB6Q1wHPcFiPVhk-t105EeLuSFlzRw_7rwfk4lcZTxqJX0lIy8LnQmTGLWU8tg40qvBqFyHWkXjvYw2nqnMct6KRfGcF2hHFLDMV_2FaQH6MSM70EyuVgWwu4lHDpmpSjXsfDi0NHyuGICa3dEXRnvvW0n09ughle_iqAzf5PP8x1hVLbbmCXZim8xs22aKkVTuGIYixiN-_O1I81uynUvJnsPzUMKDnHqEA5dTfNMXkmxPjkz6DMQK-0zIGKOAt43Sw1MC4Z8-uYPxtl1GdgiD6M7o0rxN0-Z0wIA-zY9TFyxqJLCPANgIhhC5w7Z9mCGUVjUryLsBXoWlmSzuzO77US-LadU1vYYjQWKRXOhqrU9SU7YuYVb6p8h-oYN_Zw-Jnw0KHijuOkgoUDZ9s4L0jbH6pLAKZHKaDD79aH2ZvMDKRTa-T0yJMwtrHqcKJziqjUt5uHXPDRXTLIK2KcoA3q9tHZsLWBrcodz8kBEcXxgTQ-avj0xJAffznxsrEyzyy54lczHcOdB9Z1jDGoy2CaZBnpJ3KiFnN1nj57D8skQJQDTYvgMs27MD92TTvQ7Tqt4BCK7y9cN4BFPBhgtxZOqTzyOfiYEBl8Vt7oCx4HuBbGR1VXSazERhU8lOox_zgkAE9R1g21UXDVTi0LBA2ZtqVLwowOPkMwsuUPECZuxRAQkGajUtDQgQ_2qurIFxjwO_JruSqz50p--q4NE3XoBviWUn5SCBDTmxqIKogp_d7hYrpFEK67ZTsbSS3-VWcRabE-SUu95jd2e1myorv60Y82XhU0-ubH6dePbTrCoRgvsDWd2LeeXqHteb5BHSBdHm9GqWyp6t596P9ytTvF6cLNYKfHvNZhnpSn6a_5yBmT4mL0HtvQyh7xslVIc0B3moEJk_IQNgihohMcjsQo6YvDTxVqAHfsFHoeAKBwVXUkg6bX7UH_j5xy0yx3nGKJG4lsG-oXgqxW79zJLSJfPOB1DkiULwAhcDmrHCV0dn3VgVSIdmfAtoKcQnyUkesXYQRfzB224aIALVknnbWB_msH0LVpE1BpXwzLrldliffyCPnbO0xGqVvD_un8HcwLhjnAuMkRXhavZcoCwok2Yb42HbCHjpDXuNgD5MfFeHJVBa4TgJmOsDRbAseeNak528gLj_b8YqgDlj-nXLWWhBHkqCUjoMqPjHiYky5cCsBvXCjHqLw9Qvtyf-obePaR7oDqsqn3C0Jf7mrOebNua6dK5Gr4g9BD5dLVTg2L8WeVIyq5aA8D0y3gzCaZsN83nNNhubb2I2m6aBgwWUY9zSdDamNBwYjDzA0n2Q0hCqGiOQFfqTqus8FFDzx8WW7tk2i2vxYmDFkrXLbgmYktLcOfAXpo0Inp6lKgBHzGNvGb6OaSlrj3vqXIGpQ5mrJ2RdFGi347ub3FLjttiOcElLpC8VUi6n1hVYQMfOWGXwe1npgify57WYikFiVvLlYgeu2enFw9uyfjpQPOECzKp-KHIfJQktmw4_FYdrQnORtLqUs2KuzeBsxL1rRbk77E7R_ssO5WQWKJNOsr4euIsCL1gVRfbkQvbqU_7wi_SdlihcjRFQ78kjRRtRxpvE5bbR04uXKuiT1baQlOr1WeWuSJSvJVUKe8oAveNpnkU2m6IzEZYs4MnwBsMTPXRUYX4qXJUPe5AReYoEZXBsQwooSq\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "pane": "w1:p2",
+            "status": "working",
+            "workspace": "Heeler",
+            "rows": [
+              [
+                {
+                  "bold": true,
+                  "text": "claude"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "text": "Heeler"
+                }
+              ],
+              [
+                {
+                  "text": "锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁"
+                }
+              ],
+              [
+                {
+                  "bold": true,
+                  "text": "Working"
+                },
+                {
+                  "dim": true,
+                  "text": " since 14:19"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "dim": true,
+                  "text": "updated 14:31 UTC"
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "claude",
+            "pane": "w1:p3",
+            "status": "working",
+            "workspace": "Heeler",
+            "rows": [
+              [
+                {
+                  "bold": true,
+                  "text": "claude"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "text": "Heeler"
+                }
+              ],
+              [
+                {
+                  "text": "🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵…"
+                }
+              ],
+              [
+                {
+                  "bold": true,
+                  "text": "Working"
+                },
+                {
+                  "dim": true,
+                  "text": " since 14:19"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "dim": true,
+                  "text": "updated 14:31 UTC"
+                }
+              ]
+            ]
+          }
+        ],
+        "host": "example-host",
+        "v": 1
+      },
+      "conversational": {
+        "timeZone": "UTC",
+        "agents": [
+          {
+            "asOfMs": 1791556260000,
+            "sinceMs": 1791555540000,
+            "workspace": "Heeler",
+            "status": "working",
+            "agent": {
+              "agent": "claude",
+              "agent_status": "working",
+              "terminal_title_stripped": "锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁锁"
+            }
+          },
+          {
+            "asOfMs": 1791556260000,
+            "sinceMs": 1791555540000,
+            "workspace": "Heeler",
+            "status": "working",
+            "agent": {
+              "agent": "claude",
+              "agent_status": "working",
+              "terminal_title_stripped": "🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "conversational rows: a start on an earlier day carries its date and a finished turn is not completion",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "keyId": "Yw3NKWbEM2Y",
+      "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"wMHCw8TFxsfIycrL\",\"ct\":\"e2pGABIW4i2646bZEMeBOChR2R1fjn7PTqZpJhUTHtvZtK2FE7wgbbxgNjvV5hXo4wD9QPC6kSP0EQz8wJVUan4OsWayvV7ODfl8Ps4jbfMgaojbo3VRr5kM1XTTImfvoqMNiz0uv815f7A1evLUfvp1-FsMw8faa19yRohzgnNXEXlhJN42mAtQQQIUa9lQjS5Y3qciqxwo1CpJR3ennTclyVIO1IRCmjNcag6Dn917vXlGpOgStN3pI8UifRvO19kTzzKOl903AMF9qw8pvK6X77pLOT0f4ahjv9tFLL0ABATQZLEWv1CEfyWzQOgsk9egn4Tt2tDRr0tBOhR5tSiGYYSq_sHwA6tdX3GQXBAEs7c82Sxh0IiWkXLR8X927sJI1gH4zJ98b75Xc5rBhvrBxZn3mFJbhUXVCae2eyrICLbCCOIHJQUAssiGhDafNoyvHNic_KZ5Gydc0QHoEbAbMF2EOWEl9xcKWbKnKez4GlEEg1-mJWSjne-kSRGKmz0BI9fvGIi_-6ygUCgLPwWIcSqThCL0Y67UzJCaGDs-Zlmk9IwItCUYC_oB8MeqB-zNlSoJYrUQgRUhKOjzFseBLVytq4rVM4EGKS1HAWBGE0haBR9PY9RER7UPp5mTncAnrCP9DW_I5A0s8-5IdSJt9otK8ZSf7vg2X0t7fDx9LCkXka0aZz6jl3LCoCxm14vY7kJulTKCcfOhZeUVKPG4bebh7PCdlP5nL-OuPeOrescG0V7NHUobXbCIb52gFdHLcNSOOEDxz0WOg4v6uQFuwH_kswycNyrtKyehkFMbg2VWMmy1dRwZpKMOx44ciheGR7eQAGKMZRtLAl0XtMdeSrO4cVnwqTDRn41EFD8bmqX3yFaRFs_h\"}",
+      "payload": {
+        "agents": [
+          {
+            "kind": "claude",
+            "name": "agent-b",
+            "pane": "w1:p4",
+            "status": "blocked",
+            "title": "Write tests",
+            "workspace": "Heeler",
+            "rows": [
+              [
+                {
+                  "bold": true,
+                  "text": "agent-b"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "text": "Heeler"
+                }
+              ],
+              [
+                {
+                  "text": "Write tests"
+                }
+              ],
+              [
+                {
+                  "bold": true,
+                  "text": "Blocked"
+                },
+                {
+                  "dim": true,
+                  "text": " since Oct 8 00:31"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "dim": true,
+                  "text": "updated 09:31 CDT"
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "codex",
+            "pane": "w1:p5",
+            "status": "done",
+            "workspace": "Heeler",
+            "rows": [
+              [
+                {
+                  "bold": true,
+                  "text": "codex"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "text": "Heeler"
+                }
+              ],
+              [
+                {
+                  "bold": true,
+                  "text": "Turn ended"
+                },
+                {
+                  "dim": true,
+                  "text": " at 09:19"
+                },
+                {
+                  "text": " · "
+                },
+                {
+                  "dim": true,
+                  "text": "updated 09:31 CDT"
+                }
+              ]
+            ]
+          }
+        ],
+        "host": "example-host",
+        "v": 1
+      },
+      "conversational": {
+        "timeZone": "America/Chicago",
+        "agents": [
+          {
+            "asOfMs": 1791556260000,
+            "sinceMs": 1791437460000,
+            "workspace": "Heeler",
+            "status": "blocked",
+            "agent": {
+              "agent": "claude",
+              "agent_status": "blocked",
+              "name": "agent-b",
+              "terminal_title_stripped": "Write tests"
+            }
+          },
+          {
+            "asOfMs": 1791556260000,
+            "sinceMs": 1791555540000,
+            "workspace": "Heeler",
+            "status": "done",
+            "agent": {
+              "agent": "codex",
+              "agent_status": "done"
+            }
+          }
+        ]
+      }
     }
   ],
   "invalid": [

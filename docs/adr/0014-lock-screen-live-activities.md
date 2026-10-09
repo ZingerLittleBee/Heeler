@@ -78,9 +78,14 @@ Decisions fixed during design (research reports: three OSS/API surveys, 2026-08)
   accepted rendering floor, not a bug.
 - If the app is killed and a new agent starts working, nothing appears until
   the app next runs — the documented cost of deferring push-to-start.
-- Apple's liveactivity update budget is opaque; sustained flap storms could
-  throttle priority-10 sends. The plugin-side coalescing stack is the
-  mitigation; real-device soak is the only true test.
+- Apple's liveactivity update budget is opaque: Apple states an hourly
+  budget without the number; priority 10 counts against it, priority 5 does
+  not but may be grouped, delayed or dropped, and
+  `NSSupportsLiveActivitiesFrequentUpdates` (not set by the app, and
+  user-disableable) raises it. Sustained flap storms could throttle
+  priority-10 sends. The plugin-side coalescing stack, plus the conversational
+  mode's per-device interval and priority-10 cap, is the mitigation;
+  real-device soak is the only true test.
 - The `AgentActivityAttributes` type name is shipped-forever (APNs
   `attributes-type` must match if push-to-start ever lands).
 - The widget extension becomes a third consumer of the shared Keychain group
