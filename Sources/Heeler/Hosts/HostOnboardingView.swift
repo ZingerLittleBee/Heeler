@@ -53,6 +53,7 @@ struct HostOnboardingView: View {
             Section {
                 LabeledContent("Address", value: addressLine)
                 LabeledContent("Session", value: sessionLine)
+                herdrEndpointRows
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
@@ -260,10 +261,22 @@ struct HostOnboardingView: View {
     }
 
     private var sessionLine: String {
+        if let herdrEndpoint = store.host.herdrEndpoint {
+            return herdrEndpoint.session.isEmpty ? "default" : herdrEndpoint.session
+        }
         if case .namedSession(let name) = store.host.socketLocation {
             return name
         }
         return "default"
+    }
+
+    /// Where a Pairing Code v2 Host's herdr lives; nothing for other Hosts.
+    @ViewBuilder
+    private var herdrEndpointRows: some View {
+        if let herdrEndpoint = store.host.herdrEndpoint {
+            LabeledContent("herdr Socket", value: herdrEndpoint.socketPath)
+            LabeledContent("herdr Launcher", value: herdrEndpoint.executablePath)
+        }
     }
 
     private func retry() {

@@ -18,6 +18,9 @@ struct HostDraft: Equatable, Sendable {
     var jumpPort = "22"
     /// Blank reuses the Host's own username.
     var jumpUsername = ""
+    /// The Pairing Code's herdr endpoint, carried through Edit and Duplicate
+    /// unchanged. The form shows it read-only; nil for every other Host.
+    var herdrEndpoint: HerdrEndpoint?
 
     init() {}
 
@@ -32,6 +35,7 @@ struct HostDraft: Equatable, Sendable {
         jumpAddress = host.jumpAddress
         jumpPort = String(host.jumpPort)
         jumpUsername = host.jumpUsername
+        herdrEndpoint = host.herdrEndpoint
     }
 
     /// Prefill for adding a copy of `host`: every field Edit prefills, the
@@ -128,7 +132,8 @@ struct HostDraft: Equatable, Sendable {
             sessionName: sessionName.trimmingCharacters(in: .whitespaces),
             jumpAddress: jumpAddress.trimmingCharacters(in: .whitespaces),
             jumpPort: jumpPortNumber ?? 22,
-            jumpUsername: jumpUsername.trimmingCharacters(in: .whitespaces))
+            jumpUsername: jumpUsername.trimmingCharacters(in: .whitespaces),
+            herdrEndpoint: herdrEndpoint)
     }
 
     /// What to hand `HostStore.add/update` as the password argument: a new
