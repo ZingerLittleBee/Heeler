@@ -160,10 +160,10 @@ extension TransportError {
     /// Pairing Code (ADR 0021): no session setting can bring a missing one
     /// back, the app that provides herdr can.
     func presentation(usesHerdrEndpoint: Bool) -> TransportErrorPresentation {
-        guard usesHerdrEndpoint, case .socketNotFound(let path) = self else { return presentation }
+        let shared: TransportErrorPresentation = presentation
+        guard usesHerdrEndpoint, case .socketNotFound = self else { return shared }
         return TransportErrorPresentation(
-            summary: "The herdr socket was not found",
-            detail: path,
+            summary: shared.summary, detail: shared.detail,
             recoverySuggestion: "Open the app that provides herdr on this Host.")
     }
 
