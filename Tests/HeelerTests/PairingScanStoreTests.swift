@@ -13,6 +13,11 @@ struct PairingScanStoreTests {
     private static let bootstrapVector = PairingCodeVectorFile.shared.valid.first {
         $0.payload.bootstrapSeed != nil
     }!
+    /// The v2 vector carrying a Bootstrap Key and a Herdr Endpoint (same
+    /// Host coordinates and expiry as `bootstrapVector`).
+    private static let endpointVector = PairingCodeVectorFile.v2.valid.first {
+        $0.payload.bootstrapSeed != nil && $0.payload.socketPath != nil
+    }!
     /// A moment safely inside the bootstrap vector's TTL.
     private static let insideTTL = Date(timeIntervalSince1970: 1_753_305_500)
 
@@ -118,12 +123,12 @@ struct PairingScanStoreTests {
         let env = try makeEnv()
         defer { env.cleanup() }
 
-        env.store.submit(scannedCode: "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0")
+        env.store.submit(scannedCode: "HERDR-PAIR:3:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0")
 
         #expect(env.store.pairingCode == nil)
         let message = env.store.scanFailureMessage
-        #expect(message?.contains("version 2") == true)
-        #expect(message?.contains("Update") == true)
+        #expect(message?.contains("version 3") == true)
+        #expect(message?.contains("Update Heeler") == true)
     }
 
     @Test func corruptCodesAskForRegeneration() throws {
@@ -207,6 +212,8 @@ struct PairingScanStoreTests {
         #expect(paired.authMethod == .deviceKey)
         // Session selection stays with preflight discovery (ADR 0007).
         #expect(paired.sessionName.isEmpty)
+        // A version 1 code leaves the Host on its home-relative socket.
+        #expect(paired.herdrEndpoint == nil)
         #expect(paired.displayName == "lin@10.0.0.7")
         // The pinned fingerprint means preflight never TOFU-prompts.
         #expect(
@@ -215,6 +222,27 @@ struct PairingScanStoreTests {
         #expect(env.store.failure == nil)
         #expect(env.store.isPairing == false)
         #expect(env.store.step == nil)
+    }
+
+    /// The ceremony result names no endpoint, so the Host must take it from
+    /// the scanned version 2 code (ADR 0021).
+    @Test func aVersion2CodePairsIntoAHostWithItsHerdrEndpoint() async throws {
+        let env = try makeEnv()
+        defer { env.cleanup() }
+        env.store.submit(scannedCode: Self.endpointVector.code)
+        let scanned = try PairingCode.decode(Self.endpointVector.code)
+        let expected = try #require(scanned.endpoint)
+        #expect(expected.socketPath == Self.endpointVector.payload.socketPath)
+
+        await env.store.pair()
+
+        let paired = try #require(env.store.pairedHost)
+        #expect(env.catalog.hosts == [paired])
+        #expect(paired.herdrEndpoint == expected)
+        #expect(paired.socketLocation == .absolutePath(expected.socketPath))
+        #expect(paired.sessionName.isEmpty)
+        #expect(paired.authMethod == .deviceKey)
+        #expect(await env.connector.capturedCodes.first?.endpoint == expected)
     }
 
     @Test func pairingAgainAfterSuccessIsIgnored() async throws {
@@ -365,6 +393,32 @@ struct PairingScanStoreTests {
         #expect(codes.last?.bootstrap == nil)
         #expect(codes.last?.addresses == codes.first?.addresses)
         #expect(codes.last?.username == codes.first?.username)
+    }
+
+    /// The bootstrap-less retry code is rebuilt field by field; the Herdr
+    /// Endpoint must survive it, or the retried Host would silently target
+    /// the default socket.
+    @Test func verifyRetryKeepsTheHerdrEndpoint() async throws {
+        let env = try makeEnv(outcomes: [
+            .fails(.verificationFailed(detail: "timeout")),
+            .succeeds(Self.pairedResult),
+        ])
+        defer { env.cleanup() }
+        env.store.submit(scannedCode: Self.endpointVector.code)
+        let scanned = try PairingCode.decode(Self.endpointVector.code)
+        let expected = try #require(scanned.endpoint)
+
+        await env.store.pair()
+        #expect(try #require(env.store.failure).canRetry)
+        await env.store.pair()
+
+        let codes = await env.connector.capturedCodes
+        #expect(codes.count == 2)
+        #expect(codes.last?.bootstrap == nil)
+        #expect(codes.last?.endpoint == expected)
+        let paired = try #require(env.store.pairedHost)
+        #expect(paired.herdrEndpoint == expected)
+        #expect(env.catalog.hosts.first?.herdrEndpoint == expected)
     }
 
     @Test func secondVerifyFailureAfterEnrollmentKeepsTheEnrolledCopy() async throws {

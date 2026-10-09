@@ -182,6 +182,12 @@ private struct PairingCeremonyView: View {
                 if code.port != 22 {
                     LabeledContent("Port", value: String(code.port))
                 }
+                // A version 2 code names a launcher the app will run on the
+                // Host; show it, and the socket, while pairing.
+                if let endpoint = code.endpoint {
+                    LabeledContent("herdr Socket", value: endpoint.socketPath)
+                    LabeledContent("herdr Launcher", value: endpoint.executablePath)
+                }
             }
 
             Section {
