@@ -5,14 +5,21 @@ import Foundation
 ///
 ///     HERDR-PAIR:<version>:<base64url(JSON, no padding)>
 ///
-/// The schema and error taxonomy live in `plugin/README.md`; the shared test
-/// vectors in `plugin/test-vectors/pairing-code-v1.json` are the single
-/// source of truth for both this decoder and the plugin's encoder. Unknown
-/// payload fields are ignored (additive v1 metadata); breaking changes bump
-/// the version, which both implementations must honor together.
+/// Version 1 carries the SSH coordinates and an optional Bootstrap Key.
+/// Version 2 adds a required Herdr Endpoint (`sock`, `herdr`) for a herdr
+/// outside the user's config home (ADR 0021); only this app decodes it, and
+/// the plugin keeps emitting version 1. The schema and error taxonomy live in
+/// `plugin/README.md`; the shared test vectors in
+/// `plugin/test-vectors/pairing-code-v1.json` are the single source of truth
+/// for both this decoder and the plugin's encoder, and `pairing-code-v2.json`
+/// pins version 2. Unknown payload fields are ignored (additive metadata
+/// within a version); breaking changes bump the version, which both
+/// implementations must honor together.
 struct PairingCode: Sendable, Equatable {
     static let prefix = "HERDR-PAIR"
     static let version = 1
+    /// The envelope version that carries a Herdr Endpoint (ADR 0021).
+    static let endpointVersion = 2
 
     /// Candidate addresses in the order the app should try them.
     /// IPv6 literals carry no brackets and no zone id.
@@ -25,6 +32,9 @@ struct PairingCode: Sendable, Equatable {
     let hostKeyFingerprint: HostKeyFingerprint
     /// The Bootstrap Key material, absent on a config-only Pairing Code.
     let bootstrap: Bootstrap?
+    /// The Host's own herdr: required by version 2, never read from version 1
+    /// (a v1 code carrying `sock`/`herdr` still decodes without one).
+    var endpoint: HerdrEndpoint? = nil
 
     /// The single-use Enrollment credential carried inside a Pairing Code.
     /// Lives in memory only; never enters the Keychain (ADR 0007).
@@ -45,17 +55,45 @@ struct PairingCode: Sendable, Equatable {
             throw .badPrefix
         }
         let foundVersion = String(rest[..<separator])
-        guard foundVersion == String(version) else {
+        let encodedBody = String(rest[rest.index(after: separator)...])
+        if foundVersion == String(version) {
+            return try validated(decodedPayload(WirePayload.self, from: encodedBody))
+        }
+        guard foundVersion == String(endpointVersion) else {
             throw .unsupportedVersion(found: foundVersion)
         }
 
-        guard let body = Data(base64URLEncoded: String(rest[rest.index(after: separator)...]))
+        // Version 2: the v1 fields first, with the same rules and reasons,
+        // then the Herdr Endpoint.
+        let wire = try decodedPayload(EndpointWirePayload.self, from: encodedBody)
+        var code = try validated(wire.base)
+        guard let socketPath = wire.sock else {
+            throw .badPayload(reason: "sock is required in a version 2 Pairing Code")
+        }
+        guard let executablePath = wire.herdr else {
+            throw .badPayload(reason: "herdr is required in a version 2 Pairing Code")
+        }
+        guard
+            let endpoint = HerdrEndpoint(socketPath: socketPath, executablePath: executablePath)
         else {
+            throw .badPayload(
+                reason: "sock and herdr must be absolute paths without quotes, backslashes, "
+                    + "or control characters, and sock a herdr socket path of at most "
+                    + "\(HerdrEndpoint.maximumSocketPathUTF8Length) bytes")
+        }
+        code.endpoint = endpoint
+        return code
+    }
+
+    /// Decodes the base64url JSON body every envelope version shares.
+    private static func decodedPayload<Wire: Decodable>(
+        _ type: Wire.Type, from encodedBody: String
+    ) throws(PairingCodeError) -> Wire {
+        guard let body = Data(base64URLEncoded: encodedBody) else {
             throw .badEncoding
         }
-        let wire: WirePayload
         do {
-            wire = try JSONDecoder().decode(WirePayload.self, from: body)
+            return try JSONDecoder().decode(type, from: body)
         } catch DecodingError.dataCorrupted {
             // Only unparseable JSON reaches here: every wire field is decoded
             // as an optional lenient type, so shape problems surface as
@@ -64,7 +102,6 @@ struct PairingCode: Sendable, Equatable {
         } catch {
             throw .badPayload(reason: "payload shape mismatch")
         }
-        return try validated(wire)
     }
 
     private static func validated(_ wire: WirePayload) throws(PairingCodeError) -> PairingCode {
@@ -123,6 +160,25 @@ struct PairingCode: Sendable, Equatable {
         var fp: String?
         var seed: String?
         var exp: Double?
+    }
+
+    /// JSON wire shape of a version 2 payload: the v1 fields plus the Herdr
+    /// Endpoint, every field lenient for the same reason. v1 keeps its own
+    /// shape, so a v1 code carrying `sock`/`herdr` still ignores them.
+    private struct EndpointWirePayload: Decodable {
+        var addrs: [String]?
+        var port: Double?
+        var user: String?
+        var fp: String?
+        var sock: String?
+        var herdr: String?
+        var seed: String?
+        var exp: Double?
+
+        /// The v1 fields, validated exactly as a version 1 payload.
+        var base: WirePayload {
+            WirePayload(addrs: addrs, port: port, user: user, fp: fp, seed: seed, exp: exp)
+        }
     }
 
     /// OpenSSH presentation: "SHA256:" + 43 chars of unpadded standard base64

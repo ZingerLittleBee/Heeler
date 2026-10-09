@@ -1,0 +1,156 @@
+{
+  "description": "Shared Pairing Code v2 test vectors (ADR 0021): a v1 payload plus a required Herdr Endpoint (`sock`, `herdr`). Consumed by the Swift app tests only; the Node plugin emits and decodes v1. Codes were generated independently of the app's decoder. `socketPath` and `herdrPath` are the endpoint the code must decode to; a payload without them must decode with no endpoint. `decodeOnly: true` marks codes that must decode to `payload` but are not the canonical version 2 encoding of it; all other valid codes are canonical (keys in table order, no JSON whitespace, unpadded base64url).",
+  "valid": [
+    {
+      "name": "issue example: default session in an app support directory, config-only",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZS9iaW4vaGVyZHIifQ",
+      "payload": {
+        "addresses": ["192.168.1.42"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
+        "socketPath": "/Users/ada/Library/Application Support/Example/herdr/herdr.sock",
+        "herdrPath": "/Users/ada/Library/Application Support/Example/bin/herdr"
+      }
+    },
+    {
+      "name": "with bootstrap seed and expiry, Linux paths",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxMC4wLjAuNyJdLCJwb3J0IjoyMiwidXNlciI6ImxpbiIsImZwIjoiU0hBMjU2OjYram5jTmRpYnNHMmNxdmZvTEFwR3JPOEN2SXdBRU16c0IrSWlsT3M4dGciLCJzb2NrIjoiL2hvbWUvbGluLy5sb2NhbC9zaGFyZS9FeGFtcGxlIERlc2t0b3AvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiL29wdC9FeGFtcGxlIERlc2t0b3AvYmluL2hlcmRyIiwic2VlZCI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHhBUkVoTVVGUllYR0JrYUd4d2RIaDgiLCJleHAiOjE3NTMzMDU2MDB9",
+      "payload": {
+        "addresses": ["10.0.0.7"],
+        "port": 22,
+        "username": "lin",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
+        "bootstrapSeed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "expiresAt": 1753305600,
+        "socketPath": "/home/lin/.local/share/Example Desktop/herdr/herdr.sock",
+        "herdrPath": "/opt/Example Desktop/bin/herdr"
+      }
+    },
+    {
+      "name": "named session socket, multiple addresses, non-default port",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiLCIxMDAuMTAxLjEwMi4xMDMiLCJmZDdhOjExNWM6YTFlMDo6MSJdLCJwb3J0IjoyMjIyLCJ1c2VyIjoiZ3JhY2UiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvc2Vzc2lvbnMvd29yay9oZXJkci5zb2NrIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
+      "payload": {
+        "addresses": ["192.168.1.42", "100.101.102.103", "fd7a:115c:a1e0::1"],
+        "port": 2222,
+        "username": "grace",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
+        "socketPath": "/Users/ada/Library/Application Support/Example/herdr/sessions/work/herdr.sock",
+        "herdrPath": "/Users/ada/Library/Application Support/Example/bin/herdr"
+      }
+    },
+    {
+      "name": "socket path of exactly 103 bytes",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC14eHh4eHh4eHh4eHh4eHh4eHh4eHh4L2hlcmRyL2hlcmRyLnNvY2siLCJoZXJkciI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvYmluL2hlcmRyIn0",
+      "payload": {
+        "addresses": ["192.168.1.42"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
+        "socketPath": "/Users/ada/Library/Application Support/dev.example.HerdrDesktop-xxxxxxxxxxxxxxxxxxxxxx/herdr/herdr.sock",
+        "herdrPath": "/Users/ada/Library/Application Support/Example/bin/herdr"
+      }
+    },
+    {
+      "name": "unknown field is ignored",
+      "decodeOnly": true,
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZS9iaW4vaGVyZHIiLCJmdXR1cmVfZmllbGQiOiJpZ25vcmVkIn0",
+      "payload": {
+        "addresses": ["192.168.1.42"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
+        "socketPath": "/Users/ada/Library/Application Support/Example/herdr/herdr.sock",
+        "herdrPath": "/Users/ada/Library/Application Support/Example/bin/herdr"
+      }
+    },
+    {
+      "name": "v1 code carrying sock and herdr decodes without an endpoint",
+      "decodeOnly": true,
+      "code": "HERDR-PAIR:1:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZS9iaW4vaGVyZHIifQ",
+      "payload": {
+        "addresses": ["192.168.1.42"],
+        "port": 22,
+        "username": "ada",
+        "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "missing sock",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
+      "error": "bad_payload"
+    },
+    {
+      "name": "missing herdr",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayJ9",
+      "error": "bad_payload"
+    },
+    {
+      "name": "empty herdr",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiIn0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "relative sock",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6IkxpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2hlcmRyL2hlcmRyLnNvY2siLCJoZXJkciI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvYmluL2hlcmRyIn0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "relative herdr",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiYmluL2hlcmRyIn0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "sock contains a single quote",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0FkYSdzIEFwcC9oZXJkci9oZXJkci5zb2NrIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
+      "error": "bad_payload"
+    },
+    {
+      "name": "herdr contains a backslash",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZS9iaW5cXGhlcmRyIn0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "herdr contains a newline",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZVxuL2Jpbi9oZXJkciJ9",
+      "error": "bad_payload"
+    },
+    {
+      "name": "sock not in herdr's socket layout",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii90bXAvY3VzdG9tLnNvY2siLCJoZXJkciI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvYmluL2hlcmRyIn0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "sock with an invalid session name",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvc2Vzc2lvbnMvYmFkIG5hbWUvaGVyZHIuc29jayIsImhlcmRyIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZS9iaW4vaGVyZHIifQ",
+      "error": "bad_payload"
+    },
+    {
+      "name": "sock longer than 103 bytes",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC14eHh4eHh4eHh4eHh4eHh4eHh4eHh4eC9oZXJkci9oZXJkci5zb2NrIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
+      "error": "bad_payload"
+    },
+    {
+      "name": "sock over 103 UTF-8 bytes in fewer characters",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC3DqcOpw6nDqcOpw6nDqcOpw6nDqcOpeC9oZXJkci9oZXJkci5zb2NrIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
+      "error": "bad_payload"
+    },
+    {
+      "name": "sock is a number",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6NDIsImhlcmRyIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZS9iaW4vaGVyZHIifQ",
+      "error": "bad_payload"
+    },
+    {
+      "name": "herdr is a number",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjo0Mn0",
+      "error": "bad_payload"
+    },
+    {
+      "name": "port zero in a version 2 code",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MCwidXNlciI6ImFkYSIsImZwIjoiU0hBMjU2OjYram5jTmRpYnNHMmNxdmZvTEFwR3JPOEN2SXdBRU16c0IrSWlsT3M4dGciLCJzb2NrIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZS9oZXJkci9oZXJkci5zb2NrIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
+      "error": "bad_payload"
+    }
+  ]
+}
