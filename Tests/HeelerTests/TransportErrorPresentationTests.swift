@@ -242,6 +242,7 @@ struct TransportErrorPresentationTests {
             .socketNotFound(path: "/tmp/herdr.sock"),
             .streamLocalOpenFailed(path: "/tmp/herdr.sock"),
             .herdrBinaryNotFound,
+            .herdrLauncherNotFound(path: "/opt/example/bin/herdr"),
             .protocolVersionMismatch(server: 18, supported: 19),
             .homeDirectoryUnresolvable(detail: "echo $HOME failed"),
             .malformedResponse("{"),
@@ -286,6 +287,24 @@ struct TransportErrorPresentationTests {
         #expect(
             presentation.message
                 == "The herdr socket was not found: /tmp/herdr.sock. Check this Host's session.")
+    }
+
+    @Test func missingHerdrLauncherNamesItsPathAndTheProvidingApp() {
+        let failure = TransportError.herdrLauncherNotFound(
+            path: "/Users/ada/Library/Application Support/Example/bin/herdr")
+        #expect(!failure.isRetryable)
+        #expect(!TransportError.jumpHostFailed(failure).isRetryable)
+        let presentation = failure.presentation
+        #expect(presentation.summary == "The herdr launcher could not run")
+        #expect(presentation.detail == "/Users/ada/Library/Application Support/Example/bin/herdr")
+        #expect(
+            presentation.recoverySuggestion
+                == "Open the app that provides herdr on this Host, or pair it again.")
+        #expect(
+            presentation.message
+                == "The herdr launcher could not run: "
+                + "/Users/ada/Library/Application Support/Example/bin/herdr. "
+                + "Open the app that provides herdr on this Host, or pair it again.")
     }
 
     @Test func protocolVersionMismatchNamesTheUpdate() {
@@ -334,6 +353,7 @@ struct TransportErrorPresentationTests {
             .streamLocalOpenFailed(path: "/s"),
             .protocolVersionMismatch(server: 18, supported: 19),
             .herdrBinaryNotFound,
+            .herdrLauncherNotFound(path: "/opt/example/bin/herdr"),
             .socketNotFound(path: "/s"),
         ]
         for error in errors {

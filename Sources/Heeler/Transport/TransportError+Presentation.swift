@@ -92,6 +92,12 @@ extension TransportError {
                 detail: nil,
                 recoverySuggestion:
                     "Put herdr's install directory on the account's non-interactive SSH PATH.")
+        case .herdrLauncherNotFound(let path):
+            TransportErrorPresentation(
+                summary: "The herdr launcher could not run",
+                detail: path,
+                recoverySuggestion:
+                    "Open the app that provides herdr on this Host, or pair it again.")
         case .streamLocalOpenFailed:
             TransportErrorPresentation(
                 summary: "herdr is not running on this Host",

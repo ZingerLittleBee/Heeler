@@ -76,6 +76,43 @@ struct WakeCommandTests {
                 socketLocation: .absolutePath("/tmp/it's-a.sock"))
         }
     }
+
+    /// A herdr endpoint (ADR 0021) wakes through its own launcher: no PATH
+    /// export, and an injected wake command is ignored.
+    @Test func endpointLauncherWakesTheEndpointServer() throws {
+        let socketPath = "/Users/ada/Library/Application Support/Example/herdr/herdr.sock"
+        let launcher = try #require(
+            HerdrLauncher(
+                executablePath: "/Users/ada/Library/Application Support/Example/bin/herdr",
+                socketPath: socketPath))
+
+        let command = try HeelerSSHTransport.wakeExecCommand(
+            wakeCommand: "/opt/herdr-wake --foreground",
+            socketPath: socketPath,
+            socketLocation: .absolutePath(socketPath),
+            launcher: launcher)
+
+        #expect(
+            command
+                == #"LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH="$1"; "#
+                + #""$2" remote-client-bridge < /dev/null' wake "#
+                + "'/Users/ada/Library/Application Support/Example/herdr/herdr.sock' "
+                + "'/Users/ada/Library/Application Support/Example/bin/herdr'")
+    }
+
+    @Test func endpointLauncherWakeStillRefusesAnUnquotableSocketPath() throws {
+        let launcher = try #require(
+            HerdrLauncher(
+                executablePath: "/opt/example/bin/herdr",
+                socketPath: "/opt/example/herdr/herdr.sock"))
+        #expect(throws: TransportError.self) {
+            _ = try HeelerSSHTransport.wakeExecCommand(
+                wakeCommand: "herdr remote-client-bridge",
+                socketPath: "/tmp/it's/herdr/herdr.sock",
+                socketLocation: .absolutePath("/tmp/it's/herdr/herdr.sock"),
+                launcher: launcher)
+        }
+    }
 }
 
 // Connect failures that need no live sshd.
