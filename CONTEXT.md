@@ -33,8 +33,12 @@ The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Ke
 _Avoid_: scan to connect, binding
 
 **Pairing Code**:
-The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry) produced by the pairing plugin. The QR image is just its rendering.
+The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry) produced by the pairing plugin. The QR image is just its rendering. Version 2 also carries a Herdr Endpoint.
 _Avoid_: QR code, invite
+
+**Herdr Endpoint**:
+A Host's own herdr instance outside the user's config home, such as one bundled in a desktop app: the absolute path of its API socket and of a launcher that behaves as `herdr` for it. Carried by a Pairing Code v2 and stored on the Host; a Host with one never uses the home-relative session socket or the `herdr` on the SSH PATH.
+_Avoid_: custom socket, herdr path
 
 **Bootstrap Key**:
 A single-use, TTL-bound Ed25519 keypair carried inside a Pairing Code. Its authorized_keys line is restricted to a forced command that can only perform Enrollment; it is destroyed on success or expiry.
