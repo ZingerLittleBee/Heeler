@@ -33,7 +33,7 @@ The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Ke
 _Avoid_: scan to connect, binding
 
 **Pairing Code**:
-The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry) produced by the pairing plugin. The QR image is just its rendering. Version 2 also carries a Herdr Endpoint.
+The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry). The pairing plugin produces version 1; version 2, produced by an app that bundles its own herdr, also carries a Herdr Endpoint. The QR image is just its rendering.
 _Avoid_: QR code, invite
 
 **Herdr Endpoint**:

@@ -241,7 +241,9 @@ Decoders check the v1 fields first, then these rules; a violation is rejected
   default session) or `/herdr/sessions/<name>/herdr.sock` with a valid session
   name ([herdr sessions](#herdr-sessions)), so the hooks can tell which
   session they serve.
-- `sock` is at most 103 bytes of UTF-8, so it fits macOS `sun_path`.
+- `sock` is at most 96 bytes of UTF-8. Attach and wake use herdr's client
+  socket, named by inserting `-client` before `.sock`, and that path must
+  still fit macOS `sun_path` (103 bytes plus the NUL).
 
 Encoders emit the keys in the order of the table above with no JSON
 whitespace, as in v1.
@@ -279,11 +281,16 @@ The launcher must:
   shared with the user's own herdr. A shared file would let the endpoint Host's
   Notification Registration evict the user's existing Host for the same
   machine.
+- Give herdr a `PATH` on which this plugin's `node` and the user's agents
+  resolve. The app exports only `HERDR_SOCKET_PATH`, so a server that the
+  launcher starts otherwise inherits sshd's minimal `PATH`, and the hooks it
+  runs cannot find `node`.
 - Let `remote-client-bridge` start or reach the endpoint's server. The app runs
   it to wake herdr only when the socket file exists but refuses connections.
 
-An exit status of 126 or 127 from the launcher is reported as a missing
-launcher, not as herdr missing from `PATH`.
+An exit status of 126 or 127 from the launcher's `session list`, `plugin list`
+or attach is reported as a missing launcher, not as herdr missing from `PATH`.
+A failed wake keeps the original socket error.
 
 ## Bootstrap Key lifecycle
 

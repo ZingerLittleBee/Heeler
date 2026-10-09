@@ -40,14 +40,14 @@
       }
     },
     {
-      "name": "socket path of exactly 103 bytes",
-      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC14eHh4eHh4eHh4eHh4eHh4eHh4eHh4L2hlcmRyL2hlcmRyLnNvY2siLCJoZXJkciI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvYmluL2hlcmRyIn0",
+      "name": "socket path of exactly 96 bytes",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC14eHh4eHh4eHh4eHh4eHgvaGVyZHIvaGVyZHIuc29jayIsImhlcmRyIjoiL1VzZXJzL2FkYS9MaWJyYXJ5L0FwcGxpY2F0aW9uIFN1cHBvcnQvRXhhbXBsZS9iaW4vaGVyZHIifQ",
       "payload": {
         "addresses": ["192.168.1.42"],
         "port": 22,
         "username": "ada",
         "hostKeyFingerprint": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
-        "socketPath": "/Users/ada/Library/Application Support/dev.example.HerdrDesktop-xxxxxxxxxxxxxxxxxxxxxx/herdr/herdr.sock",
+        "socketPath": "/Users/ada/Library/Application Support/dev.example.HerdrDesktop-xxxxxxxxxxxxxxx/herdr/herdr.sock",
         "herdrPath": "/Users/ada/Library/Application Support/Example/bin/herdr"
       }
     },
@@ -128,13 +128,13 @@
       "error": "bad_payload"
     },
     {
-      "name": "sock longer than 103 bytes",
-      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC14eHh4eHh4eHh4eHh4eHh4eHh4eHh4eC9oZXJkci9oZXJkci5zb2NrIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
+      "name": "sock longer than 96 bytes",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC14eHh4eHh4eHh4eHh4eHh4L2hlcmRyL2hlcmRyLnNvY2siLCJoZXJkciI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L0V4YW1wbGUvYmluL2hlcmRyIn0",
       "error": "bad_payload"
     },
     {
-      "name": "sock over 103 UTF-8 bytes in fewer characters",
-      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC3DqcOpw6nDqcOpw6nDqcOpw6nDqcOpeC9oZXJkci9oZXJkci5zb2NrIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
+      "name": "sock over 96 UTF-8 bytes in fewer characters",
+      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXSwicG9ydCI6MjIsInVzZXIiOiJhZGEiLCJmcCI6IlNIQTI1Njo2K2puY05kaWJzRzJjcXZmb0xBcEdyTzhDdkl3QUVNenNCK0lpbE9zOHRnIiwic29jayI6Ii9Vc2Vycy9hZGEvTGlicmFyeS9BcHBsaWNhdGlvbiBTdXBwb3J0L2Rldi5leGFtcGxlLkhlcmRyRGVza3RvcC3DqcOpw6nDqcOpw6nDqcOpeC9oZXJkci9oZXJkci5zb2NrIiwiaGVyZHIiOiIvVXNlcnMvYWRhL0xpYnJhcnkvQXBwbGljYXRpb24gU3VwcG9ydC9FeGFtcGxlL2Jpbi9oZXJkciJ9",
       "error": "bad_payload"
     },
     {
