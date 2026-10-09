@@ -236,4 +236,56 @@ struct HostDraftTests {
 
         #expect(try #require(draft.makeHost()).displayName == "dev@box.example copy")
     }
+
+    /// The form cannot edit an endpoint, so saving an edit must not drop it:
+    /// the Host would silently switch to the user's own herdr.
+    @Test func editingAnEndpointHostKeepsItsEndpoint() throws {
+        let endpoint = try Self.endpoint()
+        let host = Host(
+            id: UUID(), name: "Studio app", address: "studio.local", username: "dev",
+            herdrEndpoint: endpoint)
+
+        var draft = HostDraft(host: host)
+        draft.name = "Renamed"
+        let rebuilt = try #require(draft.makeHost(id: host.id))
+
+        #expect(draft.herdrEndpoint == endpoint)
+        #expect(rebuilt.herdrEndpoint == endpoint)
+        #expect(rebuilt.socketLocation == .absolutePath(endpoint.socketPath))
+        #expect(rebuilt.name == "Renamed")
+    }
+
+    @Test func duplicatingAnEndpointHostKeepsItsEndpoint() throws {
+        let endpoint = try Self.endpoint()
+        let original = Host(
+            name: "Studio app", address: "studio.local", username: "dev", herdrEndpoint: endpoint)
+
+        let draft = HostDraft(
+            duplicating: original, password: nil, existingNames: ["Studio app"])
+        let copy = try #require(draft.makeHost())
+
+        #expect(copy.id != original.id)
+        #expect(copy.name == "Studio app copy")
+        #expect(copy.herdrEndpoint == endpoint)
+    }
+
+    @Test func draftsWithoutAnEndpointMakeHostsWithoutOne() throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        #expect(draft.herdrEndpoint == nil)
+        #expect(try #require(draft.makeHost()).herdrEndpoint == nil)
+
+        let edited = HostDraft(host: Host.fixture())
+        #expect(edited.herdrEndpoint == nil)
+        #expect(try #require(edited.makeHost()).herdrEndpoint == nil)
+    }
+
+    /// A Pairing Code v2 endpoint, as an app bundling herdr publishes it.
+    private static func endpoint() throws -> HerdrEndpoint {
+        try #require(
+            HerdrEndpoint(
+                socketPath: "/Users/dev/Library/Application Support/Example/herdr/herdr.sock",
+                executablePath: "/Users/dev/Library/Application Support/Example/bin/herdr"))
+    }
 }

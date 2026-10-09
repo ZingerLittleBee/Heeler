@@ -16,6 +16,13 @@ struct NotificationSessionVectorTests {
     private static let home = "/home/ada"
     private static let deviceToken = APNSDeviceToken(hex: "a1b2c3", environment: .production)
     private static let ownKey = Data(repeating: 0xEE, count: 32)
+    /// A valid launcher for endpoint Hosts; only the socket varies.
+    private static let launcher = "/opt/example/bin/herdr"
+    /// The derivation vectors whose socket path a Pairing Code v2 endpoint
+    /// accepts: absolute, quotable, in herdr's layout, and short enough.
+    private static let endpointDerivations = vectors.derivation.filter { vector in
+        vector.socketPath.flatMap { HerdrEndpoint(socketPath: $0, executablePath: launcher) } != nil
+    }
 
     /// Guards against silently loading an empty or truncated vector file;
     /// mirrors the same assertion in the Node suite.
@@ -28,6 +35,8 @@ struct NotificationSessionVectorTests {
         #expect(Set(Self.vectors.delivery.map(\.name)).count == Self.vectors.delivery.count)
         #expect(Self.vectors.derivation.contains { $0.session == nil })
         #expect(Self.vectors.delivery.contains { $0.ownSession == nil })
+        #expect(Self.endpointDerivations.contains { $0.session == "" })
+        #expect(Self.endpointDerivations.contains { $0.session?.isEmpty == false })
     }
 
     @Test(arguments: vectors.names)
@@ -67,6 +76,45 @@ struct NotificationSessionVectorTests {
         let name = String(socketPath.dropFirst(prefix.count).dropLast(suffix.count))
 
         #expect(!HerdrSessionName.isValid(name))
+    }
+
+    /// The app's port of the plugin's derivation reads every socket path the
+    /// way the plugin does.
+    @Test(arguments: vectors.derivation)
+    func endpointSessionDerivationMatchesThePlugin(
+        vector: NotificationSessionVectorFile.Derivation
+    ) {
+        #expect(HerdrEndpoint.session(fromSocketPath: vector.socketPath) == vector.session)
+    }
+
+    /// An endpoint Host registers in the session its hooks derive from the
+    /// endpoint's socket, whatever its stored session name, and connects to
+    /// that socket.
+    @Test(arguments: endpointDerivations)
+    func endpointHostSessionValueMatchesTheHookDerivation(
+        vector: NotificationSessionVectorFile.Derivation
+    ) throws {
+        let socketPath = try #require(vector.socketPath)
+        let endpoint = try #require(
+            HerdrEndpoint(socketPath: socketPath, executablePath: Self.launcher))
+        let host = Host(
+            address: "studio.local", username: "ada", sessionName: "elsewhere",
+            herdrEndpoint: endpoint)
+
+        #expect(host.notificationSession == vector.session)
+        #expect(host.socketLocation == .absolutePath(socketPath))
+    }
+
+    /// No endpoint carries a socket whose session a hook cannot name.
+    @Test(arguments: vectors.derivation.filter { $0.session == nil })
+    func unknownSessionSocketsNeverMakeAnEndpoint(
+        vector: NotificationSessionVectorFile.Derivation
+    ) {
+        let endpoint = vector.socketPath.flatMap {
+            HerdrEndpoint(socketPath: $0, executablePath: Self.launcher)
+        }
+
+        #expect(endpoint == nil)
     }
 
     /// The app reads an entry as legacy exactly when the plugin does: its

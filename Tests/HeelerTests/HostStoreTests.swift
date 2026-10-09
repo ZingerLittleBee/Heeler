@@ -44,6 +44,135 @@ struct HostTests {
         host.name = "Workbox"
         #expect(host.displayName == "Workbox")
     }
+
+    private static let endpointSocket =
+        "/Users/ada/Library/Application Support/Example/herdr/herdr.sock"
+    private static let endpointLauncher = "/Users/ada/Library/Application Support/Example/bin/herdr"
+
+    /// Hosts saved before Pairing Code v2 have no endpoint and keep their
+    /// session socket.
+    @Test func hostWithoutEndpointKeyDecodesWithoutAnEndpoint() throws {
+        let legacy = """
+            {"id":"\(UUID().uuidString)","name":"Old","address":"old.example","port":22,
+             "username":"dev","authMethod":"deviceKey","sessionName":"work"}
+            """
+
+        let host = try JSONDecoder().decode(Host.self, from: Data(legacy.utf8))
+
+        #expect(host.herdrEndpoint == nil)
+        #expect(host.socketLocation == .namedSession("work"))
+    }
+
+    @Test func endpointDecodesAndWinsOverTheSessionName() throws {
+        let json = """
+            {"id":"\(UUID().uuidString)","name":"","address":"studio.local","port":22,
+             "username":"ada","authMethod":"deviceKey","sessionName":"work",
+             "herdrEndpoint":{"socketPath":"\(Self.endpointSocket)",
+             "executablePath":"\(Self.endpointLauncher)"}}
+            """
+
+        let host = try JSONDecoder().decode(Host.self, from: Data(json.utf8))
+
+        #expect(host.herdrEndpoint?.socketPath == Self.endpointSocket)
+        #expect(host.herdrEndpoint?.executablePath == Self.endpointLauncher)
+        #expect(host.socketLocation == .absolutePath(Self.endpointSocket))
+    }
+
+    /// A stored endpoint is re-validated: a value that breaks the v2 rules
+    /// never reaches a connection.
+    @Test func invalidEndpointFailsTheHostDecode() {
+        let json = """
+            {"id":"\(UUID().uuidString)","name":"","address":"studio.local","port":22,
+             "username":"ada","authMethod":"deviceKey",
+             "herdrEndpoint":{"socketPath":"/tmp/custom.sock","executablePath":"/opt/bin/herdr"}}
+            """
+
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Host.self, from: Data(json.utf8))
+        }
+    }
+
+    @Test func endpointRoundTripsAndAHostWithoutOneWritesNoKey() throws {
+        let plainFields = try #require(
+            JSONSerialization.jsonObject(with: try JSONEncoder().encode(Host.fixture()))
+                as? [String: Any])
+        #expect(plainFields["herdrEndpoint"] == nil)
+
+        let endpoint = try #require(
+            HerdrEndpoint(socketPath: Self.endpointSocket, executablePath: Self.endpointLauncher))
+        let paired = Host(address: "studio.local", username: "ada", herdrEndpoint: endpoint)
+        let decoded = try JSONDecoder().decode(Host.self, from: try JSONEncoder().encode(paired))
+
+        #expect(decoded == paired)
+    }
+
+    /// Spaces are fine; the default and a named session socket in herdr's
+    /// layout name the session the endpoint's hooks report.
+    @Test(arguments: [
+        ("/Users/ada/Library/Application Support/Example/herdr/herdr.sock", ""),
+        ("/Users/ada/Library/Application Support/Example/herdr/sessions/work/herdr.sock", "work"),
+        ("/srv/herdr/sessions/herdr/herdr.sock", "herdr"),
+    ])
+    func endpointAcceptsHerdrLayoutSockets(socketPath: String, session: String) throws {
+        let endpoint = try #require(
+            HerdrEndpoint(socketPath: socketPath, executablePath: Self.endpointLauncher))
+
+        #expect(endpoint.socketPath == socketPath)
+        #expect(endpoint.executablePath == Self.endpointLauncher)
+        #expect(endpoint.session == session)
+    }
+
+    /// Each socket breaks one v2 rule; the launcher is valid.
+    @Test(arguments: [
+        "",
+        "herdr/herdr.sock",
+        "/Users/ada/it's/herdr/herdr.sock",
+        "/Users/ada/back\\slash/herdr/herdr.sock",
+        "/Users/ada/new\nline/herdr/herdr.sock",
+        "/Users/ada/delete\u{7F}/herdr/herdr.sock",
+        "/tmp/custom.sock",
+        "/Users/ada/.config/herdr-dev/herdr.sock",
+        "/Users/ada/.config/herdr/sessions/bad name/herdr.sock",
+        "/Users/ada/.config/herdr/sessions/../herdr.sock",
+    ])
+    func endpointRejectsSocketsThatBreakTheV2Rules(socketPath: String) {
+        #expect(HerdrEndpoint(socketPath: socketPath, executablePath: Self.endpointLauncher) == nil)
+    }
+
+    /// Each launcher breaks one v2 rule; the socket is valid.
+    @Test(arguments: [
+        "",
+        "bin/herdr",
+        "/opt/it's/herdr",
+        "/opt/back\\slash/herdr",
+        "/opt/bin/herdr\n",
+        "/opt/bin/her\tdr",
+    ])
+    func endpointRejectsLaunchersThatBreakTheV2Rules(executablePath: String) {
+        #expect(
+            HerdrEndpoint(socketPath: Self.endpointSocket, executablePath: executablePath) == nil)
+    }
+
+    /// macOS `sun_path` holds 103 bytes plus the NUL, counted in UTF-8.
+    @Test func endpointSocketStopsAtTheSunPathLimit() {
+        let limit = HerdrEndpoint.maximumSocketPathUTF8Length
+        let longest = Self.layoutSocket(padding: String(repeating: "a", count: limit - 18))
+        let tooLong = Self.layoutSocket(padding: String(repeating: "a", count: limit - 17))
+        // 61 characters, 104 bytes.
+        let multiByte = Self.layoutSocket(padding: String(repeating: "\u{E9}", count: 43))
+
+        #expect(longest.utf8.count == limit)
+        #expect(HerdrEndpoint(socketPath: longest, executablePath: Self.endpointLauncher) != nil)
+        #expect(tooLong.utf8.count == limit + 1)
+        #expect(HerdrEndpoint(socketPath: tooLong, executablePath: Self.endpointLauncher) == nil)
+        #expect(multiByte.count < limit && multiByte.utf8.count > limit)
+        #expect(HerdrEndpoint(socketPath: multiByte, executablePath: Self.endpointLauncher) == nil)
+    }
+
+    /// `/<padding>/herdr/herdr.sock`: the default session's layout.
+    private static func layoutSocket(padding: String) -> String {
+        "/\(padding)/herdr/herdr.sock"
+    }
 }
 
 @MainActor
@@ -75,6 +204,13 @@ struct HostStoreTests {
             let id = try #require(host["id"] as? String)
             return try #require(UUID(uuidString: id))
         }
+    }
+
+    private func persistedCatalogVersion(in defaults: UserDefaults) throws -> Int? {
+        let data = try #require(defaults.data(forKey: "hosts"))
+        let catalog = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return catalog["version"] as? Int
     }
 
     @Test func addPersistsAcrossInstances() throws {
@@ -177,6 +313,107 @@ struct HostStoreTests {
         #expect(try persistedHost(id: unknownID, in: defaults)["futureField"] as? String
             == "preserve-me")
         #expect(try persistedHostIDs(in: defaults) == [firstID, unknownID, added.id])
+    }
+
+    @Test func endpointHostRoundTripsThroughTheStore() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let endpoint = try #require(
+            HerdrEndpoint(
+                socketPath:
+                    "/Users/dev/Library/Application Support/Example/herdr/sessions/work/herdr.sock",
+                executablePath: "/Users/dev/Library/Application Support/Example/bin/herdr"))
+        let host = Host(
+            name: "Studio app", address: "studio.local", username: "dev", herdrEndpoint: endpoint)
+
+        try HostStore(defaults: defaults, secrets: secrets).add(host)
+
+        let reloaded = HostStore(defaults: defaults, secrets: secrets)
+        #expect(reloaded.hosts == [host])
+        let stored = try #require(
+            persistedHost(id: host.id, in: defaults)["herdrEndpoint"] as? [String: Any])
+        #expect(stored["socketPath"] as? String == endpoint.socketPath)
+        #expect(stored["executablePath"] as? String == endpoint.executablePath)
+        #expect(try persistedCatalogVersion(in: defaults) == 1)
+    }
+
+    /// Hosts that predate Pairing Code v2 keep their stored shape: loading
+    /// leaves the bytes alone and a later save adds no endpoint key.
+    @Test func hostWithoutEndpointKeepsItsStoredShape() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let id = UUID()
+        let catalog = Data("""
+            {"version":1,"hosts":[
+              {"id":"\(id.uuidString)","name":"Old","address":"old.example","port":22,
+               "username":"dev","authMethod":"deviceKey","sessionName":"work",
+               "jumpAddress":"","jumpPort":22,"jumpUsername":""}
+            ]}
+            """.utf8)
+        defaults.set(catalog, forKey: "hosts")
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        var host = try #require(store.hosts.first)
+        #expect(host.herdrEndpoint == nil)
+        #expect(defaults.data(forKey: "hosts") == catalog)
+
+        host.name = "Edited"
+        try store.update(host)
+
+        let keys = try Set(persistedHost(id: id, in: defaults).keys)
+        #expect(keys == [
+            "id", "name", "address", "port", "username", "authMethod", "sessionName",
+            "jumpAddress", "jumpPort", "jumpUsername",
+        ])
+        #expect(try persistedCatalogVersion(in: defaults) == 1)
+    }
+
+    /// An endpoint this build cannot read hides only its Host, as an unknown
+    /// authentication method does, instead of connecting that Host to the
+    /// user's own herdr; the raw entry survives later writes.
+    @Test func unreadableEndpointSkipsOnlyThatHost() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let firstID = UUID()
+        let unreadableID = UUID()
+        let wrongTypeID = UUID()
+        let nullEndpointID = UUID()
+        let catalog = Data("""
+            {"version":1,"hosts":[
+              {"id":"\(firstID.uuidString)","name":"First","address":"first.example",
+               "port":22,"username":"dev","authMethod":"deviceKey"},
+              {"id":"\(unreadableID.uuidString)","name":"Custom","address":"custom.example",
+               "port":22,"username":"dev","authMethod":"deviceKey",
+               "herdrEndpoint":{"socketPath":"/tmp/custom.sock","executablePath":"/opt/bin/herdr"}},
+              {"id":"\(wrongTypeID.uuidString)","name":"Future","address":"future.example",
+               "port":22,"username":"dev","authMethod":"deviceKey",
+               "herdrEndpoint":"future-endpoint"},
+              {"id":"\(nullEndpointID.uuidString)","name":"Null","address":"null.example",
+               "port":22,"username":"dev","authMethod":"password","herdrEndpoint":null}
+            ]}
+            """.utf8)
+        defaults.set(catalog, forKey: "hosts")
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(store.hosts.map(\.id) == [firstID, nullEndpointID])
+        #expect(store.hosts.compactMap(\.herdrEndpoint).isEmpty)
+        #expect(store.catalogLoadError == nil)
+        #expect(defaults.data(forKey: "hosts") == catalog)
+
+        let added = Host.fixture(name: "Added")
+        try store.add(added)
+
+        let preserved = try #require(
+            persistedHost(id: unreadableID, in: defaults)["herdrEndpoint"] as? [String: Any])
+        #expect(preserved["socketPath"] as? String == "/tmp/custom.sock")
+        #expect(preserved["executablePath"] as? String == "/opt/bin/herdr")
+        #expect(try persistedHost(id: wrongTypeID, in: defaults)["herdrEndpoint"] as? String
+            == "future-endpoint")
+        #expect(try persistedHostIDs(in: defaults)
+            == [firstID, unreadableID, wrongTypeID, nullEndpointID, added.id])
+        #expect(try persistedCatalogVersion(in: defaults) == 1)
     }
 
     @Test func malformedKnownAuthHostStillMakesTheCatalogUnreadable() throws {
