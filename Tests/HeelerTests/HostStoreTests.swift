@@ -153,7 +153,8 @@ struct HostTests {
             HerdrEndpoint(socketPath: Self.endpointSocket, executablePath: executablePath) == nil)
     }
 
-    /// macOS `sun_path` holds 103 bytes plus the NUL, counted in UTF-8.
+    /// The socket's `-client` sibling must fit macOS `sun_path` (103 bytes
+    /// plus the NUL), counted in UTF-8.
     @Test func endpointSocketStopsAtTheSunPathLimit() {
         let limit = HerdrEndpoint.maximumSocketPathUTF8Length
         let longest = Self.layoutSocket(padding: String(repeating: "a", count: limit - 18))

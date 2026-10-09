@@ -148,9 +148,12 @@ struct HerdrEndpoint: Codable, Hashable, Sendable {
     /// body, never spliced into one, and never falls back to PATH.
     let executablePath: String
 
-    /// The longest socket path every supported Host can bind and connect:
-    /// macOS `sun_path` holds 104 bytes including the terminating NUL.
-    static let maximumSocketPathUTF8Length = 103
+    /// The longest socket path every supported Host can bind and connect.
+    /// Attach and wake reach herdr's client socket, named by inserting
+    /// `-client` before `.sock`, so that sibling must fit too: macOS
+    /// `sun_path` holds 104 bytes including the terminating NUL, leaving
+    /// 103 for the client socket and 96 for this one.
+    static let maximumSocketPathUTF8Length = 96
 
     /// nil when either path breaks the v2 rules: both must be absolute and
     /// quotable as one remote shell word, and the socket must be in herdr's

@@ -36,7 +36,9 @@ A Host without an endpoint behaves exactly as before.
 - **The socket must use herdr's layout.** The plugin derives a hook's session
   from `HERDR_SOCKET_PATH` (ADR 0020). Requiring `…/herdr/herdr.sock` or
   `…/herdr/sessions/<name>/herdr.sock` keeps that derivation working, and the
-  app writes the same session value into `notifications.json`.
+  app writes the same session value into `notifications.json`. The socket is
+  at most 96 bytes so that herdr's `-client` sibling, used by attach and wake,
+  still fits macOS `sun_path`.
 - **The launcher owns its config home.** The plugin config directory depends
   only on `XDG_CONFIG_HOME`. An endpoint that shared the user's own config
   home would share `notifications.json`, and registering the endpoint Host
@@ -51,8 +53,12 @@ A Host without an endpoint behaves exactly as before.
 - Preflight cannot discover sessions for an endpoint Host. It runs the
   launcher's `session list --json` as a probe instead, so a wrong launcher
   fails at "herdr installed" rather than later at attach.
-- Exit 126 or 127 from the launcher is reported as a missing launcher, not as
-  herdr missing from `PATH`.
+- Exit 126 or 127 from the launcher's session list, plugin list or attach is
+  reported as a missing launcher, not as herdr missing from `PATH`. A failed
+  wake keeps the original socket error.
+- Without the app's `PATH` prefixes, the launcher must give herdr a `PATH`
+  on which the plugin's `node` and the user's agents resolve; a server it
+  starts otherwise inherits sshd's minimal `PATH`.
 - `heeler://agent` links that name a Host by address and session do not
   resolve to endpoint Hosts. Matching them would make links ambiguous for a
   user who also keeps a regular Host for the same machine.

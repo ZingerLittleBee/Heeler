@@ -626,7 +626,9 @@ struct HostRowPresentation: Equatable {
             group = .connected
             var address = "\(host.username)@\(host.address)"
             if host.port != 22 { address += ":\(host.port)" }
-            if case .namedSession(let session) = host.socketLocation {
+            if let endpoint = host.herdrEndpoint {
+                if !endpoint.session.isEmpty { address += " · session \(endpoint.session)" }
+            } else if case .namedSession(let session) = host.socketLocation {
                 address += " · session \(session)"
             }
             // The reason itself is in Host detail, a tap away.

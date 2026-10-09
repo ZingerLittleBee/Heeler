@@ -1385,9 +1385,20 @@ actor HeelerSSHTransport: Transport {
     private func resolveNotificationConfigDirectory() async throws -> String {
         let listOutput = try await runNotificationPluginProbe(command: pluginListCommand)
         let pluginID = try installedNotificationPluginID(in: listOutput)
-        let configDirCommand = notificationConfigDirCommand.replacingOccurrences(
-            of: SSHTransportSettings.notificationPluginIDToken,
-            with: pluginID)
+        var configDirCommand = notificationConfigDirCommand
+        if herdrLauncher != nil {
+            // The launcher's paths follow the body's single token and may
+            // contain any text, so only that first occurrence is the id.
+            if let token = configDirCommand.range(
+                of: SSHTransportSettings.notificationPluginIDToken)
+            {
+                configDirCommand.replaceSubrange(token, with: pluginID)
+            }
+        } else {
+            configDirCommand = configDirCommand.replacingOccurrences(
+                of: SSHTransportSettings.notificationPluginIDToken,
+                with: pluginID)
+        }
         let output = try await runNotificationPluginProbe(command: configDirCommand)
         guard
             let directory = Self.markerValue(
