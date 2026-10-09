@@ -590,6 +590,11 @@ the plugin config dir:
 | `relay_url`      | string  | Optional Push Relay base URL override for a self-built app. Defaults to `https://heeler-apns.bybee.dev`; the app writes the resolved value during Notification Registration. |
 | `debounce_ms`    | integer | Debounce sleep override for the alert notify hook. Default 5000. |
 | `activity_debounce_ms` | integer | Latest-wins debounce sleep for the Live Activity hook. Default 1500. |
+| `activity_rows` | string | `"conversational"` builds each Agent's Live Activity rows from its name and workspace, terminal title, and state with zoned times, ignoring the device's row layout; see the [contract](../docs/agents/live-activity-contract.md#conversational-rows). Anything else, or absent, keeps the app-configured layout. |
+| `activity_time_zone` | string | IANA zone for conversational row times. Default: the Host's zone. |
+| `activity_min_interval_ms` | integer | Conversational mode: minimum time between two Live Activity pushes to one device; the newest state is sent after the wait. Default 15000. |
+| `activity_p10_per_hour` | integer | Conversational mode: priority-10 (newly blocked) pushes per device per trailing hour before further ones go at priority 5. Default 6. |
+| `activity_content_per_hour` | integer | Conversational mode: content-only pushes (no status change) per device per trailing hour. Default 60. |
 | `retry_delay_ms` | integer | Delay between retry attempts. Default 1000. |
 
 ### Hook event JSON (verified against herdr 0.7.5)
@@ -637,7 +642,9 @@ Anti-noise, in order:
    sleeps `activity_debounce_ms` (default 1500). A newer claim from an
    overlapping invocation wins; the loser exits without sending.
 3. **Unchanged snapshot**: a `{pane_id: status}` map identical to last-state
-   sends nothing.
+   sends nothing. With `activity_rows: "conversational"` the check is instead
+   per device on the bytes it would show, and the minimum interval and
+   per-hour limits of the contract's "Push volume" section apply.
 
 An empty eligible set sends `event: end` (skipped if already ended) with zero
 counts, `dismissal_date` equal to the timestamp, and an envelope whose
@@ -657,8 +664,10 @@ the hook also pre-degrades when the projected ciphertext would exceed the Live
 Activity size budget.
 
 Last-state (`activity/last-state.json`: `sent_at_ms`, `statuses`, `ended`) is
-written only after at least one successful delivery. All state writes are
-temp-file + rename.
+written only after at least one successful delivery. In conversational mode it
+also carries `v: 2`, `epoch`, per-terminal start times and per-device sent
+hashes, and is written on every run that passes the claim (see the contract's
+"Since"). All state writes are temp-file + rename.
 
 ## Tests
 

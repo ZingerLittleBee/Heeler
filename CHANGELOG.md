@@ -7,6 +7,15 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in conversational Live Activity rows (`activity_rows` in the herdr
+  plugin's `notify.json`): each Agent shows its name and workspace, its
+  terminal title, and its state with when it began (when known) and when the row was updated,
+  in a named time zone. Rows refresh at herdr status events; a title change
+  inside one status shows at the next event. Pushes in this mode are
+  deduplicated on the bytes sent and rate limited per device. (#TBD)
+
 ## [0.1.13] - 2026-10-07
 
 ### Added

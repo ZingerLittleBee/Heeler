@@ -8,12 +8,14 @@
 import { test, suite, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createDecipheriv } from "node:crypto";
+import { createDecipheriv, createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { parse as parseToml } from "smol-toml";
 
 import { shortHostName } from "../src/activity-state.js";
 
@@ -614,5 +616,249 @@ suite("activity-hook: herdr sessions", () => {
     assert.deepEqual(stubInvocations().map((entry) => entry.args), [["agent", "list"]]);
     assert.equal(relay.requests.length, 1);
     assert.equal(relay.requests[0].body.event, "end");
+  });
+});
+
+suite("activity-hook: conversational rows", () => {
+  const socket = () => join(home, "herdr.sock");
+  const env = () => ({ HERDR_SOCKET_PATH: socket() });
+  const run = (status = "working", options = {}) => runHook(statusEvent(status), { env: env(), ...options });
+  const rowsOf = (request, key = KEY_A) => decryptEnvelope(request.body.envelope, key).payload.agents;
+  const text = (row) => row.map((span) => span.text).join("");
+  const readState = () => JSON.parse(readFileSync(join(stateDir, "activity", "last-state.json"), "utf8"));
+
+  function conversational(overrides = {}) {
+    writeConfig({ activity_rows: "conversational", activity_time_zone: "UTC", activity_min_interval_ms: 0, ...overrides });
+  }
+
+  function convAgent({ pane = PANE_ID, status = "working", title = "Refactor parser", terminal = "t1", seq = 1, ...extra } = {}) {
+    return {
+      ...listedAgent({ pane, status, title }), name: "agent-a", terminal_id: terminal, state_change_seq: seq, ...extra,
+    };
+  }
+
+  beforeEach(() => {
+    writeFileSync(socket(), "");
+  });
+
+  test("the manifest subscribes only to pane.agent_status_changed (T-H8)", () => {
+    const manifest = parseToml(readFileSync(new URL("../herdr-plugin.toml", import.meta.url), "utf8"));
+    assert.ok(manifest.events.length > 0);
+    for (const entry of manifest.events) assert.equal(entry.on, "pane.agent_status_changed");
+  });
+
+  test("an install in the default layout mode with state saved before this change sends no extra push (T-H6)", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    writeHerdrStub([listedAgent()]);
+    // f98028b's preferences key: the device list alone, no rows mode.
+    const preferences = createHash("sha256").update(JSON.stringify([
+      { token: ACTIVITY_TOKEN_A, env: "sandbox", layout: null, host: null },
+    ])).digest("hex");
+    writeLastState({ sent_at_ms: 1, statuses: { [PANE_ID]: "working" }, preferences, ended: false });
+    const result = await run();
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(relay.requests.length, 0);
+  });
+
+  test("rows carry the zoned row 3, and identical rows send nothing even when only the raw spinner glyph moved (T-H4)", async () => {
+    await startFakeRelay();
+    conversational();
+    writeRegistration([device()]);
+    writeHerdrStub([convAgent()]);
+    assert.equal((await run()).status, 0);
+    assert.equal(relay.requests.length, 1);
+    const [agent] = rowsOf(relay.requests[0]);
+    assert.equal(text(agent.rows[1]), "Refactor parser");
+    assert.match(text(agent.rows[2]), /^Working · updated \d\d:\d\d UTC$/);
+
+    writeHerdrStub([{ ...convAgent(), terminal_title: "⠄ Refactor parser" }]);
+    assert.equal((await run()).status, 0);
+    assert.equal(relay.requests.length, 1);
+  });
+
+  test("a hidden sixth agent's title change sends nothing; a title change of a shown agent sends at priority 5 (T-H4)", async () => {
+    await startFakeRelay();
+    conversational();
+    writeRegistration([device()]);
+    const five = [1, 2, 3, 4, 5].map((n) => convAgent({ pane: `w1:p${n}`, terminal: `t${n}`, title: `Write tests ${n}` }));
+    const sixth = (title) => convAgent({ pane: "w1:p9", terminal: "t9", title });
+    writeHerdrStub([...five, sixth("Hidden one")]);
+    await run();
+    assert.equal(relay.requests.length, 1);
+    writeHerdrStub([...five, sixth("Hidden two")]);
+    await run();
+    assert.equal(relay.requests.length, 1);
+    writeHerdrStub([{ ...five[0], terminal_title_stripped: "Write docs" }, ...five.slice(1), sixth("Hidden two")]);
+    await run();
+    assert.equal(relay.requests.length, 2);
+    assert.equal(relay.requests[1].body.priority, 5);
+  });
+
+  test("the minimum interval waits, then sends the newest state once (T-H4 trailing edge)", async () => {
+    await startFakeRelay();
+    conversational({ activity_min_interval_ms: 900 });
+    writeRegistration([device()]);
+    writeHerdrStub([convAgent({ title: "First title" })]);
+    await run();
+    const sentAt = Date.now();
+    writeHerdrStub([convAgent({ title: "Second title" })]);
+    const pending = run();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    writeHerdrStub([convAgent({ title: "Newest title" })]);
+    assert.equal((await pending).status, 0);
+    assert.equal(relay.requests.length, 2);
+    assert.equal(text(rowsOf(relay.requests[1])[0].rows[1]), "Newest title");
+    assert.ok(Date.now() - sentAt >= 750, "the second send waited for the interval");
+  });
+
+  test("a flap storm of 12 events inside the interval ends on the last state with at most two pushes", async () => {
+    await startFakeRelay();
+    conversational({ activity_min_interval_ms: 600 });
+    writeRegistration([device()]);
+    const runs = [];
+    for (let i = 0; i < 12; i += 1) {
+      writeHerdrStub([convAgent({ status: i % 2 ? "working" : "done", seq: i + 1, title: `Step ${i}` })]);
+      runs.push(run());
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    await Promise.all(runs);
+    assert.ok(relay.requests.length >= 1 && relay.requests.length <= 2, String(relay.requests.length));
+    assert.equal(text(rowsOf(relay.requests.at(-1))[0].rows[1]), "Step 11");
+  });
+
+  test("newly blocked is priority 10 until activity_p10_per_hour, then 5 with a log line (T-H4 ledger)", async () => {
+    await startFakeRelay();
+    conversational({ activity_p10_per_hour: 1 });
+    writeRegistration([device()]);
+    writeHerdrStub([convAgent({ status: "blocked", seq: 1 })]);
+    await run("blocked");
+    writeHerdrStub([convAgent({ status: "working", seq: 2 })]);
+    await run();
+    writeHerdrStub([convAgent({ status: "blocked", seq: 3 })]);
+    const capped = await run("blocked");
+    assert.deepEqual(relay.requests.map((request) => request.body.priority), [10, 5, 5]);
+    assert.match(capped.stderr, /activity_p10_per_hour reached/);
+  });
+
+  test("content-only sends stop at activity_content_per_hour while status changes keep sending", async () => {
+    await startFakeRelay();
+    conversational({ activity_content_per_hour: 1 });
+    writeRegistration([device()]);
+    writeHerdrStub([convAgent({ title: "Title 0" })]);
+    await run();
+    writeHerdrStub([convAgent({ title: "Title 1" })]);
+    await run();
+    writeHerdrStub([convAgent({ title: "Title 2" })]);
+    const skipped = await run();
+    assert.match(skipped.stderr, /activity_content_per_hour reached/);
+    writeHerdrStub([convAgent({ status: "done", seq: 2, title: "Title 2" })]);
+    await run("done");
+    assert.equal(relay.requests.length, 3);
+    assert.deepEqual(relay.requests.map((request) => request.body.priority), [5, 5, 5]);
+  });
+
+  test("a re-block between runs (new seq) shows since as the last block, not the first (T-H3 a)", async () => {
+    await startFakeRelay();
+    conversational();
+    writeRegistration([device()]);
+    writeHerdrStub([convAgent({ status: "blocked", seq: 2 })]);
+    await run("blocked");
+    const first = readState().terminals.t1.since_ms;
+    assert.equal(first, null);
+    writeHerdrStub([convAgent({ status: "blocked", seq: 4 })]);
+    await run("blocked");
+    assert.ok(Number.isFinite(readState().terminals.t1.since_ms));
+  });
+
+  test("a relay 500 then success leaves since unchanged (T-H3 b)", async () => {
+    await startFakeRelay(() => ({ status: 500, body: { error: "down" } }));
+    conversational();
+    writeRegistration([device()]);
+    writeHerdrStub([convAgent({ seq: 1 })]);
+    await run();
+    writeHerdrStub([convAgent({ status: "blocked", seq: 2 })]);
+    const failed = await run("blocked");
+    assert.equal(failed.status, 1);
+    const since = readState().terminals.t1.since_ms;
+    assert.ok(Number.isFinite(since));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await startFakeRelay();
+    writeConfig({ activity_rows: "conversational", activity_time_zone: "UTC", activity_min_interval_ms: 0, relay_url: relay.url });
+    assert.equal((await run("blocked")).status, 0);
+    assert.equal(readState().terminals.t1.since_ms, since);
+    const clock = new Date(since).toISOString().slice(11, 16);
+    assert.match(text(rowsOf(relay.requests[0])[0].rows[2]), new RegExp(`^Blocked since ${clock} · updated`));
+    assert.equal(relay.requests[0].body.priority, 10);
+  });
+
+  test("a new herdr server (socket recreated) with an equal seq resets since to unknown (T-H3 c)", async () => {
+    await startFakeRelay();
+    conversational();
+    writeRegistration([device()]);
+    writeHerdrStub([convAgent({ seq: 1 })]);
+    await run();
+    writeHerdrStub([convAgent({ status: "done", seq: 2 })]);
+    await run("done");
+    assert.ok(Number.isFinite(readState().terminals.t1.since_ms));
+    rmSync(socket());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    writeFileSync(socket(), "");
+    writeHerdrStub([convAgent({ status: "done", seq: 2, title: "Write docs" })]);
+    await run("done");
+    assert.equal(readState().terminals.t1.since_ms, null);
+    assert.match(text(rowsOf(relay.requests.at(-1))[0].rows[2]), /^Turn ended · updated /);
+  });
+
+  test("32 parallel invocations leave a valid state file and one send (T-H10)", async () => {
+    await startFakeRelay();
+    conversational();
+    writeRegistration([device()]);
+    writeHerdrStub([convAgent()]);
+    const results = await Promise.all(Array.from({ length: 32 }, () => run()));
+    for (const result of results) assert.equal(result.status, 0, result.stderr);
+    assert.equal(relay.requests.length, 1);
+    const state = readState();
+    assert.equal(state.v, 2);
+    assert.deepEqual(Object.keys(state.terminals), ["t1"]);
+  });
+
+  test("worst-case roster fits ct 2800, keeps the blocked agent's row 2 longest, and counts every agent (T-H1)", async () => {
+    await startFakeRelay();
+    conversational();
+    writeRegistration([device()]);
+    const wide = "锁".repeat(80);
+    const roster = [
+      convAgent({ pane: "w1:p1", terminal: "t1", status: "blocked", title: "鍵".repeat(80) }),
+      ...[2, 3, 4, 5].map((n) => convAgent({ pane: `w1:p${n}`, terminal: `t${n}`, title: wide, display_agent: "名".repeat(80) })),
+    ];
+    for (const agents of [roster, [...roster, convAgent({ pane: "w1:p6", terminal: "t6", title: wide })]]) {
+      relay.requests.length = 0;
+      rmSync(join(stateDir, "activity"), { recursive: true, force: true });
+      writeHerdrStub(agents);
+      assert.equal((await run("blocked")).status, 0);
+      const [request] = relay.requests;
+      assert.ok(JSON.parse(request.body.envelope).ct.length <= 2800);
+      assert.deepEqual(request.body.counts, { working: agents.length - 1, blocked: 1, done: 0 });
+      const shown = rowsOf(request);
+      const blocked = shown.find((entry) => entry.status === "blocked");
+      assert.ok(blocked);
+      for (const entry of shown.filter((other) => other !== blocked)) assert.ok(entry.rows.length <= blocked.rows.length);
+    }
+  });
+
+  test("switching the mode sends again at the next event and switching back restores the layout rows", async () => {
+    await startFakeRelay();
+    writeConfig({ relay_url: relay.url });
+    writeRegistration([device({ liveActivity: { token: ACTIVITY_TOKEN_A, row_layout: { rows: [[{ token: "agent" }]] } } })]);
+    writeHerdrStub([convAgent()]);
+    await run();
+    conversational();
+    await run();
+    writeConfig();
+    await run();
+    assert.equal(relay.requests.length, 3);
+    assert.deepEqual(relay.requests.map((request) => rowsOf(request)[0].rows.length), [1, 3, 1]);
   });
 });

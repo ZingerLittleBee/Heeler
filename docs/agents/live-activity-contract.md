@@ -107,6 +107,113 @@ Island shows status counts as glyph-and-count tokens in attention order
 The envelope's `host` is not a separate heading, but a configured `host` field
 can display the per-device Host name.
 
+## Conversational rows
+
+Opt-in plugin setting `activity_rows: "conversational"` in `notify.json`
+(default `"layout"`, which keeps everything above unchanged, including when
+pushes are sent). In that mode the plugin builds `rows` itself for every Agent
+and ignores the device's `row_layout`. The wire shape is the ordinary `rows`
+shape, so the app needs no change. Each Agent gets at most three nonempty
+rows, and **each row is at most 80 graphemes in total** (not per span). A
+longer row is cut to 79 graphemes plus `…`; a separator, joiner or earlier
+`…` is never left at the cut.
+
+1. Identity: `<agent name> · <workspace label>` (name bold; name is
+   `display_agent`, then `name`, then raw kind, then `unknown`). This row is
+   never removed by the size limit.
+2. Working title: `terminal_title_stripped`, or when that is absent or blank
+   the raw `terminal_title` minus one leading activity glyph. Omitted when
+   there is no title; no filler text.
+3. State, when it began, and when the row was updated:
+
+   ```
+   row3  = state [ " " word " " start ] " · " "updated " hhmm " " zone
+   state = "Working" | "Blocked" | "Turn ended"
+   word  = "since" | "at"            ; "at" after "Turn ended"
+   start = [ "Oct 8 " ] hhmm [ " " zone ]
+   ```
+
+   For example `Working since 14:03 · updated 16:12 CDT` or
+   `Turn ended at 15:58 · updated 16:12 CDT`. When the start is unknown
+   (see "Since") it is left out, `Working · updated 16:12 CDT`, rather than
+   shown as a word that carries no information; no start is ever guessed.
+   Times are 24-hour in one display zone: `activity_time_zone` (an IANA name)
+   when valid, else the Host's zone. The zone label is the `en-US` short name
+   (`CDT`, or `GMT+5:30` where no abbreviation exists) and follows `updated`.
+   The start adds its date when that differs from the date of `updated`, and
+   its own zone label when that differs (a daylight-saving change between the
+   two instants), so `since 01:30 CDT · updated 01:10 CST` is never read as a
+   negative age. `done` is worded `Turn ended`, never as completion.
+
+All text comes from herdr fields or the fixed labels above; nothing is
+summarised. Untrusted text drops control, format (except ZWJ/ZWNJ), line and
+paragraph separator characters, lone surrogates and Hangul filler characters,
+collapses whitespace, and is cleaned before it is clipped. It is only ever a
+span `text` and is never interpreted as Markdown. In this mode the `title`,
+`name` and `workspace` wire fields are cleaned the same way. No `fg` colour is
+set, so state is carried by text.
+
+**When rows refresh.** The Live Activity is refreshed when herdr reports an
+Agent status change, or a change to its metadata-derived title or label. A
+terminal title that changes while the status stays the same is not sent
+until the next such event. `updated` is the time the hook read herdr. iOS marks
+the activity stale 15 minutes after the last push (`stale-date`), the
+phone-side signal that nothing has arrived.
+
+### Since
+
+`since` is the time this hook first observed the Agent's current
+`(status, state_change_seq)` pair; it is hook-observed, not reported by herdr.
+State lives in `activity/last-state.json` with `v: 2`, keyed by herdr's
+`terminal_id` (never sent to the device), plus an `epoch` naming the herdr
+server (inode and change time of `HERDR_SOCKET_PATH`). The start is unknown,
+and left out of row 3, when there is no comparable saved state: none saved, a different or
+unknown epoch, any saved `state_change_seq` above the current one, or an
+Agent without a `terminal_id`. A start stays unknown until its pair changes.
+The state is read again after the debounce claim is won and saved on every run
+that passes the claim, including runs that send nothing and failed sends, so a
+failed send never moves `since`.
+
+### Push volume
+
+Apple publishes an hourly ActivityKit push budget without the number;
+priority 10 counts against it and priority 5 does not but may be grouped or
+delayed. In conversational mode:
+
+1. The duplicate check is per device: a sha256 of the counts and the final
+   rows after the size limit, with the `updated` clock masked. A change no device
+   would see (a hidden sixth Agent's title, a spinner glyph) sends nothing.
+2. Between two sends to one device the hook waits until
+   `activity_min_interval_ms` (default 15000) has passed, checks that no newer
+   invocation has claimed, reads herdr again and sends the newest state. `end`
+   and a newly blocked Agent do not wait.
+3. Priority 10 stays reserved for a newly blocked Agent; after
+   `activity_p10_per_hour` (default 6) such pushes to one device in the
+   trailing hour, further ones go at priority 5 and a line is logged.
+4. A content-only send (every Agent's `(status, state_change_seq)` already
+   recorded) is priority 5 and is limited to `activity_content_per_hour`
+   (default 60) per device; past that it is skipped with a log line while
+   status changes keep sending.
+
+These defaults are conservative guesses, not a measured allowance.
+
+### Size limit
+
+When the payload exceeds the budgets (ciphertext 2800 bytes, APNs payload 4096,
+relay request 8192) the plugin degrades one Agent per step, always the
+lowest-ranked Agent that still has the thing being removed. Rank is blocked,
+then working, then done; ties keep pinned Agents first, then display order.
+
+1. drop row 2 of done Agents, then of working Agents, then of blocked Agents;
+2. drop the `title` and `name` wire fields;
+3. drop whole Agents, never a blocked one while another Agent remains;
+   `counts` still cover every eligible Agent;
+4. identity-only rows;
+5. `agents: []`.
+
+Test fixtures for this mode are synthetic: pane ids `w1:p1`, names `agent-a`,
+neutral titles, host `example-host`.
+
 ## Relay request (plugin → relay)
 
 Extends the existing `POST /push`. Bodies without `kind` behave exactly as
@@ -218,5 +325,8 @@ reproduced byte-for-byte by the seal side and opened by the open side;
 `invalid` vectors must fail with the given typed error. Includes the
 cross-AAD case proving domain separation. Pin-order cases also carry
 `inventory`, `pinned_pane_ids`, and `counts` so both suites pin the
-shared sort rule. Consumed by both the Node suite and HeelerTests;
+shared sort rule. Conversational-row cases carry a `conversational` object
+(herdr `agent list` entries, status, workspace, `sinceMs`, `asOfMs`,
+`timeZone`) that the Node suite must turn into exactly the payload's `rows`.
+Consumed by both the Node suite and HeelerTests;
 regenerate only via an independent raw-crypto script.
