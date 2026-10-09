@@ -37,5 +37,16 @@ extension SSHTransportSettings {
                     username: host.resolvedJumpUsername,
                     credentials: credentials)
                 : nil)
+        // A Pairing Code v2 endpoint (ADR 0021) replaces the `herdr` on the
+        // SSH PATH for every herdr exec; `socket` already names its socket.
+        if let endpoint = host.herdrEndpoint,
+            let launcher = HerdrLauncher(
+                executablePath: endpoint.executablePath, socketPath: endpoint.socketPath)
+        {
+            herdrLauncher = launcher
+            sessionListCommand = launcher.sessionListCommand
+            pluginListCommand = launcher.pluginListCommand
+            notificationConfigDirCommand = launcher.notificationConfigDirCommand
+        }
     }
 }

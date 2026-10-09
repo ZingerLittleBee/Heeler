@@ -19,9 +19,10 @@ final class HostStore {
     private static let catalogVersion = 1
 
     /// Decodes each Host through its own decoder so a future authentication
-    /// method hides only that Host from an older build. Other malformed Host
-    /// data still fails the catalog instead of being discarded silently. The
-    /// unrecognized future entries survive later writes from this build.
+    /// method, or a herdr endpoint this build cannot read, hides only that
+    /// Host from an older build. Other malformed Host data still fails the
+    /// catalog instead of being discarded silently. The unrecognized future
+    /// entries survive later writes from this build.
     private struct PersistedHosts: Codable {
         enum Entry {
             case known(Host)
@@ -54,10 +55,23 @@ final class HostStore {
                     entries.append(.unknown(rawHost))
                     continue
                 }
+                // Dropping an endpoint would point the Host at the user's own
+                // herdr, so a Host whose endpoint does not decode stays hidden.
+                if let rawEndpoint = rawHost["herdrEndpoint"], rawEndpoint != .null,
+                    !Self.isReadableEndpoint(rawEndpoint)
+                {
+                    entries.append(.unknown(rawHost))
+                    continue
+                }
                 let data = try JSONEncoder().encode(rawHost)
                 entries.append(.known(try JSONDecoder().decode(Host.self, from: data)))
             }
             self.entries = entries
+        }
+
+        private static func isReadableEndpoint(_ rawEndpoint: JSONValue) -> Bool {
+            guard let data = try? JSONEncoder().encode(rawEndpoint) else { return false }
+            return (try? JSONDecoder().decode(HerdrEndpoint.self, from: data)) != nil
         }
 
         func encode(to encoder: any Encoder) throws {

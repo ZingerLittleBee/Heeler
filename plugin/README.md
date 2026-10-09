@@ -177,8 +177,9 @@ HERDR-PAIR:<version>:<base64url(JSON, no padding)>
 ```
 
 - `HERDR-PAIR` is a literal prefix; anything else is rejected (`bad_prefix`).
-- `<version>` is a decimal integer. This document specifies version `1`;
-  any other value is rejected (`unsupported_version`).
+- `<version>` is a decimal integer. This document specifies versions `1` and
+  `2` ([Pairing Code v2](#pairing-code-v2-herdr-endpoint)); any other value
+  is rejected (`unsupported_version`).
 - The body is the payload JSON, UTF-8, encoded as unpadded base64url
   (RFC 4648 `-`/`_` alphabet). Invalid base64url or JSON is rejected
   (`bad_encoding`).
@@ -211,6 +212,91 @@ depend on key order.
 - Any breaking change (removing, renaming, or re-typing a field, or changing
   the envelope framing) bumps `<version>`, and both implementations must be
   updated together.
+
+## Pairing Code v2 (Herdr endpoint)
+
+Version 2 pairs a Host whose herdr lives outside the user's own config home,
+such as a desktop app that bundles herdr and runs it with its own
+`XDG_CONFIG_HOME` (ADR 0021). It keeps the v1 envelope, error codes, and
+compatibility rules, and adds two required fields that name that herdr: its
+API socket and a launcher for it.
+
+| Wire key | Type    | Required | Meaning |
+| -------- | ------- | -------- | ------- |
+| `addrs`  | string[]| yes      | As v1. |
+| `port`   | integer | yes      | As v1. |
+| `user`   | string  | yes      | As v1. |
+| `fp`     | string  | yes      | As v1. |
+| `sock`   | string  | yes      | Absolute path of the herdr API socket. |
+| `herdr`  | string  | yes      | Absolute path of the launcher, an executable that behaves as `herdr` for this socket. |
+| `seed`   | string  | no       | As v1. |
+| `exp`    | integer | no       | As v1. |
+
+Decoders check the v1 fields first, then these rules; a violation is rejected
+(`bad_payload`):
+
+- `sock` and `herdr` are absolute paths without `'`, `\`, or ASCII control
+  characters (U+0000 to U+001F, U+007F). Spaces are allowed.
+- `sock` uses herdr's socket layout: it ends in `/herdr/herdr.sock` (the
+  default session) or `/herdr/sessions/<name>/herdr.sock` with a valid session
+  name ([herdr sessions](#herdr-sessions)), so the hooks can tell which
+  session they serve.
+- `sock` is at most 96 bytes of UTF-8. Attach and wake use herdr's client
+  socket, named by inserting `-client` before `.sock`, and that path must
+  still fit macOS `sun_path` (103 bytes plus the NUL).
+
+Encoders emit the keys in the order of the table above with no JSON
+whitespace, as in v1.
+
+### Why a new version
+
+Adding fields is allowed within v1, but v1 decoders ignore unknown fields. An
+older app would drop `sock` and `herdr` and pair against the default socket and
+the `herdr` on `PATH`, without any error. Under version 2 it refuses the code
+(`unsupported_version`) and saves nothing.
+
+Only the app decodes v2. This plugin emits and decodes v1 and rejects v2 as
+`unsupported_version`. A v1 code that carries `sock` or `herdr` still pairs
+without an endpoint. Endpoints work on macOS and Linux Hosts only; a native
+Windows Host paired from a v2 code fails with an explicit error.
+
+### Launcher contract
+
+For every herdr command on the Host, the app runs the launcher, never a
+`herdr` from `PATH`, as a positional argument of a POSIX shell body that
+exports `HERDR_SOCKET_PATH` as `sock`:
+
+```bash
+LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH="$2"; exec "$1" session list --json' herdr '<herdr>' '<sock>'
+```
+
+The launcher must:
+
+- `exec` the real herdr with the arguments it was given and write nothing of
+  its own to stdout or stderr. `session list --json` and `plugin list --json`
+  output is parsed as one JSON document, and attach runs on a PTY whose output
+  goes straight to the terminal.
+- Run herdr, and the server behind `sock`, with the endpoint's own
+  `XDG_CONFIG_HOME` and `XDG_STATE_HOME`, so `plugin config-dir` and
+  `session list` resolve this instance and neither `notifications.json` nor
+  the plugin's state is shared with the user's own herdr. A shared
+  `notifications.json` would let the endpoint Host's Notification Registration
+  evict the user's existing Host for the same machine. `HERDR_PLUGIN_STATE_DIR`
+  depends only on `XDG_STATE_HOME`, and with a shared one the two default
+  sessions overwrite each other's notification markers and Live Activity
+  state.
+- Give herdr a `PATH` on which this plugin's `node` and the user's agents
+  resolve. The app sets no `PATH`, so a server that the launcher starts
+  otherwise inherits sshd's minimal `PATH`, and the hooks it runs cannot find
+  `node`.
+- Let `remote-client-bridge` start or reach the endpoint's server. The app runs
+  it to wake herdr only when the socket file exists but refuses connections,
+  and for a `sessions/<name>` socket it also exports `HERDR_SESSION`, as for a
+  regular named session.
+
+An exit status of 126 or 127 from the launcher's `session list`, `plugin list`
+or attach is reported as a missing launcher, not as herdr missing from `PATH`.
+A failed wake keeps the original socket error.
 
 ## Bootstrap Key lifecycle
 
@@ -272,6 +358,8 @@ Valid vectors must decode to the given payload and (unless `decodeOnly`)
 re-encode to the exact code; invalid vectors must fail with the given error
 code (`bad_prefix`, `unsupported_version`, `bad_encoding`, `bad_payload` —
 these map to the "parse" step of the pairing failure taxonomy).
+`test-vectors/pairing-code-v2.json` has the same shape plus each endpoint's
+`socketPath` and `herdrPath`, and only the Swift tests read it.
 
 ## Notification envelope (v1)
 

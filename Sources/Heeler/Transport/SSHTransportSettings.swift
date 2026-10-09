@@ -76,6 +76,12 @@ struct SSHTransportSettings: Sendable {
     var hostKeyPolicy: HostKeyPolicy
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
+    /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0021).
+    /// When set, the session list, plugin list, and plugin config-dir
+    /// commands are its builders, and the wake and attach execs run it in
+    /// place of ``wakeCommand``, ``attachCommand``, and
+    /// ``terminalAttachCommand``. nil runs the `herdr` on the SSH PATH.
+    var herdrLauncher: HerdrLauncher? = nil
     /// Optional Jump Host. When set, the Transport authenticates against the
     /// jump host first and opens the Host connection through it, so the Host
     /// needs no inbound reachability of its own. nil is a direct connection.

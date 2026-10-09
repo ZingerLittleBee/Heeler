@@ -997,6 +997,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// the well-known install prefixes. The API socket can still work — that
     /// is why the Console may list Agents while Attach fails (#206).
     case herdrBinaryNotFound
+    /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0021)
+    /// could not run: exit 126 or 127, so it is missing, not executable, or
+    /// could not start herdr. Carries the launcher's path.
+    case herdrLauncherNotFound(path: String)
     /// libssh2 cannot distinguish a listening Unix socket rejected by SSH
     /// policy from a stale socket file. The Host needs either herdr started or
     /// stream-local forwarding enabled; presenting a narrower cause would be
@@ -1056,7 +1060,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
             .hostKeyRejected, .hostKeyMismatch,
-            .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
+            .socketNotFound, .herdrBinaryNotFound, .herdrLauncherNotFound,
+            .protocolVersionMismatch,
             .streamLocalOpenFailed, .gitTimedOut, .hostFeatureUnavailable,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,

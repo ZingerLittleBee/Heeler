@@ -57,8 +57,8 @@
       "error": "bad_prefix"
     },
     {
-      "name": "unsupported version 2",
-      "code": "HERDR-PAIR:2:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0",
+      "name": "unsupported version 3",
+      "code": "HERDR-PAIR:3:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0",
       "error": "unsupported_version"
     },
     {

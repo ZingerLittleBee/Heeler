@@ -3095,6 +3095,115 @@ struct TerminalAttachTests {
                 == .channelFailed(detail: "attach channel: remote exit status 23"))
     }
 
+    /// Today's full ordinary-terminal string, so the endpoint branch cannot
+    /// drift it.
+    @Test func terminalAttachWithoutAnEndpointKeepsItsFullString() throws {
+        let command = try HeelerSSHTransport.attachExecCommand(
+            agentAttachCommand: "herdr agent attach",
+            terminalAttachCommand: "herdr terminal attach",
+            request: TerminalAttachRequest(
+                target: .terminal("terminal-123"),
+                takeover: true,
+                cols: 80,
+                rows: 24),
+            socketPath: "/home/u/.config/herdr/sessions/dev/herdr.sock")
+
+        #expect(
+            command == "/bin/sh -c '\(HerdrHostPath.pathExport); "
+                + "export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
+                + "exec herdr terminal attach \"$1\" --takeover' attach "
+                + "'terminal-123' '/home/u/.config/herdr/sessions/dev/herdr.sock'")
+    }
+
+    private static let endpointSocketPath =
+        "/Users/ada/Library/Application Support/Example/herdr/herdr.sock"
+    private static let endpointLauncherPath =
+        "/Users/ada/Library/Application Support/Example/bin/herdr"
+
+    private func endpointLauncher() throws -> HerdrLauncher {
+        try #require(
+            HerdrLauncher(
+                executablePath: Self.endpointLauncherPath,
+                socketPath: Self.endpointSocketPath))
+    }
+
+    /// A herdr endpoint (ADR 0021) attaches through its own launcher: no PATH
+    /// export, the launcher is `$3`, and the injected command is ignored.
+    @Test func endpointAgentAttachRunsTheLauncher() throws {
+        let launcher = try endpointLauncher()
+        let command = try HeelerSSHTransport.attachExecCommand(
+            agentAttachCommand: "/bin/sh /tmp/fake-attach.sh",
+            terminalAttachCommand: "/bin/sh /tmp/fake-terminal.sh",
+            request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
+            socketPath: Self.endpointSocketPath,
+            launcher: launcher)
+
+        #expect(
+            command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
+                + "exec \"$3\" agent attach \"$1\"' attach 'w1:p1' "
+                + "'/Users/ada/Library/Application Support/Example/herdr/herdr.sock' "
+                + "'/Users/ada/Library/Application Support/Example/bin/herdr'")
+    }
+
+    @Test func endpointTerminalAttachRunsTheLauncherWithTakeover() throws {
+        let launcher = try endpointLauncher()
+        let command = try HeelerSSHTransport.attachExecCommand(
+            agentAttachCommand: "herdr agent attach",
+            terminalAttachCommand: "herdr terminal attach",
+            request: TerminalAttachRequest(
+                target: .terminal("terminal-123"),
+                takeover: true,
+                cols: 80,
+                rows: 24),
+            socketPath: Self.endpointSocketPath,
+            launcher: launcher)
+
+        #expect(
+            command == "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+                + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
+                + "exec \"$3\" terminal attach \"$1\" --takeover' attach 'terminal-123' "
+                + "'/Users/ada/Library/Application Support/Example/herdr/herdr.sock' "
+                + "'/Users/ada/Library/Application Support/Example/bin/herdr'")
+        #expect(!command.contains(HerdrHostPath.pathExport))
+    }
+
+    @Test func endpointAttachKeepsTheTargetAndSocketValidation() throws {
+        let launcher = try endpointLauncher()
+        for target in ["", "w1'p1", #"w1\p1"#, "w1\np1"] {
+            #expect(throws: TransportError.self) {
+                _ = try HeelerSSHTransport.attachExecCommand(
+                    attachCommand: "herdr agent attach",
+                    request: TerminalAttachRequest(target: target, cols: 80, rows: 24),
+                    socketPath: Self.endpointSocketPath,
+                    launcher: launcher)
+            }
+        }
+        #expect(throws: TransportError.self) {
+            _ = try HeelerSSHTransport.attachExecCommand(
+                attachCommand: "herdr agent attach",
+                request: TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24),
+                socketPath: "/tmp/it's/herdr/herdr.sock",
+                launcher: launcher)
+        }
+    }
+
+    @Test func endpointAttachExit126Or127IsAMissingLauncher() throws {
+        let launcher = try endpointLauncher()
+        for exitStatus: Int32 in [126, 127] {
+            #expect(
+                HeelerSSHTransport.attachChannelFailure(
+                    exitStatus: exitStatus, attachCommand: "herdr agent attach",
+                    launcher: launcher)
+                    == .herdrLauncherNotFound(path: Self.endpointLauncherPath))
+        }
+        #expect(
+            HeelerSSHTransport.attachChannelFailure(
+                exitStatus: 23, attachCommand: "herdr agent attach", launcher: launcher)
+                == .channelFailed(detail: "attach channel: remote exit status 23"))
+    }
+
     @Test func attachPumpsReportARemoteExitStatus() async throws {
         let channel = FakeAttachPTYChannel(reads: [nil], remoteExitStatus: 127)
         let input = TerminalAttachInputQueue()

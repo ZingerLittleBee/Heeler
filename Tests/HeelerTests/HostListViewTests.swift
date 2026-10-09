@@ -158,6 +158,36 @@ struct HostRowPresentationTests {
         #expect(row(.failed(.timedOut)).trailing == nil)
     }
 
+    /// An endpoint Host names its session from the endpoint's socket, the
+    /// same value Host detail shows; its default session adds nothing.
+    @Test func aConnectedEndpointHostNamesItsEndpointSession() throws {
+        let support = "/Users/ada/Library/Application Support/Example"
+        var named = host
+        named.herdrEndpoint = try #require(
+            HerdrEndpoint(
+                socketPath: "\(support)/herdr/sessions/work/herdr.sock",
+                executablePath: "\(support)/bin/herdr"))
+        var defaultSession = host
+        defaultSession.herdrEndpoint = try #require(
+            HerdrEndpoint(
+                socketPath: "\(support)/herdr/herdr.sock",
+                executablePath: "\(support)/bin/herdr"))
+        var sessionName = host
+        sessionName.sessionName = "work"
+
+        let address = "\(host.username)@\(host.address)"
+        for (candidate, detail) in [
+            (named, "\(address) · session work"),
+            (defaultSession, address),
+            (sessionName, "\(address) · session work"),
+        ] {
+            let presentation = HostRowPresentation(
+                host: candidate, status: .connected, standingFailure: nil,
+                latency: .milliseconds(148))
+            #expect(presentation.detail == detail)
+        }
+    }
+
     /// The Console calls this Host "Sync issue" in orange; its row must not
     /// read as a healthy green Connected.
     @Test func aConnectedHostThatCannotSyncWearsTheConsolesSyncIssueLook() {

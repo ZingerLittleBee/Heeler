@@ -92,6 +92,12 @@ extension TransportError {
                 detail: nil,
                 recoverySuggestion:
                     "Put herdr's install directory on the account's non-interactive SSH PATH.")
+        case .herdrLauncherNotFound(let path):
+            TransportErrorPresentation(
+                summary: "The herdr launcher could not run",
+                detail: path,
+                recoverySuggestion:
+                    "Open the app that provides herdr on this Host, or pair it again.")
         case .streamLocalOpenFailed:
             TransportErrorPresentation(
                 summary: "herdr is not running on this Host",
@@ -148,6 +154,17 @@ extension TransportError {
                 detail: detail,
                 recoverySuggestion: nil)
         }
+    }
+
+    /// `presentation` for a Host. An endpoint Host's socket comes from its
+    /// Pairing Code (ADR 0021): no session setting can bring a missing one
+    /// back, the app that provides herdr can.
+    func presentation(usesHerdrEndpoint: Bool) -> TransportErrorPresentation {
+        let shared: TransportErrorPresentation = presentation
+        guard usesHerdrEndpoint, case .socketNotFound = self else { return shared }
+        return TransportErrorPresentation(
+            summary: shared.summary, detail: shared.detail,
+            recoverySuggestion: "Open the app that provides herdr on this Host.")
     }
 
     /// A changed host key is a security refusal, not an ordinary outage.

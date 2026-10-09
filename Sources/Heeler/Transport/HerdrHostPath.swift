@@ -24,6 +24,9 @@ import Foundation
 ///   `herdr` or an agent probe lives inside that body. The default plugin
 ///   config-dir and agent-discovery commands use this form. Wrapping looks
 ///   only at the command word, so it cannot see an inner `herdr`.
+///
+/// A Host with a herdr endpoint uses neither for herdr: ``HerdrLauncher``
+/// commands name the launcher by absolute path and carry no PATH.
 enum HerdrHostPath: Sendable {
     /// Directories prepended to `PATH` on herdr CLI and Agent discovery
     /// execs. `$HOME` and the parameter expansions are evaluated by the
@@ -75,9 +78,17 @@ enum HerdrHostPath: Sendable {
 
     /// Exit 127 from a still-bare `herdr` is the PATH miss (#206). Any other
     /// status, or an injectable command, is left for the caller.
+    ///
+    /// With an endpoint `launcher` the command runs that launcher instead, so
+    /// exit 126 or 127 means it is missing, not executable, or could not start
+    /// herdr, whatever the command word.
     static func missingBinaryError(
-        exitStatus: Int32, command: String
+        exitStatus: Int32, command: String, launcher: HerdrLauncher? = nil
     ) -> TransportError? {
+        if let launcher {
+            guard exitStatus == 126 || exitStatus == 127 else { return nil }
+            return .herdrLauncherNotFound(path: launcher.executablePath)
+        }
         guard exitStatus == 127, isBareHerdrCommand(command) else { return nil }
         return .herdrBinaryNotFound
     }
@@ -101,5 +112,84 @@ enum HerdrHostPath: Sendable {
             character.isASCII
                 && (character.isLetter || character.isNumber || character == "_")
         }
+    }
+}
+
+/// The launcher of a Host's herdr endpoint (Pairing Code v2, ADR 0021): an
+/// executable that behaves as `herdr` for the endpoint's socket. Every herdr
+/// exec runs it as a positional argument of a POSIX `/bin/sh -c` body with
+/// `HERDR_SOCKET_PATH` exported, so neither path is spliced into shell
+/// syntax. There is no PATH export and no fallback to the `herdr` on PATH.
+struct HerdrLauncher: Sendable, Equatable {
+    /// The launcher's absolute path.
+    let executablePath: String
+    /// The endpoint's socket, exported to every launcher exec.
+    let socketPath: String
+    private let quotedExecutablePath: String
+    private let quotedSocketPath: String
+
+    /// nil unless both paths are absolute and quotable as one remote shell
+    /// word (`RemoteShellPath`).
+    init?(executablePath: String, socketPath: String) {
+        guard let quotedExecutablePath = RemoteShellPath.quotedAbsolute(executablePath),
+            let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath)
+        else { return nil }
+        self.executablePath = executablePath
+        self.socketPath = socketPath
+        self.quotedExecutablePath = quotedExecutablePath
+        self.quotedSocketPath = quotedSocketPath
+    }
+
+    /// The endpoint's `herdr session list --json`.
+    var sessionListCommand: String {
+        herdrCommand(arguments: "session list --json")
+    }
+
+    /// The endpoint's `herdr plugin list --json`.
+    var pluginListCommand: String {
+        herdrCommand(arguments: "plugin list --json")
+    }
+
+    /// The endpoint's counterpart to
+    /// `SSHTransportSettings.defaultNotificationConfigDirCommand`: the same
+    /// marker and plugin id token, with the launcher in place of `herdr`.
+    var notificationConfigDirCommand: String {
+        "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+            + "printf \"__HEELER_PLUGIN_CONFIG_DIR__=%s\\n\" "
+            + "\"$(\"$1\" plugin config-dir \(SSHTransportSettings.notificationPluginIDToken))\"' "
+            + "herdr \(quotedExecutablePath) \(quotedSocketPath)"
+    }
+
+    /// Starts or reaches the endpoint's server through
+    /// `remote-client-bridge`. `socket` is the already quoted socket the
+    /// request is waiting on (`$1`); the launcher is `$2`. A named-session
+    /// socket also exports its session (`$3`), as the regular named-session
+    /// wake does, so the spawned server uses that session's state.
+    func wakeCommand(quotedSocketPath socket: String) -> String {
+        // A non-empty name passed HerdrSessionName.isValid: one shell word.
+        let session = HerdrEndpoint.session(fromSocketPath: socketPath) ?? ""
+        let sessionExport = session.isEmpty ? "" : "export HERDR_SESSION=\"$3\"; "
+        let sessionArgument = session.isEmpty ? "" : " \(session)"
+        return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; \(sessionExport)"
+            + "\"$2\" remote-client-bridge < /dev/null' wake "
+            + "\(socket) \(quotedExecutablePath)\(sessionArgument)"
+    }
+
+    /// Attaches the already validated `target` (`$1`) with `subcommand`,
+    /// such as `agent attach`, over the already quoted `socket` (`$2`) with
+    /// the launcher (`$3`). The handshake marker goes out last before exec.
+    func attachCommand(
+        subcommand: String, target: String, takeover: Bool, quotedSocketPath socket: String
+    ) -> String {
+        let takeoverFlag = takeover ? " --takeover" : ""
+        return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; "
+            + "printf \"\(AttachBootstrapHandshake.markerPrintfFormat)\"; "
+            + "exec \"$3\" \(subcommand) \"$1\"\(takeoverFlag)' attach "
+            + "'\(target)' \(socket) \(quotedExecutablePath)"
+    }
+
+    private func herdrCommand(arguments: String) -> String {
+        "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$2\"; exec \"$1\" \(arguments)' "
+            + "herdr \(quotedExecutablePath) \(quotedSocketPath)"
     }
 }

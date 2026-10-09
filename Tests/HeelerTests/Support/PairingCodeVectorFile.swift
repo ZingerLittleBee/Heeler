@@ -1,9 +1,10 @@
 import Foundation
 
-/// The shared Pairing Code v1 vectors from `plugin/test-vectors/`, the single
+/// The shared Pairing Code vectors from `plugin/test-vectors/`, the single
 /// source of truth for the envelope across the Node plugin and this app
-/// (ADR 0007). The JSON file is bundled into the test target as a resource so
-/// the Swift tests exercise exactly the same cases as the Node tests.
+/// (ADR 0007). The JSON files are bundled into the test target as resources
+/// so the Swift tests exercise exactly the same cases as the Node tests;
+/// the v2 file (ADR 0021) is consumed by the Swift tests only.
 struct PairingCodeVectorFile: Decodable, Sendable {
     let valid: [Valid]
     let invalid: [Invalid]
@@ -23,6 +24,11 @@ struct PairingCodeVectorFile: Decodable, Sendable {
         /// Raw 32-byte Bootstrap Key seed as unpadded base64url (wire encoding).
         let bootstrapSeed: String?
         let expiresAt: Int?
+        /// The Herdr Endpoint's socket (`sock`); absent when the code must
+        /// decode without an endpoint.
+        let socketPath: String?
+        /// The Herdr Endpoint's launcher (`herdr`), present with `socketPath`.
+        let herdrPath: String?
     }
 
     struct Invalid: Decodable, Sendable, CustomStringConvertible {
@@ -33,19 +39,24 @@ struct PairingCodeVectorFile: Decodable, Sendable {
         var description: String { name }
     }
 
-    static let shared: PairingCodeVectorFile = {
+    /// `pairing-code-v1.json`, shared with the Node plugin tests.
+    static let shared: PairingCodeVectorFile = load("pairing-code-v1")
+    /// `pairing-code-v2.json`: version 2 codes, which only the app decodes.
+    static let v2: PairingCodeVectorFile = load("pairing-code-v2")
+
+    private static func load(_ resource: String) -> PairingCodeVectorFile {
         guard
             let url = Bundle(for: BundleLocator.self)
-                .url(forResource: "pairing-code-v1", withExtension: "json")
+                .url(forResource: resource, withExtension: "json")
         else {
-            fatalError("pairing-code-v1.json is missing from the test bundle")
+            fatalError("\(resource).json is missing from the test bundle")
         }
         do {
             return try JSONDecoder().decode(PairingCodeVectorFile.self, from: Data(contentsOf: url))
         } catch {
-            fatalError("shared pairing vectors failed to load: \(error)")
+            fatalError("shared pairing vectors \(resource).json failed to load: \(error)")
         }
-    }()
+    }
 
     private final class BundleLocator {}
 }

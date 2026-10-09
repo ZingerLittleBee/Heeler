@@ -53,6 +53,7 @@ struct HostOnboardingView: View {
             Section {
                 LabeledContent("Address", value: addressLine)
                 LabeledContent("Session", value: sessionLine)
+                herdrEndpointRows
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
@@ -260,10 +261,22 @@ struct HostOnboardingView: View {
     }
 
     private var sessionLine: String {
+        if let herdrEndpoint = store.host.herdrEndpoint {
+            return herdrEndpoint.session.isEmpty ? "default" : herdrEndpoint.session
+        }
         if case .namedSession(let name) = store.host.socketLocation {
             return name
         }
         return "default"
+    }
+
+    /// Where a Pairing Code v2 Host's herdr lives; nothing for other Hosts.
+    @ViewBuilder
+    private var herdrEndpointRows: some View {
+        if let herdrEndpoint = store.host.herdrEndpoint {
+            LabeledContent("herdr Socket", value: herdrEndpoint.socketPath)
+            LabeledContent("herdr Launcher", value: herdrEndpoint.executablePath)
+        }
     }
 
     private func retry() {
@@ -278,7 +291,8 @@ struct HostOnboardingView: View {
             status: connectionStatus,
             standingFailure: standingFailure,
             syncIssue: syncIssue,
-            isManualReconnectInFlight: isManualReconnectInFlight)
+            isManualReconnectInFlight: isManualReconnectInFlight,
+            usesHerdrEndpoint: store.host.herdrEndpoint != nil)
     }
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {
@@ -393,15 +407,18 @@ struct HostOnboardingConnectionPresentation: Equatable {
         status: EventsSessionStatus?,
         standingFailure: TransportError? = nil,
         syncIssue: String? = nil,
-        isManualReconnectInFlight: Bool
+        isManualReconnectInFlight: Bool,
+        usesHerdrEndpoint: Bool = false
     ) {
         switch status {
         case .connecting:
-            connectionErrorMessage = standingFailure?.presentation.message
+            connectionErrorMessage = standingFailure?.presentation(
+                usesHerdrEndpoint: usesHerdrEndpoint).message
         case .reconnecting(_, _, let failure):
             connectionErrorMessage = failure.presentation.explanation
         case .failed(let failure):
-            connectionErrorMessage = failure.presentation.message
+            connectionErrorMessage = failure.presentation(
+                usesHerdrEndpoint: usesHerdrEndpoint).message
         case .connected:
             connectionErrorMessage = syncIssue
         case .suspended, .ended, nil:

@@ -43,6 +43,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         hostID = host.id
         hostName = host.displayName
         isConnected = if case .connected = status { true } else { false }
+        let usesHerdrEndpoint = host.herdrEndpoint != nil
         // What follows a "studio: " prefix, where the message has one.
         var unprefixed: String?
         switch status {
@@ -55,8 +56,10 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         case .connecting:
             if let standingFailure {
                 (message, systemImage, severity, navigates) = Self.failed(
-                    standingFailure, hostName: host.displayName)
-                unprefixed = standingFailure.presentation.message
+                    standingFailure, hostName: host.displayName,
+                    usesHerdrEndpoint: usesHerdrEndpoint)
+                unprefixed = standingFailure.presentation(
+                    usesHerdrEndpoint: usesHerdrEndpoint).message
                 (tone, self.status) = Self.cannotConnect
             } else {
                 message = "Connecting to \(host.displayName)…"
@@ -73,8 +76,8 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
             (tone, self.status) = (.reconnecting, "Reconnecting…")
         case .failed(let failure):
             (message, systemImage, severity, navigates) = Self.failed(
-                failure, hostName: host.displayName)
-            unprefixed = failure.presentation.message
+                failure, hostName: host.displayName, usesHerdrEndpoint: usesHerdrEndpoint)
+            unprefixed = failure.presentation(usesHerdrEndpoint: usesHerdrEndpoint).message
             (tone, self.status) = Self.cannotConnect
         case .connected:
             if let syncError {
@@ -108,10 +111,10 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     private static let syncIssue: (HostConnectionTone, String) = (.warning, "Sync issue")
 
     private static func failed(
-        _ failure: TransportError, hostName: String
+        _ failure: TransportError, hostName: String, usesHerdrEndpoint: Bool
     ) -> (String, String, Severity, Bool) {
         (
-            "\(hostName): \(failure.presentation.message)",
+            "\(hostName): \(failure.presentation(usesHerdrEndpoint: usesHerdrEndpoint).message)",
             failure.isHostKeySecurityFailure
                 ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
             failure.isHostKeySecurityFailure ? .critical : .warning,

@@ -291,10 +291,15 @@ struct NotificationRegistrationCeremony: Sendable {
 
 extension Host {
     /// The herdr session value a registration entry carries for this Host:
-    /// "" for the default session, otherwise the session name. A fixed
-    /// socket path (test fixtures only) counts as the default session.
+    /// "" for the default session, otherwise the session name. An endpoint
+    /// Host carries the session its socket names, as its hooks derive it
+    /// (ADR 0021); any other fixed socket path (test fixtures only) counts as
+    /// the default session.
     var notificationSession: String {
-        switch socketLocation {
+        if let herdrEndpoint {
+            return herdrEndpoint.session
+        }
+        return switch socketLocation {
         case .defaultSession, .absolutePath: ""
         case .namedSession(let name): name
         }

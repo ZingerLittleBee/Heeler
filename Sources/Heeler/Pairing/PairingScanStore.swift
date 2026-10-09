@@ -154,10 +154,11 @@ final class PairingScanStore {
 
         // Only a fully verified ceremony creates a Host (ADR 0007). The
         // fingerprint pin lands with it, against the address that actually
-        // answered, so preflight connects without a TOFU prompt.
+        // answered, so preflight connects without a TOFU prompt. The ceremony
+        // result carries no Herdr Endpoint; it comes from the scanned code.
         let host = Host(
             address: result.address, port: result.port, username: result.username,
-            authMethod: .deviceKey)
+            authMethod: .deviceKey, herdrEndpoint: code.endpoint)
         do {
             try catalog.add(host)
         } catch {
@@ -278,7 +279,7 @@ final class PairingScanStore {
             "That QR code is not a herdr Pairing Code."
         case .unsupportedVersion(let found):
             "This Pairing Code uses version \(found), which this app does not "
-                + "understand. Update the app and the pairing plugin so they match."
+                + "understand. Update Heeler, then scan it again."
         case .badEncoding, .badPayload:
             "The Pairing Code could not be read. Regenerate it in herdr and scan again."
         }
@@ -286,11 +287,11 @@ final class PairingScanStore {
 }
 
 extension PairingCode {
-    /// The same Host coordinates without the Bootstrap Key: what a retry
-    /// needs once Enrollment has already landed on the Host.
+    /// The same Host coordinates and Herdr Endpoint without the Bootstrap
+    /// Key: what a retry needs once Enrollment has already landed on the Host.
     fileprivate var withoutBootstrap: PairingCode {
         PairingCode(
             addresses: addresses, port: port, username: username,
-            hostKeyFingerprint: hostKeyFingerprint, bootstrap: nil)
+            hostKeyFingerprint: hostKeyFingerprint, bootstrap: nil, endpoint: endpoint)
     }
 }
