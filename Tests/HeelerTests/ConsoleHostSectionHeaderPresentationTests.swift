@@ -301,6 +301,26 @@ struct HostConnectionDetailPresentationTests {
         #expect(retrying.isDialing)
     }
 
+    /// A stopped endpoint Host points at the app that provides herdr, in the
+    /// sheet and in the Console's status line.
+    @Test func aStoppedEndpointHostIsToldToOpenTheProvidingApp() throws {
+        var endpointHost = host
+        endpointHost.herdrEndpoint = try #require(
+            HerdrEndpoint(
+                socketPath: "/opt/example/herdr/herdr.sock",
+                executablePath: "/opt/example/bin/herdr"))
+        let failure = TransportError.socketNotFound(path: "/opt/example/herdr/herdr.sock")
+
+        let detail = try #require(
+            HostConnectionDetailPresentation(
+                host: endpointHost, status: .failed(failure), standingFailure: nil))
+        #expect(detail.recoverySuggestion == "Open the app that provides herdr on this Host.")
+        let status = try #require(
+            ConsoleHostStatusPresentation(
+                host: endpointHost, status: .failed(failure), syncError: nil))
+        #expect(status.message.hasSuffix("Open the app that provides herdr on this Host."))
+    }
+
     /// A reconnecting Host's Retry Now dials with no standing failure; the
     /// sheet's remembered failure is what keeps it showing the attempt.
     @Test func theSheetsOwnRetryKeepsItOpenWhileDialing() throws {

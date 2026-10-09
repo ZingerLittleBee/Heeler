@@ -100,6 +100,31 @@ struct WakeCommandTests {
                 + "'/Users/ada/Library/Application Support/Example/bin/herdr'")
     }
 
+    /// A named-session endpoint socket scopes the woken server to that
+    /// session, like the regular named-session wake.
+    @Test func namedSessionEndpointWakeExportsItsSession() throws {
+        let socketPath =
+            "/Users/ada/Library/Application Support/Example/herdr/sessions/work/herdr.sock"
+        let launcher = try #require(
+            HerdrLauncher(
+                executablePath: "/Users/ada/Library/Application Support/Example/bin/herdr",
+                socketPath: socketPath))
+
+        let command = try HeelerSSHTransport.wakeExecCommand(
+            wakeCommand: SSHTransportSettings.defaultWakeCommand,
+            socketPath: socketPath,
+            socketLocation: .absolutePath(socketPath),
+            launcher: launcher)
+
+        #expect(
+            command
+                == #"LC_ALL=C /bin/sh -c 'export HERDR_SOCKET_PATH="$1"; "#
+                + #"export HERDR_SESSION="$3"; "#
+                + #""$2" remote-client-bridge < /dev/null' wake "#
+                + "'/Users/ada/Library/Application Support/Example/herdr/sessions/work/herdr.sock' "
+                + "'/Users/ada/Library/Application Support/Example/bin/herdr' work")
+    }
+
     @Test func endpointLauncherWakeStillRefusesAnUnquotableSocketPath() throws {
         let launcher = try #require(
             HerdrLauncher(

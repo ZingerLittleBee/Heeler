@@ -61,7 +61,7 @@ struct HostConnectionDetailPresentation: Equatable {
         if host.port != 22 { address += ":\(host.port)" }
         self.address = address
         self.failure = failure
-        let presentation = failure.presentation
+        let presentation = failure.presentation(usesHerdrEndpoint: host.herdrEndpoint != nil)
         summary = presentation.summary
         detail = presentation.detail
         let isStopped = if case .failed = status { true } else { false }

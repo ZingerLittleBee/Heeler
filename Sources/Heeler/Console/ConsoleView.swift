@@ -2085,7 +2085,9 @@ struct MissingAgentPresentation: Equatable {
         hostsAwaitingSnapshot: Set<Host.ID> = [],
         hostStandingFailures: [Host.ID: TransportError] = [:]
     ) {
-        let hostName = hosts.first { $0.id == agentID.hostID }?.displayName
+        let host = hosts.first { $0.id == agentID.hostID }
+        let hostName = host?.displayName
+        let usesHerdrEndpoint = host?.herdrEndpoint != nil
         func named(_ text: String) -> String {
             hostName.map { "\($0): \(text)" } ?? text
         }
@@ -2097,7 +2099,7 @@ struct MissingAgentPresentation: Equatable {
                 "Host Unavailable",
                 failure.isHostKeySecurityFailure
                     ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill",
-                named(failure.presentation.message)
+                named(failure.presentation(usesHerdrEndpoint: usesHerdrEndpoint).message)
             )
         }
         let hostStatus = hostStatuses[agentID.hostID]

@@ -49,6 +49,11 @@ A Host without an endpoint behaves exactly as before.
 
 - v2 is decoded by the app only; the Node plugin keeps emitting and decoding
   v1. The wire contract and the launcher contract live in `plugin/README.md`.
+- A code that names a launcher but carries no Bootstrap Key waits for the
+  user to tap Pair. Anyone who knows the Host's public key and the user's
+  name can write one, and pairing runs its launcher as that user. A Bootstrap
+  Key code needs no such step: its key works only once its line is in that
+  account's authorized_keys.
 - Endpoints are POSIX-only. A native Windows Host with an endpoint fails with
   explicit copy instead of reaching `herdr.exe` or a folder-path error.
 - Preflight cannot discover sessions for an endpoint Host. It runs the

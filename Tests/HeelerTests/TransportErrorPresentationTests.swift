@@ -289,6 +289,19 @@ struct TransportErrorPresentationTests {
                 == "The herdr socket was not found: /tmp/herdr.sock. Check this Host's session.")
     }
 
+    /// An endpoint Host has no session to fix (ADR 0021). Every other error,
+    /// and every Host without an endpoint, keeps the shared copy.
+    @Test func endpointHostsAreToldToOpenTheProvidingApp() {
+        let missing = TransportError.socketNotFound(path: "/tmp/herdr/herdr.sock")
+        #expect(
+            missing.presentation(usesHerdrEndpoint: true).message
+                == "The herdr socket was not found: /tmp/herdr/herdr.sock. "
+                + "Open the app that provides herdr on this Host.")
+        #expect(missing.presentation(usesHerdrEndpoint: false) == missing.presentation)
+        let mismatch = TransportError.protocolVersionMismatch(server: 16, supported: 17)
+        #expect(mismatch.presentation(usesHerdrEndpoint: true) == mismatch.presentation)
+    }
+
     @Test func missingHerdrLauncherNamesItsPathAndTheProvidingApp() {
         let failure = TransportError.herdrLauncherNotFound(
             path: "/Users/ada/Library/Application Support/Example/bin/herdr")

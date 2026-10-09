@@ -156,6 +156,17 @@ extension TransportError {
         }
     }
 
+    /// `presentation` for a Host. An endpoint Host's socket comes from its
+    /// Pairing Code (ADR 0021): no session setting can bring a missing one
+    /// back, the app that provides herdr can.
+    func presentation(usesHerdrEndpoint: Bool) -> TransportErrorPresentation {
+        guard usesHerdrEndpoint, case .socketNotFound(let path) = self else { return presentation }
+        return TransportErrorPresentation(
+            summary: "The herdr socket was not found",
+            detail: path,
+            recoverySuggestion: "Open the app that provides herdr on this Host.")
+    }
+
     /// A changed host key is a security refusal, not an ordinary outage.
     /// Nested first-hop failures keep that classification: a Jump Host key
     /// change is still a host-key refusal.

@@ -291,7 +291,8 @@ struct HostOnboardingView: View {
             status: connectionStatus,
             standingFailure: standingFailure,
             syncIssue: syncIssue,
-            isManualReconnectInFlight: isManualReconnectInFlight)
+            isManualReconnectInFlight: isManualReconnectInFlight,
+            usesHerdrEndpoint: store.host.herdrEndpoint != nil)
     }
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {
@@ -406,15 +407,18 @@ struct HostOnboardingConnectionPresentation: Equatable {
         status: EventsSessionStatus?,
         standingFailure: TransportError? = nil,
         syncIssue: String? = nil,
-        isManualReconnectInFlight: Bool
+        isManualReconnectInFlight: Bool,
+        usesHerdrEndpoint: Bool = false
     ) {
         switch status {
         case .connecting:
-            connectionErrorMessage = standingFailure?.presentation.message
+            connectionErrorMessage = standingFailure?.presentation(
+                usesHerdrEndpoint: usesHerdrEndpoint).message
         case .reconnecting(_, _, let failure):
             connectionErrorMessage = failure.presentation.explanation
         case .failed(let failure):
-            connectionErrorMessage = failure.presentation.message
+            connectionErrorMessage = failure.presentation(
+                usesHerdrEndpoint: usesHerdrEndpoint).message
         case .connected:
             connectionErrorMessage = syncIssue
         case .suspended, .ended, nil:

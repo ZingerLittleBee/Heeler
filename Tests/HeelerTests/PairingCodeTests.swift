@@ -74,6 +74,19 @@ struct PairingCodeTests {
         #expect(decodeError(v2Code) == v1Error)
     }
 
+    /// Only a code that names a launcher without a Bootstrap Key waits for
+    /// the user before pairing (ADR 0021).
+    @Test func onlyEndpointCodesWithoutABootstrapKeyNeedConfirmation() throws {
+        var waiting = 0
+        for vector in Self.vectors.valid + Self.v2Vectors.valid {
+            let code = try PairingCode.decode(vector.code)
+            let expected = vector.payload.socketPath != nil && vector.payload.bootstrapSeed == nil
+            #expect(code.needsConfirmation == expected, "\(vector.name)")
+            if expected { waiting += 1 }
+        }
+        #expect(waiting > 0)
+    }
+
     /// Checks a decoded code against a vector payload, including its Herdr
     /// Endpoint: none when the payload names no socket.
     private func expectDecoded(
