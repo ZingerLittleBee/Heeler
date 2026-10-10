@@ -104,6 +104,7 @@ test-tools: check-agent-docs check-test-membership ## Test agent tooling without
 	python3 scripts/test-run-app-simulator-tests.py
 	python3 scripts/test-simulator-ui.py
 	python3 scripts/test-isolated-herdr-backend.py
+	sh scripts/test-source-revision.sh
 	$(MAKE) test-ci-evidence
 	$(MAKE) test-weak-network-proxy
 	$(MAKE) test-ci-diagnostic-controls
@@ -194,9 +195,11 @@ sim-id: build-sim ## Install and launch the app on SIMULATOR_UDID only
 	xcrun simctl launch --terminate-running-process '$(SIMULATOR_UDID)' $(APP_ID)
 
 archive: generate ## Archive a Release build for distribution
+	@# HEELER_SOURCE_REVISION names the commit in About › Acknowledgements;
+	@# empty unless HEAD is pushed and only the build number is uncommitted.
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
 		-destination 'generic/platform=iOS' -archivePath $(ARCHIVE) \
-		-allowProvisioningUpdates archive
+		-allowProvisioningUpdates HEELER_SOURCE_REVISION=$$(scripts/source-revision.sh) archive
 
 upload: ## Upload the existing archive to App Store Connect (TestFlight)
 	xcodebuild -exportArchive -archivePath $(ARCHIVE) \

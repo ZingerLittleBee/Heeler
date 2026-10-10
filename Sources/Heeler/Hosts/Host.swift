@@ -32,6 +32,11 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// Account on the Jump Host. Blank reuses `username`, which is the common
     /// case only when both machines share an account name.
     var jumpUsername: String
+    /// Optional Overlay Network carrying the first hop — this Host, or its
+    /// Jump Host when one is set (ADR 0021). nil dials over the device's own
+    /// network. With an overlay, the first hop's address is its overlay IP or
+    /// name (MagicDNS, for Tailscale).
+    var overlayNetworkID: UUID?
 
     /// `socatPath` is deliberately absent: Hosts serialized before ADR 0011
     /// still carry it on disk, and leaving it out of the keys both ignores it
@@ -39,6 +44,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, name, address, port, username, authMethod, sessionName
         case jumpAddress, jumpPort, jumpUsername
+        case overlayNetworkID
     }
 
     /// Whether this Host is reached through a Jump Host.
@@ -62,7 +68,8 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         sessionName: String = "",
         jumpAddress: String = "",
         jumpPort: Int = 22,
-        jumpUsername: String = ""
+        jumpUsername: String = "",
+        overlayNetworkID: UUID? = nil
     ) {
         self.id = id
         self.name = name
@@ -74,6 +81,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.jumpAddress = jumpAddress
         self.jumpPort = jumpPort
         self.jumpUsername = jumpUsername
+        self.overlayNetworkID = overlayNetworkID
     }
 
     init(from decoder: any Decoder) throws {
@@ -97,6 +105,8 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         jumpAddress = try container.decodeIfPresent(String.self, forKey: .jumpAddress) ?? ""
         jumpPort = try container.decodeIfPresent(Int.self, forKey: .jumpPort) ?? 22
         jumpUsername = try container.decodeIfPresent(String.self, forKey: .jumpUsername) ?? ""
+        // Absent in Hosts saved before Overlay Networks: a direct connection.
+        overlayNetworkID = try container.decodeIfPresent(UUID.self, forKey: .overlayNetworkID)
 
         let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
         guard trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName) else {

@@ -15,6 +15,9 @@ struct HostOnboardingView: View {
     /// `EventsSessionStatus.reconnecting`.
     let isManualReconnectInFlight: Bool
     let retryConnection: (@MainActor @Sendable () async -> Void)?
+    /// Stops the Console's attempt to connect this Host; nil where the
+    /// Host detail does not offer it.
+    let stopConnecting: (@MainActor @Sendable () async -> Void)?
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
     @State private var isConfirmingHostKeyReplacement = false
@@ -23,6 +26,7 @@ struct HostOnboardingView: View {
     /// connection once (see `HostOnboardingConsoleRecovery`).
     @State private var isConsoleRecoveryArmed = false
     @State private var isShowingPluginNotice = false
+    @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     init(
         host: Host,
@@ -32,6 +36,7 @@ struct HostOnboardingView: View {
         syncIssue: String? = nil,
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil,
+        stopConnecting: (@MainActor @Sendable () async -> Void)? = nil,
         dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
         self.catalog = catalog
@@ -40,6 +45,7 @@ struct HostOnboardingView: View {
         self.syncIssue = syncIssue
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
+        self.stopConnecting = stopConnecting
         _store = State(
             initialValue: HostOnboardingStore(
                 host: host,
@@ -57,6 +63,12 @@ struct HostOnboardingView: View {
                     "Auth",
                     value: authenticationLabel)
                 pluginRow
+                if let networkID = store.host.overlayNetworkID {
+                    LabeledContent(
+                        "Network",
+                        value: overlayNetworks?.network(id: networkID)?.displayName
+                            ?? "Unavailable overlay network")
+                }
             }
 
             if retryConnection != nil {
@@ -77,6 +89,16 @@ struct HostOnboardingView: View {
                         .animation(.smooth(duration: 0.25), value: isManualReconnectInFlight)
                     }
                     .disabled(isManualReconnectInFlight)
+                    if isAttemptingConnection, let stopConnecting {
+                        Button(role: .cancel) {
+                            Task { await stopConnecting() }
+                        } label: {
+                            Label("Stop Connecting", systemImage: "xmark.circle")
+                        }
+                        .accessibilityHint(
+                            "Stops trying to connect without waiting for a timeout. "
+                                + "The Host stays paused until you reconnect.")
+                    }
                 } footer: {
                     if let footerMessage = connectionPresentation.footerMessage {
                         Group {
@@ -129,14 +151,7 @@ struct HostOnboardingView: View {
 
             availableSessionsSection
 
-            Section {
-                Button {
-                    Task { await store.runChecks() }
-                } label: {
-                    Label("Run Checks Again", systemImage: "arrow.clockwise")
-                }
-                .disabled(store.phase == .running)
-            }
+            checksActionSections
 
             if store.pendingHostKeyReplacement != nil {
                 Section {
@@ -266,6 +281,14 @@ struct HostOnboardingView: View {
         return "default"
     }
 
+    /// The Console is dialing this Host, or between automatic retries.
+    private var isAttemptingConnection: Bool {
+        switch connectionStatus {
+        case .connecting, .reconnecting: true
+        default: false
+        }
+    }
+
     private func retry() {
         guard !isManualReconnectInFlight, let retryConnection else { return }
         Task { @MainActor in
@@ -283,6 +306,39 @@ struct HostOnboardingView: View {
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {
         store.report?[check]
+    }
+
+    /// Run Checks Again (Cancel Checks while running) and the overlay
+    /// sign-in link. Out of `body`, which stays under Xcode 26.6's
+    /// type-checking limit.
+    @ViewBuilder
+    private var checksActionSections: some View {
+        Section {
+            if store.phase == .running {
+                Button(role: .cancel) {
+                    store.cancelChecks()
+                } label: {
+                    Label("Cancel Checks", systemImage: "xmark.circle")
+                }
+                .accessibilityHint("Stops connecting without waiting for the timeout")
+            } else {
+                Button {
+                    Task { await store.runChecks() }
+                } label: {
+                    Label("Run Checks Again", systemImage: "arrow.clockwise")
+                }
+            }
+        }
+
+        if let loginURL = store.overlayLoginURL {
+            Section {
+                Link(destination: loginURL) {
+                    Label("Open Sign-In Link", systemImage: "person.badge.key")
+                }
+            } footer: {
+                Text("Sign in to the overlay network in the browser, then run the checks again.")
+            }
+        }
     }
 
     private var pluginPresentation: HeelerPluginPresentation {

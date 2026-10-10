@@ -25,6 +25,9 @@ final class HeelerAppModel {
     let sceneDirectory: AgentSceneDirectory
     let hostStore: HostStore
     let console: ConsoleStore
+    /// Overlay Networks and their shared runtime (ADR 0021). The Console's
+    /// session factory and Host onboarding reach the same runtime.
+    let overlayNetworks: OverlayNetworkStore
     let notificationPreferences: NotificationPreferencesStore
     let terminalThemes: TerminalThemeSettings
     let terminalZoom: TerminalZoomSettings
@@ -52,12 +55,14 @@ final class HeelerAppModel {
         sceneDirectory: AgentSceneDirectory,
         hostStore: HostStore = HostStore(),
         console: ConsoleStore = ConsoleStore(),
+        overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator()
     ) {
         self.pushRegistration = pushRegistration
         self.sceneDirectory = sceneDirectory
         self.hostStore = hostStore
         self.console = console
+        self.overlayNetworks = overlayNetworks
         self.activity = activity
         terminalThemes = TerminalThemeSettings()
         terminalZoom = TerminalZoomSettings()
@@ -158,8 +163,17 @@ final class HeelerAppModel {
         // background and rendering nothing, and a consumer that only compares
         // the value it last saw misses both that edge and the resume behind
         // it (#142). The stream has one consumer for the life of the process.
+        // Overlay nodes stop with the connections they carried. After the
+        // Console resumes, pending browser sign-ins also resume, even when
+        // no Host has been added to bring their nodes back up with a dial.
+        let overlayNetworks = overlayNetworks
         Task {
-            await ConsoleActivityDriver(activity: activity, console: console).run()
+            await ConsoleActivityDriver(
+                activity: activity,
+                console: console,
+                afterSuspend: { await overlayNetworks.suspend() },
+                afterResume: { await overlayNetworks.resumeBrowserSignInAfterActivation() }
+            ).run()
         }
         Task { await pushRegistration.refresh() }
         // Existing installs' Notification Keys predate the app-group

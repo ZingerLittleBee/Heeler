@@ -29,6 +29,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>HeelerSourceRevision</key>
+	<string>$(HEELER_SOURCE_REVISION)</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>dev.bybee.heeler.agent</string>

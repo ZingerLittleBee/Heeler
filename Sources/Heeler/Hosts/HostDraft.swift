@@ -18,6 +18,9 @@ struct HostDraft: Equatable, Sendable {
     var jumpPort = "22"
     /// Blank reuses the Host's own username.
     var jumpUsername = ""
+    /// nil connects directly; otherwise the Overlay Network carrying the
+    /// first hop.
+    var overlayNetworkID: UUID?
 
     init() {}
 
@@ -32,6 +35,7 @@ struct HostDraft: Equatable, Sendable {
         jumpAddress = host.jumpAddress
         jumpPort = String(host.jumpPort)
         jumpUsername = host.jumpUsername
+        overlayNetworkID = host.overlayNetworkID
     }
 
     /// Prefill for adding a copy of `host`: every field Edit prefills, the
@@ -128,7 +132,8 @@ struct HostDraft: Equatable, Sendable {
             sessionName: sessionName.trimmingCharacters(in: .whitespaces),
             jumpAddress: jumpAddress.trimmingCharacters(in: .whitespaces),
             jumpPort: jumpPortNumber ?? 22,
-            jumpUsername: jumpUsername.trimmingCharacters(in: .whitespaces))
+            jumpUsername: jumpUsername.trimmingCharacters(in: .whitespaces),
+            overlayNetworkID: overlayNetworkID)
     }
 
     /// What to hand `HostStore.add/update` as the password argument: a new

@@ -83,6 +83,8 @@ struct HostListView: View {
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
     private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
+    /// Stops a Host's connection attempt instead of waiting for its timeout.
+    private let stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)?
     /// Where `initialHostID` was opened from. Its detail's back button goes
     /// back there instead of to this list.
     private let origin: HostListOrigin?
@@ -120,6 +122,7 @@ struct HostListView: View {
         syncIssues: [Host.ID: String] = [:],
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
+        stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         origin: HostListOrigin? = nil,
         onDone: (@MainActor () -> Void)? = nil
     ) {
@@ -132,6 +135,7 @@ struct HostListView: View {
         self.syncIssues = syncIssues
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
+        self.stopConnecting = stopConnecting
         self.origin = origin
         self.onDone = onDone
         // On the stack from the first frame, so the requested detail never
@@ -217,6 +221,7 @@ struct HostListView: View {
                         syncIssue: syncIssues[id],
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id),
+                        stopConnecting: stopAction(for: id),
                         dependencies: onboardingDependencies)
                         .id(host)
                         .modifier(ReturnToOrigin(origin: route.isRequested ? origin : nil))
@@ -430,6 +435,13 @@ struct HostListView: View {
     ) -> (@MainActor @Sendable () async -> Void)? {
         guard let retryConnection else { return nil }
         return { await retryConnection(id) }
+    }
+
+    private func stopAction(
+        for id: Host.ID
+    ) -> (@MainActor @Sendable () async -> Void)? {
+        guard let stopConnecting else { return nil }
+        return { await stopConnecting(id) }
     }
 }
 

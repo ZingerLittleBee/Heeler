@@ -1,5 +1,6 @@
 import Foundation
 import Synchronization
+import HeelerOverlay
 import HeelerSSH
 
 private struct HeelerSSHSessionListResponse: Decodable {
@@ -392,7 +393,8 @@ actor HeelerSSHTransport: Transport {
                     username: settings.username,
                     credentials: settings.credentials,
                     policy: settings.hostKeyPolicy,
-                    timeout: settings.requestTimeout)
+                    timeout: settings.requestTimeout,
+                    overlay: settings.overlay)
             } catch {
                 // Every other hop maps before it throws; the direct hop must
                 // too, or a raw SSHError escapes the TransportError taxonomy
@@ -412,9 +414,14 @@ actor HeelerSSHTransport: Transport {
                 username: jump.username,
                 credentials: jump.credentials,
                 policy: settings.hostKeyPolicy,
-                timeout: settings.requestTimeout)
+                timeout: settings.requestTimeout,
+                overlay: settings.overlay)
         } catch {
-            throw TransportError.jumpHostFailed(mapConnect(error))
+            let mapped = mapConnect(error)
+            // The overlay sits in front of the Jump Host: blaming the Jump
+            // Host for it would send the user to the wrong machine.
+            if case .overlayFailed = mapped { throw mapped }
+            throw TransportError.jumpHostFailed(mapped)
         }
 
         let targetConnection: SSHConnection
@@ -498,9 +505,11 @@ actor HeelerSSHTransport: Transport {
         username: String,
         credentials: SSHCredentials,
         policy: HostKeyPolicy,
-        timeout: Duration
+        timeout: Duration,
+        overlay: OverlayRoute?
     ) async throws -> SSHConnection {
-        let connection = try await SSHConnection.connect(to: endpoint, timeout: timeout)
+        let connection = try await openConnection(
+            to: endpoint, timeout: timeout, overlay: overlay)
         do {
             try await HeelerSSHHostKeyVerifier(
                 host: endpoint.host,
@@ -516,6 +525,29 @@ actor HeelerSSHTransport: Transport {
         } catch {
             try? await connection.close(timeout: .seconds(2))
             throw error
+        }
+    }
+
+    /// The SSH handshake over this device's own network, or over the
+    /// Overlay Network when one carries this hop (ADR 0021). Only the byte
+    /// stream differs: the caller verifies and authenticates either alike.
+    private static func openConnection(
+        to endpoint: SSHEndpoint,
+        timeout: Duration,
+        overlay: OverlayRoute?
+    ) async throws -> SSHConnection {
+        guard let overlay else {
+            return try await SSHConnection.connect(to: endpoint, timeout: timeout)
+        }
+        return try await SSHConnection.connect(
+            to: endpoint,
+            timeout: timeout,
+            transportLabel: "overlay \(overlay.networkName)"
+        ) { remaining in
+            // Each handshake attempt dials a fresh stream; the package hands
+            // the descriptor to libssh2 and calls `release` once it is done.
+            let dialed = try await overlay.dial(endpoint.host, endpoint.port, remaining)
+            return try SSHExternalStream(descriptor: dialed.descriptor, release: dialed.release)
         }
     }
 

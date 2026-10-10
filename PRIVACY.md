@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: September 29, 2026._
+_Last updated: October 10, 2026._
 
 Heeler is a native iOS console for [herdr](https://herdr.dev). It connects to
 machines you control ("Hosts") over SSH. Heeler has no user accounts,
@@ -9,6 +9,8 @@ prompts, files, and live agent sessions do not pass through a service operated
 by Heeler's developer.
 
 Agent Notifications use the limited-purpose Push Relay described below.
+Optional Overlay Networks use the Tailscale, ZeroTier, or EasyTier services
+you choose, as described below.
 
 ## Data stored on your device and Hosts
 
@@ -26,8 +28,9 @@ Agent Notifications use the limited-purpose Push Relay described below.
 - **Host list and settings.** Your Hosts and Heeler settings are stored locally.
   Each Host stores its own notification registration and delivery preferences.
 - **Live agent activity.** Terminal output, prompts, and pane contents travel
-  only over the direct SSH connection between your device and your Host. The
-  limited notification data described below takes a separate route.
+  only over the SSH connection between your device and your Host, which is
+  encrypted end to end even when an Overlay Network carries it. The limited
+  notification data described below takes a separate route.
 - **Changes.** For each Agent with a working directory whose row the
   Agents list shows, Heeler asks git on your Host for the Checkout's branch
   or detached commit, its upstream branch and how many commits it is ahead
@@ -35,9 +38,56 @@ Agent Notifications use the limited-purpose Push Relay described below.
   changed file names and line counts: when the row first shows, when the
   Agent stops working while a row shows it (or when a row next shows it),
   and when you open Changes. Changes also asks for file contents and diffs
-  as you open them. They travel only over the direct SSH connection between
+  as you open them. They travel only over the SSH connection between
   your device and your Host, and Heeler keeps them in memory while the
   Agent stays in the list and does not save them.
+
+- **Overlay Networks.** Network settings are stored locally. Tailscale auth
+  keys, EasyTier network secrets, and the device's ZeroTier identity are
+  stored in the Keychain. Tailscale's node state is stored in the app's
+  container, protected until first unlock and excluded from backups.
+  Deleting a network deletes its secrets and state; the ZeroTier identity
+  goes with the last ZeroTier network.
+
+## Overlay Networks
+
+Overlay Networks are optional. When you add a Tailscale, ZeroTier, or
+EasyTier network, Heeler runs that network's software inside the app to reach
+your Hosts. Heeler's developer operates none of these services. The
+providers, the servers you choose, and the third-party servers named below
+handle this data under their own privacy terms. SSH still encrypts everything
+between your device and your Host, so these services and any relays see
+encrypted packets and network metadata, never terminal content or SSH
+credentials.
+
+- **Tailscale.** Heeler signs in to the coordination server (Tailscale's by
+  default, or one you enter, such as Headscale) and registers this device
+  with its device name, keys, and network addresses. While connected, the
+  device keeps a connection to a nearby DERP relay (Tailscale's, or those
+  your server lists), which learns its IP address. Traffic passes through a
+  relay until a direct path works, or when none does. Tailscale's log upload
+  is turned off.
+- **ZeroTier.** Heeler contacts ZeroTier's root servers (including for a
+  network with custom roots), any custom roots or moons a network names, and
+  the network's controller, such as ZeroTier Central. They learn the device's
+  ZeroTier node ID, the networks it joins, and its public IP address and
+  port. One ZeroTier node serves every ZeroTier network in Heeler, so each
+  set of roots may also learn which ZeroTier addresses the device looks up on
+  the others. To allow direct connections, the node may ask your local router
+  to open a port mapping (UPnP or NAT-PMP).
+- **EasyTier.** Heeler connects to the peers you enter or, for a Config
+  Server network, to that server and the peers it assigns. A Config Server
+  knows the network secrets and receives this device's machine ID, device
+  name, and the state of its networks; entering only a user name uses
+  EasyTier's public server at `config-server.easytier.cn`. Members of the
+  network learn this device's name and IP addresses. To find direct paths,
+  EasyTier also queries public STUN servers, EasyTier's own and third-party
+  ones such as Xiaomi's, Bilibili's, Cloudflare's, and Twilio's, which learn
+  the device's public IP address.
+
+Deleting a network or signing out of Tailscale in Heeler does not remove the
+device from the provider. Remove it in the provider's admin console, or ask
+the server's operator.
 
 ## Agent Notifications and the Push Relay
 

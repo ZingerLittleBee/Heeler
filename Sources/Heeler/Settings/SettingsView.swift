@@ -45,6 +45,21 @@ enum SettingsAgentListDestination: String, Sendable {
     }
 }
 
+/// Settings › Overlay Networks, under the same identity/metatype/destination
+/// convention as the other routes.
+enum SettingsOverlayNetworksDestination: String, Sendable {
+    case networks = "settings.overlayNetworks"
+
+    var destinationTypeName: String { String(reflecting: OverlayNetworksSettingsView.self) }
+
+    @MainActor
+    func destinationView(
+        store: OverlayNetworkStore, onHostAdded: @escaping (Host.ID) -> Void
+    ) -> OverlayNetworksSettingsView {
+        OverlayNetworksSettingsView(store: store, onHostAdded: onHostAdded)
+    }
+}
+
 /// The Settings tab's root, or on iPad a sheet's: a shallow menu into Agent
 /// fields, appearance and notifications.
 /// Keeping it a menu means the per-Host notification rows can grow without
@@ -58,11 +73,16 @@ struct SettingsView: View {
     let liveActivities: HostLiveActivityCoordinator
     let console: ConsoleStore
     let hosts: [Host]
+    let onHostAdded: (Host.ID) -> Void
     /// Closes Settings where it is presented as a sheet, as on iPad; nil
     /// where it is a tab.
     var onDone: (@MainActor () -> Void)? = nil
+    /// Injected app-wide by `ContentView`; absent in previews, where the
+    /// Overlay Networks row is left out.
+    @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     static let agentListDestination = SettingsAgentListDestination.fields
+    static let overlayNetworksDestination = SettingsOverlayNetworksDestination.networks
 
     static let repositoryURL = URL(string: "https://github.com/ZingerLittleBee/Heeler")
 
@@ -150,6 +170,20 @@ struct SettingsView: View {
                         TerminalAppearanceSettingsView(terminal: terminal)
                     } label: {
                         Label("Terminal Appearance", systemImage: "paintpalette")
+                    }
+                }
+
+                if let overlayNetworks {
+                    Section {
+                        NavigationLink {
+                            Self.overlayNetworksDestination.destinationView(
+                                store: overlayNetworks, onHostAdded: onHostAdded)
+                        } label: {
+                            Label("Overlay Networks", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
+                        .accessibilityIdentifier(Self.overlayNetworksDestination.rawValue)
+                    } header: {
+                        Text("Connections")
                     }
                 }
 

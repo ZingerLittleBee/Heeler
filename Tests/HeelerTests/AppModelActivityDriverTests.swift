@@ -110,6 +110,52 @@ struct AppModelActivityDriverTests {
         console.setHosts([])
     }
 
+    /// Browser sign-in can return either side of the grace period. Its
+    /// resume callback must run in both cases, after any overlay teardown
+    /// already in progress has finished, even with no Host to reconnect it.
+    @Test(arguments: [false, true])
+    func pendingSignInResumesAfterSuspensionTeardown(crossesGracePeriod: Bool) async throws {
+        let activity = AppActivityCoordinator(
+            gracePeriod: crossesGracePeriod ? .milliseconds(20) : .seconds(60),
+            granter: RecordingBackgroundExecutionGranter())
+        let callbacks = RecordingActivityCallbacks()
+        let driver = Task {
+            await ConsoleActivityDriver(
+                activity: activity,
+                console: ConsoleStore(),
+                afterSuspend: { await callbacks.suspend() },
+                afterResume: { await callbacks.resume() }
+            ).run()
+        }
+        defer {
+            callbacks.finishSuspending()
+            driver.cancel()
+        }
+
+        activity.didEnterBackground()
+        if crossesGracePeriod {
+            try await waitUntil("overlay teardown should start before the foreground return") {
+                callbacks.events == ["suspend started"]
+            }
+        }
+        activity.didBecomeActive()
+
+        if crossesGracePeriod {
+            // The foreground event is queued while overlay teardown still
+            // owns the lifecycle. It must not resume a node in parallel.
+            await Task.yield()
+            #expect(callbacks.events == ["suspend started"])
+            callbacks.finishSuspending()
+        }
+        try await waitUntil("pending browser sign-in should resume on foreground return") {
+            callbacks.events.last == "resumed"
+        }
+        #expect(
+            callbacks.events == (crossesGracePeriod
+                ? ["suspend started", "suspend finished", "resumed"]
+                : ["resumed"]))
+    }
+
     /// Polls until `condition` holds, yielding so the model's tasks progress.
     private func waitUntil(
         _ comment: Comment, timeout: Duration = .seconds(5),
@@ -121,6 +167,29 @@ struct AppModelActivityDriverTests {
             try await Task.sleep(for: .milliseconds(5))
         }
         #expect(await condition(), comment)
+    }
+}
+
+/// Holds overlay teardown open across a foreground return so event ordering
+/// is exercised without timing a native node shutdown.
+@MainActor
+private final class RecordingActivityCallbacks {
+    private(set) var events: [String] = []
+    private var suspension: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        events.append("suspend started")
+        await withCheckedContinuation { suspension = $0 }
+        events.append("suspend finished")
+    }
+
+    func finishSuspending() {
+        suspension?.resume()
+        suspension = nil
+    }
+
+    func resume() {
+        events.append("resumed")
     }
 }
 

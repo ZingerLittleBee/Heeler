@@ -97,7 +97,7 @@ public final class SSHConnection: Sendable {
                     if retryable {
                         noteHandshakeAttempt(
                             endpoint: endpoint,
-                            throughJump: false,
+                            via: nil,
                             attempt: handshakeAttemptLimit - attemptsLeft,
                             sinkDuration: sinkDuration,
                             cleanupDuration: .zero,
@@ -108,12 +108,65 @@ public final class SSHConnection: Sendable {
                 }
                 noteHandshakeAttempt(
                     endpoint: endpoint,
-                    throughJump: false,
+                    via: nil,
                     attempt: handshakeAttemptLimit - attemptsLeft,
                     sinkDuration: sinkDuration,
                     cleanupDuration: .zero,
                     remaining: ContinuousClock.now.duration(to: deadline),
                     canRedial: true)
+            }
+        }
+    }
+
+    /// Opens an SSH connection over a byte stream something outside this
+    /// package dials, such as an in-process overlay network node. `endpoint`
+    /// only names the target for diagnostics; `openStream` decides where the
+    /// bytes go. Each attempt asks for a fresh stream with the time it has
+    /// left, so a key-exchange redial never reuses a stream the failed
+    /// handshake already wrote to. The returned connection releases the
+    /// stream after its session on close.
+    public static func connect(
+        to endpoint: SSHEndpoint,
+        timeout: Duration,
+        transportLabel: String,
+        openStream: @escaping @Sendable (Duration) async throws -> SSHExternalStream
+    ) async throws -> SSHConnection {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        var attemptsLeft = handshakeAttemptLimit
+        while true {
+            attemptsLeft -= 1
+            let stream = try await openStream(ContinuousClock.now.duration(to: deadline))
+            let driver = SessionDriver()
+            do {
+                let hostKey = try await driver.handshake(
+                    transport: stream,
+                    endpoint: endpoint,
+                    timeout: ContinuousClock.now.duration(to: deadline),
+                    transportLabel: transportLabel)
+                return SSHConnection(
+                    driver: driver,
+                    hostKey: hostKey,
+                    serverIdentification: await driver.serverIdentification,
+                    byteTransport: stream)
+            } catch {
+                let retryable = await driver.handshakeFailedInKeyExchange
+                let sinkDuration = await driver.handshakeFailureDiagnosticDuration
+                let cleanupStarted = ContinuousClock.now
+                await driver.invalidate()
+                stream.abort()
+                let cleanupDuration = cleanupStarted.duration(to: ContinuousClock.now)
+                let canRedial = attemptsLeft > 0 && retryable && ContinuousClock.now < deadline
+                if retryable {
+                    noteHandshakeAttempt(
+                        endpoint: endpoint,
+                        via: transportLabel,
+                        attempt: handshakeAttemptLimit - attemptsLeft,
+                        sinkDuration: sinkDuration,
+                        cleanupDuration: cleanupDuration,
+                        remaining: ContinuousClock.now.duration(to: deadline),
+                        canRedial: canRedial)
+                }
+                guard canRedial else { throw error }
             }
         }
     }
@@ -175,7 +228,7 @@ public final class SSHConnection: Sendable {
                     if retryable {
                         Self.noteHandshakeAttempt(
                             endpoint: endpoint,
-                            throughJump: true,
+                            via: "the Jump Host transport",
                             attempt: Self.handshakeAttemptLimit - attemptsLeft,
                             sinkDuration: sinkDuration,
                             cleanupDuration: cleanupDuration,
@@ -186,7 +239,7 @@ public final class SSHConnection: Sendable {
                 }
                 Self.noteHandshakeAttempt(
                     endpoint: endpoint,
-                    throughJump: true,
+                    via: "the Jump Host transport",
                     attempt: Self.handshakeAttemptLimit - attemptsLeft,
                     sinkDuration: sinkDuration,
                     cleanupDuration: cleanupDuration,
@@ -198,7 +251,7 @@ public final class SSHConnection: Sendable {
 
     private static func noteHandshakeAttempt(
         endpoint: SSHEndpoint,
-        throughJump: Bool,
+        via: String?,
         attempt: Int,
         sinkDuration: Duration?,
         cleanupDuration: Duration,
@@ -207,7 +260,7 @@ public final class SSHConnection: Sendable {
     ) {
         SSHDiagnostics.note(
             "handshake with \(endpoint.host):\(endpoint.port)"
-                + (throughJump ? " over the Jump Host transport" : "")
+                + (via.map { " over \($0)" } ?? "")
                 + " [attempt=\(attempt)/\(handshakeAttemptLimit); "
                 + "sink_elapsed=\(sinkDuration.map { String(describing: $0) } ?? "unmeasured"); "
                 + "forwarding_cleanup=\(cleanupDuration); remaining_budget=\(remaining); "

@@ -260,10 +260,11 @@ actor SessionDriver {
     func handshake(
         transport: any SSHByteTransport,
         endpoint: SSHEndpoint,
-        timeout: Duration
+        timeout: Duration,
+        transportLabel: String = "the Jump Host transport"
     ) async throws -> SSHHostKey {
         try await withDiagnosticPhase(
-            "handshake with \(endpoint.host):\(endpoint.port) over the Jump Host transport"
+            "handshake with \(endpoint.host):\(endpoint.port) over \(transportLabel)"
         ) {
             await acquireOperation()
             defer { releaseOperation() }
@@ -2791,8 +2792,9 @@ actor SessionDriver {
         activity.install(on: createdSession)
         try configureAlgorithms(createdSession)
 
+        let handshakeDescriptor = descriptor
         let handshakeResult = try await repeatUntilComplete(deadline: deadline) {
-            libssh2_session_handshake(createdSession, descriptor)
+            libssh2_session_handshake(createdSession, handshakeDescriptor)
         }
         guard handshakeResult == 0 else {
 #if DEBUG

@@ -222,7 +222,10 @@ Two paths to TestFlight, different jobs:
   `project.pbxproj` dirty. Commit and push the bump to `main` before the
   next `make publish`, which refuses a dirty or unpushed tree. Discarding
   the bump instead makes publish reuse the uploaded build number, and App
-  Store Connect validation then voids the tag.
+  Store Connect validation then voids the tag. Since its marketing version
+  still names the previous tag, the build records the commit it was
+  archived from (About › Acknowledgements), but only when that commit is
+  pushed and nothing but the build number is uncommitted; push first.
 - `make publish` — a **release**. Everything above, with a version,
   notes, a tag, a reviewed CI build, and a GitHub release.
 

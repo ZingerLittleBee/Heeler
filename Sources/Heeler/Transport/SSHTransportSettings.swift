@@ -80,6 +80,10 @@ struct SSHTransportSettings: Sendable {
     /// jump host first and opens the Host connection through it, so the Host
     /// needs no inbound reachability of its own. nil is a direct connection.
     var jump: SSHJumpSettings? = nil
+    /// Optional Overlay Network carrying the first hop — the Host itself, or
+    /// the Jump Host when one is set (ADR 0021). nil dials over this device's
+    /// own network. The Jump Host's onward hop to the Host never uses it.
+    var overlay: OverlayRoute? = nil
     /// Command that wakes a stopped herdr server, run over a no-PTY exec
     /// channel when a request hits connection-refused (#6). The default is
     /// the strategy from spec #16: `herdr remote-client-bridge` ensures the

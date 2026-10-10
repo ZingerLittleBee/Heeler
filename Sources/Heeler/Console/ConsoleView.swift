@@ -50,6 +50,9 @@ struct ConsoleView: View {
     /// Hosts and Settings where the sidebar navigates instead of a tab bar.
     @State private var isShowingHostsSheet = false
     @State private var isShowingSettingsSheet = false
+    /// A Host added in Settings waits for that sheet to close before the
+    /// Hosts sheet can present onboarding and its trust alert.
+    @State private var pendingSettingsHostID: Host.ID?
     @State private var isShowingListMenu = false
     /// Where the sidebar's title sits in the window, for its choices to
     /// point at.
@@ -225,7 +228,8 @@ struct ConsoleView: View {
                         host: host,
                         catalog: hosts,
                         sheetPresentation: presentation,
-                        isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id)
+                        isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id),
+                        onStop: { Task { await console.cancelHostConnection(host.id) } }
                     ) {
                         // Holds the sheet open through the retry's dial, which a
                         // reconnecting Host makes without a standing failure.
@@ -244,7 +248,11 @@ struct ConsoleView: View {
                     .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
             }
         }
-        .sheet(isPresented: $isShowingSettingsSheet) {
+        .sheet(isPresented: $isShowingSettingsSheet, onDismiss: {
+            guard let id = pendingSettingsHostID else { return }
+            pendingSettingsHostID = nil
+            presentHosts(id)
+        }) {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 settingsView(onDone: { isShowingSettingsSheet = false })
                     .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
@@ -384,6 +392,7 @@ struct ConsoleView: View {
             syncIssues: console.hostSyncErrors,
             manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
             retryConnection: { await reconnectHost($0) },
+            stopConnecting: { await console.cancelHostConnection($0) },
             origin: origin,
             onDone: onDone)
         .id(hostsTabRequest?.id)
@@ -401,6 +410,14 @@ struct ConsoleView: View {
             liveActivities: liveActivities,
             console: console,
             hosts: hosts.hosts,
+            onHostAdded: { id in
+                if isShowingSettingsSheet {
+                    pendingSettingsHostID = id
+                    isShowingSettingsSheet = false
+                } else {
+                    presentHosts(id)
+                }
+            },
             onDone: onDone)
     }
 
@@ -475,6 +492,7 @@ struct ConsoleView: View {
         connectionDetailRequest = nil
         isShowingHostIssues = false
         isShowingHostsSheet = false
+        pendingSettingsHostID = nil
         isShowingSettingsSheet = false
     }
 
@@ -1705,7 +1723,8 @@ struct ConsoleView: View {
                     host: host,
                     catalog: hosts,
                     sheetPresentation: sheetPresentation,
-                    isRetryInFlight: manualReconnectInFlightHostIDs.contains(id)
+                    isRetryInFlight: manualReconnectInFlightHostIDs.contains(id),
+                    onStop: { Task { await console.cancelHostConnection(id) } }
                 ) {
                     // As in the single Host's sheet: stays through the dial.
                     hostIssuesLastFailures[id] = detail.failure

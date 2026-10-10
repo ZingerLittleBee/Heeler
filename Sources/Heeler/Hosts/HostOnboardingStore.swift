@@ -42,33 +42,43 @@ final class HostOnboardingStore {
     /// The Heeler plugin as the preflight connection found it. Read after a
     /// passing ping, so an unreachable Host reports `.unavailable`.
     private(set) var pluginStatus: HeelerPluginStatus = .checking
+    /// Set when the last run stopped at an Overlay Network that needs an
+    /// interactive sign-in; the UI offers to open it.
+    private(set) var overlayLoginURL: URL?
 
     let host: Host
 
     @ObservationIgnored private let connector: any TransportConnector
     @ObservationIgnored private let knownHosts: any KnownHostsStore
     @ObservationIgnored private let credentials: HostCredentialsProvider
+    @ObservationIgnored private let overlays: OverlayNetworkRuntime
     /// The transport deliberately has no confirmation timeout (#2); the UI
     /// layer owns it (spec #20). An unanswered candidate is declined.
     @ObservationIgnored private let fingerprintTimeout: Duration
     @ObservationIgnored private var fingerprintDecision: CheckedContinuation<Bool, Never>?
     @ObservationIgnored private var fingerprintTimeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var checks: Task<Void, Never>?
+    /// Identifies the run whose trust prompts may still be shown.
+    @ObservationIgnored private var currentRun = UUID()
 
     init(
         host: Host,
         connector: any TransportConnector = SSHTransportConnector(),
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared,
         fingerprintTimeout: Duration = .seconds(60)
     ) {
         self.host = host
         self.connector = connector
         self.knownHosts = knownHosts
         self.credentials = credentials
+        self.overlays = overlays
         self.fingerprintTimeout = fingerprintTimeout
     }
 
     /// Runs the preflight once: connect + ping, rendered into `report`.
+    /// `cancelChecks()` (or cancelling the caller) ends it at once.
     func runChecks() async {
         guard phase != .running else { return }
         phase = .running
@@ -78,11 +88,49 @@ final class HostOnboardingStore {
         sessionDiscoveryError = nil
         pluginStatus = .checking
         pendingHostKeyReplacement = nil
-        defer {
+        overlayLoginURL = nil
+        let run = UUID()
+        currentRun = run
+        let task = Task { await self.performChecks(run: run) }
+        checks = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        guard checks == task else { return }
+        checks = nil
+        if task.isCancelled {
+            markCancelled()
+        } else {
             if pluginStatus == .checking { pluginStatus = .unavailable }
             phase = .finished
         }
+    }
 
+    /// Stops a preflight still connecting — through an Overlay Network
+    /// that is slow to come up, say — without waiting for its timeout. The
+    /// checklist then says the check was cancelled.
+    func cancelChecks() {
+        guard phase == .running, let checks else { return }
+        checks.cancel()
+        self.checks = nil
+        markCancelled()
+    }
+
+    private func markCancelled() {
+        currentRun = UUID()
+        // A trust prompt still open is declined, never left dangling.
+        resolveFingerprint(false)
+        report = .failure(TransportError.cancelled, authMethod: host.authMethod)
+        overlayLoginURL = nil
+        if pluginStatus == .checking { pluginStatus = .unavailable }
+        phase = .finished
+    }
+
+    /// The checks themselves. Every write after an await first checks for
+    /// cancellation: a cancelled run may still finish in the background.
+    private func performChecks(run: UUID) async {
         let resolved: SSHCredentials
         do {
             resolved = try credentials.credentials(for: host)
@@ -105,31 +153,45 @@ final class HostOnboardingStore {
         }
 
         let policy = HostKeyPolicy(knownHosts: knownHosts) { [weak self] candidate in
-            await self?.awaitFingerprintDecision(for: candidate) ?? false
+            await self?.awaitFingerprintDecision(for: candidate, run: run) ?? false
         }
         let settings = SSHTransportSettings(
-            host: host, credentials: resolved, hostKeyPolicy: policy)
+            host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays)
         do {
             let transport = try await connector.connect(settings: settings)
-            do {
-                availableSessions = try await transport.listSessions()
-            } catch {
-                sessionDiscoveryError = "Could not discover herdr sessions. You can still enter a session name manually."
+            guard !Task.isCancelled else {
+                try? await transport.close()
+                return
             }
             do {
-                serverInfo = try await transport.ping()
-                report = .allPassed
-                // After the report, so the checklist renders first. The run
-                // still waits for this read (bounded by the request timeout),
-                // and its failure never fails the preflight.
-                pluginStatus = await HeelerPluginStatus.read(over: transport)
+                let sessions = try await transport.listSessions()
+                if !Task.isCancelled { availableSessions = sessions }
             } catch {
-                captureHostKeyReplacement(error)
-                report = failureReport(error)
+                if !Task.isCancelled {
+                    sessionDiscoveryError = "Could not discover herdr sessions. You can still enter a session name manually."
+                }
+            }
+            do {
+                let info = try await transport.ping()
+                if !Task.isCancelled {
+                    serverInfo = info
+                    report = .allPassed
+                    // After the report, so the checklist renders first. The
+                    // run still waits for this read (bounded by the request
+                    // timeout), and its failure never fails the preflight.
+                    let plugin = await HeelerPluginStatus.read(over: transport)
+                    if !Task.isCancelled { pluginStatus = plugin }
+                }
+            } catch {
+                if !Task.isCancelled {
+                    captureHostKeyReplacement(error)
+                    report = failureReport(error)
+                }
             }
             // Preflight only probes; the Console owns long-lived connections.
             try? await transport.close()
         } catch {
+            guard !Task.isCancelled else { return }
             captureHostKeyReplacement(error)
             report = failureReport(error)
         }
@@ -164,7 +226,8 @@ final class HostOnboardingStore {
     }
 
     private func failureReport(_ error: any Error) -> PreflightReport {
-        if let transportError = error as? TransportError {
+        overlayLoginURL = (error as? TransportError)?.overlayLoginURL
+        return if let transportError = error as? TransportError {
             .failure(transportError, authMethod: host.authMethod)
         } else {
             .failure(
@@ -173,7 +236,9 @@ final class HostOnboardingStore {
         }
     }
 
-    private func awaitFingerprintDecision(for candidate: HostKeyCandidate) async -> Bool {
+    private func awaitFingerprintDecision(for candidate: HostKeyCandidate, run: UUID) async -> Bool {
+        // A cancelled run's late handshake never asks the user.
+        guard currentRun == run else { return false }
         // One connect per run means one candidate at a time; decline a
         // second defensively instead of leaking the first continuation.
         guard fingerprintDecision == nil else { return false }

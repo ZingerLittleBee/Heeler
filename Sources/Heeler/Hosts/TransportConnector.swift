@@ -19,8 +19,15 @@ struct SSHTransportConnector: TransportConnector {
 
 extension SSHTransportSettings {
     /// Transport settings for a catalog Host, given resolved credentials and
-    /// the TOFU policy the UI wires up.
-    init(host: Host, credentials: SSHCredentials, hostKeyPolicy: HostKeyPolicy) {
+    /// the TOFU policy the UI wires up. `overlays` resolves the Host's
+    /// Overlay Network, if it names one; the route itself fails the dial when
+    /// that network has since been removed.
+    init(
+        host: Host,
+        credentials: SSHCredentials,
+        hostKeyPolicy: HostKeyPolicy,
+        overlays: OverlayNetworkRuntime = .shared
+    ) {
         self.init(
             host: host.address,
             port: host.port,
@@ -36,6 +43,9 @@ extension SSHTransportSettings {
                     port: host.jumpPort,
                     username: host.resolvedJumpUsername,
                     credentials: credentials)
-                : nil)
+                : nil,
+            overlay: host.overlayNetworkID.map { networkID in
+                overlays.route(for: networkID)
+            })
     }
 }

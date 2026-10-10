@@ -5,7 +5,7 @@ A native iOS agent console for herdr. One context: the app. Terms owned by herdr
 ## Language
 
 **Host**:
-A remote machine reachable over SSH that runs a herdr server. The unit a user adds, names, and authenticates against.
+A remote machine reachable over SSH that runs a herdr server. The unit a user adds, names, and authenticates against. Its first hop goes over the device's own network unless the Host names an Overlay Network.
 _Avoid_: server, machine, connection
 
 **Jump Host**:
@@ -14,6 +14,37 @@ reachable from the device. The Host's address and port are resolved from the
 Jump Host, normally through a loopback-only reverse tunnel. The app authenticates
 and verifies host keys independently at both hops.
 _Avoid_: bastion, proxy server
+
+**Overlay Network**:
+A Tailscale, ZeroTier, or EasyTier network the user configures in Settings,
+which Heeler joins with a node running inside the app. It is not a system VPN
+and carries nothing but Heeler's own connections. A Host that names one dials
+its first hop through it: the Host itself, or its Jump Host when one is set,
+addressed by its overlay IP or name. Only the byte stream changes; SSH
+authentication, host-key trust, and every channel are the same as a direct
+connection (ADR 0021). Its secrets stay in the Keychain, and its node runs
+only while the app does. EasyTier networks each run as an instance of their
+own, side by side; ZeroTier networks share one device identity.
+_Avoid_: VPN, tunnel, tailnet (for the general term)
+
+**Config Server**:
+An EasyTier web console that assigns EasyTier networks to a device instead
+of the user typing each network's name, secret, and peers. The device
+identifies itself with the console's user name and a Machine ID Heeler
+keeps; the server knows the network secrets and chooses the peers. One
+Config Server is one Overlay Network however many networks it assigns (up
+to eight); a Host on it reaches the assigned network its address or name is
+on.
+_Avoid_: web client, cloud config
+
+**Planet** and **Moon**:
+ZeroTier root definitions. A ZeroTier Overlay Network's Planet is the set of
+root servers it relies on — ZeroTier's own unless the user imports a custom
+planet file for that network's self-hosted roots. Each network has its own;
+networks with different planets run side by side (the node joins every
+network's roots, so lookups may reach any of them). A Moon is an extra root a
+single ZeroTier network orbits, named by its world ID and seed.
+_Avoid_: root server (for the setting), orbit (as a noun)
 
 **Device Key**:
 The device's SSH identity: an Ed25519 keypair generated on this device. The private key never leaves the Keychain; the public half is what a Host authorizes.

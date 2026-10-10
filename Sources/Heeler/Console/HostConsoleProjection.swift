@@ -180,6 +180,12 @@ final class HostConsoleProjection {
         await session.retry()
     }
 
+    /// Stops a connection attempt the user no longer wants to wait for;
+    /// the Host then reads Paused until a retry or the next foreground.
+    func cancelConnecting() async {
+        await session.cancelConnecting()
+    }
+
     /// Makes the new activation visible on this projection before the
     /// session hops into teardown, so an in-flight resync cannot observe
     /// `.connected` after `currentTransport` is already gone.

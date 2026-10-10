@@ -69,6 +69,30 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(1))
     }
 
+    @Test("an externally dialled stream carries a full session and is released on close")
+    func externalStreamCarriesSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let releases = ReleaseCounter()
+        let connection = try await SSHConnection.connect(
+            to: environment.endpoint,
+            timeout: SessionDriverTestEnvironment.setupTimeout,
+            transportLabel: "a test stream"
+        ) { remaining in
+            let descriptor = try await SocketConnector.connect(
+                to: environment.endpoint,
+                until: ContinuousClock.now.advanced(by: remaining))
+            return try SSHExternalStream(descriptor: descriptor) { releases.increment() }
+        }
+
+        try await environment.authenticate(connection)
+        let result = try await connection.execute("printf external", timeout: .seconds(5))
+        #expect(result.stdout == Data("external".utf8))
+        #expect(releases.value == 0)
+
+        try await connection.close(timeout: .seconds(2))
+        #expect(releases.value == 1)
+    }
+
     @Test("bounded response-line exec closes channels on success and failure")
     func boundedResponseLineExec() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

@@ -207,6 +207,7 @@ jobs:
             -onlyUsePackageVersionsFromResolvedFile \
             -xcconfig "$RUNNER_TEMP/signing/signing.xcconfig" \
             ${overrides[@]+"${overrides[@]}"} \
+            HEELER_SOURCE_REVISION="$(git rev-parse HEAD)" \
             archive
 
       - name: Export the IPA

@@ -156,6 +156,9 @@ final actor FakeTransportConnector: TransportConnector {
     enum Outcome: Sendable {
         case connectFails(TransportError)
         case connects(pingResult: Result<ServerInfo, TransportError>)
+        /// The connect ignores cancellation for this long (an Overlay
+        /// Network still coming up), then times out.
+        case hangs(Duration)
     }
 
     private let outcome: Outcome
@@ -187,6 +190,9 @@ final actor FakeTransportConnector: TransportConnector {
         switch outcome {
         case .connectFails(let error):
             throw error
+        case .hangs(let duration):
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+            throw TransportError.timedOut
         case .connects(let pingResult):
             let transport = FakeTransport(
                 pingResult: pingResult, sessions: sessions, plugin: plugin)

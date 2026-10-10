@@ -9,9 +9,15 @@
       "CLibSSH2": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly"],
       "COpenSSL": ["OpenSSL"]
     },
+    "heelerOverlayNatives": {
+      "CTailscale": ["libtailscale", "Tailscale", "Go", "Tailscale-Go-modules"],
+      "CZeroTier": ["libzt", "ZeroTier-Heeler-modifications", "ZeroTierOne", "ZeroTierOne-LZ4", "lwIP", "lwIP-contrib", "miniupnpc", "libnatpmp", "prometheus-cpp-lite", "concurrentqueue"],
+      "CEasyTier": ["EasyTier", "heeler-easytier", "EasyTier-Rust-crates"]
+    },
     "projectPackages": {
       "GhosttyTerminal": ["libghostty-spm", "Ghostty", "GhosttyTheme"],
-      "HeelerSSH": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly", "OpenSSL"]
+      "HeelerSSH": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly", "OpenSSL"],
+      "HeelerOverlay": ["libtailscale", "Tailscale", "Go", "Tailscale-Go-modules", "libzt", "ZeroTier-Heeler-modifications", "ZeroTierOne", "ZeroTierOne-LZ4", "lwIP", "lwIP-contrib", "miniupnpc", "libnatpmp", "prometheus-cpp-lite", "concurrentqueue", "EasyTier", "heeler-easytier", "EasyTier-Rust-crates"]
     },
     "bundledFontFamilies": {
       "IBMPlexMono": ["IBMPlexMono"],
@@ -19,6 +25,22 @@
     }
   },
   "components": [
+    {
+      "id": "EasyTier",
+      "displayName": "EasyTier",
+      "version": "728ba94b5029240add6204eed591f22e4e039e6b",
+      "source": "https://github.com/Ylarod/heeler-overlay-natives (CEasyTier; EasyTier 2.7.0, commit 728ba94b5029240add6204eed591f22e4e039e6b, with Heeler's patches (outbound-only packet proxy, config-server backend, verified wss:// certificates), linked statically through heeler-easytier; corresponding source and installation information in the notice)",
+      "spdx": "LGPL-3.0-only",
+      "notice": "EasyTier-LGPL-3.0.txt"
+    },
+    {
+      "id": "EasyTier-Rust-crates",
+      "displayName": "EasyTier Rust dependencies",
+      "version": "2.7.0",
+      "source": "Rust crates linked into CEasyTier, including the Rust 1.95.0 standard library; list and licences in EasyTier-Rust-crates.txt from https://github.com/Ylarod/heeler-overlay-natives",
+      "spdx": "0BSD AND Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND CDLA-Permissive-2.0 AND ISC AND MIT AND Unicode-3.0 AND Zlib",
+      "notice": "EasyTier-Rust-crates.txt"
+    },
     {
       "id": "Ghostty",
       "displayName": "Ghostty",
@@ -34,6 +56,14 @@
       "source": "https://github.com/lakr233/libghostty-spm (product GhosttyTheme; color schemes © Mark Badolato)",
       "spdx": "MIT",
       "notice": "GhosttyTheme-MIT.txt"
+    },
+    {
+      "id": "Go",
+      "displayName": "Go standard library and runtime",
+      "version": "go1.27.1",
+      "source": "https://go.dev (linked into CTailscale, https://github.com/Ylarod/heeler-overlay-natives)",
+      "spdx": "BSD-3-Clause",
+      "notice": "Go-BSD-3-Clause.txt"
     },
     {
       "id": "IBMPlexMono",
@@ -68,12 +98,60 @@
       "notice": "OpenSSL-Apache-2.0.txt"
     },
     {
+      "id": "Tailscale",
+      "displayName": "Tailscale",
+      "version": "v1.102.5",
+      "source": "https://github.com/tailscale/tailscale (Go module tailscale.com, linked into CTailscale)",
+      "spdx": "BSD-3-Clause",
+      "notice": "Tailscale-BSD-3-Clause.txt"
+    },
+    {
+      "id": "Tailscale-Go-modules",
+      "displayName": "Tailscale Go dependencies",
+      "version": "v1.102.5",
+      "source": "Go modules linked into CTailscale; list and licences in Tailscale-Go-modules.txt from https://github.com/Ylarod/heeler-overlay-natives",
+      "spdx": "Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause AND MIT",
+      "notice": "Tailscale-Go-modules.txt"
+    },
+    {
+      "id": "ZeroTierOne",
+      "displayName": "ZeroTier One",
+      "version": "fc5c3ec22090b5b2a0f274e863651fe9ca489bf4",
+      "source": "https://github.com/zerotier/ZeroTierOne 1.16.2 (libzt submodule; node/ and osdep/ under MPL-2.0; nonfree/ not compiled)",
+      "spdx": "MPL-2.0",
+      "notice": "ZeroTierOne-MPL-2.0.txt"
+    },
+    {
+      "id": "ZeroTierOne-LZ4",
+      "displayName": "LZ4 (in ZeroTier One)",
+      "version": "fc5c3ec22090b5b2a0f274e863651fe9ca489bf4",
+      "source": "ZeroTierOne fc5c3ec22090b5b2a0f274e863651fe9ca489bf4/node/Packet.cpp",
+      "spdx": "BSD-2-Clause",
+      "notice": "ZeroTierOne-LZ4-BSD-2-Clause.txt"
+    },
+    {
+      "id": "heeler-easytier",
+      "displayName": "heeler-easytier",
+      "version": "0.1.0",
+      "source": "https://github.com/Ylarod/heeler-overlay-natives, directory native/easytier (Heeler's EasyTier wrapper inside CEasyTier)",
+      "spdx": "LGPL-3.0-or-later",
+      "notice": "heeler-easytier-LGPL-3.0-or-later.txt"
+    },
+    {
       "id": "libghostty-spm",
       "displayName": "libghostty-spm",
       "version": "1.6.20260909",
       "source": "https://github.com/lakr233/libghostty-spm.git",
       "spdx": "MIT",
       "notice": "libghostty-spm-MIT.txt"
+    },
+    {
+      "id": "libnatpmp",
+      "displayName": "libnatpmp",
+      "version": "fc5c3ec22090b5b2a0f274e863651fe9ca489bf4",
+      "source": "ZeroTierOne fc5c3ec22090b5b2a0f274e863651fe9ca489bf4/ext/libnatpmp",
+      "spdx": "BSD-3-Clause",
+      "notice": "libnatpmp-BSD-3-Clause.txt"
     },
     {
       "id": "libssh2",
@@ -98,6 +176,70 @@
       "source": "libssh2 c7557852f1b7c0d3b9cffd5390eb33fdf93fb17f/src/cipher-chachapoly.c",
       "spdx": "BSD-2-Clause",
       "notice": "libssh2-cipher-chachapoly-BSD-2-Clause.txt"
+    },
+    {
+      "id": "libtailscale",
+      "displayName": "libtailscale",
+      "version": "59d4bb82744915815178e0f0776d60026a397ee7",
+      "source": "https://github.com/Ylarod/heeler-overlay-natives (CTailscale; commit 59d4bb82744915815178e0f0776d60026a397ee7)",
+      "spdx": "BSD-3-Clause",
+      "notice": "libtailscale-BSD-3-Clause.txt"
+    },
+    {
+      "id": "libzt",
+      "displayName": "libzt",
+      "version": "7e5d0f99a2de81c45faa28e44289bcd19d933bf2",
+      "source": "https://github.com/Ylarod/heeler-overlay-natives (CZeroTier; commit 7e5d0f99a2de81c45faa28e44289bcd19d933bf2; BUSL-1.1, Change Date 2026-01-01, now Apache-2.0)",
+      "spdx": "Apache-2.0",
+      "notice": "libzt-BUSL-1.1-Apache-2.0.txt"
+    },
+    {
+      "id": "ZeroTier-Heeler-modifications",
+      "displayName": "Heeler modifications to libzt and ZeroTier One",
+      "version": "7e5d0f99a2de81c45faa28e44289bcd19d933bf2",
+      "source": "https://github.com/Ylarod/heeler-overlay-natives, patches/libzt and native/zerotier/heeler_zerotier.{cpp,h}",
+      "spdx": "Apache-2.0 AND BSD-3-Clause AND MIT AND MPL-2.0",
+      "notice": "ZeroTier-Heeler-modifications.txt"
+    },
+    {
+      "id": "lwIP",
+      "displayName": "lwIP",
+      "version": "32708c0a8b140efb545cc35101ee5fdeca6d6489",
+      "source": "https://github.com/joseph-henry/lwip (libzt submodule, STABLE-2_1_x fork)",
+      "spdx": "BSD-3-Clause",
+      "notice": "lwIP-BSD-3-Clause.txt"
+    },
+    {
+      "id": "lwIP-contrib",
+      "displayName": "lwIP contrib (Unix port)",
+      "version": "4fd612c9c72dfcd1db6618bd59c1a17d9f5b55f8",
+      "source": "https://github.com/joseph-henry/lwip-contrib ports/unix/port/sys_arch.c",
+      "spdx": "BSD-3-Clause",
+      "notice": "lwIP-contrib-BSD-3-Clause.txt"
+    },
+    {
+      "id": "miniupnpc",
+      "displayName": "MiniUPnPc",
+      "version": "fc5c3ec22090b5b2a0f274e863651fe9ca489bf4",
+      "source": "ZeroTierOne fc5c3ec22090b5b2a0f274e863651fe9ca489bf4/ext/miniupnpc",
+      "spdx": "BSD-3-Clause",
+      "notice": "miniupnpc-BSD-3-Clause.txt"
+    },
+    {
+      "id": "prometheus-cpp-lite",
+      "displayName": "prometheus-cpp-lite (in ZeroTier One)",
+      "version": "1.0",
+      "source": "ZeroTierOne fc5c3ec22090b5b2a0f274e863651fe9ca489bf4/ext/prometheus-cpp-lite-1.0 (save_to_file.h modified by Heeler's patch 0003)",
+      "spdx": "MIT",
+      "notice": "prometheus-cpp-lite-MIT.txt"
+    },
+    {
+      "id": "concurrentqueue",
+      "displayName": "moodycamel::ConcurrentQueue (in libzt)",
+      "version": "7e5d0f99a2de81c45faa28e44289bcd19d933bf2",
+      "source": "libzt 7e5d0f99a2de81c45faa28e44289bcd19d933bf2/ext/concurrentqueue",
+      "spdx": "BSD-2-Clause",
+      "notice": "concurrentqueue-BSD-2-Clause.txt"
     }
   ]
 }

@@ -15,16 +15,63 @@ struct LicenseNoticeInventoryTests {
     /// next to the assertions so omitting any of the licences `230c0e5` missed
     /// (Ghostty stack, libssh2 secondary sources) turns the suite red.
     private static let requiredComponentIDs: Set<String> = [
+        "EasyTier",
+        "EasyTier-Rust-crates",
         "Ghostty",
         "GhosttyTheme",
+        "Go",
         "IBMPlexMono",
         "JetBrainsMono",
         "MSDisplayLink",
         "OpenSSL",
+        "Tailscale",
+        "Tailscale-Go-modules",
+        "ZeroTier-Heeler-modifications",
+        "ZeroTierOne",
+        "ZeroTierOne-LZ4",
+        "heeler-easytier",
         "libghostty-spm",
+        "libnatpmp",
         "libssh2",
         "libssh2-bcrypt_pbkdf",
         "libssh2-cipher-chachapoly",
+        "libtailscale",
+        "libzt",
+        "lwIP",
+        "lwIP-contrib",
+        "miniupnpc",
+        "prometheus-cpp-lite",
+        "concurrentqueue",
+    ]
+
+    /// Overlay notices are copied verbatim from the heeler-overlay-natives
+    /// release the HeelerOverlay package depends on (its `Notices.zip`);
+    /// component id → notice file name.
+    private static let overlayNotices: [String: String] = [
+        "EasyTier": "EasyTier-LGPL-3.0.txt",
+        "EasyTier-Rust-crates": "EasyTier-Rust-crates.txt",
+        "heeler-easytier": "heeler-easytier-LGPL-3.0-or-later.txt",
+        "Go": "Go-BSD-3-Clause.txt",
+        "Tailscale": "Tailscale-BSD-3-Clause.txt",
+        "Tailscale-Go-modules": "Tailscale-Go-modules.txt",
+        "ZeroTier-Heeler-modifications": "ZeroTier-Heeler-modifications.txt",
+        "ZeroTierOne": "ZeroTierOne-MPL-2.0.txt",
+        "ZeroTierOne-LZ4": "ZeroTierOne-LZ4-BSD-2-Clause.txt",
+        "libnatpmp": "libnatpmp-BSD-3-Clause.txt",
+        "libtailscale": "libtailscale-BSD-3-Clause.txt",
+        "libzt": "libzt-BUSL-1.1-Apache-2.0.txt",
+        "lwIP": "lwIP-BSD-3-Clause.txt",
+        "lwIP-contrib": "lwIP-contrib-BSD-3-Clause.txt",
+        "miniupnpc": "miniupnpc-BSD-3-Clause.txt",
+        "prometheus-cpp-lite": "prometheus-cpp-lite-MIT.txt",
+        "concurrentqueue": "concurrentqueue-BSD-2-Clause.txt",
+    ]
+
+    /// Components whose binaries or notices heeler-overlay-natives itself
+    /// produces (the rest name their upstream).
+    private static let builtByNatives: Set<String> = [
+        "EasyTier", "EasyTier-Rust-crates", "heeler-easytier", "Go", "Tailscale-Go-modules",
+        "libtailscale", "libzt", "ZeroTier-Heeler-modifications",
     ]
 
     @Test func inventoryNamesEveryRequiredComponentExactlyOnce() throws {
@@ -92,6 +139,94 @@ struct LicenseNoticeInventoryTests {
             named: "libssh2-cipher-chachapoly-BSD-2-Clause.txt", text: chacha.text)
     }
 
+    @Test func overlayNoticesMatchTheNativesNoticesAndUpstreamAnchors() throws {
+        let notices = try LicenseNoticeCatalog.bundledNotices()
+        let byID = Dictionary(uniqueKeysWithValues: notices.map { ($0.id, $0) })
+
+        // The notices come from heeler-overlay-natives, not this repository.
+        // When a sibling checkout with a build is present (the local-package
+        // workflow), the bundled copies must match its notices byte for byte;
+        // otherwise Packages/HeelerOverlay/README.md's sync step is the gate.
+        let nativesNotices = repositoryRoot
+            .deletingLastPathComponent()
+            .appendingPathComponent("heeler-overlay-natives/build/Artifacts/Notices", isDirectory: true)
+        let compareWithNatives = FileManager.default.fileExists(atPath: nativesNotices.path)
+        for (id, fileName) in Self.overlayNotices {
+            let notice = try #require(byID[id], "missing overlay notice \(id)")
+            if Self.builtByNatives.contains(id) {
+                #expect(
+                    notice.source?.contains("https://github.com/Ylarod/heeler-overlay-natives") == true,
+                    "\(id) should name heeler-overlay-natives as its source")
+            }
+            if compareWithNatives {
+                let natives = try String(
+                    contentsOf: nativesNotices.appendingPathComponent(fileName), encoding: .utf8)
+                #expect(natives == notice.text, "\(fileName) differs from heeler-overlay-natives' notices")
+            }
+        }
+        #expect(Set(Self.overlayNotices.keys) == Set(
+            try loadInventoryCoverage().heelerOverlayNatives.values.flatMap { $0 }))
+
+        let libzt = try #require(byID["libzt"])
+        // BUSL-1.1 text verbatim; its Change License now governs.
+        #expect(libzt.license == "Apache-2.0")
+        #expect(libzt.text.contains("Business Source License 1.1"))
+        #expect(libzt.text.contains("Change License:       Apache License version 2.0"))
+        #expect(libzt.text.contains("Change Date:          2026-01-01"))
+        // ZeroTier One 1.16: its core is MPL-2.0 (nonfree/ is not linked).
+        let zeroTierOne = try #require(byID["ZeroTierOne"])
+        #expect(zeroTierOne.license == "MPL-2.0")
+        #expect(zeroTierOne.text.contains("Mozilla Public License Version 2.0"))
+        #expect(zeroTierOne.text.contains("See LICENSE-MPL.txt for all code in node/, osdep/"))
+
+        let modules = try #require(byID["Tailscale-Go-modules"])
+        for module in ["github.com/tailscale/wireguard-go", "gvisor.dev/gvisor", "golang.org/x/crypto"] {
+            #expect(modules.text.contains(module), "Go module notice is missing \(module)")
+        }
+        #expect(try #require(byID["Tailscale"]).text.contains("Tailscale Inc"))
+        #expect(try #require(byID["lwIP"]).text.contains("Swedish Institute of Computer Science"))
+        #expect(try #require(byID["ZeroTierOne-LZ4"]).text.contains("Yann Collet"))
+        #expect(try #require(byID["prometheus-cpp-lite"]).text.contains("MIT License"))
+        #expect(try #require(byID["concurrentqueue"]).text.contains("Cameron Desrochers"))
+        #expect(try #require(byID["ZeroTier-Heeler-modifications"]).text.contains(
+            "0003-metrics-saver-on-demand.patch"))
+
+        // EasyTier is linked statically under LGPL-3.0: the notice carries the
+        // LGPL text, the GPL text it supplements, and where the source is.
+        let easyTier = try #require(byID["EasyTier"])
+        #expect(easyTier.license == "LGPL-3.0-only")
+        #expect(easyTier.text.contains("GNU LESSER GENERAL PUBLIC LICENSE"))
+        #expect(easyTier.text.contains("4. Combined Works."))
+        #expect(easyTier.text.contains("GNU GENERAL PUBLIC LICENSE"))
+        #expect(easyTier.text.contains("TERMS AND CONDITIONS"))
+        #expect(easyTier.text.contains("commit \(easyTier.version ?? "")"))
+        #expect(easyTier.text.contains("Corresponding source."))
+        #expect(easyTier.text.contains("https://github.com/Ylarod/heeler-overlay-natives"))
+        #expect(easyTier.text.contains("Installation information (LGPL-3.0 section 4(e))"))
+        for patch in [
+            "0001-outbound-only-packet-proxy.patch", "0002-web-client-backend.patch",
+            "0003-websocket-verify-server-certificates.patch",
+        ] {
+            #expect(easyTier.text.contains(patch), "EasyTier notice is missing \(patch)")
+        }
+
+        let wrapper = try #require(byID["heeler-easytier"])
+        #expect(wrapper.license == "LGPL-3.0-or-later")
+        #expect(wrapper.text.contains("either version 3 of the License, or (at your option) any later version"))
+
+        let crates = try #require(byID["EasyTier-Rust-crates"])
+        for crate in [
+            "smoltcp | ", "tokio | ", "aes-gcm | ", "std | ", "compiler_builtins | ", "hashbrown | ",
+            "rustls | ", "rustls-platform-verifier | ", "tokio-websockets | ", "webpki-roots | ",
+        ] {
+            #expect(crates.text.contains("\n" + crate), "Rust crate notice is missing \(crate)")
+        }
+        #expect(crates.text.contains("Community Data License Agreement - Permissive - Version 2.0"))
+        #expect(crates.text.contains("LLVM Exceptions to the Apache 2.0 License"))
+        // No MPL-2.0 crate is linked, so the notice no longer carries its text.
+        #expect(!crates.text.contains("Mozilla Public License Version 2.0"))
+    }
+
     @Test func ghosttyStackAndFontNoticesShipVerbatim() throws {
         let notices = try LicenseNoticeCatalog.bundledNotices()
         let byID = Dictionary(uniqueKeysWithValues: notices.map { ($0.id, $0) })
@@ -120,7 +255,8 @@ struct LicenseNoticeInventoryTests {
 
     @Test func everyDiscoveredDependencyDeclarationIsCoveredByInventory() throws {
         // Completeness is two-way and declaration-driven (#161 review finding 2):
-        // discover Package.resolved pins, HeelerSSH binary targets, Heeler app
+        // discover Package.resolved pins, HeelerSSH binary targets,
+        // heeler-overlay-natives products HeelerOverlay uses, Heeler app
         // package links, and bundled font families from the repo, then require
         // each key to appear in inventory.dependencyCoverage with component ids
         // that exist. A new binary target / pin / package / font family without
@@ -129,17 +265,32 @@ struct LicenseNoticeInventoryTests {
         let coverage = inventory.dependencyCoverage
         let inventoryIDs = Set(inventory.components.map(\.id))
 
+        // heeler-overlay-natives' pin (once HeelerOverlay depends on a
+        // release by URL) is covered product by product below.
+        let resolved = Set(try loadPackageResolvedIdentities())
+        if resolved.contains(Self.nativesPackage) {
+            #expect(try loadOverlayManifest().contains(
+                #".package(url: "https://github.com/Ylarod/heeler-overlay-natives.git", exact: "#))
+        }
         try assertCoverage(
-            discovered: Set(try loadPackageResolvedIdentities()),
+            discovered: resolved.subtracting([Self.nativesPackage]),
             mapped: coverage.packageResolved,
             inventoryIDs: inventoryIDs,
             source: "Package.resolved pin")
 
         try assertCoverage(
-            discovered: Set(try loadHeelerSSHBinaryTargetNames()),
+            discovered: Set(try loadBinaryTargets(package: "HeelerSSH").map(\.name)),
             mapped: coverage.heelerSSHBinaryTargets,
             inventoryIDs: inventoryIDs,
             source: "HeelerSSH binaryTarget")
+
+        try assertCoverage(
+            discovered: Set(try loadNativesProducts()),
+            mapped: coverage.heelerOverlayNatives,
+            inventoryIDs: inventoryIDs,
+            source: "HeelerOverlay heeler-overlay-natives product")
+        #expect(try loadBinaryTargets(package: "HeelerOverlay").isEmpty,
+                "HeelerOverlay's native libraries come from heeler-overlay-natives")
 
         try assertCoverage(
             discovered: Set(try loadHeelerAppProjectPackageNames()),
@@ -155,20 +306,25 @@ struct LicenseNoticeInventoryTests {
 
         // Binary-target paths must also resolve to on-disk XCFrameworks so a
         // renamed artifact cannot leave the inventory mapping orphaned.
-        let binaryTargets = try loadHeelerSSHBinaryTargets()
-        #expect(!binaryTargets.isEmpty)
-        for target in binaryTargets {
-            let url = repositoryRoot
-                .appendingPathComponent("Packages/HeelerSSH")
-                .appendingPathComponent(target.path)
-            var isDirectory: ObjCBool = false
-            #expect(
-                FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-                    && isDirectory.boolValue,
-                "binaryTarget \(target.name) path missing: \(target.path)")
-            #expect(
-                coverage.heelerSSHBinaryTargets[target.name] != nil,
-                "binaryTarget \(target.name) has no dependencyCoverage entry")
+        let packages: [(name: String, coverage: [String: [String]])] = [
+            ("HeelerSSH", coverage.heelerSSHBinaryTargets),
+        ]
+        for package in packages {
+            let binaryTargets = try loadBinaryTargets(package: package.name)
+            #expect(!binaryTargets.isEmpty)
+            for target in binaryTargets {
+                let url = repositoryRoot
+                    .appendingPathComponent("Packages/\(package.name)")
+                    .appendingPathComponent(target.path)
+                var isDirectory: ObjCBool = false
+                #expect(
+                    FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                        && isDirectory.boolValue,
+                    "\(package.name) binaryTarget \(target.name) path missing: \(target.path)")
+                #expect(
+                    package.coverage[target.name] != nil,
+                    "\(package.name) binaryTarget \(target.name) has no dependencyCoverage entry")
+            }
         }
     }
 
@@ -299,16 +455,15 @@ struct LicenseNoticeInventoryTests {
         return directory
     }
 
-    private func assertMatchesArtifactNotice(named fileName: String, text: String) throws {
-        let url = artifactNoticeURL(named: fileName)
-        let artifact = try String(contentsOf: url, encoding: .utf8)
-        #expect(artifact == text)
-    }
-
-    private func artifactNoticeURL(named fileName: String) -> URL {
-        repositoryRoot
+    private func assertMatchesArtifactNotice(
+        named fileName: String,
+        text: String
+    ) throws {
+        let url = repositoryRoot
             .appendingPathComponent("Packages/HeelerSSH/Artifacts/Notices", isDirectory: true)
             .appendingPathComponent(fileName)
+        let artifact = try String(contentsOf: url, encoding: .utf8)
+        #expect(artifact == text, "\(fileName) differs from Packages/HeelerSSH/Artifacts/Notices")
     }
 
     /// Discovered keys must equal coverage map keys; every mapped id must
@@ -352,18 +507,33 @@ struct LicenseNoticeInventoryTests {
         return resolved.pins.map(\.identity).sorted()
     }
 
+    private static let nativesPackage = "heeler-overlay-natives"
+
+    private func loadInventoryCoverage() throws -> LicenseInventory.DependencyCoverage {
+        try LicenseNoticeCatalog.loadInventory().dependencyCoverage
+    }
+
+    private func loadOverlayManifest() throws -> String {
+        try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Packages/HeelerOverlay/Package.swift"),
+            encoding: .utf8)
+    }
+
+    /// Products of heeler-overlay-natives that HeelerOverlay's targets use:
+    /// `.product(name: "CTailscale", package: "heeler-overlay-natives")`.
+    private func loadNativesProducts() throws -> [String] {
+        let pattern = #/\.product\(\s*name:\s*"([^"]+)"\s*,\s*package:\s*"heeler-overlay-natives"\s*\)/#
+        return Set(try loadOverlayManifest().matches(of: pattern).map { String($0.1) }).sorted()
+    }
+
     private struct BinaryTarget: Equatable {
         let name: String
         let path: String
     }
 
-    private func loadHeelerSSHBinaryTargetNames() throws -> [String] {
-        try loadHeelerSSHBinaryTargets().map(\.name).sorted()
-    }
-
-    private func loadHeelerSSHBinaryTargets() throws -> [BinaryTarget] {
+    private func loadBinaryTargets(package: String) throws -> [BinaryTarget] {
         let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Packages/HeelerSSH/Package.swift"),
+            contentsOf: repositoryRoot.appendingPathComponent("Packages/\(package)/Package.swift"),
             encoding: .utf8)
         // Match SPM `.binaryTarget(name:path:)` declarations. Path packages
         // never appear in Package.resolved; this is the declaration source
@@ -613,4 +783,32 @@ private struct PackageResolved: Decodable {
     }
 
     let pins: [Pin]
+}
+
+/// The build's source commit, which ties a distributed binary to the
+/// corresponding source its LGPL and MPL components require.
+@Suite("Build source revision")
+struct BuildSourceRevisionTests {
+    private static let commit = "f5f35846c0a1b2d3e4f5a6b7c8d9e0f1a2b3c4d5"
+
+    @Test func fullCommitIdLinksToThatTree() throws {
+        let revision = try #require(BuildSourceRevision(
+            infoDictionary: [BuildSourceRevision.infoKey: Self.commit.uppercased()]))
+
+        #expect(revision.commit == Self.commit)
+        #expect(revision.shortCommit == "f5f35846")
+        #expect(revision.sourceURL?.absoluteString
+            == "https://github.com/ZingerLittleBee/Heeler/tree/\(Self.commit)")
+    }
+
+    /// Debug and test builds leave the setting empty; a build that never
+    /// expanded it, or a malformed value, must not name a wrong source.
+    @Test(arguments: [
+        nil, "", "$(HEELER_SOURCE_REVISION)", "f5f35846",
+        "f5f35846c0a1b2d3e4f5a6b7c8d9e0f1a2b3c4dg", Self.commit + "-dirty",
+    ])
+    func anythingButAFullCommitIdShowsNothing(value: String?) {
+        let info: [String: Any] = value.map { [BuildSourceRevision.infoKey: $0] } ?? [:]
+        #expect(BuildSourceRevision(infoDictionary: info) == nil)
+    }
 }

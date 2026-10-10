@@ -43,6 +43,8 @@ extension TransportError {
                     "Check that the Host is awake and reachable, then verify its address and port.")
         case .jumpHostFailed(let underlying):
             Self.jumpHostPresentation(underlying)
+        case .overlayFailed(let network, let reason):
+            Self.overlayPresentation(network: network, reason: reason)
         case .tcpForwardingUnavailable:
             TransportErrorPresentation(
                 summary: "SSH TCP forwarding is disabled",
@@ -158,6 +160,64 @@ extension TransportError {
         case .hostKeyMismatch: true
         case .jumpHostFailed(let underlying): underlying.isHostKeySecurityFailure
         default: false
+        }
+    }
+
+    /// Overlay failures name the network, not the Host: the Host was never
+    /// contacted, and the fix lives in Settings › Overlay Networks.
+    private static func overlayPresentation(
+        network: String, reason: OverlayFailure
+    ) -> TransportErrorPresentation {
+        switch reason {
+        case .notConfigured:
+            TransportErrorPresentation(
+                summary: "This Host's overlay network no longer exists",
+                detail: nil,
+                recoverySuggestion: "Choose another network in Edit Host.")
+        case .catalogUnreadable:
+            TransportErrorPresentation(
+                summary: "The saved overlay networks could not be read",
+                detail: nil,
+                recoverySuggestion: "Update Heeler, then reconnect.")
+        case .notReady(let detail):
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” is not ready yet",
+                detail: detail,
+                recoverySuggestion:
+                    "If it is waiting for approval, authorize this device in the network's "
+                    + "admin console.")
+        case .misconfigured(let detail):
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” is misconfigured",
+                detail: detail,
+                recoverySuggestion: "Fix it in Settings › Overlay Networks.")
+        case .loginRequired:
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” needs sign-in",
+                detail: nil,
+                recoverySuggestion: "Sign in from Settings › Overlay Networks.")
+        case .signedOut:
+            TransportErrorPresentation(
+                summary: "This device is signed out of overlay network “\(network)”",
+                detail: nil,
+                recoverySuggestion: "Connect it again in Settings › Overlay Networks.")
+        case .startFailed(let detail):
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” could not start",
+                detail: detail,
+                recoverySuggestion: "Check its settings in Settings › Overlay Networks.")
+        case .unreachable(let detail):
+            TransportErrorPresentation(
+                summary: "Unreachable over overlay network “\(network)”",
+                detail: detail,
+                recoverySuggestion:
+                    "Check that the machine has joined the network, then verify its overlay "
+                    + "address and port.")
+        case .timedOut:
+            TransportErrorPresentation(
+                summary: "Overlay network “\(network)” did not answer in time",
+                detail: nil,
+                recoverySuggestion: nil)
         }
     }
 

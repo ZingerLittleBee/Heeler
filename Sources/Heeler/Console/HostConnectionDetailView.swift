@@ -23,6 +23,9 @@ struct HostConnectionDetailPresentation: Equatable {
     /// spends most of its time waiting out a backoff, which Retry Now cuts
     /// short.
     let isDialing: Bool
+    /// The Host is still trying (dialing, or reconnecting on its own), so
+    /// the user can stop it instead of waiting for a timeout.
+    let canStop: Bool
 
     /// `lastFailure` is what the sheet saw before its own Retry Now: a
     /// reconnecting Host's retry dials without a standing failure, and the
@@ -39,12 +42,14 @@ struct HostConnectionDetailPresentation: Equatable {
             tone = .reconnecting
             self.attempt = "Attempt \(attempt)"
             isDialing = false
+            canStop = true
         case .failed(let stopped):
             failure = stopped
             title = "Can't Connect"
             tone = .unavailable
             attempt = nil
             isDialing = false
+            canStop = false
         case .connecting:
             guard let previous = standingFailure ?? lastFailure else { return nil }
             failure = previous
@@ -52,6 +57,7 @@ struct HostConnectionDetailPresentation: Equatable {
             tone = .pending
             attempt = nil
             isDialing = true
+            canStop = true
         default:
             return nil
         }
@@ -78,6 +84,8 @@ struct HostConnectionDetailView: View {
     /// the sheet, not the screen.
     let sheetPresentation: ConsoleSheetPresentation
     let isRetryInFlight: Bool
+    /// Stops the Host's attempt; nil where stopping is not offered.
+    var onStop: (() -> Void)? = nil
     let onRetry: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -87,7 +95,7 @@ struct HostConnectionDetailView: View {
             HostConnectionDetailContent(
                 presentation: presentation, host: host, catalog: catalog,
                 sheetPresentation: sheetPresentation,
-                isRetryInFlight: isRetryInFlight, onRetry: onRetry
+                isRetryInFlight: isRetryInFlight, onStop: onStop, onRetry: onRetry
             )
             .toolbar {
                 // A form sheet has no grabber to pull down.
@@ -110,6 +118,7 @@ struct HostConnectionDetailContent: View {
     let catalog: HostStore
     let sheetPresentation: ConsoleSheetPresentation
     let isRetryInFlight: Bool
+    var onStop: (() -> Void)? = nil
     let onRetry: () -> Void
 
     @State private var isEditing = false
@@ -166,7 +175,16 @@ struct HostConnectionDetailContent: View {
         // Pinned: however long the failure's detail, the one action
         // stays in reach.
         .safeAreaInset(edge: .bottom) {
-            retryButton
+            VStack(spacing: 8) {
+                retryButton
+                if presentation.canStop, let onStop {
+                    Button("Stop Connecting", role: .cancel, action: onStop)
+                        .controlSize(.large)
+                        .accessibilityHint(
+                            "Stops trying to connect without waiting for a timeout. "
+                                + "The Host stays paused until you retry.")
+                }
+            }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 // A form has no home indicator below it: the button sits as

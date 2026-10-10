@@ -102,6 +102,36 @@ struct HostOnboardingStoreTests {
         #expect(await transport.pluginReadsWhileOpen.isEmpty)
     }
 
+    @Test func cancellingChecksEndsThemAtOnceWithoutATimeout() async throws {
+        let (store, _) = try makeStore(outcome: .hangs(.seconds(1)))
+
+        let running = Task { await store.runChecks() }
+        try await waitUntil("checks running") { store.phase == .running }
+        store.cancelChecks()
+        #expect(store.phase == .finished)
+        #expect(store.report == .failure(TransportError.cancelled, authMethod: store.host.authMethod))
+        #expect(store.pluginStatus == .unavailable)
+
+        // The abandoned connect times out later; that is never shown.
+        await running.value
+        try await Task.sleep(for: .milliseconds(1_200))
+        #expect(store.report == .failure(TransportError.cancelled, authMethod: store.host.authMethod))
+        #expect(store.phase == .finished)
+    }
+
+    @Test func checksRunAgainAfterACancel() async throws {
+        let (store, _) = try makeStore(outcome: .hangs(.milliseconds(300)))
+        let running = Task { await store.runChecks() }
+        try await waitUntil("checks running") { store.phase == .running }
+        store.cancelChecks()
+        await running.value
+        #expect(store.phase == .finished)
+
+        // A new run proceeds (and its own outcome, here the timeout, shows).
+        await store.runChecks()
+        #expect(store.report == .failure(TransportError.timedOut, authMethod: store.host.authMethod))
+    }
+
     @Test func sessionDiscoveryPublishesDefaultAndNamedSessions() async throws {
         let sessions = [
             HerdrSession(name: "default", isDefault: true, isRunning: true),

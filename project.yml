@@ -19,6 +19,12 @@ packages:
   # checked-in native artifacts. The one SSH backend (ADR 0011).
   HeelerSSH:
     path: Packages/HeelerSSH
+  # Repository-local package running Tailscale, ZeroTier, and EasyTier nodes
+  # in-process. It only dials byte streams for HeelerSSH; it never replaces
+  # the SSH backend (ADR 0021). Its native libraries come from an exact
+  # release of heeler-overlay-natives, pinned in its own Package.swift.
+  HeelerOverlay:
+    path: Packages/HeelerOverlay
   # Pin the reviewed 1.6.20260909 source commit. Its prebuilt libghostty is
   # Ghostty 82938b633ba6 with SwiftPM checksum
   # 2d9a26e80c3836c450f03ea2cf9d191841d9093d4f61c1cea466d2fc8e215dbb.
@@ -58,6 +64,10 @@ targets:
         # over the generated one; keep both versions on the build settings.
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # The commit a distributed build was made from, shown in About ›
+        # Acknowledgements (BuildSourceRevision). `make archive` and
+        # release.yml set it; other builds leave it empty.
+        HeelerSourceRevision: $(HEELER_SOURCE_REVISION)
         # A dragged Console row carries this activity; iPadOS creates a new
         # window from it only for a declared type. The generated scene
         # manifest already declares multiple-scene support.
@@ -90,10 +100,12 @@ targets:
         CURRENT_PROJECT_VERSION: "25"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
-        # Only exempt encryption is used (standard SSH algorithms via the
-        # HeelerSSH package's libssh2/OpenSSL, OS-provided CryptoKit);
-        # declaring it here keeps every TestFlight upload from stalling on the
-        # Missing Compliance prompt.
+        # Only exempt encryption is used: standard, published algorithms in
+        # SSH (the HeelerSSH package's libssh2/OpenSSL), OS-provided
+        # CryptoKit, and the overlay networks' protocols (WireGuard in
+        # Tailscale, ZeroTier's, and EasyTier's, ADR 0021). Declaring it here
+        # keeps every TestFlight upload from stalling on the Missing
+        # Compliance prompt.
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         # iPhone and iPad. App Store Connect derives device support from the build.
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -103,8 +115,19 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         # ActivityKit starts Live Activities from the app; HeelerWidgets renders them.
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
+        # In-app overlay nodes (ADR 0021) find peers on the same LAN for direct
+        # paths; iOS asks before the first local-network packet.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby."
+        HEELER_SOURCE_REVISION: ""
+      configs:
+        Release:
+          # Nothing loads symbols from the app executable, so its 1.52 MB
+          # export trie, mostly CEasyTier's Rust symbols, is dead weight.
+          # Release only; Debug's test host and debug dylib need it.
+          LD_EXPORT_SYMBOLS: NO
     dependencies:
       - package: HeelerSSH
+      - package: HeelerOverlay
       - package: GhosttyTerminal
       - package: GhosttyTerminal
         product: GhosttyTheme
@@ -234,6 +257,7 @@ targets:
     dependencies:
       - target: Heeler
       - package: HeelerSSH
+      - package: HeelerOverlay
       - package: GhosttyTerminal
 
 schemes:

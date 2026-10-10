@@ -303,6 +303,20 @@ actor EventsSession {
         await enqueueLifecycleTransition { await self.deactivate() }
     }
 
+    /// The user stopped waiting for this Host to connect: the attempt in
+    /// flight (an SSH dial, or an Overlay Network still coming up) or the
+    /// backoff before the next one ends at once, and the session rests on
+    /// `.suspended` — no failure, no timeout — until `retry()` or the next
+    /// `resume()`. A session whose events channel is live is left alone.
+    func cancelConnecting() async {
+        await enqueueLifecycleTransition { await self.stopConnecting() }
+    }
+
+    private func stopConnecting() async {
+        guard liveStream == nil else { return }
+        await deactivate()
+    }
+
     /// Terminal teardown: like `suspend()`, then finishes `updates` for
     /// good. Idempotent.
     func end() async {

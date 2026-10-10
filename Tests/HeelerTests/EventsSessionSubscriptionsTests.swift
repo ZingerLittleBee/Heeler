@@ -1093,3 +1093,45 @@ private actor StalledFirstConnection {
         return resumed
     }
 }
+
+/// Stop Connecting: a Host whose connect is stuck (an Overlay Network still
+/// coming up) can be stopped without waiting for the timeout.
+@Suite("EventsSession cancel connecting")
+struct EventsSessionCancelConnectingTests {
+    @Test func aStuckConnectStopsAtOnceAsPausedAndRetryDialsAgain() async throws {
+        let attempts = AttemptCounter()
+        let session = EventsSession(
+            subscriptions: [.global(.paneAgentDetected)],
+            connect: {
+                attempts.count.withLock { $0 += 1 }
+                // Ignores cancellation, like a native dial.
+                await Task.detached { try? await Task.sleep(for: .seconds(2)) }.value
+                throw TransportError.timedOut
+            },
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        for _ in 0..<100 where attempts.count.withLock({ $0 }) == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let cancelled = ContinuousClock.now
+        await session.cancelConnecting()
+        #expect(ContinuousClock.now - cancelled < .seconds(1))
+        #expect(await updates.next() == .status(.suspended))
+
+        await session.retry()
+        #expect(await updates.next() == .status(.connecting))
+        for _ in 0..<100 where attempts.count.withLock({ $0 }) < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(attempts.count.withLock { $0 } == 2)
+        await session.end()
+    }
+}
+
+private final class AttemptCounter: Sendable {
+    let count = Mutex(0)
+}

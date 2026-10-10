@@ -14,6 +14,13 @@ import Foundation
 struct ConsoleActivityDriver {
     let activity: AppActivityCoordinator
     let console: ConsoleStore
+    /// Runs after the Console's teardown, still under the background
+    /// assertion: the Overlay Network runtime stops its nodes here.
+    var afterSuspend: (@Sendable () async -> Void)? = nil
+    /// Runs after Console reactivation on every foreground return, including
+    /// one inside the grace period. Pending browser sign-ins resume here so
+    /// their nodes cannot race the preceding suspension teardown.
+    var afterResume: (@Sendable () async -> Void)? = nil
 
     /// Consumes activity events until the app ends. Cancellation ends it.
     func run() async {
@@ -22,10 +29,12 @@ struct ConsoleActivityDriver {
             switch event {
             case .activated:
                 await console.reactivate()
+                await afterResume?()
             case .suspended:
                 // The background assertion is held until this returns, so
                 // the SSH teardown finishes before the process freezes.
                 await console.suspend()
+                await afterSuspend?()
                 activity.didFinishSuspending()
             }
         }

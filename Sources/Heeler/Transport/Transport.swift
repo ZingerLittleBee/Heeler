@@ -967,6 +967,11 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// an unexpected host key. Carries the underlying failure so screens can
     /// reuse the existing guidance while naming the Jump Host as the culprit.
     case jumpHostFailed(TransportError)
+    /// The Host's Overlay Network could not carry the first hop: it is gone,
+    /// not signed in, failed to start, or could not reach the peer. Never
+    /// wrapped in `.jumpHostFailed` — the overlay sits in front of the Jump
+    /// Host, which was never contacted (ADR 0021).
+    case overlayFailed(network: String, reason: OverlayFailure)
     /// The Jump Host accepted SSH authentication but its server or key policy
     /// prohibits the direct-tcpip channel required to reach the Host.
     case tcpForwardingUnavailable
@@ -1066,6 +1071,17 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // rebooting VPS should reconnect on its own, a rejected key should not.
         case .jumpHostFailed(let underlying):
             underlying.isRetryable
+        // A peer that is asleep, a slow node, or a device awaiting approval
+        // can recover on its own; a missing network, a sign-in, a malformed
+        // setting, or a start failure that outlasted its retries needs the user.
+        case .overlayFailed(_, let reason):
+            switch reason {
+            case .unreachable, .timedOut, .notReady:
+                true
+            case .notConfigured, .catalogUnreadable, .misconfigured, .loginRequired,
+                .signedOut, .startFailed:
+                false
+            }
         }
     }
 }

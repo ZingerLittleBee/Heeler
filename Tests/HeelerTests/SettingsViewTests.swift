@@ -12,6 +12,14 @@ struct SettingsViewTests {
         #expect(ConsoleListPresentationMode.flat.title == "All Agents")
     }
 
+    @Test func overlayNetworksRouteConstructsTheNetworksScreen() {
+        let destination = SettingsView.overlayNetworksDestination
+        #expect(destination.rawValue == "settings.overlayNetworks")
+        #expect(
+            destination.destinationTypeName
+                == String(reflecting: OverlayNetworksSettingsView.self))
+    }
+
     @Test func repositoryLinkTargetsTheProject() throws {
         let repositoryURL = try #require(SettingsView.repositoryURL)
 

@@ -229,6 +229,14 @@ final class ConsoleStore {
         await projections[id]?.retry()
     }
 
+    /// Stops one Host's connection attempt (or its reconnect backoff) at
+    /// once instead of waiting for it to time out; a connected Host is left
+    /// alone. The Host reads Paused until it is retried or the app returns
+    /// to the foreground.
+    func cancelHostConnection(_ id: Host.ID) async {
+        await projections[id]?.cancelConnecting()
+    }
+
     /// The returned runner resolves the Host's live projection on every
     /// call: editing a Host replaces its projection (and session), and a
     /// runner captured by a long-lived Attach screen must follow it there
@@ -959,7 +967,8 @@ extension ConsoleStore {
     static func sshSessionFactory(
         connector: any TransportConnector = SSHTransportConnector(),
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
-        credentials: HostCredentialsProvider = HostCredentialsProvider()
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
     ) -> @Sendable (Host, [EventSubscription]) -> EventsSession {
         { host, subscriptions in
             EventsSession(subscriptions: subscriptions) {
@@ -974,7 +983,8 @@ extension ConsoleStore {
                     settings: SSHTransportSettings(
                         host: host,
                         credentials: resolved,
-                        hostKeyPolicy: policy))
+                        hostKeyPolicy: policy,
+                        overlays: overlays))
             }
         }
     }
