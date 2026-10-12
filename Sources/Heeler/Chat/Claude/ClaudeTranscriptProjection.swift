@@ -1,0 +1,915 @@
+import Foundation
+
+/// Turns the current branch into Chat entries
+/// (docs/research/claude-code-transcript-format.md, "One API message across
+/// records", "Tool pairing and outcomes" and "Special flows"), plus the
+/// requests a Blocked card matches, the prompts pending-echo matching looks
+/// for, and the Background Work Chat lists above its Composer.
+///
+/// Entries follow the selected records in byte-offset order, one per content
+/// block. A tool call's row takes everything from its result (status, note,
+/// preview, diff), so a record that only completes an earlier row adds none
+/// of its own: tool results, a command's output, the interrupt marker after a
+/// decline.
+enum ClaudeTranscriptProjection {
+    /// Origins whose meta messages the SDK shows as system rows (`$C`).
+    static let visibleMetaOrigins: Set<String> = ["channel", "observer", "observer-activity", "slack-ping", "peer"]
+    /// `promptSource` values of prompts a person typed. `queued` marks one
+    /// typed while a turn was running.
+    static let typedPromptSources: Set<String> = ["typed", "queued"]
+
+    /// `transcriptPath` is the file the lines came from, which a Workflow's
+    /// journal sits beside; nil lists no journal.
+    static func transcript(
+        index: ClaudeTranscriptIndex, chain: ClaudeChain, role: ClaudeTranscriptReducer.Role,
+        context: ChatProjectionContext, transcriptPath: String? = nil
+    ) -> ChatTranscript {
+        var builder = Builder(
+            chain: chain, index: index, role: role, activity: context.activity, transcriptPath: transcriptPath)
+        builder.build()
+        return ChatTranscript(
+            entries: builder.entries, title: index.title,
+            needsOlderHistory: context.windowStart > 0,
+            pendingRequests: builder.pendingRequests,
+            recordedPrompts: role == .main ? recordedPrompts(index, entryByRecord: builder.entryByRecord) : [],
+            links: index.links, diagnostics: index.diagnostics,
+            backgroundWork: role == .main ? builder.backgroundWork : [],
+            latestPromptOffset: builder.latestPromptOffset,
+            backgroundWorkEnds: role == .main ? builder.backgroundWorkEnds : [:],
+            backgroundWorkStop: role == .main ? builder.end(stoppingAfter: context.windowStart) : nil,
+            turns: role == .main ? builder.turns : [],
+            precedingTurnEnd: role == .main ? builder.precedingTurnEnd : nil)
+    }
+
+    /// The output `record` holds for the call `use`, as its row's preview
+    /// is built. Nil when the record holds no result for it.
+    static func output(of use: ClaudeToolUse, in record: ClaudeRecord) -> ChatToolOutput? {
+        guard let answer = Builder.answers(in: record).first(where: { $0.result.toolUseID == use.id }) else {
+            return nil
+        }
+        let preview = ClaudeToolSummary.preview(
+            for: use, result: answer.result, details: record.toolResult, outcome: answer.outcome)
+        let fileChanges = ClaudeToolSummary.fileChanges(
+            for: use, details: record.toolResult, outcome: answer.outcome)
+        if let path = record.toolResult?.result?.persistedOutputPath {
+            return .file(path, fallback: preview, fileChanges: fileChanges)
+        }
+        return .preview(preview, fileChanges: fileChanges)
+    }
+
+    // MARK: - Recorded prompts
+
+    /// Every prompt a person typed, in file order, from all records rather
+    /// than only the current branch: an echo is matched by where it lands in
+    /// the file. Task notifications and other machine input never count.
+    static func recordedPrompts(
+        _ index: ClaudeTranscriptIndex, entryByRecord: [String: ChatEntryID]
+    ) -> [ChatRecordedPrompt] {
+        var prompts: [ChatRecordedPrompt] = []
+        for record in index.recordsByPosition where !record.isSidechain && record.teamName == nil {
+            guard let text = typedText(of: record, indexed: index.records) else { continue }
+            prompts.append(
+                ChatRecordedPrompt(offset: record.byteOffset, text: text, entryID: entryByRecord[record.uuid]))
+        }
+        // A queued prompt is recorded first as an enqueue and later as the
+        // record that delivers it; the enqueue points at that record's entry.
+        var enqueued: [ChatRecordedPrompt] = []
+        for operation in index.queueOperations.values where operation.operation == "enqueue" {
+            guard let content = operation.content, let text = promptText(content) else { continue }
+            let key = ClaudeTranscriptReducer.echoKey(text)
+            let delivery = prompts.first {
+                $0.offset > operation.offset && ClaudeTranscriptReducer.echoKey($0.text) == key
+            }
+            enqueued.append(ChatRecordedPrompt(offset: operation.offset, text: text, entryID: delivery?.entryID))
+        }
+        return (prompts + enqueued).sorted { $0.offset < $1.offset }
+    }
+
+    private static func typedText(of record: ClaudeRecord, indexed: [String: ClaudeRecord]) -> String? {
+        switch record.kind {
+        case .user:
+            guard record.toolResults.isEmpty, !record.isMeta, !record.isCompactSummary,
+                record.sourceToolUseID == nil, isHuman(record.originKind),
+                record.promptSource.map(typedPromptSources.contains) ?? true
+            else { return nil }
+            return promptText(record.texts.joined(separator: "\n"))
+        case .attachment("queued_command"):
+            guard let queued = record.attachment?.queuedCommand, !queued.isMeta,
+                queued.commandMode == nil || queued.commandMode == "prompt", isHuman(queued.originKind)
+            else { return nil }
+            // The user record written for it is recorded instead.
+            if let source = queued.sourceUUID, indexed[source] != nil { return nil }
+            return promptText(queued.text)
+        case .system("local_command"):
+            guard case .command(let typed) = ClaudeUserText.classify(record.system?.content ?? "") else { return nil }
+            return (record.system?.commandRun ?? typed).displayText
+        default:
+            return nil
+        }
+    }
+
+    /// A prompt's text as typed, a command as `/name args`, or a shell-mode
+    /// command as `!command`, the way it was typed.
+    static func promptText(_ text: String) -> String? {
+        guard !ClaudeUserText.isMarker(text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+        switch ClaudeUserText.classify(text) {
+        case .prompt(let prompt): return prompt.isEmpty ? nil : prompt
+        case .command(let invocation): return invocation.displayText
+        case .bashInput(let command): return command.isEmpty ? nil : "!\(command)"
+        default: return nil
+        }
+    }
+
+    static func isHuman(_ originKind: String?) -> Bool {
+        originKind == nil || originKind == "human"
+    }
+
+    /// A record's `timestamp`: ISO 8601 with milliseconds, on the Host's
+    /// clock.
+    static func date(_ timestamp: String?) -> Date? {
+        guard let timestamp else { return nil }
+        return (try? Date(timestamp, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
+            ?? (try? Date(timestamp, strategy: Date.ISO8601FormatStyle()))
+    }
+
+    static func modelChangeTitle(from: String?, to: String?) -> String {
+        switch (from, to) {
+        case (let from?, let to?): "Switched from \(from) to \(to)"
+        case (nil, let to?): "Switched to \(to)"
+        default: "Switched model"
+        }
+    }
+}
+
+// MARK: - Entries
+
+private struct Builder {
+    /// A tool call's result, and the text blocks after it in the same record
+    /// (a note the user added to an approval).
+    struct Answer {
+        var record: ClaudeRecord
+        var result: ClaudeToolResult
+        var trailingTexts: [String] = []
+
+        var outcome: ClaudeToolOutcome {
+            ClaudeToolOutcome(result: result, details: record.toolResult, trailingTexts: trailingTexts)
+        }
+    }
+
+    struct TurnDraft {
+        var firstEntryID: ChatEntryID?
+        var startedAt: Date?
+        var endedAt: Date?
+        var ending: ChatTurn.Ending?
+        /// The newest reply was an API error.
+        var failed = false
+    }
+
+    /// A task notification and the record that delivered it.
+    struct Delivery {
+        var notification: ClaudeTaskNotification
+        var offset: UInt64
+        var timestamp: String?
+    }
+
+    let chain: ClaudeChain
+    /// Every indexed record, selected or not.
+    let indexed: [String: ClaudeRecord]
+    let role: ClaudeTranscriptReducer.Role
+    let activity: ChatAgentActivity
+    let transcriptPath: String?
+
+    private(set) var entries: [ChatEntry] = []
+    private(set) var pendingRequests: [ChatPendingRequest] = []
+    /// The first entry each record placed.
+    private(set) var entryByRecord: [String: ChatEntryID] = [:]
+    private(set) var backgroundWork: [ChatBackgroundWorkItem] = []
+    /// The newest record that placed a message the user sent.
+    private(set) var latestPromptOffset: UInt64?
+
+    private var selected: [String: ClaudeRecord] = [:]
+    private var children: [String: [ClaudeRecord]] = [:]
+    private var answers: [String: Answer] = [:]
+    /// Offsets of records that start a new turn or end one, ascending.
+    private var turnBoundaries: [UInt64] = []
+    /// The turns opened so far, in chain order. A turn whose opener placed
+    /// nothing takes the first entry placed after it.
+    private var turnDrafts: [TurnDraft] = []
+    private var turnOpen = false
+    /// How the turn opened above the loaded lines ended, when they say.
+    private(set) var precedingTurnEnd: ChatTurnEnd?
+    /// The latest notification for each background call.
+    private var notifications: [String: Delivery] = [:]
+    /// Notifications shown from user records, so a queued copy is not shown
+    /// twice.
+    private var notificationKeys: Set<String> = []
+    /// `agents_killed` records, in file order.
+    private var agentsKilled: [ClaudeRecord] = []
+    /// `plan_mode_exit` paths by the record they follow (the approval).
+    private var planExitPaths: [String: String] = [:]
+    private var entryIDs: Set<ChatEntryID> = []
+    /// Records whose content an earlier entry already shows.
+    private var consumed: Set<String> = []
+    private var compactionEntry: Int?
+
+    init(
+        chain: ClaudeChain, index: ClaudeTranscriptIndex, role: ClaudeTranscriptReducer.Role,
+        activity: ChatAgentActivity, transcriptPath: String?
+    ) {
+        self.chain = chain
+        indexed = index.records
+        self.role = role
+        self.activity = activity
+        self.transcriptPath = transcriptPath
+        for record in chain.records {
+            selected[record.uuid] = record
+            if let parent = chain.parents[record.uuid] {
+                children[parent, default: []].append(record)
+            }
+            collectAnswers(in: record)
+            if Self.isTurnBoundary(record) {
+                turnBoundaries.append(record.byteOffset)
+            }
+            switch record.kind {
+            case .system("agents_killed"):
+                agentsKilled.append(record)
+            case .attachment("plan_mode_exit"):
+                if let path = record.attachment?.planFilePath, let parent = chain.parents[record.uuid] {
+                    planExitPaths[parent] = path
+                }
+            default:
+                break
+            }
+            if let notification = Self.notification(in: record) {
+                if let callID = notification.toolUseID {
+                    notifications[callID] = Delivery(
+                        notification: notification, offset: record.byteOffset, timestamp: record.timestamp)
+                }
+                if record.kind == .user { notificationKeys.insert(Self.key(of: notification)) }
+            }
+        }
+        // Claude Code queues a notification as soon as the work ends, and
+        // delivers it once the session can take it, which can be minutes
+        // into a busy turn.
+        for operation in index.queueOperations.values where operation.operation == "enqueue" {
+            guard let content = operation.content,
+                case .taskNotification(let notification) = ClaudeUserText.classify(content),
+                let callID = notification.toolUseID,
+                notifications[callID].map({ $0.offset < operation.offset }) ?? true
+            else { continue }
+            notifications[callID] = Delivery(
+                notification: notification, offset: operation.offset, timestamp: operation.timestamp)
+        }
+    }
+
+    mutating func build() {
+        for record in chain.records where !consumed.contains(record.uuid) {
+            if role == .main, record.isSidechain || record.teamName != nil { continue }
+            if role == .main { noteTurn(record) }
+            switch record.kind {
+            case .assistant: addAssistant(record)
+            case .user: addUser(record)
+            case .system(let subtype): addSystem(record, subtype: subtype)
+            case .attachment("queued_command"): addQueuedCommand(record)
+            case .attachment, .progress, .unknown: break
+            }
+        }
+    }
+
+    // MARK: Assistant
+
+    private mutating func addAssistant(_ record: ClaudeRecord) {
+        for (position, block) in record.blocks.enumerated() {
+            // One block per record in 2.1.291; older releases wrote several.
+            let suffix = position == 0 ? "" : "#\(position)"
+            switch block {
+            case .text(let text):
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                if record.isAPIError {
+                    let parts = ClaudeText.noticeParts(text)
+                    add(
+                        "notice:\(record.uuid)\(suffix)", at: record,
+                        .notice(ChatNotice(kind: .error, title: parts.title, detail: parts.detail)))
+                } else {
+                    add("text:\(record.uuid)\(suffix)", at: record, .assistant(ChatAssistantMessage(text: text)))
+                }
+            case .thinking(let text):
+                add(
+                    "think:\(record.uuid)\(suffix)", at: record,
+                    .reasoning(ChatReasoning(text: text, durationMilliseconds: record.thinkingDurationMilliseconds)))
+            case .redactedThinking:
+                add(
+                    "think:\(record.uuid)\(suffix)", at: record,
+                    .reasoning(ChatReasoning(text: "", durationMilliseconds: record.thinkingDurationMilliseconds)))
+            case .toolUse(let use):
+                addToolUse(use, in: record)
+            case .fallback(let from, let to):
+                add(
+                    "notice:\(record.uuid)\(suffix)", at: record,
+                    .notice(
+                        ChatNotice(
+                            kind: .modelChange, title: ClaudeTranscriptProjection.modelChangeTitle(from: from, to: to))))
+            case .toolResult, .image, .other:
+                break
+            }
+        }
+    }
+
+    private mutating func addToolUse(_ use: ClaudeToolUse, in record: ClaudeRecord) {
+        let callID = use.id.isEmpty ? nil : use.id
+        let entryID = "tool:\(callID ?? record.uuid)"
+        let answer = callID.flatMap { answers[$0] }
+        let outcome = answer?.outcome
+        let structured = answer?.record.toolResult?.result
+        var status = outcome?.status ?? unansweredStatus(after: record.byteOffset)
+        if status == .succeeded, let launch = structured?.status, launch == "async_launched" || launch == "remote_launched" {
+            status = backgroundStatus(callID, launchedAt: record.byteOffset)
+        }
+
+        let placed: Bool
+        switch use.name {
+        case "ExitPlanMode":
+            let filePath =
+                structured?.filePath ?? answer.flatMap { planExitPaths[$0.record.uuid] } ?? use.input.planFilePath
+            placed = add(
+                entryID, at: record,
+                .plan(
+                    ChatPlan(
+                        text: structured?.plan ?? use.input.plan ?? "", filePath: filePath, status: status,
+                        note: outcome?.note, callID: callID)))
+        case "EnterPlanMode" where status == .succeeded:
+            placed = add(entryID, at: record, .notice(ChatNotice(kind: .planMode, title: "Entered plan mode")))
+        default:
+            placed = add(entryID, at: record, .tool(toolRow(for: use, status: status, answer: answer)))
+        }
+
+        if placed, let item = backgroundWorkItem(for: use, in: record, result: structured) {
+            backgroundWork.append(item)
+        }
+        guard placed, answer == nil, !turnEnded(after: record.byteOffset) else { return }
+        let summary = ClaudeToolSummary(use)
+        pendingRequests.append(
+            ChatPendingRequest(
+                entryID: ChatEntryID(entryID), callID: callID, kind: summary.kind, toolName: use.name,
+                summary: ClaudeToolSummary.pendingSummary(use), detail: ClaudeToolSummary.pendingDetail(use),
+                questions: use.input.questions,
+                planFilePath: use.name == "ExitPlanMode" ? use.input.planFilePath : nil))
+    }
+
+    private func toolRow(for use: ClaudeToolUse, status: ChatToolActivity.Status, answer: Answer?) -> ChatToolActivity {
+        let summary = ClaudeToolSummary(use)
+        var row = ChatToolActivity(
+            kind: summary.kind, name: use.name, title: summary.title, subtitle: summary.subtitle, status: status,
+            callID: use.id.isEmpty ? nil : use.id)
+        let structured = answer?.record.toolResult?.result
+        if let answer {
+            let outcome = answer.outcome
+            row.note = outcome.note
+            row.preview = ClaudeToolSummary.preview(
+                for: use, result: answer.result, details: answer.record.toolResult, outcome: outcome)
+            row.output = ChatOutputReference(offset: answer.record.byteOffset, length: answer.record.byteLength)
+            row.exitCode = ClaudeToolSummary.exitCode(for: use, result: answer.result)
+            if case .succeeded = outcome {
+                row.diff = structured?.diff
+            }
+            row.fileChanges = ClaudeToolSummary.fileChanges(
+                for: use, details: answer.record.toolResult, outcome: outcome)
+        }
+        if Self.isWorkflow(use, result: structured), let name = structured?.workflowName, !name.isEmpty {
+            row.title = name
+            row.subtitle = structured?.workflowSummary
+        }
+        // A background agent reports through its notification.
+        if row.preview == nil, !use.id.isEmpty, let report = notifications[use.id]?.notification.result,
+            !report.isEmpty
+        {
+            row.preview = ChatToolPreview(capping: report)
+        }
+        if use.name == "AskUserQuestion" {
+            let given = structured?.answers ?? [:]
+            row.questions = use.input.questions.map { question in
+                var question = question
+                question.answer = given[question.text]
+                return question
+            }
+        }
+        return row
+    }
+
+    /// A call without a result: still running, waiting on the user, or left
+    /// behind by a turn that moved on.
+    private func unansweredStatus(after offset: UInt64) -> ChatToolActivity.Status {
+        if turnEnded(after: offset) { return .noResult }
+        switch activity {
+        case .blocked: return .awaitingApproval
+        case .idle: return .noResult
+        case .working, .unknown: return .running
+        }
+    }
+
+    /// A background agent runs until its task notification arrives.
+    private func backgroundStatus(_ callID: String?, launchedAt offset: UInt64) -> ChatToolActivity.Status {
+        if let callID, let delivery = notifications[callID] {
+            switch delivery.notification.status {
+            case "failed": return .failed
+            case "killed", "stopped": return .interrupted
+            case "blocked": return .awaitingApproval
+            default: return .succeeded
+            }
+        }
+        if agentsKilled.contains(where: { $0.byteOffset > offset }) { return .interrupted }
+        return .running
+    }
+
+    private static func isWorkflow(_ use: ClaudeToolUse, result: ClaudeToolUseResult?) -> Bool {
+        use.name == "Workflow" || result?.taskType == "local_workflow"
+    }
+
+    /// A Subagent or Workflow the call started in the background, with how
+    /// it ended once its notification arrived. Teammates are left out:
+    /// nothing in the transcript says when one is done.
+    private func backgroundWorkItem(
+        for use: ClaudeToolUse, in record: ClaudeRecord, result: ClaudeToolUseResult?
+    ) -> ChatBackgroundWorkItem? {
+        guard role == .main, !use.id.isEmpty, let result,
+            result.status == "async_launched" || result.status == "remote_launched"
+        else { return nil }
+        var item: ChatBackgroundWorkItem
+        if Self.isWorkflow(use, result: result) {
+            item = ChatBackgroundWorkItem(
+                id: use.id, kind: .workflow, title: result.workflowName.flatMap(\.nonEmpty) ?? "Workflow",
+                subtitle: result.workflowSummary.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
+            if let transcriptPath, let runID = result.runID {
+                item.journalPath = ClaudeTranscriptLocation.workflowJournalPath(
+                    transcriptPath: transcriptPath, runID: runID)
+            }
+        } else if use.name == "Agent" || use.name == "Task" {
+            item = ChatBackgroundWorkItem(
+                id: use.id, kind: .subagent, title: use.input.description.flatMap(\.nonEmpty) ?? "Subagent",
+                subtitle: use.input.subagentType.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
+        } else {
+            return nil
+        }
+        item.launchedAt = ClaudeTranscriptProjection.date(record.timestamp)
+        if let end = notifications[use.id].map(Self.end(of:)) ?? end(stoppingAfter: record.byteOffset) {
+            item.apply(end)
+        }
+        return item
+    }
+
+    /// How each background call ended, by its id, as its latest
+    /// notification says.
+    var backgroundWorkEnds: [String: ChatBackgroundWorkEnd] {
+        notifications.mapValues(Self.end(of:))
+    }
+
+    private static func end(of delivery: Delivery) -> ChatBackgroundWorkEnd {
+        ChatBackgroundWorkEnd(
+            state: state(of: delivery.notification), offset: delivery.offset,
+            endedAt: ClaudeTranscriptProjection.date(delivery.timestamp), usage: delivery.notification.usage)
+    }
+
+    /// The first `agents_killed` record past `offset`, which stops work
+    /// launched before it.
+    func end(stoppingAfter offset: UInt64) -> ChatBackgroundWorkEnd? {
+        agentsKilled.first(where: { $0.byteOffset > offset }).map { killed in
+            ChatBackgroundWorkEnd(
+                state: .stopped, offset: killed.byteOffset, endedAt: ClaudeTranscriptProjection.date(killed.timestamp))
+        }
+    }
+
+    /// The same reading `backgroundStatus` gives the call's row.
+    private static func state(of notification: ClaudeTaskNotification) -> ChatBackgroundWorkItem.State {
+        switch notification.status {
+        case "failed": .failed
+        case "killed", "stopped": .stopped
+        case "blocked": .running
+        default: .completed
+        }
+    }
+
+    /// Turns that placed an entry, oldest first. A turn whose last reply
+    /// was an API error failed, unless it was interrupted.
+    var turns: [ChatTurn] {
+        turnDrafts.compactMap { draft in
+            draft.firstEntryID.map {
+                let ending = draft.ending == .completed && draft.failed ? .failed : draft.ending
+                return ChatTurn(firstEntryID: $0, startedAt: draft.startedAt, endedAt: draft.endedAt, ending: ending)
+            }
+        }
+    }
+
+    /// Opens a turn at a prompt, command or notification, and closes the
+    /// open one at `turn_duration` or an interrupt marker. An interrupted
+    /// turn keeps that ending through the `turn_duration` after it. A
+    /// close before any opener ends the turn opened above the loaded lines.
+    private mutating func noteTurn(_ record: ClaudeRecord) {
+        if Self.opensTurn(record, whileOpen: turnOpen) {
+            turnDrafts.append(TurnDraft(startedAt: ClaudeTranscriptProjection.date(record.timestamp)))
+            turnOpen = true
+            return
+        }
+        let closing: ChatTurn.Ending?
+        switch record.kind {
+        case .system("turn_duration"): closing = .completed
+        case .user where Self.isInterruptMarker(record) && record.toolResults.isEmpty: closing = .interrupted
+        default: closing = nil
+        }
+        guard !turnDrafts.isEmpty else {
+            guard let closing, precedingTurnEnd.map({ $0.ending == .interrupted }) ?? true else { return }
+            let endedAt = ClaudeTranscriptProjection.date(record.timestamp) ?? precedingTurnEnd?.endedAt
+            precedingTurnEnd = ChatTurnEnd(ending: precedingTurnEnd?.ending ?? closing, endedAt: endedAt)
+            return
+        }
+        let index = turnDrafts.count - 1
+        if turnOpen, case .assistant = record.kind, !record.blocks.isEmpty {
+            // Claude Code retries a failed request; a reply after the
+            // error clears it.
+            turnDrafts[index].failed = record.isAPIError
+        }
+        // Only the `turn_duration` that follows an interrupt closes a turn
+        // already closed.
+        guard let closing, turnOpen || turnDrafts[index].ending == .interrupted else { return }
+        turnDrafts[index].endedAt = ClaudeTranscriptProjection.date(record.timestamp) ?? turnDrafts[index].endedAt
+        if turnDrafts[index].ending != .interrupted { turnDrafts[index].ending = closing }
+        turnOpen = false
+    }
+
+    private func turnEnded(after offset: UInt64) -> Bool {
+        guard let last = turnBoundaries.last else { return false }
+        return last > offset
+    }
+
+    // MARK: User
+
+    private mutating func addUser(_ record: ClaudeRecord) {
+        guard record.toolResults.isEmpty else { return }
+        if record.isCompactSummary {
+            attachCompactionSummary(record)
+            return
+        }
+        // Messages a tool call produced, such as a skill a Skill call loaded.
+        guard record.sourceToolUseID == nil else { return }
+        let text = record.texts.joined(separator: "\n")
+        if record.isMeta {
+            guard let origin = record.originKind, ClaudeTranscriptProjection.visibleMetaOrigins.contains(origin) else {
+                return
+            }
+            switch ClaudeUserText.classify(text) {
+            case .prompt(let message), .external(let message): addSystemNotice(message, at: record)
+            default: break
+            }
+            return
+        }
+        if Self.isInterruptMarker(record) {
+            addInterruptMarker(record, text: text)
+            return
+        }
+        let wasQueued = record.promptSource == "queued"
+        switch ClaudeUserText.classify(text) {
+        case .prompt(let prompt):
+            guard ClaudeTranscriptProjection.isHuman(record.originKind), record.promptSource != "system" else {
+                addSystemNotice(prompt, at: record)
+                return
+            }
+            guard !prompt.isEmpty || record.imageCount > 0 else { return }
+            add(
+                "user:\(record.uuid)", at: record,
+                .user(ChatUserMessage(text: prompt, imageCount: record.imageCount, wasQueued: wasQueued)))
+        case .command(let invocation):
+            // A local command records its output below it; a skill or prompt
+            // command records the expanded prompt, which stays hidden.
+            if let output = takeOutput(below: record, as: Self.localCommandOutput) {
+                add(
+                    "notice:\(record.uuid)", at: record,
+                    .notice(ChatNotice(kind: .command, title: invocation.displayText, detail: output.nonEmpty)))
+            } else {
+                add(
+                    "user:\(record.uuid)", at: record,
+                    .user(
+                        ChatUserMessage(
+                            text: invocation.displayText, imageCount: record.imageCount, command: invocation,
+                            wasQueued: wasQueued)))
+            }
+        case .localCommandOutput(let output):
+            addOutputNotice(kind: .command, output: output, at: record)
+        case .bashInput(let command):
+            let output = takeOutput(below: record, as: Self.bashOutput)
+            add(
+                "notice:\(record.uuid)", at: record,
+                .notice(ChatNotice(kind: .shellCommand, title: command, detail: output?.nonEmpty)))
+        case .bashOutput(let output):
+            addOutputNotice(kind: .shellCommand, output: output, at: record)
+        case .taskNotification(let notification):
+            add("notice:\(record.uuid)", at: record, .notice(Self.notice(for: notification)))
+        case .external(let message):
+            addSystemNotice(message, at: record)
+        case .skillLoaded, .hidden:
+            // A model-loaded skill already shows as its Skill call's row.
+            break
+        }
+    }
+
+    /// An interrupt marker belongs to the declined or interrupted call it
+    /// follows; anywhere else it is a row of its own.
+    private mutating func addInterruptMarker(_ record: ClaudeRecord, text: String) {
+        if let parentID = chain.parents[record.uuid], let parent = selected[parentID],
+            parent.toolResults.contains(where: {
+                ClaudeToolOutcome(result: $0, details: parent.toolResult, trailingTexts: []).absorbsInterruptMarker
+            })
+        {
+            return
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = trimmed.hasPrefix("[Request interrupted by user") ? "Interrupted" : ClaudeText.noticeParts(trimmed).title
+        add("notice:\(record.uuid)", at: record, .notice(ChatNotice(kind: .interrupted, title: title)))
+    }
+
+    private mutating func attachCompactionSummary(_ record: ClaudeRecord) {
+        guard let index = compactionEntry, case .divider(var divider) = entries[index].content,
+            divider.detail == nil
+        else { return }
+        let summary = record.texts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !summary.isEmpty else { return }
+        divider.detail = ChatToolPreview(capping: summary).text
+        entries[index].content = .divider(divider)
+    }
+
+    // MARK: System and attachments
+
+    private mutating func addSystem(_ record: ClaudeRecord, subtype: String) {
+        let content = record.system?.content ?? ""
+        switch subtype {
+        case "compact_boundary":
+            if add("compact:\(record.uuid)", at: record, .divider(ChatDivider(kind: .compaction))) {
+                compactionEntry = entries.count - 1
+            }
+        case "local_command":
+            addLocalCommand(record, content: content)
+        case "model_refusal_fallback", "model_fallback", "model_consent_fallback":
+            var notice = ChatNotice(
+                kind: .modelChange,
+                title: ClaudeTranscriptProjection.modelChangeTitle(
+                    from: record.system?.originalModel, to: record.system?.fallbackModel))
+            if !content.isEmpty {
+                let parts = ClaudeText.noticeParts(content)
+                notice.title = parts.title
+                notice.detail = parts.detail
+            }
+            add("notice:\(record.uuid)", at: record, .notice(notice))
+        case "agents_killed":
+            add(
+                "notice:\(record.uuid)", at: record,
+                .notice(ChatNotice(kind: .stopped, title: "All background agents stopped")))
+        default:
+            // Turn timings, away summaries, informational lines, memory
+            // saves and anything unknown stay hidden.
+            break
+        }
+    }
+
+    /// 2.1.291 writes a local command as a `local_command` record and its
+    /// output as another below it (CLI `QQ`).
+    private mutating func addLocalCommand(_ record: ClaudeRecord, content: String) {
+        switch ClaudeUserText.classify(content) {
+        case .command(let typed):
+            let invocation = record.system?.commandRun ?? typed
+            let output = takeOutput(below: record, as: Self.localCommandOutput)
+            add(
+                "notice:\(record.uuid)", at: record,
+                .notice(ChatNotice(kind: .command, title: invocation.displayText, detail: output?.nonEmpty)))
+        case .localCommandOutput(let output):
+            if let invocation = record.system?.commandRun {
+                add(
+                    "notice:\(record.uuid)", at: record,
+                    .notice(
+                        ChatNotice(
+                            kind: .command, title: invocation.displayText,
+                            detail: ChatToolPreview(capping: output).text.nonEmpty)))
+            } else {
+                addOutputNotice(kind: .command, output: output, at: record)
+            }
+        case .prompt(let text):
+            addOutputNotice(kind: .command, output: text, at: record)
+        default:
+            break
+        }
+    }
+
+    /// A prompt or notification delivered while a turn was running.
+    private mutating func addQueuedCommand(_ record: ClaudeRecord) {
+        guard let queued = record.attachment?.queuedCommand, !queued.isMeta else { return }
+        // A user record written for the same prompt shows it instead (SDK
+        // `fCe`).
+        if let source = queued.sourceUUID, indexed[source] != nil { return }
+        let entryID = "user:\(queued.sourceUUID ?? record.uuid)"
+        switch ClaudeUserText.classify(queued.text) {
+        case .prompt(let prompt):
+            guard ClaudeTranscriptProjection.isHuman(queued.originKind) else {
+                addSystemNotice(prompt, at: record)
+                return
+            }
+            guard !prompt.isEmpty || queued.imageCount > 0 else { return }
+            add(
+                entryID, at: record,
+                .user(ChatUserMessage(text: prompt, imageCount: queued.imageCount, wasQueued: true)))
+        case .command(let invocation):
+            add(
+                entryID, at: record,
+                .user(
+                    ChatUserMessage(
+                        text: invocation.displayText, imageCount: queued.imageCount, command: invocation,
+                        wasQueued: true)))
+        case .taskNotification(let notification):
+            guard !notificationKeys.contains(Self.key(of: notification)) else { return }
+            add("notice:\(record.uuid)", at: record, .notice(Self.notice(for: notification)))
+        case .external(let message):
+            addSystemNotice(message, at: record)
+        default:
+            break
+        }
+    }
+
+    // MARK: Helpers
+
+    /// Adds an entry unless one with the same id exists; returns whether it
+    /// was added.
+    @discardableResult
+    private mutating func add(_ rawID: String, at record: ClaudeRecord, _ content: ChatEntry.Content) -> Bool {
+        let id = ChatEntryID(rawID)
+        guard entryIDs.insert(id).inserted else { return false }
+        entries.append(ChatEntry(id: id, sourceOffset: record.byteOffset, content: content))
+        if turnOpen, let last = turnDrafts.indices.last, turnDrafts[last].firstEntryID == nil {
+            turnDrafts[last].firstEntryID = id
+        }
+        if case .user = content {
+            latestPromptOffset = max(latestPromptOffset ?? 0, record.byteOffset)
+        }
+        if entryByRecord[record.uuid] == nil {
+            entryByRecord[record.uuid] = id
+        }
+        return true
+    }
+
+    private mutating func addSystemNotice(_ text: String, at record: ClaudeRecord) {
+        let parts = ClaudeText.noticeParts(text)
+        guard !parts.title.isEmpty else { return }
+        add("notice:\(record.uuid)", at: record, .notice(ChatNotice(kind: .system, title: parts.title, detail: parts.detail)))
+    }
+
+    /// Output whose command is not on the branch.
+    private mutating func addOutputNotice(kind: ChatNotice.Kind, output: String, at record: ClaudeRecord) {
+        let parts = ClaudeText.noticeParts(output)
+        guard !parts.title.isEmpty else { return }
+        add("notice:\(record.uuid)", at: record, .notice(ChatNotice(kind: kind, title: parts.title, detail: parts.detail)))
+    }
+
+    /// The capped output a child of `record` holds, marking that child as
+    /// shown. Nil when no child holds output; empty when the output is.
+    private mutating func takeOutput(
+        below record: ClaudeRecord, as extract: (ClaudeUserText) -> String?
+    ) -> String? {
+        for child in children[record.uuid] ?? [] where !consumed.contains(child.uuid) {
+            let text: String
+            switch child.kind {
+            case .user where child.toolResults.isEmpty: text = child.texts.joined(separator: "\n")
+            case .system("local_command"): text = child.system?.content ?? ""
+            default: continue
+            }
+            guard let output = extract(ClaudeUserText.classify(text)) else { continue }
+            consumed.insert(child.uuid)
+            return ChatToolPreview(capping: output).text
+        }
+        return nil
+    }
+
+    /// The results a record carries, each with the text blocks after it.
+    static func answers(in record: ClaudeRecord) -> [Answer] {
+        var answers: [Answer] = []
+        for block in record.blocks {
+            switch block {
+            case .toolResult(let result):
+                answers.append(Answer(record: record, result: result))
+            case .text(let text) where !answers.isEmpty:
+                answers[answers.count - 1].trailingTexts.append(text)
+            default:
+                break
+            }
+        }
+        return answers
+    }
+
+    private mutating func collectAnswers(in record: ClaudeRecord) {
+        for answer in Self.answers(in: record) {
+            store(answer)
+        }
+    }
+
+    private mutating func store(_ answer: Answer) {
+        guard !answer.result.toolUseID.isEmpty else { return }
+        answers[answer.result.toolUseID] = answer
+    }
+
+    private static func localCommandOutput(_ text: ClaudeUserText) -> String? {
+        if case .localCommandOutput(let output) = text { return output }
+        return nil
+    }
+
+    private static func bashOutput(_ text: ClaudeUserText) -> String? {
+        if case .bashOutput(let output) = text { return output }
+        return nil
+    }
+
+    /// Records that open a turn (prompts, commands, notifications) or close
+    /// one (`turn_duration`, interrupt markers). A call without a result
+    /// before one of them never gets one.
+    private static func isTurnBoundary(_ record: ClaudeRecord) -> Bool {
+        switch record.kind {
+        case .system("turn_duration"):
+            return true
+        case .user:
+            guard record.toolResults.isEmpty, !record.isMeta, !record.isCompactSummary,
+                record.sourceToolUseID == nil
+            else { return false }
+            if isInterruptMarker(record) { return true }
+            switch ClaudeUserText.classify(record.texts.joined(separator: "\n")) {
+            case .hidden, .skillLoaded: return false
+            default: return true
+            }
+        default:
+            return false
+        }
+    }
+
+    /// Records that open a turn: a prompt, a command, `!` shell input, a
+    /// notification or a message from outside, as a user record. Between
+    /// turns, a local command and a message Chat shows from a visible
+    /// origin open one too: what follows them is not the turn before.
+    private static func opensTurn(_ record: ClaudeRecord, whileOpen: Bool) -> Bool {
+        switch record.kind {
+        case .system("local_command"):
+            guard !whileOpen, case .command = ClaudeUserText.classify(record.system?.content ?? "") else { return false }
+            return true
+        case .user:
+            break
+        default:
+            return false
+        }
+        guard record.toolResults.isEmpty, !record.isCompactSummary, record.sourceToolUseID == nil,
+            !isInterruptMarker(record)
+        else { return false }
+        let text = ClaudeUserText.classify(record.texts.joined(separator: "\n"))
+        if record.isMeta {
+            guard !whileOpen, let origin = record.originKind,
+                ClaudeTranscriptProjection.visibleMetaOrigins.contains(origin)
+            else { return false }
+            switch text {
+            case .prompt, .external: return true
+            default: return false
+            }
+        }
+        switch text {
+        case .prompt, .command, .bashInput, .taskNotification, .external: return true
+        default: return false
+        }
+    }
+
+    /// SDK `MI`: every block is text that starts with a marker.
+    private static func isInterruptMarker(_ record: ClaudeRecord) -> Bool {
+        !record.blocks.isEmpty
+            && record.blocks.allSatisfy {
+                guard case .text(let text) = $0 else { return false }
+                return ClaudeUserText.isMarker(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+    }
+
+    private static func notification(in record: ClaudeRecord) -> ClaudeTaskNotification? {
+        let text: String
+        switch record.kind {
+        case .user where record.toolResults.isEmpty && !record.isMeta:
+            text = record.texts.joined(separator: "\n")
+        case .attachment("queued_command"):
+            text = record.attachment?.queuedCommand?.text ?? ""
+        default:
+            return nil
+        }
+        guard case .taskNotification(let notification) = ClaudeUserText.classify(text) else { return nil }
+        return notification
+    }
+
+    private static func key(of notification: ClaudeTaskNotification) -> String {
+        [notification.taskID, notification.toolUseID, notification.status, notification.summary]
+            .map { $0 ?? "" }.joined(separator: "\u{1F}")
+    }
+
+    private static func notice(for notification: ClaudeTaskNotification) -> ChatNotice {
+        ChatNotice(
+            kind: .taskNotification, title: notification.title,
+            detail: notification.result.map { ChatToolPreview(capping: $0).text }?.nonEmpty)
+    }
+}
+
+extension String {
+    /// Nil for an empty string.
+    fileprivate var nonEmpty: String? { isEmpty ? nil : self }
+}

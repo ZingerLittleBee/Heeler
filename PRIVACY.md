@@ -41,6 +41,16 @@ you choose, as described below.
   as you open them. They travel only over the SSH connection between
   your device and your Host, and Heeler keeps them in memory while the
   Agent stays in the list and does not save them.
+- **Chat.** When you show Chat for a Claude Code or Codex agent, Heeler reads
+  the conversation transcript that agent's own program writes on your Host.
+  Through herdr it also reads the agent's screen, to check its input box
+  before sending a message and to show a dialog the agent is waiting on. Both
+  travel only over the direct SSH connection between your device and your
+  Host, and Heeler never changes or deletes the transcript. Heeler saves the
+  conversation it has read, without tool output, in a cache on your device.
+  The cache uses iOS Complete file protection, so it cannot be read while the
+  device is locked, is excluded from backups, holds at most 300 MB, and drops
+  a conversation not opened for 30 days.
 
 - **Overlay Networks.** Network settings are stored locally. Tailscale auth
   keys, EasyTier network secrets, and the device's ZeroTier identity are
@@ -158,8 +168,9 @@ Agent Notifications and Live Activities are optional.
 - Removing a Host's Notification Registration deletes this device's token and
   Notification Key from that Host, then removes the local per-Host Notification
   Key record.
-- Removing a Host from Heeler deletes its local Host record and any saved Host
-  password.
+- Removing a Host from Heeler deletes its local Host record, any saved Host
+  password, and its cached Chat conversations.
+- Settings shows the size of the Chat cache, and Clear Chat Cache deletes it.
 
 Heeler has no developer-operated account or user-content database, so there is
 normally no server-side profile or content for the developer to retrieve or

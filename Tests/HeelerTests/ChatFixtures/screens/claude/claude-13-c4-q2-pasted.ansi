@@ -1,0 +1,38 @@
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the Bash tool to run: touch c1.txt[0m[48;2;55;55;55m                                                                               [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+
+[0m[38;2;255;255;255m⏺[0m skipped
+
+[0m[38;2;153;153;153m✻ Churned for 3s · done 1:47 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the Bash tool to run: touch c2.txt[0m[48;2;55;55;55m                                                                               [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mafter it succeeds, reply with the single word created[0m[48;2;55;55;55m                                                                [0m
+
+[0m[38;2;255;255;255m⏺ [0mcreated
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mWorked for 2s · done 1:47 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the AskUserQuestion tool once with exactly two questions. Question 1: header Colors, question 'Which colors?', [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mmultiSelect true, options Red, Green, Blue. Question 2: header Size, question 'Which size?', options Small and [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mLarge. After the answers arrive, reply with them in one line and stop.[0m[48;2;55;55;55m                                               [0m
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+←  ☒ Colors [0m[38;2;0;0;0m[48;2;177;185;249m ☐ Size [0m ✔ Submit  →
+
+[0m[1m[38;2;255;255;255mWhich size?[0m
+
+  [0m[38;2;153;153;153m1. [0mSmall
+     [0m[38;2;153;153;153mSmall[0m
+  [0m[38;2;153;153;153m2. [0mLarge
+     [0m[38;2;153;153;153mLarge[0m
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m3. [0mMedium[0m[7m [0m
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  4. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in VS Code · Esc to cancel[0m
+  

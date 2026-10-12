@@ -540,8 +540,9 @@ final class TerminalAgentChip: UIControl {
     }
 }
 
-/// Trailing icon that enters or leaves Direct Input without living inside
-/// the chip scroller. The same glyph on every width.
+/// Trailing icon that enters or leaves Direct Input, or swaps Chat and the
+/// Agent terminal, without living inside the chip scroller. The same glyph
+/// on every width.
 enum TerminalAgentSwitcherModeControl {
     case button(
         systemImage: String,
@@ -561,6 +562,8 @@ struct TerminalAgentSwitcherRow: View {
     var switchKeyboard: (() -> Void)?
     /// Optional Hide Composer / Show Composer.
     var modeControl: TerminalAgentSwitcherModeControl?
+    /// Optional Show Chat / Show Agent Terminal, ahead of `modeControl`.
+    var surfaceControl: TerminalAgentSwitcherModeControl?
     /// Matches `UIPasteControl`'s fixed glyph size in the row below. The
     /// optically smaller Composer symbol is corrected at its call site.
     private static let glyphPointSize: CGFloat = 12
@@ -579,6 +582,9 @@ struct TerminalAgentSwitcherRow: View {
             Rectangle()
                 .fill(Color(uiColor: .separator))
                 .frame(width: hairline, height: 20)
+            if let surfaceControl {
+                surfaceControlView(surfaceControl)
+            }
             if let modeControl {
                 modeControlView(modeControl)
             }
@@ -617,6 +623,20 @@ struct TerminalAgentSwitcherRow: View {
             trailingIconButton(
                 systemImage: systemImage,
                 pointSize: Self.composerGlyphPointSize,
+                horizontalOffset: Self.groupedGlyphOffset,
+                accessibilityLabel: accessibilityLabel,
+                accessibilityHint: accessibilityHint,
+                action: action)
+        }
+    }
+
+    @ViewBuilder
+    private func surfaceControlView(_ control: TerminalAgentSwitcherModeControl) -> some View {
+        switch control {
+        case let .button(systemImage, accessibilityLabel, accessibilityHint, action):
+            trailingIconButton(
+                systemImage: systemImage,
+                pointSize: Self.glyphPointSize,
                 horizontalOffset: Self.groupedGlyphOffset,
                 accessibilityLabel: accessibilityLabel,
                 accessibilityHint: accessibilityHint,

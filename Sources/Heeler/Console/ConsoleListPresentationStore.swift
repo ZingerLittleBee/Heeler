@@ -141,7 +141,7 @@ final class ConsoleListPresentationStore {
     ) -> [ConsoleHostSection] {
         sections(
             hosts: hosts,
-            agents: console.agents,
+            agents: console.chatDisplayAgents,
             hostStatuses: console.hostStatuses,
             hostStandingFailures: console.hostStandingFailures,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,

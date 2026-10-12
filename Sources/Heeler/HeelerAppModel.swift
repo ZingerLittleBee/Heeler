@@ -36,6 +36,7 @@ final class HeelerAppModel {
     let snippets: SnippetStore
     let appearance: AppAppearanceSettings
     let inputMode: AgentInputModeSettings
+    let detailSurface: AgentDetailSurfaceSettings
     let relaySettings: NotificationRelaySettings
     let bannerStore: AgentNotificationBannerStore
     let liveActivities: HostLiveActivityCoordinator
@@ -48,13 +49,14 @@ final class HeelerAppModel {
     /// drive the activity wiring and observe that something consumed it:
     /// `AppModelActivityDriverTests` is what turns deleting the task that
     /// runs `ConsoleActivityDriver` red (#167). Defaults are the production
-    /// values: `HostStore()` reads the real persisted catalog and
-    /// `ConsoleStore()` reaches the real `sshSessionFactory()`.
+    /// values: `HostStore()` reads the real persisted catalog and the
+    /// `ConsoleStore` reaches the real `sshSessionFactory()` and keeps Chat's
+    /// cache on disk.
     init(
         pushRegistration: PushRegistrationStore,
         sceneDirectory: AgentSceneDirectory,
         hostStore: HostStore = HostStore(),
-        console: ConsoleStore = ConsoleStore(),
+        console: ConsoleStore = ConsoleStore(chatCache: FileChatTranscriptCache()),
         overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator()
     ) {
@@ -71,6 +73,7 @@ final class HeelerAppModel {
         snippets = SnippetStore()
         appearance = AppAppearanceSettings()
         inputMode = AgentInputModeSettings()
+        detailSurface = AgentDetailSurfaceSettings()
         let relaySettings = NotificationRelaySettings()
         self.relaySettings = relaySettings
         // Preference reads/writes borrow the Console's live per-Host SSH

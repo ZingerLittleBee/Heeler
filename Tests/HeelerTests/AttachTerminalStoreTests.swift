@@ -1587,26 +1587,14 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let terminalEndGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: terminalEndGate)
-        let imageGate = ScriptedTransportCallGate()
-        let imageStager = GatedAttachImageStager(gate: imageGate)
         let stage = SelectedPane(current: "w1:p1")
         let store = makeStore(
             transport: transport, generation: 0,
-            isOnStage: { stage.contains("w1:p1") },
-            stageImage: { image, reporter in
-                try await imageStager.stage(image, reporter)
-            })
+            isOnStage: { stage.contains("w1:p1") })
 
         try await goLive(store, transport)
         let predecessorID = store.terminalID
 
-        // Keep the later real leave suspended after the stale recovery gets
-        // its publication opportunity. This exposes the exact pipeline that a
-        // render pass could resize before the latest rejoin replaces it.
-        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
-        try await waitUntil("image staging should be pending") {
-            await imageStager.preparedFileURL != nil
-        }
         store.didBecomeActive(afterPossibleSuspension: true)
         try await waitUntil("recovery should wait for predecessor teardown") {
             await terminalEndGate.entryCount == 1
@@ -1619,20 +1607,14 @@ struct AgentAttachStoreTests {
         stage.current = "w1:p1"
         store.rejoin()
         await terminalEndGate.open()
-        try await waitUntil("the real leave should cancel image staging") {
-            await imageStager.cancellationRequestCount == 1
-        }
-
-        #expect(
-            store.terminalID == predecessorID,
-            "a recovery that lost ownership must not publish an intermediate terminal")
-        store.viewDidResize(cols: 100, rows: 30)
-
-        await imageGate.open()
         await leaveTask.value
         try await waitUntil("the latest rejoin should publish its terminal") {
             store.terminalID != predecessorID
         }
+
+        #expect(
+            store.publishedReplacementCount == 1,
+            "a recovery that lost ownership must not publish an intermediate terminal")
         try await goLive(store, transport, cols: 100, rows: 30)
         #expect(
             await transport.attachRequests.count == 2,
@@ -1647,13 +1629,7 @@ struct AgentAttachStoreTests {
         let transport = ScriptedTransport()
         let terminalEndGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: terminalEndGate)
-        let imageGate = ScriptedTransportCallGate()
-        let imageStager = GatedAttachImageStager(gate: imageGate)
-        let store = makeStore(
-            transport: transport, generation: 0,
-            stageImage: { image, reporter in
-                try await imageStager.stage(image, reporter)
-            })
+        let store = makeStore(transport: transport, generation: 0)
 
         try await goLive(store, transport)
         let predecessorID = store.terminalID
@@ -1664,66 +1640,25 @@ struct AgentAttachStoreTests {
             await terminalEndGate.entryCount == 1
         }
 
-        // The terminal input session remains live until teardown completes, so
-        // this real image operation can hold the newer leave immediately after
-        // the stale rejoin's publication point.
-        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
-        try await waitUntil("image staging should be pending") {
-            await imageStager.preparedFileURL != nil
-        }
         let latestLeaveTask = store.leave()
         store.rejoin()
 
         await terminalEndGate.open()
         await firstLeaveTask.value
-        try await waitUntil("the newer leave should cancel image staging") {
-            await imageStager.cancellationRequestCount == 1
-        }
-
-        #expect(
-            store.terminalID == predecessorID,
-            "a rejoin that lost ownership must not publish an intermediate terminal")
-        store.viewDidResize(cols: 100, rows: 30)
-
-        await imageGate.open()
         await latestLeaveTask.value
         try await waitUntil("the latest rejoin should publish its terminal") {
             store.terminalID != predecessorID
         }
+
+        #expect(
+            store.publishedReplacementCount == 1,
+            "a rejoin that lost ownership must not publish an intermediate terminal")
         try await goLive(store, transport, cols: 100, rows: 30)
         #expect(
             await transport.attachRequests.count == 2,
             "only the predecessor and latest rejoin may open Attach channels")
 
         await store.leave().value
-    }
-
-    @Test func transportReplacementPreservesComposerStagingState() async throws {
-        // A reconnect replaces the terminal pipeline but must not touch the
-        // staging interaction: its stager resolves the live Transport per
-        // call, so surfaced failures and results stay actionable.
-        let transport = ScriptedTransport()
-        let store = makeStore(transport: transport, generation: 0)
-
-        try await goLive(store, transport)
-
-        // One byte of garbage: preparation fails and the failure surfaces.
-        store.staging.begin(.photo(DataImageSelection(data: Data([0x01]))))
-        try await waitUntil("the failed staging operation should surface") {
-            if case .failed = store.staging.state { true } else { false }
-        }
-        let surfacedFailure = store.staging.state
-        let initialID = store.terminalID
-
-        store.transportGenerationDidChange(1)
-        try await waitUntil("the terminal pipeline should be replaced") {
-            store.terminalID != initialID
-        }
-
-        #expect(store.staging.state == surfacedFailure)
-
-        await store.leave().value
-        #expect(store.staging.state == .idle)
     }
 
     @Test func leaveDuringQueuedReplacementDoesNotResurrectTheTerminal() async throws {
@@ -2066,20 +2001,15 @@ struct AgentAttachStoreTests {
         // A recovery that stopped its predecessor can abort off stage before
         // SwiftUI delivers the real onDisappear. The abort must make rejoin
         // possible without pretending leave cleanup already ran: that delayed
-        // leave still owns links and staging preparation.
+        // leave still owns links and the link open in flight.
         let transport = ScriptedTransport()
         let terminalEndGate = ScriptedTransportCallGate()
         await transport.gateNextAttachEnd(on: terminalEndGate)
-        let imageGate = ScriptedTransportCallGate()
-        let imageStager = GatedAttachImageStager(gate: imageGate)
         let opener = CancellationAwareAttachLinkOpener()
         let stage = SelectedPane(current: "w1:p1")
         let store = makeStore(
             transport: transport, generation: 0,
-            isOnStage: { stage.contains("w1:p1") },
-            stageImage: { image, reporter in
-                try await imageStager.stage(image, reporter)
-            })
+            isOnStage: { stage.contains("w1:p1") })
 
         try await goLive(store, transport)
         await transport.emitAttachOutput(Data("https://example.com/leave-cleanup\n".utf8))
@@ -2091,13 +2021,6 @@ struct AgentAttachStoreTests {
         try await waitUntil("the system open should be pending") {
             opener.pendingTarget == link.target
         }
-
-        store.staging.begin(.photo(DataImageSelection(data: try tinyJPEGData())))
-        try await waitUntil("image staging should retain its prepared file") {
-            await imageStager.preparedFileURL != nil
-        }
-        let preparedFileURL = try #require(await imageStager.preparedFileURL)
-        #expect(FileManager.default.fileExists(atPath: preparedFileURL.path))
 
         let predecessorID = store.terminalID
         store.didBecomeActive(afterPossibleSuspension: true)
@@ -2118,25 +2041,14 @@ struct AgentAttachStoreTests {
         for _ in 0..<10 { await Task.yield() }
         #expect(store.attachLinks.isEmpty)
         #expect(opener.cancelledTargets == [link.target])
-
-        await imageGate.open()
         await leaveTask.value
-        try await waitUntil("staging leave cleanup should settle") {
-            store.staging.state == .idle
-        }
-
-        #expect(store.staging.state == .idle)
-        #expect(!FileManager.default.fileExists(atPath: preparedFileURL.path))
-        #expect(await imageStager.cancellationCount == 1)
 
         // Repeated leave observes the same completed cleanup rather than
         // cancelling or clearing any boundary a second time.
         await store.leave().value
         #expect(opener.cancelledTargets == [link.target])
-        #expect(await imageStager.cancellationCount == 1)
 
         opener.resolvePending(accepted: false)
-        store.staging.perform(.cancel)
     }
 
     @Test func delayedRealLeaveAfterRecoveryAbortCancelsReviewedPaste() async throws {
@@ -2627,13 +2539,9 @@ struct AgentAttachStoreTests {
         target: String = "w1:p1",
         isOnStage: @escaping () -> Bool = { true },
         runTerminal: TerminalSessionRunner? = nil,
-        stageImage: ImageStager? = nil,
         close: @escaping () async throws -> Void = {}
     ) -> AgentAttachStore {
-        let composer = AgentComposerStore(target: target) { _ in
-            Agent(.fixture(paneID: target))
-        }
-        return AgentAttachStore(
+        AgentAttachStore(
             target: target,
             paneTitle: "Agent",
             transportGeneration: generation,
@@ -2642,13 +2550,6 @@ struct AgentAttachStoreTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: stageImage ?? { _, _ in
-                throw AttachmentStagingError.transferFailed
-            },
-            stageFile: { _, _ in
-                throw AttachmentStagingError.transferFailed
-            },
-            composer: composer,
             closePane: close)
     }
 
@@ -2676,15 +2577,6 @@ struct AgentAttachStoreTests {
             continuation.finish()
         }
         return ObservationChangeProbe(changes)
-    }
-
-    private func tinyJPEGData() throws -> Data {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16))
-        let image = renderer.image { context in
-            UIColor.systemBlue.setFill()
-            context.cgContext.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
-        }
-        return try #require(image.jpegData(compressionQuality: 0.8))
     }
 
     /// Brings the terminal up the way an attach does: the size report opens
@@ -2911,42 +2803,6 @@ private final class CancellationAwareAttachLinkOpener {
     }
 }
 
-private actor GatedAttachImageStager {
-    let gate: ScriptedTransportCallGate
-    private(set) var preparedFileURL: URL?
-    private(set) var cancellationRequestCount = 0
-    private(set) var cancellationCount = 0
-
-    init(gate: ScriptedTransportCallGate) {
-        self.gate = gate
-    }
-
-    func stage(
-        _ image: PreparedImage,
-        _ reporter: AttachmentStageProgressReporter
-    ) async throws -> StagedImage {
-        preparedFileURL = image.fileURL
-        await reporter.report(
-            AttachmentStageProgress(transferredBytes: 0, totalBytes: image.byteCount))
-        await withTaskCancellationHandler {
-            await gate.waitUntilOpen()
-        } onCancel: {
-            Task { await self.recordCancellationRequest() }
-        }
-        do {
-            try Task.checkCancellation()
-        } catch {
-            cancellationCount += 1
-            throw error
-        }
-        throw AttachmentStagingError.transferFailed
-    }
-
-    private func recordCancellationRequest() {
-        cancellationRequestCount += 1
-    }
-}
-
 /// The Attach screen's owner, covering only what the foreground return has to
 /// travel through to reach the terminal pipeline (#141).
 @MainActor
@@ -2955,10 +2811,7 @@ struct AgentAttachStoreForegroundTests {
     private func makeStore(
         transport: ScriptedTransport, isOnStage: @escaping () -> Bool = { true }
     ) -> AgentAttachStore {
-        let composer = AgentComposerStore(target: "w1:p1") { _ in
-            Agent(.fixture(paneID: "w1:p1"))
-        }
-        return AgentAttachStore(
+        AgentAttachStore(
             target: "w1:p1",
             paneTitle: "pane",
             transportGeneration: 1,
@@ -2967,9 +2820,6 @@ struct AgentAttachStoreForegroundTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: { _, _ in throw TransportError.cancelled },
-            stageFile: { _, _ in throw TransportError.cancelled },
-            composer: composer,
             closePane: {})
     }
 

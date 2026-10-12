@@ -109,7 +109,10 @@ struct AgentDirectInputTests {
                 == [.addImage, .addFile])
         #expect(
             AgentActionMenuSection.sessionTools.items
-                == [.openTerminal, .changes, .newAgent, .skills, .snippets])
+                == [
+                    .showChat, .showAgentTerminal, .openTerminal, .changes, .newAgent, .skills,
+                    .snippets,
+                ])
         #expect(
             AgentActionMenuSection.agentLifecycle.items
                 == [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent])
@@ -121,6 +124,8 @@ struct AgentDirectInputTests {
             (.backToConsole, "Back to Console", "chevron.left", false, false),
             (.addImage, "Add Image", "photo", false, true),
             (.addFile, "Add File", "doc", false, true),
+            (.showChat, "Show Chat", "bubble.left.and.text.bubble.right", false, false),
+            (.showAgentTerminal, "Show Agent Terminal", "terminal", false, false),
             (.openTerminal, "Open Terminal", "apple.terminal", false, false),
             (.changes, "Changes", "plus.forwardslash.minus", false, false),
             (.newAgent, "New Agent", "plus", false, false),
@@ -141,8 +146,8 @@ struct AgentDirectInputTests {
 
     @Test func sharedActionMenuAvailabilityAndDispatchCoverAllGates() {
         enum Event: Equatable {
-            case back, addImage, addFile, openTerminal, changes, startAgent, skills, snippets
-            case worktree, renameAgent, renameWorkspace, closeAgent
+            case back, addImage, addFile, showChat, showAgentTerminal, openTerminal, changes
+            case startAgent, skills, snippets, worktree, renameAgent, renameWorkspace, closeAgent
         }
         var events: [Event] = []
         let gated = AgentComposerActions(
@@ -195,11 +200,19 @@ struct AgentDirectInputTests {
             renameAgent: { events.append(.renameAgent) },
             renameWorkspace: { events.append(.renameWorkspace) },
             closeAgent: { events.append(.closeAgent) },
-            backToConsole: { events.append(.back) })
+            backToConsole: { events.append(.back) },
+            showChat: { events.append(.showChat) },
+            showAgentTerminal: { events.append(.showAgentTerminal) })
 
         let availability: [(AgentActionMenuItem, AgentComposerActions, Bool, Bool)] = [
             (.addImage, gated, true, false),
             (.addFile, gated, true, false),
+            // Each switch shows only where the other surface is on screen,
+            // and only for an Agent that has Chat.
+            (.showChat, gated, false, true),
+            (.showChat, ready, true, true),
+            (.showAgentTerminal, gated, false, true),
+            (.showAgentTerminal, ready, true, true),
             (.openTerminal, gated, true, false),
             (.openTerminal, busy, true, false),
             (.openTerminal, ready, true, true),
@@ -229,8 +242,9 @@ struct AgentDirectInputTests {
         }
         #expect(
             events == [
-                .back, .addImage, .addFile, .openTerminal, .changes, .startAgent, .skills, .snippets,
-                .worktree, .renameAgent, .renameWorkspace, .closeAgent,
+                .back, .addImage, .addFile, .showChat, .showAgentTerminal, .openTerminal,
+                .changes, .startAgent, .skills, .snippets, .worktree, .renameAgent,
+                .renameWorkspace, .closeAgent,
             ])
     }
 
@@ -256,7 +270,9 @@ struct AgentDirectInputTests {
             renameAgent: { steps.append(.action(.renameAgent)) },
             renameWorkspace: { steps.append(.action(.renameWorkspace)) },
             closeAgent: { steps.append(.action(.closeAgent)) },
-            backToConsole: { steps.append(.action(.backToConsole)) })
+            backToConsole: { steps.append(.action(.backToConsole)) },
+            showChat: { steps.append(.action(.showChat)) },
+            showAgentTerminal: { steps.append(.action(.showAgentTerminal)) })
         let restoreComposerThen: (@escaping () -> Void) -> Void = { action in
             steps.append(.restore)
             action()
@@ -274,6 +290,8 @@ struct AgentDirectInputTests {
                 .action(.backToConsole),
                 .restore, .action(.addImage),
                 .restore, .action(.addFile),
+                .action(.showChat),
+                .action(.showAgentTerminal),
                 .action(.openTerminal),
                 .action(.changes),
                 .action(.newAgent),
@@ -335,7 +353,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "keep me")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
 
@@ -383,7 +401,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "do not send")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -525,7 +543,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { params in
             try await transport.promptAgent(params)
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let controller = UIHostingController(
@@ -580,6 +598,82 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    @Test func composerStopPressesOnePlainEscAndLeavesAnArmedControl() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
+        let transport = ScriptedTransport()
+        let stopWindow = ScriptedTransportCallGate()
+        let composer = AgentComposerStore(
+            target: "w1:p1", initialStatus: .working,
+            stop: AgentComposerStopStore(sleep: { _ in await stopWindow.waitUntilOpen() })
+        ) { params in
+            try await transport.promptAgent(params)
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: Self.makeAgent(status: .working),
+                attachStore: owner, composer: composer, inputMode: inputMode,
+                keyboardInset: inset, interactionProbe: interactions))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live && interactions.isConnected
+        })
+
+        // Real SwiftUI actions require the hosted accessibility support in
+        // iOS 27; there, ⌃ is armed first and must outlast Stop.
+        let armsControl: Bool
+        if #available(iOS 27, *) { armsControl = true } else { armsControl = false }
+        if armsControl {
+            let editor = try #require(Self.firstView(in: controller.view) {
+                $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+            } as? UITextView)
+            editor.becomeFirstResponder()
+            center.post(
+                name: UIResponder.keyboardWillShowNotification, object: nil,
+                userInfo: [UIResponder.keyboardFrameEndUserInfoKey:
+                    CGRect(x: 0, y: 500, width: 402, height: 370)])
+            try #require(await Self.eventually { editor.isFirstResponder && inset.height == 336 })
+            try #require(try await Self.activateControl(
+                labeled: "Show tools keyboard", in: controller.view, probe: { false }))
+            try #require(try await Self.activateControl(
+                labeled: "Terminal keyboard page", in: controller.view, probe: { false }))
+            try #require(try await Self.activateControl(
+                labeled: "Control modifier", in: controller.view, probe: { false }))
+        }
+
+        try #require(try await Self.activateControl(
+            labeled: "Stop", in: controller.view, probe: { interactions.stopAgent() }))
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(.keystrokes(Data([0x1B])))
+        })
+        #expect(composer.stop.isStopping)
+        _ = try await Self.activateControl(
+            labeled: "Stop", in: controller.view, probe: { interactions.stopAgent() })
+        for _ in 0..<20 { await Task.yield() }
+        #expect(
+            await transport.attachInputs.filter { $0 == .keystrokes(Data([0x1B])) }.count == 1,
+            "a second tap waits for the status")
+
+        if armsControl {
+            try #require(try await Self.activateControl(
+                labeled: "a", in: controller.view, probe: { false }))
+            try #require(await Self.eventually {
+                await transport.attachInputs.contains(.keystrokes(Data([0x01])))
+            })
+        }
+        #expect(await transport.agentPromptParams.isEmpty)
+        await stopWindow.open()
+        await owner.leave().value
+    }
+
     @Test(arguments: [AgentInputMode.composer, .direct], [false, true])
     func toolsSnippetsInsertIntoTheActiveInputWithoutSubmitting(
         mode: AgentInputMode, bracketed: Bool
@@ -602,7 +696,7 @@ struct AgentDirectInputTests {
             try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "keep this local: ")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: mode)
         defer { cleanup() }
         let controller = UIHostingController(
@@ -682,7 +776,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -746,7 +840,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -802,7 +896,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let probe = AgentTerminalInteractionProbe()
@@ -851,10 +945,8 @@ struct AgentDirectInputTests {
         let secondComposer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let firstOwner = try await Self.makeLiveAttach(
-            transport: ScriptedTransport(), composer: firstComposer)
-        let secondOwner = try await Self.makeLiveAttach(
-            transport: ScriptedTransport(), composer: secondComposer)
+        let firstOwner = try await Self.makeLiveAttach(transport: ScriptedTransport())
+        let secondOwner = try await Self.makeLiveAttach(transport: ScriptedTransport())
         let firstProbe = AgentTerminalInteractionProbe()
         let secondProbe = AgentTerminalInteractionProbe()
         let controller = UIHostingController(rootView: AnyView(Self.makeDetailView(
@@ -907,7 +999,7 @@ struct AgentDirectInputTests {
             Agent(.fixture(paneID: "w1:p1"))
         }
         composer.replaceDraft(with: "waiting draft")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -950,7 +1042,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1071,7 +1163,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1183,7 +1275,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1247,7 +1339,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1296,7 +1388,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1", initialStatus: .blocked) { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1334,7 +1426,7 @@ struct AgentDirectInputTests {
             Agent(.fixture(paneID: "w1:p1"))
         }
         composer.replaceDraft(with: "keep")
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let interactions = AgentTerminalInteractionProbe()
@@ -1398,7 +1490,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode()
         defer { cleanup() }
         let handoff = TerminalKeyboardHandoff()
@@ -1499,7 +1591,7 @@ struct AgentDirectInputTests {
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
-        let owner = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let owner = try await Self.makeLiveAttach(transport: transport)
         let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
         defer { cleanup() }
 
@@ -1569,10 +1661,7 @@ struct AgentDirectInputTests {
         return (settings, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
-    private static func makeLiveAttach(
-        transport: ScriptedTransport,
-        composer: AgentComposerStore
-    ) async throws -> AgentAttachStore {
+    private static func makeLiveAttach(transport: ScriptedTransport) async throws -> AgentAttachStore {
         let owner = AgentAttachStore(
             target: "w1:p1",
             paneTitle: "Claude",
@@ -1582,9 +1671,6 @@ struct AgentDirectInputTests {
                 let session = try await transport.attachTerminal(request)
                 try await handler.runEndingSession(session)
             },
-            stageImage: { _, _ in throw TransportError.cancelled },
-            stageFile: { _, _ in throw TransportError.cancelled },
-            composer: composer,
             closePane: {})
         // Fresh stores start `.active` with `.waitingForSize`. `rejoin()` is a
         // no-op until leave/rejoinRequired, so open the channel the same way
@@ -1637,7 +1723,7 @@ struct AgentDirectInputTests {
             isOnStage: isOnStage,
             onSwitch: onSwitch,
             onClosed: {},
-            composer: composer,
+            session: AgentComposerSession(composer: composer),
             attachStore: attachStore,
             interactionProbe: interactionProbe)
     }

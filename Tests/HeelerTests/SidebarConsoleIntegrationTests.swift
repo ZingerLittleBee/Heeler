@@ -30,7 +30,8 @@ struct SidebarConsoleIntegrationTests {
             terminal: TerminalSettings(
                 themes: composition.terminalThemes, zoom: composition.terminalZoom,
                 fonts: composition.terminalFonts, snippets: composition.snippets),
-            inputMode: composition.inputMode, appearance: composition.appearance,
+            inputMode: composition.inputMode, detailSurface: composition.detailSurface,
+            appearance: composition.appearance,
             pushRegistration: composition.pushRegistration,
             notificationPreferences: composition.notificationPreferences,
             relaySettings: composition.relaySettings,

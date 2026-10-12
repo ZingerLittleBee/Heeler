@@ -14,6 +14,19 @@ struct TransportErrorPresentationTests {
         #expect(failure.presentation.recoverySuggestion == nil)
     }
 
+    @Test func chatFileFailuresAreNotRetryable() {
+        let timeout = TransportError.hostFileTimedOut
+        #expect(!timeout.isRetryable)
+        #expect(timeout.presentation.summary == "Reading the conversation timed out")
+        #expect(timeout.presentation.detail == nil)
+
+        let refused = TransportError.hostFileUnreadable(status: 3)
+        #expect(!refused.isRetryable)
+        #expect(refused.presentation.summary == "The conversation file cannot be read")
+        #expect(refused.presentation.detail == "SFTP status 3")
+        #expect(refused.presentation.recoverySuggestion == "Check the file's permissions on the Host.")
+    }
+
     private static let homebrewPATH =
         "Put herdr's install directory on the account's non-interactive SSH PATH."
 

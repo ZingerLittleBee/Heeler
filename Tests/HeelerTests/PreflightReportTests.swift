@@ -65,6 +65,8 @@ struct PreflightReportTests {
         (.timedOut, .connection),
         // Not reachable from connect+ping; keep the closed taxonomy total.
         (.gitTimedOut, .connection),
+        (.hostFileTimedOut, .connection),
+        (.hostFileUnreadable(status: 3), .connection),
         (.cancelled, .connection),
         (.channelFailed(detail: "boom"), .connection),
         (.eventsChannelAlreadyOpen, .connection),

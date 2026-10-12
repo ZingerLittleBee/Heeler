@@ -155,6 +155,9 @@ final class AgentSceneDirectory {
         var activationOrder: UInt64 = 0
         /// The Agent whose detail shows a Shell Terminal in this window.
         var shellTerminalAgent: ConsoleAgent.ID?
+        /// The Agent whose detail shows Chat in this window. Chat reads the
+        /// Agent's transcript, not its PTY, so it claims no channel.
+        var chatAgent: ConsoleAgent.ID?
     }
 
     @ObservationIgnored private var entries: [UUID: Entry] = [:]
@@ -238,6 +241,16 @@ final class AgentSceneDirectory {
         reconcileTerminalOwnership()
     }
 
+    /// Whether a window's Agent detail shows Chat, and for which Agent. A
+    /// window showing Chat leaves its Host's channel to the others, unless
+    /// a Shell Terminal opened from that Chat needs it.
+    func chatSurfaceDidChange(sceneID: UUID, agent: ConsoleAgent.ID?) {
+        guard entries[sceneID] != nil, entries[sceneID]?.chatAgent != agent
+        else { return }
+        entries[sceneID]?.chatAgent = agent
+        reconcileTerminalOwnership()
+    }
+
     func terminalAccess(sceneID: UUID, hostID: Host.ID) -> HostTerminalAccess {
         terminalOwnership.access(sceneID: sceneID, hostID: hostID, claims: terminalClaims)
     }
@@ -257,7 +270,8 @@ final class AgentSceneDirectory {
     private func reconcileTerminalOwnership() {
         let claims = order.compactMap { id -> HostTerminalClaim? in
             guard let entry = liveEntry(id), let agent = entry.router.path.last,
-                entry.router.isKnownAgent(agent)
+                entry.router.isKnownAgent(agent),
+                entry.chatAgent != agent || entry.shellTerminalAgent == agent
             else { return nil }
             return HostTerminalClaim(
                 sceneID: id, hostID: agent.hostID,
@@ -363,6 +377,11 @@ struct AgentSceneRouting: Equatable {
     @MainActor
     func shellTerminalDidChange(agent: ConsoleAgent.ID?) {
         directory.shellTerminalDidChange(sceneID: sceneID, agent: agent)
+    }
+
+    @MainActor
+    func chatSurfaceDidChange(agent: ConsoleAgent.ID?) {
+        directory.chatSurfaceDidChange(sceneID: sceneID, agent: agent)
     }
 }
 

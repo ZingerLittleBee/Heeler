@@ -1,0 +1,40 @@
+ 
+  [0m[38;2;99;168;248m>_ [0m[1mOpenAI Codex[0m[2m (v0.160.1)[0m
+     [0m[2m/private/tmp/heeler-tmp-chat2/probe-codex[0m
+
+  [0m[38;2;99;168;248mThe source is strong with this one.[0m
+
+[0m[2m  To get started, describe a task or try one of these commands:[0m
+
+  /init[0m[2m - create an AGENTS.md file with instructions for Codex[0m
+  /status[0m[2m - show current session configuration[0m
+  /permissions[0m[2m - choose what Codex is allowed to do[0m
+  /model[0m[2m - choose what model and reasoning effort to use[0m
+  /review[0m[2m - review any changes and find issues[0m
+
+
+[0m[1m[2m› [0mRun the shell command: touch x1.txt in the current directory
+
+
+[0m[2m• [0m我会在当前目录创建 [0m[38;2;99;168;248mx1.txt[0m。
+
+[0m[1m[38;2;128;128;128m• [0m[1mRunning [0m[38;2;255;255;255mtouch x1.txt[0m
+
+
+
+
+
+  [0m[1mWould you like to run the following command?[0m
+
+  Environment: [0m[1mlocal[0m
+
+  Reason: [0m[3m允许在当前目录创建 x1.txt 吗？[0m
+
+  $ [0m[38;2;255;255;255mtouch x1.txt[0m
+ 
+
+[0m[1m[7m› 1. Yes, proceed (y)                                                                                                   [0m
+  2. Yes, and don't ask again for commands that start with `touch x1.txt` ([0m[1mp[0m)
+  3. No, and tell Codex what to do differently ([0m[1mesc[0m)
+
+  [0m[2mPress [0m[1menter[0m[2m to confirm or [0m[1mesc[0m[2m to cancel                                                                               [0m

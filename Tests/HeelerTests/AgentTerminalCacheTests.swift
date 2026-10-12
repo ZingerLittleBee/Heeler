@@ -10,8 +10,7 @@ struct AgentTerminalCacheTests {
         let (host, transport, console, agent) = try await connectedAgent()
         let cache = AgentTerminalCache()
         let owner = UUID()
-        let composer = console.composerStore(for: agent)
-        let first = cache.acquire(agent: agent, console: console, composer: composer, ownerID: owner)
+        let first = cache.acquire(agent: agent, console: console, ownerID: owner)
         #expect(await transport.attachRequests.isEmpty)
         first.attach.viewDidResize(cols: 80, rows: 24)
         try await waitUntil { await transport.hasLiveAttachSession }
@@ -19,7 +18,7 @@ struct AgentTerminalCacheTests {
 
         cache.release(first, ownerID: owner)
         #expect(await transport.hasLiveAttachSession)
-        let returned = cache.acquire(agent: agent, console: console, composer: composer, ownerID: owner)
+        let returned = cache.acquire(agent: agent, console: console, ownerID: owner)
         #expect(returned === first)
         #expect(returned.attach.terminalID == surfaceID)
         #expect(await transport.attachRequests.count == 1)
@@ -34,8 +33,7 @@ struct AgentTerminalCacheTests {
         let (_, transport, console, agent) = try await connectedAgent()
         let cache = AgentTerminalCache(idleTimeout: .milliseconds(20))
         let owner = UUID()
-        let entry = cache.acquire(
-            agent: agent, console: console, composer: console.composerStore(for: agent), ownerID: owner)
+        let entry = cache.acquire(agent: agent, console: console, ownerID: owner)
         entry.attach.viewDidResize(cols: 80, rows: 24)
         try await waitUntil { await transport.hasLiveAttachSession }
         cache.release(entry, ownerID: owner)
@@ -51,11 +49,10 @@ struct AgentTerminalCacheTests {
         let cache = AgentTerminalCache()
         let firstOwner = UUID()
         let secondOwner = UUID()
-        let composer = console.composerStore(for: agent)
-        let first = cache.acquire(agent: agent, console: console, composer: composer, ownerID: firstOwner)
+        let first = cache.acquire(agent: agent, console: console, ownerID: firstOwner)
         first.attach.viewDidResize(cols: 80, rows: 24)
         try await waitUntil { await transport.hasLiveAttachSession }
-        let second = cache.acquire(agent: agent, console: console, composer: composer, ownerID: secondOwner)
+        let second = cache.acquire(agent: agent, console: console, ownerID: secondOwner)
         #expect(first !== second)
         #expect(!first.isRetained)
         second.attach.viewDidResize(cols: 80, rows: 24)
@@ -70,8 +67,7 @@ struct AgentTerminalCacheTests {
     @Test func obsoleteSnapshotCannotEvictASelectedAgent() async throws {
         let (_, _, console, agent) = try await connectedAgent()
         let cache = AgentTerminalCache()
-        let entry = cache.acquire(
-            agent: agent, console: console, composer: console.composerStore(for: agent), ownerID: UUID())
+        let entry = cache.acquire(agent: agent, console: console, ownerID: UUID())
         await cache.reconcile(hostID: agent.hostID, agents: [], isCurrent: { false })
         #expect(cache.entries[agent.id] === entry)
         await cache.reconcile(hostID: agent.hostID, agents: [])
@@ -86,8 +82,7 @@ struct AgentTerminalCacheTests {
         let cache = AgentTerminalCache(budget: budget)
         let presentation = AgentPresentationProbe()
         let entry = cache.acquire(
-            agent: agent, console: console, composer: console.composerStore(for: agent), ownerID: UUID(),
-            isPresented: { presentation.isPresented })
+            agent: agent, console: console, ownerID: UUID(), isPresented: { presentation.isPresented })
         entry.attach.viewDidResize(cols: 80, rows: 24)
         try await waitUntil { await transport.hasLiveAttachSession }
         for id in ["shell-one", "shell-two"] {

@@ -22,6 +22,7 @@ struct LicenseNoticeInventoryTests {
         "Go",
         "IBMPlexMono",
         "JetBrainsMono",
+        "Lucide",
         "MSDisplayLink",
         "OpenSSL",
         "Tailscale",

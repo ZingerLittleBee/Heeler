@@ -51,9 +51,10 @@ struct AttachLinkOpenFailure: Identifiable, Equatable {
     }
 }
 
-/// Owns the complete Agent Attach interaction: terminal lifetime, Composer
-/// staging, reconnect replacement, close, and deterministic leave ordering.
-/// The view only forwards UI events.
+/// Owns the complete Agent Attach interaction: terminal lifetime, reconnect
+/// replacement, close, and deterministic leave ordering. The view only
+/// forwards UI events. The Composer and its staging belong to the Agent's
+/// `AgentComposerSession`, which outlives any one Attach.
 @MainActor
 @Observable
 final class AgentAttachStore {
@@ -78,9 +79,7 @@ final class AgentAttachStore {
 
     private(set) var terminal: AttachTerminalStore
     let input: TerminalInputController
-    let staging: ComposerStagingStore
     let close: ClosePaneStore
-    private let composer: any ComposerDraftOperations
     private(set) var attachLinkOpenFailure: AttachLinkOpenFailure?
 
     private var transportGeneration: UInt64?
@@ -115,6 +114,9 @@ final class AgentAttachStore {
     /// the replacement that actually publishes adopts it, or recovery is
     /// definitively abandoned off stage.
     private(set) var pendingForegroundRecoveryTrace: AttachRestorationTrace?
+    /// Replacement pipelines published so far: a transition that lost
+    /// ownership must publish none.
+    private(set) var publishedReplacementCount = 0
     #endif
 
     init(
@@ -123,9 +125,6 @@ final class AgentAttachStore {
         transportGeneration: UInt64?,
         isOnStage: @escaping () -> Bool,
         runTerminal: @escaping TerminalSessionRunner,
-        stageImage: @escaping ImageStager,
-        stageFile: @escaping FileStager,
-        composer: any ComposerDraftOperations,
         closePane: @escaping () async throws -> Void
     ) {
         let input = TerminalInputController()
@@ -134,17 +133,11 @@ final class AgentAttachStore {
         self.runTerminal = runTerminal
         self.transportGeneration = transportGeneration
         self.input = input
-        self.composer = composer
         let linkIndex = AttachLinkIndex()
         self.linkIndex = linkIndex
         terminal = Self.makeTerminal(
             target: target, input: input, transportGeneration: transportGeneration,
             runTerminal: runTerminal, linkIndex: linkIndex)
-        staging = ComposerStagingStore(
-            stageImage: stageImage,
-            stageFile: stageFile,
-            composer: composer)
-        (composer as? AgentComposerStore)?.bindStaging(staging)
         close = ClosePaneStore(paneTitle: paneTitle, close: closePane)
     }
 
@@ -259,8 +252,10 @@ final class AgentAttachStore {
         terminal.send(keystrokes)
     }
 
-    func sendEscapeKey() {
-        _ = input.sendEscapeKey()
+    /// False when no live writer took the byte.
+    @discardableResult
+    func sendEscapeKey() -> Bool {
+        input.sendEscapeKey()
     }
 
     func scroll(_ sequence: Data, rows: Int) {
@@ -296,7 +291,7 @@ final class AgentAttachStore {
     /// Once the app may have suspended, replace the complete terminal pipeline
     /// immediately: PTY Attach, input session ownership, byte feed and surface
     /// identity. The surrounding Attach interaction remains the same owner, so
-    /// links, staging state and a reviewed Paste survive the recovery.
+    /// links and a reviewed Paste survive the recovery.
     /// `activation` identifies the app activation, answered once per store.
     func didBecomeActive(activation: UInt64? = nil, afterPossibleSuspension: Bool = false) {
         guard lifecycleState == .active, isOnStage() else { return }
@@ -334,9 +329,7 @@ final class AgentAttachStore {
 
     /// A new Transport requires a new terminal pipeline. The replacement is
     /// serialized behind any earlier transition and starts only after the
-    /// old terminal has finished. Staging deliberately survives: the
-    /// stager resolves the live Transport per call, so a retryable or
-    /// completed upload stays actionable across the reconnect.
+    /// old terminal has finished.
     func transportGenerationDidChange(_ generation: UInt64?) {
         guard let generation, lifecycleState == .active else { return }
         if let decision = activationRecovery.recordProjection(generation) {
@@ -479,6 +472,7 @@ final class AgentAttachStore {
             pendingForegroundRecoveryTrace = nil
         }
         terminal = replacement
+        publishedReplacementCount += 1
     }
 
     private func abortPendingForegroundRecoveryTrace() {
@@ -536,9 +530,6 @@ final class AgentAttachStore {
                 self.abortTerminalRecoveryOffStage(ownedBy: recoveryOwner)
                 return
             }
-            // After the queued leave has finished. Resetting earlier would
-            // let a drop start while staging is still tearing down.
-            self.composer.resumeDroppedImagesAfterRejoin()
             if requiresFullReplacement, self.terminal.status != .stopped {
                 await self.terminal.stop(preservingPendingPaste: true)
                 guard self.terminalRecoveryOwner == recoveryOwner else { return }
@@ -603,16 +594,11 @@ final class AgentAttachStore {
 
     /// Cancels view-owned interaction while a retained PTY continues receiving
     /// output. Returning to this terminal keeps its feed and emulator intact.
-    @discardableResult
-    func leaveInteractionsForRetention() -> Task<Void, Never> {
+    func leaveInteractionsForRetention() {
         invalidateAttachLinkOpen()
         attachLinkOpenFailure = nil
         input.cancelPaste()
         input.discardHeldInsertion()
-        return enqueueLifecycleTransition { [self] in
-            composer.abandonDroppedImagesForTeardown()
-            await staging.leave()
-        }
     }
 
     /// Leaves the screen: records the departure and enqueues the teardown,
@@ -673,8 +659,6 @@ final class AgentAttachStore {
         // behind it on "Connecting…". The retain is temporary and
         // self-breaking: the task releases the store when the teardown ends.
         return enqueueLifecycleTransition { [self] in
-            composer.abandonDroppedImagesForTeardown()
-            await staging.leave()
             await terminal.stop()
             linkIndex.clear()
         }

@@ -30,6 +30,7 @@ struct ContentView: View {
         ConsoleView(
             hosts: app.hostStore, console: app.console, terminal: app.terminal,
             inputMode: app.inputMode,
+            detailSurface: app.detailSurface,
             appearance: app.appearance,
             pushRegistration: app.pushRegistration,
             notificationPreferences: app.notificationPreferences,
