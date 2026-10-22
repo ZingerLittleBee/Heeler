@@ -57,6 +57,8 @@ final class HeelerAppModel {
     /// values: `HostStore()` reads the real persisted catalog and the
     /// `ConsoleStore` reaches the real `sshSessionFactory()` and keeps Chat's
     /// cache on disk.
+    /// `bannerStore` lets scene-activity tests record alerts without playing
+    /// device sounds or depending on notification registration.
     init(
         pushRegistration: PushRegistrationStore,
         sceneDirectory: AgentSceneDirectory,
@@ -64,7 +66,8 @@ final class HeelerAppModel {
         console: ConsoleStore = ConsoleStore(chatCache: FileChatTranscriptCache()),
         overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator(),
-        backgroundConnections: BackgroundConnectionKeeper = BackgroundConnectionKeeper()
+        backgroundConnections: BackgroundConnectionKeeper = BackgroundConnectionKeeper(),
+        bannerStore: AgentNotificationBannerStore? = nil
     ) {
         self.pushRegistration = pushRegistration
         self.sceneDirectory = sceneDirectory
@@ -103,7 +106,7 @@ final class HeelerAppModel {
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on
         // unknowns.
-        bannerStore = AgentNotificationBannerStore(
+        self.bannerStore = bannerStore ?? AgentNotificationBannerStore(
             presentedAgent: { [weak sceneDirectory] in sceneDirectory?.keyScenePresentedAgent },
             triggers: { [weak notificationPreferences] in
                 notificationPreferences?.confirmedTriggers(for: $0)
@@ -163,6 +166,8 @@ final class HeelerAppModel {
         if UIApplication.shared.applicationState == .active {
             backgroundConnections.didBecomeActive()
         }
+        bannerStore.sceneActivityDidChange(
+            isActive: UIApplication.shared.applicationState == .active, agents: console.agents)
 
         // The banner store diffs the Agent list for foreground Blocked/Done
         // transitions (#77); both it and the Live Activities take the
@@ -206,6 +211,9 @@ final class HeelerAppModel {
 
     /// The app's aggregate scene phase: active while any window is.
     func scenePhaseDidChange(_ phase: ScenePhase) {
+        // Connection activity can stay active indefinitely in the background.
+        // In-app alerts follow the actual aggregate scene phase instead.
+        bannerStore.sceneActivityDidChange(isActive: phase == .active, agents: console.agents)
         switch phase {
         case .active:
             activity.didBecomeActive()

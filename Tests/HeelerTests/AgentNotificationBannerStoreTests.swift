@@ -29,15 +29,18 @@ struct AgentNotificationBannerStoreTests {
 
     private func makeStore(
         holdDuration: Duration = .milliseconds(20),
-        dismissDelay: Duration = .seconds(5)
+        dismissDelay: Duration = .seconds(5),
+        isActive: Bool = true
     ) -> AgentNotificationBannerStore {
         let world = world
-        return AgentNotificationBannerStore(
+        let store = AgentNotificationBannerStore(
             holdDuration: holdDuration,
             dismissDelay: dismissDelay,
             presentedAgent: { world.presentedAgent },
             triggers: { world.triggers[$0] },
             playSound: { world.soundCount += 1 })
+        store.sceneActivityDidChange(isActive: isActive, agents: [])
+        return store
     }
 
     private func agent(
@@ -262,6 +265,86 @@ struct AgentNotificationBannerStoreTests {
     }
 
     // MARK: Presentation lifecycle
+
+    @Test func noAlertsBeforeTheFirstActiveScene() async throws {
+        world.triggers[hostID] = NotificationTriggerPreferences()
+        let store = makeStore(isActive: false)
+        store.agentsDidChange([agent("wV:p1", .working)])
+        store.agentsDidChange([agent("wV:p1", .blocked)])
+        try await waitPastHold()
+        #expect(store.banner == nil)
+        #expect(world.soundCount == 0)
+    }
+
+    @Test(arguments: [AgentStatus.blocked, .done])
+    func backgroundFeedStaysSilentAndDoesNotReplayOnReturn(status: AgentStatus) async throws {
+        world.triggers[hostID] = NotificationTriggerPreferences()
+        let store = makeStore()
+        let working = [agent("wV:p1", .working)]
+        let changed = [agent("wV:p1", status)]
+        store.agentsDidChange(working)
+        store.sceneActivityDidChange(isActive: false, agents: working)
+        store.agentsDidChange(changed)
+        try await waitPastHold()
+        #expect(store.banner == nil)
+        #expect(world.soundCount == 0)
+
+        store.sceneActivityDidChange(isActive: true, agents: changed)
+        store.agentsDidChange(changed)
+        try await waitPastHold()
+        #expect(store.banner == nil)
+        #expect(world.soundCount == 0)
+
+        // A later foreground transition must still announce normally.
+        store.agentsDidChange(working)
+        store.agentsDidChange(changed)
+        try await waitUntil("foreground transitions should resume") { store.banner != nil }
+        #expect(world.soundCount == 1)
+    }
+
+    @Test func leavingTheActiveSceneCancelsAHoldEvenAcrossAQuickReturn() async throws {
+        world.triggers[hostID] = NotificationTriggerPreferences()
+        let store = makeStore(holdDuration: .milliseconds(60))
+        store.agentsDidChange([agent("wV:p1", .working)])
+        let blocked = [agent("wV:p1", .blocked)]
+        store.agentsDidChange(blocked)
+        store.sceneActivityDidChange(isActive: false, agents: blocked)
+        store.sceneActivityDidChange(isActive: true, agents: blocked)
+        try await waitPastHold()
+        #expect(store.banner == nil)
+        #expect(world.soundCount == 0)
+    }
+
+    @Test func leavingTheActiveSceneDismissesAnAlreadyShownBanner() async throws {
+        world.triggers[hostID] = NotificationTriggerPreferences()
+        let store = makeStore()
+        store.agentsDidChange([agent("wV:p1", .working)])
+        let blocked = [agent("wV:p1", .blocked)]
+        store.agentsDidChange(blocked)
+        try await waitUntil("the foreground banner should show") { store.banner != nil }
+        store.sceneActivityDidChange(isActive: false, agents: blocked)
+        #expect(store.banner == nil)
+        store.sceneActivityDidChange(isActive: true, agents: blocked)
+        try await waitPastHold()
+        #expect(store.banner == nil)
+        #expect(world.soundCount == 1)
+    }
+
+    @Test func returnSeedsTheBaselineBeforeADelayedObserverRuns() async throws {
+        world.triggers[hostID] = NotificationTriggerPreferences()
+        let store = makeStore()
+        let working = [agent("wV:p1", .working)]
+        let blocked = [agent("wV:p1", .blocked)]
+        store.agentsDidChange(working)
+        store.sceneActivityDidChange(isActive: false, agents: working)
+        // The Console already changed in the background, but its observer
+        // has not delivered that value to the banner store yet.
+        store.sceneActivityDidChange(isActive: true, agents: blocked)
+        store.agentsDidChange(blocked)
+        try await waitPastHold()
+        #expect(store.banner == nil)
+        #expect(world.soundCount == 0)
+    }
 
     @Test func theBannerAutoDismissesAfterItsDelay() async throws {
         world.triggers[hostID] = NotificationTriggerPreferences()

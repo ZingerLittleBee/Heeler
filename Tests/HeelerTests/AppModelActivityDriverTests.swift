@@ -16,6 +16,61 @@ import Testing
 @Suite("App model activity driver")
 struct AppModelActivityDriverTests {
     @Test(arguments: [false, true])
+    func retainedConnectionsDoNotKeepInAppAlertsActive(isBackground: Bool) async throws {
+        let host = Host.fixture()
+        let pane = "w1:p1"
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [.fixture(paneID: pane, status: .working)]))
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+        }
+        let suite = "background-alert-driver-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keeper = BackgroundConnectionKeeper(defaults: defaults, location: ActivityDriverLocationUpdater())
+        let activity = AppActivityCoordinator(
+            gracePeriod: .milliseconds(30), granter: RecordingBackgroundExecutionGranter())
+        var soundCount = 0
+        let banners = AgentNotificationBannerStore(
+            holdDuration: .milliseconds(20), presentedAgent: { nil },
+            triggers: { _ in NotificationTriggerPreferences() }, playSound: { soundCount += 1 })
+        let app = HeelerAppModel(
+            pushRegistration: PushRegistrationStore(
+                client: ScriptedPushRegistrationClient(), environment: .sandbox),
+            sceneDirectory: AgentSceneDirectory(), hostStore: HostStore(volatileHosts: [host]),
+            console: console, activity: activity, backgroundConnections: keeper, bannerStore: banners)
+        app.start()
+        app.scenePhaseDidChange(.active)
+        keeper.setEnabled(true)
+        defer { console.setHosts([]) }
+        try await waitUntil("the Host and location service should be running") {
+            console.agents.first?.agent.status == .working && keeper.isRunning
+        }
+
+        app.scenePhaseDidChange(isBackground ? .background : .inactive)
+        #expect(await transport.emit(.agentStatusChanged(paneID: pane, status: .blocked)))
+        try await waitUntil("the background Console observer should receive Blocked") {
+            console.agents.first?.agent.status == .blocked
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(activity.phase == .active)
+        #expect(console.hostStatuses[host.id] == .connected)
+        #expect(banners.banner == nil)
+        #expect(soundCount == 0)
+
+        app.scenePhaseDidChange(.active)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(banners.banner == nil)
+        #expect(soundCount == 0)
+        #expect(await transport.emit(.agentStatusChanged(paneID: pane, status: .working)))
+        try await waitUntil("the Agent should resume working") {
+            console.agents.first?.agent.status == .working
+        }
+        #expect(await transport.emit(.agentStatusChanged(paneID: pane, status: .done)))
+        try await waitUntil("a new foreground transition should still announce") { banners.banner != nil }
+        #expect(soundCount == 1)
+    }
+
+    @Test(arguments: [false, true])
     func backgroundLocationHoldsTheRealConsoleUntilOptOutOrRevocation(revokePermission: Bool) async throws {
         let host = Host.fixture()
         let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { _, subscriptions in

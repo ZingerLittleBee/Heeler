@@ -44,6 +44,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep in-app notification banners and sounds silent outside an active scene
+  when Background Connections retains the event stream; cancel pending alerts
+  on departure and avoid replaying background transitions on return. (#484)
 - Prevent a freeze when returning from a Shell Terminal to the Agent while
   the outgoing terminal surface is still updating. (#481)
 - Center the subagent glyph on its Chat row's title instead of riding

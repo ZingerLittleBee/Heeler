@@ -30,6 +30,9 @@ final class AgentNotificationBannerStore {
     /// In-flight anti-flap holds, cancelled when the status moves on.
     @ObservationIgnored private var holds: [ConsoleAgent.ID: Task<Void, Never>] = [:]
     @ObservationIgnored private var dismissal: Task<Void, Never>?
+    /// Actual aggregate scene activity, independent of the connection grace
+    /// period or location execution keeping the process alive (ADR 0026).
+    @ObservationIgnored private var isSceneActive = false
     @ObservationIgnored private let holdDuration: Duration
     @ObservationIgnored private let dismissDelay: Duration
     @ObservationIgnored private let presentedAgent: @MainActor () -> ConsoleAgent.ID?
@@ -60,6 +63,22 @@ final class AgentNotificationBannerStore {
         self.playSound = playSound
     }
 
+    /// Background events still advance the baseline but never announce.
+    /// Seed the current Console value before re-enabling announcements so a
+    /// coalesced observer callback cannot replay a background transition.
+    func sceneActivityDidChange(isActive: Bool, agents: [ConsoleAgent]) {
+        guard isSceneActive != isActive else { return }
+        if isActive {
+            agentsDidChange(agents)
+            isSceneActive = true
+        } else {
+            isSceneActive = false
+            for hold in holds.values { hold.cancel() }
+            holds.removeAll()
+            dismiss()
+        }
+    }
+
     /// The Console feed, same as the router's: diff each pane's status
     /// against the last observed one. First sight is baseline, never a
     /// transition — a killed-state launch must not banner every Agent that
@@ -76,7 +95,7 @@ final class AgentNotificationBannerStore {
             guard status != previous else { continue }
             statuses[id] = status
             cancelHold(for: id)
-            guard previous != nil, status == .blocked || status == .done else { continue }
+            guard isSceneActive, previous != nil, status == .blocked || status == .done else { continue }
             scheduleHold(for: agent, status: status)
         }
     }
@@ -105,6 +124,7 @@ final class AgentNotificationBannerStore {
     /// The held transition fires: apply the presentation-time gates, then
     /// show the banner with the push renderer's exact copy.
     private func present(_ agent: ConsoleAgent, status: AgentStatus) {
+        guard isSceneActive else { return }
         let target = AgentNotificationTarget(hostID: agent.hostID, paneID: agent.agent.paneID)
         guard
             !AgentNotificationRouting.shouldSuppressBanner(

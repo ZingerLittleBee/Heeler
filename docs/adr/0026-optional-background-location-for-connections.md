@@ -19,6 +19,13 @@ keepalive still belongs to EventsSession; location supplies an opportunity to
 execute, not evidence that the network or connection is healthy. Every
 foreground return retains the existing connection probes and terminal recovery.
 
+In-app notification banners follow the actual aggregate scene phase, not the
+effective connection phase. Leaving the active scene cancels pending holds and
+dismisses the current banner. Background events still advance the status
+baseline silently; foregrounding consumes the latest Console value before
+allowing new announcements, so deferred observations do not replay an alert.
+Background APNs delivery remains independent.
+
 Removing the last connection, opting out, losing authorization, a non-transient
 location error, or a location pause stops location updates. If already in the
 background, the coordinator requests the normal UIKit grace assertion and
