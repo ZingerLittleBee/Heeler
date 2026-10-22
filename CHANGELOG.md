@@ -12,7 +12,7 @@ Entries reference the pull request that made the change.
 - Optionally keep Host connections active in the background using low-accuracy
   location updates, with an explicit opt-in and permission controls in Settings
   > Connections > Background Connections. Coordinates are discarded.
-  (Local change; PR pending.)
+  (#484)
 - Read a guide on why SELinux blocks Heeler's herdr socket on Fedora, RHEL,
   CentOS Stream, AlmaLinux and Rocky Linux, how to confirm it from the audit
   log, and the small policy module that allows it, in English or Simplified
