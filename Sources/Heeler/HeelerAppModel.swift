@@ -1,5 +1,6 @@
 import Observation
 import SwiftUI
+import UIKit
 
 /// The stores every window shares, and the app-wide wiring between them.
 ///
@@ -13,7 +14,8 @@ import SwiftUI
 ///
 /// App activity drives the events sessions' suspend/resume (spec #20): the
 /// connections survive a backgrounding for the length of the grace period
-/// (see AppActivityCoordinator), then are torn down deliberately. Every
+/// (see AppActivityCoordinator), then are torn down deliberately, unless the
+/// optional Background Connections location service is running (ADR 0026). Every
 /// return to the foreground re-activates them — and, for a connection the
 /// app was still holding, re-proves it, because a link can die while the app
 /// is away without anything having noticed (#142). The phase that feeds it
@@ -43,6 +45,7 @@ final class HeelerAppModel {
     /// What a confirmed Host removal cleans up beyond the catalog (#414).
     let hostRemoval: HostRemovalDependencies
     let activity: AppActivityCoordinator
+    let backgroundConnections: BackgroundConnectionKeeper
 
     private var isStarted = false
     private var observers: [AnyObject] = []
@@ -54,13 +57,17 @@ final class HeelerAppModel {
     /// values: `HostStore()` reads the real persisted catalog and the
     /// `ConsoleStore` reaches the real `sshSessionFactory()` and keeps Chat's
     /// cache on disk.
+    /// `bannerStore` lets scene-activity tests record alerts without playing
+    /// device sounds or depending on notification registration.
     init(
         pushRegistration: PushRegistrationStore,
         sceneDirectory: AgentSceneDirectory,
         hostStore: HostStore = HostStore(),
         console: ConsoleStore = ConsoleStore(chatCache: FileChatTranscriptCache()),
         overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
-        activity: AppActivityCoordinator = AppActivityCoordinator()
+        activity: AppActivityCoordinator = AppActivityCoordinator(),
+        backgroundConnections: BackgroundConnectionKeeper = BackgroundConnectionKeeper(),
+        bannerStore: AgentNotificationBannerStore? = nil
     ) {
         self.pushRegistration = pushRegistration
         self.sceneDirectory = sceneDirectory
@@ -68,6 +75,11 @@ final class HeelerAppModel {
         self.console = console
         self.overlayNetworks = overlayNetworks
         self.activity = activity
+        self.backgroundConnections = backgroundConnections
+        backgroundConnections.onRunningChanged = { [weak activity] running in
+            activity?.setBackgroundConnectionActive(running)
+        }
+        activity.setBackgroundConnectionActive(backgroundConnections.isRunning)
         terminalThemes = TerminalThemeSettings()
         terminalZoom = TerminalZoomSettings()
         terminalFonts = TerminalFontSettings()
@@ -94,7 +106,7 @@ final class HeelerAppModel {
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on
         // unknowns.
-        bannerStore = AgentNotificationBannerStore(
+        self.bannerStore = bannerStore ?? AgentNotificationBannerStore(
             presentedAgent: { [weak sceneDirectory] in sceneDirectory?.keyScenePresentedAgent },
             triggers: { [weak notificationPreferences] in
                 notificationPreferences?.confirmedTriggers(for: $0)
@@ -151,6 +163,11 @@ final class HeelerAppModel {
     func start() {
         guard !isStarted else { return }
         isStarted = true
+        if UIApplication.shared.applicationState == .active {
+            backgroundConnections.didBecomeActive()
+        }
+        bannerStore.sceneActivityDidChange(
+            isActive: UIApplication.shared.applicationState == .active, agents: console.agents)
 
         // The banner store diffs the Agent list for foreground Blocked/Done
         // transitions (#77); both it and the Live Activities take the
@@ -194,14 +211,19 @@ final class HeelerAppModel {
 
     /// The app's aggregate scene phase: active while any window is.
     func scenePhaseDidChange(_ phase: ScenePhase) {
+        // Connection activity can stay active indefinitely in the background.
+        // In-app alerts follow the actual aggregate scene phase instead.
+        bannerStore.sceneActivityDidChange(isActive: phase == .active, agents: console.agents)
         switch phase {
         case .active:
             activity.didBecomeActive()
+            backgroundConnections.didBecomeActive()
             // Re-probes notification permission on every return, grace
             // period or not: the user may have flipped it in the Settings
             // app while we were backgrounded.
             Task { await pushRegistration.refresh() }
         case .background:
+            backgroundConnections.didEnterBackground()
             activity.didEnterBackground()
         default:
             break
@@ -242,6 +264,7 @@ final class HeelerAppModel {
         // visit that may never happen.
         observe({ console.hostStatuses }) { [weak self] _ in
             guard let self else { return }
+            updateBackgroundConnectionDemand()
             Task { await self.notificationPreferences.refresh() }
             liveActivities.connectionsDidChange()
         }
@@ -255,6 +278,16 @@ final class HeelerAppModel {
             guard let self else { return }
             Task { await self.notificationPreferences.refresh() }
         }
+        updateBackgroundConnectionDemand()
+    }
+
+    private func updateBackgroundConnectionDemand() {
+        backgroundConnections.setConnectionNeeded(console.hostStatuses.values.contains { status in
+            switch status {
+            case .connecting, .connected, .reconnecting: true
+            case .failed, .suspended, .ended: false
+            }
+        })
     }
 
     private func observe<Value: Equatable>(

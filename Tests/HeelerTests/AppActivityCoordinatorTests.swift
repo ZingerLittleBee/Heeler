@@ -246,6 +246,72 @@ struct AppActivityCoordinatorTests {
         #expect(await events.next() == .activated)
     }
 
+    @Test func locationExecutionKeepsConnectionsPastTheGracePeriod() async throws {
+        let granter = FakeBackgroundExecutionGranter()
+        let coordinator = AppActivityCoordinator(gracePeriod: .milliseconds(20), granter: granter)
+        coordinator.setBackgroundConnectionActive(true)
+        coordinator.didEnterBackground()
+        coordinator.didEnterBackground()
+        try await Task.sleep(for: .milliseconds(60))
+        #expect(coordinator.phase == .active)
+        #expect(granter.beginCount == 0)
+        coordinator.didBecomeActive()
+        #expect(coordinator.activationCount == 1)
+        // The usual recovery probe still runs after a long absence, even
+        // with location enabled: execution is not proof of a live SSH link.
+        #expect(coordinator.lastAbsenceMayHaveSuspended)
+    }
+
+    @Test func losingLocationExecutionFallsBackToTheNormalGracePeriod() async throws {
+        let granter = FakeBackgroundExecutionGranter()
+        let coordinator = AppActivityCoordinator(gracePeriod: .milliseconds(20), granter: granter)
+        coordinator.setBackgroundConnectionActive(true)
+        coordinator.didEnterBackground()
+        coordinator.setBackgroundConnectionActive(false)
+        #expect(granter.liveTokenCount == 1)
+        try await waitUntil("losing location should restore the suspension timer") {
+            coordinator.phase == .suspended
+        }
+        coordinator.didFinishSuspending()
+        #expect(granter.liveTokenCount == 0)
+    }
+
+    @Test func locationCanReplaceAGraceGrantWithoutLeakingIt() async throws {
+        let granter = FakeBackgroundExecutionGranter()
+        let coordinator = AppActivityCoordinator(gracePeriod: .milliseconds(20), granter: granter)
+        coordinator.didEnterBackground()
+        coordinator.setBackgroundConnectionActive(true)
+        #expect(granter.liveTokenCount == 0)
+        try await Task.sleep(for: .milliseconds(60))
+        #expect(coordinator.phase == .active)
+        coordinator.didBecomeActive()
+    }
+
+    @Test func losingLocationWithNoUIKitTimeSuspendsImmediately() {
+        let granter = FakeBackgroundExecutionGranter()
+        granter.grantsTime = false
+        let coordinator = AppActivityCoordinator(granter: granter)
+        coordinator.setBackgroundConnectionActive(true)
+        coordinator.didEnterBackground()
+        coordinator.setBackgroundConnectionActive(false)
+        #expect(coordinator.phase == .suspended)
+    }
+
+    @Test func foregroundingAfterLocationUseRestoresTheDefaultPolicy() async throws {
+        let granter = FakeBackgroundExecutionGranter()
+        let coordinator = AppActivityCoordinator(gracePeriod: .milliseconds(20), granter: granter)
+        coordinator.setBackgroundConnectionActive(true)
+        coordinator.didEnterBackground()
+        coordinator.didBecomeActive()
+        coordinator.setBackgroundConnectionActive(false)
+        #expect(granter.beginCount == 0)
+        coordinator.didEnterBackground()
+        try await waitUntil("the next backgrounding should use normal grace") {
+            coordinator.phase == .suspended
+        }
+        coordinator.didFinishSuspending()
+    }
+
     /// Polls until `condition` holds, yielding so the coordinator's grace
     /// task progresses.
     private func waitUntil(

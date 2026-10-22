@@ -12,6 +12,11 @@ its contract.
 - **App/window lifetime:** [HeelerApp](../../Sources/Heeler/HeelerApp.swift) and
   [HeelerAppModel](../../Sources/Heeler/HeelerAppModel.swift) lead to
   [ConsoleView](../../Sources/Heeler/Console/ConsoleView.swift).
+- **Background Connections:** [BackgroundConnectionKeeper](../../Sources/Heeler/Support/BackgroundConnectionKeeper.swift)
+  supplies optional location execution to [AppActivityCoordinator](../../Sources/Heeler/Support/AppActivityCoordinator.swift).
+  [ADR 0026](../adr/0026-optional-background-location-for-connections.md) records
+  permission, privacy, fallback, and device acceptance; focused coverage is
+  `BackgroundConnectionKeeperTests`, `AppActivityCoordinatorTests`, and `AppModelActivityDriverTests`.
 - **Agent and Terminal lists:** `ConsoleView` composes
   [ConsoleListPresentationStore](../../Sources/Heeler/Console/ConsoleListPresentationStore.swift),
   [TerminalListView](../../Sources/Heeler/Console/TerminalListView.swift), and

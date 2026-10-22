@@ -9,6 +9,10 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Optionally keep Host connections active in the background using low-accuracy
+  location updates, with an explicit opt-in and permission controls in Settings
+  > Connections > Background Connections. Coordinates are discarded.
+  (#484)
 - Read a guide on why SELinux blocks Heeler's herdr socket on Fedora, RHEL,
   CentOS Stream, AlmaLinux and Rocky Linux, how to confirm it from the audit
   log, and the small policy module that allows it, in English or Simplified
@@ -40,6 +44,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep in-app notification banners and sounds silent outside an active scene
+  when Background Connections retains the event stream; cancel pending alerts
+  on departure and avoid replaying background transitions on return. (#484)
 - Prevent a freeze when returning from a Shell Terminal to the Agent while
   the outgoing terminal surface is still updating. (#481)
 - Center the subagent glyph on its Chat row's title instead of riding

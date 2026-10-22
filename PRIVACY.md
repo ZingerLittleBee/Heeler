@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: October 20, 2026._
+_Last updated: October 22, 2026._
 
 Heeler is a native iOS console for [herdr](https://herdr.dev). It connects to
 machines you control ("Hosts") over SSH. Heeler has no user accounts,
@@ -27,6 +27,12 @@ you choose, as described below.
   key.
 - **Host list and settings.** Your Hosts and Heeler settings are stored locally.
   Each Host stores its own notification registration and delivery preferences.
+- **Background Connections.** This optional setting is off by default. If you
+  enable it and grant location access, Heeler requests low-accuracy location
+  updates while a Host is connecting or connected, including in the background,
+  to help the app continue running. iOS displays its location indicator. Heeler
+  discards the coordinates without saving, logging, or sharing them. Turning
+  the setting off or ending the last connection stops these updates.
 - **Live agent activity.** Terminal output, prompts, and pane contents travel
   only over the SSH connection between your device and your Host, which is
   encrypted end to end even when an Overlay Network carries it. The limited

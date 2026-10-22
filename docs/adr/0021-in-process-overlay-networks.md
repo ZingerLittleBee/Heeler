@@ -267,7 +267,9 @@ the Host chosen by the user, never a fallback after a direct dial fails.
   Background Grace Period the app calls `stop()` on every node and discards
   it; the next dial after the app returns rebuilds it. What `stop()` does is
   the backend's: tsnet and EasyTier shut down, ZeroTier leaves the network.
-  Overlay Networks therefore do not keep Hosts reachable in the background;
+  With the optional Background Connections service running (ADR 0026), the
+  grace timer is bypassed and these nodes stay running with the Host
+  connections. Without that service they stop under the normal grace policy.
   Agent Notifications still arrive through the Push Relay.
 - Peer discovery on the local network can trigger iOS's local-network
   prompt, so the app declares `NSLocalNetworkUsageDescription`.

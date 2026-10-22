@@ -10,7 +10,8 @@ import UIKit
 /// message costs nothing on return. Only when the grace period elapses — or
 /// the system reclaims its time — does the app consider itself suspended and
 /// tear the connections down (the deliberate teardown of ADR 0011; iOS
-/// freezes the sockets anyway once the process is suspended).
+/// freezes the sockets anyway once the process is suspended). An opted-in,
+/// running location service bypasses this timer (ADR 0026).
 enum AppActivityPhase: Sendable, Equatable {
     case active
     case suspended
@@ -147,6 +148,8 @@ final class AppActivityCoordinator {
     @ObservationIgnored private var graceTask: Task<Void, Never>?
     @ObservationIgnored private var leftForegroundAt: ContinuousClock.Instant?
     @ObservationIgnored private var observedSuspensionDuringAbsence = false
+    @ObservationIgnored private var isBackgrounded = false
+    @ObservationIgnored private var backgroundConnectionActive = false
 
     init(
         gracePeriod: Duration = AppActivityCoordinator.defaultGracePeriod,
@@ -161,6 +164,7 @@ final class AppActivityCoordinator {
     }
 
     func didBecomeActive() {
+        isBackgrounded = false
         graceTask?.cancel()
         graceTask = nil
         releaseBackgroundExecution()
@@ -179,8 +183,31 @@ final class AppActivityCoordinator {
     }
 
     func didEnterBackground() {
-        guard phase == .active, graceTask == nil else { return }
+        guard !isBackgrounded, phase == .active else { return }
+        isBackgrounded = true
         leftForegroundAt = now()
+        guard !backgroundConnectionActive else { return }
+        beginGracePeriod()
+    }
+
+    /// A running location service supplies background execution independently
+    /// of UIKit's short assertion. Losing it restores the normal grace period;
+    /// gaining it cancels only the timer, never an already-emitted suspension.
+    func setBackgroundConnectionActive(_ active: Bool) {
+        guard backgroundConnectionActive != active else { return }
+        backgroundConnectionActive = active
+        guard isBackgrounded, phase == .active else { return }
+        if active {
+            graceTask?.cancel()
+            graceTask = nil
+            releaseBackgroundExecution()
+        } else {
+            beginGracePeriod()
+        }
+    }
+
+    private func beginGracePeriod() {
+        guard graceTask == nil else { return }
         token = granter.begin { [weak self] in self?.backgroundTimeDidExpire() }
         guard token != nil else {
             // Without background time the process is about to freeze, so a

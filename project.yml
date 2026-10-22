@@ -68,6 +68,9 @@ targets:
         # Acknowledgements (BuildSourceRevision). `make archive` and
         # release.yml set it; other builds leave it empty.
         HeelerSourceRevision: $(HEELER_SOURCE_REVISION)
+        NSLocationWhenInUseUsageDescription: "Heeler uses low-accuracy location updates to help keep SSH connections active in the background when you enable Background Connections. Your location is not saved or shared."
+        UIBackgroundModes:
+          - location
         # A dragged Console row carries this activity; iPadOS creates a new
         # window from it only for a declared type. The generated scene
         # manifest already declares multiple-scene support.
