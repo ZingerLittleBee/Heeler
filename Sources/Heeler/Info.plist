@@ -31,9 +31,15 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>HeelerSourceRevision</key>
 	<string>$(HEELER_SOURCE_REVISION)</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Heeler uses low-accuracy location updates to help keep SSH connections active in the background when you enable Background Connections. Your location is not saved or shared.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>dev.bybee.heeler.agent</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
 	</array>
 </dict>
 </plist>

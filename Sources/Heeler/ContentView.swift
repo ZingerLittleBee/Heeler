@@ -42,6 +42,7 @@ struct ContentView: View {
         )
         // Settings › Overlay Networks and the Host form read the catalog here.
         .environment(app.overlayNetworks)
+        .environment(app.backgroundConnections)
         // Settings › Overlay Networks adds a Host from a network's peer.
         .environment(app.hostStore)
         // The Hosts list's removal reaches app-wide state.

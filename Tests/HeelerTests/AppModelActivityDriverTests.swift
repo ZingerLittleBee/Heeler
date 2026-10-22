@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import Heeler
@@ -14,6 +15,51 @@ import Testing
 @MainActor
 @Suite("App model activity driver")
 struct AppModelActivityDriverTests {
+    @Test(arguments: [false, true])
+    func backgroundLocationHoldsTheRealConsoleUntilOptOutOrRevocation(revokePermission: Bool) async throws {
+        let host = Host.fixture()
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { ScriptedTransport(snapshot: .fixture()) })
+        }
+        let suite = "background-activity-driver-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let location = ActivityDriverLocationUpdater()
+        let keeper = BackgroundConnectionKeeper(defaults: defaults, location: location)
+        let activity = AppActivityCoordinator(
+            gracePeriod: .milliseconds(30), granter: RecordingBackgroundExecutionGranter())
+        let app = HeelerAppModel(
+            pushRegistration: PushRegistrationStore(
+                client: ScriptedPushRegistrationClient(), environment: .sandbox),
+            sceneDirectory: AgentSceneDirectory(), hostStore: HostStore(volatileHosts: [host]),
+            console: console, activity: activity, backgroundConnections: keeper)
+        app.scenePhaseDidChange(.active)
+        app.start()
+        keeper.setEnabled(true)
+        try await waitUntil("the app's connection observation should start location updates") {
+            console.hostStatuses[host.id] == .connected && keeper.isRunning
+        }
+        app.scenePhaseDidChange(.background)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(activity.phase == .active)
+        #expect(console.hostStatuses[host.id] == .connected)
+        if revokePermission {
+            location.authorization = .denied
+            location.onChange?()
+        } else {
+            keeper.setEnabled(false)
+        }
+        try await waitUntil("loss of location execution must reach the real Console driver") {
+            console.hostStatuses[host.id] == .suspended
+        }
+        #expect(!keeper.isRunning)
+        app.scenePhaseDidChange(.active)
+        try await waitUntil("foregrounding should reconnect after the fallback teardown") {
+            console.hostStatuses[host.id] == .connected
+        }
+        console.setHosts([])
+    }
+
     /// Backgrounding past the grace period must suspend the Host's
     /// connection: the coordinator emits `.suspended`, and only the driver
     /// consuming it calls `console.suspend()`. Both halves of that
@@ -270,4 +316,15 @@ private final class RecordingBackgroundExecutionGranter: BackgroundExecutionGran
     func end(_ token: BackgroundExecutionToken) {
         endedTokens.append(token)
     }
+}
+
+@MainActor
+private final class ActivityDriverLocationUpdater: BackgroundLocationUpdating {
+    var authorization: BackgroundLocationAuthorization = .authorized
+    var isAvailable = true
+    var onChange: (@MainActor () -> Void)?
+    func requestAuthorization() {}
+    func prepareForForeground() {}
+    func start() {}
+    func stop() {}
 }

@@ -490,5 +490,12 @@ progress (#160).
 _Avoid_: retry, reconnecting, manual reconnect state
 
 **Background Grace Period**:
-The window after backgrounding during which the app keeps running under an iOS background-execution assertion and holds its Host connections, so a short trip out of the app costs nothing on return. Only when it elapses does the app suspend and tear the connections down. Bounded by what iOS grants (tens of seconds); staying reachable for longer is what Agent Notifications are for.
+The window after backgrounding during which the app keeps running under an iOS background-execution assertion and holds its Host connections, so a short trip out of the app costs nothing on return. When it elapses the app suspends and tears the connections down. Bounded by what iOS grants (tens of seconds). A running Background Connections service bypasses this timer; without that service the normal grace policy applies. Agent Notifications remain independent of app execution.
 _Avoid_: background mode, keep alive (that's the events session's ping)
+
+**Background Connections**:
+An optional Settings feature that uses low-accuracy location updates to help
+Host connections and their Overlay Networks continue running after backgrounding.
+Disabled by default; requires location permission and a connecting or connected
+Host. Coordinates are discarded. Does not guarantee indefinite execution or
+network availability (ADR 0026).

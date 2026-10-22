@@ -80,6 +80,7 @@ struct SettingsView: View {
     /// Injected app-wide by `ContentView`; absent in previews, where the
     /// Overlay Networks row is left out.
     @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
+    @Environment(BackgroundConnectionKeeper.self) private var backgroundConnections: BackgroundConnectionKeeper?
 
     static let agentListDestination = SettingsAgentListDestination.fields
     static let overlayNetworksDestination = SettingsOverlayNetworksDestination.networks
@@ -172,15 +173,25 @@ struct SettingsView: View {
                     }
                 }
 
-                if let overlayNetworks {
+                if overlayNetworks != nil || backgroundConnections != nil {
                     Section {
-                        NavigationLink {
-                            Self.overlayNetworksDestination.destinationView(
-                                store: overlayNetworks, onHostAdded: onHostAdded)
-                        } label: {
-                            Label("Overlay Networks", systemImage: "point.3.connected.trianglepath.dotted")
+                        if let backgroundConnections {
+                            NavigationLink {
+                                BackgroundConnectionsSettingsView(keeper: backgroundConnections)
+                            } label: {
+                                Label("Background Connections", systemImage: "location")
+                            }
+                            .accessibilityIdentifier("settings.backgroundConnections")
                         }
-                        .accessibilityIdentifier(Self.overlayNetworksDestination.rawValue)
+                        if let overlayNetworks {
+                            NavigationLink {
+                                Self.overlayNetworksDestination.destinationView(
+                                    store: overlayNetworks, onHostAdded: onHostAdded)
+                            } label: {
+                                Label("Overlay Networks", systemImage: "point.3.connected.trianglepath.dotted")
+                            }
+                            .accessibilityIdentifier(Self.overlayNetworksDestination.rawValue)
+                        }
                     } header: {
                         Text("Connections")
                     }
@@ -261,6 +272,48 @@ struct SettingsView: View {
         let version = info?["CFBundleShortVersionString"] as? String ?? "unknown"
         let build = info?["CFBundleVersion"] as? String
         return build.map { "\(version) (\($0))" } ?? version
+    }
+}
+
+struct BackgroundConnectionsSettingsView: View {
+    let keeper: BackgroundConnectionKeeper
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Keep Connections in Background", isOn: Binding(
+                    get: { keeper.isEnabled },
+                    set: { keeper.setEnabled($0) }))
+                    .accessibilityIdentifier("settings.backgroundConnections.enabled")
+            } footer: {
+                Text("Uses low-accuracy location updates to help keep Host connections running "
+                    + "when you switch apps or lock the screen. Allow location access when prompted. "
+                    + "iOS shows a location indicator. This uses additional battery; iOS may still stop the app.")
+            }
+            Section {
+                LabeledContent("Status", value: status)
+                if keeper.isEnabled && (keeper.authorization == .denied || !keeper.isAvailable),
+                    let url = URL(string: UIApplication.openSettingsURLString)
+                {
+                    Link("Open iOS Settings", destination: url)
+                }
+                if keeper.isEnabled && keeper.authorization == .notDetermined {
+                    Button("Allow Location Access") { keeper.setEnabled(true) }
+                }
+            } footer: {
+                Text("Location updates run only while a Host is connecting or connected. "
+                    + "Coordinates are discarded and are never saved or sent to your Hosts or Heeler's developer.")
+            }
+        }
+        .navigationTitle("Background Connections")
+    }
+
+    private var status: String {
+        guard keeper.isEnabled else { return "Off" }
+        if keeper.authorization == .denied { return "Location Access Denied" }
+        if !keeper.isAvailable { return "Location Unavailable" }
+        if keeper.authorization == .notDetermined { return "Location Permission Needed" }
+        return keeper.isRunning ? "Keeping Connections Active" : "Waiting for a Connection"
     }
 }
 
