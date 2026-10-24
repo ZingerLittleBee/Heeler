@@ -29,6 +29,7 @@ import {
 } from "./activity-state.js";
 import { parseActivityRowLayout } from "./activity-rows.js";
 import { readNotificationConfig } from "./notification-config.js";
+import { recordUsageRuntime } from "./usage-runtime.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { optionalText } from "./display-text.js";
 import { deliversToSession, hookSession, sessionStateDir } from "./session.js";
@@ -427,6 +428,12 @@ async function deliver(config, device, plaintextObject, request) {
 async function main() {
   const configDir = requireEnv("HERDR_PLUGIN_CONFIG_DIR");
   refreshSidebarSnapshotForEvent(configDir);
+  try {
+    recordUsageRuntime(configDir);
+  } catch (error) {
+    // Usage setup must not suppress a Live Activity update.
+    console.error(`usage-runtime: recording failed (${error.code ?? "invalid runtime"})`);
+  }
   const eventJson = requireEnv("HERDR_PLUGIN_EVENT_JSON");
   const session = hookSession();
   const stateDir = sessionStateDir(requireEnv("HERDR_PLUGIN_STATE_DIR"), session);

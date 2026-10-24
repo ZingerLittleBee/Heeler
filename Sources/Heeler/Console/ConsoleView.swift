@@ -393,6 +393,7 @@ struct ConsoleView: View {
         HostListView(
             store: hosts,
             initialHostID: hostsTabRequest?.hostID,
+            usageStore: { console.agentUsageStore(for: $0) },
             showsSetupGuide: hostsTabRequest?.showsSetupGuide ?? false,
             connectionStatuses: console.hostStatuses,
             standingFailures: console.hostStandingFailures,

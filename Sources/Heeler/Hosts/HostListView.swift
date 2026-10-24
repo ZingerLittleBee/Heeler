@@ -202,6 +202,7 @@ final class HostRemovalStore {
 struct HostListView: View {
     let store: HostStore
     private let initialHostID: Host.ID?
+    private let usageStore: ((Host.ID) -> AgentUsageStore)?
     private let connectionStatuses: [Host.ID: EventsSessionStatus]
     private let standingFailures: [Host.ID: TransportError]
     private let latencies: [Host.ID: Duration]
@@ -246,6 +247,7 @@ struct HostListView: View {
     init(
         store: HostStore,
         initialHostID: Host.ID? = nil,
+        usageStore: ((Host.ID) -> AgentUsageStore)? = nil,
         showsSetupGuide: Bool = false,
         connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
         standingFailures: [Host.ID: TransportError] = [:],
@@ -260,6 +262,7 @@ struct HostListView: View {
     ) {
         self.store = store
         self.initialHostID = initialHostID
+        self.usageStore = usageStore
         _isShowingSetupGuide = State(initialValue: showsSetupGuide)
         self.connectionStatuses = connectionStatuses
         self.standingFailures = standingFailures
@@ -353,6 +356,7 @@ struct HostListView: View {
                     HostOnboardingView(
                         host: host,
                         catalog: store,
+                        usage: usageStore?(id),
                         connectionStatus: connectionStatuses[id],
                         standingFailure: standingFailures[id],
                         connectedRouteID: routeIDs[id],

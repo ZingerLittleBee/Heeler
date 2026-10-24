@@ -22,6 +22,9 @@ Starting with plugin 0.4.0, a startup hook also exports the Host's herdr
 sidebar layout for Heeler. Both event hooks refresh it before their notification
 gates. See [Sidebar layout snapshot (v1)](#sidebar-layout-snapshot-v1).
 
+The plugin also collects Claude Code and Codex [Usage](#usage) on the Host
+for the app's Usage Limits and Token Usage views.
+
 ## Requirements
 
 - Node.js >= 20 on `PATH`
@@ -541,6 +544,8 @@ older, and its per-feature notes (`HeelerPluginFeature`) trust the version
 alone, so bump it with every change the app relies on rather than shipping
 behavior under an unchanged number, as 0.3.0 and 0.4.0 did.
 
+Before each plugin release, [refresh and review the bundled price table](#maintaining-the-price-table).
+
 ### Updating to 0.6.0
 
 - A 0.6.0 plugin with an app that does not write `session` behaves as before:
@@ -570,6 +575,79 @@ behavior under an unchanged number, as 0.3.0 and 0.4.0 did.
   the pairing checklist. Older plugins ignore the field and list only the
   machine's own interfaces, so a Host behind a port mapping needs 0.6.2 to
   pair. Without `addresses` the checklist is unchanged.
+
+## Usage
+
+Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts.
+Open the Host's Usage section in Heeler, then **View Usage Details** for
+today, 7-day and 30-day Token Usage, a daily chart, per-model totals and the
+top 10 working directories. Usage Limits show the account's windows and
+reset times; Codex shows only its default limit group.
+
+The plugin reads Transcripts locally. Transcript contents stay on the Host;
+only aggregated usage, model names and directory paths reach Heeler over
+SSH. Token Usage makes no network requests. For Usage Limits, the plugin
+asks the installed programs, which handle their own sign-in and service
+requests. Neither the plugin nor Heeler reads or receives their credentials.
+
+The plugin learns its runtime from herdr the first time any Agent changes
+status, or when herdr starts or restarts. Installing or updating the plugin
+does not run a startup hook. If Usage asks for a runtime, use any Agent on
+the Host once, then refresh Usage; restarting herdr also records it. Queries
+return cached aggregates immediately and start a background refresh when
+needed. Heeler re-queries while that refresh runs.
+
+**Claude Code limits** is off by default and saved per Host on the device.
+The toggle is available in both the Host's Usage section and the full Usage
+page. Enabling it asks the Host's Claude Code for its plan limits through
+the undocumented `get_usage` control request. This automated use of the
+subscription is not officially supported; using Claude Code's own sign-in
+does not establish that the use is permitted. Turning it off hides Claude
+Code limits and leaves Token Usage and Codex limits available. Real-Mac
+SSH/keychain availability and current terms remain pre-release checks in
+the [design's open questions](../docs/design/agent-usage.md#open-questions).
+
+Token Usage covers at most 30 days and only the Transcripts still on the
+Host. The page reports coverage and skipped compressed archives. **Estimated
+API cost** uses a bundled price table, not subscription billing; the page
+shows its date and any unpriced tokens. Models or service tiers without a
+known price stay unpriced. See the [design](../docs/design/agent-usage.md)
+and [ADR 0026](../docs/adr/0026-plugin-collects-agent-usage-on-the-host.md)
+for collection, cache and privacy boundaries.
+
+### Maintaining the price table
+
+Before each plugin release, run this from the repository root:
+
+```sh
+node scripts/generate-usage-pricing.mjs
+```
+
+Review the generated [pricing.json](src/usage/pricing.json) diff, including
+the price date, source URL/hash, model coverage and service-tier rates.
+The generator uses LiteLLM, falling back to models.dev if that download
+fails; `--source models-dev` selects the fallback explicitly. Review its
+coverage because absent service-tier prices remain unpriced. Keep
+[pricing.LICENSE](src/usage/pricing.LICENSE) aligned with the selected source.
+The worker only reads the bundled table; it downloads no prices at runtime.
+
+For an offline, reproducible update, use `--input FILE --date YYYY-MM-DD`
+with saved source bytes, plus `--source models-dev` if those bytes use the
+fallback format. After reviewing the table, run from the repository root:
+
+```sh
+npm ci --prefix plugin
+node --test plugin/test/usage-pricing.test.js plugin/test/usage-query.test.js
+UPDATE_USAGE_VECTOR=1 node --test --test-name-pattern='shared v1 vector' plugin/test/usage-worker.test.js
+node --test --test-name-pattern='shared v1 vector' plugin/test/usage-worker.test.js
+```
+
+Review the shared [usage-v1 vector](test-vectors/usage-v1.json) diff and the
+Swift literal price expectations in
+[AgentUsageTests](../Tests/HeelerTests/AgentUsageTests.swift).
+If fixture costs change, update and run `AgentUsageStoreTests` using
+[the app test lane](../docs/agents/testing.md#focused-app-tests); keep the
+producer, vector and Swift expectations synchronized.
 
 ## Sidebar layout snapshot (v1)
 

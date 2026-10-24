@@ -11,6 +11,7 @@ struct PluginListResult: Decodable, Sendable {
         }
 
         let pluginID: String?
+        var pluginRoot: String? = nil
         let version: String?
         let enabled: Bool?
         let source: Source?
@@ -20,6 +21,7 @@ struct PluginListResult: Decodable, Sendable {
 
         private enum CodingKeys: String, CodingKey {
             case pluginID = "plugin_id"
+            case pluginRoot = "plugin_root"
             case version
             case enabled
             case source
@@ -67,6 +69,7 @@ struct HeelerPluginInstallation: Equatable, Sendable {
     }
 
     let pluginID: String
+    let pluginRoot: String?
     /// The manifest's version string as herdr reported it.
     let version: String
     let isEnabled: Bool
@@ -104,6 +107,7 @@ struct HeelerPluginInstallation: Equatable, Sendable {
             ? nil : result.heelerEntries.first { $0.pluginID == currentID && !$0.isEnabled }
         self.init(
             pluginID: pluginID,
+            pluginRoot: entry.pluginRoot,
             version: entry.version ?? "",
             isEnabled: entry.isEnabled,
             source: Source(entry.source),
@@ -116,6 +120,7 @@ struct HeelerPluginInstallation: Equatable, Sendable {
 
     init(
         pluginID: String = SSHTransportSettings.notificationPluginID,
+        pluginRoot: String? = nil,
         version: String,
         isEnabled: Bool = true,
         source: Source = .github,
@@ -124,6 +129,7 @@ struct HeelerPluginInstallation: Equatable, Sendable {
         disabledCurrentIDSource: Source? = nil
     ) {
         self.pluginID = pluginID
+        self.pluginRoot = pluginRoot
         self.version = version
         self.isEnabled = isEnabled
         self.source = source

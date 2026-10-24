@@ -1,6 +1,6 @@
 {
   "name": "heeler-pairing",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "herdr plugin that renders a Pairing Code QR for Heeler device onboarding",

@@ -6,6 +6,7 @@ import SwiftUI
 struct HostOnboardingView: View {
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
+    let usage: AgentUsageStore?
     let connectionStatus: EventsSessionStatus?
     let standingFailure: TransportError?
     /// The route the Console's connection reached (ADR 0022).
@@ -33,6 +34,7 @@ struct HostOnboardingView: View {
     init(
         host: Host,
         catalog: HostStore,
+        usage: AgentUsageStore? = nil,
         connectionStatus: EventsSessionStatus? = nil,
         standingFailure: TransportError? = nil,
         connectedRouteID: HostRoute.ID? = nil,
@@ -43,6 +45,7 @@ struct HostOnboardingView: View {
         dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
         self.catalog = catalog
+        self.usage = usage
         self.connectionStatus = connectionStatus
         self.standingFailure = standingFailure
         self.connectedRouteID = connectedRouteID
@@ -94,6 +97,8 @@ struct HostOnboardingView: View {
                 }
             }
 
+            if let usage { AgentUsageSection(store: usage) }
+
             availableSessionsSection
 
             overlaySignInSection
@@ -109,6 +114,9 @@ struct HostOnboardingView: View {
             }
         }
         .readableColumnPage()
+        .refreshable {
+            if let usage { await usage.refresh() }
+        }
         .navigationTitle(store.host.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

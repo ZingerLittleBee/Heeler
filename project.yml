@@ -262,6 +262,9 @@ targets:
       # Shared notification session vectors (#412), consumed by Node and Swift.
       - path: plugin/test-vectors/notification-session-v1.json
         buildPhase: resources
+      # Shared usage response produced by Node and decoded by Swift.
+      - path: plugin/test-vectors/usage-v1.json
+        buildPhase: resources
       # Shared plugin version vector: the release the app recommends.
       - path: plugin/test-vectors/plugin-version-v1.json
         buildPhase: resources

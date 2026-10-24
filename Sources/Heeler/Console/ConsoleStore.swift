@@ -101,6 +101,7 @@ final class ConsoleStore {
     let rowLayouts: AgentRowLayoutStore
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
     let pluginStatuses = HeelerPluginStatusStore()
+    private var agentUsageStores: [Host.ID: AgentUsageStore] = [:]
     let terminalConnections: TerminalConnectionPool
     let agentTerminals: AgentTerminalCache
     /// Chat's saved conversations. Volatile unless the app passes the file
@@ -190,6 +191,7 @@ final class ConsoleStore {
         for (id, projection) in projections where incoming[id] != projection.host {
             sidebarSnapshots.invalidate(id)
             pluginStatuses.invalidate(id)
+            agentUsageStores.removeValue(forKey: id)?.invalidate()
             terminalSnapshotRevisions[id] = nil
             terminalTransportGenerations[id] = nil
             hostPlatforms[id] = nil
@@ -1147,6 +1149,19 @@ final class ConsoleStore {
 
     /// Settings' plugin requirement notes: each Host's plugin, read on its
     /// current connection.
+    func agentUsageStore(for hostID: Host.ID) -> AgentUsageStore {
+        if let store = agentUsageStores[hostID] { return store }
+        let store = AgentUsageStore(hostID: hostID) { [weak self] timeZone, claudeLimits in
+            guard let self else { throw TransportError.cancelled }
+            return try await self.withNotificationTransport(for: hostID) { transport in
+                try await AgentUsageStore.read(
+                    over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
+            }
+        }
+        agentUsageStores[hostID] = store
+        return store
+    }
+
     func refreshPluginStatuses(for hostIDs: [Host.ID]) async {
         await pluginStatuses.refresh(hostIDs, transports: self)
     }

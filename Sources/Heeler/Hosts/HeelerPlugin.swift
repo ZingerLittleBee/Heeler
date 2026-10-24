@@ -42,7 +42,7 @@ enum HeelerPluginCompatibility {
     /// shared `plugin/test-vectors/plugin-version-v1.json` pins both sides,
     /// so a plugin release must update this constant too. A Host with a newer
     /// plugin (main moved ahead of this build) counts as current.
-    static let bundled = PluginVersion(0, 6, 2)
+    static let bundled = PluginVersion(0, 7, 0)
 }
 
 /// An app feature that only works with a recent enough Heeler plugin.
@@ -59,12 +59,15 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
     case liveActivityRows
     /// Registrations scoped to a herdr session (ADR 0020).
     case sessionScopedNotifications
+    /// Host-side Usage Limits and Token Usage.
+    case usage
 
     var minimumVersion: PluginVersion {
         switch self {
         case .sidebarFields, .liveActivityUpdates: PluginVersion(0, 4, 0)
         case .liveActivityRows: PluginVersion(0, 5, 0)
         case .sessionScopedNotifications: PluginVersion(0, 6, 0)
+        case .usage: PluginVersion(0, 7, 0)
         }
     }
 
@@ -75,6 +78,8 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
     /// What the user loses with `installed`, and which version restores it.
     func requirementNote(installed: PluginVersion) -> String {
         switch self {
+        case .usage:
+            "Usage needs plugin \(minimumVersion) or newer; this Host has \(installed)."
         case .sidebarFields:
             "Sync from plugin and herdr's sidebar fields need plugin \(minimumVersion) "
                 + "or newer; this Host has \(installed)."
@@ -251,7 +256,9 @@ struct HeelerPluginPresentation: Equatable {
         let isLocal = installation.source == .local
         let shownValue = isLocal ? "\(version) · Linked locally" : version
         let missing = parsed.map {
-            HeelerPluginFeature.requirements(installed: $0).map(\.note)
+            HeelerPluginFeature.requirements(
+                HeelerPluginFeature.allCases.filter { $0.minimumVersion <= bundled },
+                installed: $0).map(\.note)
         } ?? []
 
         if installation.isLegacyID {

@@ -243,6 +243,9 @@ protocol Transport: Sendable {
     /// on Hosts the plugin does not support (native Windows).
     func readHeelerPlugin() async throws -> HeelerPluginInstallation?
 
+    /// Reads aggregate usage from the Host plugin, never credentials or Transcripts.
+    func readAgentUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport
+
     /// Lists the skills / custom slash commands installed for a kind on this
     /// Host: global sources under the remote home plus project sources under
     /// the query's project root, per `SkillSourceCatalog`. Kinds without a
@@ -472,6 +475,10 @@ extension Transport {
     func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
         throw TransportError.channelFailed(
             detail: "This transport cannot list herdr plugins.")
+    }
+
+    func readAgentUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport {
+        throw TransportError.hostFeatureUnavailable(feature: "Usage")
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {

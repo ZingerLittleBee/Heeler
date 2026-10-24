@@ -1729,6 +1729,33 @@ actor HeelerSSHTransport: Transport {
         return HeelerPluginInstallation(result)
     }
 
+    func readAgentUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport {
+        try await requirePOSIXHost(feature: "Usage")
+        guard let plugin = try await readHeelerPlugin(), plugin.isEnabled,
+            let version = plugin.parsedVersion, HeelerPluginFeature.usage.isSupported(by: version),
+            let root = plugin.pluginRoot
+        else {
+            throw TransportError.channelFailed(detail: "Usage needs Heeler plugin 0.7.0 or newer.")
+        }
+        return try await readAgentUsage(
+            timeZone: timeZone, claudeLimits: claudeLimits, pluginRoot: root)
+    }
+
+    /// Executes an already resolved plugin installation. Keeping resolution
+    /// separate also lets real-SSH fixtures supply a scratch installation.
+    func readAgentUsage(
+        timeZone: String, claudeLimits: Bool, pluginRoot: String
+    ) async throws -> AgentUsageReport {
+        let nonce = UUID().uuidString
+        let script = try AgentUsageProbe.script(
+            pluginRoot: pluginRoot, timeZone: timeZone, claudeLimits: claudeLimits,
+            nonce: nonce, launcher: herdrLauncher)
+        let result = try await runBoundedScript(
+            script, feature: "Usage", deadline: .seconds(10), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
+        return try AgentUsageProbe.parse(stdout: result.stdout, nonce: nonce)
+    }
+
     private func runNotificationPluginProbe(command: String) async throws -> Data {
         do {
             let result = try await runExec(

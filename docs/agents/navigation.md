@@ -116,6 +116,30 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
 
 ## Other feature routes
 
+- **Usage Limits and Token Usage:** [HostOnboardingView](../../Sources/Heeler/Hosts/HostOnboardingView.swift)
+  embeds [AgentUsageSection](../../Sources/Heeler/Usage/AgentUsageSection.swift),
+  which opens [AgentUsageView](../../Sources/Heeler/Usage/AgentUsageView.swift).
+  `ConsoleStore.agentUsageStore(for:)` retains an
+  [AgentUsageStore](../../Sources/Heeler/Usage/AgentUsageStore.swift) per Host;
+  it owns refresh polling and the device's per-Host Claude limits preference.
+  `Transport.readAgentUsage` uses [AgentUsageProbe](../../Sources/Heeler/Usage/AgentUsageProbe.swift)
+  and the bounded SSH exec to decode [AgentUsageReport](../../Sources/Heeler/Usage/AgentUsageReport.swift).
+  On the Host, [usage-runtime.js](../../plugin/src/usage-runtime.js) records
+  herdr's environment, [usage-query.js](../../plugin/src/usage-query.js)
+  reads snapshots, and [usage-worker.js](../../plugin/src/usage-worker.js)
+  coordinates [scanners, limit readers, buckets and pricing](../../plugin/src/usage).
+  Read the [design](../design/agent-usage.md) and
+  [ADR 0026](../adr/0026-plugin-collects-agent-usage-on-the-host.md).
+  Focused app coverage: `AgentUsageStoreTests` and `ClaudeUsagePreferenceTests`
+  in [AgentUsageTests](../../Tests/HeelerTests/AgentUsageTests.swift),
+  [probe](../../Tests/HeelerTests/AgentUsageProbeTests.swift),
+  [presentation](../../Tests/HeelerTests/AgentUsagePresentationTests.swift),
+  [page and interactions](../../Tests/HeelerTests/AgentUsagePageTests.swift),
+  [limits and disclosure](../../Tests/HeelerTests/AgentUsageLimitsTests.swift),
+  and [real SSH](../../Tests/HeelerTests/HeelerSSHTransportBehaviorE2ETests+Usage.swift).
+  Process coverage is `plugin/test/usage-*.test.js`; the worker test produces
+  the shared [usage-v1 vector](../../plugin/test-vectors/usage-v1.json).
+  Price-table maintenance is in the [plugin README](../../plugin/README.md#maintaining-the-price-table).
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
   and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter.
   [RemoteDirectoryBrowserTests](../../Tests/HeelerTests/RemoteDirectoryBrowserTests.swift)

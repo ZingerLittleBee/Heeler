@@ -267,10 +267,27 @@ database, which Heeler reads with a bounded read-only query on the Host (ADR
 normally names the exact absolute file path; a UUID can also locate a session
 under that program's default sessions directory. For Grok Build, herdr names
 the session id, whose folder Chat finds under `~/.grok/sessions`. The session
-herdr reports names it. Heeler only reads it, over SFTP, or for OpenCode by
-that query, and keeps decoded entries, never tool output, in an on-device
-cache.
+herdr reports names it. Heeler only reads it: the app over SFTP, or for
+OpenCode by that query, keeping decoded entries, never tool output, in an
+on-device cache; and the Heeler plugin on the Host itself, to total Claude Code
+and Codex Token Usage (ADR 0026).
 _Avoid_: log, history file, session file
+
+**Usage Limits**:
+The windows a Claude Code or Codex account may use before the service slows
+or stops it, such as five hours or a week, each with the share used and when
+it resets, as the service reports them for the account signed in on a Host.
+They describe the account, not the Host or an Agent. Claude Code's are read
+only when the user turns them on for that Host (ADR 0026).
+_Avoid_: quota, rate limit (in copy), plan usage, billing
+
+**Token Usage**:
+The tokens a Host's Claude Code and Codex Transcripts record over at most the
+last 30 days, by program, day, model and working directory, with the
+estimated cost of those tokens at API list prices. It counts only what this
+Host's Transcripts still hold, and is never the account's Usage Limits or a
+bill.
+_Avoid_: spend, cost (alone), usage (unqualified), credits
 
 **Blocked Card**:
 Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
