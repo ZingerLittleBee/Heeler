@@ -145,6 +145,7 @@ herdr plugin action invoke heeler.pair
 | ---------- | ------- | ------- |
 | `ssh_port` | integer | SSH port advertised in the Pairing Code, `1..65535`. Default 22. An absent `pair.json` means 22; a file that cannot be read or parsed, or an `ssh_port` outside that range, also falls back to 22 and says so in the checklist. |
 | `addresses` | string[] | Addresses (IPs or host names) the phone reaches this machine on but its interfaces do not show: a container behind a published port, a NAT, a DNS name. Listed first in the checklist and pre-checked; the enumerated addresses follow unchecked. Default none. A value that is not a list of non-empty strings without whitespace is ignored and says so in the checklist. |
+| `launcher` | string | Absolute path of a launcher to put in a [Pairing Code v2](#pairing-a-herdr-outside-configherdr) instead of the generated one. Used only when this herdr runs outside `~/.config/herdr`. A path with `'`, `\` or control characters is ignored and says so in the checklist. Read once when the popup opens. |
 
 `addresses` (plugin 0.6.2 and later; older plugins ignore it) is what a
 machine behind a port mapping needs, for example
@@ -291,9 +292,10 @@ older app would drop `sock` and `herdr` and pair against the default socket and
 the `herdr` on `PATH`, without any error. Under version 2 it refuses the code
 (`unsupported_version`) and saves nothing.
 
-Only the app decodes v2. This plugin emits and decodes v1 and rejects v2 as
-`unsupported_version`. A v1 code that carries `sock` or `herdr` still pairs
-without an endpoint. Endpoints work on macOS and Linux Hosts only; a native
+Only the app decodes v2. This plugin decodes v1 and rejects v2 as
+`unsupported_version`; it emits v2 only for a herdr outside `~/.config/herdr`
+([below](#pairing-a-herdr-outside-configherdr)) and v1 otherwise. A v1 code
+that carries `sock` or `herdr` still pairs without an endpoint. Endpoints work on macOS and Linux Hosts only; a native
 Windows Host paired from a v2 code fails with an explicit error.
 
 ### Launcher contract
@@ -333,6 +335,44 @@ The launcher must:
 An exit status of 126 or 127 from the launcher's `session list`, `plugin list`
 or attach is reported as a missing launcher, not as herdr missing from `PATH`.
 A failed wake keeps the original socket error.
+
+### Pairing a herdr outside ~/.config/herdr
+
+A herdr run with its own `XDG_CONFIG_HOME`, such as a per-project instance or
+a profile started by a wrapper script, keeps its socket and this plugin's
+config dir apart from `~/.config/herdr/plugins/config/<id>`. The pairing popup
+detects that from `HERDR_PLUGIN_CONFIG_DIR` and emits a Pairing Code v2 whose `sock` is its
+`HERDR_SOCKET_PATH` ([ADR 0029](../docs/adr/0029-plugin-generates-the-herdr-endpoint-launcher.md)):
+
+- The herdr must also run with its own `XDG_STATE_HOME`, so its
+  `HERDR_PLUGIN_STATE_DIR` is not `~/.local/state/herdr/plugins/<id>` (see the
+  launcher contract above).
+- Unless `pair.json` names a `launcher`, the popup writes one to `launcher`
+  in the plugin config dir (mode 0700) each time it opens. It refuses a
+  config dir other users can write. It exports the
+  popup's `PATH`, its `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_DATA_HOME` and
+  `XDG_CACHE_HOME` when set, and its `HERDR_*` variables except the ones herdr
+  sets per process and an inherited client socket (`HERDR_SOCKET_PATH`,
+  `HERDR_CLIENT_SOCKET_PATH`, `HERDR_BIN_PATH`, `HERDR_ENV`,
+  `HERDR_SESSION`, `HERDR_PLUGIN_*`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`,
+  `HERDR_PANE*`), then `exec`s
+  `HERDR_BIN_PATH`. The popup runs inside the server, so these are the
+  server's own settings.
+- Before the launcher goes in the code, the popup runs
+  `plugin config-dir <plugin id>` through it the way the app does, from a
+  minimal environment, and requires this plugin's config dir back with nothing
+  on stderr within 5 seconds. A generated launcher is tested under a staging
+  name and replaces the previous one only when it passes.
+- The checklist shows `Endpoint <sock> via <launcher>`. When the state home is
+  shared, the socket or launcher breaks a v2 rule, no launcher can be written,
+  or the test run fails, the popup says why and offers no code: a v1 code
+  would pair the phone with the user's own herdr instead.
+
+A herdr that shares the user's config home but listens on another socket gets
+a warning instead: an endpoint there would share `notifications.json` with the
+user's own herdr. The phone keeps the launcher's path, so after moving herdr
+or changing the environment it starts with, opening the popup once rewrites
+the launcher in place.
 
 ## Bootstrap Key lifecycle
 
@@ -395,7 +435,8 @@ re-encode to the exact code; invalid vectors must fail with the given error
 code (`bad_prefix`, `unsupported_version`, `bad_encoding`, `bad_payload` —
 these map to the "parse" step of the pairing failure taxonomy).
 `test-vectors/pairing-code-v2.json` has the same shape plus each endpoint's
-`socketPath` and `herdrPath`, and only the Swift tests read it.
+`socketPath` and `herdrPath`. The Swift tests decode it; the Node tests encode
+its canonical codes and reject its invalid ones.
 
 ## Notification envelope (v1)
 
@@ -587,6 +628,13 @@ the app's update notice installs from that branch. See
   the pairing checklist. Older plugins ignore the field and list only the
   machine's own interfaces, so a Host behind a port mapping needs 0.6.2 to
   pair. Without `addresses` the checklist is unchanged.
+
+### Updating to 0.7.1
+
+- Plugin 0.7.1 emits a Pairing Code v2 from a herdr that runs outside
+  `~/.config/herdr` and reads `launcher` from `pair.json`. Older plugins emit
+  v1 there, which pairs the phone with the user's default herdr; re-pair such
+  a Host after the update. A herdr in `~/.config/herdr` pairs as before.
 
 ## Usage
 

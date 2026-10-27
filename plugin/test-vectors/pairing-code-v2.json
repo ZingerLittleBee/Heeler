@@ -1,5 +1,5 @@
 {
-  "description": "Shared Pairing Code v2 test vectors (ADR 0023): a v1 payload plus a required Herdr Endpoint (`sock`, `herdr`). Consumed by the Swift app tests only; the Node plugin emits and decodes v1. Codes were generated independently of the app's decoder. `socketPath` and `herdrPath` are the endpoint the code must decode to; a payload without them must decode with no endpoint. `decodeOnly: true` marks codes that must decode to `payload` but are not the canonical version 2 encoding of it; all other valid codes are canonical (keys in table order, no JSON whitespace, unpadded base64url).",
+  "description": "Shared Pairing Code v2 test vectors (ADR 0023): a v1 payload plus a required Herdr Endpoint (`sock`, `herdr`). Consumed by the Swift decoder tests and the Node encoder tests; the Node plugin encodes v2 but decodes v1 only. Codes were generated independently of the app's decoder. `socketPath` and `herdrPath` are the endpoint the code must decode to; a payload without them must decode with no endpoint. `decodeOnly: true` marks codes that must decode to `payload` but are not the canonical version 2 encoding of it; all other valid codes are canonical (keys in table order, no JSON whitespace, unpadded base64url).",
   "valid": [
     {
       "name": "issue example: default session in an app support directory, config-only",

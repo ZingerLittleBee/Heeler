@@ -47,8 +47,10 @@ A Host without an endpoint behaves exactly as before.
 
 ## Consequences
 
-- v2 is decoded by the app only; the Node plugin keeps emitting and decoding
-  v1. The wire contract and the launcher contract live in `plugin/README.md`.
+- v2 is decoded by the app only; the Node plugin decodes v1 only. It emits
+  v2 for a herdr outside the user's config home since
+  [ADR 0029](0029-plugin-generates-the-herdr-endpoint-launcher.md). The wire
+  contract and the launcher contract live in `plugin/README.md`.
 - A code that names a launcher but carries no Bootstrap Key waits for the
   user to tap Pair. Anyone who knows the Host's public key and the user's
   name can write one, and pairing runs its launcher as that user. A Bootstrap

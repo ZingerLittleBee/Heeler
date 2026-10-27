@@ -8,8 +8,8 @@ import Foundation
 /// Version 1 carries the SSH coordinates and an optional Bootstrap Key.
 /// Version 2 adds a required Herdr Endpoint (`sock`, `herdr`) for a herdr
 /// outside the user's config home (ADR 0023); only this app decodes it, and
-/// the plugin keeps emitting version 1. The schema and error taxonomy live in
-/// `plugin/README.md`; the shared test vectors in
+/// the plugin emits it for such a herdr (ADR 0029). The schema and error
+/// taxonomy live in `plugin/README.md`; the shared test vectors in
 /// `plugin/test-vectors/pairing-code-v1.json` are the single source of truth
 /// for both this decoder and the plugin's encoder, and `pairing-code-v2.json`
 /// pins version 2. Unknown payload fields are ignored (additive metadata

@@ -42,7 +42,7 @@ enum HeelerPluginCompatibility {
     /// shared `plugin/test-vectors/plugin-version-v1.json` pins both sides,
     /// so a plugin release must update this constant too. A Host with a newer
     /// plugin (the plugin branch moved ahead of this build) counts as current.
-    static let bundled = PluginVersion(0, 7, 0)
+    static let bundled = PluginVersion(0, 7, 1)
 }
 
 /// An app feature that only works with a recent enough Heeler plugin.

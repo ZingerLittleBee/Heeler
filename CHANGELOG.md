@@ -7,6 +7,16 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+### Added
+
+- Pair a herdr that runs with its own config home, such as a per-project
+  instance or a profile started by a wrapper script. Its pairing popup now
+  shows a Pairing Code v2 that names its socket and a launcher the plugin
+  writes and tests itself, so the phone lists, attaches to and wakes that
+  herdr instead of the one in `~/.config/herdr`. `launcher` in the plugin's
+  `pair.json` overrides the generated one. Update the Heeler plugin to 0.7.1
+  on the Host. (#521)
+
 ## [0.1.16] - 2026-10-27
 
 ### Added

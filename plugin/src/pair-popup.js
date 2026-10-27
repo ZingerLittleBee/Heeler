@@ -23,6 +23,7 @@ import {
   PAIRING_TTL_SECONDS,
 } from "./pairing-session.js";
 import { readPairingConfig } from "./pairing-config.js";
+import { resolveEndpoint } from "./endpoint.js";
 import {
   detectTailscaleSSH,
   mayBeTailscaleAddress,
@@ -108,6 +109,20 @@ function renderChecklist(state, config, warning) {
   if (config.addressesWarning) {
     lines.push(`${BOLD}${config.addressesWarning}${RESET}`);
   }
+  if (config.launcherWarning) {
+    lines.push(`${BOLD}${config.launcherWarning}${RESET}`);
+  }
+  const { endpoint, warning: endpointWarning, note } = config.endpoint;
+  if (endpoint) {
+    const generated = endpoint.generated ? " (generated)" : "";
+    lines.push(`${DIM}Endpoint ${endpoint.socketPath} via ${endpoint.herdrPath}${generated}${RESET}`);
+  }
+  if (endpointWarning) {
+    lines.push(`${BOLD}${endpointWarning}${RESET}`);
+  }
+  if (note) {
+    lines.push(`${DIM}${note}${RESET}`);
+  }
   // Follows the selection: checking a tailnet address raises it, unchecking
   // it again takes it away.
   const conflict = tailscaleSSHConflict({
@@ -145,6 +160,7 @@ async function renderPairingCode(payload, { copied = false, printedCode = null }
     `${BOLD}${payload.username}${RESET} on port ${BOLD}${payload.port}${RESET}`,
     `Host key ${payload.hostKeyFingerprint}`,
     `Addresses: ${payload.addresses.join(", ")}`,
+    ...(payload.socketPath ? [`Endpoint ${payload.socketPath}`] : []),
     `Code valid until ${BOLD}${expires}${RESET}, single use`,
   ];
   const rows = process.stdout.rows;
@@ -242,11 +258,13 @@ async function main() {
   let checklistConfig = {
     ...readPairingConfig(configDir),
     tailscale: { enabled: false, addresses: [] },
+    endpoint: { endpoint: null, error: null, warning: null, note: null },
   };
   function currentConfig() {
     checklistConfig = {
       ...readPairingConfig(configDir),
       tailscale: checklistConfig.tailscale,
+      endpoint: checklistConfig.endpoint,
     };
     return checklistConfig;
   }
@@ -413,6 +431,11 @@ async function main() {
       bootstrapSeed: session.seed,
       expiresAt: session.expiresAt,
     };
+    const { endpoint } = checklistConfig.endpoint;
+    if (endpoint) {
+      lastPayload.socketPath = endpoint.socketPath;
+      lastPayload.herdrPath = endpoint.herdrPath;
+    }
     displayedCode = await renderPairingCode(lastPayload);
     enrollWatch = setInterval(() => onEnrollmentPoll(pairingId), ENROLL_POLL_MS);
   }
@@ -468,6 +491,22 @@ async function main() {
     if (checklistConfig.tailscale.enabled) {
       renderChecklist(state, currentConfig());
     }
+  }
+
+  // Also after the first paint: generating and probing the launcher runs
+  // herdr once, bounded by the probe's timeout. pair.json's launcher is
+  // read here only, so changing it takes a new popup.
+  checklistConfig.endpoint = resolveEndpoint({
+    env: process.env,
+    home,
+    launcher: readPairingConfig(configDir).launcher,
+  });
+  if (checklistConfig.endpoint.error) {
+    await holdFatal(checklistConfig.endpoint.error);
+    return;
+  }
+  if (Object.values(checklistConfig.endpoint).some((value) => value !== null)) {
+    renderChecklist(state, currentConfig());
   }
 
   readKeys((key) => {
