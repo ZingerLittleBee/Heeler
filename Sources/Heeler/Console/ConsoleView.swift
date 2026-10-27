@@ -76,6 +76,12 @@ struct ConsoleView: View {
     /// The Agent whose detail shows Changes in place of its terminal; the
     /// window's chrome then follows the app, not the terminal theme.
     @State private var agentShowingChanges: ConsoleAgent.ID?
+    /// The Workspace section about to fold, whose rows the fold takes away
+    /// fade first, and the one that just folded, whose rows it brings in
+    /// slide into place (`ConsoleFoldReveal`).
+    @State private var leavingSection: ConsoleWorkspaceSection.ID?
+    @State private var foldingSection: ConsoleWorkspaceSection.ID?
+    @State private var foldGeneration = 0
     /// The Agent whose detail shows Chat in place of its terminal, for the
     /// same reason.
     @State private var agentShowingChat: ConsoleAgent.ID?
@@ -1535,7 +1541,7 @@ struct ConsoleView: View {
                 case .byWorkspace: workspaceAgentListRows
                 }
             }
-            .listStyle(.plain)
+            .modifier(ConsoleAgentListStyle(showsCards: listPresentation.mode == .byWorkspace))
             .modifier(ConsoleSidebarListTint())
             .searchDrawerStartsTucked()
         }
@@ -1592,31 +1598,205 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var workspaceAgentListRows: some View {
-        agentHostIssueRows
+        if !visibleHostIssues.isEmpty {
+            Section {
+                // Off the cards, on the page: out to the cards' edges, as
+                // in the Terminals list's By Workspace.
+                ConsoleHostIssueList(
+                    issues: visibleHostIssues, onOpenHost: { openHostIssue($0) },
+                    onShowAll: { isShowingHostIssues = true })
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            }
+        }
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
-        ForEach(workspaceSections) { @Sendable section in
+        ForEach(workspaceCards) { @Sendable card in
             MainActorContent {
                 Section {
-                    if !section.isCollapsed {
-                        ForEach(section.agents) { @Sendable agent in
-                            MainActorContent { agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id]) }
-                        }
-                    }
-                } header: {
-                    ConsoleWorkspaceSectionHeader(section: section) {
-                        guard
-                            agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        else {
-                            return
-                        }
-                        withAnimation(reduceMotion ? nil : .snappy) {
-                            listPresentation.toggleWorkspace(section.id)
+                    ForEach(card.rows) { @Sendable placed in
+                        MainActorContent {
+                            workspaceCardRow(placed, in: card, qualifiers: qualifiers, saved: saved)
                         }
                     }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func workspaceCardRow(
+        _ placed: ConsoleWorkspaceCard.Placed, in card: ConsoleWorkspaceCard,
+        qualifiers: [ConsoleAgent.ID: String], saved: [ConsoleAgent.ID: HostReadiness]
+    ) -> some View {
+        switch placed.row {
+        case .header:
+            let primary = card.primary
+            let title = card.isRepository ? primary.checkout?.repoName ?? primary.title : primary.title
+            ConsoleWorkspaceCardHeader(
+                card: card, title: title,
+                subtitle: [primary.hostName, primary.pathText].compactMap { $0 }.joined(separator: " · "),
+                checkouts: card.isRepository && card.isCollapsed ? checkoutSummaries(card) : [],
+                onToggle: { toggleWorkspaceSection(primary.id) }
+            )
+            .modifier(ConsoleWorkspaceCardRow(placed: placed, indent: .icon, top: 8, bottom: 4))
+            .selectionDisabled()
+        case .summary:
+            ConsoleWorkspaceCardSummary(
+                card: card,
+                checkouts: card.isRepository ? checkoutSummaries(card) : [],
+                onToggle: { toggleWorkspaceSection(card.primary.id) }
+            )
+            .modifier(foldReveal(placed, in: card))
+            .modifier(
+                ConsoleWorkspaceCardRow(
+                    placed: placed, indent: .text, top: 0, bottom: 6, fillsShortestRow: false))
+            .selectionDisabled()
+        case .checkout(let section):
+            ConsoleCheckoutHeader(
+                section: section, title: checkoutTitle(section),
+                onToggle: section.isNested ? { toggleWorkspaceSection(section.id) } : nil
+            )
+            .modifier(foldReveal(placed, in: card))
+            .modifier(ConsoleWorkspaceCardRow(placed: placed, indent: .icon, top: 0, bottom: 0))
+            .selectionDisabled()
+        case .agent(let agent, let section, let standsAlone):
+            agentLink(
+                agent,
+                background: ConsoleWorkspaceCardRow(
+                    placed: placed, indent: standsAlone ? .icon : .text,
+                    top: standsAlone ? (placed.followsHeader ? 0 : 6) : 2, bottom: standsAlone ? 6 : 4,
+                    isSelected: notificationRouter.path.last == agent.id)
+            ) {
+                cardAgentLabel(
+                    agent, of: section, standsAlone: standsAlone, in: card,
+                    qualifier: qualifiers[agent.id], saved: saved[agent.id], readsChanges: true)
+                .modifier(foldReveal(placed, in: card))
+            } preview: {
+                cardAgentLabel(
+                    agent, of: section, standsAlone: standsAlone, in: card,
+                    qualifier: qualifiers[agent.id], saved: saved[agent.id], readsChanges: false)
+            }
+        }
+    }
+
+    /// An Agent as its card shows it: an Agent that is its checkout's or
+    /// Workspace's only one takes that title and icon; a row leaves to the
+    /// card what the card already says.
+    private func cardAgentLabel(
+        _ agent: ConsoleAgent, of section: ConsoleWorkspaceSection, standsAlone: Bool,
+        in card: ConsoleWorkspaceCard, qualifier: String?, saved: HostReadiness?, readsChanges: Bool
+    ) -> some View {
+        let showsHost = standsAlone && !card.isRepository
+        let heading = standsAlone
+            ? AgentCardHeading(
+                title: card.isRepository ? checkoutTitle(section) : ConsoleCheckoutTitle(title: section.title),
+                isProminent: !card.isRepository)
+            : nil
+        return HStack(alignment: .firstTextBaseline, spacing: ConsoleWorkspaceCardMetrics.iconSpacing) {
+            if standsAlone {
+                ConsoleWorkspaceCardIcon(checkout: section.checkout)
+            }
+            AgentCardView(
+                agent: agent,
+                layout: console.rowLayout(for: agent.hostID),
+                isPinned: console.pins.isPinned(
+                    hostID: agent.hostID, paneID: agent.agent.paneID),
+                changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
+                qualifier: standsAlone ? nil : qualifier,
+                saved: saved,
+                hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: showsHost),
+                heading: heading,
+                showsHost: showsHost)
+        }
+    }
+
+    /// A repository's checkout, titled by the branch its Agents' latest
+    /// Changes reads found.
+    private func checkoutTitle(_ section: ConsoleWorkspaceSection) -> ConsoleCheckoutTitle {
+        let reads = section.agents.compactMap { agent -> CheckoutChanges? in
+            guard case .loaded(let changes) = console.rowChanges.store(for: agent)?.phase else { return nil }
+            return changes
+        }
+        return ConsoleCheckoutTitle(
+            label: section.title,
+            isMainCheckout: section.checkout?.isLinkedWorktree != true,
+            branch: ConsoleCheckoutTitle.branch(at: section.checkout?.checkoutPath, in: reads))
+    }
+
+    private func checkoutSummaries(_ card: ConsoleWorkspaceCard) -> [ConsoleCheckoutSummary] {
+        card.checkouts.map { section in
+            ConsoleCheckoutSummary(
+                id: section.id, title: checkoutTitle(section), checkout: section.checkout,
+                agents: section.agents)
+        }
+    }
+
+    private func toggleWorkspaceSection(_ id: ConsoleWorkspaceSection.ID) {
+        // A search opens every card holding a match, so a toggle then would
+        // change nothing on screen.
+        guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !reduceMotion else {
+            listPresentation.toggleWorkspace(id)
+            return
+        }
+        guard leavingSection == nil else { return }
+        // Opening a worktree takes nothing away; every other fold first
+        // fades the rows it takes, which the list would fade only slowly,
+        // under the rows coming in.
+        let opensWorktree = workspaceCards.lazy.flatMap(\.nested).first { $0.id == id }?.isCollapsed == true
+        guard !opensWorktree else {
+            fold(id)
+            return
+        }
+        withAnimation(.easeOut(duration: 0.12)) { leavingSection = id }
+        Task {
+            try? await Task.sleep(for: .milliseconds(120))
+            fold(id)
+        }
+    }
+
+    private func fold(_ id: ConsoleWorkspaceSection.ID) {
+        foldGeneration += 1
+        let generation = foldGeneration
+        // All in the fold's animation: a change outside it, made in the
+        // same update, would take the list's animation away.
+        withAnimation(.snappy) {
+            leavingSection = nil
+            foldingSection = id
+            listPresentation.toggleWorkspace(id)
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            if foldGeneration == generation { foldingSection = nil }
+        }
+    }
+
+    /// Whether folding `section` brings `placed` in or takes it away: a
+    /// card's rows under its header when the card folds, a worktree's
+    /// Agents when it does.
+    private func fold(
+        _ section: ConsoleWorkspaceSection.ID?, moves placed: ConsoleWorkspaceCard.Placed,
+        in card: ConsoleWorkspaceCard
+    ) -> Bool {
+        guard let section else { return false }
+        return switch placed.row {
+        case .header: false
+        case .summary, .checkout: section == card.id
+        case .agent(_, let agentSection, _): section == card.id || section == agentSection.id
+        }
+    }
+
+    /// How `placed` moves with a fold: out before the fold takes it, or in
+    /// after the rows the fold brings in before it.
+    private func foldReveal(_ placed: ConsoleWorkspaceCard.Placed, in card: ConsoleWorkspaceCard) -> ConsoleFoldReveal {
+        let isLeaving = fold(leavingSection, moves: placed, in: card)
+        guard fold(foldingSection, moves: placed, in: card) else {
+            return ConsoleFoldReveal(isLeaving: isLeaving, isRevealing: false, delay: 0)
+        }
+        let order = card.rows.prefix { $0.id != placed.id }
+            .filter { fold(foldingSection, moves: $0, in: card) }.count
+        return ConsoleFoldReveal(isLeaving: isLeaving, isRevealing: true, delay: Double(order) * 0.04)
     }
 
     @ViewBuilder
@@ -1655,7 +1835,11 @@ struct ConsoleView: View {
     }
 
     private func agentRow(_ agent: ConsoleAgent, qualifier: String?, saved: HostReadiness?) -> some View {
-        NavigationLink(value: ConsoleSelection.agent(agent.id)) {
+        agentLink(
+            agent,
+            background: ConsoleRowSelectionBackground(
+                isSelected: notificationRouter.path.last == agent.id)
+        ) {
             AgentCardView(
                 agent: agent,
                 layout: console.rowLayout(for: agent.hostID),
@@ -1664,7 +1848,27 @@ struct ConsoleView: View {
                 changes: console.rowChanges.store(for: agent),
                 qualifier: qualifier,
                 saved: saved)
-            .modifier(ConsoleRowSelectionContent())
+        } preview: {
+            AgentCardView(
+                agent: agent,
+                layout: console.rowLayout(for: agent.hostID),
+                isPinned: console.pins.isPinned(
+                    hostID: agent.hostID, paneID: agent.agent.paneID),
+                qualifier: qualifier,
+                saved: saved)
+        }
+    }
+
+    /// An Agent's row: `label` opens its detail, with the row's pin, close,
+    /// and window actions. `background` draws the row's place in the list;
+    /// `preview` is what a lifted card shows (see `ConsoleRowContextMenu`).
+    private func agentLink<RowContent: View, Background: ViewModifier, Preview: View>(
+        _ agent: ConsoleAgent, background: Background,
+        @ViewBuilder label: () -> RowContent, @ViewBuilder preview: () -> Preview
+    ) -> some View {
+        NavigationLink(value: ConsoleSelection.agent(agent.id)) {
+            label()
+                .modifier(ConsoleRowSelectionContent())
         }
         // The list reads what it shows: a row on screen reads its Agent's
         // Checkout, and an exit from Working while none does waits for one.
@@ -1673,9 +1877,7 @@ struct ConsoleView: View {
         .onChange(of: agent.directory == nil) { _, lacksDirectory in
             if !lacksDirectory { console.rowChanges.agentReportedDirectory(agent) }
         }
-        .modifier(
-            ConsoleRowSelectionBackground(
-                isSelected: notificationRouter.path.last == agent.id))
+        .modifier(background)
         .hoverEffect(.highlight)
         .modifier(
             ConsoleRowContextMenu {
@@ -1704,13 +1906,7 @@ struct ConsoleView: View {
                     pendingTabClose = agent
                 }
             } preview: {
-                AgentCardView(
-                    agent: agent,
-                    layout: console.rowLayout(for: agent.hostID),
-                    isPinned: console.pins.isPinned(
-                        hostID: agent.hostID, paneID: agent.agent.paneID),
-                    qualifier: qualifier,
-                    saved: saved)
+                preview()
             })
         .modifier(
             AgentWindowDrag(
@@ -1853,17 +2049,18 @@ struct ConsoleView: View {
             searchQuery: agentSearchText)
     }
 
-    private var workspaceSections: [ConsoleWorkspaceSection] {
-        listPresentation.workspaceSections(
-            hosts: hosts.hosts, console: console,
-            filteredHostID: hostFilter, searchQuery: agentSearchText)
+    private var workspaceCards: [ConsoleWorkspaceCard] {
+        ConsoleWorkspaceCard.cards(
+            listPresentation.workspaceSections(
+                hosts: hosts.hosts, console: console,
+                filteredHostID: hostFilter, searchQuery: agentSearchText))
     }
 
     private var visibleAgentIDs: [ConsoleAgent.ID] {
         switch listPresentation.mode {
         case .flat: filteredAgents.map(\.id)
         case .grouped: hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) }
-        case .byWorkspace: workspaceSections.flatMap(\.visibleAgentIDs)
+        case .byWorkspace: workspaceCards.flatMap(\.visibleAgentIDs)
         }
     }
 
@@ -1904,9 +2101,13 @@ struct ConsoleView: View {
     /// Judged before the search, so a row's title does not change as the
     /// user types.
     private var agentTitleQualifiers: [ConsoleAgent.ID: String] {
-        AgentTitleQualifier.qualifiers(for: hostFilteredAgents) { agent in
+        // By Workspace rows leave fields to their card's titles.
+        let isByWorkspace = listPresentation.mode == .byWorkspace
+        return AgentTitleQualifier.qualifiers(for: hostFilteredAgents) { agent in
             let card = AgentCardPresentation(
-                agent: agent, layout: console.rowLayout(for: agent.hostID))
+                agent: agent, layout: console.rowLayout(for: agent.hostID),
+                hiding: isByWorkspace
+                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [])
             return .init(title: card.headline, namesAgent: card.namesAgent(inFirst: card.rows.count))
         }
     }
@@ -2464,49 +2665,6 @@ struct MissingAgentPresentation: Equatable {
     }
 }
 
-/// Workspace headers use the same typography and status counts as Hosts.
-private struct ConsoleWorkspaceSectionHeader: View {
-    let section: ConsoleWorkspaceSection
-    let onToggle: () -> Void
-
-    var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(section.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.primary)
-                    Text(section.hostName)
-                        .font(.caption)
-                        .foregroundStyle(Color.secondary)
-                    if section.isCollapsed && !section.statusCounts.items.isEmpty {
-                        ConsoleHostStatusCountPills(items: section.statusCounts.items)
-                    }
-                }
-                .lineLimit(1)
-                Spacer(minLength: 0)
-                Text("\(section.agents.count)")
-                    .font(.subheadline)
-                    .foregroundStyle(Color.secondary)
-                Image(systemName: section.isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color.secondary)
-                    .frame(width: 12)
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(section.title), \(section.hostName)")
-        .accessibilityValue(section.accessibilityValue)
-        .accessibilityHint(section.isCollapsed ? "Expands this Workspace." : "Collapses this Workspace.")
-        .accessibilityAddTraits(.isHeader)
-        .textCase(nil)
-    }
-}
-
 /// Collapsible Host-section header for the grouped Console list (#245).
 private struct ConsoleHostSectionHeaderView: View {
     let presentation: ConsoleHostSectionHeaderPresentation
@@ -2572,22 +2730,59 @@ struct AgentDetailStage {
 
 /// Mirrors the Live Activity count chips so a collapsed Host communicates
 /// the same status distribution at a glance.
-private struct ConsoleHostStatusCountPills: View {
+struct ConsoleHostStatusCountPills: View {
     let items: [ConsoleHostAgentStatusCount]
+    /// Stacks the pills where one line cannot hold them, as a card's
+    /// summary needs at large text sizes.
+    var wraps = false
 
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(items) { @Sendable item in
-                Text("\(item.count) \(item.status.rawValue)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color(item.status.inkUIColor))
-                    .fixedSize()
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        Color(item.status.tintUIColor).opacity(0.15),
-                        in: Capsule())
+        if wraps {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 5) { pills }
+                VStack(alignment: .leading, spacing: 4) { pills }
             }
+        } else {
+            HStack(spacing: 5) { pills }
+        }
+    }
+
+    private var pills: some View {
+        ForEach(items) { @Sendable item in
+            Text("\(item.count) \(item.status.rawValue)")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color(item.status.inkUIColor))
+                .fixedSize()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    Color(item.status.tintUIColor).opacity(0.15),
+                    in: Capsule())
+        }
+    }
+}
+
+/// The Agents list's style: plain rows, or for By Workspace an inset
+/// grouped list of cards on the other presentations' page.
+private struct ConsoleAgentListStyle: ViewModifier {
+    let showsCards: Bool
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
+    @Environment(\.defaultMinListRowHeight) private var minRowHeight
+
+    func body(content: Content) -> some View {
+        if showsCards {
+            content
+                // A card's rows keep the list's shortest row themselves, so
+                // a collapsed card's summary can be shorter.
+                .environment(\.defaultMinListRowHeight, 0)
+                .environment(\.workspaceCardMinRowHeight, minRowHeight)
+                .listStyle(.insetGrouped)
+                .listSectionSpacing(.custom(ConsoleWorkspaceCardMetrics.gap))
+                .scrollContentBackground(.hidden)
+                // Beside the sidebar, its glass, as the plain list shows.
+                .background(isSidebarColumn ? Color.clear : Color(uiColor: .systemBackground))
+        } else {
+            content.listStyle(.plain)
         }
     }
 }

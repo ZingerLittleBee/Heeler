@@ -57,12 +57,11 @@ enum InputBoxStateDetector {
 
     // MARK: Claude
 
-    /// Hints Claude shows in an empty box (`CC/chunk-scapxbwa.js` `xde`).
-    /// While a queued message is selected for editing, Enter edits it
-    /// instead of sending, so that hint counts as an overlay.
-    private static let claudePlaceholders = [
-        "Try \"", "Message @", "Press up to edit queued messages", "Press up to select a queued message",
-    ]
+    /// Dim text in Claude's box is a placeholder: a hint
+    /// (`CC/chunk-scapxbwa.js` `xde`) or, after a turn, a prompt suggestion
+    /// of any text, which typing replaces. While a queued message is
+    /// selected for editing, Enter edits it instead of sending, so that hint
+    /// counts as an overlay.
     private static let claudeQueueEditHint = "Press Enter to edit the selected message"
 
     private static func claude(_ screen: ANSIScreen) -> InputBoxState {
@@ -92,9 +91,6 @@ enum InputBoxStateDetector {
         guard let placeholder else { return .empty(placeholder: nil) }
         if placeholder.hasPrefix(claudeQueueEditHint) {
             return .overlay(placeholder)
-        }
-        guard claudePlaceholders.contains(where: placeholder.hasPrefix) else {
-            return .unknown("The input box shows \u{201C}\(placeholder)\u{201D}, which Heeler does not know.")
         }
         return .empty(placeholder: placeholder)
     }

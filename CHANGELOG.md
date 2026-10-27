@@ -17,6 +17,19 @@ Entries reference the pull request that made the change.
   `pair.json` overrides the generated one. Update the Heeler plugin to 0.7.1
   on the Host. (#521)
 
+### Changed
+
+- Show the Agents list By Workspace as cards, with Workspaces on a linked
+  git worktree in their repository's card: the main checkout under its
+  current branch, each worktree beneath it, and a collapsed card still
+  shows which checkouts need you. (#522)
+
+### Fixed
+
+- Send from Chat while Claude Code shows a prompt suggestion in its input
+  box, instead of holding the message with "Heeler can't find the Agent's
+  input box on screen." (#525)
+
 ## [0.1.16] - 2026-10-27
 
 ### Added

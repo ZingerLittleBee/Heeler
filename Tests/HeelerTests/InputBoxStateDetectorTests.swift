@@ -88,7 +88,7 @@ struct InputBoxStateDetectorTests {
         #expect(claude(["❯\u{00A0}first line", "  second line" + Self.cursor]) == .text("first line\nsecond line"))
     }
 
-    @Test("Claude: a known placeholder is empty, an unknown one is not (synthetic)")
+    @Test("Claude: a placeholder is empty, except the queued-message edit hint (synthetic)")
     func claudePlaceholder() {
         func hint(_ text: String) -> String {
             "❯\u{00A0}" + SGR.reverse + String(text.prefix(1)) + SGR.reset + SGR.dim + String(text.dropFirst()) + SGR.reset
@@ -101,9 +101,22 @@ struct InputBoxStateDetectorTests {
         #expect(
             claude([hint("Press Enter to edit the selected message")])
                 == .overlay("Press Enter to edit the selected message"))
+        #expect(claude([hint("Something new")]) == .empty(placeholder: "Something new"))
+    }
+
+    /// After a turn Claude may fill the empty box with a prompt suggestion:
+    /// any text, dim like a placeholder, which typing replaces. Claude Code
+    /// 2.1.311 draws it dim with no color in every theme, with no cursor
+    /// cell while the pane is unfocused (live, 2026-10-27).
+    @Test("Claude: a prompt suggestion is an empty box (synthetic)")
+    func claudePromptSuggestion() {
+        let suggestion = "draft the email to the partner team"
         #expect(
-            claude([hint("Something new")])
-                == .unknown("The input box shows \u{201C}Something new\u{201D}, which Heeler does not know."))
+            claude(["❯\u{00A0}" + SGR.reset + SGR.dim + suggestion + SGR.reset])
+                == .empty(placeholder: suggestion))
+        #expect(
+            claude(["❯\u{00A0}" + SGR.reverse + "d" + SGR.reset + SGR.dim + suggestion.dropFirst() + SGR.reset])
+                == .empty(placeholder: suggestion))
     }
 
     @Test("Claude: shell mode, empty or with a command (synthetic)")

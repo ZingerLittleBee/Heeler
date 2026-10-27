@@ -535,6 +535,7 @@
 		A65D5B9E1A885A8287AD762C /* SolvingOrbRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F979754410821940D0C4DEC /* SolvingOrbRendererTests.swift */; };
 		A6747734905576A8861C945A /* AgentFocusCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 370A6461E16FB281B88126B4 /* AgentFocusCoordinator.swift */; };
 		A7C2C6945D44E8693FDFA13C /* GitProbePatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ADBC931C815068BD91E9850 /* GitProbePatchTests.swift */; };
+		A7DC2698D649E2E1571BFB7F /* ConsoleWorkspaceCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6DD633965A760453A3B42F /* ConsoleWorkspaceCards.swift */; };
 		A851F188DFDAA3BA3DF3A430 /* BlockedCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98E879CB1A1456EE04976137 /* BlockedCardViewTests.swift */; };
 		A89F91298354D322AA83674F /* ConversationReferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF75A37A647ADF8132633D1 /* ConversationReferenceTests.swift */; };
 		A8BBA0418C4309A3CCA51148 /* ChatHostFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A38EA0E0EA6F0382E91E5E /* ChatHostFiles.swift */; };
@@ -1095,6 +1096,7 @@
 		3E28E523060F422EBB981891 /* WeakNetworkE2ETests+Changes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WeakNetworkE2ETests+Changes.swift"; sourceTree = "<group>"; };
 		3EC9CE7DCD296C9AD913C5E2 /* ConsoleTabBarBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleTabBarBridge.swift; sourceTree = "<group>"; };
 		3F4858DA258C7032AC64AD52 /* RelayContentStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayContentStateDecodeTests.swift; sourceTree = "<group>"; };
+		3F6DD633965A760453A3B42F /* ConsoleWorkspaceCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleWorkspaceCards.swift; sourceTree = "<group>"; };
 		400DB5B242363C4980CC0E70 /* HeelerSSHTransportBehaviorE2ETests+UntrackedDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+UntrackedDirectory.swift"; sourceTree = "<group>"; };
 		401B06FA1073EFC5F056E941 /* AgentRowChanges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRowChanges.swift; sourceTree = "<group>"; };
 		401F5B396F9F00568A4FFF88 /* AgentNotificationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationIdentity.swift; sourceTree = "<group>"; };
@@ -2426,6 +2428,7 @@
 				3EC9CE7DCD296C9AD913C5E2 /* ConsoleTabBarBridge.swift */,
 				87812D6B917D5A3180ED65BC /* ConsoleTerminal.swift */,
 				C74A32020C9520EB5629B071 /* ConsoleView.swift */,
+				3F6DD633965A760453A3B42F /* ConsoleWorkspaceCards.swift */,
 				6A0E438CAFD221387D974C00 /* DetailCrossfade.swift */,
 				4D3494B1280AF198398C5AA4 /* EdgeDockLift.swift */,
 				2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */,
@@ -3352,6 +3355,7 @@
 				1D1697DDBFBB4AFDFBD43E43 /* ConsoleTabBarBridge.swift in Sources */,
 				1E956A0DDFA079A1B9CFAB11 /* ConsoleTerminal.swift in Sources */,
 				BC3CE4B2C61D43EB4BA6B66E /* ConsoleView.swift in Sources */,
+				A7DC2698D649E2E1571BFB7F /* ConsoleWorkspaceCards.swift in Sources */,
 				F71F183E690597E106438E55 /* ContentView.swift in Sources */,
 				E19270A695B322233CEEBB35 /* ConversationReference.swift in Sources */,
 				0272B09CE3B0F295EAD8FC32 /* DemoChatSample.swift in Sources */,
