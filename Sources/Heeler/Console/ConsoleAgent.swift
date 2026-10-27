@@ -176,15 +176,18 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// carries the expanded remote path but not `$HOME`, so only the
     /// account's conventional macOS/Linux homes are shortened to `~`; every
     /// other path stays exactly as the Agent reported it.
-    var displayCwd: String {
-        guard let hostUsername, !hostUsername.isEmpty else { return agent.cwd }
+    var displayCwd: String { displayPath(agent.cwd) }
+
+    /// A path on this Agent's Host, shortened as `displayCwd` is.
+    func displayPath(_ path: String) -> String {
+        guard let hostUsername, !hostUsername.isEmpty else { return path }
         let homes =
             hostUsername == "root"
             ? ["/root"]
             : ["/Users/\(hostUsername)", "/home/\(hostUsername)"]
-        guard let home = homes.first(where: { agent.cwd == $0 || agent.cwd.hasPrefix("\($0)/") })
-        else { return agent.cwd }
-        return agent.cwd == home ? "~" : "~\(agent.cwd.dropFirst(home.count))"
+        guard let home = homes.first(where: { path == $0 || path.hasPrefix("\($0)/") })
+        else { return path }
+        return path == home ? "~" : "~\(path.dropFirst(home.count))"
     }
 }
 

@@ -22,13 +22,20 @@ struct AgentCardView: View {
     /// Set for a saved Chat entry point, which lists in an unproven Host's
     /// place: its Host's readiness, since the entry has no status of its own.
     var saved: HostReadiness? = nil
+    /// Fields the surrounding card already shows.
+    var hiddenTokens: Set<AgentRowToken> = []
+    /// Where the card stands for its checkout or Workspace: Row 1 gives way
+    /// to that title, and every row of the layout follows it.
+    var heading: AgentCardHeading? = nil
+    /// False where a header above the card names the Host.
+    var showsHost = true
 
     private var totalsSource: ChangesRowTotals.Source? {
         if let changes { .store(changes) } else { sampleChanges.map { .sample($0) } }
     }
 
     private var presentation: AgentCardPresentation {
-        AgentCardPresentation(agent: agent, layout: layout)
+        AgentCardPresentation(agent: agent, layout: layout, hiding: hiddenTokens)
     }
 
     var body: some View {
@@ -36,8 +43,12 @@ struct AgentCardView: View {
             // Centered, not baseline-aligned: the status capsule is smaller
             // type with padding, so baseline alignment drops it below Row 1.
             HStack(alignment: .center) {
-                AgentCardTitle(
-                    tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil)
+                if let heading {
+                    ConsoleCheckoutTitleText(title: heading.title, font: heading.font)
+                } else {
+                    AgentCardTitle(
+                        tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil)
+                }
                 if isPinned {
                     Image(systemName: "pin.fill")
                         .font(.caption2)
@@ -46,18 +57,22 @@ struct AgentCardView: View {
                         .accessibilityLabel("Pinned")
                 }
                 Spacer(minLength: 8)
-                if saved != nil {
-                    SavedChatBadge()
-                } else if agent.agent.status.displayTitle != nil {
-                    AgentStatusBadge(status: agent.agent.status)
+                // Whole at any text size; the title truncates instead.
+                Group {
+                    if saved != nil {
+                        SavedChatBadge()
+                    } else if agent.agent.status.displayTitle != nil {
+                        AgentStatusBadge(status: agent.agent.status)
+                    }
                 }
+                .fixedSize()
             }
-            let additionalRows = Array(presentation.rows.dropFirst())
+            let additionalRows = heading == nil ? Array(presentation.rows.dropFirst()) : presentation.rows
             additionalRowViews(additionalRows)
             if additionalRows.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Spacer(minLength: 0)
-                    hostText
+                    if showsHostText { hostText }
                     if let totalsSource {
                         ChangesRowTotals(source: totalsSource).layoutPriority(1)
                     }
@@ -90,7 +105,7 @@ struct AgentCardView: View {
                     if index == 0 || isLast {
                         Spacer(minLength: 8)
                     }
-                    if index == 0 {
+                    if index == 0, showsHostText {
                         hostText.layoutPriority(1)
                     }
                     if isLast, let totalsSource {
@@ -100,6 +115,9 @@ struct AgentCardView: View {
             }
         }
     }
+
+    /// A saved entry keeps its Host, whose tone stands in for a status.
+    private var showsHostText: Bool { showsHost || saved != nil }
 
     @ViewBuilder
     private var hostText: some View {
@@ -175,14 +193,24 @@ struct AgentRowText: View {
     }
 }
 
+/// The title a card takes in Row 1's place, as `AgentCardView.heading`.
+struct AgentCardHeading {
+    let title: ConsoleCheckoutTitle
+    /// A card of its own reads as an Agent's title; a checkout inside a
+    /// repository's card, a size down.
+    var isProminent = false
+
+    var font: Font { isProminent ? .headline : .subheadline.weight(.semibold) }
+}
+
 struct AgentCardPresentation: Equatable, Sendable {
     let rows: [[RenderedToken]]
 
     var headline: String { rows.first?.map(\.text).joined() ?? "Agent" }
     var additionalRows: [String] { rows.dropFirst().map { $0.map(\.text).joined() } }
 
-    init(agent: ConsoleAgent, layout: AgentRowLayout = .heelerDefault) {
-        let rendered = AgentRowRenderer.render(layout: layout, agent: agent)
+    init(agent: ConsoleAgent, layout: AgentRowLayout = .heelerDefault, hiding: Set<AgentRowToken> = []) {
+        let rendered = AgentRowRenderer.render(layout: layout, agent: agent, hiding: hiding)
         if rendered.isEmpty {
             let name = agent.agent.displayName
             rows = [[RenderedToken(
