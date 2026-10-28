@@ -23,9 +23,14 @@ Entries reference the pull request that made the change.
   git worktree in their repository's card: the main checkout under its
   current branch, each worktree beneath it, and a collapsed card still
   shows which checkouts need you. (#522)
+- On a hardware keyboard, Return sends the Composer draft, in Chat and above
+  the Agent's terminal, and Shift-Return starts a new line. Command-Return
+  still sends. (#512; PR #528)
 
 ### Fixed
 
+- Scroll the Agent and Shell terminals with a trackpad or a mouse wheel on
+  iPad, not only by touch. (#512; PR #528)
 - Reattach a terminal on its own when the Host's connection drops under it,
   such as on a stalled Tailscale route soon after returning to Heeler. The
   terminal shows Reconnecting… while Heeler redials, instead of Session

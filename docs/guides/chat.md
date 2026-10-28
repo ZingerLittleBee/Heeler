@@ -69,7 +69,7 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 If Chat can't send something, such as a message starting with `!`, it keeps your text and says why under the message box.
 
 > [!TIP]
-> On an iPad with a keyboard, press **Command-Return** to send.
+> On an iPad with a keyboard, press **Return** to send and **Shift-Return** for a new line.
 
 ## Answer a Blocked Agent
 

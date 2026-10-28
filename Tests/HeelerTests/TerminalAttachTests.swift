@@ -1311,7 +1311,8 @@ struct TerminalAttachTests {
             terminal.gestureRecognizers?.compactMap { gesture in
                 guard let pan = gesture as? UIPanGestureRecognizer,
                     pan.isEnabled,
-                    pan.allowedTouchTypes.contains(directTouch)
+                    pan.allowedTouchTypes.contains(directTouch),
+                    pan.allowedScrollTypesMask.isEmpty
                 else { return nil }
                 return pan
             } ?? []
@@ -1322,6 +1323,24 @@ struct TerminalAttachTests {
 
         #expect(scrolledSequence == Data("\u{1B}[<64;40;12M".utf8))
         #expect(scrolledRows == 2)
+    }
+
+    /// Trackpad and mouse-wheel scrolling reach a pan only through its scroll
+    /// mask. Ghostty's own wheel pan scrolls its local screen, so it stays off
+    /// and exactly one of the app's takes the events (#512).
+    @MainActor
+    @Test func exactlyOneEnabledPanTakesTrackpadAndWheelScrolling() {
+        let terminal = TerminalScreenView.makeConfiguredTerminal()
+        let scrollPans = terminal.gestureRecognizers?.compactMap {
+            $0 as? UIPanGestureRecognizer
+        }.filter { !$0.allowedScrollTypesMask.isEmpty } ?? []
+
+        let enabled = scrollPans.filter(\.isEnabled)
+        #expect(enabled.count == 1)
+        #expect(enabled.first?.allowedScrollTypesMask == .all)
+        // Ghostty's wheel pan has no delegate; the app's own pans report to
+        // the terminal.
+        #expect(enabled.first?.delegate === terminal)
     }
 
     /// The keyboard toggle rides the Agent strip, which outlives the keyboard,
@@ -3034,6 +3053,14 @@ struct TerminalAttachTests {
                 columns: 80,
                 rows: 24)
                 == Data("\u{1B}[<64;40;12M".utf8))
+        // A pointer aims the report at its own cell.
+        #expect(
+            tracker.remoteScrollSequence(
+                towardOlderContent: false,
+                columns: 80,
+                rows: 24,
+                at: (column: 5, row: 3))
+                == Data("\u{1B}[<65;5;3M".utf8))
 
         tracker.receive(Data("\u{1B}[?1002;1006l".utf8))
         #expect(!tracker.tracksMouse)

@@ -386,8 +386,8 @@ struct AgentComposerStopOwnershipTests {
 }
 
 /// The hosted Composer: Chat folds it to one line without replacing its
-/// text view, Stop presses Esc once until Agent Status moves, and a long
-/// notice keeps its lines.
+/// text view, Stop presses Esc once until Agent Status moves, a hardware
+/// Return sends, and a long notice keeps its lines.
 @MainActor
 @Suite("Agent Composer fold, Stop and notices, hosted", .serialized)
 struct AgentComposerFoldHostedTests {
@@ -579,6 +579,31 @@ struct AgentComposerFoldHostedTests {
                 controller.view.layoutIfNeeded()
                 return Self.accessible(labeled: "Stop", in: controller.view) != nil
             })
+        }
+    }
+
+    /// A hardware Return sends through Send's own path, and the editor's
+    /// delegate refuses the new line UIKit types for that press (#512).
+    @Test func aHardwareReturnSendsWithoutTypingANewLine() async throws {
+        let harness = ComposerHarness(status: .working)
+        harness.composer.replaceDraft(with: "and run the tests")
+        let controller = UIHostingController(rootView: ComposerHost(harness: harness, collapses: true))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            controller.view.layoutIfNeeded()
+            let editor = try #require(Self.editor(in: controller.view) as? AgentComposerUITextView)
+            let delegate = try #require(editor.delegate)
+            let end = NSRange(location: (editor.text as NSString).length, length: 0)
+            let token = ObjectIdentifier(editor)
+
+            editor.beginHardwareReturn(token: token)
+            #expect(delegate.textView?(editor, shouldChangeTextIn: end, replacementText: "\n") == false)
+            try #require(await Self.eventually { harness.composer.draft.isEmpty })
+
+            editor.endHardwareReturn(token: token)
+            #expect(delegate.textView?(editor, shouldChangeTextIn: end, replacementText: "\n") == true)
+            await harness.window.open()
         }
     }
 

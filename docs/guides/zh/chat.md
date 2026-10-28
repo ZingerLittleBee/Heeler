@@ -70,7 +70,7 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 如果 Chat 不能发送某条消息（例如以 `!` 开头的消息），它会保留你的文字，并在输入框下方说明原因。
 
 > [!TIP]
-> 在连接了键盘的 iPad 上，按 **Command-Return** 即可发送。
+> 在连接了键盘的 iPad 上，按 **Return** 发送，按 **Shift-Return** 换行。
 
 ## 回答处于 Blocked 状态的 Agent
 

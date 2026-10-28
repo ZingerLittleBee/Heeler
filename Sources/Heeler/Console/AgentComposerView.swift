@@ -368,7 +368,8 @@ struct AgentComposerView: View {
                     keyboardHandoffID: keyboardHandoffID,
                     isKeyboardHandoffCurrent: isKeyboardHandoffCurrent,
                     onFirstResponderRequest: onFirstResponderRequest,
-                    onKeyboardHandoffSettled: onKeyboardHandoffSettled)
+                    onKeyboardHandoffSettled: onKeyboardHandoffSettled,
+                    onHardwareReturn: sendDraft)
                 if store.draft.isEmpty {
                     Text("Message Agent")
                         .foregroundStyle(.tertiary)
@@ -510,6 +511,10 @@ struct AgentComposerView: View {
         .accessibilityHint("Adds an image or file to the draft")
     }
 
+    private func sendDraft() {
+        Task { await deliverDraft { await store.send(policy: sendPolicy) } }
+    }
+
     /// Send, or Stop while the Agent works and the draft is blank.
     @ViewBuilder
     private var primaryButton: some View {
@@ -519,7 +524,7 @@ struct AgentComposerView: View {
                 isEnabled: store.canSend,
                 accessibilityHint: store.sendAccessibilityHint
             ) {
-                Task { await deliverDraft { await store.send(policy: sendPolicy) } }
+                sendDraft()
             }
         case .stop:
             AgentComposerStopButton(
@@ -897,6 +902,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     let isKeyboardHandoffCurrent: (UUID) -> Bool
     let onFirstResponderRequest: (UUID, Bool) -> Void
     let onKeyboardHandoffSettled: (UUID) -> Void
+    let onHardwareReturn: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onEdit: onEdit, isFocused: $isFocused)
@@ -912,6 +918,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         textView.textContainer.lineFragmentPadding = 0
         textView.accessibilityLabel = "Message the Agent"
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
+        textView.onHardwareReturn = onHardwareReturn
         return textView
     }
 
@@ -926,6 +933,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         textView.updateLineLimit(lineLimit)
         textView.updateKeyboard(presentation: keyboardPresentation)
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
+        textView.onHardwareReturn = onHardwareReturn
         let shouldFocus = isFocused
         let coordinator = context.coordinator
         coordinator.wantsFocus = shouldFocus
@@ -1002,6 +1010,14 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
             onEdit(textView.text, textView.selectedRange)
         }
 
+        func textView(
+            _ textView: UITextView,
+            shouldChangeTextIn _: NSRange,
+            replacementText text: String
+        ) -> Bool {
+            (textView as? AgentComposerUITextView)?.acceptsReplacement(text) ?? true
+        }
+
         /// A tap into the folded input lands in the one line it shows; the
         /// caret goes back where the draft was left.
         func textViewShouldBeginEditing(_ textView: UITextView) -> Bool {
@@ -1033,6 +1049,22 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     }
 }
 
+/// What a hardware Return does in the Composer.
+enum ComposerHardwareReturn {
+    /// Return and keypad Enter send. Any of Shift, Option, Control or Command
+    /// leaves the press to UIKit: a new line, or ⌘↩'s scene command. So does
+    /// text the input method is still composing, which Return commits.
+    static func sends(
+        keyCode: UIKeyboardHIDUsage,
+        modifierFlags: UIKeyModifierFlags,
+        hasMarkedText: Bool
+    ) -> Bool {
+        (keyCode == .keyboardReturnOrEnter || keyCode == .keypadEnter)
+            && !hasMarkedText
+            && modifierFlags.isDisjoint(with: [.shift, .alternate, .control, .command])
+    }
+}
+
 /// Keeps the Composer first-responder while switching between the system
 /// keyboard and an app-owned tools dock. Tools mode suppresses UIKit's soft
 /// keyboard with a zero-height input view; the dock already occupies the
@@ -1056,12 +1088,80 @@ final class AgentComposerUITextView: UITextView {
     /// inherited keyboard the same way from `didMoveToWindow`.
     var claimsKeyboardWhenReady = false
     private var laidOutHeight: CGFloat = 0
+    /// Sends the draft for a hardware Return, the way the Send button does.
+    var onHardwareReturn: (() -> Void)?
+    /// Return presses taken for sending. Their releases stay here too, and
+    /// UIKit's own new line for them is refused (see `acceptsReplacement`).
+    private var sendingReturnPresses: Set<ObjectIdentifier> = []
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         guard window != nil, claimsKeyboardWhenReady else { return }
         claimsKeyboardWhenReady = false
         _ = becomeFirstResponder()
+    }
+
+    /// A hardware Return sends and Shift-Return starts a new line. The
+    /// software keyboard's Return arrives as text, not a press, so it keeps
+    /// starting a new line.
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        var forwarded: Set<UIPress> = []
+        for press in presses {
+            if let key = press.key,
+               ComposerHardwareReturn.sends(
+                   keyCode: key.keyCode,
+                   modifierFlags: key.modifierFlags,
+                   hasMarkedText: markedTextRange != nil)
+            {
+                beginHardwareReturn(token: ObjectIdentifier(press))
+            } else {
+                forwarded.insert(press)
+            }
+        }
+        guard !forwarded.isEmpty else { return }
+        super.pressesBegan(forwarded, with: event)
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let forwarded = presses.filter { !endHardwareReturn(token: ObjectIdentifier($0)) }
+        guard !forwarded.isEmpty else { return }
+        super.pressesEnded(forwarded, with: event)
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let forwarded = presses.filter { !endHardwareReturn(token: ObjectIdentifier($0)) }
+        guard !forwarded.isEmpty else { return }
+        super.pressesCancelled(forwarded, with: event)
+    }
+
+    /// The consume path `pressesBegan` uses. Tests drive it directly because
+    /// `UIPress` cannot be constructed in the suite.
+    func beginHardwareReturn(token: ObjectIdentifier) {
+        sendingReturnPresses.insert(token)
+        onHardwareReturn?()
+    }
+
+    /// Whether the press was one taken for sending.
+    @discardableResult
+    func endHardwareReturn(token: ObjectIdentifier) -> Bool {
+        sendingReturnPresses.remove(token) != nil
+    }
+
+    /// While a Return taken for sending is down, a new line UIKit types for it
+    /// anyway is not the user's.
+    func acceptsReplacement(_ text: String) -> Bool {
+        sendingReturnPresses.isEmpty || text != "\n"
+    }
+
+    /// A press's release goes to whichever responder holds the keyboard then,
+    /// so one taken for sending is forgotten here rather than left to refuse
+    /// every later new line.
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned {
+            sendingReturnPresses.removeAll()
+        }
+        return resigned
     }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {

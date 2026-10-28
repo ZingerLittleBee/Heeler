@@ -699,6 +699,23 @@ private struct ArmedModifierEchoSuppression {
     let expectBackspace: Bool
 }
 
+/// A pan fed by trackpad and mouse-wheel scroll events alone. A scroll event
+/// is not a touch, so it reaches a pan only through `allowedScrollTypesMask`;
+/// refusing every other event keeps fingers on the touch-scroll pan.
+private final class TerminalPointerScrollGestureRecognizer: UIPanGestureRecognizer {
+    override init(target: Any?, action: Selector?) {
+        super.init(target: target, action: action)
+        allowedScrollTypesMask = .all
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+    }
+
+    override func shouldReceive(_ event: UIEvent) -> Bool {
+        event.type == .scroll
+    }
+}
+
 /// The app-owned seam around libghostty-spm. It keeps keyboard policy and the
 /// host-managed session lifecycle out of the SwiftUI screen.
 final class HeelerTerminalView: UITerminalView, TerminalByteSink {
@@ -810,6 +827,8 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private var touchScrollMomentumDisplayLink: CADisplayLink?
     private var touchScrollMomentumVelocityY: CGFloat = 0
     private var touchScrollMomentumTimestamp: CFTimeInterval = 0
+    /// Where the pointer sat when its scroll began.
+    private var pointerScrollLocation: CGPoint?
     /// Presses whose began event was rewritten through armed modifiers, so
     /// Ghostty must not also see their ended/cancelled counterparts.
     private var pressesConsumedByArmedModifiers: Set<ObjectIdentifier> = []
@@ -824,6 +843,10 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private lazy var touchScrollGesture = UIPanGestureRecognizer(
         target: self,
         action: #selector(handleHerdrTouchScrollGesture(_:)))
+
+    private lazy var pointerScrollGesture = TerminalPointerScrollGestureRecognizer(
+        target: self,
+        action: #selector(handleHerdrPointerScrollGesture(_:)))
 
     private lazy var zoomGesture = UIPinchGestureRecognizer(
         target: self,
@@ -1983,13 +2006,15 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             scale: window?.screen.nativeScale ?? traitCollection.displayScale)
     }
 
+    /// `point` is where a trackpad or mouse pointer sits; a finger has none,
+    /// so its wheel reports aim at the grid's centre.
     @discardableResult
-    func scrollTouch(translationY: CGFloat) -> Int {
+    func scrollTouch(translationY: CGFloat, at point: CGPoint? = nil) -> Int {
         let rows = touchScrollAccumulator.rows(
             for: translationY,
             pointsPerRow: max(8, terminalCellSize.height))
         guard rows != 0 else { return 0 }
-        applyScroll(towardOlderContent: rows > 0, rowCount: abs(rows))
+        applyScroll(towardOlderContent: rows > 0, rowCount: abs(rows), at: point)
         onTouchScroll?(rows > 0)
         return rows
     }
@@ -2008,11 +2033,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// Remote wheel / cursor sequence when the mode tracker supplies one;
     /// otherwise local `scroll_page_lines`. Shared by touch and the jump
     /// control so they cannot drift. `refs #268`.
-    private func applyScroll(towardOlderContent: Bool, rowCount: Int) {
+    private func applyScroll(towardOlderContent: Bool, rowCount: Int, at point: CGPoint? = nil) {
         if let sequence = modeTracker.remoteScrollSequence(
             towardOlderContent: towardOlderContent,
             columns: terminalGridSize.columns,
-            rows: terminalGridSize.rows)
+            rows: terminalGridSize.rows,
+            at: point.flatMap { gridPointMapper.cell(at: $0) })
         {
             callbackBridge.scroll(sequence, rows: rowCount)
         } else {
@@ -2025,6 +2051,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     private func installTouchScrolling() {
         let directTouch = NSNumber(value: UITouch.TouchType.direct.rawValue)
+        // Ghostty's touch and wheel pans both scroll its local screen rather
+        // than the remote application. The wheel pan accepts every touch type
+        // by default, so this also retires it; `pointerScrollGesture` replaces it.
         for case let pan as UIPanGestureRecognizer in gestureRecognizers ?? []
         where pan.allowedTouchTypes.contains(directTouch) {
             pan.isEnabled = false
@@ -2035,6 +2064,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         touchScrollGesture.cancelsTouchesInView = false
         touchScrollGesture.delegate = self
         addGestureRecognizer(touchScrollGesture)
+
+        pointerScrollGesture.delegate = self
+        addGestureRecognizer(pointerScrollGesture)
 
         tapGesture.allowedTouchTypes = [directTouch]
         tapGesture.numberOfTouchesRequired = 1
@@ -2432,6 +2464,37 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             touchScrollAccumulator.reset()
         default:
             break
+        }
+    }
+
+    /// Trackpad and mouse-wheel scrolling take the touch path to the remote
+    /// application. Like Ghostty's own wheel handler, this adds no momentum;
+    /// a scroll only halts a running flick. The row remainder carries across
+    /// gestures because a wheel notch can be shorter than a row. Wheel reports
+    /// aim at the pointer's cell, so a split TUI (tmux, vim) scrolls the pane
+    /// under it. A scroll pan's location moves with its translation as though
+    /// a finger dragged, already by the recognition threshold at `.began`, so
+    /// the pointer sits at the location less the translation.
+    @objc private func handleHerdrPointerScrollGesture(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began, .changed, .ended:
+            if gesture.state == .began {
+                stopTouchScrollMomentum()
+                let location = gesture.location(in: self)
+                let translation = gesture.translation(in: self)
+                pointerScrollLocation = CGPoint(
+                    x: location.x - translation.x,
+                    y: location.y - translation.y)
+            }
+            _ = scrollTouch(
+                translationY: gesture.translation(in: self).y,
+                at: pointerScrollLocation ?? gesture.location(in: self))
+            gesture.setTranslation(.zero, in: self)
+            if gesture.state == .ended {
+                pointerScrollLocation = nil
+            }
+        default:
+            pointerScrollLocation = nil
         }
     }
 

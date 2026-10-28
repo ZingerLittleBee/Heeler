@@ -53,3 +53,81 @@ struct AgentComposerTextViewTests {
         #expect(abs(editor.contentOffset.y - overflow) < 0.5)
     }
 }
+
+// On a hardware keyboard Return sends the draft and Shift-Return starts a new
+// line (#512). The input method keeps Return while it is composing, and ⌘↩
+// stays with the scene's Send Composer Draft command.
+
+@MainActor
+@Suite("Composer hardware Return")
+struct ComposerHardwareReturnTests {
+    struct Press: Sendable, CustomTestStringConvertible {
+        let keyCode: UIKeyboardHIDUsage
+        let modifiers: UIKeyModifierFlags
+        let hasMarkedText: Bool
+        let sends: Bool
+        let testDescription: String
+    }
+
+    nonisolated static let presses: [Press] = [
+        Press(keyCode: .keyboardReturnOrEnter, modifiers: [], hasMarkedText: false,
+              sends: true, testDescription: "Return"),
+        Press(keyCode: .keypadEnter, modifiers: [.numericPad], hasMarkedText: false,
+              sends: true, testDescription: "keypad Enter"),
+        Press(keyCode: .keyboardReturnOrEnter, modifiers: [.alphaShift], hasMarkedText: false,
+              sends: true, testDescription: "Return with Caps Lock"),
+        Press(keyCode: .keyboardReturnOrEnter, modifiers: [.shift], hasMarkedText: false,
+              sends: false, testDescription: "Shift-Return"),
+        Press(keyCode: .keyboardReturnOrEnter, modifiers: [.alternate], hasMarkedText: false,
+              sends: false, testDescription: "Option-Return"),
+        Press(keyCode: .keyboardReturnOrEnter, modifiers: [.control], hasMarkedText: false,
+              sends: false, testDescription: "Control-Return"),
+        Press(keyCode: .keyboardReturnOrEnter, modifiers: [.command], hasMarkedText: false,
+              sends: false, testDescription: "Command-Return"),
+        Press(keyCode: .keyboardReturnOrEnter, modifiers: [], hasMarkedText: true,
+              sends: false, testDescription: "Return while composing"),
+        Press(keyCode: .keyboardA, modifiers: [], hasMarkedText: false,
+              sends: false, testDescription: "a letter"),
+    ]
+
+    @Test(arguments: presses)
+    func onlyAPlainReturnSends(press: Press) {
+        #expect(ComposerHardwareReturn.sends(
+            keyCode: press.keyCode,
+            modifierFlags: press.modifiers,
+            hasMarkedText: press.hasMarkedText) == press.sends)
+    }
+
+    @Test func aSendingReturnRefusesUIKitsNewLineUntilReleased() {
+        let editor = AgentComposerUITextView(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
+        var sends = 0
+        editor.onHardwareReturn = { sends += 1 }
+        let token = ObjectIdentifier(editor)
+
+        editor.beginHardwareReturn(token: token)
+
+        #expect(sends == 1)
+        #expect(!editor.acceptsReplacement("\n"))
+        #expect(editor.acceptsReplacement("a"))
+
+        #expect(editor.endHardwareReturn(token: token))
+        #expect(editor.acceptsReplacement("\n"))
+        #expect(!editor.endHardwareReturn(token: token))
+    }
+
+    /// The release can go to another responder; a Return left pending would
+    /// refuse every new line typed after the Composer is focused again.
+    @Test func resigningForgetsAPendingReturn() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let editor = AgentComposerUITextView(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
+        window.addSubview(editor)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        #expect(editor.becomeFirstResponder())
+
+        editor.beginHardwareReturn(token: ObjectIdentifier(window))
+        #expect(editor.resignFirstResponder())
+
+        #expect(editor.acceptsReplacement("\n"))
+    }
+}
