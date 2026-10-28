@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UserNotifications
 
 @testable import Heeler
 
@@ -200,5 +201,45 @@ struct AgentNotificationRendererTests {
     @Test func fallbackCopyIsGeneric() {
         #expect(AgentNotificationRenderer.fallback.title == "Heeler")
         #expect(AgentNotificationRenderer.fallback.body == "Agent update")
+    }
+
+    /// The content the extension shows: the relay's wrap with the decrypted
+    /// alert and the default sound, since iOS plays nothing for an alert
+    /// without one (#468).
+    @Test func rewrittenContentCarriesTheAlertAndTheDefaultSound() throws {
+        let vector = try Self.vector(named: "blocked agent with a project and a task title")
+        let record = try Self.record(forVector: vector, named: "mac-studio")
+
+        let content = AgentNotificationRenderer.content(
+            rewriting: Self.relayWrap(envelope: vector.envelope), keys: [record])
+
+        #expect(content.title == "Caterm · Claude")
+        #expect(content.subtitle == "")
+        #expect(content.body == "Blocked — waiting for input")
+        #expect(content.sound == .default)
+        #expect(content.userInfo["envelope"] as? String == vector.envelope)
+    }
+
+    /// An undecryptable push still sounds: the fallback banner is the same
+    /// Agent Notification, just without its details.
+    @Test func undecryptableContentFallsBackWithTheDefaultSound() {
+        let content = AgentNotificationRenderer.content(
+            rewriting: Self.relayWrap(envelope: "garbage"), keys: [])
+
+        #expect(content.title == AgentNotificationRenderer.fallback.title)
+        #expect(content.subtitle == "")
+        #expect(content.body == AgentNotificationRenderer.fallback.body)
+        #expect(content.sound == .default)
+    }
+
+    /// The content iOS builds from the relay's alert push, before the
+    /// extension runs.
+    private static func relayWrap(envelope: String) -> UNNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = "Heeler"
+        content.subtitle = "Relay subtitle"
+        content.body = "Agent update"
+        content.userInfo = ["envelope": envelope]
+        return content
     }
 }

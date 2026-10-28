@@ -2,8 +2,8 @@ import UserNotifications
 
 /// The Notification Service Extension shell (ADR 0008). iOS hands every
 /// `mutable-content` push through here before display; all real work — kid
-/// key selection, envelope decryption, alert phrasing — is the pure
-/// `AgentNotificationRenderer.alert` over the Notification Keys in the
+/// key selection, envelope decryption, alert phrasing, sound — is the pure
+/// `AgentNotificationRenderer.content` over the Notification Keys in the
 /// shared-access-group Keychain, compiled from HeelerNotificationCore and
 /// covered by the app test suite against the shared vectors. Undecryptable
 /// pushes get the generic fallback copy applied unconditionally, so garbage
@@ -24,15 +24,6 @@ final class NotificationService: UNNotificationServiceExtension {
 
     private static func rewritten(_ content: UNNotificationContent) -> UNNotificationContent {
         let records = (try? NotificationKeyStore().allRecords()) ?? []
-        let alert = AgentNotificationRenderer.alert(userInfo: content.userInfo, keys: records)
-        guard let rewritten = content.mutableCopy() as? UNMutableNotificationContent else {
-            return content
-        }
-        rewritten.title = alert.title
-        // Cleared, not left alone: the relay's generic wrap may have set a
-        // subtitle, and the decrypted copy has no use for one.
-        rewritten.subtitle = ""
-        rewritten.body = alert.body
-        return rewritten
+        return AgentNotificationRenderer.content(rewriting: content, keys: records)
     }
 }
