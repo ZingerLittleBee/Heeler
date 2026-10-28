@@ -23,6 +23,9 @@ Entries reference the pull request that made the change.
   git worktree in their repository's card: the main checkout under its
   current branch, each worktree beneath it, and a collapsed card still
   shows which checkouts need you. (#522)
+- On a hardware keyboard, Return sends the Composer draft, in Chat and above
+  the Agent's terminal, and Shift-Return starts a new line. Command-Return
+  still sends. (#512)
 
 ### Fixed
 
