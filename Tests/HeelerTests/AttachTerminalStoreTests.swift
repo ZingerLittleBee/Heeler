@@ -298,6 +298,162 @@ struct AttachTerminalStoreTests {
         }
     }
 
+    // MARK: Connection loss (#523)
+
+    /// The Host side of a reattach: each attach waits for the Transport the
+    /// test installs next and reports its generation as acquired, the way
+    /// `EventsSession.withTerminalTransport` hands out the replacement.
+    private actor InstalledTransports {
+        private var installed: [(ScriptedTransport, UInt64)] = []
+        private var waiter: CheckedContinuation<(ScriptedTransport, UInt64), Never>?
+        private(set) var waits = 0
+
+        func install(_ transport: ScriptedTransport, generation: UInt64) {
+            if let waiter {
+                self.waiter = nil
+                waiter.resume(returning: (transport, generation))
+            } else {
+                installed.append((transport, generation))
+            }
+        }
+
+        func next() async -> (ScriptedTransport, UInt64) {
+            waits += 1
+            if !installed.isEmpty { return installed.removeFirst() }
+            return await withCheckedContinuation { waiter = $0 }
+        }
+    }
+
+    private func makeStore(transports: InstalledTransports) -> AttachTerminalStore {
+        AttachTerminalStore(target: "w1:p1") { request, handler in
+            let (transport, generation) = await transports.next()
+            try Task.checkCancellation()
+            await handler.transportDidBecomeReady(generation)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+    }
+
+    @Test func aDroppedConnectionReattachesOnTheNextTransport() async throws {
+        // The Host redials a dead link behind a status that still reads
+        // connected, so the terminal must not end over it: it waits for the
+        // replacement Transport and reattaches there.
+        let first = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(first, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, first)
+
+        await first.failAttachStream(
+            .sshUnreachable(detail: "The SSH connection is no longer reusable."))
+        try await waitUntil("the loss should wait for the next Transport") {
+            await transports.waits == 2
+        }
+        #expect(store.status == .reconnecting)
+
+        await transports.install(replacement, generation: 1)
+        try await paint(replacement)
+        try await waitUntil("the reattach should go live") { store.status == .live }
+        #expect(store.acquiredTransportGeneration == 1)
+        #expect(await first.attachRequests.count == 1)
+        #expect(await replacement.attachRequests.count == 1)
+
+        await store.stop()
+    }
+
+    @Test func reattachesThatNeverPaintEndTheSession() async throws {
+        // Every lost attach makes the Host redial, so each attempt sees a
+        // newer generation; only the remote painting proves the link back.
+        // Without that, a link that keeps failing must end the session
+        // rather than redial the Host forever.
+        let transport = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(transport, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, transport)
+
+        for generation in UInt64(1)...2 {
+            await transport.failAttachStream(.timedOut)
+            try await waitUntil("the loss should wait for the next Transport") {
+                await transports.waits == Int(generation) + 1
+            }
+            #expect(store.status == .reconnecting)
+            await transports.install(transport, generation: generation)
+            try await waitUntil("the reattach should open") {
+                let requests = await transport.attachRequests.count
+                let live = await transport.hasLiveAttachSession
+                return requests == Int(generation) + 1 && live
+            }
+        }
+        await transport.failAttachStream(.timedOut)
+        try await waitUntil("the loss after the bound should end the session") {
+            store.status == .ended("The Host did not answer in time.")
+        }
+        #expect(await transports.waits == 3)
+    }
+
+    @Test func aReattachThatPaintsRestoresTheAllowance() async throws {
+        let transport = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(transport, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, transport)
+
+        for generation in UInt64(1)...3 {
+            await transport.failAttachStream(
+                .sshUnreachable(detail: "The SSH connection is no longer reusable."))
+            try await waitUntil("the loss should wait for the next Transport") {
+                await transports.waits == Int(generation) + 1
+            }
+            await transports.install(transport, generation: generation)
+            try await paint(transport)
+            try await waitUntil("each reattach should go live") { store.status == .live }
+        }
+
+        await store.stop()
+    }
+
+    @Test func aRemoteFailureAfterAcquisitionStillEnds() async throws {
+        // Only a lost connection reattaches; the remote attach failing on a
+        // healthy one is the session's own end and keeps Reattach.
+        let transport = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(transport, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, transport)
+
+        await transport.failAttachStream(.channelFailed(detail: "host went away"))
+        try await waitUntil("the failure should surface") {
+            if case .ended = store.status { return true }
+            return false
+        }
+        #expect(await transports.waits == 1)
+    }
+
+    @Test func stopDuringAReconnectEndsTheWait() async throws {
+        let transport = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(transport, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, transport)
+
+        await transport.failAttachStream(.cancelled)
+        try await waitUntil("the loss should wait for the next Transport") {
+            await transports.waits == 2
+        }
+        // The scripted wait ignores cancellation; once the stop has cancelled
+        // the run, release it with a Transport the store must not attach to.
+        let late = ScriptedTransport()
+        let stop = Task { await store.stop() }
+        try await Task.sleep(for: .milliseconds(20))
+        await transports.install(late, generation: 1)
+        await stop.value
+
+        #expect(store.status == .stopped)
+        #expect(await late.attachRequests.isEmpty)
+    }
+
     /// #151: when a store is the refused second consumer, the refusal must
     /// end only that store's run. The transport's gate leaves the legitimate
     /// consumer running; an unconditional `end()` in the runner's catch

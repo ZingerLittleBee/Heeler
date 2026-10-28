@@ -26,6 +26,10 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Reattach a terminal on its own when the Host's connection drops under it,
+  such as on a stalled Tailscale route soon after returning to Heeler. The
+  terminal shows Reconnecting… while Heeler redials, instead of Session
+  Ended. (#523)
 - Send from Chat while Claude Code shows a prompt suggestion in its input
   box, instead of holding the message with "Heeler can't find the Agent's
   input box on screen." (#525)
