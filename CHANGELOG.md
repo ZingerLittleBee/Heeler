@@ -26,6 +26,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Play a sound with Agent Notifications instead of showing a silent banner.
+  To silence them, turn off Sounds under Settings > Notifications > Heeler.
+  (#468)
 - Send from Chat while Claude Code shows a prompt suggestion in its input
   box, instead of holding the message with "Heeler can't find the Agent's
   input box on screen." (#525)
