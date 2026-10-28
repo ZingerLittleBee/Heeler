@@ -26,6 +26,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Scroll the Agent and Shell terminals with a trackpad or a mouse wheel on
+  iPad, not only by touch. (#512)
 - Send from Chat while Claude Code shows a prompt suggestion in its input
   box, instead of holding the message with "Heeler can't find the Agent's
   input box on screen." (#525)
