@@ -2609,7 +2609,7 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 80 tests in 5 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 82 tests in 5 suites passed' "$package_e2e_log" \
     || ! grep -q \
         'Test "one-shot exec resumes owned reads before other exchange operations" with 2 test cases passed' \
         "$package_e2e_log" \
@@ -2618,6 +2618,12 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "exec streams discard stderr without blocking stdout" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "one-shot exec finishes when its stderr read takes the stdout reply off the socket" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "exec stream finishes when its stdout read takes the trailing stderr off the socket" passed' \
         "$package_e2e_log" \
     || ! grep -q \
         'Test "exec stream read timeout and cancellation preserve channel reuse" passed' \
@@ -2727,7 +2733,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all 80 tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all 82 tests" >&2
     exit 1
 fi
 exit 0

@@ -202,6 +202,8 @@ actor SessionDriver {
     private var nextExecStdoutOwnerErrorForTesting: SSHError?
     private var nextExchangeStderrOwnerForTesting: Bool?
     private var nextExchangeOwnedReadHoldForTesting: (@Sendable () async -> Void)?
+    private var nextExchangeStderrReadWaitsForInboundForTesting = false
+    private var nextExecStdoutReadWaitsForInboundForTesting = false
     private var nextStreamLocalTimeoutHookForTesting: (@Sendable () async throws -> Void)?
     private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
@@ -790,6 +792,7 @@ actor SessionDriver {
                     madeProgress: Bool, wait: SessionWaitPlan)
                 do {
                     try checkProgress(deadline: deadline)
+                    let roundWatch = activity.watch()
                     _ = try resolveChannel(.pty(id))
                     if let pending = takePendingExecOutput(id: id, maximumBytes: maximumBytes) {
                         releaseOperation()
@@ -833,6 +836,12 @@ actor SessionDriver {
                                 transportSendOwner = stdoutOwner
                                 throw error
                             }
+                            if nextExecStdoutReadWaitsForInboundForTesting, !madeProgress {
+                                nextExecStdoutReadWaitsForInboundForTesting = false
+                                // Outlast the command, so its whole reply has
+                                // reached the socket before this read.
+                                usleep(600_000)
+                            }
                             #endif
                             var buffer = [UInt8](repeating: 0, count: maximumBytes)
                             output = try readAvailableNoting(
@@ -849,7 +858,7 @@ actor SessionDriver {
                         || transportSendOwner == stderrOwner
                     progress = (
                         output, eof, pendingSend, madeProgress,
-                        sessionWaitPlan(try requireSession()))
+                        sessionWaitPlan(try requireSession(), watching: roundWatch))
                     releaseOperation()
                 } catch {
                     await finishExecReadsIfNeeded(
@@ -2824,6 +2833,21 @@ actor SessionDriver {
         nextStreamLocalTimeoutHookForTesting = hook
     }
 
+    /// Makes the next one-shot exec round that reaches its stderr read with no
+    /// progress, after some stderr has arrived, wait until the rest of the
+    /// reply has reached the socket, so that read is the one that takes the
+    /// stdout reply off it (#523).
+    func waitForInboundBeforeNextExchangeStderrReadForTesting() {
+        nextExchangeStderrReadWaitsForInboundForTesting = true
+    }
+
+    /// Makes the next exec stream round whose stderr read found nothing wait
+    /// until the command's remaining output has reached the socket, so the
+    /// stdout read is the one that takes the trailing stderr off it (#523).
+    func waitForInboundBeforeNextExecStdoutReadForTesting() {
+        nextExecStdoutReadWaitsForInboundForTesting = true
+    }
+
     private func runStreamLocalTimeoutHookForTestingIfNeeded(_ error: any Error) async throws {
         // The app's request deadline can cancel before the driver's own timer.
         guard let failure = error as? SSHError,
@@ -3416,11 +3440,17 @@ actor SessionDriver {
         let watch: SessionActivityWatch
     }
 
-    private func sessionWaitPlan(_ session: OpaquePointer) -> SessionWaitPlan {
+    /// A round that reads more than one stream passes the watch it took before
+    /// its first read: a later read can take an earlier stream's reply off the
+    /// socket, and only that earlier count shows the reply is already queued.
+    private func sessionWaitPlan(
+        _ session: OpaquePointer,
+        watching watch: SessionActivityWatch? = nil
+    ) -> SessionWaitPlan {
         SessionWaitPlan(
             descriptor: descriptor,
             directions: sessionDirections(session),
-            watch: activity.watch())
+            watch: watch ?? activity.watch())
     }
 
     private func awaitSessionProgress(
@@ -4235,6 +4265,7 @@ actor SessionDriver {
         while true {
             do {
                 try checkProgress(deadline: deadline)
+                let roundWatch = activity.watch()
                 var madeProgress = false
                 var skipReads = false
                 let resumingRead = transportSendOwner == stdoutOwner || transportSendOwner == stderrOwner
@@ -4307,6 +4338,14 @@ actor SessionDriver {
                             owner: stderrOwner,
                             deadline: deadline,
                             cancellable: true)
+                        #if DEBUG
+                        if nextExchangeStderrReadWaitsForInboundForTesting, sentEOF, !madeProgress, !stderr.isEmpty {
+                            nextExchangeStderrReadWaitsForInboundForTesting = false
+                            // Outlast the command, so its whole reply has
+                            // reached the socket before this read.
+                            usleep(600_000)
+                        }
+                        #endif
                         let stderrChannel = try resolveChannel(identity)
                         let stderrSession = try requireSession()
                         let stderrRead = try readAvailableNoting(
@@ -4352,7 +4391,7 @@ actor SessionDriver {
                         reachedEOF: true)
                 }
 
-                let plan = sessionWaitPlan(try requireSession())
+                let plan = sessionWaitPlan(try requireSession(), watching: roundWatch)
                 if madeProgress {
                     releaseOperation()
                     await Task.yield()

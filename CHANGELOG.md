@@ -31,6 +31,16 @@ Entries reference the pull request that made the change.
 
 - Scroll the Agent and Shell terminals with a trackpad or a mouse wheel on
   iPad, not only by touch. (#512)
+- Reattach a terminal on its own when the Host's connection drops under it,
+  such as on a stalled Tailscale route soon after returning to Heeler. The
+  terminal shows Reconnecting… while Heeler redials, instead of Session
+  Ended. (#523; PR #527)
+- Stop a healthy Host from briefly showing Connecting… on its own. A
+  background check that finished could sit unnoticed until it timed out,
+  and Heeler then redialled the Host. (#523; PR #527)
+- Play a sound with Agent Notifications instead of showing a silent banner.
+  To silence them, turn off Sounds under Settings > Notifications > Heeler.
+  (#526)
 - Send from Chat while Claude Code shows a prompt suggestion in its input
   box, instead of holding the message with "Heeler can't find the Agent's
   input box on screen." (#525)

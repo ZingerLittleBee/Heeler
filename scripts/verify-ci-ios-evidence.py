@@ -380,7 +380,7 @@ def verify_records(records: list[dict], layout: str) -> tuple[set[str], set[str]
         phase = value["phase"]
         memberships = {suite(test["identity"]) for test in tests}
         if value["lane"] == "package":
-            require(len(tests) == 80 and memberships - {None} == PACKAGE_SUITES, "Package suite/count contract changed")
+            require(len(tests) == 82 and memberships - {None} == PACKAGE_SUITES, "Package suite/count contract changed")
             require(value["summary"]["skipped"] == 0, "Package mandatory tests skipped")
             expected_prefix = "HeelerSSHTests/"
         else:
