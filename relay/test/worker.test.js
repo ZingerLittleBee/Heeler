@@ -111,6 +111,7 @@ suite("forwarding to APNs", () => {
     assert.equal(payload.aps["mutable-content"], 1);
     assert.equal(payload.aps.alert.title, "Heeler");
     assert.equal(payload.aps.alert.body, "Agent update");
+    assert.equal(payload.aps.sound, "default");
     assert.equal(payload.envelope, goodBody.envelope);
   });
 
@@ -594,7 +595,7 @@ suite("live activity APNs status and caps", () => {
 });
 
 suite("alert path compatibility", () => {
-  test("alert requests without kind produce the pre-liveactivity APNs request bytes", async (t) => {
+  test("alert requests without kind produce the exact APNs request bytes", async (t) => {
     const calls = stubApns(t);
     freezeTime(t);
     const relay = createRelay();
@@ -606,7 +607,7 @@ suite("alert path compatibility", () => {
     assert.equal(call.init.method, "POST");
     assert.equal(
       call.init.body,
-      '{"aps":{"alert":{"title":"Heeler","body":"Agent update"},"mutable-content":1},"envelope":"{\\"v\\":1,\\"kid\\":\\"5-CJJlt5uLU\\",\\"n\\":\\"AAECAwQFBgcICQoL\\",\\"ct\\":\\"opaque\\"}"}',
+      '{"aps":{"alert":{"title":"Heeler","body":"Agent update"},"sound":"default","mutable-content":1},"envelope":"{\\"v\\":1,\\"kid\\":\\"5-CJJlt5uLU\\",\\"n\\":\\"AAECAwQFBgcICQoL\\",\\"ct\\":\\"opaque\\"}"}',
     );
 
     const headers = { ...call.init.headers };
