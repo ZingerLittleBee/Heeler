@@ -47,6 +47,10 @@ const COUNT_MAX = 999;
 // The extension rewrites title and body after decrypting; this generic text
 // is what iOS shows if that fails, so it must never look alarming.
 const FALLBACK_ALERT = { title: "Heeler", body: "Agent update" };
+// iOS plays nothing for an alert without a sound, and offers no switch to
+// turn one on. With the default sound, Settings > Notifications > Heeler can
+// still turn it off. The extension sets the same sound after decrypting.
+const ALERT_SOUND = "default";
 
 const encoder = new TextEncoder();
 
@@ -323,7 +327,7 @@ export function createRelay() {
         token = push.token;
         environment = push.environment;
         apnsBody = JSON.stringify({
-          aps: { alert: FALLBACK_ALERT, "mutable-content": 1 },
+          aps: { alert: FALLBACK_ALERT, sound: ALERT_SOUND, "mutable-content": 1 },
           envelope: push.envelope,
         });
         apnsHeaders = {

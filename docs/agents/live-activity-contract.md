@@ -109,8 +109,8 @@ can display the per-device Host name.
 
 ## Relay request (plugin → relay)
 
-Extends the existing `POST /push`. Bodies without `kind` behave exactly as
-today (alert path, byte-identical); the alert path rejects any body that
+Extends the existing `POST /push`. Bodies without `kind` take the alert path,
+which this extension leaves unchanged; the alert path rejects any body that
 does carry `kind`.
 
 ```json

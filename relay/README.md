@@ -32,7 +32,7 @@ plain Node.
 ### `POST /push`
 
 Request body (JSON, ≤ 8 KB). Bodies **without** `kind` are the original
-alert path and must remain byte-identical to the pre-Live-Activity relay.
+alert path, and the Live Activity path never changes what they produce.
 `kind: "liveactivity"` selects the Live Activity path. Any other `kind`
 value, or a `kind` field on an alert body, is `bad_kind`.
 
@@ -47,7 +47,9 @@ value, or a `kind` field on an alert body, is `bad_kind`.
 
 The relay wraps the envelope in a `mutable-content: 1` alert push with a
 generic fallback title/body (the app's service extension rewrites them after
-decrypting) and enforces Apple's 4 KB payload cap before forwarding.
+decrypting) and the `default` sound, and enforces Apple's 4 KB payload cap
+before forwarding. iOS plays nothing for an alert without a sound; with one,
+the user can still turn it off under Settings > Notifications > Heeler.
 
 #### Live Activity path (`kind: "liveactivity"`)
 
