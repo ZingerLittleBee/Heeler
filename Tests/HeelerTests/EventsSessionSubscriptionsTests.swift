@@ -595,6 +595,97 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    /// A live terminal is often the first to hit the dead link. Its failure
+    /// distrusts the installed transport the way a failed request does, so
+    /// the run loop redials at once, silently, and the terminal's reattach
+    /// rides the replacement instead of the dead link (#523).
+    @Test func aTerminalLostOnADeadTransportRedialsForItsReattach() async throws {
+        let first = ScriptedTransport(
+            serverInfo: ServerInfo(version: "first", protocolVersion: 17))
+        let replacement = ScriptedTransport(
+            serverInfo: ServerInfo(version: "replacement", protocolVersion: 17))
+        let connector = SequencedTransportConnector([first, replacement])
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        await first.setConnectionAlive(false)
+        await #expect(throws: TransportError.sshUnreachable(detail: "dead link")) {
+            try await session.withTerminalTransport { _, _ in
+                throw TransportError.sshUnreachable(detail: "dead link")
+            }
+        }
+
+        let reattach = try await session.withTerminalTransport { transport, generation in
+            (try await transport.ping().version, generation)
+        }
+        #expect(reattach.0 == "replacement")
+        #expect(reattach.1 == 1)
+        #expect(await updates.next() == .status(.connected))
+
+        await session.end()
+    }
+
+    /// The replacement is installed, and its waiters resumed, before its
+    /// events subscribe returns. A terminal that loses that replacement in
+    /// the window finds no stream to end, so the run loop must re-check its
+    /// transport after subscribing instead of parking on one nobody trusts.
+    @Test(.timeLimit(.minutes(1)))
+    func aTransportDistrustedDuringItsSubscribeIsReplaced() async throws {
+        let first = ScriptedTransport(
+            serverInfo: ServerInfo(version: "first", protocolVersion: 17))
+        let second = ScriptedTransport(
+            serverInfo: ServerInfo(version: "second", protocolVersion: 17))
+        let third = ScriptedTransport(
+            serverInfo: ServerInfo(version: "third", protocolVersion: 17))
+        let connector = SequencedTransportConnector([first, second, third])
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(
+                initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50)),
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        let subscribeGate = ScriptedTransportCallGate()
+        await second.gateNextSubscription(using: subscribeGate)
+        await first.setConnectionAlive(false)
+        await #expect(throws: TransportError.sshUnreachable(detail: "dead link")) {
+            try await session.withTerminalTransport { _, _ in
+                throw TransportError.sshUnreachable(detail: "dead link")
+            }
+        }
+        await subscribeGate.waitForEntry()
+
+        await #expect(throws: TransportError.timedOut) {
+            try await session.withTerminalTransport { transport, _ in
+                #expect(try await transport.ping().version == "second")
+                throw TransportError.timedOut
+            }
+        }
+        await subscribeGate.open()
+
+        let reattach = try await session.withTerminalTransport { transport, generation in
+            (try await transport.ping().version, generation)
+        }
+        #expect(reattach.0 == "third")
+        #expect(reattach.1 == 2)
+
+        await session.end()
+    }
+
     /// Parity with `withTerminalTransport`: after the run loop stopped on an
     /// action-required failure, a Host-scoped RPC reports that cause instead
     /// of a generic unreachable Host.

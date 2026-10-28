@@ -193,6 +193,32 @@ struct SessionDriverE2ETests {
         }
     }
 
+    @Test("one-shot exec finishes when its stderr read takes the stdout reply off the socket")
+    func oneShotExecSurvivesItsOwnStderrDrain() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        do {
+            // Nothing else uses this connection, so no other operation's
+            // receive can wake the exec once it has drained the socket itself.
+            await connection.waitForInboundBeforeNextExchangeStderrReadForTesting()
+            let start = ContinuousClock.now
+            // The early stderr is read first, so the held round is the one
+            // that finds nothing left but the stdout reply.
+            let result = try await connection.execute(
+                "printf early >&2; /bin/sleep 0.3; printf drained; exit 3",
+                timeout: .seconds(5))
+            #expect(ContinuousClock.now - start < .seconds(3))
+            #expect(result.stdout == Data("drained".utf8))
+            #expect(String(decoding: result.stderr, as: UTF8.self).hasSuffix("early"))
+            #expect(result.exitStatus == 3)
+            #expect(result.reachedEOF)
+            try await connection.close(timeout: .seconds(2))
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
     @Test("exec streams discard stderr without blocking stdout")
     func execStreamDiscardsStderrWithoutBlocking() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -263,6 +289,29 @@ struct SessionDriverE2ETests {
         #expect(reused.stdout == Data("reusable".utf8))
         #expect(await connection.isConnected)
         try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("exec stream finishes when its stdout read takes the trailing stderr off the socket")
+    func execStreamSurvivesItsOwnStdoutDrain() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        do {
+            let channel = try await connection.openExec(
+                command: "/bin/sleep 0.3; printf trailing >&2; exit 4",
+                timeout: .seconds(5))
+            // Nothing else uses this connection, so no other operation's
+            // receive can wake the read once it has drained the socket itself.
+            await connection.waitForInboundBeforeNextExecStdoutReadForTesting()
+            let start = ContinuousClock.now
+            #expect(try await channel.read(timeout: .seconds(5)) == nil)
+            #expect(ContinuousClock.now - start < .seconds(3))
+            #expect(try await channel.exitStatus(timeout: .seconds(5)) == 4)
+            try await channel.close(timeout: .seconds(5))
+            try await connection.close(timeout: .seconds(2))
+        } catch {
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
     }
 
     @Test("exec stream read timeout and cancellation preserve channel reuse")
