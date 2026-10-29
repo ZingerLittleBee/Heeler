@@ -1736,12 +1736,18 @@
         }
 
         func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
-            DemoUsageSample.accountFileStatus(atPath: path) ?? DemoChatSample.status(atPath: path)
+            (holdsAccountDirectories ? DemoUsageSample.accountFileStatus(atPath: path) : nil)
+                ?? DemoChatSample.status(atPath: path)
         }
 
         func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
-            DemoUsageSample.accountListing(request, adding: DemoChatSample.list(request))
+            let chat = DemoChatSample.list(request)
+            return holdsAccountDirectories ? DemoUsageSample.accountListing(request, adding: chat) : chat
         }
+
+        /// The demo's other Claude Code directories are the studio Host's,
+        /// the only one whose report counts them.
+        private var holdsAccountDirectories: Bool { hostID == DemoScreenshotFixture.studioHostID }
 
         func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
             DemoChatSample.read(range)

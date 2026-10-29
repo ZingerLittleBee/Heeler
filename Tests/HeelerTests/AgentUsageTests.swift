@@ -817,5 +817,27 @@ struct ClaudeUsagePreferenceTests {
             #expect(restored.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work"])
             #expect(store.accountChangeFailure == nil)
         }
+
+        /// The demo's other Claude Code directories are the studio Host's:
+        /// the build Host's browser neither lists nor accepts them, rather
+        /// than add one it then reports as not found.
+        @Test func onlyTheStudioHostHoldsTheDemoAccountDirectories() async throws {
+            let build = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.buildHostID })
+            let transport = try DemoScreenshotFixture.transport(for: build)
+            let store = AgentUsageStore(
+                hostID: build.id, transports: ScriptedTransportProvider(transports: [build.id: transport]))
+            await store.refresh()
+            #expect(store.supportsClaudeAccounts)
+            let directory = "\(DemoChatSample.home)/.claude-2"
+            #expect(await store.addAccount(directory: directory) == .refused(.notClaudeDirectory))
+            let home = try await transport.listFiles(RemoteFileListingRequest(directory: DemoChatSample.home))
+            #expect(home?.entries.contains { $0.name == ".claude-2" } != true)
+
+            let studio = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.studioHostID })
+            let studioTransport = try DemoScreenshotFixture.transport(for: studio)
+            #expect(try await studioTransport.fileStatus(atPath: directory + "/.claude.json")?.kind == .regular)
+            let studioHome = try await studioTransport.listFiles(RemoteFileListingRequest(directory: DemoChatSample.home))
+            #expect(studioHome?.entries.contains { $0.name == ".claude-2" } == true)
+        }
     }
 #endif
