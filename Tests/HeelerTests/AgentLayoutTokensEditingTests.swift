@@ -69,13 +69,13 @@ struct AgentLayoutTokensEditingTests {
             AgentLayoutTokensEditing.style(of: AgentRowStyledToken(.agent, dim: false)) == .default)
     }
 
-    @Test func subtitleAndStatusDescriptionsMatchHostKindAndStatusColumn() {
+    @Test func subtitleAndStatusDescriptionsMatchHostKindAndRowStyles() {
         #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac") == "Studio Mac")
         #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "").isEmpty)
         let statusIcon = AgentLayoutTokensEditing.description(for: .stateIcon)
         let statusText = AgentLayoutTokensEditing.description(for: .stateText)
-        #expect(statusIcon.contains("status column"))
-        #expect(statusText.contains("status column"))
+        #expect(statusIcon.contains("badge or ring"))
+        #expect(statusText.contains("badge or ring") && statusText.contains("add status"))
         #expect(AgentLayoutTokensEditing.description(for: .workspace) == "Workspace or repo folder name")
         #expect(AgentLayoutTokensEditing.description(for: .host) == "Host name")
         #expect(AgentLayoutTokensEditing.description(for: .status) == "Agent Status as text")

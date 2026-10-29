@@ -77,9 +77,10 @@ enum AgentLayoutTokensEditing {
     static func description(for token: AgentRowToken) -> String {
         switch token {
         case .stateIcon:
-            "Status icon. Heeler's status column at the end of Row 1 always shows it; it is not offered as a field."
+            "Status icon. The row's status badge or ring shows it; it is not offered as a field."
         case .stateText:
-            "Status text. Shown in the status column, not as a field in this row."
+            "herdr's status text. Heeler shows the status with the row's badge or ring, not in this row; "
+                + "add status to show it as text."
         case .workspace:
             "Workspace or repo folder name"
         case .tab:

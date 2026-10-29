@@ -57,7 +57,7 @@ enum AgentRowRenderer {
 
     private static func value(for token: AgentRowToken, agent row: ConsoleAgent) -> String? {
         switch token {
-        case .stateIcon, .stateText: nil // The status column owns both.
+        case .stateIcon, .stateText: nil // The row's status badge or ring owns both.
         case .workspace: row.workspaceLabel
         case .tab: row.showsTabLabel ? row.tabLabel : nil
         case .pane: row.agent.paneTitle ?? row.paneLabel
