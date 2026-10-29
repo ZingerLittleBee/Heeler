@@ -202,21 +202,56 @@ struct ClaudeAccountsUsageTests {
             "\(labels.sorted())")
     }
 
+    /// An iPad's wide layout, at a landscape iPad Pro 11-inch's width: Account
+    /// rows under Claude Code and a strip card per Account for one Host; a
+    /// card per Host with a row per Account for All Hosts.
+    @Test(arguments: [false, true])
+    func theWideLayoutListsAccountsInItsRowsAndStrip(allHosts: Bool) async throws {
+        let studio = try await Fixture.entry("studio", try Fixture.report())
+        let build = try await Fixture.entry("build", try Fixture.report(Fixture.lone, codexPercent: 20))
+        for dark in [false, true] {
+            let page = NavigationStack {
+                AgentUsageDashboard(
+                    entries: [studio, build], scopeHostID: .constant(allHosts ? nil : studio.id),
+                    metric: .constant(.cost), allowsColumns: true)
+            }
+            let name = "wide-\(allHosts ? "all-hosts" : "studio")-\(dark ? "dark" : "light")"
+            let labels = try await renderedLabels(
+                page, size: CGSize(width: 1_210, height: 1_500), dark: dark, image: name,
+                until: { $0.contains { $0.contains("Claude Code · claude-2") } })
+            #expect(labels.contains { $0.contains("Claude Code · claude-2") }, "\(labels.sorted())")
+            if allHosts {
+                #expect(!labels.contains { $0.contains("of Claude Code") }, "\(labels.sorted())")
+            } else {
+                for expected in [
+                    "Default, $18.00, 60% of Claude Code · 18K tokens", "Claude Code · work, Directory not found",
+                ] {
+                    #expect(labels.contains { $0.contains(expected) }, "Missing \(expected) in \(labels.sorted())")
+                }
+            }
+        }
+    }
+
     private func dashboard(_ entry: AgentUsageHostEntry) -> some View {
         NavigationStack {
             AgentUsageDashboard(entries: [entry], scopeHostID: .constant(entry.id), metric: .constant(.cost))
         }
     }
 
-    /// The accessibility labels `view` shows on a tall iPhone-wide window
-    /// once `ready` holds, or when the wait runs out.
+    /// The accessibility labels `view` shows on a window of `size` once
+    /// `ready` holds, or when the wait runs out; `image` also records what
+    /// it drew under that name.
     private func renderedLabels(
-        _ view: some View, until ready: (Set<String>) -> Bool
+        _ view: some View, size: CGSize = CGSize(width: 390, height: 2_700), dark: Bool = false,
+        image: String? = nil, until ready: (Set<String>) -> Bool
     ) async throws -> Set<String> {
-        let controller = UIHostingController(rootView: view.environment(\.locale, Locale(identifier: "en_US")))
+        let controller = UIHostingController(rootView: view
+            .environment(\.locale, Locale(identifier: "en_US"))
+            .environment(\.colorScheme, dark ? .dark : .light))
+        controller.overrideUserInterfaceStyle = dark ? .dark : .light
         controller.safeAreaRegions = []
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 2_700), rootViewController: controller)
+        let bounds = CGRect(origin: .zero, size: size)
+        let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
         defer { window.isHidden = true }
         var labels: Set<String> = []
         var budget = PollBudget(.seconds(5))
@@ -226,6 +261,17 @@ struct ClaudeAccountsUsageTests {
             if ready(labels) { break }
             try await Task.sleep(for: .milliseconds(50))
             budget.charge()
+        }
+        if let image {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 2
+            let rendered = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+                controller.view.drawHierarchy(in: bounds, afterScreenUpdates: true)
+            }
+            Attachment.record(rendered, named: "\(image).png", as: .png)
+            let directory = URL.documentsDirectory.appendingPathComponent("usage-accounts-renders")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try #require(rendered.pngData()).write(to: directory.appendingPathComponent("\(image).png"))
         }
         return labels
     }
