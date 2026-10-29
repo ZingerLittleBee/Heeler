@@ -288,3 +288,35 @@ test("an Account whose Transcripts cannot be listed reports its own error while 
   f.stale();
   assert.deepEqual(totals(await f.finish()), [34, 12, 22]);
 });
+
+test("an Account added after a run that failed is not counted yet, unless no refresh can start", { skip: asRoot }, async t => {
+  const f = fixture(t);
+  f.transcript(f.env.CLAUDE_CONFIG_DIR, "default.jsonl", [assistant("primary", 12)]);
+  const projects = join(f.env.CLAUDE_CONFIG_DIR, "projects");
+  const directory = name => { const path = join(f.root, name); f.transcript(path, `${name}.jsonl`, [assistant(name, 5)]); return path; };
+  const states = report => claudeOf(report).accounts.map(account => account.tokenUsage.state);
+  const added = [{ id: "added-one", directory: directory("one"), name: "one" }];
+  let changed;
+  let counted;
+  let unstarted;
+  try {
+    chmodSync(projects, 0);
+    assert.equal(claudeOf(await f.finish()).tokenUsage.state, "error");
+    f.accounts(added);
+    // Served from the failed run's snapshot while the new run counts the Account.
+    changed = f.query();
+    counted = await f.finish();
+    chmodSync(f.cache(), 0o500);
+    f.accounts([...added, { id: "added-two", directory: directory("two"), name: "two" }]);
+    unstarted = f.query();
+  } finally {
+    chmodSync(projects, 0o700);
+    chmodSync(f.cache(), 0o700);
+  }
+  assert.equal(changed.refreshing, true);
+  assert.deepEqual(states(changed), ["error", "noData"]);
+  assert.deepEqual(states(counted), ["error", "ok"]);
+  assert.equal(unstarted.refreshing, false);
+  assert.deepEqual(claudeOf(unstarted).accounts.map(account => account.tokenUsage.reason), ["Could not read the Claude Code Transcripts.",
+    "The background refresh could not start.", "The background refresh could not start."]);
+});

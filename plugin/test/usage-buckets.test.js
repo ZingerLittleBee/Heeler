@@ -33,6 +33,16 @@ test("calendar conversion work scales with timestamps, not bucket dimensions", (
   assert.ok(conversions <= timestamps.length + 2, `${conversions} calendar conversions for two bucket timestamps, coverage and now`);
 });
 
+test("the program's error covers the Accounts its snapshot counted, and the Default one before Accounts", () => {
+  const added = { id: "added-id", isDefault: false, name: "added", directory: "/home/u/.claude-2", state: "ok" };
+  const states = snapshot => reportFromSnapshot({ complete: true, buckets: [], ...snapshot }, "UTC", true, Date.now(), false,
+    { accounts: [...claude.accounts, added] }).programs[0].accounts.map(account => account.tokenUsage.state);
+  const errors = { claude: "Could not read the Claude Code Transcripts." };
+  assert.deepEqual(states({ errors }), ["error", "noData"]);
+  assert.deepEqual(states({ errors, countedAccounts: ["default", "added-id"] }), ["error", "error"]);
+  assert.deepEqual(states({ errors: { ...errors, "claude:default": errors.claude }, countedAccounts: ["default"] }), ["error", "noData"]);
+});
+
 test("coverage is the first recorded day clamped to the calendar, with or without usage", () => {
   const now = Date.parse("2026-03-09T00:30:00Z");
   const report = coveredSince => reportFromSnapshot({ complete: true, buckets: [], coveredSince }, "UTC", false, now, false, claude);

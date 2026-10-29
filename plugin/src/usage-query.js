@@ -84,7 +84,8 @@ try {
     // a failing refresh instead, keeping a program's own scan error.
     const failed = failures.failing ? "The background refresh failed repeatedly."
       : startFailed && stale ? "The background refresh could not start." : null;
-    const served = failed ? { ...snapshot, errors: { claude: failed, codex: failed, ...snapshot?.errors } } : snapshot;
+    const served = failed ? { ...snapshot, errors: { claude: failed, codex: failed,
+      ...Object.fromEntries(counted.map(id => [`claude:${id}`, failed])), ...snapshot?.errors } } : snapshot;
     // Suggestions are checked against the Account file as it is now, not as the last run saw it.
     const suggestions = accountSuggestions({ agents: agentDirectories(runtime.stateDir), accounts, ignored: accountFile.ignored,
       candidates: Array.isArray(snapshot?.claudeCandidates) ? snapshot.claudeCandidates : [] });

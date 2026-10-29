@@ -104,10 +104,14 @@ export function reportFromSnapshot(snapshot, timeZone, refreshing, now = Date.no
     if (bucket.program === "claude") counted.get(bucket.account ?? "default")?.push(bucket);
     else if (bucket.program === "codex") codex.push(bucket);
   }
+  // The program's error covers the Accounts its snapshot counted (before
+  // Accounts, the Default one); an Account added since is not counted yet.
+  const countedBefore = Array.isArray(snapshot?.countedAccounts) ? snapshot.countedAccounts : ["default"];
   const claude = { program: "claude", tokenUsage: usage([...counted.values()].flat(), errors.claude),
     usageLimits: claudeLimitsOf(snapshot?.usageLimits?.claude),
     accounts: accounts.map(({ id, isDefault, name, directory, state }) => state !== "ok" ? { id, isDefault, name, directory, state } : {
-      id, isDefault, name, directory, state, tokenUsage: usage(counted.get(id), errors[`claude:${id}`] ?? errors.claude),
+      id, isDefault, name, directory, state,
+      tokenUsage: usage(counted.get(id), errors[`claude:${id}`] ?? (countedBefore.includes(id) ? errors.claude : undefined)),
       usageLimits: claudeLimitsOf(snapshot?.usageLimits?.claudeAccounts?.[id] ?? (isDefault ? snapshot?.usageLimits?.claude : undefined)),
     }),
     accountSuggestions: suggestions };
