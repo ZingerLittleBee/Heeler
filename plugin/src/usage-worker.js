@@ -12,7 +12,7 @@ import { priceContribution, pricingVersion } from "./usage/pricing.js";
 import { codexFiles, codexLines, ArchiveUnavailableError } from "./usage/codex-files.js";
 import { createCodexState, consumeCodexLine, finishCodexRead, codexTotalSignature } from "./usage/codex-scanner.js";
 import { readCodexLimits, codexRolloutLimits, codexLimitsWithFallback } from "./usage/codex-limits.js";
-import { readClaudeLimits, readClaudeLimitsInServer, cacheClaudeLimits, claudeVersion } from "./usage/claude-limits.js";
+import { readClaudeLimits, readClaudeLimitsInServer, cacheClaudeLimits, claudeVersion, accountRuntime, claudeLimitsEntries, nextClaudeRead } from "./usage/claude-limits.js";
 import { readClaudeAccounts } from "./usage/accounts.js";
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -75,6 +75,7 @@ async function run() {
     const previous = await loadCheckpoint(directory, previousSnapshot, maintainHeartbeat);
     const accounts = readClaudeAccounts(values.config, runtime).filter(account => account.state === "ok");
     const counted = new Set(accounts.map(account => account.id));
+    limits.claude = claudeLimitsEntries(limits.claude, accounts);
     // An Account no longer counted (removed, missing, a duplicate) leaves with
     // its files and records, without a rebuild; one that returns is read anew.
     const leaving = record => record.program === "claude" && !counted.has(record.account);
@@ -138,8 +139,10 @@ async function run() {
       // Commit parser progress even when a rebuild is still resolving a burst.
       // The query keeps the old aggregates; the next worker resumes the new log.
       const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, countedAccounts: [...counted],
-        limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude?.report },
-        nextLimitsAt: limits.codex?.nextAllowedAt, nextClaudeLimitsAt: limits.claude?.nextAllowedAt,
+        // The program's Claude reading stays the Default Account's, for apps that ignore Accounts.
+        limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude.default?.report,
+          claudeAccounts: Object.fromEntries(accounts.map(({ id }) => [id, limits.claude[id]?.report])) },
+        nextLimitsAt: limits.codex?.nextAllowedAt, nextClaudeLimitsAt: nextClaudeRead(limits.claude, accounts),
         skippedArchives: Object.values(fileStates).filter(file => file.skipped).length,
         unreadableFiles: unlistedPaths.length + files.filter(file => fileStates[file.logicalPath || file.path]?.unreadable).length,
         // Coverage starts at the earliest record any remaining Transcript holds;
@@ -292,14 +295,22 @@ async function run() {
       limits.codex = { service: await readCodexLimits(runtime, directory), nextAllowedAt: Date.now() + 60_000 };
       heartbeat();
     }
-    if (values["claude-limits"] && (!limits.claude || !Number.isFinite(limits.claude.nextAllowedAt) || Date.now() >= limits.claude.nextAllowedAt)) {
-      limits.claude = { ...limits.claude, nextAllowedAt: Date.now() + 60_000 };
+    // Each Account keeps its own cadence, back-off and last good reading;
+    // one check of the recorded claude's version serves them all.
+    let version;
+    for (const account of values["claude-limits"] ? accounts : []) {
+      const entry = limits.claude[account.id];
+      if (Number.isFinite(entry?.nextAllowedAt) && Date.now() < entry.nextAllowedAt) continue;
+      limits.claude[account.id] = { ...entry, nextAllowedAt: Date.now() + 60_000 };
       writeJSON(join(directory, "limits.json"), limits);
-      const version = await claudeVersion(runtime, directory, limits.claude.version);
+      if (version === undefined) {
+        version = await claudeVersion(runtime, directory, limits.claudeVersion);
+        limits.claudeVersion = version ?? undefined;
+      }
       const inServer = process.platform === "darwin" ? await readClaudeLimitsInServer(runtime, directory, version?.version, {
-        socketPath: process.env.HERDR_SOCKET_PATH, wait: async () => { await sleep(100); maintainHeartbeat(); } }) : null;
-      const reading = inServer ?? await readClaudeLimits(runtime, directory, version?.version);
-      limits.claude = { ...cacheClaudeLimits(limits.claude, reading), ...(version ? { version } : {}) };
+        account, socketPath: process.env.HERDR_SOCKET_PATH, wait: async () => { await sleep(100); maintainHeartbeat(); } }) : null;
+      const reading = inServer ?? await readClaudeLimits(accountRuntime(runtime, account), directory, version?.version);
+      limits.claude[account.id] = cacheClaudeLimits(limits.claude[account.id], reading);
       heartbeat();
     }
     const fallback = Object.values(fileStates).map(file => file.carry.latestLimits).filter(reading => reading?.windows?.length)

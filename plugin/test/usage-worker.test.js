@@ -251,8 +251,11 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   assert.deepEqual(accounts.map(account => [account.id, account.state, account.tokenUsage?.state]),
     [["default", "ok", "ok"], ["7f3c9a2e", "ok", "noData"], ["c41d07b9", "missing", undefined]]);
   assert.deepEqual(accounts[0].tokenUsage, claude(report));
-  assert.deepEqual(accounts[0].usageLimits, { ...claudeLimits, observedAt: accounts[0].usageLimits.observedAt });
-  accounts[0].usageLimits.observedAt = claudeLimits.observedAt;
+  // The program's reading is the Default Account's; the stub answers the added one alike.
+  for (const { usageLimits } of accounts.slice(0, 2)) {
+    assert.deepEqual(usageLimits, { ...claudeLimits, observedAt: usageLimits.observedAt });
+    usageLimits.observedAt = claudeLimits.observedAt;
+  }
   for (const [index, directory] of ["/Users/u/.claude", "/Users/u/.claude-2", "/Volumes/x/.claude"].entries()) accounts[index].directory = directory;
   const limits = report.programs[1].usageLimits;
   assert.equal(limits.source, "lastSession");

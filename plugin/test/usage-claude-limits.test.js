@@ -6,15 +6,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { cacheClaudeLimits } from "../src/usage/claude-limits.js";
+import { cacheClaudeLimits, claudeLimitsEntries } from "../src/usage/claude-limits.js";
 
 const plugin = fileURLToPath(new URL("..", import.meta.url));
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const reading = report => report.programs.find(program => program.program === "claude").usageLimits;
-function fixture(t, initialMode = "success", { herdr = false } = {}) {
+function fixture(t, initialMode = "success", { herdr = false, configDir = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), "heeler-claude-limits-"));
   const bin = join(root, "bin");
-  const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: join(root, "home"), USER: "herdr-account", CLAUDE_CONFIG_DIR: join(root, "claude-home"),
+  const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: join(root, "home"), USER: "herdr-account",
+    ...(configDir ? { CLAUDE_CONFIG_DIR: join(root, "claude-home") } : {}),
     CODEX_HOME: join(root, "codex-home"), HERDR_PLUGIN_CONFIG_DIR: join(root, "config"),
     HERDR_PLUGIN_STATE_DIR: join(root, "state"), HERDR_BIN_PATH: herdr ? join(bin, "herdr") : "/missing",
     HTTPS_PROXY: "http://proxy.invalid:3128", NODE_EXTRA_CA_CERTS: join(root, "ca.pem") };
@@ -43,7 +44,8 @@ const fs=require('node:fs');
 const root=${JSON.stringify(root)};
 if(process.argv[2]==='--version'){fs.appendFileSync(root+'/versions','checked\\n');process.stdout.write((fs.existsSync(root+'/version')?fs.readFileSync(root+'/version','utf8'):'2.1.309')+' (Claude Code)\\n');process.exit(0);}
 assert.deepEqual(process.argv.slice(2), ['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--no-session-persistence','--strict-mcp-config','--settings','{"disableAllHooks":true}']);
-assert.equal(process.env.CLAUDE_CONFIG_DIR,${JSON.stringify(env.CLAUDE_CONFIG_DIR)});
+// Each request records the Account directory it ran with; an Account may override the mode.
+const configDir=process.env.CLAUDE_CONFIG_DIR??null;
 assert.equal(process.env.HOME,${JSON.stringify(env.HOME)});
 assert.equal(process.env.USER,${JSON.stringify(env.USER)}, 'Claude must receive the recorded keychain account');
 assert.equal(process.env.HTTPS_PROXY,${JSON.stringify(env.HTTPS_PROXY)});
@@ -53,11 +55,11 @@ fs.appendFileSync(root+'/starts',String(process.pid)+'\\n');
 const send=response=>process.stdout.write(JSON.stringify({type:'control_response',response})+'\\n');
 let initialized=false;
 require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
- const request=JSON.parse(line); fs.appendFileSync(root+'/requests',line+'\\n');
+ const request=JSON.parse(line); fs.appendFileSync(root+'/requests',JSON.stringify({...request,configDir})+'\\n');
  assert.equal(request.type,'control_request');
  if(request.request.subtype==='initialize') {assert.equal(initialized,false); initialized=true; send({request_id:request.request_id,subtype:'success',response:{}});return;}
  assert.equal(initialized,true);assert.deepEqual(request.request,{subtype:'get_usage',skip_behaviors:true});
- const mode=fs.readFileSync(root+'/mode','utf8');
+ const mode=fs.readFileSync(configDir&&fs.existsSync(configDir+'/stub-mode')?configDir+'/stub-mode':root+'/mode','utf8');
  if(mode==='timeout'||mode==='silent')return;
  if(mode==='error'||mode==='old')return send({request_id:request.request_id,subtype:'error',error:mode==='old'?'Unsupported control request subtype: get_usage':'private failure'});
  const reset=new Date(Number(fs.readFileSync(root+'/clock'))+30000).toISOString();
@@ -98,7 +100,10 @@ const read=fs.readFileSync;fs.readFileSync=function(path,...args){if(String(path
   const requests = () => existsSync(join(root, "requests")) ? readFileSync(join(root, "requests"), "utf8").trim().split("\n").map(JSON.parse) : [];
   t.after(() => { try { process.kill(JSON.parse(readFileSync(join(cache(), "worker.lock"))).pid, "SIGKILL"); } catch {} rmSync(root, { recursive: true, force: true }); });
   const versions = () => existsSync(join(root, "versions")) ? readFileSync(join(root, "versions"), "utf8").trim().split("\n").length : 0;
-  return { root, env, now, mode, setClock, query, finish, requests, cache, executable, versions };
+  const accounts = entries => writeFileSync(join(env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"),
+    JSON.stringify({ version: 1, claude: { defaultName: null, accounts: entries } }));
+  const limits = () => JSON.parse(readFileSync(join(cache(), "limits.json")));
+  return { root, env, now, mode, setClock, query, finish, requests, cache, executable, versions, accounts, limits };
 }
 
 test("Claude limits use the recorded process with only initialize and get_usage", async t => {
@@ -115,6 +120,8 @@ test("Claude limits use the recorded process with only initialize and get_usage"
   assert.equal(result.windows[4].label, "model-x");
   assert.equal(existsSync(join(f.root, "credential-access")), false);
   assert.deepEqual(f.requests().map(request => request.request.subtype), ["initialize", "get_usage"]);
+  // The Default Account keeps the recorded CLAUDE_CONFIG_DIR.
+  assert.deepEqual(f.requests().map(request => request.configDir), [f.env.CLAUDE_CONFIG_DIR, f.env.CLAUDE_CONFIG_DIR]);
 });
 
 test("disabled queries start no Claude process and hide another device's cached reading", async t => {
@@ -132,8 +139,8 @@ for (const [mode, state, reason] of [["missing", "unavailable", "programMissing"
     const f = fixture(t, mode);
     const result = reading(await f.finish());
     assert.deepEqual(result, { state, reason });
-    const cache = JSON.parse(readFileSync(join(f.cache(), "limits.json")));
-    assert.equal(cache.claude.nextAllowedAt, f.now + (state === "error" ? 300_000 : 60_000));
+    const cache = f.limits();
+    assert.equal(cache.claude.default.nextAllowedAt, f.now + (state === "error" ? 300_000 : 60_000));
     assert.equal(JSON.stringify(cache).includes("private failure"), false);
   });
 }
@@ -287,4 +294,106 @@ test("a Claude Code that leaves unknown requests unanswered is too old without a
   f.setClock(f.now + 240_000);
   assert.equal(reading(await f.finish()).state, "ok");
   assert.equal(f.versions(), 4);
+});
+
+const claudeAccountsOf = report => report.programs.find(program => program.program === "claude").accounts;
+const accountLimits = report => claudeAccountsOf(report).map(account => account.usageLimits);
+function withAccount(f) {
+  const directory = join(f.root, "claude-2");
+  mkdirSync(directory);
+  f.accounts([{ id: "second-id", directory, name: "claude-2" }, { id: "gone-id1", directory: join(f.root, "gone"), name: "gone" }]);
+  return directory;
+}
+
+test("an added Account reads with its own CLAUDE_CONFIG_DIR and the Default Account with none, after one version check", async t => {
+  const f = fixture(t, "success", { configDir: false });
+  const second = withAccount(f);
+  const report = await f.finish();
+  assert.deepEqual(f.requests().map(request => [request.request.subtype, request.configDir]),
+    [["initialize", null], ["get_usage", null], ["initialize", second], ["get_usage", second]]);
+  assert.equal(f.versions(), 1);
+  assert.deepEqual(accountLimits(report).map(limits => limits?.state), ["ok", "ok", undefined]);
+  // The program's reading stays the Default Account's.
+  assert.deepEqual(reading(report), accountLimits(report)[0]);
+  assert.deepEqual(Object.keys(f.limits().claude), ["default", "second-id"]);
+  // An Account that leaves takes its throttle and readings out of limits.json.
+  f.accounts([]);
+  assert.deepEqual(claudeAccountsOf(await f.finish()).map(account => account.id), ["default"]);
+  assert.deepEqual(Object.keys(f.limits().claude), ["default"]);
+  assert.equal(f.requests().length, 4);
+});
+
+test("each Account keeps its own throttle, back-off and last good reading", async t => {
+  const f = fixture(t, "success", { configDir: false });
+  const second = withAccount(f);
+  writeFileSync(join(second, "stub-mode"), "error");
+  const reads = () => f.requests().filter(request => request.request.subtype === "get_usage").map(request => request.configDir);
+  const nextRead = () => JSON.parse(readFileSync(join(f.cache(), "buckets.json"))).nextClaudeLimitsAt;
+  let [primary, added] = accountLimits(await f.finish());
+  assert.equal(primary.state, "ok");
+  // The Default Account's reading is not the failed Account's last good one.
+  assert.deepEqual(added, { state: "error", reason: "requestFailed" });
+  assert.deepEqual(reads(), [null, second]);
+  assert.equal(nextRead(), f.now + 60_000);
+  // The Default Account is read again after a minute while the other backs off for five.
+  f.setClock(f.now + 60_000);
+  await f.finish();
+  assert.deepEqual(reads(), [null, second, null]);
+  assert.equal(nextRead(), f.now + 120_000);
+  writeFileSync(join(second, "stub-mode"), "success");
+  f.setClock(f.now + 300_000);
+  [primary, added] = accountLimits(await f.finish());
+  assert.deepEqual(reads(), [null, second, null, null, second]);
+  assert.equal(added.state, "ok");
+  writeFileSync(join(second, "stub-mode"), "error");
+  f.setClock(f.now + 360_000);
+  [primary, added] = accountLimits(await f.finish());
+  assert.deepEqual(reads(), [null, second, null, null, second, null, second]);
+  assert.equal(primary.state, "ok");
+  assert.equal(added.state, "throttled");
+  assert.equal(added.observedAt, new Date(f.now + 300_000).toISOString());
+  assert.equal(added.retryAt, new Date(f.now + 660_000).toISOString());
+});
+
+test("on macOS each Account is read through the action, which refuses a directory the Account file does not list", async t => {
+  const f = fixture(t, "success", { herdr: true, configDir: false });
+  writeFileSync(join(f.root, "darwin"), "");
+  const second = withAccount(f);
+  assert.deepEqual(accountLimits(await f.finish()).map(limits => limits?.state), ["ok", "ok", undefined]);
+  assert.equal(readFileSync(join(f.root, "herdr-invocations"), "utf8").trim().split("\n").length, 2);
+  assert.deepEqual(f.requests().map(request => request.configDir), [null, null, second, second]);
+  const answer = directory => {
+    writeFileSync(join(f.cache(), "claude-request.json"), JSON.stringify({ token: "refused", version: null, directory }));
+    const result = spawnSync(process.execPath, [join(plugin, "src/usage-claude-action.js")], {
+      env: { HERDR_PLUGIN_CONFIG_DIR: f.env.HERDR_PLUGIN_CONFIG_DIR, PATH: "/usr/bin:/bin" }, encoding: "utf8", timeout: 10_000 });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(readFileSync(join(f.cache(), "claude-reading.json")));
+  };
+  mkdirSync(join(f.root, "unlisted"));
+  // An unlisted directory, a listed one that is not ok, and the Default Account's own directory by name.
+  for (const directory of [join(f.root, "unlisted"), join(f.root, "gone"), join(f.env.HOME, ".claude")]) {
+    assert.deepEqual(answer(directory), { token: "refused", reading: { state: "error", reason: "requestFailed" } });
+  }
+  assert.equal(existsSync(join(f.cache(), "claude-request.json")), false);
+  assert.equal(f.requests().length, 4);
+});
+
+test("a query without --claude-limits reports every Account's limits as disabled", async t => {
+  const f = fixture(t, "success", { configDir: false });
+  withAccount(f);
+  const disabled = [{ state: "disabled" }, { state: "disabled" }, undefined];
+  assert.deepEqual(accountLimits(await f.finish(false)), disabled);
+  assert.equal(f.requests().length, 0);
+  assert.deepEqual(accountLimits(await f.finish()).map(limits => limits?.state), ["ok", "ok", undefined]);
+  // Readings another device's query cached stay hidden.
+  assert.deepEqual(accountLimits(f.query(false)), disabled);
+});
+
+test("limits.json keeps entries for counted Accounts only and drops a 0.7.x entry for the Host", () => {
+  const accounts = [{ id: "default" }, { id: "second-id" }];
+  const entry = { report: { state: "ok" }, nextAllowedAt: 1 };
+  assert.deepEqual(claudeLimitsEntries({ default: entry, "second-id": entry, "gone-id1": entry }, accounts), { default: entry, "second-id": entry });
+  // "lastGood" is a valid Account id, so the old shape is told apart by its number.
+  assert.deepEqual(claudeLimitsEntries({ ...entry, lastGood: { state: "ok" }, version: {} }, [...accounts, { id: "lastGood" }]), {});
+  assert.deepEqual(claudeLimitsEntries(undefined, accounts), {});
 });

@@ -1035,8 +1035,41 @@
             "state": "noData"
           },
           "usageLimits": {
-            "state": "error",
-            "reason": "requestFailed"
+            "state": "ok",
+            "source": "service",
+            "observedAt": "2026-10-23T12:34:50.000Z",
+            "plan": "max",
+            "windows": [
+              {
+                "id": "fiveHour",
+                "durationMinutes": 300,
+                "usedPercent": 12,
+                "resetsAt": null,
+                "expired": false
+              },
+              {
+                "id": "sevenDayOpus",
+                "durationMinutes": 10080,
+                "usedPercent": 23,
+                "resetsAt": null,
+                "expired": false
+              },
+              {
+                "id": "sevenDaySonnet",
+                "durationMinutes": 10080,
+                "usedPercent": 34,
+                "resetsAt": null,
+                "expired": false
+              },
+              {
+                "id": "claude:model:Custom model",
+                "durationMinutes": null,
+                "usedPercent": null,
+                "resetsAt": "2020-01-01T00:00:00.000Z",
+                "expired": true,
+                "label": "Custom model"
+              }
+            ]
           }
         },
         {

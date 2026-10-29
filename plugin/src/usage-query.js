@@ -65,6 +65,8 @@ try {
     let startFailed = false;
     try {
       refreshing = Boolean(activeLock(directory));
+      // Claude Code's next read is the earliest over the Accounts the last run
+      // counted; an Account added since then makes the snapshot stale.
       if (!refreshing && !failures.paused && (stale
           || snapshot.limitsVersion !== 1 || !snapshot.nextLimitsAt || Date.now() >= snapshot.nextLimitsAt
           || (values["claude-limits"] && (!snapshot.nextClaudeLimitsAt || Date.now() >= snapshot.nextClaudeLimitsAt)))) {
