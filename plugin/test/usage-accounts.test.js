@@ -77,6 +77,8 @@ test("an Account file that is missing, malformed or of another version adds no A
     { ...entry, id: "noname01", name: " " },
     { ...entry, id: "samename", name: "claude-2" },
     { ...entry, id: "sameasdf", name: "Main" },
+    // Ids key plain objects such as limits.json's entries.
+    ...["__proto__", "toString", "constructor", "hasOwnProperty"].map(id => ({ ...entry, id, name: id })),
     "not an entry",
     { id: "work_1-A", directory: "/Volumes/x/.claude", name: "work" },
   ] } }));

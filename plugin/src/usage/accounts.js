@@ -5,6 +5,8 @@ import { usageRoots } from "./cache.js";
 // The app offers at most three added Accounts; more come only from a hand-edited file.
 const ACCOUNT_LIMIT = 3;
 const ACCOUNT_ID = /^[A-Za-z0-9_-]{8,32}$/;
+// Ids key plain objects (limits.json's entries), so a name every object already has is refused.
+const validId = id => typeof id === "string" && ACCOUNT_ID.test(id) && !(id in Object.prototype);
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const named = value => typeof value === "string" && value.trim() !== "";
 const realPath = path => { try { return realpathSync(path); } catch { return null; } };
@@ -25,7 +27,7 @@ export function readAccountFile(configDir) {
   const names = new Set(defaultName === null ? [] : [defaultName]);
   const accounts = [];
   for (const entry of Array.isArray(file.claude.accounts) ? file.claude.accounts : []) {
-    if (!object(entry) || typeof entry.id !== "string" || !ACCOUNT_ID.test(entry.id) || ids.has(entry.id)
+    if (!object(entry) || !validId(entry.id) || ids.has(entry.id)
         || typeof entry.directory !== "string" || !isAbsolute(entry.directory) || !named(entry.name) || names.has(entry.name)) continue;
     ids.add(entry.id);
     names.add(entry.name);

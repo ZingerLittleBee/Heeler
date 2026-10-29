@@ -758,7 +758,9 @@ directory 0700); the query and the worker only read it.
   label ("Default").
 - `accounts`: the added Accounts in the order the user added them, at most
   3. `id` is a stable identifier the app generates (8 to 32 characters of
-  `[A-Za-z0-9_-]`, never `default`). `directory` is absolute and kept as
+  `[A-Za-z0-9_-]`, never `default` or a property every JavaScript object
+  has, such as `__proto__` or `toString`, since ids key the plugin's
+  objects). `directory` is absolute and kept as
   chosen, not resolved: Claude Code keys its keychain item by the string it
   is given. `name` is non-empty and unique in the file, `defaultName`
   included.
