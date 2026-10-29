@@ -143,13 +143,7 @@ struct AgentUsageLimitsStrip: View {
                 ForEach(AgentUsageLimitsCard.readings(for: report)) { reading in
                     Divider()
                     HStack(alignment: .top, spacing: 12) {
-                        HStack(spacing: 7) {
-                            Circle().fill(AgentUsageStyle.color(for: reading.program)).frame(width: 8, height: 8)
-                            Text(AgentUsageProgramTitle.title(program: reading.program, account: reading.account))
-                                .font(.subheadline.weight(.semibold))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .frame(width: 130, alignment: .leading)
+                        name(reading)
                         readingContent(reading)
                     }
                 }
@@ -163,8 +157,31 @@ struct AgentUsageLimitsStrip: View {
         .background(cardBackground)
     }
 
+    /// A Host card row's program, with the Claude Code Account on its own
+    /// line below.
+    private func name(_ reading: AgentUsageLimitsCard) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 7) {
+                Circle().fill(AgentUsageStyle.color(for: reading.program)).frame(width: 8, height: 8)
+                Text(AgentUsageReport.Program.displayName(for: reading.program))
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let account = reading.account {
+                Text(account)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 15)
+            }
+        }
+        .frame(width: 130, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AgentUsageProgramTitle.title(program: reading.program, account: reading.account))
+    }
+
     /// One program's or one Account's card, for a Host with several
-    /// Accounts.
+    /// Accounts; the cards in a row share its height.
     private func readingCard(_ reading: AgentUsageLimitsCard) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if case .limits(_, let program, let account, let limits) = reading {
@@ -176,7 +193,7 @@ struct AgentUsageLimitsStrip: View {
             readingContent(reading)
         }
         .padding(18)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(cardBackground)
         .accessibilityElement(children: .combine)
     }
