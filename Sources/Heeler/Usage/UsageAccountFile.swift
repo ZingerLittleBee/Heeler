@@ -90,7 +90,7 @@ struct UsageAccountFile: Codable, Equatable, Sendable {
     private(set) var defaultName: String?
     /// The added Accounts, in the order the user added them.
     private(set) var accounts: [Account] = []
-    /// Suggested directories the user dismissed.
+    /// Suggested directories the user dismissed, and removed Accounts'.
     private(set) var ignored: [String] = []
     private var otherFields: [String: JSONValue] = [:]
     private var otherClaudeFields: [String: JSONValue] = [:]
@@ -227,10 +227,15 @@ struct UsageAccountFile: Codable, Equatable, Sendable {
         accounts[index].name = name
     }
 
-    /// Removes an added Account; one already gone is not an error. The
-    /// directory may be suggested again.
+    /// Removes an added Account; one already gone is not an error. Its
+    /// directory joins `ignored` as stored, so the plugin does not suggest
+    /// it again right away; adding it back takes it off.
     mutating func remove(accountID: String) {
-        accounts.removeAll { $0.id == accountID }
+        guard let index = accounts.firstIndex(where: { $0.id == accountID }) else { return }
+        let directory = accounts.remove(at: index).directory
+        let key = Self.comparable(directory)
+        guard !ignored.contains(where: { Self.comparable($0) == key }) else { return }
+        ignored.append(directory)
     }
 
     /// Dismisses a suggested directory, so the plugin stops offering it. A

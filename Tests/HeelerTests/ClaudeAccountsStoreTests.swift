@@ -213,6 +213,7 @@ struct ClaudeAccountsStoreTests {
         #expect(try await savedFile(transport).accounts.map(\.name) == ["Max", "work"])
         #expect(await store.removeAccount(try account(store, "work")))
         #expect(try await savedFile(transport).accounts.map(\.id) == ["7f3c9a2e"])
+        #expect(try await savedFile(transport).ignored == ["/Volumes/x/.claude"])
         // The Default Account is never removed.
         #expect(await store.removeAccount(try account(store, "Default")) == false)
         #expect(await transport.replacedUsageAccountFiles.count == 3)

@@ -183,8 +183,14 @@ struct UsageAccountFileTests {
         let added = try file.add(directory: "/Users/u/.claude-2", defaultDirectory: nil)
         file.remove(accountID: "zzzzzzzz")
         #expect(file.accounts.count == 1)
+        #expect(file.ignored.isEmpty)
         file.remove(accountID: added.id)
         #expect(file.accounts.isEmpty)
+        // A removed Account's directory is not suggested again right away;
+        // adding it back takes it off the list.
+        #expect(file.ignored == ["/Users/u/.claude-2"])
+        try file.add(directory: "/Users/u/.claude-2/", defaultDirectory: nil)
+        #expect(file.ignored.isEmpty)
         try file.ignore(directory: "/Users/u/.claude-backup", defaultDirectory: nil)
         try file.ignore(directory: "/Users/u/.claude-backup/", defaultDirectory: nil)
         #expect(file.ignored == ["/Users/u/.claude-backup"])

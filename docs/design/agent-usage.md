@@ -767,7 +767,8 @@ directory 0700); the query and the worker only read it.
   chosen, not resolved: Claude Code keys its keychain item by the string it
   is given. `name` is non-empty and unique in the file, `defaultName`
   included.
-- `ignored`: suggested directories the user dismissed.
+- `ignored`: suggested directories the user dismissed, and the directories
+  of Accounts the user removed.
 - A missing or unreadable file means no added Accounts. An entry that breaks
   these rules is skipped; a file with another `version` is ignored (an app
   newer than the plugin). Hosts that resolve to the same plugin config
@@ -1043,15 +1044,16 @@ tests and decoded by the Swift tests.
     beside the Claude Code limits toggle. It lists the Accounts (name, the
     directory with `~` for the home, and any state other than `ok`), renames
     one (names unique on the Host; the Default Account defaults to
-    "Default"), removes an added one after a confirmation, lists suggestions
-    with Add and Ignore, and offers "Choose Another Directory…" through the
-    remote directory browser, which also shows symbolic links to
-    directories. A chosen directory must hold `.claude.json` or
-    `projects/`, and must not be one already listed. A Host has at most four
-    Accounts, the Default Account included; at four, adding is disabled with
-    the reason. Every change reads, edits and atomically replaces
-    `usage-accounts.json`, serialized per Host like the Notification
-    Registration file, then reads the usage again.
+    "Default"), removes an added one after a confirmation (its directory
+    joins `ignored`, so it is not suggested again right away; adding it
+    back takes it off), lists suggestions with Add and Ignore, and offers
+    "Choose Another Directory…" through the remote directory browser,
+    which also shows symbolic links to directories. A chosen directory must
+    hold `.claude.json` or `projects/`, and must not be one already listed.
+    A Host has at most four Accounts, the Default Account included; at
+    four, adding is disabled with the reason. Every change reads, edits and
+    atomically replaces `usage-accounts.json`, serialized per Host like the
+    Notification Registration file, then reads the usage again.
   - While suggestions are pending, the Host's Usage view shows a one-line
     notice that opens the sheet.
   - Accounts keep one order everywhere: the Default Account, then the order

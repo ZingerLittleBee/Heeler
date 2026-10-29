@@ -815,6 +815,8 @@ struct ClaudeUsagePreferenceTests {
             #expect(await store.removeAccount(teamAccount))
             guard case .available(let restored) = store.state else { Issue.record("No report"); return }
             #expect(restored.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work"])
+            // Removed, it is not offered again at once.
+            #expect(restored.claudeProgram?.accountSuggestions?.map(\.name) == ["claude-work"])
             #expect(store.accountChangeFailure == nil)
         }
 
