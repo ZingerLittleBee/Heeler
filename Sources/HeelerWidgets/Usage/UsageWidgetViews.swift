@@ -1111,11 +1111,13 @@ struct UsageWindowRow: View {
         let expired = window.isExpired(at: now)
         VStack(alignment: .leading, spacing: 4) {
             // A long name first takes a smaller size, then the countdown's
-            // room; the bar and the percentage stay.
+            // room at either size, before it is cut; the bar and the
+            // percentage stay.
             ViewThatFits(in: .horizontal) {
                 heading(expired: expired, size: size, countdown: showsCountdown)
                 heading(expired: expired, size: size - 1.5, countdown: showsCountdown)
                 heading(expired: expired, size: size, countdown: false)
+                heading(expired: expired, size: size - 1.5, countdown: false)
             }
             if expired {
                 Text(UsageWidgetText.windowReset)
