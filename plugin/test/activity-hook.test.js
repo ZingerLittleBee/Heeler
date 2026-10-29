@@ -648,11 +648,18 @@ suite("activity-hook: Claude Code Account suggestions", () => {
   const agentsPath = () => join(stateDir, "usage", "claude-agents.json");
   const agentsFile = () => JSON.parse(readFileSync(agentsPath(), "utf8"));
   const lookups = () => stubInvocations().filter((entry) => entry.args[0] === "pane" && entry.args[1] === "process-info");
+  // Only a directory that exists is kept, so the Agents' directories are real.
+  const agentDirectory = (...names) => {
+    const path = join(home, "agents", ...names);
+    mkdirSync(path, { recursive: true });
+    return path;
+  };
 
   test("keeps only CLAUDE_CONFIG_DIR of the pane's Claude Code process, preferring the group leader", { skip: environmentReadable }, async () => {
-    const leader = startProcess({ CLAUDE_CONFIG_DIR: "/agents/work dir/.claude-work", SECRET_TOKEN: "must-not-be-kept" });
-    const follower = startProcess({ CLAUDE_CONFIG_DIR: "/agents/follower" });
-    const other = startProcess({ CLAUDE_CONFIG_DIR: "/agents/other" });
+    const work = agentDirectory("work dir", ".claude-work");
+    const leader = startProcess({ CLAUDE_CONFIG_DIR: work, SECRET_TOKEN: "must-not-be-kept" });
+    const follower = startProcess({ CLAUDE_CONFIG_DIR: agentDirectory("follower") });
+    const other = startProcess({ CLAUDE_CONFIG_DIR: agentDirectory("other") });
     writeHerdrStub([listedAgent()], undefined, [], [], processInfo([
       claudeProcess(follower, "/opt/claude/bin/claude"), claudeProcess(other, "node"), claudeProcess(leader),
     ], leader));
@@ -662,7 +669,7 @@ suite("activity-hook: Claude Code Account suggestions", () => {
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(lookups().map((entry) => entry.args), [["pane", "process-info", "--pane", PANE_ID]]);
     const file = agentsFile();
-    assert.deepEqual(Object.keys(file.directories), ["/agents/work dir/.claude-work"]);
+    assert.deepEqual(Object.keys(file.directories), [work]);
     assert.equal(Object.keys(file.panes).length, 1);
     assert.equal(readFileSync(agentsPath(), "utf8").includes("must-not-be-kept"), false);
     assert.equal(statSync(agentsPath()).mode & 0o777, 0o600);
@@ -671,7 +678,28 @@ suite("activity-hook: Claude Code Account suggestions", () => {
     rmSync(agentsPath());
     writeHerdrStub([listedAgent()], undefined, [], [], processInfo([claudeProcess(other, "node"), claudeProcess(follower, "/opt/claude/bin/claude")]));
     assert.equal((await runHook(statusEvent("working"), { env: usageEnv })).status, 0);
-    assert.deepEqual(Object.keys(agentsFile().directories), ["/agents/follower"]);
+    assert.deepEqual(Object.keys(agentsFile().directories), [join(home, "agents", "follower")]);
+  });
+
+  test("keeps only the existing directory the variable names, never the variables after it", { skip: environmentReadable }, async () => {
+    const directory = agentDirectory(".claude-2");
+    const decoy = agentDirectory("decoy");
+    for (const [env, expected] of [
+      // bash exports a function under a name with `%%`, and its body has no ` NAME=`.
+      [{ CLAUDE_CONFIG_DIR: directory, "BASH_FUNC_tok%%": '() {  curl -H "Authorization: Bearer SECRET-XYZ" https://x\n}' }, [directory]],
+      [{ CLAUDE_CONFIG_DIR: directory, "my.token": "SECRET-123" }, [directory]],
+      [{ CLAUDE_CONFIG_DIR: join(home, "agents", "gone") }, []],
+      // An earlier value that names the variable makes `ps -E` ambiguous; `/proc` is not.
+      [{ NOTE: `x CLAUDE_CONFIG_DIR=${decoy} y`, CLAUDE_CONFIG_DIR: directory }, process.platform === "linux" ? [directory] : []],
+    ]) {
+      rmSync(agentsPath(), { force: true });
+      const pid = startProcess(env);
+      writeHerdrStub([listedAgent()], undefined, [], [], processInfo([claudeProcess(pid)], pid));
+      const result = await runHook(statusEvent("working"), { env: usageEnv });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(Object.keys(agentsFile().directories), expected);
+      assert.equal(readFileSync(agentsPath(), "utf8").includes("SECRET"), false);
+    }
   });
 
   test("a process without CLAUDE_CONFIG_DIR, or with a relative one, suggests nothing", { skip: environmentReadable }, async () => {

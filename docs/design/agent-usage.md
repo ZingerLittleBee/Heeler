@@ -834,8 +834,12 @@ counted until the user adds it.
   foreground process group's leader when one is: `/proc/<pid>/environ` on
   Linux, `ps -E -ww -o command= -p <pid>` on macOS, where the environment
   follows the arguments that `ps -ww -o command=` prints and a value runs
-  until the next ` NAME=` or the end. Only an absolute value of that
-  variable is kept, in `<stateDir>/usage/claude-agents.json` with when it
+  until the next ` NAME=` (a name being anything up to `=`, since bash
+  exports functions as `BASH_FUNC_name%%`) or the end; output in which the
+  variable appears twice is ambiguous and skipped. Only an absolute value
+  of that variable that names an existing directory is kept, so a value
+  read on into the next variable never is, in
+  `<stateDir>/usage/claude-agents.json` with when it
   was last seen; entries unseen for 30 days are dropped, and a read that
   fails records no directory, though the pane still waits 10 minutes.
   macOS shows no environment for Apple platform binaries, Linux none for a

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { readJSON, writeJSON } from "./cache.js";
 
@@ -10,9 +10,11 @@ const PANE_INTERVAL = 10 * 60_000;
 const PANE_LIMIT = 256;
 const DIRECTORY_RETENTION = 30 * 86_400_000;
 const TIME_LIMIT = 3_000;
-// In `ps -E` output a value runs until the next ` NAME=` or the end.
-const PS_VALUE = / CLAUDE_CONFIG_DIR=(.*?)(?= [A-Za-z_][A-Za-z0-9_]*=|$)/;
+// In `ps -E` output a value runs until the next ` NAME=` or the end. A name is
+// anything up to `=`: bash exports a function as `BASH_FUNC_name%%=`.
+const PS_VALUE = / CLAUDE_CONFIG_DIR=(.*?)(?= [^\s=]+=|$)/g;
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
+const isDirectory = path => { try { return statSync(path).isDirectory(); } catch { return false; } };
 const times = (value, keep) => Object.fromEntries(Object.entries(object(value) ? value : {})
   .filter(([key, at]) => Number.isFinite(at) && keep(key, at)));
 
@@ -54,10 +56,15 @@ async function configDirectoryOf(pid, deadline) {
     const [command, withEnvironment] = await Promise.all([["-ww"], ["-E", "-ww"]]
       .map(flags => output("/bin/ps", [...flags, "-o", "command=", "-p", String(pid)], deadline)));
     if (command === null || withEnvironment === null || !withEnvironment.startsWith(command)) return null;
-    value = PS_VALUE.exec(withEnvironment.slice(command.length))?.[1];
+    // Another value that names the variable leaves no telling which is real.
+    const values = [...withEnvironment.slice(command.length).matchAll(PS_VALUE)];
+    if (values.length !== 1) return null;
+    value = values[0][1];
   }
   // A relative value depends on where the Agent started, which is not known.
-  return typeof value === "string" && isAbsolute(value) ? value : null;
+  // Only an existing directory is kept: a value read on into the next
+  // variable, with whatever that holds, is not one.
+  return typeof value === "string" && isAbsolute(value) && isDirectory(value) ? value : null;
 }
 
 /** The pane's Claude Code process: the foreground group leader when it is one. */
