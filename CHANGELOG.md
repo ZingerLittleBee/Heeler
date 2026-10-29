@@ -31,6 +31,10 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep the Composer, Direct Input and Shell Terminal input rows on top of
+  the keyboard on an iPhone Duo's inner display, where the Console's tab
+  bar stays below them. A gap the height of the tab bar opened between
+  them. (#534)
 - Show a new Claude Code Agent's Chat, such as one started in a new
   worktree, as No Messages Yet until its first message, instead of
   Conversation Not Found. (#530)
