@@ -132,6 +132,10 @@ struct ClaudeAccountsSheet: View {
                 ForEach(listing.accounts) { @Sendable account in
                     MainActorContent { accountRow(account) }
                 }
+                // Not on the rows: their content is Sendable, and `.plain` is
+                // isolated to the main actor. It keeps a row's words in their
+                // own colors instead of the button tint.
+                .buttonStyle(.plain)
             } header: {
                 Text("Accounts")
             } footer: {
@@ -149,10 +153,14 @@ struct ClaudeAccountsSheet: View {
                 }
             }
             Section {
+                let canChoose = !listing.isFull && store.supportsClaudeAccounts
                 Button("Choose Another Directory…", systemImage: "folder.badge.plus") {
                     browser = store.accountDirectoryBrowser()
                 }
-                .disabled(listing.isFull || !store.supportsClaudeAccounts)
+                // A disabled list button keeps its title dark; dim it like
+                // a full Host's Add buttons.
+                .foregroundStyle(canChoose ? Color.accentColor : Color(uiColor: .tertiaryLabel))
+                .disabled(!canChoose)
                 .accessibilityIdentifier("usage.accounts.choose")
             } footer: {
                 if listing.isFull { Text(ClaudeAccountsListing.fullFooter) }
@@ -161,7 +169,7 @@ struct ClaudeAccountsSheet: View {
         .listStyle(.insetGrouped)
         .modifier(ClaudeAccountsTitle(hostName: hostName))
         .modifier(ClaudeAccountsDialogs(
-            hostName: hostName, store: store, renaming: $renaming, draftName: $draftName, removing: $removing,
+            hostName: hostName, store: store, renaming: $renaming, draftName: $draftName,
             isAlertActive: browser == nil))
         .sheet(item: $browser) { browser in
             RemoteDirectoryBrowserView(browser: browser, purpose: .claudeAccount, isUsing: isAddingDirectory) { path in
@@ -175,8 +183,7 @@ struct ClaudeAccountsSheet: View {
     private func accountRow(_ account: AgentUsageReport.Account) -> some View {
         let isChanging = store.isChangingAccount(.account(account.id))
         return Button {
-            draftName = account.name ?? ""
-            renaming = account
+            rename(account)
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -184,14 +191,9 @@ struct ClaudeAccountsSheet: View {
                         .foregroundStyle(.primary)
                     directoryText(account.directory)
                     if let line = ClaudeAccountsListing.stateLine(account.state) {
-                        Label {
-                            Text(line)
-                        } icon: {
+                        detailLine(line) {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                         }
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
                     }
                 }
                 Spacer(minLength: 8)
@@ -201,20 +203,13 @@ struct ClaudeAccountsSheet: View {
         }
         .disabled(isChanging)
         .accessibilityHint("Rename")
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if !account.isDefault {
-                Button("Remove", systemImage: "trash", role: .destructive) { removing = account }
-            }
-        }
-        .contextMenu {
-            Button("Rename", systemImage: "pencil") {
-                draftName = account.name ?? ""
-                renaming = account
-            }
-            if !account.isDefault {
-                Button("Remove", systemImage: "trash", role: .destructive) { removing = account }
-            }
-        }
+        .modifier(ClaudeAccountRowActions(
+            account: account, hostName: hostName, store: store, removing: $removing, rename: { rename(account) }))
+    }
+
+    private func rename(_ account: AgentUsageReport.Account) {
+        draftName = account.name ?? ""
+        renaming = account
     }
 
     private func suggestionRow(_ suggestion: AgentUsageReport.AccountSuggestion, isFull: Bool) -> some View {
@@ -223,12 +218,12 @@ struct ClaudeAccountsSheet: View {
                 Text(suggestion.name)
                 directoryText(suggestion.directory)
                 if let source = ClaudeAccountsListing.sourceLine(suggestion.source) {
-                    Label(source.text, systemImage: source.symbol)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
+                    detailLine(source.text) {
+                        Image(systemName: source.symbol).foregroundStyle(.secondary)
+                    }
                 }
             }
+            .layoutPriority(1)
             .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
             if store.isChangingAccount(.directory(suggestion.directory)) {
@@ -238,9 +233,16 @@ struct ClaudeAccountsSheet: View {
                     Task { await store.ignoreSuggestion(suggestion) }
                 }
                 .buttonStyle(.borderless)
+                .font(.subheadline)
                 .accessibilityLabel("Ignore \(suggestion.name)")
-                Button("Add", systemImage: "plus") {
+                Button {
                     Task { await store.addAccount(suggestion) }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "plus").imageScale(.small)
+                        Text("Add")
+                    }
+                    .font(.subheadline.weight(.medium))
                 }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
@@ -249,6 +251,16 @@ struct ClaudeAccountsSheet: View {
                 .accessibilityLabel("Add \(suggestion.name)")
             }
         }
+    }
+
+    /// A row's third line: a state or source, its symbol beside it.
+    private func detailLine(_ text: String, @ViewBuilder symbol: () -> some View) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            symbol().imageScale(.small)
+            Text(text).foregroundStyle(.secondary)
+        }
+        .font(.footnote)
+        .padding(.top, 1)
     }
 
     private func directoryText(_ directory: String) -> some View {
@@ -299,15 +311,53 @@ private struct ClaudeAccountsTitle: ViewModifier {
     }
 }
 
-/// The Accounts sheet's rename alert, remove confirmation and failure
-/// alert. The failure alert yields to the directory browser's own while
-/// that is open.
+/// An Account row's swipe action and menu, and the confirmation before
+/// removing it, which points at the row it removes. The Default Account
+/// can only be renamed.
+private struct ClaudeAccountRowActions: ViewModifier {
+    let account: AgentUsageReport.Account
+    let hostName: String
+    let store: AgentUsageStore
+    @Binding var removing: AgentUsageReport.Account?
+    let rename: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if !account.isDefault {
+                    Button("Remove", systemImage: "trash", role: .destructive) { removing = account }
+                }
+            }
+            .contextMenu {
+                Button("Rename", systemImage: "pencil", action: rename)
+                if !account.isDefault {
+                    Button("Remove", systemImage: "trash", role: .destructive) { removing = account }
+                }
+            }
+            .confirmationDialog("Remove \(account.displayName)?", isPresented: isRemoving, titleVisibility: .visible) {
+                Button("Remove Account", role: .destructive) {
+                    Task { await store.removeAccount(account) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Its Token Usage and Usage Limits stop showing. The directory and its sign-in stay on \(hostName).")
+            }
+    }
+
+    private var isRemoving: Binding<Bool> {
+        Binding(
+            get: { removing?.id == account.id },
+            set: { if !$0, removing?.id == account.id { removing = nil } })
+    }
+}
+
+/// The Accounts sheet's rename alert and failure alert. The failure alert
+/// yields to the directory browser's own while that is open.
 private struct ClaudeAccountsDialogs: ViewModifier {
     let hostName: String
     let store: AgentUsageStore
     @Binding var renaming: AgentUsageReport.Account?
     @Binding var draftName: String
-    @Binding var removing: AgentUsageReport.Account?
     let isAlertActive: Bool
 
     func body(content: Content) -> some View {
@@ -320,19 +370,11 @@ private struct ClaudeAccountsDialogs: ViewModifier {
                 Button("Cancel", role: .cancel) {}
                 Button("Save") { save(account) }
                     .disabled(!check(account).canSave)
+                    .keyboardShortcut(.defaultAction)
             } message: { account in
+                // A presented alert keeps the message it opened with; only
+                // Save follows the draft.
                 Text(check(account).message)
-            }
-            .confirmationDialog(
-                "Remove \(removing?.displayName ?? "")?", isPresented: isPresent($removing),
-                titleVisibility: .visible, presenting: removing
-            ) { account in
-                Button("Remove Account", role: .destructive) {
-                    Task { await store.removeAccount(account) }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: { _ in
-                Text("Its Token Usage and Usage Limits stop showing. The directory and its sign-in stay on \(hostName).")
             }
             .modifier(ClaudeAccountChangeFailureAlert(store: store, isActive: isAlertActive))
     }

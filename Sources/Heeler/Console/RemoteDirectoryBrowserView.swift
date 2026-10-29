@@ -61,11 +61,11 @@ struct RemoteDirectoryBrowserView: View {
                         locationRow(currentPath)
                     } footer: {
                         if let refusal = browser.refusal {
-                            Label {
-                                Text(refusal)
-                            } icon: {
+                            HStack(alignment: .firstTextBaseline, spacing: 5) {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                                Text(refusal)
                             }
+                            .accessibilityElement(children: .combine)
                             .accessibilityIdentifier("directory-browser-refusal")
                         }
                     }

@@ -574,13 +574,12 @@ struct AgentUsageUncountedAccount: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             AgentUsageProgramTitle(program: "claude", account: account)
-            Label {
-                Text(reason)
-            } icon: {
+            // Flush with the card's edge, like a readable card's source line.
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(reason).foregroundStyle(.secondary)
             }
             .font(.subheadline)
-            .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
