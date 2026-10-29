@@ -512,6 +512,9 @@ struct HostOnboardingView: View {
                 ) {
                     isConfirmingHostKeyReplacement = true
                 }
+                // A List row tints the icon with the accent color; the role
+                // only reddens the title.
+                .listItemTint(.red)
             } footer: {
                 Text(replacement.verificationNote)
             }
