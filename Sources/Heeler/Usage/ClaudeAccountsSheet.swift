@@ -204,7 +204,8 @@ struct ClaudeAccountsSheet: View {
         .disabled(isChanging)
         .accessibilityHint("Rename")
         .modifier(ClaudeAccountRowActions(
-            account: account, hostName: hostName, store: store, removing: $removing, rename: { rename(account) }))
+            account: account, hostName: hostName, store: store, isChanging: isChanging, removing: $removing,
+            rename: { rename(account) }))
     }
 
     private func rename(_ account: AgentUsageReport.Account) {
@@ -313,26 +314,30 @@ private struct ClaudeAccountsTitle: ViewModifier {
 
 /// An Account row's swipe action and menu, and the confirmation before
 /// removing it, which points at the row it removes. The Default Account
-/// can only be renamed.
+/// can only be renamed, and a row being saved waits for its last change.
 private struct ClaudeAccountRowActions: ViewModifier {
     let account: AgentUsageReport.Account
     let hostName: String
     let store: AgentUsageStore
+    let isChanging: Bool
     @Binding var removing: AgentUsageReport.Account?
     let rename: () -> Void
 
     func body(content: Content) -> some View {
         content
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                if !account.isDefault {
+                if !account.isDefault && !isChanging {
                     Button("Remove", systemImage: "trash", role: .destructive) { removing = account }
                 }
             }
             .contextMenu {
-                Button("Rename", systemImage: "pencil", action: rename)
-                if !account.isDefault {
-                    Button("Remove", systemImage: "trash", role: .destructive) { removing = account }
+                Group {
+                    Button("Rename", systemImage: "pencil", action: rename)
+                    if !account.isDefault {
+                        Button("Remove", systemImage: "trash", role: .destructive) { removing = account }
+                    }
                 }
+                .disabled(isChanging)
             }
             .confirmationDialog("Remove \(account.displayName)?", isPresented: isRemoving, titleVisibility: .visible) {
                 Button("Remove Account", role: .destructive) {

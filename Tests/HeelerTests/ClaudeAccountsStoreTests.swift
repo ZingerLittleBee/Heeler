@@ -167,6 +167,39 @@ struct ClaudeAccountsStoreTests {
         #expect(await transport.agentUsageClaudeLimits.last == store.claudeLimitsEnabled)
     }
 
+    /// A second change to a row that is still saving says why it did
+    /// nothing, rather than reporting success.
+    @Test func aChangeToARowStillSavingIsRefused() async throws {
+        let (store, transport) = try await readyStore()
+        await transport.setUsageAccountFile(Data(#"""
+            {"version": 1, "claude": {"accounts": [
+              {"id": "7f3c9a2e", "directory": "/Users/u/.claude-2", "name": "claude-2"}]}}
+            """#.utf8))
+        let claude2 = try account(store, "claude-2")
+        let renameRead = ScriptedTransportCallGate()
+        await transport.gateNextAgentUsageRead(renameRead)
+        let renaming = Task { await store.renameAccount(claude2, to: "Max") }
+        await renameRead.waitForEntry()
+        #expect(await store.removeAccount(claude2) == false)
+        #expect(store.accountChangeFailure?.message == ClaudeAccountError.busy.message)
+        await renameRead.open()
+        #expect(await renaming.value)
+        #expect(try await savedFile(transport).accounts.map(\.name) == ["Max"])
+
+        // The browser shows the refusal in place.
+        store.accountChangeFailure = nil
+        let work = try suggestion(store, "claude-work")
+        let addRead = ScriptedTransportCallGate()
+        await transport.gateNextAgentUsageRead(addRead)
+        let adding = Task { await store.addAccount(work) }
+        await addRead.waitForEntry()
+        #expect(await store.addAccount(directory: work.directory) == .refused(.busy))
+        #expect(store.accountChangeFailure == nil)
+        await addRead.open()
+        #expect(await adding.value)
+        #expect(await transport.replacedUsageAccountFiles.count == 2)
+    }
+
     @Test func renamingAndRemovingEditTheFileTheHostHolds() async throws {
         let (store, transport) = try await readyStore()
         await transport.setUsageAccountFile(Data(#"""

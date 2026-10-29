@@ -456,25 +456,22 @@ extension AgentUsageStore {
     /// Adds a suggested directory under its suggested name.
     @discardableResult
     func addAccount(_ suggestion: AgentUsageReport.AccountSuggestion) async -> Bool {
-        await reportingFailure {
-            try await self.changeAccounts(.directory(suggestion.directory)) { file, defaultDirectory in
-                try file.add(directory: suggestion.directory, name: suggestion.name, defaultDirectory: defaultDirectory)
-            }
-        }
+        await reportingFailure { try await self.add(suggestion) }
     }
 
     /// Adds a directory picked in the remote browser. It must hold Claude
     /// Code's `.claude.json` or `projects/`; one a suggestion offers is
     /// added as that suggestion.
     func addAccount(directory: String) async -> ChosenDirectoryOutcome {
-        if case .available(let report) = snapshotState,
-            let suggestion = report.claudeProgram?.accountSuggestions?.first(where: { $0.directory == directory })
-        {
-            return await addAccount(suggestion) ? .added : .failed
-        }
         do {
-            try await changeAccounts(.directory(directory), checkingDirectory: directory) { file, defaultDirectory in
-                try file.add(directory: directory, defaultDirectory: defaultDirectory)
+            if case .available(let report) = snapshotState,
+                let suggestion = report.claudeProgram?.accountSuggestions?.first(where: { $0.directory == directory })
+            {
+                try await add(suggestion)
+            } else {
+                try await changeAccounts(.directory(directory), checkingDirectory: directory) { file, defaultDirectory in
+                    try file.add(directory: directory, defaultDirectory: defaultDirectory)
+                }
             }
             return .added
         } catch let refusal as ClaudeAccountError {
@@ -583,6 +580,12 @@ extension AgentUsageStore {
         return value
     }
 
+    private func add(_ suggestion: AgentUsageReport.AccountSuggestion) async throws {
+        try await changeAccounts(.directory(suggestion.directory)) { file, defaultDirectory in
+            try file.add(directory: suggestion.directory, name: suggestion.name, defaultDirectory: defaultDirectory)
+        }
+    }
+
     private func reportingFailure(_ change: () async throws -> Void) async -> Bool {
         do {
             try await change()
@@ -596,8 +599,9 @@ extension AgentUsageStore {
     /// Reads the Account file, applies `edit` and replaces the file when it
     /// changed, under the Account file gate, then reads Usage again. The
     /// row's change stays pending until a read started after the write
-    /// lands: that read, or a newer one that replaced it. `edit` gets the
-    /// Default Account's directory, which cannot be added again.
+    /// lands: that read, or a newer one that replaced it; another change to
+    /// the same row is refused until then. `edit` gets the Default Account's
+    /// directory, which cannot be added again.
     private func changeAccounts(
         _ change: AccountChange, checkingDirectory: String? = nil,
         _ edit: @escaping @Sendable (inout UsageAccountFile, String?) throws -> Void
@@ -609,7 +613,7 @@ extension AgentUsageStore {
                     + "or newer on this Host.")
         }
         guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Claude Code Accounts") }
-        guard pendingAccountChanges.insert(change).inserted else { return }
+        guard pendingAccountChanges.insert(change).inserted else { throw ClaudeAccountError.busy }
         var defaultDirectory: String?
         if case .available(let report) = snapshotState {
             defaultDirectory = report.claudeProgram?.accounts?.first(where: \.isDefault)?.directory

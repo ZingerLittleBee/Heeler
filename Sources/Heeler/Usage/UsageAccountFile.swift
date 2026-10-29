@@ -19,6 +19,8 @@ enum ClaudeAccountError: Error, Equatable, Sendable {
     case accountNotFound
     /// The Host's plugin predates Accounts; the note names its version.
     case pluginRequirement(String)
+    /// The row's last change is still being saved or read back.
+    case busy
 
     var message: String {
         switch self {
@@ -41,6 +43,8 @@ enum ClaudeAccountError: Error, Equatable, Sendable {
             "This Account was already removed. Refresh Usage to see the current list."
         case .pluginRequirement(let note):
             note
+        case .busy:
+            "The last change here is still being saved. Try again in a moment."
         }
     }
 }
