@@ -190,7 +190,7 @@ struct AgentUsageSection: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
-        if let chip = AgentUsageLimitChip.chips(in: scope).first {
+        if let chip = AgentUsageLimitChip.closest(in: scope) {
             AgentUsageLimitRow(chip: chip)
         }
     }
@@ -234,10 +234,15 @@ struct AgentUsageDayStrip: View {
     }
 }
 
-/// The tightest Usage Limits window on one Host.
+/// The tightest Usage Limits window on one Host, named "claude-2 · 5-hour"
+/// for one of several Claude Code Accounts.
 struct AgentUsageLimitRow: View {
     let chip: AgentUsageLimitChip
     @Environment(\.locale) private var locale
+
+    private var title: String {
+        chip.account.map { "\($0) · \(chip.title)" } ?? chip.title
+    }
 
     private func subtitle(now: Date) -> String {
         let name = AgentUsageReport.Program.displayName(for: chip.program)
@@ -259,7 +264,7 @@ struct AgentUsageLimitRow: View {
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 0) {
-                Text(chip.title)
+                Text(title)
                 TimelineView(.periodic(from: .now, by: 60)) { context in
                     Text(subtitle(now: context.date))
                 }

@@ -126,6 +126,36 @@ struct AgentUsageScope: Equatable {
         Array(Set(programs.flatMap { $0.daily.map(\.date) })).sorted()
     }
 
+    /// One Claude Code Account's part of its program for a range.
+    struct AccountUsage: Equatable, Identifiable {
+        let id: String
+        let name: String
+        /// nil when its Token Usage could not be read; zero when it has
+        /// none recorded yet.
+        let summary: AgentUsageReport.Summary?
+    }
+
+    /// The readable Accounts that make up `program` for a range, in Account
+    /// order, when the scope is one Host with more than one. Accounts belong
+    /// to their Host, so a scope of several Hosts keeps program totals only;
+    /// the program's own figures already add its Accounts up.
+    func accounts(of program: String, range: AgentUsageRange) -> [AccountUsage] {
+        guard included.count == 1, let host = included.first,
+            let accounts = host.programs.first(where: { $0.program == program })?.accounts
+        else { return [] }
+        let readable = accounts.filter(\.isReadable)
+        guard readable.count > 1 else { return [] }
+        return readable.map { account in
+            let usage = account.tokenUsage
+            let summary: AgentUsageReport.Summary? = switch usage?.state {
+            case "ok"?: usage?.totals.map(range.summary(in:))
+            case "noData"?: .init(tokens: .zero, estimatedCostUSD: 0, unpricedTokens: 0)
+            default: nil
+            }
+            return AccountUsage(id: account.id, name: account.displayName, summary: summary)
+        }
+    }
+
     /// The short line a Host that cannot be added up shows in place of its
     /// figures.
     static func reason(for state: AgentUsageStore.State) -> String {

@@ -1,9 +1,55 @@
 import SwiftUI
 
-/// Browses remote folders and selects a Workspace draft. Starting the Agent
-/// remains a separate action on the owning New Agent form.
+/// Browses remote folders and selects a Workspace draft, or a Claude Code
+/// Account's directory. Starting the Agent remains a separate action on the
+/// owning New Agent form.
 struct RemoteDirectoryBrowserView: View {
+    /// What the chosen folder is for, which sets the sheet's words.
+    enum Purpose {
+        /// A new Workspace's or Terminal's directory, filled into a form.
+        case workspace
+        /// A Claude Code Account, added as soon as it is chosen.
+        case claudeAccount
+
+        var title: String {
+            switch self {
+            case .workspace: "Browse Directories"
+            case .claudeAccount: "Choose Directory"
+            }
+        }
+
+        var useTitle: String {
+            switch self {
+            case .workspace: "Select"
+            case .claudeAccount: "Add"
+            }
+        }
+
+        var useLabel: String {
+            switch self {
+            case .workspace: "Select folder"
+            case .claudeAccount: "Add folder as an Account"
+            }
+        }
+
+        var emptyDescription: String {
+            switch self {
+            case .workspace: "You can select this folder for the new Workspace."
+            case .claudeAccount: "You can add this folder as a Claude Code Account."
+            }
+        }
+    }
+
+    /// One listed folder, read before the rows are built.
+    private struct Row: Hashable, Sendable {
+        let name: String
+        let isSymbolicLink: Bool
+    }
+
     @Bindable var browser: RemoteDirectoryBrowser
+    var purpose = Purpose.workspace
+    /// The owner is still acting on the folder it was given.
+    var isUsing = false
     var onUse: (String) -> Void
     @State private var isFiltering = false
 
@@ -13,6 +59,15 @@ struct RemoteDirectoryBrowserView: View {
                 if let currentPath = browser.currentPath {
                     Section {
                         locationRow(currentPath)
+                    } footer: {
+                        if let refusal = browser.refusal {
+                            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                                Text(refusal)
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("directory-browser-refusal")
+                        }
                     }
                 }
 
@@ -40,7 +95,11 @@ struct RemoteDirectoryBrowserView: View {
                         if browser.visibleDirectories.isEmpty {
                             emptyState
                         } else {
-                            ForEach(browser.visibleDirectories, id: \.self) { @Sendable name in
+                            let rows = browser.visibleDirectories.map {
+                                Row(name: $0, isSymbolicLink: browser.isSymbolicLink($0))
+                            }
+                            ForEach(rows, id: \.self) { @Sendable row in
+                                let name = row.name
                                 Button {
                                     browser.enter(name)
                                 } label: {
@@ -51,6 +110,12 @@ struct RemoteDirectoryBrowserView: View {
                                         Text(name)
                                             .foregroundStyle(.primary)
                                             .fixedSize(horizontal: false, vertical: true)
+                                        if row.isSymbolicLink {
+                                            Image(systemName: "link")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .accessibilityLabel("Symbolic link")
+                                        }
                                         Spacer(minLength: 8)
                                         Image(systemName: "chevron.forward")
                                             .font(.caption.weight(.semibold))
@@ -91,18 +156,22 @@ struct RemoteDirectoryBrowserView: View {
             .onChange(of: browser.currentPath) { _, _ in
                 isFiltering = false
             }
-            .navigationTitle("Browse Directories")
+            .navigationTitle(purpose.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Select") {
-                        if let currentPath = browser.currentPath {
-                            onUse(currentPath)
+                    if isUsing {
+                        ProgressView()
+                    } else {
+                        Button(purpose.useTitle) {
+                            if let currentPath = browser.currentPath {
+                                onUse(currentPath)
+                            }
                         }
+                        .accessibilityLabel(purpose.useLabel)
+                        .accessibilityIdentifier("directory-browser-select")
+                        .disabled(browser.currentPath == nil || browser.isLoading)
                     }
-                    .accessibilityLabel("Select folder")
-                    .accessibilityIdentifier("directory-browser-select")
-                    .disabled(browser.currentPath == nil || browser.isLoading)
                 }
             }
         }
@@ -145,7 +214,7 @@ struct RemoteDirectoryBrowserView: View {
             ContentUnavailableView {
                 Label(browser.truncated ? "No Loaded Folders" : "No Subfolders", systemImage: "folder")
             } description: {
-                Text("You can select this folder for the new Workspace.")
+                Text(purpose.emptyDescription)
             }
         } else {
             ContentUnavailableView {

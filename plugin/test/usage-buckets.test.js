@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { reportFromSnapshot } from "../src/usage/buckets.js";
 
+const claude = { accounts: [{ id: "default", isDefault: true, name: null, directory: "/home/u/.claude", state: "ok" }] };
+
 function snapshotFor(timestamps) {
   return { complete: true, coveredSince: Date.parse(timestamps[0]), buckets: timestamps.flatMap(timestamp =>
     ["claude", "codex"].flatMap(program =>
@@ -24,16 +26,26 @@ test("calendar conversion work scales with timestamps, not bucket dimensions", (
   const snapshot = snapshotFor(timestamps);
   // Multiple models/directories and both programs share each hourly timestamp;
   // only coverage and now add a conversion of their own.
-  const report = reportFromSnapshot(snapshot, "America/Los_Angeles", false, Date.parse("2026-03-08T12:00:00Z"));
+  const report = reportFromSnapshot(snapshot, "America/Los_Angeles", false, Date.parse("2026-03-08T12:00:00Z"), false, claude);
   assert.equal(report.programs[0].tokenUsage.totals.today.tokens.total, 2);
   assert.equal(report.scan.coveredFrom, "2026-03-08");
   assert.equal(formatters, 1);
   assert.ok(conversions <= timestamps.length + 2, `${conversions} calendar conversions for two bucket timestamps, coverage and now`);
 });
 
+test("the program's error covers the Accounts its snapshot counted, and the Default one before Accounts", () => {
+  const added = { id: "added-id", isDefault: false, name: "added", directory: "/home/u/.claude-2", state: "ok" };
+  const states = snapshot => reportFromSnapshot({ complete: true, buckets: [], ...snapshot }, "UTC", true, Date.now(), false,
+    { accounts: [...claude.accounts, added] }).programs[0].accounts.map(account => account.tokenUsage.state);
+  const errors = { claude: "Could not read the Claude Code Transcripts." };
+  assert.deepEqual(states({ errors }), ["error", "noData"]);
+  assert.deepEqual(states({ errors, countedAccounts: ["default", "added-id"] }), ["error", "error"]);
+  assert.deepEqual(states({ errors: { ...errors, "claude:default": errors.claude }, countedAccounts: ["default"] }), ["error", "noData"]);
+});
+
 test("coverage is the first recorded day clamped to the calendar, with or without usage", () => {
   const now = Date.parse("2026-03-09T00:30:00Z");
-  const report = coveredSince => reportFromSnapshot({ complete: true, buckets: [], coveredSince }, "UTC", false, now);
+  const report = coveredSince => reportFromSnapshot({ complete: true, buckets: [], coveredSince }, "UTC", false, now, false, claude);
   assert.equal(report(Date.parse("2026-03-01T23:00:00Z")).scan.coveredFrom, "2026-03-01");
   assert.equal(report(Date.parse("2026-03-01T23:00:00Z")).programs[0].tokenUsage.state, "noData");
   assert.equal(report(Date.parse("2025-12-01T00:00:00Z")).scan.coveredFrom, "2026-02-08");
@@ -55,7 +67,7 @@ test("daily totals and coverage honor DST and remain isolated between query time
     ["Asia/Kolkata", { "2026-03-08": 3, "2026-03-09": 2 }],
     ["America/Los_Angeles", { "2026-03-07": 1, "2026-03-08": 4 }],
   ]) {
-    const report = reportFromSnapshot(snapshot, zone, false, Date.parse("2026-03-09T00:30:00Z"));
+    const report = reportFromSnapshot(snapshot, zone, false, Date.parse("2026-03-09T00:30:00Z"), false, claude);
     assert.equal(report.scan.coveredFrom, Object.keys(expected)[0]);
     for (const { tokenUsage } of report.programs) {
       assert.deepEqual(Object.fromEntries(tokenUsage.daily.filter(day => day.tokens.total)

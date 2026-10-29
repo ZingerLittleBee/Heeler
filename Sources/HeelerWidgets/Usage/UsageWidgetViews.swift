@@ -22,7 +22,8 @@ struct UsageLimitsWidgetEntry: TimelineEntry {
     /// nil picks the first Host that reported Usage Limits.
     let hostID: UUID?
     /// The program small and Lock Screen sizes show, nil for the one
-    /// closest to its limit; medium and large show every program.
+    /// closest to its limit; medium and large show every program. Claude
+    /// Code shows each of its Accounts, while the Host has several.
     let program: String?
 }
 
@@ -299,8 +300,9 @@ struct UsageLimitsWidgetView: View {
         }
     }
 
-    private func limits(_ host: UsageWidgetSnapshot.Host) -> UsageWidgetSnapshot.Limits? {
-        UsageLimitsPick.program(host.limits, preferring: entry.program, now: now)
+    /// The chosen program's entries: its own, or each Claude Code Account's.
+    private func programEntries(_ host: UsageWidgetSnapshot.Host) -> [UsageWidgetSnapshot.Limits] {
+        UsageLimitsPick.entries(host.limits, preferring: entry.program, now: now)
     }
 
     private var now: Date { entry.date }
@@ -309,7 +311,26 @@ struct UsageLimitsWidgetView: View {
 
     @ViewBuilder
     private func small(_ host: UsageWidgetSnapshot.Host) -> some View {
-        let limits = limits(host)
+        let entries = programEntries(host)
+        if UsageLimitsLayout.program(entries) == .lines, let first = entries.first {
+            // Each Account's tightest window; countdowns would not fit.
+            VStack(alignment: .leading, spacing: 0) {
+                UsageProgramTitle(program: first.program, name: first.name)
+                Text(host.name)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.top, 1)
+                Spacer(minLength: 4)
+                UsageAccountLines(entries: entries, now: now, barWidths: (26, 16), spacing: 5)
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            smallFigure(host, limits: entries.first)
+        }
+    }
+
+    @ViewBuilder
+    private func smallFigure(_ host: UsageWidgetSnapshot.Host, limits: UsageWidgetSnapshot.Limits?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             UsageProgramTitle(program: limits?.program ?? entry.program ?? "", name: limits?.name ?? programName)
             Text(host.name)
@@ -344,17 +365,41 @@ struct UsageLimitsWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    @ViewBuilder
     private func medium(_ host: UsageWidgetSnapshot.Host) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(host.name).font(.footnote.weight(.semibold))
-                Spacer(minLength: 8)
-                UsageWidgetUpdated(readAt: host.readAt, now: now)
+        if UsageLimitsLayout.medium(host.limits) == .lines {
+            VStack(alignment: .leading, spacing: 0) {
+                mediumHeader(host)
+                UsageLimitsLines(entries: host.limits, now: now)
+                    .padding(.top, 8)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            mediumColumns(host)
+        }
+    }
+
+    private func mediumHeader(_ host: UsageWidgetSnapshot.Host) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(host.name).font(.footnote.weight(.semibold))
+            Spacer(minLength: 8)
+            UsageWidgetUpdated(readAt: host.readAt, now: now)
+        }
+    }
+
+    private func mediumColumns(_ host: UsageWidgetSnapshot.Host) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            mediumHeader(host)
             HStack(alignment: .top, spacing: 12) {
                 ForEach(host.limits.prefix(2)) { limits in
                     VStack(alignment: .leading, spacing: 0) {
-                        UsageProgramTitle(program: limits.program, name: limits.name)
+                        // Both columns are Accounts or neither, so their
+                        // titles share a size.
+                        UsageProgramTitle(
+                            program: limits.program, name: limits.name, account: limits.account,
+                            size: limits.account == nil ? 13 : 11)
                         if let message = limits.message {
                             Text(message)
                                 .font(.footnote.weight(.medium)).foregroundStyle(.secondary)
@@ -379,13 +424,33 @@ struct UsageLimitsWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    @ViewBuilder
     private func large(_ host: UsageWidgetSnapshot.Host) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(host.name).font(.subheadline.weight(.semibold))
-                Spacer(minLength: 8)
-                UsageWidgetUpdated(readAt: host.readAt, now: now)
+        let layout = UsageLimitsLayout.large(host.limits)
+        if layout == .pairs || host.limits.contains(where: { $0.account != nil }) {
+            VStack(alignment: .leading, spacing: 0) {
+                largeHeader(host)
+                UsageLimitsStack(entries: host.limits, now: now, layout: layout)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            largePrograms(host)
+        }
+    }
+
+    private func largeHeader(_ host: UsageWidgetSnapshot.Host) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(host.name).font(.subheadline.weight(.semibold))
+            Spacer(minLength: 8)
+            UsageWidgetUpdated(readAt: host.readAt, now: now)
+        }
+    }
+
+    private func largePrograms(_ host: UsageWidgetSnapshot.Host) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            largeHeader(host)
             ForEach(Array(host.limits.prefix(3).enumerated()), id: \.element.id) { index, limits in
                 if index > 0 { Divider().padding(.top, 9) }
                 UsageProgramTitle(program: limits.program, name: limits.name, size: 15)
@@ -421,22 +486,39 @@ struct UsageLimitsWidgetView: View {
 
     @ViewBuilder
     private func circular(_ host: UsageWidgetSnapshot.Host) -> some View {
-        let limits = limits(host)
-        if let limits, let window = UsageLimitsPick.shortest(limits.windows, now: now) {
+        if let reading = UsageLimitsPick.reading(programEntries(host), now: now) {
+            let window = reading.window
             Gauge(value: min(max((window.usedPercent ?? 0) / 100, 0), 1)) {
-                Text(window.name)
+                Text(reading.limits.account.map { "\($0) · \(window.name)" } ?? window.name)
             } currentValueLabel: {
                 // Named, since the ring alone does not say which window it is.
-                VStack(spacing: 0) {
-                    Text(window.name)
-                        .font(.system(size: 9, weight: .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                    Text(UsageWidgetText.percent(window.usedPercent))
-                        .font(.system(size: 17, weight: .semibold))
-                        .monospacedDigit()
+                if let account = reading.limits.account {
+                    VStack(spacing: 0) {
+                        Text(account)
+                            .font(.system(size: 8, weight: .medium))
+                            .truncationMode(.middle)
+                        Text(UsageWidgetText.percent(window.usedPercent))
+                            .font(.system(size: 15, weight: .semibold))
+                            .monospacedDigit()
+                        Text(window.name)
+                            .font(.system(size: 7))
+                            .foregroundStyle(.secondary)
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .padding(.horizontal, 4)
+                } else {
+                    VStack(spacing: 0) {
+                        Text(window.name)
+                            .font(.system(size: 9, weight: .medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        Text(UsageWidgetText.percent(window.usedPercent))
+                            .font(.system(size: 17, weight: .semibold))
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 4)
                 }
-                .padding(.horizontal, 4)
             }
             .gaugeStyle(.accessoryCircularCapacity)
         } else {
@@ -450,7 +532,25 @@ struct UsageLimitsWidgetView: View {
 
     @ViewBuilder
     private func rectangular(_ host: UsageWidgetSnapshot.Host) -> some View {
-        let limits = limits(host)
+        let entries = programEntries(host)
+        if UsageLimitsLayout.program(entries) == .lines, let first = entries.first {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(Text(first.name).fontWeight(.semibold)) \(Text("· \(host.name)").foregroundStyle(.secondary))")
+                    .font(.system(size: 13))
+                // The three it holds, in the app's order.
+                UsageAccountLines(
+                    entries: Array(entries.prefix(3)), now: now, size: 13, barWidths: (44, 30), spacing: 1)
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            rectangularWindows(host, limits: entries.first)
+        }
+    }
+
+    private func rectangularWindows(
+        _ host: UsageWidgetSnapshot.Host, limits: UsageWidgetSnapshot.Limits?
+    ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             // The program first: Automatic can change it between readings.
             Text("\(Text(limits?.name ?? programName).fontWeight(.semibold)) \(Text("· \(host.name)").foregroundStyle(.secondary))")
@@ -471,8 +571,10 @@ struct UsageLimitsWidgetView: View {
 
     /// The reading first: a long Host name is what the date's line cuts.
     private func inline(_ host: UsageWidgetSnapshot.Host) -> some View {
-        let window = limits(host).flatMap { UsageLimitsPick.shortest($0.windows, now: now) }
-        let reading = window.map { "\($0.name) \(UsageWidgetText.percent($0.usedPercent))" } ?? "Usage Limits"
+        let reading = UsageLimitsPick.reading(programEntries(host), now: now).map { reading in
+            let figure = "\(reading.window.name) \(UsageWidgetText.percent(reading.window.usedPercent))"
+            return reading.limits.account.map { "\($0) \(figure)" } ?? figure
+        } ?? "Usage Limits"
         return Label("\(reading) · \(host.name)", systemImage: "gauge.with.dots.needle.50percent")
     }
 
@@ -483,6 +585,34 @@ struct UsageLimitsWidgetView: View {
         case let program?: program
         case nil: "Usage Limits"
         }
+    }
+}
+
+/// How a size lays out a Host's entries, Codex and each Claude Code Account
+/// counting as one. A Host without Accounts keeps the layouts it had.
+enum UsageLimitsLayout: Equatable {
+    /// One program: the small size's big figure, the Lock Screen's windows.
+    case figure
+    /// One line per entry.
+    case lines
+    /// The medium size's columns, three windows each.
+    case columns
+    /// Up to four windows per entry.
+    case windows
+    /// Two windows per entry, side by side.
+    case pairs
+
+    /// The small and rectangular sizes, over the chosen program's entries.
+    static func program(_ entries: [UsageWidgetSnapshot.Limits]) -> Self {
+        entries.count > 1 ? .lines : .figure
+    }
+
+    static func medium(_ entries: [UsageWidgetSnapshot.Limits]) -> Self {
+        entries.count > 2 ? .lines : .columns
+    }
+
+    static func large(_ entries: [UsageWidgetSnapshot.Limits]) -> Self {
+        entries.count > 3 ? .pairs : .windows
     }
 }
 
@@ -501,17 +631,50 @@ enum UsageLimitsPick {
         } ?? limits.first
     }
 
+    /// Every entry of that program: its own, or each Claude Code Account's.
+    static func entries(
+        _ limits: [UsageWidgetSnapshot.Limits], preferring program: String?, now: Date
+    ) -> [UsageWidgetSnapshot.Limits] {
+        guard let chosen = self.program(limits, preferring: program, now: now)?.program else { return [] }
+        return limits.filter { $0.program == chosen }
+    }
+
+    /// The one reading the circular and inline sizes hold: a program's
+    /// soonest window, or with several Accounts the running window closest
+    /// to its limit, so the Account it names is the one to watch.
+    static func reading(
+        _ entries: [UsageWidgetSnapshot.Limits], now: Date
+    ) -> (limits: UsageWidgetSnapshot.Limits, window: UsageWidgetSnapshot.Window)? {
+        if entries.count > 1 {
+            let closest = entries.compactMap { limits in
+                running(limits.windows, now: now).max(by: lessUsed).map { (limits: limits, window: $0) }
+            }
+            .max { lessUsed($0.window, $1.window) }
+            if let closest { return closest }
+        }
+        return entries.lazy.compactMap { limits in
+            shortest(limits.windows, now: now).map { (limits: limits, window: $0) }
+        }.first
+    }
+
     /// The most used window still running; an ended window only when no
     /// other is left.
     static func tightest(_ windows: [UsageWidgetSnapshot.Window], now: Date) -> UsageWidgetSnapshot.Window? {
-        let live = windows.filter { !$0.isExpired(at: now) && $0.usedPercent != nil }
-        return live.max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) } ?? windows.first
+        running(windows, now: now).max(by: lessUsed) ?? windows.first
     }
 
     /// The window that resets soonest, the one an agent runs into first.
     static func shortest(_ windows: [UsageWidgetSnapshot.Window], now: Date) -> UsageWidgetSnapshot.Window? {
-        let live = windows.filter { !$0.isExpired(at: now) && $0.usedPercent != nil }
-        return live.min { ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture) } ?? windows.first
+        running(windows, now: now).min { ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture) }
+            ?? windows.first
+    }
+
+    private static func running(_ windows: [UsageWidgetSnapshot.Window], now: Date) -> [UsageWidgetSnapshot.Window] {
+        windows.filter { !$0.isExpired(at: now) && $0.usedPercent != nil }
+    }
+
+    private static func lessUsed(_ lhs: UsageWidgetSnapshot.Window, _ rhs: UsageWidgetSnapshot.Window) -> Bool {
+        (lhs.usedPercent ?? 0) < (rhs.usedPercent ?? 0)
     }
 
     /// The soonest window, then the most used of the rest.
@@ -645,18 +808,254 @@ struct UsageProgramDot: View {
     }
 }
 
-/// A program's dot and name, heading its Usage Limits.
+/// A program's dot and name, heading its Usage Limits: "Claude Code ·
+/// claude-2" for an Account, or the Account alone where that does not fit,
+/// since the name is what tells Accounts apart.
 struct UsageProgramTitle: View {
     let program: String
     let name: String
+    var account: String?
     var size: CGFloat = 13
 
     var body: some View {
         HStack(spacing: 6) {
             UsageProgramDot(program: program)
-            Text(name).font(.system(size: size, weight: .semibold))
+            if let account {
+                ViewThatFits(in: .horizontal) {
+                    Text("\(name) · \(account)")
+                    Text(account).truncationMode(.middle)
+                }
+                .font(.system(size: size, weight: .semibold))
+            } else {
+                Text(name).font(.system(size: size, weight: .semibold))
+            }
         }
         .lineLimit(1)
+    }
+}
+
+/// A program's Accounts, one line each. Every line's bar is as wide, and
+/// narrows when the longest name would not fit beside it.
+struct UsageAccountLines: View {
+    let entries: [UsageWidgetSnapshot.Limits]
+    let now: Date
+    var size: CGFloat = 12
+    let barWidths: (wide: CGFloat, narrow: CGFloat)
+    let spacing: CGFloat
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            lines(barWidth: barWidths.wide)
+            lines(barWidth: barWidths.narrow)
+        }
+    }
+
+    private func lines(barWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            ForEach(entries) { UsageAccountLine(limits: $0, now: now, size: size, barWidth: barWidth) }
+        }
+    }
+}
+
+/// One Claude Code Account on one line: its name, and its tightest running
+/// window's bar and percentage. No reading leaves the bar empty.
+struct UsageAccountLine: View {
+    let limits: UsageWidgetSnapshot.Limits
+    let now: Date
+    var size: CGFloat = 12
+    let barWidth: CGFloat
+
+    var body: some View {
+        let window = UsageLimitsPick.tightest(limits.windows, now: now).flatMap { $0.isExpired(at: now) ? nil : $0 }
+        HStack(spacing: 6) {
+            Text(limits.account ?? limits.name)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            UsageBar(fraction: (window?.usedPercent ?? 0) / 100, program: limits.program)
+                .frame(width: barWidth)
+            Text(UsageWidgetText.percent(window?.usedPercent))
+                .fontWeight(.semibold)
+                .monospacedDigit()
+                .frame(minWidth: size * 2.6, alignment: .trailing)
+        }
+        .font(.system(size: size))
+        .lineLimit(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel(window))
+    }
+
+    private func accessibilityLabel(_ window: UsageWidgetSnapshot.Window?) -> String {
+        let name = limits.account ?? limits.name
+        guard let window else { return "\(name), \(limits.message ?? UsageWidgetText.windowReset)" }
+        return "\(name), \(window.name) \(UsageWidgetText.percent(window.usedPercent))"
+    }
+}
+
+/// A medium widget's entries, one line each: the window that resets
+/// soonest and the most used of the rest. More entries take tighter lines.
+struct UsageLimitsLines: View {
+    let entries: [UsageWidgetSnapshot.Limits]
+    let now: Date
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            lines(showsProgram: true, size: 12, spacing: 7)
+            lines(showsProgram: false, size: 12, spacing: 5)
+            lines(showsProgram: false, size: 11, spacing: 2)
+        }
+    }
+
+    private func lines(showsProgram: Bool, size: CGFloat, spacing: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            ForEach(entries) { limits in
+                UsageLimitsLine(limits: limits, now: now, showsProgram: showsProgram, size: size)
+            }
+        }
+    }
+}
+
+/// An entry's name, "Claude Code" under an Account's while there is room,
+/// beside its two windows or why it has none.
+struct UsageLimitsLine: View {
+    let limits: UsageWidgetSnapshot.Limits
+    let now: Date
+    let showsProgram: Bool
+    let size: CGFloat
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 5) {
+                    UsageProgramDot(program: limits.program)
+                    Text(limits.account ?? limits.name)
+                        .font(.system(size: size, weight: .semibold))
+                        .truncationMode(.middle)
+                }
+                if showsProgram && limits.account != nil {
+                    Text(limits.name)
+                        .font(.system(size: size - 3))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 13)
+                }
+            }
+            .frame(width: 70, alignment: .leading)
+            if limits.windows.isEmpty {
+                // As tall as a window's row, so the lines stay evenly spaced.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(limits.message ?? "No Usage Limits reported.")
+                        .font(.system(size: size - 1))
+                        .foregroundStyle(.secondary)
+                    Color.clear.frame(height: 4)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                windows
+            }
+        }
+        .lineLimit(1)
+    }
+
+    private var windows: some View {
+        let shown = UsageLimitsPick.lockScreen(limits.windows, now: now)
+        return ForEach(0..<2, id: \.self) { index in
+            if shown.indices.contains(index) {
+                UsageWindowRow(
+                    window: shown[index], program: limits.program, now: now, showsCountdown: true, size: size - 1,
+                    smallNames: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
+            }
+        }
+    }
+}
+
+/// A large widget's entries once a Host has Claude Code Accounts: up to
+/// three keep four windows each with their countdowns inline; more, or
+/// what does not fit, take two windows each side by side.
+struct UsageLimitsStack: View {
+    let entries: [UsageWidgetSnapshot.Limits]
+    let now: Date
+    let layout: UsageLimitsLayout
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            if layout == .windows { stack(.windows) }
+            stack(.pairs(resets: true))
+            stack(.pairs(resets: false))
+        }
+    }
+
+    private func stack(_ style: UsageLimitsEntry.Style) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(entries.enumerated()), id: \.element.id) { index, limits in
+                if index > 0 { Divider().padding(.top, style == .windows ? 8 : 7) }
+                UsageLimitsEntry(limits: limits, now: now, style: style)
+            }
+        }
+    }
+}
+
+/// One entry of a large widget: its title, then its windows.
+struct UsageLimitsEntry: View {
+    enum Style: Equatable {
+        /// Up to four, one per row.
+        case windows
+        /// The soonest and the most used of the rest, side by side, with
+        /// when each resets while there is room.
+        case pairs(resets: Bool)
+    }
+
+    let limits: UsageWidgetSnapshot.Limits
+    let now: Date
+    let style: Style
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                UsageProgramTitle(program: limits.program, name: limits.name, account: limits.account, size: 14)
+                Spacer(minLength: 0)
+                if let source = UsageWidgetText.shortSource(limits, now: now) {
+                    Text(source).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, style == .windows ? 8 : 7)
+            if let message = limits.message {
+                Text(message)
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .lineLimit(style == .windows ? 2 : 1)
+                    .padding(.top, 4)
+            }
+            switch style {
+            case .windows:
+                ForEach(limits.windows.prefix(4)) { window in
+                    UsageWindowRow(window: window, program: limits.program, now: now, showsCountdown: true, size: 13)
+                        .padding(.top, 5)
+                }
+            case .pairs(let resets):
+                if !limits.windows.isEmpty { pairs(resets: resets).padding(.top, 5) }
+            }
+        }
+    }
+
+    private func pairs(resets: Bool) -> some View {
+        let shown = UsageLimitsPick.lockScreen(limits.windows, now: now)
+        return HStack(alignment: .top, spacing: 14) {
+            ForEach(0..<2, id: \.self) { index in
+                if shown.indices.contains(index) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        UsageWindowRow(
+                            window: shown[index], program: limits.program, now: now, showsCountdown: true, size: 12)
+                        if resets, let reset = UsageWidgetText.resetDay(shown[index], now: now) {
+                            Text(reset).font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
+                }
+            }
+        }
     }
 }
 
@@ -708,16 +1107,21 @@ struct UsageWindowRow: View {
     let now: Date
     let showsCountdown: Bool
     var size: CGFloat = 12
+    /// Rows in a grid all take the smaller name size, so a short row does
+    /// not stand out among its neighbors.
+    var smallNames = false
 
     var body: some View {
         let expired = window.isExpired(at: now)
         VStack(alignment: .leading, spacing: 4) {
             // A long name first takes a smaller size, then the countdown's
-            // room; the bar and the percentage stay.
+            // room at either size, before it is cut; the bar and the
+            // percentage stay.
             ViewThatFits(in: .horizontal) {
-                heading(expired: expired, size: size, countdown: showsCountdown)
+                if !smallNames { heading(expired: expired, size: size, countdown: showsCountdown) }
                 heading(expired: expired, size: size - 1.5, countdown: showsCountdown)
-                heading(expired: expired, size: size, countdown: false)
+                if !smallNames { heading(expired: expired, size: size, countdown: false) }
+                heading(expired: expired, size: size - 1.5, countdown: false)
             }
             if expired {
                 Text(UsageWidgetText.windowReset)
@@ -1001,6 +1405,16 @@ enum UsageWidgetText {
         guard let reset = window.resetsAt else { return window.isExpired(at: now) ? windowReset : "" }
         if window.isExpired(at: now) { return windowReset }
         return "resets in \(countdown(to: reset, now: now)) · \(clock(reset, now: now))"
+    }
+
+    /// "resets 7:26 PM", or "resets Oct 30" when it is not today, beside a
+    /// countdown that gives the rest; nil once the window has ended.
+    static func resetDay(_ window: UsageWidgetSnapshot.Window, now: Date) -> String? {
+        guard let reset = window.resetsAt, !window.isExpired(at: now) else { return nil }
+        let when = Calendar.current.isDate(reset, inSameDayAs: now)
+            ? reset.formatted(date: .omitted, time: .shortened)
+            : reset.formatted(.dateTime.month(.abbreviated).day())
+        return "resets \(when)"
     }
 
     /// Where a program's windows came from, as clock times that a widget

@@ -1,47 +1,60 @@
 import SwiftUI
 
-/// One Host's tightest Usage Limits window for one program, as a chip.
+/// One Host's tightest Usage Limits window for one program, or for one of
+/// its Claude Code Accounts, as a chip.
 struct AgentUsageLimitChip: Identifiable, Equatable {
     let hostID: Host.ID
     let hostName: String
     let program: String
+    /// The Claude Code Account, named when its Host has several.
+    var account: String? = nil
     /// nil while there is no live reading to fill the ring with.
     let percent: Double?
+    /// The tightest window's name, or why there is none.
     let title: String
     /// When the live window resets.
     var resetsAt: Date? = nil
-    var id: String { "\(hostID)\(program)" }
+    /// The Usage Limits card the chip reads, unique on its Host.
+    var cardID: String
+    var id: String { "\(hostID)\(cardID)" }
 
-    /// Live readings first, fullest first; Usage Limits stay per Host.
+    /// The program, and the Account when its Host has several.
+    var programTitle: String { AgentUsageProgramTitle.title(program: program, account: account) }
+
+    /// The chip's two lines: the program over the window, or, when the
+    /// scope has several Hosts, the Host over the program or Account and
+    /// the window.
+    func lines(showsHost: Bool) -> (top: String, bottom: String) {
+        showsHost
+            ? (hostName, "\(account ?? AgentUsageReport.Program.displayName(for: program)) · \(title)")
+            : (programTitle, title)
+    }
+
+    /// Live readings first, fullest first; Usage Limits stay per Host. A
+    /// Host with several Claude Code Accounts keeps its chips together in
+    /// the Accounts' order, the ones without figures after the readable
+    /// ones, then its other programs, placed by its fullest reading.
     static func chips(in scope: AgentUsageScope, now: Date = .now) -> [Self] {
-        let chips = scope.included.flatMap { host in
-            host.programs.map { program -> Self in
-                let limits = program.usageLimits
-                let live = (limits.windows ?? []).filter { window in
-                    !window.expired && window.usedPercent != nil
-                        && AgentUsageLimitsView.date(window.resetsAt).map { $0 > now } != false
-                }
-                let tightest = live.max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) }
-                let title: String
-                if let tightest, limits.state == "ok" || limits.state == "throttled" {
-                    title = AgentUsageLimitsView.windowName(tightest, program: program.program)
-                } else if limits.state == "disabled" {
-                    title = "Limits off"
-                } else if limits.state == "unavailable" && limits.reason == "notReadYet" {
-                    title = "Reading…"
-                } else {
-                    title = "Unavailable"
-                }
-                let isLive = limits.state == "ok" || limits.state == "throttled"
-                return Self(
-                    hostID: host.id, hostName: host.name, program: program.program,
-                    percent: isLive ? tightest?.usedPercent : nil,
-                    title: title,
-                    resetsAt: isLive ? AgentUsageLimitsView.date(tightest?.resetsAt) : nil)
+        let groups = scope.included.flatMap { host -> [[Self]] in
+            let chips = AgentUsageLimitsCard.readings(for: host.report).compactMap { card in
+                chip(card, hostID: host.id, hostName: host.name, now: now)
             }
+            return chips.contains { $0.account != nil } ? [chips] : chips.map { [$0] }
         }
-        return chips.enumerated().sorted { lhs, rhs in
-            switch (lhs.element.percent, rhs.element.percent) {
+        return fullestFirst(groups) { $0.compactMap(\.percent).max() }.flatMap { $0 }
+    }
+
+    /// The chip closest to a limit, named by its Account when its Host has
+    /// several; the first chip while none has a live reading.
+    static func closest(in scope: AgentUsageScope, now: Date = .now) -> Self? {
+        fullestFirst(chips(in: scope, now: now), by: \.percent).first
+    }
+
+    /// `items` with a live percentage first, fullest first, otherwise in
+    /// their order.
+    private static func fullestFirst<Item>(_ items: [Item], by percent: (Item) -> Double?) -> [Item] {
+        items.enumerated().sorted { lhs, rhs in
+            switch (percent(lhs.element), percent(rhs.element)) {
             case (let left?, let right?): left == right ? lhs.offset < rhs.offset : left > right
             case (.some, nil): true
             case (nil, .some): false
@@ -49,6 +62,40 @@ struct AgentUsageLimitChip: Identifiable, Equatable {
             }
         }
         .map(\.element)
+    }
+
+    /// A card's chip; the toggle card reads nothing.
+    private static func chip(_ card: AgentUsageLimitsCard, hostID: Host.ID, hostName: String, now: Date) -> Self? {
+        switch card {
+        case .unread(_, let account, let reason):
+            return Self(hostID: hostID, hostName: hostName, program: "claude", account: account, percent: nil,
+                title: reason, cardID: card.id)
+        case .claudeToggle:
+            return nil
+        case .limits(_, let program, let account, let limits):
+            let live = (limits.windows ?? []).filter { window in
+                !window.expired && window.usedPercent != nil
+                    && AgentUsageLimitsView.date(window.resetsAt).map { $0 > now } != false
+            }
+            let tightest = live.max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) }
+            let title: String
+            if let tightest, limits.state == "ok" || limits.state == "throttled" {
+                title = AgentUsageLimitsView.windowName(tightest, program: program)
+            } else if limits.state == "disabled" {
+                title = "Limits off"
+            } else if limits.state == "unavailable" && limits.reason == "notReadYet" {
+                title = "Reading…"
+            } else {
+                title = "Unavailable"
+            }
+            let isLive = limits.state == "ok" || limits.state == "throttled"
+            return Self(
+                hostID: hostID, hostName: hostName, program: program, account: account,
+                percent: isLive ? tightest?.usedPercent : nil,
+                title: title,
+                resetsAt: isLive ? AgentUsageLimitsView.date(tightest?.resetsAt) : nil,
+                cardID: card.id)
+        }
     }
 }
 
@@ -73,17 +120,15 @@ struct AgentUsageLimitChipView: View {
                 }
             }
             .frame(width: 36, height: 36)
+            let lines = chip.lines(showsHost: showsHost)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 5) {
                     Circle().fill(AgentUsageStyle.color(for: chip.program)).frame(width: 7, height: 7)
-                    Text(showsHost ? chip.hostName
-                        : AgentUsageReport.Program.displayName(for: chip.program))
+                    Text(lines.top)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                Text(showsHost
-                    ? "\(AgentUsageReport.Program.displayName(for: chip.program)) · \(chip.title)"
-                    : chip.title)
+                Text(lines.bottom)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(chip.percent == nil ? .secondary : .primary)
             }
@@ -459,23 +504,120 @@ struct AgentUsageLimitsSheet: View {
     }
 }
 
-/// One Host's Usage Limits as list sections: a card per program, the Host
-/// named over the first.
+/// One card of a Host's Usage Limits, in the order the Usage Limits sheet
+/// and an iPad's Limits view show them: Claude Code's windows, then each
+/// other program's. With one Account, Claude Code's card ends with its
+/// limits toggle, as before Accounts. With several, each Account has a card
+/// (the counted ones first) and the toggle a card of its own after them, so
+/// it reads as covering all of them. While Claude Code limits are off, the
+/// toggle card stands for all of Claude Code.
+enum AgentUsageLimitsCard: Identifiable, Equatable {
+    /// A program's windows, or one Claude Code Account's, named and with
+    /// its report id when the Host has several.
+    case limits(accountID: String?, program: String, account: String?, limits: AgentUsageReport.Program.UsageLimits)
+    /// A Claude Code Account that adds nothing, and why.
+    case unread(accountID: String, account: String, reason: String)
+    /// The Claude Code limits toggle and the way to the Host's Accounts.
+    case claudeToggle
+
+    /// The program, or the program and the Account's report id, which
+    /// stays unique on a Host when names do not.
+    var id: String {
+        switch self {
+        case .limits(let accountID, let program, _, _): accountID.map { "\(program).\($0)" } ?? program
+        case .unread(let accountID, _, _): "claude.\(accountID)"
+        case .claudeToggle: "claude.toggle"
+        }
+    }
+
+    var program: String {
+        if case .limits(_, let program, _, _) = self { return program }
+        return "claude"
+    }
+
+    /// The Claude Code Account a card is for, when its Host has several.
+    var account: String? {
+        switch self {
+        case .limits(_, _, let account, _): account
+        case .unread(_, let account, _): account
+        case .claudeToggle: nil
+        }
+    }
+
+    /// Whether the card ends with the Claude Code limits toggle and the way
+    /// to the Host's Accounts, with the consent note under it: the toggle
+    /// card, or Claude Code's windows while no Account has a card.
+    var carriesToggle: Bool {
+        switch self {
+        case .limits(nil, "claude", _, _), .claudeToggle: true
+        case .limits, .unread: false
+        }
+    }
+
+    /// The card's identity among a Host's sections. The card that carries
+    /// the toggle keeps one whether it is a lone Account's windows or a
+    /// card of its own, so the link to the Accounts keeps its place, and
+    /// the screen it pushed, while the Account count changes.
+    var sectionID: String { carriesToggle ? Self.claudeToggle.id : id }
+
+    static func cards(for report: AgentUsageReport) -> [Self] {
+        (report.programs ?? []).flatMap { program -> [Self] in
+            guard program.program == "claude" else {
+                return [.limits(accountID: nil, program: program.program, account: nil, limits: program.usageLimits)]
+            }
+            let cards = claudeCards(program)
+            return cards.contains(where: \.carriesToggle) ? cards : cards + [.claudeToggle]
+        }
+    }
+
+    /// The cards that carry a reading, in the same order, for the chips,
+    /// Host detail and an iPad's strip: no toggle, and Claude Code as one
+    /// card saying its limits are off while they are.
+    static func readings(for report: AgentUsageReport) -> [Self] {
+        (report.programs ?? []).flatMap { program -> [Self] in
+            let whole = Self.limits(
+                accountID: nil, program: program.program, account: nil, limits: program.usageLimits)
+            guard program.program == "claude" else { return [whole] }
+            let cards = claudeCards(program)
+            return cards.isEmpty ? [whole] : cards
+        }
+    }
+
+    private static func claudeCards(_ program: AgentUsageReport.Program) -> [Self] {
+        guard program.usageLimits.state != "disabled" else { return [] }
+        let accounts = program.accounts ?? []
+        guard accounts.count > 1 else {
+            return [.limits(accountID: nil, program: "claude", account: nil, limits: program.usageLimits)]
+        }
+        // An Account the plugin counts always reports limits; without them
+        // it reads as a failed reading rather than borrowing another's.
+        let unknown = AgentUsageReport.Program.UsageLimits(
+            state: "error", reason: nil, source: nil, observedAt: nil, retryAt: nil, plan: nil, windows: nil)
+        let counted = accounts.filter(\.isReadable).map { account in
+            Self.limits(
+                accountID: account.id, program: "claude", account: account.displayName,
+                limits: account.usageLimits ?? (account.isDefault ? program.usageLimits : unknown))
+        }
+        let uncounted = accounts.filter { !$0.isReadable }.map { account in
+            Self.unread(
+                accountID: account.id, account: account.displayName,
+                reason: ClaudeAccountsListing.stateLine(account.state) ?? "")
+        }
+        return counted + uncounted
+    }
+}
+
+/// One Host's Usage Limits as list sections, one per card, the Host named
+/// over the first.
 struct AgentUsageHostLimits: View {
     let entry: AgentUsageHostEntry
     var style = AgentUsageLimitsView.Style.rows
 
     var body: some View {
         if case .available(let report) = entry.store.state, entry.isConnected {
-            let programs = report.programs ?? []
-            ForEach(Array(programs.enumerated()), id: \.element.program) { index, program in
-                Section {
-                    AgentUsageProgramLimits(program: program, store: entry.store, style: style)
-                } header: {
-                    if index == 0 { header }
-                } footer: {
-                    if program.program == "claude" { ClaudeUsageLimitsNote() }
-                }
+            let cards = AgentUsageLimitsCard.cards(for: report)
+            ForEach(Array(cards.enumerated()), id: \.element.sectionID) { @Sendable index, card in
+                MainActorContent { section(card, isFirst: index == 0) }
             }
         } else {
             Section {
@@ -493,29 +635,110 @@ struct AgentUsageHostLimits: View {
             .textCase(nil)
             .padding(.leading, -16)
     }
+
+    private func section(_ card: AgentUsageLimitsCard, isFirst: Bool) -> some View {
+        Section {
+            switch card {
+            case .limits(_, let program, let account, let limits):
+                VStack(alignment: .leading, spacing: 6) {
+                    AgentUsageProgramTitle(program: program, account: account, plan: limits.plan)
+                    AgentUsageLimitsView(program: program, limits: limits, showsTitle: false, style: style)
+                }
+                .padding(.vertical, 4)
+            case .unread(_, let account, let reason):
+                AgentUsageUncountedAccount(account: account, reason: reason)
+                    .padding(.vertical, 4)
+            case .claudeToggle:
+                EmptyView()
+            }
+            if card.carriesToggle {
+                ClaudeUsageLimitsToggle(store: entry.store)
+                ClaudeAccountsEntry(hostName: entry.name, store: entry.store)
+            }
+        } header: {
+            if isFirst { header }
+        } footer: {
+            if card.carriesToggle { ClaudeUsageLimitsNote() }
+        }
+    }
 }
 
-/// One program's Usage Limits card. Claude Code's ends with its consent
-/// toggle, and is only the toggle while the limits are off.
-struct AgentUsageProgramLimits: View {
-    let program: AgentUsageReport.Program
-    let store: AgentUsageStore
-    var style = AgentUsageLimitsView.Style.rows
+/// A Claude Code Account that adds nothing to Usage Limits, and why.
+struct AgentUsageUncountedAccount: View {
+    let account: String
+    let reason: String
 
     var body: some View {
-        if program.program == "claude" && program.usageLimits.state == "disabled" {
-            ClaudeUsageLimitsToggle(store: store)
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                AgentUsageProgramTitle(program: program.program, plan: program.usageLimits.plan)
-                AgentUsageLimitsView(
-                    program: program.program, limits: program.usageLimits, showsTitle: false, style: style)
+        VStack(alignment: .leading, spacing: 6) {
+            AgentUsageProgramTitle(program: "claude", account: account)
+            // Flush with the card's edge, like a readable card's source line.
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(reason).foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
-            if program.program == "claude" {
-                ClaudeUsageLimitsToggle(store: store)
+            .font(.subheadline)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The way from the Claude Code limits toggle to the Host's Accounts, with
+/// how many there are; on an older plugin, the update they need instead.
+struct ClaudeAccountsEntry: View {
+    let hostName: String
+    let store: AgentUsageStore
+    /// Opens the Accounts as a form sheet; nil pushes them in the enclosing
+    /// navigation stack.
+    var open: (() -> Void)?
+
+    /// Whether the entry shows anything on this Host.
+    static func isShown(for store: AgentUsageStore) -> Bool {
+        store.supportsClaudeAccounts || store.claudeAccountsRequirement != nil
+    }
+
+    var body: some View {
+        if store.supportsClaudeAccounts {
+            let count = ClaudeAccountsListing(state: store.state).accounts.count
+            if let open {
+                Button(action: open) { label(count: count, showsChevron: true) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("usage.accounts.open")
+            } else {
+                NavigationLink {
+                    ClaudeAccountsSheet(hostName: hostName, store: store, isPushed: true)
+                } label: {
+                    label(count: count, showsChevron: false)
+                }
+                .accessibilityIdentifier("usage.accounts.open")
+            }
+        } else if let note = store.claudeAccountsRequirement {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Claude Code Accounts")
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func label(count: Int, showsChevron: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text("Claude Code Accounts")
+            Spacer(minLength: 8)
+            if count > 0 {
+                Text(count.formatted())
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
+        .contentShape(.rect)
     }
 }
 
@@ -523,13 +746,16 @@ struct AgentUsageProgramLimits: View {
 /// its plan.
 struct AgentUsageProgramTitle: View {
     let program: String
+    /// The Claude Code Account the card is for, named when the Host has
+    /// several.
+    var account: String?
     var plan: String?
 
     var body: some View {
         HStack(spacing: 7) {
             Circle().fill(AgentUsageStyle.color(for: program))
                 .frame(width: 8, height: 8)
-            Text(AgentUsageReport.Program.displayName(for: program)).font(.headline)
+            Text(Self.title(program: program, account: account)).font(.headline)
             if let plan {
                 Text(plan.capitalized)
                     .font(.caption2.weight(.semibold))
@@ -539,5 +765,12 @@ struct AgentUsageProgramTitle: View {
                     .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 5))
             }
         }
+    }
+
+    /// "Claude Code", or "Claude Code · claude-2" for one of several
+    /// Accounts.
+    nonisolated static func title(program: String, account: String?) -> String {
+        let name = AgentUsageReport.Program.displayName(for: program)
+        return account.map { "\(name) · \($0)" } ?? name
     }
 }

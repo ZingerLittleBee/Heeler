@@ -104,6 +104,9 @@ final class ConsoleStore {
     /// Made on demand while a view reads them, so not observed: each store
     /// is observable itself.
     @ObservationIgnored private var agentUsageStores: [Host.ID: AgentUsageStore] = [:]
+    /// Hosts that share a plugin config directory share its Account file,
+    /// so every Host's Account changes take turns.
+    @ObservationIgnored private let usageAccountFileGate = GitExecGate()
     /// Writes the widgets' snapshot of those readings. Only the app passes
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
@@ -1182,10 +1185,17 @@ final class ConsoleStore {
 
     func agentUsageStore(for hostID: Host.ID) -> AgentUsageStore {
         if let store = agentUsageStores[hostID] { return store }
-        let store = AgentUsageStore(hostID: hostID) { [weak self] timeZone, claudeLimits in
+        let store = AgentUsageStore(
+            hostID: hostID,
+            onHost: { [weak self] operation in
+                guard let self else { throw TransportError.cancelled }
+                try await self.withNotificationTransport(for: hostID, operation)
+            },
+            accountFileGate: usageAccountFileGate
+        ) { [weak self] timeZone, claudeLimits in
             guard let self else { throw TransportError.cancelled }
             return try await self.withNotificationTransport(for: hostID) { transport in
-                try await AgentUsageStore.read(
+                try await AgentUsageStore.reading(
                     over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
             }
         }

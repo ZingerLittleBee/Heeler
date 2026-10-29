@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { readJSON, writeJSON } from "./cache.js";
 import { runLimitsRequest } from "./limits-process.js";
 
@@ -79,6 +79,35 @@ export async function claudeVersion(runtime, directory, known) {
   return { identity, version };
 }
 
+/**
+ * The runtime that reads one Account. Claude Code hashes any `CLAUDE_CONFIG_DIR`,
+ * even `~/.claude`, into its macOS keychain service name, so each Account runs
+ * as the `claude` that signs in to it: the Default Account with the recorded
+ * environment unchanged, an added `~/.claude` without the variable, as a plain
+ * `claude`, and any other added Account with its directory.
+ */
+export function accountRuntime(runtime, account) {
+  if (account.isDefault) return runtime;
+  const plain = resolve(account.directory) === resolve(runtime.env.HOME, ".claude");
+  return { ...runtime, env: { ...runtime.env, CLAUDE_CONFIG_DIR: plain ? null : account.directory } };
+}
+
+/**
+ * `limits.json`'s Claude entries by Account id, for the Accounts still counted:
+ * an Account that left takes its throttle and readings with it. A 0.7.x file
+ * kept one entry for the Host (its `nextAllowedAt` a number), which is dropped.
+ */
+export function claudeLimitsEntries(value, accounts) {
+  if (!object(value) || typeof value.nextAllowedAt === "number") return {};
+  return Object.fromEntries(accounts.filter(({ id }) => object(value[id])).map(({ id }) => [id, value[id]]));
+}
+
+/** The earliest next read over the Accounts, or undefined while one is due now. */
+export function nextClaudeRead(entries, accounts) {
+  const next = accounts.map(({ id }) => entries[id]?.nextAllowedAt);
+  return next.every(Number.isFinite) ? Math.min(...next) : undefined;
+}
+
 /** Ask Claude Code to handle its own sign-in. No prompt or user message is sent. */
 export async function readClaudeLimits(runtime, directory, version = null) {
   if (typeof runtime.claude !== "string" || !runtime.claude.startsWith("/")) return unavailable("programMissing");
@@ -130,11 +159,13 @@ const READING = "claude-reading.json";
  * server runs in its own session. On macOS, Claude Code keeps its sign-in in
  * the login keychain, which the SSH session that runs a Usage query cannot
  * use. Null when herdr cannot invoke the action, so the caller reads in place.
+ * The request names an added Account's directory, or none for the Default.
  */
-export async function readClaudeLimitsInServer(runtime, directory, version, { socketPath, wait = () => sleep(100) } = {}) {
+export async function readClaudeLimitsInServer(runtime, directory, version, { account, socketPath, wait = () => sleep(100) }) {
   if (typeof runtime.herdr !== "string" || !runtime.herdr.startsWith("/")) return null;
   const token = randomUUID();
-  writeJSON(join(directory, REQUEST), { token, version: Array.isArray(version) ? version : null });
+  writeJSON(join(directory, REQUEST), { token, version: Array.isArray(version) ? version : null,
+    directory: account.isDefault ? null : account.directory });
   const invoked = await new Promise(resolve => execFile(runtime.herdr,
     ["plugin", "action", "invoke", "usage-claude-limits", "--plugin", "heeler"], {
       cwd: directory, env: { ...strings(runtime.env), ...(typeof socketPath === "string" ? { HERDR_SOCKET_PATH: socketPath } : {}) },
@@ -150,13 +181,19 @@ export async function readClaudeLimitsInServer(runtime, directory, version, { so
   return failed("timeout");
 }
 
-/** The action's side: answers the pending request once, in herdr's session. */
-export async function answerClaudeLimitsRequest(runtime, directory) {
+/**
+ * The action's side: answers the pending request once, in herdr's session.
+ * Only the Default Account or an `ok` Account the Account file lists is read,
+ * so a request file cannot hand Claude Code another config directory.
+ */
+export async function answerClaudeLimitsRequest(runtime, directory, accounts) {
   const path = join(directory, REQUEST);
   const request = readJSON(path);
   rmSync(path, { force: true });
   if (typeof request?.token !== "string") return;
-  const reading = await readClaudeLimits(runtime, directory, request.version);
+  const account = accounts.find(account => account.state === "ok"
+    && (request.directory === null ? account.isDefault : !account.isDefault && account.directory === request.directory));
+  const reading = account ? await readClaudeLimits(accountRuntime(runtime, account), directory, request.version) : failed("requestFailed");
   writeJSON(join(directory, READING), { token: request.token, reading });
 }
 
