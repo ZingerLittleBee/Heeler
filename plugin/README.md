@@ -636,6 +636,18 @@ the app's update notice installs from that branch. See
   v1 there, which pairs the phone with the user's default herdr; re-pair such
   a Host after the update. A herdr in `~/.config/herdr` pairs as before.
 
+### Updating to 0.8.0
+
+- Plugin 0.8.0 counts [Claude Code Accounts](#usage). When herdr's
+  environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
+  that Host's Claude Code usage; Heeler suggests it as an Account to add.
+  Without `CLAUDE_CONFIG_DIR`, the totals stay as before.
+- The first refresh after the update reads the Transcripts again to
+  attribute them to Accounts, showing the previous totals meanwhile, and
+  reads Claude Code limits anew.
+- Older plugins ignore `usage-accounts.json`: Accounts added in Heeler count
+  only once the Host runs 0.8.0.
+
 ## Usage
 
 Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts.
