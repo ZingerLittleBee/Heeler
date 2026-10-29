@@ -743,7 +743,7 @@ struct AgentUsageProgramTitle: View {
 
     /// "Claude Code", or "Claude Code · claude-2" for one of several
     /// Accounts.
-    static func title(program: String, account: String?) -> String {
+    nonisolated static func title(program: String, account: String?) -> String {
         let name = AgentUsageReport.Program.displayName(for: program)
         return account.map { "\(name) · \($0)" } ?? name
     }
