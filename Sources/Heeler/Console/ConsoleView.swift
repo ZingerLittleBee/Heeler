@@ -363,7 +363,6 @@ struct ConsoleView: View {
         // Over every tab and sheet: the Agents list and the Agent List
         // Fields preview draw the same row style.
         .environment(\.agentListRowStyle, agentRowStyle.style)
-        .environment(\.agentListRingShowsStatusField, agentRowStyle.ringShowsStatusField)
         .focusedSceneValue(\.consoleCommandTarget, commandTarget)
     }
 
@@ -2102,8 +2101,8 @@ struct ConsoleView: View {
         return AgentTitleQualifier.qualifiers(for: hostFilteredAgents) { agent in
             let card = AgentCardPresentation(
                 agent: agent, layout: console.rowLayout(for: agent.hostID),
-                hiding: agentRowStyle.hiddenFields.union(
-                    isByWorkspace ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : []),
+                hiding: isByWorkspace
+                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [],
                 leadsWithMark: true)
             return .init(title: card.headline, namesAgent: card.cardNamesAgent)
         }

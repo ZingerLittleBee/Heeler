@@ -166,8 +166,7 @@ per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
 `state_icon` never appears as a field; the Agent Row Style's status, a badge
 at the end of Row 1 or a ring around the Agent Mark, owns it. Agent Status
 and Heeler Pin remain independent chrome; choosing status as a field also
-shows it as text in the row, in the Status Ring style only once the user
-shows the status field.
+shows it as text in the row.
 _Avoid_: card template, sidebar format
 
 **Agent Mark**:
@@ -182,8 +181,8 @@ _Avoid_: harness icon, avatar, logo
 **Agent Row Style**:
 The app-wide choice of how the Console draws an Agent's mark and status: Tile,
 the default, puts the Agent Mark on a tile and ends Row 1 with the status
-badge; Status Ring puts it in a circle whose ring is the status, with no badge
-or status text, and hides the layout's status field unless the user shows it.
+badge; Status Ring puts it in a circle whose ring is the status, with no badge.
+Either style shows status text only where the Agent List Fields choose it.
 _Avoid_: list theme, row skin
 
 **Row Slot**:

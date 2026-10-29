@@ -167,7 +167,7 @@ enum AgentLayoutTokensEditing {
         case .host:
             "Host name"
         case .status:
-            "Agent Status as text. Status Ring hides it unless Show Status Field is on in Settings › Appearance."
+            "Agent Status as text"
         case .directory:
             "Working directory"
         case .changes:

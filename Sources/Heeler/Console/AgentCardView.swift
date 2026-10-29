@@ -34,7 +34,6 @@ struct AgentCardView: View {
     var lead = AgentCardLead.row
 
     @Environment(\.agentListRowStyle) private var style
-    @Environment(\.agentListRingShowsStatusField) private var ringShowsStatusField
     private var cardColumn = CardIconWidth()
 
     /// A list row's lead and the gap after it, as a Terminals row's tile.
@@ -47,10 +46,7 @@ struct AgentCardView: View {
     }
 
     private var presentation: AgentCardPresentation {
-        AgentCardPresentation(
-            agent: agent, layout: layout,
-            hiding: hiddenTokens.union(style.hiddenFields(showingStatusField: ringShowsStatusField)),
-            leadsWithMark: true)
+        AgentCardPresentation(agent: agent, layout: layout, hiding: hiddenTokens, leadsWithMark: true)
     }
 
     private var mark: AgentKindMark { AgentKindMark(kind: agent.agent.kind) }

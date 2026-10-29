@@ -101,24 +101,6 @@ struct AgentListRowStyleSettingsTests {
         #expect(AgentListRowStyleSettings(defaults: defaults).style == .tile)
     }
 
-    /// The ring is the status, so Status Ring rows leave a layout's status
-    /// field out until the user shows it; Tile rows always show it.
-    @Test func statusRingHidesTheStatusFieldUntilShown() throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        let settings = AgentListRowStyleSettings(defaults: defaults)
-        #expect(!settings.ringShowsStatusField)
-        #expect(EnvironmentValues().agentListRingShowsStatusField == false)
-        #expect(settings.hiddenFields.isEmpty)
-
-        settings.select(.statusRing)
-        #expect(settings.hiddenFields == [.status])
-        settings.setRingShowsStatusField(true)
-        #expect(settings.hiddenFields.isEmpty)
-        #expect(AgentListRowStyleSettings(defaults: defaults).ringShowsStatusField)
-        #expect(AgentListRowStyle.tile.hiddenFields(showingStatusField: false).isEmpty)
-    }
-
     @Test func reselectingTheCurrentStyleWritesNothing() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -150,13 +132,12 @@ struct AgentCardRowStyleTests {
     }
 
     private static func host(
-        _ card: AgentCardView, style: AgentListRowStyle, ringShowsStatusField: Bool = false
+        _ card: AgentCardView, style: AgentListRowStyle
     ) async throws -> (UIView, UIWindow) {
         let controller = UIHostingController(
             rootView: AnyView(
                 card
                     .environment(\.agentListRowStyle, style)
-                    .environment(\.agentListRingShowsStatusField, ringShowsStatusField)
                     .frame(width: 402)
                     .fixedSize(horizontal: false, vertical: true)))
         controller.safeAreaRegions = []
@@ -207,22 +188,16 @@ struct AgentCardRowStyleTests {
         #expect(AccessibilityProbe.frame(labeled: "Paused", in: root) == nil)
     }
 
-    /// A status field shows as text beside the capsule, and beside the ring
-    /// only once the user shows it.
-    @Test(arguments: [
-        (AgentListRowStyle.tile, false, true), (.statusRing, false, false), (.statusRing, true, true),
-    ])
-    func theStatusFieldShowsWhereTheStyleAllows(
-        style: AgentListRowStyle, ringShowsStatusField: Bool, shows: Bool
-    ) async throws {
+    /// A status field the Agent List Fields choose shows as text in either
+    /// style; leaving it out is the way to hide it.
+    @Test(arguments: [AgentListRowStyle.tile, .statusRing])
+    func aChosenStatusFieldShowsInEitherStyle(style: AgentListRowStyle) async throws {
         let layout = AgentRowLayout(rows: [[.init(.terminalTitleStripped)], [.init(.workspace), .init(.status)]])
         let (root, window) = try await Self.host(
-            AgentCardView(agent: Self.agent(), layout: layout), style: style,
-            ringShowsStatusField: ringShowsStatusField)
+            AgentCardView(agent: Self.agent(), layout: layout), style: style)
         defer { window.isHidden = true }
         let labels = AccessibilityProbe.labels(in: root)
-        #expect(labels.contains("proj · Working") == shows, "\(labels)")
-        #expect(labels.contains("proj") == !shows, "\(labels)")
+        #expect(labels.contains("proj · Working"), "\(labels)")
     }
 
     /// Done and Blocked share a closed ring told apart by color, so Blocked
