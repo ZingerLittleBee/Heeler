@@ -89,8 +89,8 @@ final class AgentUsageStore {
     private(set) var readAt: Date?
     /// The plugin release behind the shown state, when its read learned it.
     private(set) var pluginVersion: PluginVersion?
-    /// Account file changes in flight; each stays until the read after it
-    /// lands.
+    /// Account file changes in flight; each stays until a read started
+    /// after its write lands.
     private(set) var pendingAccountChanges: Set<AccountChange> = []
     /// The last Account change that could not be saved; the alert clears it.
     var accountChangeFailure: AccountChangeFailure?
@@ -132,6 +132,11 @@ final class AgentUsageStore {
     @ObservationIgnored private var consecutiveFailures = 0
     @ObservationIgnored private var pendingPause: Task<Void, any Error>?
     @ObservationIgnored private var readWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    /// Reads started so far; each read is numbered by it.
+    @ObservationIgnored private var readsStarted = 0
+    /// For each pending Account change whose write landed, the reads
+    /// started by then: any later read shows the change.
+    @ObservationIgnored private var accountChangeWrites: [AccountChange: Int] = [:]
 
     convenience init(hostID: Host.ID, transports: any NotificationTransportProvider,
         defaults: UserDefaults = .standard,
@@ -231,6 +236,9 @@ final class AgentUsageStore {
     }
 
     func invalidate() {
+        // No read will show a pending Account change now.
+        accountChangeWrites = [:]
+        pendingAccountChanges = []
         endRefresh()
         snapshotState = .idle
         snapshotIncludesClaudeLimits = false
@@ -335,6 +343,8 @@ final class AgentUsageStore {
     /// One read, applied unless a newer request or the caller's cancellation
     /// superseded it. false stops the caller's loop.
     private func readOnce(id: UUID, timeZone: String, claudeLimits: Bool) async -> Bool {
+        readsStarted += 1
+        let number = readsStarted
         let reading: Reading
         do {
             reading = try await read(timeZone, claudeLimits)
@@ -359,6 +369,12 @@ final class AgentUsageStore {
             refreshFailure = nil
             readAt = .now
             consecutiveFailures = 0
+        }
+        // This read shows the Account changes written before it started; a
+        // failed one ends their wait all the same.
+        for (change, readsBefore) in accountChangeWrites where readsBefore < number {
+            accountChangeWrites[change] = nil
+            pendingAccountChanges.remove(change)
         }
         resumeReadWaiters()
         didChange?()
@@ -496,8 +512,8 @@ extension AgentUsageStore {
     @discardableResult
     func ignoreSuggestion(_ suggestion: AgentUsageReport.AccountSuggestion) async -> Bool {
         await reportingFailure {
-            try await self.changeAccounts(.directory(suggestion.directory)) { file, _ in
-                try file.ignore(directory: suggestion.directory)
+            try await self.changeAccounts(.directory(suggestion.directory)) { file, defaultDirectory in
+                try file.ignore(directory: suggestion.directory, defaultDirectory: defaultDirectory)
             }
         }
     }
@@ -579,7 +595,8 @@ extension AgentUsageStore {
 
     /// Reads the Account file, applies `edit` and replaces the file when it
     /// changed, under the Account file gate, then reads Usage again. The
-    /// row's change stays pending until that read lands. `edit` gets the
+    /// row's change stays pending until a read started after the write
+    /// lands: that read, or a newer one that replaced it. `edit` gets the
     /// Default Account's directory, which cannot be added again.
     private func changeAccounts(
         _ change: AccountChange, checkingDirectory: String? = nil,
@@ -593,25 +610,42 @@ extension AgentUsageStore {
         }
         guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Claude Code Accounts") }
         guard pendingAccountChanges.insert(change).inserted else { return }
-        defer { pendingAccountChanges.remove(change) }
         var defaultDirectory: String?
         if case .available(let report) = snapshotState {
             defaultDirectory = report.claudeProgram?.accounts?.first(where: \.isDefault)?.directory
         }
         let gate = accountFileGate
-        try await onHost { [defaultDirectory] transport in
-            try await gate.run {
-                if let checkingDirectory, !(try await Self.holdsClaudeCode(checkingDirectory, over: transport)) {
-                    throw ClaudeAccountError.notClaudeDirectory
+        do {
+            try await onHost { [defaultDirectory] transport in
+                try await gate.run {
+                    if let checkingDirectory, !(try await Self.holdsClaudeCode(checkingDirectory, over: transport)) {
+                        throw ClaudeAccountError.notClaudeDirectory
+                    }
+                    var file = try UsageAccountFile.decode(try await transport.readUsageAccountFile())
+                    let original = file
+                    try edit(&file, defaultDirectory)
+                    guard file != original else { return }
+                    try await transport.replaceUsageAccountFile(try file.encoded())
                 }
-                var file = try UsageAccountFile.decode(try await transport.readUsageAccountFile())
-                let original = file
-                try edit(&file, defaultDirectory)
-                guard file != original else { return }
-                try await transport.replaceUsageAccountFile(try file.encoded())
+            }
+        } catch {
+            pendingAccountChanges.remove(change)
+            throw error
+        }
+        accountChangeWrites[change] = readsStarted
+        await readAfterAccountChange()
+        // A newer read may have replaced this one: wait for it, or read
+        // again when none is underway (turning Claude Code limits on or
+        // off drops a read).
+        while accountChangeWrites[change] != nil, !Task.isCancelled {
+            if request == nil {
+                await readAfterAccountChange()
+            } else {
+                await waitForNextRead()
             }
         }
-        await readAfterAccountChange()
+        // Cancelled before a read showed it.
+        if accountChangeWrites.removeValue(forKey: change) != nil { pendingAccountChanges.remove(change) }
     }
 
     /// One read right after the Account file changed. A read already in

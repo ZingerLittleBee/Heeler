@@ -10,14 +10,15 @@ struct ClaudeAccountsStoreTests {
     /// Default Account at /Users/u/.claude, claude-2, a missing `work`, and
     /// two suggestions.
     private func readyStore(
-        plugin: String = "0.8.0", report: AgentUsageReport? = nil
+        plugin: String = "0.8.0", report: AgentUsageReport? = nil, defaults: UserDefaults = .standard
     ) async throws -> (AgentUsageStore, ScriptedTransport) {
         let hostID = UUID()
         let transport = ScriptedTransport()
         await transport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: plugin)))
         await transport.setAgentUsage(.success(try report ?? AgentUsageFixture.report()))
         let store = AgentUsageStore(
-            hostID: hostID, transports: ScriptedTransportProvider(transports: [hostID: transport]))
+            hostID: hostID, transports: ScriptedTransportProvider(transports: [hostID: transport]),
+            defaults: defaults)
         await store.refresh()
         return (store, transport)
     }
@@ -114,6 +115,56 @@ struct ClaudeAccountsStoreTests {
         await gate.open()
         await refresh.value
         #expect(store.state == .available(fresh))
+    }
+
+    /// A newer read can replace the one after a change; the row keeps its
+    /// spinner until a read started after its write lands, so its old
+    /// state is never offered again in between.
+    @Test func aChangeWaitsForAReadStartedAfterItsWrite() async throws {
+        let (store, transport) = try await readyStore()
+        let work = try suggestion(store, "claude-work")
+        let personal = try suggestion(store, "claude-personal")
+        let first = ScriptedTransportCallGate()
+        await transport.gateNextAgentUsageRead(first)
+        let addingWork = Task { await store.addAccount(work) }
+        await first.waitForEntry()
+        let second = ScriptedTransportCallGate()
+        await transport.gateNextAgentUsageRead(second)
+        let addingPersonal = Task { await store.addAccount(personal) }
+        await second.waitForEntry()
+        // The first read lands after the second began, so it is dropped.
+        await first.open()
+        var budget = PollBudget(.milliseconds(300))
+        while budget.hasTimeLeft, store.isChangingAccount(.directory(work.directory)) {
+            try await Task.sleep(for: .milliseconds(10))
+            budget.charge()
+        }
+        #expect(store.isChangingAccount(.directory(work.directory)))
+        await second.open()
+        #expect(await addingWork.value)
+        #expect(await addingPersonal.value)
+        #expect(store.pendingAccountChanges.isEmpty)
+        #expect(await transport.agentUsageReads == 3)
+    }
+
+    /// Turning Claude Code limits on drops the read after a change; the
+    /// change reads again rather than leave its row stale or spinning.
+    @Test func aChangeWhoseReadWasDroppedReadsAgain() async throws {
+        let name = "claude-accounts-dropped-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let (store, transport) = try await readyStore(defaults: defaults)
+        let work = try suggestion(store, "claude-work")
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextAgentUsageRead(gate)
+        let adding = Task { await store.addAccount(work) }
+        await gate.waitForEntry()
+        store.claudeLimitsEnabled.toggle()
+        await gate.open()
+        #expect(await adding.value)
+        #expect(store.pendingAccountChanges.isEmpty)
+        #expect(await transport.agentUsageReads == 3)
+        #expect(await transport.agentUsageClaudeLimits.last == store.claudeLimitsEnabled)
     }
 
     @Test func renamingAndRemovingEditTheFileTheHostHolds() async throws {

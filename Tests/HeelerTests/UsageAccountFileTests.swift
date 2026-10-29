@@ -104,7 +104,7 @@ struct UsageAccountFileTests {
 
     @Test func aSuggestionKeepsItsNameAndLeavesTheIgnoredList() throws {
         var file = UsageAccountFile()
-        try file.ignore(directory: "/Users/u/.claude-work")
+        try file.ignore(directory: "/Users/u/.claude-work", defaultDirectory: nil)
         let added = try file.add(directory: "/Users/u/.claude-work", name: "claude-work", defaultDirectory: nil)
         #expect(added.name == "claude-work")
         #expect(file.ignored.isEmpty)
@@ -140,7 +140,7 @@ struct UsageAccountFileTests {
             try file.add(directory: "/Users/u/.claude-5", defaultDirectory: nil)
         }
         // Dismissing a suggestion stays possible at the limit.
-        try file.ignore(directory: "/Users/u/.claude-5")
+        try file.ignore(directory: "/Users/u/.claude-5", defaultDirectory: nil)
         #expect(file.ignored == ["/Users/u/.claude-5"])
     }
 
@@ -185,10 +185,23 @@ struct UsageAccountFileTests {
         #expect(file.accounts.count == 1)
         file.remove(accountID: added.id)
         #expect(file.accounts.isEmpty)
-        try file.ignore(directory: "/Users/u/.claude-backup")
-        try file.ignore(directory: "/Users/u/.claude-backup/")
+        try file.ignore(directory: "/Users/u/.claude-backup", defaultDirectory: nil)
+        try file.ignore(directory: "/Users/u/.claude-backup/", defaultDirectory: nil)
         #expect(file.ignored == ["/Users/u/.claude-backup"])
-        #expect(throws: ClaudeAccountError.notAbsolute) { try file.ignore(directory: "~/.claude-x") }
+        #expect(throws: ClaudeAccountError.notAbsolute) {
+            try file.ignore(directory: "~/.claude-x", defaultDirectory: nil)
+        }
+    }
+
+    /// A suggestion row shown before its directory was added cannot
+    /// dismiss a directory that counts, the Default Account's included.
+    @Test func ignoringAnAccountsDirectoryChangesNothing() throws {
+        var file = UsageAccountFile()
+        try file.add(directory: "/Users/u/.claude-2", defaultDirectory: nil)
+        let before = file
+        try file.ignore(directory: "/Users/u/.claude-2/", defaultDirectory: "/Users/u/.claude")
+        try file.ignore(directory: "/Users/u/.claude", defaultDirectory: "/Users/u/.claude/")
+        #expect(file == before)
     }
 
     @Test(arguments: [

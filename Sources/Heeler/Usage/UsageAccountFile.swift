@@ -229,11 +229,17 @@ struct UsageAccountFile: Codable, Equatable, Sendable {
         accounts.removeAll { $0.id == accountID }
     }
 
-    /// Dismisses a suggested directory, so the plugin stops offering it.
-    mutating func ignore(directory: String) throws {
+    /// Dismisses a suggested directory, so the plugin stops offering it. A
+    /// directory that already counts, an added Account's or the Default
+    /// Account's (`defaultDirectory`), stays as it is: a suggestion shown
+    /// before it was added cannot dismiss it.
+    mutating func ignore(directory: String, defaultDirectory: String?) throws {
         guard Self.isAbsolute(directory) else { throw ClaudeAccountError.notAbsolute }
         let key = Self.comparable(directory)
-        guard !ignored.contains(where: { Self.comparable($0) == key }) else { return }
+        guard !accounts.contains(where: { Self.comparable($0.directory) == key }),
+            defaultDirectory.map(Self.comparable) != key,
+            !ignored.contains(where: { Self.comparable($0) == key })
+        else { return }
         ignored.append(directory)
     }
 
