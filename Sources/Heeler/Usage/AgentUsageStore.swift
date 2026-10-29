@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// One Host's on-demand Usage reading. Connections are borrowed from Console;
 /// opening Usage never starts an independent SSH connection.
@@ -93,6 +94,9 @@ final class AgentUsageStore {
     private(set) var pendingAccountChanges: Set<AccountChange> = []
     /// The last Account change that could not be saved; the alert clears it.
     var accountChangeFailure: AccountChangeFailure?
+    /// The Host's home folder, once the Accounts sheet asked for it: their
+    /// directories show it as `~`.
+    private(set) var hostHome: String?
     /// Called after the state or the Claude Code limits choice changes, so
     /// the widgets' snapshot can follow.
     @ObservationIgnored var didChange: (@MainActor () -> Void)?
@@ -233,6 +237,7 @@ final class AgentUsageStore {
         refreshFailure = nil
         readAt = nil
         pluginVersion = nil
+        hostHome = nil
         consecutiveFailures = 0
         didChange?()
     }
@@ -497,6 +502,33 @@ extension AgentUsageStore {
         }
     }
 
+    /// Learns the Host's home folder once; a failure leaves full paths.
+    func loadHostHome() async {
+        guard hostHome == nil, onHost != nil else { return }
+        hostHome = try? await onHostValue { try await $0.hostHomeDirectory() }
+    }
+
+    /// A remote directory browser over this Host's connection, for Choose
+    /// Another Directory…: it starts in the home folder and lists symbolic
+    /// links to directories too, since Claude Code reads a directory by the
+    /// path it is given. nil for a store that only reads.
+    func accountDirectoryBrowser() -> RemoteDirectoryBrowser? {
+        guard onHost != nil else { return nil }
+        return RemoteDirectoryBrowser(
+            resolveHome: { [weak self] in
+                guard let self else { throw CancellationError() }
+                let home = try await self.onHostValue { try await $0.hostHomeDirectory() }
+                self.hostHome = home
+                return home
+            },
+            list: { [weak self] path in
+                guard let self else { throw CancellationError() }
+                return try await self.onHostValue { transport in
+                    try await RemoteDirectoryListing.followingLinks(at: path, over: transport)
+                }
+            })
+    }
+
     nonisolated static func accountChangeMessage(for error: any Error) -> String {
         switch error {
         case let error as ClaudeAccountError: error.message
@@ -519,6 +551,20 @@ extension AgentUsageStore {
         let base = directory.count > 1 && directory.hasSuffix("/") ? String(directory.dropLast()) : directory
         if try await transport.fileStatus(atPath: base + "/.claude.json")?.kind == .regular { return true }
         return try await transport.fileStatus(atPath: base + "/projects")?.kind == .directory
+    }
+
+    /// Runs `operation` over the Host's connection and returns its value.
+    private func onHostValue<Value: Sendable>(
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Claude Code Accounts") }
+        let result = OSAllocatedUnfairLock<Value?>(initialState: nil)
+        try await onHost { transport in
+            let value = try await operation(transport)
+            result.withLock { $0 = value }
+        }
+        guard let value = result.withLock({ $0 }) else { throw CancellationError() }
+        return value
     }
 
     private func reportingFailure(_ change: () async throws -> Void) async -> Bool {

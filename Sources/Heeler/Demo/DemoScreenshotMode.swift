@@ -1330,15 +1330,63 @@
             return try? JSONSerialization.data(withJSONObject: file)
         }
 
+        /// The demo home's symbolic link, to the directory it resolves to.
+        private static let homeLinks = [
+            "\(DemoChatSample.home)/claude-shared": "\(DemoChatSample.home)/.claude-team",
+        ]
+
+        /// Plain folders the demo home holds beside Claude Code's.
+        private static let homeFolders = ["Documents", "Projects"].map { "\(DemoChatSample.home)/\($0)" }
+
+        /// `path` with a demo link in it replaced by its target, as a
+        /// following stat sees it.
+        private static func resolvingLinks(_ path: String) -> String {
+            for (link, target) in homeLinks {
+                if path == link { return target }
+                if path.hasPrefix(link + "/") { return target + path.dropFirst(link.count) }
+            }
+            return path
+        }
+
         /// The demo Host paths that hold Claude Code's files, for the check
-        /// a chosen directory must pass.
+        /// a chosen directory must pass, and the home folders the directory
+        /// browser lists. A stat follows the home's link.
         static func accountFileStatus(atPath path: String) -> RemoteFileStatus? {
+            let path = resolvingLinks(path)
+            if homeFolders.contains(path) { return RemoteFileStatus(kind: .directory, size: nil) }
             for directory in studioAccounts.keys {
                 if path == directory { return RemoteFileStatus(kind: .directory, size: nil) }
                 if path == directory + "/projects" { return RemoteFileStatus(kind: .directory, size: nil) }
                 if path == directory + "/.claude.json" { return RemoteFileStatus(kind: .regular, size: 2_048) }
             }
             return nil
+        }
+
+        /// The folders the Accounts directory browser finds in the demo
+        /// home and in each Claude Code directory, added to what Chat's
+        /// samples list there; nil leaves `chat` alone.
+        static func accountListing(
+            _ request: RemoteFileListingRequest, adding chat: RemoteFileListing?
+        ) -> RemoteFileListing? {
+            let directory = resolvingLinks(request.directory)
+            var added: [RemoteFileEntry] = []
+            if directory == DemoChatSample.home {
+                let folders = studioAccounts.keys.map { ($0 as NSString).lastPathComponent }
+                    + homeFolders.map { ($0 as NSString).lastPathComponent }
+                added = folders.map { RemoteFileEntry(name: $0, status: RemoteFileStatus(kind: .directory, size: nil)) }
+                    + homeLinks.keys.map {
+                        RemoteFileEntry(
+                            name: ($0 as NSString).lastPathComponent, status: RemoteFileStatus(kind: .symlink, size: nil))
+                    }
+            } else if studioAccounts[directory] != nil {
+                added = [RemoteFileEntry(name: "projects", status: RemoteFileStatus(kind: .directory, size: nil))]
+            } else if homeFolders.contains(directory) {
+                return chat ?? RemoteFileListing(entries: [])
+            }
+            added = added.filter { request.kinds.isEmpty || request.kinds.contains($0.status.kind ?? .other) }
+            guard !added.isEmpty else { return chat }
+            let entries = ((chat?.entries ?? []) + added).sorted { $0.name < $1.name }
+            return RemoteFileListing(entries: entries)
         }
 
         /// `accounts` nil reports as a plugin before Accounts would.
@@ -1404,9 +1452,12 @@
                     var entry: [String: Any] = [
                         "id": account.id, "isDefault": false, "name": account.name, "directory": account.directory,
                     ]
-                    let accountProfile = isStudio ? studioAccounts[account.directory] : nil
-                    if let accountProfile, !seen.contains(account.directory) {
-                        seen.insert(account.directory)
+                    // The plugin compares real paths: the home's link is
+                    // the directory it points to.
+                    let resolved = resolvingLinks(account.directory)
+                    let accountProfile = isStudio ? studioAccounts[resolved] : nil
+                    if let accountProfile, !seen.contains(resolved) {
+                        seen.insert(resolved)
                         let totals = accountProfile.days.map { $0 * claudeUnit }
                         counted.append(totals)
                         entry["state"] = "ok"
@@ -1689,7 +1740,7 @@
         }
 
         func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
-            DemoChatSample.list(request)
+            DemoUsageSample.accountListing(request, adding: DemoChatSample.list(request))
         }
 
         func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
