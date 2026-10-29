@@ -29,6 +29,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Show a new Claude Code Agent's Chat, such as one started in a new
+  worktree, as No Messages Yet until its first message, instead of
+  Conversation Not Found.
 - Scroll the Agent and Shell terminals with a trackpad or a mouse wheel on
   iPad, not only by touch. (#512; PR #528)
 - Reattach a terminal on its own when the Host's connection drops under it,
