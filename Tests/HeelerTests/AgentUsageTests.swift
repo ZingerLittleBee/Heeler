@@ -465,6 +465,100 @@ struct AgentUsageStoreTests {
 }
 
 
+@MainActor
+@Suite("Claude Code Accounts report")
+struct ClaudeAccountsReportTests {
+    private func vector(_ change: (inout [String: Any]) throws -> Void) throws -> AgentUsageReport {
+        var object = try #require(JSONSerialization.jsonObject(with: AgentUsageFixture.data()) as? [String: Any])
+        var programs = try #require(object["programs"] as? [[String: Any]])
+        try change(&programs[0])
+        object["programs"] = programs
+        return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+    }
+
+    @Test func theSharedVectorCarriesEveryAccountInOrder() throws {
+        let report = try AgentUsageReport.decode(AgentUsageFixture.data())
+        let claude = try #require(report.claudeProgram)
+        let accounts = try #require(claude.accounts)
+        #expect(accounts.map(\.id) == ["default", "7f3c9a2e", "c41d07b9"])
+        #expect(accounts.map(\.displayName) == ["Default", "claude-2", "work"])
+        #expect(accounts.map(\.isDefault) == [true, false, false])
+        #expect(accounts.map(\.state) == [.ok, .ok, .missing])
+        #expect(accounts[0].name == nil)
+        #expect(accounts[0].directory == "/Users/u/.claude")
+        #expect(accounts[0].tokenUsage == claude.tokenUsage)
+        #expect(accounts[0].usageLimits == claude.usageLimits)
+        #expect(accounts[1].tokenUsage?.state == "noData")
+        #expect(accounts[1].usageLimits?.windows?.first?.id == "fiveHour")
+        #expect(!accounts[2].isReadable)
+        #expect(accounts[2].tokenUsage == nil)
+        #expect(accounts[2].usageLimits == nil)
+        #expect(claude.accountSuggestions == [
+            .init(directory: "/Users/u/.claude-work", name: "claude-work", source: .agent),
+            .init(directory: "/Users/u/.claude-personal", name: "claude-personal", source: .home),
+        ])
+        let codex = try #require(report.programs?.last)
+        #expect(codex.accounts == nil)
+        #expect(codex.accountSuggestions == nil)
+    }
+
+    @Test func aReportFromAPluginBeforeAccountsStillDecodes() throws {
+        let report = try AgentUsageFixture.tokenReport(refreshing: false)
+        #expect(report.claudeProgram?.accounts == nil)
+        #expect(report.claudeProgram?.accountSuggestions == nil)
+        #expect(report.hidingClaudeLimits().claudeProgram?.accounts == nil)
+    }
+
+    /// A newer plugin's states, sources and fields must not cost the report.
+    @Test func unknownStatesSourcesAndFieldsDecode() throws {
+        let report = try vector { claude in
+            var accounts = try #require(claude["accounts"] as? [[String: Any]])
+            accounts[2]["state"] = "archived"
+            accounts[2]["futureField"] = ["anything": true]
+            claude["accounts"] = accounts
+            var suggestions = try #require(claude["accountSuggestions"] as? [[String: Any]])
+            suggestions[0]["source"] = "cloud"
+            suggestions[1]["seenAt"] = "2026-10-29T00:00:00Z"
+            claude["accountSuggestions"] = suggestions
+        }
+        let claude = try #require(report.claudeProgram)
+        #expect(claude.accounts?[2].state == .other("archived"))
+        #expect(claude.accounts?[2].isReadable == false)
+        #expect(claude.accountSuggestions?.map(\.source) == [.other("cloud"), .home])
+    }
+
+    @Test func everyAccountsLimitsFollowTheToggle() throws {
+        let report = try ClaudeUsageFixture.report()
+        let cases: [(AgentUsageReport, String, String?)] = [
+            (report.hidingClaudeLimits(), "disabled", nil),
+            (report.readingClaudeLimits(), "unavailable", "notReadYet"),
+            (report.failedClaudeLimits(), "error", "requestFailed"),
+        ]
+        for (replaced, state, reason) in cases {
+            let accounts = try #require(replaced.claudeProgram?.accounts)
+            for account in accounts.prefix(2) {
+                #expect(account.usageLimits?.state == state)
+                #expect(account.usageLimits?.reason == reason)
+                #expect(account.usageLimits?.windows == nil)
+                #expect(account.tokenUsage == report.claudeProgram?.accounts?.first { $0.id == account.id }?.tokenUsage)
+            }
+            // A missing Account has no limits to replace.
+            #expect(accounts[2].usageLimits == nil)
+        }
+    }
+
+    @Test func aDeviceThatOptedOutSeesNoAccountsLimits() async throws {
+        let name = "claude-accounts-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let report = try ClaudeUsageFixture.report()
+        let store = AgentUsageStore(hostID: UUID(), defaults: defaults) { _, _ in .available(report) }
+        await store.refresh()
+        guard case .available(let shown) = store.state else { Issue.record("Missing report"); return }
+        #expect(shown.claudeProgram?.accounts?.compactMap(\.usageLimits?.state) == ["disabled", "disabled"])
+    }
+}
+
 enum AgentUsageFixture {
     private final class BundleLocator {}
 
@@ -524,11 +618,19 @@ enum AgentUsageFixture {
         return try AgentUsageReport.decode(Data(json.utf8))
     }
 
+    /// As a query without `--claude-limits` answers: every Claude Code
+    /// Account's limits are off too.
     static func report(refreshing: Bool) throws -> AgentUsageReport {
         var object = try #require(JSONSerialization.jsonObject(with: data()) as? [String: Any])
         object["refreshing"] = refreshing
         var programs = try #require(object["programs"] as? [[String: Any]])
         programs[0]["usageLimits"] = ["state": "disabled"]
+        if var accounts = programs[0]["accounts"] as? [[String: Any]] {
+            for index in accounts.indices where accounts[index]["usageLimits"] != nil {
+                accounts[index]["usageLimits"] = ["state": "disabled"]
+            }
+            programs[0]["accounts"] = accounts
+        }
         object["programs"] = programs
         return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
     }
