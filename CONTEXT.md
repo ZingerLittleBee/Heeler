@@ -182,7 +182,7 @@ _Avoid_: harness icon, avatar, logo
 The app-wide choice of how the Console draws an Agent's mark and status: Tile,
 the default, puts the Agent Mark on a tile and ends Row 1 with the status
 badge; Status Ring puts it in a circle whose ring is the status, with no badge
-unless the ring cannot show it or Differentiate Without Color is on.
+or status text.
 _Avoid_: list theme, row skin
 
 **Row Slot**:

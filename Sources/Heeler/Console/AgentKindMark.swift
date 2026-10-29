@@ -126,18 +126,29 @@ struct AgentKindTile: View {
 }
 
 /// The Status Ring row style's lead: the mark on a disc, inside a ring that
-/// carries the Agent's status. Working's ring is an open arc that turns;
-/// Done and Blocked close it in their colors; Idle and any status the ring
-/// cannot draw keep a hairline.
+/// is the Agent's status, with no status text beside it. Working's ring is
+/// an open arc that turns; Done and Blocked close it in their colors, and
+/// Blocked's breaks into dashes where color must not carry it alone; Idle
+/// and any other status keep a hairline.
 struct AgentStatusAvatar: View {
     let mark: AgentKindMark
     let status: AgentStatus
     /// 34 points in a list row, the icon column's width in a card.
     let diameter: CGFloat
 
-    /// The statuses the ring draws; the row keeps the capsule for others.
-    static func drawsStatus(_ status: AgentStatus) -> Bool {
-        [.working, .done, .blocked, .idle, .unknown].contains(status)
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiatesWithoutColor
+
+    enum Ring: Equatable {
+        case turning, closed, dashed, hairline
+    }
+
+    static func ring(for status: AgentStatus, differentiatingWithoutColor: Bool) -> Ring {
+        switch status {
+        case .working: .turning
+        case .done: .closed
+        case .blocked: differentiatingWithoutColor ? .dashed : .closed
+        default: .hairline
+        }
     }
 
     private static let ringWidth: CGFloat = 2
@@ -159,12 +170,20 @@ struct AgentStatusAvatar: View {
 
     @ViewBuilder
     private var ring: some View {
-        switch status {
-        case .working:
+        switch Self.ring(for: status, differentiatingWithoutColor: differentiatesWithoutColor) {
+        case .turning:
             AgentWorkingArc(lineWidth: Self.ringWidth)
-        case .done, .blocked:
+        case .closed:
             Circle().strokeBorder(Color(uiColor: status.inkUIColor), lineWidth: Self.ringWidth)
-        default:
+        case .dashed:
+            // Whole dashes around the ring, so none meets the start cut short.
+            let circumference = .pi * (diameter - Self.ringWidth)
+            let period = circumference / (circumference / 6).rounded()
+            Circle().strokeBorder(
+                Color(uiColor: status.inkUIColor),
+                style: StrokeStyle(
+                    lineWidth: Self.ringWidth, lineCap: .round, dash: [period * 0.4, period * 0.6]))
+        case .hairline:
             Circle().strokeBorder(Color(uiColor: .separator), lineWidth: 1)
         }
     }

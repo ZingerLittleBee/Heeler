@@ -177,14 +177,27 @@ struct AgentCardRowStyleTests {
         #expect(AccessibilityProbe.frame(labeled: "Working", in: root) == nil)
     }
 
-    /// A status the ring cannot draw keeps its capsule.
-    @Test func aStatusTheRingCannotDrawKeepsItsCapsule() async throws {
+    /// A status the ring has no shape for still shows no text; VoiceOver
+    /// reads it with the program.
+    @Test func aStatusWithoutItsOwnRingStillShowsNoText() async throws {
         let (root, window) = try await Self.host(
             AgentCardView(agent: Self.agent(status: AgentStatus(rawValue: "paused")), layout: Self.layout),
             style: .statusRing)
         defer { window.isHidden = true }
-        #expect(AccessibilityProbe.frame(labeled: "Claude", in: root) != nil)
-        #expect(AccessibilityProbe.frame(labeled: "Paused", in: root) != nil)
+        #expect(AccessibilityProbe.frame(labeled: "Claude, Paused", in: root) != nil)
+        #expect(AccessibilityProbe.frame(labeled: "Paused", in: root) == nil)
+    }
+
+    /// Done and Blocked share a closed ring told apart by color, so Blocked
+    /// breaks into dashes where color must not carry it alone.
+    @Test func blockedDashesItsRingWhereColorCannotCarryIt() {
+        func rings(_ differentiating: Bool) -> [AgentStatusAvatar.Ring] {
+            [.working, .done, .blocked, .idle, .unknown, AgentStatus(rawValue: "paused")].map {
+                AgentStatusAvatar.ring(for: $0, differentiatingWithoutColor: differentiating)
+            }
+        }
+        #expect(rings(false) == [.turning, .closed, .closed, .hairline, .hairline, .hairline])
+        #expect(rings(true) == [.turning, .closed, .dashed, .hairline, .hairline, .hairline])
     }
 
     /// In a Workspace card the mark fills the card's icon column, which the

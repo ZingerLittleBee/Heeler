@@ -6,9 +6,7 @@ import UIKit
 /// name ends the first additional row, and the Checkout's Changes totals end
 /// the last one, after the Host when that is the same row (both share a line
 /// of their own when Row 1 is the only row and either shows). The Status
-/// Ring style's ring stands in for the status capsule, which stays where
-/// Differentiate Without Color is on or the ring cannot draw the status.
-/// Fields retain their
+/// Ring style's ring stands in for the status capsule. Fields retain their
 /// emphasis using accessible semantic colors; plugin colors and weights do
 /// not replace app typography.
 struct AgentCardView: View {
@@ -37,7 +35,6 @@ struct AgentCardView: View {
     var lead = AgentCardLead.row
 
     @Environment(\.agentListRowStyle) private var style
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiatesWithoutColor
     private var cardColumn = CardIconWidth()
 
     /// A list row's lead and the gap after it, as a Terminals row's tile.
@@ -61,11 +58,8 @@ struct AgentCardView: View {
 
     private var mark: AgentKindMark { AgentKindMark(kind: agent.agent.kind) }
 
-    /// The ring stands in for the capsule, except where color alone would
-    /// carry it or the ring cannot draw the status.
-    private var showsStatusBadge: Bool {
-        style == .tile || differentiatesWithoutColor || !AgentStatusAvatar.drawsStatus(agent.agent.status)
-    }
+    /// The ring stands in for the capsule.
+    private var showsStatusBadge: Bool { style == .tile }
 
     /// The Tile style centers its tile on the title's line; the ring style,
     /// its avatar on the rows beside it.
@@ -123,7 +117,7 @@ struct AgentCardView: View {
     }
 
     /// The tile or avatar, which VoiceOver reads first as the program and,
-    /// where the ring carries it, the status.
+    /// in the ring style, the status.
     private func markView(side: CGFloat) -> some View {
         let mark = mark
         let status = saved == nil ? agent.agent.status : .unknown
