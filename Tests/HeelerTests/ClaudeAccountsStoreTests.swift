@@ -39,7 +39,8 @@ struct ClaudeAccountsStoreTests {
     }
 
     private func savedFile(_ transport: ScriptedTransport) async throws -> UsageAccountFile {
-        try UsageAccountFile.decode(try #require(await transport.usageAccountFile))
+        let data: Data = try #require(await transport.usageAccountFile)
+        return try UsageAccountFile.decode(data)
     }
 
     @Test func aPluginWithAccountsSupportsThem() async throws {
