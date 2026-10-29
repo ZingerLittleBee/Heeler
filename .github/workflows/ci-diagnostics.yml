@@ -33,7 +33,7 @@ jobs:
   diagnose:
     name: Diagnose ${{ matrix.target }}
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
@@ -44,7 +44,7 @@ jobs:
       HEELER_CI_OVERLAP_BUILD: '1'
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
       HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
-      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1200'
+      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1800'
       # Repeated diagnostic cases retain their individual assertions/deadlines.
       # Only this manual investigation has a longer invocation watchdog.
       HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'

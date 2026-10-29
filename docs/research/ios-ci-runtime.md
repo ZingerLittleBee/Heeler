@@ -58,17 +58,23 @@ This reduces crash file/line symbolication and LLDB variable information; the
 normal Swift Testing failure locations remain available. Local builds retain
 their default symbol settings. The hosted runs below used this policy, but
 none isolates its saving.
-Cold and warm app runs permit a 20-minute build deadline: hosted compilation
-has reached the final embedded-binary validation stage at the former 15-minute
-cutoff. This is a safety limit for runner variance, not a performance target.
-Test deadlines remain unchanged. GitHub's step timeout signals only the step
-shell, so the runner's cleanup and diagnostics survive only when its own
-watchdogs fire first. The sharded app step therefore allows 40 minutes (44 for
-the job) and the package step 30 (36 for the job), enough for preparation, the
-build deadline, and a hung suite's 10-minute watchdog with sampling and
-cleanup. The explicit serial comparison has a 45-minute step and 50-minute job
-safety limit, allowing its original sequential setup and four test calls to
-finish.
+Cold and warm app runs permit a 30-minute build deadline. Hosted compilation
+first reached the final embedded-binary validation stage at a 15-minute cutoff.
+By 2026-10-27 it also outgrew the 20-minute one: between 2026-10-27 and
+2026-10-29, passing app builds took 720-1150 s, and 13 of 16 failed app lanes
+were killed at that deadline before any test ran. Swift sources and tests grew
+from about 206k to 260k lines between 2026-10-15 and 2026-10-29. Each app test
+call has a 15-minute watchdog. The ordinary lane's full call passed all of its
+tests in 7.5-8.5 minutes, then hit the former 10-minute watchdog before
+xcodebuild exited. These are safety limits for runner variance, not performance
+targets. The package lane keeps the script defaults (15-minute build, 10-minute
+test call). GitHub's step timeout signals only the step shell, so the runner's
+cleanup and diagnostics survive only when its own watchdogs fire first. The
+sharded app step therefore allows 55 minutes (60 for the job) and the package
+step 30 (36 for the job), enough for preparation, the build deadline, and a
+hung suite's watchdog with sampling and cleanup. The explicit serial comparison
+has a 60-minute step and 65-minute job safety limit, allowing its original
+sequential setup and four test calls to finish.
 
 Local non-native checks use:
 
