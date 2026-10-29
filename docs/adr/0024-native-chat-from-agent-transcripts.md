@@ -41,7 +41,17 @@ Pi and OMP report a new session's path at startup but write the file with
 its first reply, so a reported path with no file, or an empty one, is a new
 conversation: Chat shows it as empty, looks again on every poll without
 backing off, and keeps a sent message's echo waiting rather than overdue.
-Once a file was followed or saved on the device, its absence is Not Found.
+Claude Code reports a new session's id at startup and writes the file with
+its first message, and herdr does not pass on the path. A Claude session
+with no file in any project directory is new when
+`~/.claude/session-env/<id>/` exists: Claude Code makes it before running
+the SessionStart hook that reports the session. Chat shows it as empty too,
+and looks again on every poll under the Agent's directories alone, searching
+every project directory again only when herdr reports another status, as a
+prompt brings. Claude Code records a message as it takes it, so that echo
+still times out, and a session that leaves a message from Chat unrecorded
+past that timeout saves nothing: Chat shows it as Not Found. Once a file was
+followed or saved on the device, its absence is Not Found.
 OMP sometimes rewrites its file atomically, filling in the session header,
 so a Pi/OMP file is identified by its header's session id rather than its
 first bytes, and Chat's sends are confirmed by entry: a rewrite neither
@@ -722,9 +732,15 @@ no Attach at all.
   Grok Build sessions are looked for only under `~/.grok/sessions`: a
   custom `GROK_HOME` lives in the Agent's environment, which herdr does not
   report, so a session there is not found.
-- Claude Code writes no transcript before the first prompt, and Codex reports
-  no session to herdr until after it, also after a resume, by id or by name,
-  or a restart in its pane. The Composer works in both states.
+- Claude Code writes no transcript before the first message. Chat tells a
+  new session by its `session-env` directory under `~/.claude`, so a Claude
+  Code that makes none shows Conversation Not Found until then; one run with
+  `CLAUDE_CONFIG_DIR` elsewhere is not found at all, as above. A Claude Code
+  that saves no transcript, such as with `CLAUDE_CODE_SKIP_PROMPT_HISTORY`,
+  shows No Messages Yet until a message sent from Chat goes unrecorded.
+  Codex reports no session to herdr
+  until after its first prompt, also after a resume, by id or by name, or a
+  restart in its pane. The Composer works in all these states.
 - Following makes SFTP requests on the Host's connection at every poll, or,
   for OpenCode, one exec per poll (ADR 0025). While
   a Workflow is listed, each poll also looks at up to two journals: a stat

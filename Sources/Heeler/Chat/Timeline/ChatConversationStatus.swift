@@ -50,7 +50,7 @@ extension ChatUnavailableReason {
                 ? "Heeler couldn't find this conversation's transcript on the Host. It keeps looking while Chat is open."
                 : "Heeler hasn't found this conversation's transcript yet. It keeps looking while Chat is open."
         case .awaitingFirstMessage(let program):
-            "\(program.chatName) saves this conversation after its first reply. Send a message to start it."
+            "\(program.chatName) saves this conversation \(program.firstSave). Send a message to start it."
         case .compressed:
             "Codex compressed this conversation's rollout, which Chat can't read."
         case .mismatched:
@@ -99,7 +99,7 @@ extension ChatUnavailableReason {
         case .noSession:
             "Waiting for the Agent to report its conversation."
         case .awaitingFirstMessage(let program):
-            "\(program.chatName) saves this conversation after its first reply."
+            "\(program.chatName) saves this conversation \(program.firstSave)."
         case .unidentifiedSession, .unsupportedSession:
             "Chat can't follow this conversation now.\(saved)"
         case .notFound:
@@ -315,6 +315,12 @@ extension ChatProgram {
         case .grok: "Grok Build"
         case .opencode: "OpenCode"
         }
+    }
+
+    /// When the program first saves a new conversation, after "saves this
+    /// conversation".
+    fileprivate var firstSave: String {
+        writesNewConversationWithFirstReply ? "after its first reply" : "once it has a first message"
     }
 }
 

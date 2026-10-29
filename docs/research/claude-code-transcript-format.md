@@ -32,6 +32,7 @@ not byte-identical to the compact JSON Claude Code writes.
 | Local session | Claude Code 2.1.291, one development session, 2026-10-07 | shapes only, never content or counts |
 | herdr | v0.9.3 (`7b116c05`) | herdr `src/<path>:<line>` |
 | Local scan | transcripts on one development machine, 2026-10-06 | aggregate counts only |
+| New sessions | Claude Code 2.1.312 on one development machine, 2026-10-29: a herdr-launched session in a fresh worktree, observed through its first prompt, and pty-driven sessions with no prompt sent ([herdr compatibility](../agents/herdr-compatibility.md)) | 2.1.312 |
 
 Minified identifiers mean something only within that build, and one name can
 occur in several modules, so CLI citations give the module. CLI line numbers
@@ -546,7 +547,8 @@ What follows for matching a sent prompt to its record:
   frontmatter says `user-invocable: false`, and loads a skill added after it
   started, so that 2.1.301 case no longer arises (live 2026-10-18).
 - Forks and `/clear` start a new session id and file, so a prompt without an
-  echo may have landed in another transcript (Not verified for `/clear`; see
+  echo may have landed in another transcript. 2.1.312's `/clear` wrote the
+  new file at once, holding the `/clear` command records (see
   [Location](#location)).
 
 ## Location
@@ -593,9 +595,12 @@ What follows for matching a sent prompt to its record:
   directory). A `continued-in` record with no assistant record after it moves
   the conversation to `continuedInSessionId`; one followed by assistant
   records is history (SDK `LN`).
-- **New sessions.** The hooks documentation says the transcript is written
-  asynchronously, so a new session's file may not exist yet. Whether the CLI
-  creates it before the first record is Not verified.
+- **New sessions.** 2.1.312 writes a new session's file, and its project
+  directory, with the first prompt, and nothing before it. When any
+  SessionStart hook is configured, it makes `~/.claude/session-env/<id>/`
+  before running the hooks and keeps it after the session ends, so a session
+  herdr reports has that directory from its start. `/clear` makes the new
+  session's directory and writes its file at once.
 
 ## Incremental reading
 
@@ -638,9 +643,11 @@ mid-file, a file that shrinks and byte offsets that move.
 - Whether the `plan_mode` attachment carries `planFilePath`.
 - NFC normalization in the CLI's project key, and the long-key vectors.
 - How `CLAUDE_CONFIG_DIR` changes where a herdr-managed agent writes.
-- Whether `/clear` always starts a new session id and file.
 - Whether parents always precede children.
-- When the CLI creates a new session's file.
+- Which version first made `session-env/<id>/`, and whether a fork writes
+  its file before the first prompt.
+- Whether `/clear` after a conversation, not only before any prompt, also
+  starts a new session id and writes its file at once.
 - Background Work: a `remote_launched` result, a Workflow journal rewritten
   on resume, a second notification for the same task id, and a background
   agent resumed through SendMessage.

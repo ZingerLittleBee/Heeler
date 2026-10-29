@@ -31,6 +31,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Show a new Claude Code Agent's Chat, such as one started in a new
+  worktree, as No Messages Yet until its first message, instead of
+  Conversation Not Found. (#530)
 - Ask to trust the new host key as soon as an edit to a Host's routes
   reaches a machine whose key changed, and show Trust New Host Key under
   the Host's connection status instead of at the bottom of its page. (#531)

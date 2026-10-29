@@ -241,6 +241,94 @@ struct ChatConversationEngineTests {
         #expect(!snapshot.isFromCache)
     }
 
+    // MARK: A new Claude Code conversation
+
+    private static let sessionEnvironment = "/home/dev/.claude/session-env/\(sessionID)"
+
+    /// Claude Code starts a session, which herdr reports, and writes its
+    /// transcript with the first message. While it is new, looking again
+    /// stats the Agent's directory alone until herdr reports the Agent
+    /// doing something else.
+    @Test func aStartedClaudeSessionIsNewUntilItsFileAppears() async throws {
+        let fixture = Fixture()
+        await fixture.files.makeDirectory(Self.sessionEnvironment)
+        for index in 0..<3 {
+            await fixture.files.makeDirectory("/home/dev/.claude/projects/-p\(index)")
+        }
+        let engine = fixture.makeEngine()
+
+        let first = await fixture.open(engine)
+
+        #expect(first.phase == .unavailable(.awaitingFirstMessage(.claude)))
+        #expect(!first.isFromCache)
+
+        await fixture.files.clearRecords()
+        let again = await fixture.open(engine)
+
+        #expect(again.phase == .unavailable(.awaitingFirstMessage(.claude)))
+        #expect(await fixture.files.statuses == [Self.claudePath])
+        #expect(await fixture.files.listings.isEmpty)
+
+        // A prompt: every project directory once more, then the Agent's.
+        await fixture.files.clearRecords()
+        let working = ChatProjectionContext(activity: .working)
+        #expect(
+            await engine.open(directories: [Self.cwd], context: working).phase
+                == .unavailable(.awaitingFirstMessage(.claude)))
+        #expect(await fixture.files.listings.count == 1)
+        await fixture.files.clearRecords()
+        _ = await engine.open(directories: [Self.cwd], context: working)
+        #expect(await fixture.files.listings.isEmpty)
+
+        await fixture.files.write(Self.lines(0..<2), at: Self.claudePath)
+        let followed = await engine.open(directories: [Self.cwd], context: working)
+
+        #expect(followed.phase == .following(path: Self.claudePath))
+        #expect(Self.numbers(followed) == Self.ids(0..<2))
+    }
+
+    /// A search of every project directory that fails is not repeated on
+    /// every pass: the Agent's directory is still looked at.
+    @Test func aFailedSearchForANewClaudeConversationRunsOncePerActivity() async throws {
+        let fixture = Fixture()
+        await fixture.files.makeDirectory(Self.sessionEnvironment)
+        await fixture.files.makeDirectory("/home/dev/.claude/projects/-p0")
+        let engine = fixture.makeEngine()
+        #expect(await fixture.open(engine).phase == .unavailable(.awaitingFirstMessage(.claude)))
+        let working = ChatProjectionContext(activity: .working)
+
+        await fixture.files.failNext(.list, with: TransportError.hostFileTimedOut)
+        let failed = await engine.open(directories: [Self.cwd], context: working)
+
+        #expect(failed.phase == .unavailable(.awaitingFirstMessage(.claude)))
+        #expect(failed.readFailure == .hostFileTimedOut)
+
+        await fixture.files.clearRecords()
+        let again = await engine.open(directories: [Self.cwd], context: working)
+
+        #expect(again.readFailure == nil)
+        #expect(await fixture.files.listings.isEmpty)
+        #expect(await fixture.files.statuses == [Self.claudePath])
+    }
+
+    @Test func aClaudeFileShownBeforeThatIsGoneIsNotFound() async throws {
+        let fixture = Fixture()
+        await fixture.files.makeDirectory(Self.sessionEnvironment)
+        await fixture.files.write(Self.lines(0..<2), at: Self.claudePath)
+        let engine = fixture.makeEngine()
+        #expect(await fixture.open(engine).phase == .following(path: Self.claudePath))
+        await engine.save(force: true)
+
+        await fixture.files.remove(Self.claudePath)
+
+        #expect(await fixture.poll(engine).phase == .unavailable(.notFound(searchedAll: true)))
+
+        // Saved on the device, then gone from the Host, on a later visit.
+        let later = fixture.makeEngine()
+        _ = await later.restore()
+        #expect(await fixture.open(later).phase == .unavailable(.notFound(searchedAll: true)))
+    }
+
     @Test func historyTooLongToPageEndsWithADivider() async throws {
         let fixture = Fixture()
         let long = #"{"pad":""# + String(repeating: "x", count: 2_000) + "\"}\n"

@@ -24,7 +24,6 @@ Codex tracks the cause in [openai/codex#48500](https://github.com/openai/codex/i
 
 ## Conversation Not Found
 
-- A new Claude Code Agent shows this until you send its first prompt.
 - A Claude Code, Codex, or Grok Build Agent started with its own configuration folder (such as `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, or `GROK_HOME`) can't show in Chat. Chat reads only their default folders.
 
 ## Chat says the terminal shows another conversation
