@@ -32,6 +32,8 @@ Entries reference the pull request that made the change.
   or Codex's, on a tile. A row no longer repeats the program's name beside
   other fields, or after a title it shares with another Agent's; programs
   without a mark show their initial and keep their name.
+- Set the Agents list's rows closer together, without rules between them;
+  By Workspace cards keep only the rules between checkouts.
 - Show the Agents list By Workspace as cards, with Workspaces on a linked
   git worktree in their repository's card: the main checkout under its
   current branch, each worktree beneath it, and a collapsed card still

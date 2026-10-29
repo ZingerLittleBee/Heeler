@@ -16,8 +16,6 @@ enum ConsoleWorkspaceCardMetrics {
     /// The Status Ring style's column, as wide as its Agents' avatars.
     static let avatarWidth: CGFloat = 28
     static let avatarSpacing: CGFloat = 12
-    /// From the card's right edge to the end of a rule between Agents.
-    static let ruleTrailing: CGFloat = 16
     /// Between cards.
     static let gap: CGFloat = 12
 
@@ -122,13 +120,10 @@ struct ConsoleWorkspaceCardRow: ViewModifier {
 
     @ViewBuilder
     private var rule: some View {
-        if placed.rule != .none {
-            let isInset = placed.rule == .inset
+        if placed.rule == .full {
             Rectangle()
                 .fill(Color(uiColor: .separator))
                 .frame(height: 1 / displayScale)
-                .padding(.leading, isInset ? iconWidth.textInset : 0)
-                .padding(.trailing, isInset ? Metrics.ruleTrailing : 0)
         }
     }
 }

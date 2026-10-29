@@ -42,12 +42,6 @@ struct AgentCardView: View {
     private static let rowAvatarDiameter: CGFloat = 34
     private static let rowLeadSpacing: CGFloat = 12
 
-    /// From a list row's leading edge to its text, past the mark, where the
-    /// Agents list starts its rules.
-    static func rowTextOffset(_ style: AgentListRowStyle) -> CGFloat {
-        (style == .tile ? rowTileSide : rowAvatarDiameter) + rowLeadSpacing
-    }
-
     private var totalsSource: ChangesRowTotals.Source? {
         if let changes { .store(changes) } else { sampleChanges.map { .sample($0) } }
     }
@@ -107,7 +101,7 @@ struct AgentCardView: View {
 
     private var leadSide: CGFloat {
         switch lead {
-        case .row: Self.rowTextOffset(style) - Self.rowLeadSpacing
+        case .row: style == .tile ? Self.rowTileSide : Self.rowAvatarDiameter
         case .card: cardColumn.value
         }
     }

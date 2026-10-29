@@ -1570,20 +1570,13 @@ struct ConsoleView: View {
     @ViewBuilder
     private var agentHostIssueRows: some View {
         if !visibleHostIssues.isEmpty {
-            let separatorInset = AgentCardView.rowTextOffset(agentRowStyle.style)
-            // On the Agent rows' edges; the list's own separator sets it
-            // apart from the first Agent.
+            // On the Agent rows' edges and, as they are, without rules.
             ConsoleHostIssueList(
                 issues: visibleHostIssues, onOpenHost: { openHostIssue($0) },
                 onShowAll: { isShowingHostIssues = true })
-                .modifier(ListRowVerticalInsetsRemoved())
+                .modifier(ListRowVerticalInsets(0))
                 .listRowBackground(Color.clear)
-                // Under the title nothing needs a rule; below, it runs from
-                // the edge the Agent rows' rules do, past their marks.
-                .listRowSeparator(.hidden, edges: .top)
-                .alignmentGuide(.listRowSeparatorLeading) { [separatorInset] in
-                    $0[.leading] + separatorInset
-                }
+                .listRowSeparator(.hidden)
         }
     }
 
@@ -1593,15 +1586,7 @@ struct ConsoleView: View {
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
         ForEach(filteredAgents) { @Sendable agent in
-            MainActorContent {
-                agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id])
-                    // Right under an iPad sidebar's bar, a rule over the
-                    // first row would crowd it.
-                    .listRowSeparator(
-                        usesSidebarNavigation && visibleHostIssues.isEmpty
-                            && agent.id == filteredAgents.first?.id ? .hidden : .automatic,
-                        edges: .top)
-            }
+            MainActorContent { agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id]) }
         }
     }
 
@@ -1818,6 +1803,7 @@ struct ConsoleView: View {
                         // condition says what it is before any Agents it lists.
                         if let issue = section.statusPresentation {
                             ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
+                                .listRowSeparator(.hidden)
                         }
                         ForEach(section.agents) { @Sendable agent in
                             MainActorContent { agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id]) }
@@ -1840,9 +1826,10 @@ struct ConsoleView: View {
         }
     }
 
+    /// An Agent's row in the plain lists: no rules between rows, and closer
+    /// together than the list would set them, as their marks set them apart.
     private func agentRow(_ agent: ConsoleAgent, qualifier: String?, saved: HostReadiness?) -> some View {
-        let separatorInset = AgentCardView.rowTextOffset(agentRowStyle.style)
-        return agentLink(
+        agentLink(
             agent,
             background: ConsoleRowSelectionBackground(
                 isSelected: notificationRouter.path.last == agent.id)
@@ -1855,10 +1842,6 @@ struct ConsoleView: View {
                 changes: console.rowChanges.store(for: agent),
                 qualifier: qualifier,
                 saved: saved)
-                // The list's rules start at the text, past the mark.
-                .alignmentGuide(.listRowSeparatorLeading) { [separatorInset] in
-                    $0[.leading] + separatorInset
-                }
         } preview: {
             AgentCardView(
                 agent: agent,
@@ -1868,6 +1851,8 @@ struct ConsoleView: View {
                 qualifier: qualifier,
                 saved: saved)
         }
+        .listRowSeparator(.hidden)
+        .modifier(ListRowVerticalInsets(4))
     }
 
     /// An Agent's row: `label` opens its detail, with the row's pin, close,
@@ -2487,15 +2472,21 @@ extension View {
     }
 }
 
-/// Drops a row's vertical insets and keeps the list's own side margins, so
-/// the row's edges and chevron meet the Agent rows' at every width: the
+/// Sets a row's vertical insets and keeps the list's own side margins, so
+/// the row's edges and chevron meet the other rows' at every width: the
 /// margins are 20 points on the widest iPhones, not 16.
-private struct ListRowVerticalInsetsRemoved: ViewModifier {
+private struct ListRowVerticalInsets: ViewModifier {
+    let length: CGFloat
+
+    init(_ length: CGFloat) {
+        self.length = length
+    }
+
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.listRowInsets(.vertical, 0)
+            content.listRowInsets(.vertical, length)
         } else {
-            content.listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            content.listRowInsets(EdgeInsets(top: length, leading: 16, bottom: length, trailing: 16))
         }
     }
 }

@@ -263,7 +263,6 @@ struct ConsoleListPresentationStoreTests {
             let rule = switch placed.rule {
             case .none: ""
             case .full: "—"
-            case .inset: "-"
             }
             return switch placed.row {
             case .header: "\(rule)header"
@@ -295,14 +294,14 @@ struct ConsoleListPresentationStoreTests {
         #expect(repository.primary.checkout?.repoName == "heeler")
         #expect(repository.agents.count == 4)
         #expect(rowShape(repository) == [
-            "header", "alone p1", "—alone p2", "—checkout nest", "agent p3", "-agent p4",
+            "header", "alone p1", "—alone p2", "—checkout nest", "agent p3", "agent p4",
         ])
         #expect(repository.rows.map(\.isFirst) == [true, false, false, false, false, false])
         #expect(repository.rows.map(\.isLast) == [false, false, false, false, false, true])
         #expect(repository.rows.map(\.followsHeader) == [false, true, false, false, true, false])
         // A Workspace with one Agent is that Agent's card; with several, a header leads.
         #expect(rowShape(cards[1]) == ["alone p5"])
-        #expect(rowShape(cards[2]) == ["header", "agent p6", "-agent p7"])
+        #expect(rowShape(cards[2]) == ["header", "agent p6", "agent p7"])
         #expect(cards.flatMap(\.visibleAgentIDs) == agents.map(\.id))
     }
 
