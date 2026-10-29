@@ -21,7 +21,7 @@ struct AgentListFieldsPreview: View {
 
     /// Same presentation the Console card uses for this sample.
     static func presentation(layout: AgentRowLayout, hostName: String) -> AgentCardPresentation {
-        AgentCardPresentation(agent: sampleAgent(hostName: hostName), layout: layout)
+        AgentCardPresentation(agent: sampleAgent(hostName: hostName), layout: layout, leadsWithMark: true)
     }
 
     /// Deterministic sample values for built-in and custom tokens; not a live Agent.

@@ -67,6 +67,7 @@ enum SettingsOverlayNetworksDestination: String, Sendable {
 struct SettingsView: View {
     let terminal: TerminalSettings
     let appearance: AppAppearanceSettings
+    let agentRowStyle: AgentListRowStyleSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
@@ -166,7 +167,8 @@ struct SettingsView: View {
                         Label("Notifications", systemImage: "bell.badge")
                     }
                     NavigationLink {
-                        AppearanceSettingsView(terminal: terminal, appearance: appearance)
+                        AppearanceSettingsView(
+                            terminal: terminal, appearance: appearance, agentRowStyle: agentRowStyle)
                     } label: {
                         Label("Appearance", systemImage: "paintpalette")
                     }

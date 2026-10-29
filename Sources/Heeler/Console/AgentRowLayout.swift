@@ -6,7 +6,7 @@ import Foundation
 ///
 /// `state_icon` still parses so herdr snapshots and older saved layouts keep
 /// decoding, but Console layouts drop it (`normalizedForConsole`) and the
-/// Field Editor never offers it: the status badge at the end of Row 1 owns it.
+/// Field Editor never offers it: the row's status badge or ring owns it.
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case stateIcon, stateText, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
@@ -174,7 +174,7 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     }
 
     /// The Console shape: at most `maximumConsoleRows` rows, no `state_icon`
-    /// (the status badge at the end of Row 1 owns it), and no per-kind
+    /// (the row's status badge or ring owns it), and no per-kind
     /// overrides: every Agent on a Host shares the same rows, so herdr's
     /// `rows_by_agent` is decoded but never applied. Row gap and every other
     /// field style stay as they are.

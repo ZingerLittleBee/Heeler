@@ -18,9 +18,16 @@ Entries reference the pull request that made the change.
   on the Host. (#521)
 - Check a changed host key before trusting it: the Host's page shows the new
   key and a command to copy that prints it on the Host or Jump Host. (#531)
+- Choose the Agents list's row style in Settings › Appearance: Status Ring
+  shows each Agent's program mark inside a ring that carries its status, the
+  Working ring turning, in place of the status capsule.
 
 ### Changed
 
+- Lead each Agents list row with its program's mark, such as Claude Code's
+  or Codex's, on a tile. A row no longer repeats the program's name beside
+  other fields, or after a title it shares with another Agent's; programs
+  without a mark show their initial and keep their name.
 - Show the Agents list By Workspace as cards, with Workspaces on a linked
   git worktree in their repository's card: the main checkout under its
   current branch, each worktree beneath it, and a collapsed card still

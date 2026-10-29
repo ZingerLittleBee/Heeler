@@ -56,6 +56,7 @@
         @State private var terminalFonts: TerminalFontSettings
         @State private var snippets: SnippetStore
         @State private var appearance: AppAppearanceSettings
+        @State private var agentRowStyle: AgentListRowStyleSettings
         @State private var inputMode: AgentInputModeSettings
         @State private var detailSurface: AgentDetailSurfaceSettings
         @State private var pushRegistration: PushRegistrationStore
@@ -77,6 +78,7 @@
             _terminalFonts = State(initialValue: composition.terminalFonts)
             _snippets = State(initialValue: composition.snippets)
             _appearance = State(initialValue: composition.appearance)
+            _agentRowStyle = State(initialValue: composition.agentRowStyle)
             _inputMode = State(initialValue: composition.inputMode)
             _detailSurface = State(initialValue: composition.detailSurface)
             _pushRegistration = State(initialValue: composition.pushRegistration)
@@ -103,6 +105,7 @@
                 inputMode: inputMode,
                 detailSurface: detailSurface,
                 appearance: appearance,
+                agentRowStyle: agentRowStyle,
                 pushRegistration: pushRegistration,
                 notificationPreferences: notificationPreferences,
                 relaySettings: relaySettings,
@@ -138,6 +141,7 @@
         let terminalFonts: TerminalFontSettings
         let snippets: SnippetStore
         let appearance: AppAppearanceSettings
+        let agentRowStyle: AgentListRowStyleSettings
         let inputMode: AgentInputModeSettings
         let detailSurface: AgentDetailSurfaceSettings
         let pushRegistration: PushRegistrationStore
@@ -198,6 +202,7 @@
                 terminalFonts: TerminalFontSettings(defaults: defaults),
                 snippets: SnippetStore(defaults: defaults),
                 appearance: AppAppearanceSettings(defaults: defaults),
+                agentRowStyle: AgentListRowStyleSettings(defaults: defaults),
                 inputMode: AgentInputModeSettings(defaults: defaults),
                 detailSurface: detailSurface,
                 pushRegistration: pushRegistration,

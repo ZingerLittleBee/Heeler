@@ -163,10 +163,27 @@ that Host's own layout, which may start from a Sync from plugin copy. There
 is no user-facing default layout. The Console shows at most three rows, as
 three fixed Row Slots, and every Agent on a Host shares them: herdr's
 per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
-`state_icon` never appears as a field; the status badge at the end of Row 1
-owns it. Agent Status and Heeler Pin remain independent chrome; choosing
-status as a field repeats it in the row.
+`state_icon` never appears as a field; the Agent Row Style's status, a badge
+at the end of Row 1 or a ring around the Agent Mark, owns it. Agent Status
+and Heeler Pin remain independent chrome; choosing status as a field repeats
+it in the row.
 _Avoid_: card template, sidebar format
+
+**Agent Mark**:
+The mark of the program an Agent runs (its kind), which leads the Agent's row
+in the Console: the program's own logo where Heeler ships one, else the first
+letter of its name. A logo names the program, so beside it an Agent field that
+only spells out the kind leaves a row with other fields, and rows sharing a
+title get no program name after it; an initial does neither. A renamed Agent
+keeps its name.
+_Avoid_: harness icon, avatar, logo
+
+**Agent Row Style**:
+The app-wide choice of how the Console draws an Agent's mark and status: Tile,
+the default, puts the Agent Mark on a tile and ends Row 1 with the status
+badge; Status Ring puts it in a circle whose ring is the status, with no badge
+unless the ring cannot show it or Differentiate Without Color is on.
+_Avoid_: list theme, row skin
 
 **Row Slot**:
 One of the three fixed positions in an Agent Row Layout. Row 1 and Row 2 are

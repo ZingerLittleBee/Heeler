@@ -16,13 +16,25 @@ struct RenderedToken: Equatable, Sendable {
 
 enum AgentRowRenderer {
     /// `hiding` drops fields the surrounding list already shows; a row left
-    /// empty gives way to the next.
+    /// empty gives way to the next. Where the row leads with the program's
+    /// mark, `omittingMarkedKind` drops an Agent field that only spells out
+    /// the kind from a row with another field: a renamed Agent keeps its
+    /// name, and a row of the Agent field alone keeps it.
     static func render(
-        layout: AgentRowLayout, agent: ConsoleAgent, hiding: Set<AgentRowToken> = []
+        layout: AgentRowLayout, agent: ConsoleAgent, hiding: Set<AgentRowToken> = [],
+        omittingMarkedKind: Bool = false
     ) -> [[RenderedToken]] {
-        layout.rows(forAgentKind: agent.agent.kind).compactMap { row in
+        let omitsKind = omittingMarkedKind && spellsOutMarkedKind(agent)
+        return layout.rows(forAgentKind: agent.agent.kind).compactMap { row in
+            // Judged before `hiding`: a field the card shows elsewhere still
+            // keeps the kind off its row.
+            let omitsAgent = omitsKind && row.contains { configured in
+                configured.token != .agent
+                    && value(for: configured.token, agent: agent).flatMap(nonempty) != nil
+            }
             var rendered: [RenderedToken] = []
-            for configured in row where !hiding.contains(configured.token) {
+            for configured in row
+            where !hiding.contains(configured.token) && !(omitsAgent && configured.token == .agent) {
                 guard let text = value(for: configured.token, agent: agent),
                     !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 else { continue }
@@ -33,6 +45,14 @@ enum AgentRowRenderer {
             }
             return rendered.isEmpty ? nil : rendered
         }
+    }
+
+    /// The Agent field reads only the kind, which the kind's mark names.
+    private static func spellsOutMarkedKind(_ row: ConsoleAgent) -> Bool {
+        let kind = row.agent.kind.trimmingCharacters(in: .whitespacesAndNewlines)
+        return AgentKindMark.names(kind: kind)
+            && row.agent.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(kind) == .orderedSame
     }
 
     private static func value(for token: AgentRowToken, agent row: ConsoleAgent) -> String? {

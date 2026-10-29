@@ -1474,8 +1474,9 @@ struct AgentCardChangesTotalsTests {
     }
 
     /// A card too narrow for the exact totals shows the shortened ones, and
-    /// VoiceOver still hears them exactly.
-    @Test(arguments: [(CGFloat(402), "agent-row-changes.exact"), (170, "agent-row-changes.compact")])
+    /// VoiceOver still hears them exactly. The narrow card's text is 170
+    /// points wide, past its 30-point tile and the 12-point gap.
+    @Test(arguments: [(CGFloat(402), "agent-row-changes.exact"), (212, "agent-row-changes.compact")])
     func largeTotalsShortenOnlyWhereTheExactOnesDoNotFit(width: CGFloat, form: String) async throws {
         let store = try await Self.store(added: 1_234_567, removed: 1_234_567)
         let (controller, window) = try await Self.host(store, width: width)

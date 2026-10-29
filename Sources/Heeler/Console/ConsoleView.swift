@@ -17,6 +17,7 @@ struct ConsoleView: View {
     let inputMode: AgentInputModeSettings
     let detailSurface: AgentDetailSurfaceSettings
     let appearance: AppAppearanceSettings
+    let agentRowStyle: AgentListRowStyleSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
@@ -359,6 +360,9 @@ struct ConsoleView: View {
             }
         }
         .environment(\.consoleCommandRegistry, commandRegistry)
+        // Over every tab and sheet: the Agents list and the Agent List
+        // Fields preview draw the same row style.
+        .environment(\.agentListRowStyle, agentRowStyle.style)
         .focusedSceneValue(\.consoleCommandTarget, commandTarget)
     }
 
@@ -441,6 +445,7 @@ struct ConsoleView: View {
         SettingsView(
             terminal: terminal,
             appearance: appearance,
+            agentRowStyle: agentRowStyle,
             pushRegistration: pushRegistration,
             notificationPreferences: notificationPreferences,
             relaySettings: relaySettings,
@@ -1564,6 +1569,7 @@ struct ConsoleView: View {
     @ViewBuilder
     private var agentHostIssueRows: some View {
         if !visibleHostIssues.isEmpty {
+            let separatorInset = AgentCardView.rowTextOffset(agentRowStyle.style)
             // On the Agent rows' edges; the list's own separator sets it
             // apart from the first Agent.
             ConsoleHostIssueList(
@@ -1572,9 +1578,11 @@ struct ConsoleView: View {
                 .modifier(ListRowVerticalInsetsRemoved())
                 .listRowBackground(Color.clear)
                 // Under the title nothing needs a rule; below, it runs from
-                // the edge the Agent rows' rules do.
+                // the edge the Agent rows' rules do, past their marks.
                 .listRowSeparator(.hidden, edges: .top)
-                .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+                .alignmentGuide(.listRowSeparatorLeading) { [separatorInset] in
+                    $0[.leading] + separatorInset
+                }
         }
     }
 
@@ -1664,7 +1672,7 @@ struct ConsoleView: View {
             agentLink(
                 agent,
                 background: ConsoleWorkspaceCardRow(
-                    placed: placed, indent: standsAlone ? .icon : .text,
+                    placed: placed, indent: .icon,
                     top: standsAlone ? (placed.followsHeader ? 0 : 6) : 2, bottom: standsAlone ? 6 : 4,
                     isSelected: notificationRouter.path.last == agent.id)
             ) {
@@ -1680,9 +1688,9 @@ struct ConsoleView: View {
         }
     }
 
-    /// An Agent as its card shows it: an Agent that is its checkout's or
-    /// Workspace's only one takes that title and icon; a row leaves to the
-    /// card what the card already says.
+    /// An Agent as its card shows it, its mark in the card's icon column:
+    /// an Agent that is its checkout's or Workspace's only one takes that
+    /// title and icon; a row leaves to the card what the card already says.
     private func cardAgentLabel(
         _ agent: ConsoleAgent, of section: ConsoleWorkspaceSection, standsAlone: Bool,
         in card: ConsoleWorkspaceCard, qualifier: String?, saved: HostReadiness?, readsChanges: Bool
@@ -1691,24 +1699,21 @@ struct ConsoleView: View {
         let heading = standsAlone
             ? AgentCardHeading(
                 title: card.isRepository ? checkoutTitle(section) : ConsoleCheckoutTitle(title: section.title),
-                isProminent: !card.isRepository)
+                isProminent: !card.isRepository,
+                systemImage: ConsoleWorkspaceCardIcon.systemName(for: section.checkout))
             : nil
-        return HStack(alignment: .firstTextBaseline, spacing: ConsoleWorkspaceCardMetrics.iconSpacing) {
-            if standsAlone {
-                ConsoleWorkspaceCardIcon(checkout: section.checkout)
-            }
-            AgentCardView(
-                agent: agent,
-                layout: console.rowLayout(for: agent.hostID),
-                isPinned: console.pins.isPinned(
-                    hostID: agent.hostID, paneID: agent.agent.paneID),
-                changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
-                qualifier: standsAlone ? nil : qualifier,
-                saved: saved,
-                hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: showsHost),
-                heading: heading,
-                showsHost: showsHost)
-        }
+        return AgentCardView(
+            agent: agent,
+            layout: console.rowLayout(for: agent.hostID),
+            isPinned: console.pins.isPinned(
+                hostID: agent.hostID, paneID: agent.agent.paneID),
+            changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
+            qualifier: standsAlone ? nil : qualifier,
+            saved: saved,
+            hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: showsHost),
+            heading: heading,
+            showsHost: showsHost,
+            lead: .card)
     }
 
     /// A repository's checkout, titled by the branch its Agents' latest
@@ -1835,7 +1840,8 @@ struct ConsoleView: View {
     }
 
     private func agentRow(_ agent: ConsoleAgent, qualifier: String?, saved: HostReadiness?) -> some View {
-        agentLink(
+        let separatorInset = AgentCardView.rowTextOffset(agentRowStyle.style)
+        return agentLink(
             agent,
             background: ConsoleRowSelectionBackground(
                 isSelected: notificationRouter.path.last == agent.id)
@@ -1848,6 +1854,10 @@ struct ConsoleView: View {
                 changes: console.rowChanges.store(for: agent),
                 qualifier: qualifier,
                 saved: saved)
+                // The list's rules start at the text, past the mark.
+                .alignmentGuide(.listRowSeparatorLeading) { [separatorInset] in
+                    $0[.leading] + separatorInset
+                }
         } preview: {
             AgentCardView(
                 agent: agent,
@@ -2107,7 +2117,8 @@ struct ConsoleView: View {
             let card = AgentCardPresentation(
                 agent: agent, layout: console.rowLayout(for: agent.hostID),
                 hiding: isByWorkspace
-                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [])
+                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [],
+                leadsWithMark: true)
             return .init(title: card.headline, namesAgent: card.namesAgent(inFirst: card.rows.count))
         }
     }

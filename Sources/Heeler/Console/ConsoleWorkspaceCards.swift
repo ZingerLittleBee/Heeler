@@ -13,6 +13,9 @@ enum ConsoleWorkspaceCardMetrics {
     /// The icon column at the default text size; it grows with the text.
     static let iconWidth: CGFloat = 20
     static let iconSpacing: CGFloat = 10
+    /// The Status Ring style's column, as wide as its Agents' avatars.
+    static let avatarWidth: CGFloat = 28
+    static let avatarSpacing: CGFloat = 12
     /// From the card's right edge to the end of a rule between Agents.
     static let ruleTrailing: CGFloat = 16
     /// Between cards.
@@ -31,14 +34,21 @@ extension EnvironmentValues {
     @Entry var workspaceCardMinRowHeight: CGFloat = 44
 }
 
-/// The icon column's width, scaled with the text it sits beside.
-private struct CardIconWidth: DynamicProperty {
-    @ScaledMetric(relativeTo: .subheadline) var value = ConsoleWorkspaceCardMetrics.iconWidth
+/// The icon column's width, scaled with the text it sits beside, and the
+/// gap after it. The Status Ring style widens it to its avatars.
+struct CardIconWidth: DynamicProperty {
+    @ScaledMetric(relativeTo: .subheadline) private var iconWidth = ConsoleWorkspaceCardMetrics.iconWidth
+    @ScaledMetric(relativeTo: .subheadline) private var avatarWidth = ConsoleWorkspaceCardMetrics.avatarWidth
+    @Environment(\.agentListRowStyle) private var style
+
+    var value: CGFloat { style == .statusRing ? avatarWidth : iconWidth }
+
+    var spacing: CGFloat {
+        style == .statusRing ? ConsoleWorkspaceCardMetrics.avatarSpacing : ConsoleWorkspaceCardMetrics.iconSpacing
+    }
 
     /// From the card's edge to its text, past the icon column.
-    var textInset: CGFloat {
-        ConsoleWorkspaceCardMetrics.padding + value + ConsoleWorkspaceCardMetrics.iconSpacing
-    }
+    var textInset: CGFloat { ConsoleWorkspaceCardMetrics.padding + value + spacing }
 }
 
 /// One row of a card. The list rounds the card's ends and clips a swiped
@@ -48,7 +58,8 @@ struct ConsoleWorkspaceCardRow: ViewModifier {
     enum Indent {
         /// The row starts at the icon column.
         case icon
-        /// An Agent listed under a header starts at the text column.
+        /// The row starts at the text column, as a collapsed card's summary
+        /// does; Agent rows start at the icon column, which holds their mark.
         case text
     }
 
@@ -226,12 +237,11 @@ struct ConsoleWorkspaceCardHeader: View {
     let subtitle: String
     let checkouts: [ConsoleCheckoutSummary]
     let onToggle: () -> Void
-
-    private typealias Metrics = ConsoleWorkspaceCardMetrics
+    private var iconColumn = CardIconWidth()
 
     var body: some View {
         Button(action: onToggle) {
-            HStack(alignment: .firstTextBaseline, spacing: Metrics.iconSpacing) {
+            HStack(alignment: .firstTextBaseline, spacing: iconColumn.spacing) {
                 ConsoleWorkspaceCardIcon(systemName: ConsoleWorkspaceCardIcon.folder)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: title)
@@ -334,6 +344,7 @@ struct ConsoleCheckoutHeader: View {
     let section: ConsoleWorkspaceSection
     let title: ConsoleCheckoutTitle
     let onToggle: (() -> Void)?
+    private var iconColumn = CardIconWidth()
 
     var body: some View {
         if let onToggle {
@@ -357,7 +368,7 @@ struct ConsoleCheckoutHeader: View {
     }
 
     private var label: some View {
-        HStack(alignment: .firstTextBaseline, spacing: ConsoleWorkspaceCardMetrics.iconSpacing) {
+        HStack(alignment: .firstTextBaseline, spacing: iconColumn.spacing) {
             ConsoleWorkspaceCardIcon(checkout: section.checkout)
             ConsoleCheckoutTitleText(title: title, font: .subheadline.weight(.semibold))
             Spacer(minLength: 8)

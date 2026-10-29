@@ -1,16 +1,21 @@
 import SwiftUI
 
-/// Settings › Appearance: the app's light or dark theme, then the terminal's
-/// and Chat's own font and text size, each surface in its section. Pushed
-/// from the settings root, which owns the NavigationStack.
+/// Settings › Appearance: the app's light or dark theme, the Agents list's
+/// row style, then the terminal's and Chat's own font and text size, each
+/// surface in its section. Pushed from the settings root, which owns the
+/// NavigationStack.
 struct AppearanceSettingsView: View {
     let terminal: TerminalSettings
     let appearance: AppAppearanceSettings
+    let agentRowStyle: AgentListRowStyleSettings
 
     var body: some View {
         Form {
             Section {
                 themePicker
+            }
+            Section("Agent List") {
+                rowStylePicker
             }
             TerminalAppearanceSection(terminal: terminal)
             ChatAppearanceSection()
@@ -34,6 +39,20 @@ struct AppearanceSettingsView: View {
         } label: {
             Text("Theme")
         }
+    }
+
+    private var rowStylePicker: some View {
+        Picker(
+            "Row Style",
+            selection: Binding(
+                get: { agentRowStyle.style },
+                set: { agentRowStyle.select($0) })
+        ) {
+            ForEach(AgentListRowStyle.allCases) { @Sendable style in
+                Text(style.title).tag(style)
+            }
+        }
+        .accessibilityIdentifier("settings.agentList.rowStyle")
     }
 }
 

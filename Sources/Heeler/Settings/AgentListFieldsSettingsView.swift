@@ -505,7 +505,8 @@ enum AgentListFieldsCopy {
     static let rowSlots =
         "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "
-        + "The status badge always ends Row 1."
+        + "The status ends Row 1, or rings the Agent's mark in the Status Ring row style. "
+        + "Where the mark names the program, the Agent field leaves rows with other fields."
 }
 
 enum AgentListFieldsChipLabel {

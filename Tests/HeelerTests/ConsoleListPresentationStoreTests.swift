@@ -645,6 +645,37 @@ struct AgentCardPresentationTests {
         #expect(qualifiers(workspaceOnly) == ["OMP", "Pi", nil])
     }
 
+    /// A row that leads with its program's mark is named by it, so only
+    /// kinds without a mark get the program after a shared title.
+    @Test func aMarkNamesItsProgramSoOnlyUnmarkedKindsGetQualified() {
+        let agents = [
+            programAgent(pane: "p1", kind: "claude"),
+            programAgent(pane: "p2", kind: "codex"),
+            programAgent(pane: "p3", kind: "omp"),
+        ]
+        let workspaceOnly = AgentRowLayout(rows: [[.init(.workspace)], [.init(.directory)]])
+        func qualifiers(leadsWithMark: Bool) -> [String?] {
+            let found = AgentTitleQualifier.qualifiers(for: agents) { agent in
+                let card = AgentCardPresentation(agent: agent, layout: workspaceOnly, leadsWithMark: leadsWithMark)
+                return .init(
+                    title: card.headline, namesAgent: card.namesAgent(inFirst: card.rows.count))
+            }
+            return agents.map { found[$0.id] }
+        }
+        #expect(qualifiers(leadsWithMark: false) == ["Claude", "Codex", "OMP"])
+        #expect(qualifiers(leadsWithMark: true) == [nil, nil, "OMP"])
+    }
+
+    /// A card that shows every other field elsewhere keeps the kind word as
+    /// configured, not the unstyled fallback name.
+    @Test func aKindWordLeftAloneByTheCardKeepsItsStyle() {
+        let layout = AgentRowLayout(rows: [[.init(.workspace), .init(.agent, dim: true)]])
+        let card = AgentCardPresentation(
+            agent: programAgent(pane: "p1", kind: "claude"), layout: layout, hiding: [.workspace],
+            leadsWithMark: true)
+        #expect(card.rows == [[RenderedToken(token: .agent, text: "claude", fg: nil, bold: nil, dim: true)]])
+    }
+
     private func programAgent(pane: String, kind: String, workspace: String = "proj-omp")
         -> ConsoleAgent
     {

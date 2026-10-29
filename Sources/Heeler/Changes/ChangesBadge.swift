@@ -165,6 +165,10 @@ struct ChangesRowTotals: View {
         self.identifier = identifier
     }
 
+    /// Whether there is anything to show, for a row that holds only the
+    /// totals.
+    var hasTotals: Bool { badge != nil }
+
     private var badge: ChangesBadge? {
         switch source {
         case .store(let store):

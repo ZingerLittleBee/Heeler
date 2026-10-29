@@ -32,6 +32,7 @@ struct ContentView: View {
             inputMode: app.inputMode,
             detailSurface: app.detailSurface,
             appearance: app.appearance,
+            agentRowStyle: app.agentRowStyle,
             pushRegistration: app.pushRegistration,
             notificationPreferences: app.notificationPreferences,
             relaySettings: app.relaySettings,

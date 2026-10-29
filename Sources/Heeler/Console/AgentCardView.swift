@@ -1,12 +1,16 @@
 import SwiftUI
 import UIKit
 
-/// The shared Agent Row Layout leads each card; status and Heeler Pin end
-/// Row 1, the Host name ends the first additional row, and the Checkout's
-/// Changes totals end the last one, after the Host when that is the same
-/// row (both share a line of their own when Row 1 is the only row). Fields
-/// retain their emphasis using accessible semantic colors; plugin colors
-/// and weights do not replace app typography.
+/// The shared Agent Row Layout leads each card, after the Agent's program
+/// mark in the list's row style; status and Heeler Pin end Row 1, the Host
+/// name ends the first additional row, and the Checkout's Changes totals end
+/// the last one, after the Host when that is the same row (both share a line
+/// of their own when Row 1 is the only row and either shows). The Status
+/// Ring style's ring stands in for the status capsule, which stays where
+/// Differentiate Without Color is on or the ring cannot draw the status.
+/// Fields retain their
+/// emphasis using accessible semantic colors; plugin colors and weights do
+/// not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var layout: AgentRowLayout = .heelerDefault
@@ -29,52 +33,79 @@ struct AgentCardView: View {
     var heading: AgentCardHeading? = nil
     /// False where a header above the card names the Host.
     var showsHost = true
+    /// Where the Agent's mark goes.
+    var lead = AgentCardLead.row
+
+    @Environment(\.agentListRowStyle) private var style
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiatesWithoutColor
+    private var cardColumn = CardIconWidth()
+
+    /// A list row's lead and the gap after it, as a Terminals row's tile.
+    private static let rowTileSide: CGFloat = 30
+    private static let rowAvatarDiameter: CGFloat = 34
+    private static let rowLeadSpacing: CGFloat = 12
+
+    /// From a list row's leading edge to its text, past the mark, where the
+    /// Agents list starts its rules.
+    static func rowTextOffset(_ style: AgentListRowStyle) -> CGFloat {
+        (style == .tile ? rowTileSide : rowAvatarDiameter) + rowLeadSpacing
+    }
 
     private var totalsSource: ChangesRowTotals.Source? {
         if let changes { .store(changes) } else { sampleChanges.map { .sample($0) } }
     }
 
     private var presentation: AgentCardPresentation {
-        AgentCardPresentation(agent: agent, layout: layout, hiding: hiddenTokens)
+        AgentCardPresentation(agent: agent, layout: layout, hiding: hiddenTokens, leadsWithMark: true)
     }
 
+    private var mark: AgentKindMark { AgentKindMark(kind: agent.agent.kind) }
+
+    /// The ring stands in for the capsule, except where color alone would
+    /// carry it or the ring cannot draw the status.
+    private var showsStatusBadge: Bool {
+        style == .tile || differentiatesWithoutColor || !AgentStatusAvatar.drawsStatus(agent.agent.status)
+    }
+
+    /// The Tile style centers its tile on the title's line; the ring style,
+    /// its avatar on the rows beside it.
+    private var markAlignment: VerticalAlignment { style == .tile ? .agentMarkLine : .center }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Centered, not baseline-aligned: the status capsule is smaller
-            // type with padding, so baseline alignment drops it below Row 1.
-            HStack(alignment: .center) {
-                if let heading {
-                    ConsoleCheckoutTitleText(title: heading.title, font: heading.font)
-                } else {
-                    AgentCardTitle(
-                        tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil)
-                }
-                if isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .layoutPriority(1)
-                        .accessibilityLabel("Pinned")
-                }
-                Spacer(minLength: 8)
-                // Whole at any text size; the title truncates instead.
-                Group {
-                    if saved != nil {
-                        SavedChatBadge()
-                    } else if agent.agent.status.displayTitle != nil {
-                        AgentStatusBadge(status: agent.agent.status)
+        let presentation = presentation
+        let additionalRows = heading == nil ? Array(presentation.rows.dropFirst()) : presentation.rows
+        Group {
+            if let heading, lead == .card {
+                // A card of its own: its checkout's symbol on the heading's
+                // line, and the mark beside the Agent's own lines below it.
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: cardColumn.spacing) {
+                        ConsoleWorkspaceCardIcon(systemName: heading.systemImage)
+                        titleLine(presentation)
+                    }
+                    HStack(alignment: markAlignment, spacing: cardColumn.spacing) {
+                        markView(side: cardColumn.value)
+                        VStack(alignment: .leading, spacing: 6) {
+                            additionalRowViews(additionalRows, marksFirstRow: true)
+                        }
                     }
                 }
-                .fixedSize()
-            }
-            let additionalRows = heading == nil ? Array(presentation.rows.dropFirst()) : presentation.rows
-            additionalRowViews(additionalRows)
-            if additionalRows.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Spacer(minLength: 0)
-                    if showsHostText { hostText }
-                    if let totalsSource {
-                        ChangesRowTotals(source: totalsSource).layoutPriority(1)
+            } else {
+                HStack(alignment: markAlignment, spacing: lead == .card ? cardColumn.spacing : Self.rowLeadSpacing) {
+                    markView(side: leadSide)
+                    VStack(alignment: .leading, spacing: 6) {
+                        titleLine(presentation)
+                            .alignmentGuide(.agentMarkLine) { $0[VerticalAlignment.center] }
+                        additionalRowViews(additionalRows)
+                        if additionalRows.isEmpty, showsHostText || showsTotals {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Spacer(minLength: 0)
+                                if showsHostText { hostText }
+                                if let totalsSource {
+                                    ChangesRowTotals(source: totalsSource).layoutPriority(1)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -84,13 +115,75 @@ struct AgentCardView: View {
         .padding(.bottom, CGFloat(min(layout.rowGap, 3)) * 8)
     }
 
+    private var leadSide: CGFloat {
+        switch lead {
+        case .row: Self.rowTextOffset(style) - Self.rowLeadSpacing
+        case .card: cardColumn.value
+        }
+    }
+
+    /// The tile or avatar, which VoiceOver reads first as the program and,
+    /// where the ring carries it, the status.
+    private func markView(side: CGFloat) -> some View {
+        let mark = mark
+        let status = saved == nil ? agent.agent.status : .unknown
+        let spoken = showsStatusBadge ? nil : status.displayTitle
+        return Group {
+            switch style {
+            case .tile: AgentKindTile(mark: mark, side: side)
+            case .statusRing: AgentStatusAvatar(mark: mark, status: status, diameter: side)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: [mark.label, spoken].compactMap { $0 }.joined(separator: ", ")))
+    }
+
+    /// Row 1, or the heading in its place, with the pin and status after it.
+    private func titleLine(_ presentation: AgentCardPresentation) -> some View {
+        // Centered, not baseline-aligned: the status capsule is smaller
+        // type with padding, so baseline alignment drops it below Row 1.
+        HStack(alignment: .center) {
+            if let heading {
+                ConsoleCheckoutTitleText(title: heading.title, font: heading.font)
+            } else {
+                AgentCardTitle(
+                    tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil)
+            }
+            if isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .layoutPriority(1)
+                    .accessibilityLabel("Pinned")
+            }
+            Spacer(minLength: 8)
+            // Whole at any text size; the title truncates instead.
+            Group {
+                if saved != nil {
+                    SavedChatBadge()
+                } else if showsStatusBadge, agent.agent.status.displayTitle != nil {
+                    AgentStatusBadge(status: agent.agent.status)
+                }
+            }
+            .fixedSize()
+        }
+    }
+
+    /// Whether the totals have anything to show; a card whose rows end with
+    /// Row 1 gives them a line only then.
+    private var showsTotals: Bool {
+        totalsSource.map { ChangesRowTotals(source: $0).hasTotals } ?? false
+    }
+
     /// The rows after Row 1: the Host ends the first and the totals the last.
+    /// `marksFirstRow` centers the Tile style's tile on the first, as a card
+    /// of its own shows it beside the Agent's own title.
     ///
     /// SwiftUI can build these rows on its async render thread, as it built
     /// the file counts in `ChangesRowTotals.fileCounts(_:style:)` (#471), so
     /// the content is `@Sendable` and builds each row in `MainActorContent`.
     func additionalRowViews(
-        _ rows: [[RenderedToken]]
+        _ rows: [[RenderedToken]], marksFirstRow: Bool = false
     ) -> ForEach<[(offset: Int, element: [RenderedToken])], Int, some View> {
         ForEach(Array(rows.enumerated()), id: \.offset) { @Sendable index, row in
             let isLast = index == rows.count - 1
@@ -112,6 +205,7 @@ struct AgentCardView: View {
                         ChangesRowTotals(source: totalsSource).layoutPriority(1)
                     }
                 }
+                .modifier(AgentMarkLine(isMarked: marksFirstRow && index == 0))
             }
         }
     }
@@ -199,18 +293,68 @@ struct AgentCardHeading {
     /// A card of its own reads as an Agent's title; a checkout inside a
     /// repository's card, a size down.
     var isProminent = false
+    /// The checkout's symbol, in the card's icon column beside the title.
+    let systemImage: String
 
     var font: Font { isProminent ? .headline : .subheadline.weight(.semibold) }
 }
 
+/// Where an Agent card puts its program mark.
+enum AgentCardLead: Equatable {
+    /// Before the card's rows, as an Agents list row leads.
+    case row
+    /// In a Workspace card's icon column, which a heading's symbol shares.
+    case card
+}
+
+extension VerticalAlignment {
+    private enum AgentMarkLineID: AlignmentID {
+        static func defaultValue(in context: ViewDimensions) -> CGFloat {
+            context[VerticalAlignment.center]
+        }
+    }
+
+    /// The line the Tile style centers an Agent's tile on: the title's.
+    static let agentMarkLine = VerticalAlignment(AgentMarkLineID.self)
+}
+
+/// Marks the row the Tile style's tile centers on, when it is not Row 1.
+private struct AgentMarkLine: ViewModifier {
+    let isMarked: Bool
+
+    func body(content: Content) -> some View {
+        if isMarked {
+            content.alignmentGuide(.agentMarkLine) { $0[VerticalAlignment.center] }
+        } else {
+            content
+        }
+    }
+}
+
 struct AgentCardPresentation: Equatable, Sendable {
     let rows: [[RenderedToken]]
+    /// Whether the row's lead is the program's own mark, which names the
+    /// Agent as its kind word would.
+    let isMarked: Bool
 
     var headline: String { rows.first?.map(\.text).joined() ?? "Agent" }
     var additionalRows: [String] { rows.dropFirst().map { $0.map(\.text).joined() } }
 
-    init(agent: ConsoleAgent, layout: AgentRowLayout = .heelerDefault, hiding: Set<AgentRowToken> = []) {
-        let rendered = AgentRowRenderer.render(layout: layout, agent: agent, hiding: hiding)
+    /// `leadsWithMark` for an Agents list row, which leads with the
+    /// program's mark: the kind word leaves rows it would only repeat (see
+    /// `AgentRowRenderer.render`).
+    init(
+        agent: ConsoleAgent, layout: AgentRowLayout = .heelerDefault, hiding: Set<AgentRowToken> = [],
+        leadsWithMark: Bool = false
+    ) {
+        isMarked = leadsWithMark && AgentKindMark.names(kind: agent.agent.kind)
+        var rendered = AgentRowRenderer.render(
+            layout: layout, agent: agent, hiding: hiding, omittingMarkedKind: leadsWithMark)
+        // Where the card shows every other field, the kind word keeps its
+        // configured style in place of the bare name.
+        if rendered.isEmpty, leadsWithMark {
+            rendered = AgentRowRenderer.render(layout: layout, agent: agent, hiding: hiding)
+        }
         if rendered.isEmpty {
             let name = agent.agent.displayName
             rows = [[RenderedToken(
@@ -228,10 +372,11 @@ struct AgentCardPresentation: Equatable, Sendable {
         return singleLine.count > 48 ? String(singleLine.prefix(47)) + "…" : singleLine
     }
 
-    /// Whether the first `rowCount` rows already name the Agent itself, so
-    /// two Agents sharing a title are told apart without help.
+    /// Whether the mark or the first `rowCount` rows already name the
+    /// Agent itself, so two Agents sharing a title are told apart without
+    /// help.
     func namesAgent(inFirst rowCount: Int) -> Bool {
-        rows.prefix(rowCount).contains { row in row.contains { $0.token == .agent } }
+        isMarked || rows.prefix(rowCount).contains { row in row.contains { $0.token == .agent } }
     }
 }
 
