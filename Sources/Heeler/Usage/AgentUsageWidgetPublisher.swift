@@ -159,18 +159,21 @@ extension UsageWidgetSnapshot.Limits {
     init?(_ card: AgentUsageLimitsCard) {
         let name = AgentUsageReport.Program.displayName(for: card.program)
         switch card {
-        case .limits(_, let program, let account, let limits):
-            self.init(program: program, name: name, account: account, limits: limits)
-        case .unread(_, let account, let reason):
+        case .limits(let accountID, let program, let account, let limits):
+            self.init(program: program, name: name, account: account, accountID: accountID, limits: limits)
+        case .unread(let accountID, let account, let reason):
             self.init(
-                program: card.program, name: name, account: account, message: reason,
+                program: card.program, name: name, account: account, accountID: accountID, message: reason,
                 isLastReading: false, source: nil, observedAt: nil, windows: [])
         case .claudeToggle:
             return nil
         }
     }
 
-    private init(program: String, name: String, account: String?, limits: AgentUsageReport.Program.UsageLimits) {
+    private init(
+        program: String, name: String, account: String?, accountID: String?,
+        limits: AgentUsageReport.Program.UsageLimits
+    ) {
         let shown = limits.state == "ok" || limits.state == "throttled"
         let windows = shown ? limits.windows ?? [] : []
         let message: String? = if shown {
@@ -181,7 +184,7 @@ extension UsageWidgetSnapshot.Limits {
             AgentUsageLimitsView.unavailableMessage(limits, program: program)
         }
         self.init(
-            program: program, name: name, account: account, message: message,
+            program: program, name: name, account: account, accountID: accountID, message: message,
             isLastReading: limits.state == "throttled",
             source: shown ? (limits.source == "lastSession" ? .lastSession : .program) : nil,
             observedAt: AgentUsageLimitsView.date(limits.observedAt),

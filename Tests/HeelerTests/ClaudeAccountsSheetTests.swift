@@ -132,7 +132,7 @@ struct ClaudeAccountsSheetTests {
         }
         #expect(name == "claude-2")
         #expect(limits.plan == "max")
-        #expect(cards[2] == .unread(id: "claude.c41d07b9", account: "work", reason: "Directory not found"))
+        #expect(cards[2] == .unread(accountID: "c41d07b9", account: "work", reason: "Directory not found"))
         #expect(AgentUsageProgramTitle.title(program: "claude", account: "claude-2") == "Claude Code · claude-2")
         #expect(AgentUsageProgramTitle.title(program: "codex", account: nil) == "Codex")
     }

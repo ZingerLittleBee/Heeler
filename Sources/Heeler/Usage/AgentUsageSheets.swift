@@ -67,12 +67,12 @@ struct AgentUsageLimitChip: Identifiable, Equatable {
     /// A card's chip; the toggle card reads nothing.
     private static func chip(_ card: AgentUsageLimitsCard, hostID: Host.ID, hostName: String, now: Date) -> Self? {
         switch card {
-        case .unread(let id, let account, let reason):
+        case .unread(_, let account, let reason):
             return Self(hostID: hostID, hostName: hostName, program: "claude", account: account, percent: nil,
-                title: reason, cardID: id)
+                title: reason, cardID: card.id)
         case .claudeToggle:
             return nil
-        case .limits(let id, let program, let account, let limits):
+        case .limits(_, let program, let account, let limits):
             let live = (limits.windows ?? []).filter { window in
                 !window.expired && window.usedPercent != nil
                     && AgentUsageLimitsView.date(window.resetsAt).map { $0 > now } != false
@@ -94,7 +94,7 @@ struct AgentUsageLimitChip: Identifiable, Equatable {
                 percent: isLive ? tightest?.usedPercent : nil,
                 title: title,
                 resetsAt: isLive ? AgentUsageLimitsView.date(tightest?.resetsAt) : nil,
-                cardID: id)
+                cardID: card.id)
         }
     }
 }
@@ -512,17 +512,20 @@ struct AgentUsageLimitsSheet: View {
 /// it reads as covering all of them. While Claude Code limits are off, the
 /// toggle card stands for all of Claude Code.
 enum AgentUsageLimitsCard: Identifiable, Equatable {
-    /// A program's windows, or one Claude Code Account's, named when the
-    /// Host has several.
-    case limits(id: String, program: String, account: String?, limits: AgentUsageReport.Program.UsageLimits)
+    /// A program's windows, or one Claude Code Account's, named and with
+    /// its report id when the Host has several.
+    case limits(accountID: String?, program: String, account: String?, limits: AgentUsageReport.Program.UsageLimits)
     /// A Claude Code Account that adds nothing, and why.
-    case unread(id: String, account: String, reason: String)
+    case unread(accountID: String, account: String, reason: String)
     /// The Claude Code limits toggle and the way to the Host's Accounts.
     case claudeToggle
 
+    /// The program, or the program and the Account's report id, which
+    /// stays unique on a Host when names do not.
     var id: String {
         switch self {
-        case .limits(let id, _, _, _), .unread(let id, _, _): id
+        case .limits(let accountID, let program, _, _): accountID.map { "\(program).\($0)" } ?? program
+        case .unread(let accountID, _, _): "claude.\(accountID)"
         case .claudeToggle: "claude.toggle"
         }
     }
@@ -546,7 +549,7 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
     /// card, or Claude Code's windows while no Account has a card.
     var carriesToggle: Bool {
         switch self {
-        case .limits(_, "claude", nil, _), .claudeToggle: true
+        case .limits(nil, "claude", _, _), .claudeToggle: true
         case .limits, .unread: false
         }
     }
@@ -554,7 +557,7 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
     static func cards(for report: AgentUsageReport) -> [Self] {
         (report.programs ?? []).flatMap { program -> [Self] in
             guard program.program == "claude" else {
-                return [.limits(id: program.program, program: program.program, account: nil, limits: program.usageLimits)]
+                return [.limits(accountID: nil, program: program.program, account: nil, limits: program.usageLimits)]
             }
             let cards = claudeCards(program)
             return cards.contains(where: \.carriesToggle) ? cards : cards + [.claudeToggle]
@@ -566,7 +569,8 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
     /// card saying its limits are off while they are.
     static func readings(for report: AgentUsageReport) -> [Self] {
         (report.programs ?? []).flatMap { program -> [Self] in
-            let whole = Self.limits(id: program.program, program: program.program, account: nil, limits: program.usageLimits)
+            let whole = Self.limits(
+                accountID: nil, program: program.program, account: nil, limits: program.usageLimits)
             guard program.program == "claude" else { return [whole] }
             let cards = claudeCards(program)
             return cards.isEmpty ? [whole] : cards
@@ -577,7 +581,7 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
         guard program.usageLimits.state != "disabled" else { return [] }
         let accounts = program.accounts ?? []
         guard accounts.count > 1 else {
-            return [.limits(id: "claude", program: "claude", account: nil, limits: program.usageLimits)]
+            return [.limits(accountID: nil, program: "claude", account: nil, limits: program.usageLimits)]
         }
         // An Account the plugin counts always reports limits; without them
         // it reads as a failed reading rather than borrowing another's.
@@ -585,12 +589,12 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
             state: "error", reason: nil, source: nil, observedAt: nil, retryAt: nil, plan: nil, windows: nil)
         let counted = accounts.filter(\.isReadable).map { account in
             Self.limits(
-                id: "claude.\(account.id)", program: "claude", account: account.displayName,
+                accountID: account.id, program: "claude", account: account.displayName,
                 limits: account.usageLimits ?? (account.isDefault ? program.usageLimits : unknown))
         }
         let uncounted = accounts.filter { !$0.isReadable }.map { account in
             Self.unread(
-                id: "claude.\(account.id)", account: account.displayName,
+                accountID: account.id, account: account.displayName,
                 reason: ClaudeAccountsListing.stateLine(account.state) ?? "")
         }
         return counted + uncounted

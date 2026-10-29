@@ -184,7 +184,8 @@ struct AgentUsageWidgetTests {
     @Test func automaticShowsTheProgramClosestToItsLimit() {
         func limits(_ program: String, _ percent: Double?) -> UsageWidgetSnapshot.Limits {
             .init(
-                program: program, name: program, account: nil, message: percent == nil ? "Usage Limits are off." : nil,
+                program: program, name: program, account: nil, accountID: nil,
+                message: percent == nil ? "Usage Limits are off." : nil,
                 isLastReading: false, source: nil, observedAt: nil,
                 windows: percent.map {
                     [.init(id: "weekly", name: "Weekly", usedPercent: $0,
@@ -209,7 +210,9 @@ struct AgentUsageWidgetTests {
 
         // The Default Account, the Account file's order, then Codex, as Usage lists them.
         #expect(host.limits.map(\.account) == ["Default", "claude-2", "work", nil])
-        #expect(host.limits.map(\.id) == ["claude.Default", "claude.claude-2", "claude.work", "codex"])
+        // Each entry keeps its Account's report id.
+        #expect(host.limits.map(\.accountID) == ["default", "c2d7a1f0", "9be41c07", nil])
+        #expect(host.limits.map(\.id) == ["claude.default", "claude.c2d7a1f0", "claude.9be41c07", "codex"])
         #expect(host.limits.map(\.title) == [
             "Claude Code · Default", "Claude Code · claude-2", "Claude Code · work", "Codex",
         ])
@@ -222,6 +225,17 @@ struct AgentUsageWidgetTests {
         #expect(host.programs.filter { $0.program == "claude" }.map(\.today.tokens) == [1_000])
     }
 
+    /// The plugin accepts an added Account named "Default" while the
+    /// Default Account has no name of its own; the two entries stay apart.
+    @Test func accountsSharingANameStayApart() throws {
+        let report = try ClaudeAccountsUsageFixture.report([
+            .init(id: "default", daily: 100), .init(id: "d3f00d11", name: "Default", daily: 100),
+        ])
+        let host = UsageWidgetSnapshot.Host(id: studio, name: "Studio Mac", report: report, readAt: Self.now)
+        #expect(host.limits.map(\.account) == ["Default", "Default", nil])
+        #expect(host.limits.map(\.id) == ["claude.default", "claude.d3f00d11", "codex"])
+    }
+
     @Test func aLoneAccountAnOldPluginOrLimitsOffKeepOneClaudeCodeEntry() throws {
         let reports = [
             try ClaudeAccountsUsageFixture.report(ClaudeAccountsUsageFixture.lone),
@@ -232,7 +246,7 @@ struct AgentUsageWidgetTests {
 
         for host in hosts {
             #expect(host.limits.map(\.id) == ["claude", "codex"])
-            #expect(host.limits.allSatisfy { $0.account == nil })
+            #expect(host.limits.allSatisfy { $0.account == nil && $0.accountID == nil })
             #expect(host.limits.first?.title == "Claude Code")
         }
         #expect(hosts[2].limits.first?.message == "Usage Limits are off.")
@@ -246,13 +260,18 @@ struct AgentUsageWidgetTests {
         let older = """
             {"version": 1, "hosts": [{"id": "\(studio.uuidString)", "name": "Studio Mac", "programs": [],
               "limits": [{"program": "claude", "name": "Claude Code", "isLastReading": false, "source": "program",
-                "windows": [{"id": "fiveHour", "name": "5-hour", "usedPercent": 62, "expired": false}]}]}]}
+                "windows": [{"id": "fiveHour", "name": "5-hour", "usedPercent": 62, "expired": false}]},
+                {"program": "claude", "name": "Claude Code", "account": "claude-2", "isLastReading": false,
+                 "windows": []}]}]}
             """
         try Data(older.utf8).write(to: directory.appendingPathComponent("usage-widgets.json"))
 
         let limits = try #require(store.read()?.host(studio)?.limits.first)
         #expect(limits.account == nil && limits.id == "claude" && limits.title == "Claude Code")
         #expect(limits.windows.map(\.usedPercent) == [62])
+        // An Account from before its id was kept goes by its name.
+        let named = try #require(store.read()?.host(studio)?.limits.last)
+        #expect(named.accountID == nil && named.id == "claude.claude-2")
 
         // Accounts round-trip through the file.
         let snapshot = UsageWidgetSnapshot(hosts: [UsageWidgetSnapshot.Host(
@@ -332,7 +351,7 @@ struct AgentUsageWidgetTests {
     ) -> UsageWidgetSnapshot.Limits {
         .init(
             program: program, name: AgentUsageReport.Program.displayName(for: program), account: account,
-            message: windows.isEmpty ? "Directory not found" : nil, isLastReading: false,
+            accountID: account, message: windows.isEmpty ? "Directory not found" : nil, isLastReading: false,
             source: windows.isEmpty ? nil : .program, observedAt: now, windows: windows)
     }
 
