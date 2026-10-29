@@ -186,6 +186,19 @@ struct ClaudeAccountsSheetTests {
         #expect(!labels.contains(ClaudeAccountsListing.fullFooter))
     }
 
+    /// A change that failed after an earlier Accounts sheet closed is not
+    /// shown when the next one opens.
+    @Test func aFailureFromAClosedSheetIsDropped() async throws {
+        let report = try report()
+        let store = AgentUsageStore(hostID: UUID()) { _, _ in .available(report) }
+        await store.refresh()
+        store.accountChangeFailure = .init(message: "Heeler could not save this Host’s Accounts. Try again.")
+        _ = try await renderedLabels(ClaudeAccountsSheet(hostName: "studio", store: store)) { _ in
+            store.accountChangeFailure == nil
+        }
+        #expect(store.accountChangeFailure == nil)
+    }
+
     @Test func theLimitsSheetNamesEachAccountAndLeadsToThem() async throws {
         let name = "claude-accounts-limits-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: name))

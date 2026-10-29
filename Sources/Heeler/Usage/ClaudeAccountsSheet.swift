@@ -107,6 +107,8 @@ struct ClaudeAccountsSheet: View {
     @State private var browser: RemoteDirectoryBrowser?
     /// A directory chosen in the browser is being checked and added.
     @State private var isAddingDirectory = false
+    /// On screen; until then a failure is not this sheet's to show.
+    @State private var isShown = false
 
     var body: some View {
         if isPushed {
@@ -170,7 +172,7 @@ struct ClaudeAccountsSheet: View {
         .modifier(ClaudeAccountsTitle(hostName: hostName))
         .modifier(ClaudeAccountsDialogs(
             hostName: hostName, store: store, renaming: $renaming, draftName: $draftName,
-            isAlertActive: browser == nil))
+            isAlertActive: isShown && browser == nil))
         .sheet(item: $browser) { browser in
             RemoteDirectoryBrowserView(browser: browser, purpose: .claudeAccount, isUsing: isAddingDirectory) { path in
                 Task { await add(path, from: browser) }
@@ -178,6 +180,7 @@ struct ClaudeAccountsSheet: View {
             .modifier(ClaudeAccountChangeFailureAlert(store: store))
         }
         .task { await store.loadHostHome() }
+        .modifier(ClaudeAccountsOnScreen(store: store, isShown: $isShown))
     }
 
     private func accountRow(_ account: AgentUsageReport.Account) -> some View {
@@ -353,6 +356,26 @@ private struct ClaudeAccountRowActions: ViewModifier {
         Binding(
             get: { removing?.id == account.id },
             set: { if !$0, removing?.id == account.id { removing = nil } })
+    }
+}
+
+/// Whether the Accounts sheet is on screen. A change can fail after the
+/// sheet closed; that failure is dropped rather than shown out of context
+/// the next time the sheet opens.
+private struct ClaudeAccountsOnScreen: ViewModifier {
+    let store: AgentUsageStore
+    @Binding var isShown: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                store.accountChangeFailure = nil
+                isShown = true
+            }
+            .onDisappear {
+                isShown = false
+                store.accountChangeFailure = nil
+            }
     }
 }
 

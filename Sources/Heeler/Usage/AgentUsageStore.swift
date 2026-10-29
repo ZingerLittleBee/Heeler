@@ -92,7 +92,8 @@ final class AgentUsageStore {
     /// Account file changes in flight; each stays until a read started
     /// after its write lands.
     private(set) var pendingAccountChanges: Set<AccountChange> = []
-    /// The last Account change that could not be saved; the alert clears it.
+    /// The last Account change that could not be saved; its alert, or the
+    /// Accounts sheet closing, clears it.
     var accountChangeFailure: AccountChangeFailure?
     /// The Host's home folder, once the Accounts sheet asked for it: their
     /// directories show it as `~`.
