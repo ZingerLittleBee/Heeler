@@ -124,6 +124,8 @@ struct ClaudeAccountsSheetTests {
         let cards = AgentUsageLimitsCard.cards(for: try report())
         #expect(cards.map(\.id)
             == ["claude.default", "claude.7f3c9a2e", "claude.c41d07b9", "claude.toggle", "codex"])
+        // The toggle covers every Account, so it has a card of its own.
+        #expect(cards.map(\.carriesToggle) == [false, false, false, true, false])
         guard case .limits(_, "claude", let name, let limits) = cards[1] else {
             Issue.record("Expected claude-2's windows, not \(cards[1])")
             return
@@ -136,9 +138,13 @@ struct ClaudeAccountsSheetTests {
     }
 
     @Test func limitsOffLeaveOnlyTheToggleCard() throws {
-        #expect(AgentUsageLimitsCard.cards(for: try report(limits: false)).map(\.id) == ["claude.toggle", "codex"])
+        let cards = AgentUsageLimitsCard.cards(for: try report(limits: false))
+        #expect(cards.map(\.id) == ["claude.toggle", "codex"])
+        #expect(cards[0].carriesToggle)
     }
 
+    /// With one Account the limits sheet looks as it did before Accounts:
+    /// Claude Code's card ends with its toggle.
     @Test func aLoneDefaultAccountOrAnOlderPluginKeepsTheProgramsCard() throws {
         let lone = try report { claude in
             claude["accounts"] = (claude["accounts"] as? [Any]).map { Array($0.prefix(1)) }
@@ -149,7 +155,8 @@ struct ClaudeAccountsSheetTests {
         }
         for report in [lone, older] {
             let cards = AgentUsageLimitsCard.cards(for: report)
-            #expect(cards.map(\.id) == ["claude", "claude.toggle", "codex"])
+            #expect(cards.map(\.id) == ["claude", "codex"])
+            #expect(cards.map(\.carriesToggle) == [true, false])
             guard case .limits(_, _, let name, let limits) = cards[0] else {
                 Issue.record("Expected Claude Code's windows, not \(cards[0])")
                 continue

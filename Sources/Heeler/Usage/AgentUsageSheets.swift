@@ -505,10 +505,12 @@ struct AgentUsageLimitsSheet: View {
 }
 
 /// One card of a Host's Usage Limits, in the order the Usage Limits sheet
-/// and an iPad's Limits view show them: Claude Code's windows, a card per
-/// Account when the Host has more than one (the counted ones first), then
-/// its toggle card, then each other program's. While Claude Code limits are
-/// off, the toggle card stands for all of Claude Code.
+/// and an iPad's Limits view show them: Claude Code's windows, then each
+/// other program's. With one Account, Claude Code's card ends with its
+/// limits toggle, as before Accounts. With several, each Account has a card
+/// (the counted ones first) and the toggle a card of its own after them, so
+/// it reads as covering all of them. While Claude Code limits are off, the
+/// toggle card stands for all of Claude Code.
 enum AgentUsageLimitsCard: Identifiable, Equatable {
     /// A program's windows, or one Claude Code Account's, named when the
     /// Host has several.
@@ -539,12 +541,23 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
         }
     }
 
+    /// Whether the card ends with the Claude Code limits toggle and the way
+    /// to the Host's Accounts, with the consent note under it: the toggle
+    /// card, or Claude Code's windows while no Account has a card.
+    var carriesToggle: Bool {
+        switch self {
+        case .limits(_, "claude", nil, _), .claudeToggle: true
+        case .limits, .unread: false
+        }
+    }
+
     static func cards(for report: AgentUsageReport) -> [Self] {
         (report.programs ?? []).flatMap { program -> [Self] in
             guard program.program == "claude" else {
                 return [.limits(id: program.program, program: program.program, account: nil, limits: program.usageLimits)]
             }
-            return claudeCards(program) + [.claudeToggle]
+            let cards = claudeCards(program)
+            return cards.contains(where: \.carriesToggle) ? cards : cards + [.claudeToggle]
         }
     }
 
@@ -626,13 +639,16 @@ struct AgentUsageHostLimits: View {
                 AgentUsageUncountedAccount(account: account, reason: reason)
                     .padding(.vertical, 4)
             case .claudeToggle:
+                EmptyView()
+            }
+            if card.carriesToggle {
                 ClaudeUsageLimitsToggle(store: entry.store)
                 ClaudeAccountsEntry(hostName: entry.name, store: entry.store)
             }
         } header: {
             if isFirst { header }
         } footer: {
-            if card == .claudeToggle { ClaudeUsageLimitsNote() }
+            if card.carriesToggle { ClaudeUsageLimitsNote() }
         }
     }
 }
