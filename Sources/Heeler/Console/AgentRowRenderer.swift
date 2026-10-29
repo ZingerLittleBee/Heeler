@@ -49,8 +49,8 @@ enum AgentRowRenderer {
 
     /// Each Console row slot's right side, or nil where the layout leaves
     /// it to the list. Text fields render as `render` renders them, one run
-    /// between the Host and the totals; the Host and the Checkout's Changes
-    /// totals stay entries the card draws and shows as its list does, so
+    /// between the entries the card draws: the status badge, the Host, and
+    /// the Checkout's Changes totals, which it shows as its list does, so
     /// `hiding` leaves them to it.
     static func renderTrailing(
         layout: AgentRowLayout, agent: ConsoleAgent, hiding: Set<AgentRowToken> = [],
@@ -63,12 +63,11 @@ enum AgentRowRenderer {
             var entries: [AgentCardTrailing] = []
             var fields: [RenderedToken] = []
             for configured in row {
-                switch configured.token {
-                case .host, .changes:
+                if let drawn = AgentCardTrailing(drawing: configured.token) {
                     if !fields.isEmpty { entries.append(.fields(fields)) }
                     fields = []
-                    entries.append(configured.token == .host ? .host : .changes)
-                default:
+                    entries.append(drawn)
+                } else {
                     guard let field = field(
                         configured, agent: agent, hiding: hiding, omittingAgent: omitting.contains(slot))
                     else { continue }
@@ -93,8 +92,8 @@ enum AgentRowRenderer {
     }
 
     /// The row slots whose Agent field gives way to the mark: those with
-    /// another field on either side. The Host and the totals on the right
-    /// do not count, as the list's own Host and totals never did. Judged
+    /// another field on either side. What the card draws on the right does
+    /// not count, as the list's own Host and totals never did. Judged
     /// before `hiding`: a field the card shows elsewhere still keeps the
     /// kind off its row.
     private static func slotsOmittingAgent(
@@ -106,7 +105,7 @@ enum AgentRowRenderer {
         return Set((0..<max(rows.count, sides.count)).filter { slot in
             let right = sides.indices.contains(slot) ? sides[slot] : []
             let fields = (rows.indices.contains(slot) ? rows[slot] : [])
-                + right.filter { $0.token != .host && $0.token != .changes }
+                + right.filter { AgentCardTrailing(drawing: $0.token) == nil }
             return fields.contains { configured in
                 configured.token != .agent
                     && value(for: configured.token, agent: agent).flatMap(nonempty) != nil
@@ -124,7 +123,7 @@ enum AgentRowRenderer {
 
     private static func value(for token: AgentRowToken, agent row: ConsoleAgent) -> String? {
         switch token {
-        case .stateIcon, .stateText: nil // The row's status badge or ring owns both.
+        case .stateIcon, .stateText: nil // The Status Badge field or the ring shows both.
         case .workspace: row.workspaceLabel
         case .tab: row.showsTabLabel ? row.tabLabel : nil
         case .pane: row.agent.paneTitle ?? row.paneLabel
@@ -134,7 +133,7 @@ enum AgentRowRenderer {
         case .host: nonempty(row.hostName)
         case .status: row.agent.status.displayTitle.flatMap(nonempty)
         case .directory: nonempty(row.displayCwd)
-        case .changes: nil // Counts the card draws, never text.
+        case .statusBadge, .changes: nil // The card draws these, never as text.
         case .custom(let name): row.agent.tokens[name]
         }
     }

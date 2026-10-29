@@ -47,6 +47,7 @@ struct AgentRowLayoutTests {
             AgentRowLayoutResolver.resolve(
                 hostLayout: nil, pluginSnapshot: AgentRowLayoutSnapshot(layout: wide)) == console)
         #expect(AgentRowToken(rawValue: "state_icon") == .stateIcon)
+        #expect(AgentRowToken(rawValue: "status_badge") == .statusBadge)
         #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
         #expect(AgentRowToken.herdrBuiltins.contains(.stateText))
     }
@@ -135,8 +136,8 @@ struct AgentRowLayoutTests {
         #expect(!String(decoding: try JSONEncoder().encode(following), as: UTF8.self).contains("trailing"))
 
         let chosen = try lenient(#"""
-            {"rows":[[{"token":"agent"},{"token":"changes"}]],
-             "trailing":[[],[{"token":"status","dim":true},{"token":"later"}],
+            {"rows":[[{"token":"agent"},{"token":"changes"},{"token":"status_badge"}]],
+             "trailing":[[{"token":"status_badge"}],[{"token":"status","dim":true},{"token":"later"}],
                          [{"token":"changes"},{"token":"state_icon"}],[{"token":"host"}]]}
             """#)
         #expect(chosen.trailing?[1] == [.init(.status, dim: true)])
@@ -145,7 +146,7 @@ struct AgentRowLayoutTests {
 
         let console = chosen.normalizedForConsole()
         #expect(console.rows == [[.init(.agent)]])
-        #expect(console.trailing == [[], [.init(.status, dim: true)], [.init(.changes)]])
+        #expect(console.trailing == [[.init(.statusBadge)], [.init(.status, dim: true)], [.init(.changes)]])
         #expect(console.normalizedForConsole() == console)
         try console.validateForConsole()
 
@@ -156,7 +157,8 @@ struct AgentRowLayoutTests {
     }
 
     @Test func tokenNamesValidateASCIIAndRetainCustomPrefix() throws {
-        for token in AgentRowToken.builtins + [.custom("pin_icon"), .custom(String(repeating: "a", count: 32))] {
+        let named = AgentRowToken.builtins + AgentRowToken.trailingOnlyBuiltins
+        for token in named + [.custom("pin_icon"), .custom(String(repeating: "a", count: 32))] {
             #expect(AgentRowToken(rawValue: token.rawValue) == token)
             #expect(try JSONDecoder().decode(AgentRowToken.self, from: JSONEncoder().encode(token)) == token)
         }

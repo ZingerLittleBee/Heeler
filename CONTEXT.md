@@ -117,6 +117,12 @@ _Avoid_: attach image, send image, upload image
 herdr's detected state of an Agent: Idle, Working, Blocked, Done, or Unknown. Blocked means the agent is waiting for human input and drives sort order and (later) notifications.
 _Avoid_: agent state, activity
 
+**Status Badge**:
+The Agent Status in its colored capsule, a field (`status_badge`) only a Row
+Slot's right side holds; by default it ends Row 1. The `status` field is the
+same status as plain text.
+_Avoid_: status chip, status pill
+
 **Pane**:
 herdr's unit of terminal real estate. A Pane hosts either an Agent or an
 ordinary shell — a workspace's root pane starts as a shell. Used as an address
@@ -163,10 +169,9 @@ that Host's own layout, which may start from a Sync from plugin copy. There
 is no user-facing default layout. The Console shows at most three rows, as
 three fixed Row Slots, and every Agent on a Host shares them: herdr's
 per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
-`state_icon` never appears as a field; the Agent Row Style's status, a badge
-at the end of Row 1 or a ring around the Agent Mark, owns it. Agent Status
-and Heeler Pin remain independent chrome; choosing status as a field also
-shows it as text in the row.
+`state_icon` never appears as a field; the Status Badge field or the Status
+Ring shows the status. Heeler Pin remains independent chrome; choosing
+status as a field shows it as text in the row.
 _Avoid_: card template, sidebar format
 
 **Agent Mark**:
@@ -179,10 +184,10 @@ keeps its name.
 _Avoid_: harness icon, avatar, logo
 
 **Agent Row Style**:
-The app-wide choice of how the Console draws an Agent's mark and status: Tile,
-the default, puts the Agent Mark on a tile and ends Row 1 with the status
-badge; Status Ring puts it in a circle whose ring is the status, with no badge.
-Either style shows status text only where the Agent List Fields choose it.
+The app-wide choice, at the top of Agent List Fields, of how the Console draws
+an Agent's mark: Tile, the default, puts the Agent Mark on a tile; Status Ring
+puts it in a circle whose ring is the status. Either style shows the Status
+Badge and status text only where the Agent List Fields place them.
 _Avoid_: list theme, row skin
 
 **Row Slot**:
@@ -192,9 +197,10 @@ plugin refills. Row 3 is Heeler's row, which Sync keeps. Every slot accepts
 herdr fields and the Heeler-only fields herdr does not define (Host name,
 Agent Status as text, working directory). Each slot also has a right side
 that ends its line, Heeler's own, which Sync keeps and which alone can hold
-the Checkout's Changes totals; a field sits on one side of a slot at most.
-Until a Host's layout chooses its right sides, the Console places them: the
-Host name ends the first line under the title and the totals the last.
+the Status Badge and the Checkout's Changes totals; a field sits on one side
+of a slot at most. Until a Host's layout chooses its right sides, the Console
+places them: the Status Badge ends the title's line, the Host name the first
+line under it, and the totals the last.
 Titles, the switcher, and Live Activities read only the left sides. Slots are
 never added, moved, or deleted; an empty slot renders nothing.
 _Avoid_: extra row, custom row

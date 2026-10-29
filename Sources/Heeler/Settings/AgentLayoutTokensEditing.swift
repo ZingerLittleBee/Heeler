@@ -126,7 +126,8 @@ enum AgentLayoutTokensEditing {
         }
     }
 
-    /// `changes` only on the right, where the totals draw as counts.
+    /// `status_badge` and `changes` only on the right, where the capsule and
+    /// the totals draw as themselves.
     static func availableHeelerFields(in row: AgentRow, side: AgentRowSide = .leading) -> [AgentRowToken] {
         availableBuiltins(
             in: row,
@@ -140,7 +141,7 @@ enum AgentLayoutTokensEditing {
     }
 
     /// Whether the field's style changes what the right side shows: the
-    /// Host and the totals draw in their own look.
+    /// status badge, the Host, and the totals draw in their own look.
     static func hasStyle(_ token: AgentRowToken, on side: AgentRowSide) -> Bool {
         side == .leading || (token != .host && !AgentRowToken.trailingOnlyBuiltins.contains(token))
     }
@@ -148,10 +149,10 @@ enum AgentLayoutTokensEditing {
     static func description(for token: AgentRowToken) -> String {
         switch token {
         case .stateIcon:
-            "Status icon. The row's status badge or ring shows it; it is not offered as a field."
+            "Status icon. The status_badge field or the Status Ring shows it; it is not offered as a field."
         case .stateText:
-            "herdr's status text. Heeler shows the status with the row's badge or ring, not in this row; "
-                + "add status to show it as text."
+            "herdr's status text. Heeler shows the status with the status_badge field or the Status Ring, "
+                + "not in this row; add status to show it as text."
         case .workspace:
             "Workspace or repo folder name"
         case .tab:
@@ -170,6 +171,8 @@ enum AgentLayoutTokensEditing {
             "Agent Status as text"
         case .directory:
             "Working directory"
+        case .statusBadge:
+            "Agent Status in its colored capsule"
         case .changes:
             "Changes totals of the Agent's Checkout"
         case .custom:

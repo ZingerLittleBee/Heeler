@@ -29,7 +29,8 @@ its contract.
   ([ChangesBadgeTests](../../Tests/HeelerTests/ChangesBadgeTests.swift)).
   [AgentKindMark](../../Sources/Heeler/Console/AgentKindMark.swift) maps kinds to
   `AgentMarks.xcassets`; [AgentListRowStyleSettings](../../Sources/Heeler/Settings/AgentListRowStyleSettings.swift)
-  holds the Tile or Status Ring choice that `AgentCardView` draws.
+  holds the Tile or Status Ring choice that `AgentCardView` draws, picked by
+  `AgentListRowStylePicker` atop [AgentListFieldsSettingsView](../../Sources/Heeler/Settings/AgentListFieldsSettingsView.swift).
   Coverage: [AgentKindMarkTests](../../Tests/HeelerTests/AgentKindMarkTests.swift).
 
 ## Connection, input, and terminals

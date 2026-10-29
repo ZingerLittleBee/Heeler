@@ -1,13 +1,17 @@
 import SwiftUI
 
+/// Settings › Agent List Fields: the app-wide row style, then each Host,
+/// whose page edits that Host's fields.
 struct AgentListFieldsSettingsView: View {
     let console: ConsoleStore
     let hosts: [Host]
+    let rowStyle: AgentListRowStyleSettings
     @State private var editor: AgentListFieldsEditor
 
-    init(console: ConsoleStore, hosts: [Host]) {
+    init(console: ConsoleStore, hosts: [Host], rowStyle: AgentListRowStyleSettings) {
         self.console = console
         self.hosts = hosts
+        self.rowStyle = rowStyle
         _editor = State(initialValue: AgentListFieldsEditor(
             layouts: console.rowLayouts, snapshots: console.sidebarSnapshots,
             fetch: { [console] hostID in await console.refreshSidebarLayout(for: hostID) }))
@@ -31,6 +35,7 @@ struct AgentListFieldsSettingsView: View {
 
     private var hostList: some View {
         List {
+            rowStyleSection
             sessionSection
             ForEach(hosts) { @Sendable host in
                 MainActorContent { hostRow(host) }
@@ -47,6 +52,23 @@ struct AgentListFieldsSettingsView: View {
         .refreshable {
             await console.refreshSidebarLayouts()
         }
+    }
+
+    private var rowStyleSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Row Style")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .accessibilityAddTraits(.isHeader)
+                AgentListRowStylePicker(settings: rowStyle)
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 0))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listSectionSeparator(.hidden)
     }
 
     private var sessionSection: some View {
@@ -479,6 +501,67 @@ extension View {
     }
 }
 
+/// The Agents list's row styles side by side, each a sample row drawn in
+/// that style; tapping one chooses it for every Host. Stacked at the
+/// accessibility text sizes, where two would not fit a line.
+struct AgentListRowStylePicker: View {
+    let settings: AgentListRowStyleSettings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// The sample's workspace and title, without a right side: the styles
+    /// differ only in the mark.
+    static let sampleLayout = AgentRowLayout(
+        rows: [[.init(.workspace)], [.init(.terminalTitleStripped)]], trailing: [[], [], []])
+
+    var body: some View {
+        let stack = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+        stack {
+            ForEach(AgentListRowStyle.allCases) { @Sendable style in
+                MainActorContent { option(style) }
+            }
+        }
+        // As tall as the taller sample, so the names below line up.
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func option(_ style: AgentListRowStyle) -> some View {
+        let isSelected = settings.style == style
+        let shape = RoundedRectangle(cornerRadius: AgentListFieldsChrome.hostCornerRadius, style: .continuous)
+        return Button {
+            settings.select(style)
+        } label: {
+            VStack(spacing: 8) {
+                AgentCardView(
+                    agent: AgentListFieldsPreview.sampleAgent(hostName: ""), layout: Self.sampleLayout)
+                    .environment(\.agentListRowStyle, style)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .background(shape.fill(AgentListFieldsChrome.cardFill))
+                    .overlay {
+                        shape.strokeBorder(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 2)
+                    }
+                    .accessibilityHidden(true)
+                HStack(spacing: 6) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                    Text(style.title)
+                        .foregroundStyle(.primary)
+                }
+                .font(.subheadline)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        // Plain, so each card is its own target in the list row.
+        .buttonStyle(.plain)
+        .accessibilityLabel(style.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("settings.agentList.rowStyle.\(style.rawValue)")
+    }
+}
+
 enum AgentListFieldsChrome {
     static let pageInset: CGFloat = 16
     static let hostSpacing: CGFloat = 18
@@ -556,8 +639,7 @@ enum AgentListFieldsCopy {
         "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "
         + "Fields on a row's right side end its line, and Sync from plugin keeps them. "
-        + "The status ends Row 1, or rings the Agent's mark when Row Style in Settings › Appearance "
-        + "is Status Ring. "
+        + "status_badge shows the status in its capsule; the Status Ring row style also rings the mark. "
         + "Where the mark names the program, the Agent field leaves rows with other fields."
 }
 

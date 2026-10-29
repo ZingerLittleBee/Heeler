@@ -40,8 +40,10 @@ enum SettingsAgentListDestination: String, Sendable {
     var destinationTypeName: String { String(reflecting: AgentListFieldsSettingsView.self) }
 
     @MainActor
-    func destinationView(console: ConsoleStore, hosts: [Host]) -> AgentListFieldsSettingsView {
-        AgentListFieldsSettingsView(console: console, hosts: hosts)
+    func destinationView(
+        console: ConsoleStore, hosts: [Host], rowStyle: AgentListRowStyleSettings
+    ) -> AgentListFieldsSettingsView {
+        AgentListFieldsSettingsView(console: console, hosts: hosts, rowStyle: rowStyle)
     }
 }
 
@@ -148,7 +150,8 @@ struct SettingsView: View {
             Form {
                 Section {
                     NavigationLink {
-                        Self.agentListDestination.destinationView(console: console, hosts: hosts)
+                        Self.agentListDestination.destinationView(
+                            console: console, hosts: hosts, rowStyle: agentRowStyle)
                     } label: {
                         Label("Agent List Fields", systemImage: "list.bullet.rectangle")
                     }
@@ -167,8 +170,7 @@ struct SettingsView: View {
                         Label("Notifications", systemImage: "bell.badge")
                     }
                     NavigationLink {
-                        AppearanceSettingsView(
-                            terminal: terminal, appearance: appearance, agentRowStyle: agentRowStyle)
+                        AppearanceSettingsView(terminal: terminal, appearance: appearance)
                     } label: {
                         Label("Appearance", systemImage: "paintpalette")
                     }

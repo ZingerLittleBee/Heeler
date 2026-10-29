@@ -2,12 +2,12 @@ import SwiftUI
 import UIKit
 
 /// The shared Agent Row Layout leads each card, after the Agent's program
-/// mark in the list's row style; status and Heeler Pin end Row 1, and each
-/// row's right side ends its line (`AgentCardLines`): by default the Host
-/// name ends the first additional row and the Checkout's Changes totals the
-/// last. The Status Ring style's ring stands in for the status capsule.
-/// Fields retain their emphasis using accessible semantic colors; plugin
-/// colors and weights do not replace app typography.
+/// mark in the list's row style; Heeler Pin follows Row 1, and each row's
+/// right side ends its line (`AgentCardLines`): by default the status badge
+/// ends Row 1, the Host name the first additional row, and the Checkout's
+/// Changes totals the last. The Status Ring style's ring also shows the
+/// status. Fields retain their emphasis using accessible semantic colors;
+/// plugin colors and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var layout: AgentRowLayout = .heelerDefault
@@ -51,8 +51,9 @@ struct AgentCardView: View {
 
     private var mark: AgentKindMark { AgentKindMark(kind: agent.agent.kind) }
 
-    /// The ring stands in for the capsule.
-    private var showsStatusBadge: Bool { style == .tile }
+    /// A saved entry has no status of its own, and a status without a title
+    /// has no capsule.
+    private var showsStatusBadge: Bool { saved == nil && agent.agent.status.displayTitle != nil }
 
     /// The Tile style centers its tile on the title's line; the ring style,
     /// its avatar on the rows beside it.
@@ -62,7 +63,10 @@ struct AgentCardView: View {
         let presentation = presentation
         let lines = AgentCardLines(
             presentation: presentation, headingTakesTitle: heading != nil,
-            showsHost: showsHostText, showsTotals: showsTotals, requiresHost: saved != nil)
+            showsHost: showsHostText, showsTotals: showsTotals, showsStatusBadge: showsStatusBadge,
+            requiresHost: saved != nil)
+        // The ring says the status unless the row's capsule does.
+        let speaksStatus = style == .statusRing && !lines.places(.statusBadge)
         Group {
             if let heading, lead == .card {
                 // A card of its own: its checkout's symbol on the heading's
@@ -73,7 +77,7 @@ struct AgentCardView: View {
                         titleLine(presentation, trailing: lines.title)
                     }
                     HStack(alignment: markAlignment, spacing: cardColumn.spacing) {
-                        markView(side: cardColumn.value)
+                        markView(side: cardColumn.value, speaksStatus: speaksStatus)
                         VStack(alignment: .leading, spacing: 6) {
                             detailLineViews(lines.details, marksFirstRow: true)
                         }
@@ -81,7 +85,7 @@ struct AgentCardView: View {
                 }
             } else {
                 HStack(alignment: markAlignment, spacing: lead == .card ? cardColumn.spacing : Self.rowLeadSpacing) {
-                    markView(side: leadSide)
+                    markView(side: leadSide, speaksStatus: speaksStatus)
                     VStack(alignment: .leading, spacing: 6) {
                         titleLine(presentation, trailing: lines.title)
                             .alignmentGuide(.agentMarkLine) { $0[VerticalAlignment.center] }
@@ -103,11 +107,11 @@ struct AgentCardView: View {
     }
 
     /// The tile or avatar, which VoiceOver reads first as the program and,
-    /// in the ring style, the status.
-    private func markView(side: CGFloat) -> some View {
+    /// where `speaksStatus`, the status.
+    private func markView(side: CGFloat, speaksStatus: Bool) -> some View {
         let mark = mark
         let status = saved == nil ? agent.agent.status : .unknown
-        let spoken = showsStatusBadge ? nil : status.displayTitle
+        let spoken = speaksStatus ? status.displayTitle : nil
         return Group {
             switch style {
             case .tile: AgentKindTile(mark: mark, side: side)
@@ -119,7 +123,7 @@ struct AgentCardView: View {
     }
 
     /// Row 1, or the heading in its place, with the pin, its right side,
-    /// and the status after it.
+    /// and a saved entry's badge after it.
     private func titleLine(
         _ presentation: AgentCardPresentation, trailing: [AgentCardTrailing]
     ) -> some View {
@@ -141,15 +145,11 @@ struct AgentCardView: View {
             }
             Spacer(minLength: 8)
             if !trailing.isEmpty { trailingView(trailing) }
-            // Whole at any text size; the title truncates instead.
-            Group {
-                if saved != nil {
-                    SavedChatBadge()
-                } else if showsStatusBadge, agent.agent.status.displayTitle != nil {
-                    AgentStatusBadge(status: agent.agent.status)
-                }
+            if saved != nil {
+                // Whole at any text size; the title truncates instead.
+                SavedChatBadge()
+                    .fixedSize()
             }
-            .fixedSize()
         }
     }
 
@@ -209,7 +209,7 @@ struct AgentCardView: View {
             let priority: Double = switch entry {
             case .fields: 0
             case .host: isOwnLine ? 0 : 1
-            case .changes: 1
+            case .statusBadge, .changes: 1
             }
             MainActorContent {
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -236,6 +236,10 @@ struct AgentCardView: View {
                 .lineLimit(1)
         case .host:
             hostText
+        case .statusBadge:
+            // Whole at any text size; the line's text truncates instead.
+            AgentStatusBadge(status: agent.agent.status)
+                .fixedSize()
         case .changes:
             if let totalsSource { ChangesRowTotals(source: totalsSource) }
         }
@@ -435,21 +439,41 @@ struct AgentCardPresentation: Equatable, Sendable {
 enum AgentCardTrailing: Equatable, Sendable {
     /// Text fields, with separators between them.
     case fields([RenderedToken])
+    /// The Agent's status in its capsule.
+    case statusBadge
     /// The Host's name, or a saved entry's Host with its readiness tone.
     case host
     /// The Checkout's Changes totals.
     case changes
 
+    /// The entry the card draws for `token`, or nil for a text field.
+    init?(drawing token: AgentRowToken) {
+        switch token {
+        case .statusBadge: self = .statusBadge
+        case .host: self = .host
+        case .changes: self = .changes
+        default: return nil
+        }
+    }
+
     /// Reads as text, so a separator stands between two of these.
-    var isText: Bool { self != .changes }
+    var isText: Bool {
+        switch self {
+        case .fields, .host: true
+        case .statusBadge, .changes: false
+        }
+    }
 }
 
 /// A card's lines: the title's, which ends with any right side of the row
 /// slots up to the one it shows, then one line per later slot that shows
-/// anything, on either side. A layout that leaves its right side to the list
-/// gets today's places: the Host ends the first line under the title, the
-/// totals the last, and both share a line of their own when there is none.
-/// A saved entry always shows its Host, whose tone stands in for a status.
+/// anything, on either side. Under a heading, Row 1's status badge ends the
+/// heading's line, which names the Agent as Row 1 would. A layout that
+/// leaves its right side to the list gets today's places: the status badge
+/// ends the title's line, the Host the first line under it, the totals the
+/// last, and the Host and the totals share a line of their own when there is
+/// none. A saved entry always shows its Host, whose tone stands in for a
+/// status.
 struct AgentCardLines: Equatable, Sendable {
     struct Line: Equatable, Sendable {
         var leading: [RenderedToken]
@@ -461,27 +485,32 @@ struct AgentCardLines: Equatable, Sendable {
     var details: [Line] = []
 
     /// `headingTakesTitle` where a heading stands in Row 1's place, so every
-    /// row is a line under it. `showsHost` and `showsTotals` say whether
-    /// those entries have anything to show.
+    /// row is a line under it. `showsHost`, `showsTotals`, and
+    /// `showsStatusBadge` say whether those entries have anything to show.
     init(
         presentation: AgentCardPresentation, headingTakesTitle: Bool,
-        showsHost: Bool, showsTotals: Bool, requiresHost: Bool = false
+        showsHost: Bool, showsTotals: Bool, showsStatusBadge: Bool = false, requiresHost: Bool = false
     ) {
         func shown(_ entries: [AgentCardTrailing]) -> [AgentCardTrailing] {
             entries.filter { entry in
                 switch entry {
                 case .fields: true
+                case .statusBadge: showsStatusBadge
                 case .host: showsHost
                 case .changes: showsTotals
                 }
             }
         }
-        if let trailing = presentation.trailing {
+        if var trailing = presentation.trailing {
             let leading = Dictionary(
                 zip(presentation.slots, presentation.rows), uniquingKeysWith: { first, _ in first })
             let titleSlot = headingTakesTitle ? -1 : presentation.slots.first ?? 0
             let slotCount = max(trailing.count, (presentation.slots.last ?? 0) + 1)
-            title = trailing.prefix(titleSlot + 1).flatMap(shown)
+            if headingTakesTitle, let row = trailing.first, row.contains(.statusBadge) {
+                title = shown([.statusBadge])
+                trailing[0] = row.filter { $0 != .statusBadge }
+            }
+            title += trailing.prefix(titleSlot + 1).flatMap(shown)
             details = (titleSlot + 1..<max(titleSlot + 1, slotCount)).compactMap { slot in
                 let line = Line(
                     leading: leading[slot] ?? [],
@@ -489,6 +518,7 @@ struct AgentCardLines: Equatable, Sendable {
                 return line.leading.isEmpty && line.trailing.isEmpty ? nil : line
             }
         } else {
+            if showsStatusBadge { title = [.statusBadge] }
             details = (headingTakesTitle ? presentation.rows : Array(presentation.rows.dropFirst()))
                 .map { Line(leading: $0, trailing: []) }
             if details.isEmpty, showsHost || showsTotals {
@@ -497,11 +527,15 @@ struct AgentCardLines: Equatable, Sendable {
             if showsHost, !details.isEmpty { details[0].trailing.append(.host) }
             if showsTotals, !details.isEmpty { details[details.count - 1].trailing.append(.changes) }
         }
-        let placesHost = title.contains(.host) || details.contains { $0.trailing.contains(.host) }
-        if requiresHost, !placesHost {
+        if requiresHost, !places(.host) {
             if details.isEmpty { details = [Line(leading: [], trailing: [])] }
             details[0].trailing.insert(.host, at: 0)
         }
+    }
+
+    /// Whether any line ends with `entry`.
+    func places(_ entry: AgentCardTrailing) -> Bool {
+        title.contains(entry) || details.contains { $0.trailing.contains(entry) }
     }
 }
 
@@ -537,8 +571,8 @@ enum AgentTitleQualifier {
     }
 }
 
-/// In the status capsule's place on a saved Chat entry: outlined where every
-/// status is filled, so it never reads as one.
+/// Ends a saved Chat entry's title, which has no status capsule: outlined
+/// where every status is filled, so it never reads as one.
 private struct SavedChatBadge: View {
     var body: some View {
         Text("Saved")

@@ -1,16 +1,18 @@
 import Foundation
 
 /// Field names. herdr sidebar.json builtins and `$custom` plugin keys, plus
-/// Heeler-only names (`host`, `status`, `directory`) that exist in the app
-/// layout, not as authored plugin fields.
+/// Heeler-only names (`host`, `status`, `directory`, and the right side's
+/// `status_badge` and `changes`) that exist in the app layout, not as
+/// authored plugin fields.
 ///
 /// `state_icon` still parses so herdr snapshots and older saved layouts keep
 /// decoding, but Console layouts drop it (`normalizedForConsole`) and the
-/// Field Editor never offers it: the row's status badge or ring owns it.
+/// Field Editor never offers it: the Status Badge field or the Status Ring
+/// shows the status.
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case stateIcon, stateText, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
-    case host, status, directory, changes
+    case host, status, directory, statusBadge, changes
     case custom(String)
 
     /// herdr fields the Field Editor offers. Excludes `state_icon`.
@@ -25,9 +27,10 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
 
     static let builtins: [Self] = herdrBuiltins + heelerBuiltins
 
-    /// Heeler fields only a row's right side offers: the Checkout's Changes
-    /// totals draw as counts, never as text inside a row.
-    static let trailingOnlyBuiltins: [Self] = [.changes]
+    /// Heeler fields only a row's right side offers: the status capsule and
+    /// the Checkout's Changes totals draw as themselves, never as text
+    /// inside a row.
+    static let trailingOnlyBuiltins: [Self] = [.statusBadge, .changes]
 
     init?(rawValue: String) {
         switch rawValue {
@@ -42,6 +45,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case "host": self = .host
         case "status": self = .status
         case "directory": self = .directory
+        case "status_badge": self = .statusBadge
         case "changes": self = .changes
         default:
             guard rawValue.first == "$" else { return nil }
@@ -67,6 +71,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case .host: "host"
         case .status: "status"
         case .directory: "directory"
+        case .statusBadge: "status_badge"
         case .changes: "changes"
         case .custom(let name): "$\(name)"
         }
@@ -171,13 +176,14 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     /// The fields that end each Console row slot on the right, index-aligned
     /// with the slots. Heeler's own: herdr never sends them, and Sync from
     /// plugin keeps them. Nil leaves the right side to the list
-    /// (`AgentCardLines`), which ends the first line under the title with
-    /// the Host and the last with the Checkout's Changes totals.
+    /// (`AgentCardLines`), which ends the title's line with the status
+    /// badge, the first line under it with the Host, and the last with the
+    /// Checkout's Changes totals.
     var trailing: [AgentRow]?
 
     /// What the editor shows, and starts from, for a layout whose right
     /// side the list places.
-    static let defaultTrailing: [AgentRow] = [[], [.init(.host)], [.init(.changes)]]
+    static let defaultTrailing: [AgentRow] = [[.init(.statusBadge)], [.init(.host)], [.init(.changes)]]
 
     init(
         rows: [AgentRow], rowGap: Int = 0, rowsByAgent: [String: [AgentRow]] = [:],
@@ -194,7 +200,7 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     }
 
     /// The Console shape: at most `maximumConsoleRows` rows on each side, no
-    /// `state_icon` (the row's status badge or ring owns it), no right-side
+    /// `state_icon` (the Status Badge field or the ring shows it), no right-side
     /// field on the left (installed plugins drop a Live Activity layout
     /// with a field they do not know), and no per-kind overrides: every
     /// Agent on a Host shares the same rows, so herdr's `rows_by_agent` is

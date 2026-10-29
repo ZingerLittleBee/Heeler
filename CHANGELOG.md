@@ -18,12 +18,13 @@ Entries reference the pull request that made the change.
   on the Host. (#521)
 - Check a changed host key before trusting it: the Host's page shows the new
   key and a command to copy that prints it on the Host or Jump Host. (#531)
-- Choose the Agents list's row style in Settings › Appearance: Status Ring
-  shows each Agent's program mark inside a ring that carries its status, the
-  Working ring turning, in place of the status capsule.
+- Choose the Agents list's row style at the top of Agent List Fields, each
+  shown on a sample row: Status Ring shows each Agent's program mark inside
+  a ring that carries its status, the Working ring turning.
 - Choose what ends each Agent row on the right in Agent List Fields: any
-  field, the Host name, or the Checkout's Changes totals, per Host. Sync
-  from plugin keeps them.
+  field, the Host name, the status capsule (`status_badge`), or the
+  Checkout's Changes totals, per Host. The capsule ends Row 1 until you move
+  or remove it, and Sync from plugin keeps them.
 
 ### Changed
 

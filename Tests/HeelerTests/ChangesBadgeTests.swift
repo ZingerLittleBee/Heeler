@@ -1450,7 +1450,7 @@ struct AgentCardChangesTotalsTests {
         try #require(lines.count > 1)
         let line = UncheckedSendable(value: card.detailLineViews(lines).content)
         let lineElements = Array(lines.enumerated())
-        let entries: [AgentCardTrailing] = [.fields([.separator]), .host, .changes]
+        let entries: [AgentCardTrailing] = [.fields([.separator]), .statusBadge, .host, .changes]
         let entry = UncheckedSendable(value: card.trailingEntryViews(entries).content)
         let entryElements = Array(entries.enumerated())
         await Task.detached {
@@ -1486,6 +1486,36 @@ struct AgentCardChangesTotalsTests {
         #expect(details(heading: false, host: false, totals: false).isEmpty)
         #expect(details(heading: true, host: true, totals: true)
             == [.init(leading: titleOnly.rows[0], trailing: [.host, .changes])])
+    }
+
+    /// The status badge ends the title's line where the list places the
+    /// right side, and wherever a layout puts it otherwise; under a heading,
+    /// Row 1's badge ends the heading's line. A row without a status shows
+    /// none.
+    @Test func theStatusBadgeEndsTheLineItIsPlacedOn() {
+        func lines(_ presentation: AgentCardPresentation, heading: Bool = false, badge: Bool = true) -> AgentCardLines {
+            AgentCardLines(
+                presentation: presentation, headingTakesTitle: heading, showsHost: true, showsTotals: true,
+                showsStatusBadge: badge)
+        }
+        let listPlaced = AgentCardPresentation(agent: Self.agent, layout: .consoleDefault)
+        #expect(lines(listPlaced).title == [.statusBadge])
+        #expect(lines(listPlaced, heading: true).title == [.statusBadge])
+        #expect(!lines(listPlaced, badge: false).places(.statusBadge))
+
+        let rows: [AgentRow] = [[.init(.workspace)], [.init(.agent)]]
+        let rowOne = AgentCardPresentation(
+            agent: Self.agent, layout: AgentRowLayout(rows: rows, trailing: [[.init(.host), .init(.statusBadge)], [], []]))
+        #expect(lines(rowOne).title == [.host, .statusBadge])
+        #expect(lines(rowOne, heading: true).title == [.statusBadge])
+        #expect(lines(rowOne, heading: true).details.first == .init(leading: rowOne.rows[0], trailing: [.host]))
+        #expect(lines(rowOne, badge: false).title == [.host])
+
+        let rowTwo = AgentCardPresentation(
+            agent: Self.agent, layout: AgentRowLayout(rows: rows, trailing: [[], [.init(.statusBadge)], []]))
+        #expect(lines(rowTwo).title.isEmpty)
+        #expect(lines(rowTwo).details == [.init(leading: rowTwo.rows[1], trailing: [.statusBadge])])
+        #expect(lines(rowTwo, heading: true).title.isEmpty)
     }
 
     /// Each row slot's chosen right side ends its own line: one whose left
@@ -1554,7 +1584,8 @@ struct AgentCardChangesTotalsTests {
     @Test func aHostOnRowOnesRightSideEndsTheTitlesLine() async throws {
         let store = try await Self.store(added: 12, removed: 7)
         let layout = AgentRowLayout(
-            rows: [[.init(.workspace)], [.init(.agent)]], trailing: [[.init(.host)], [], [.init(.changes)]])
+            rows: [[.init(.workspace)], [.init(.agent)]],
+            trailing: [[.init(.host), .init(.statusBadge)], [], [.init(.changes)]])
         let (controller, window) = try await Self.host(store, width: 402, layout: layout)
         defer { window.isHidden = true }
         let root: UIView = controller.view

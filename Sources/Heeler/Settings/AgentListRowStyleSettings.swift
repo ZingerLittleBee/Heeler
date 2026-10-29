@@ -1,13 +1,13 @@
 import Observation
 import SwiftUI
 
-/// How an Agents list row shows its Agent's program and status. Both lead
-/// with the program's mark (`AgentKindMark`).
+/// How an Agents list row draws its Agent's program mark (`AgentKindMark`).
+/// The status capsule is a field either style shows where the Agent List
+/// Fields place it.
 enum AgentListRowStyle: String, CaseIterable, Identifiable, Sendable {
-    /// The mark on a tile; the status capsule ends Row 1.
+    /// The mark on a tile.
     case tile
-    /// The mark in an avatar whose ring is the status, in place of the
-    /// capsule.
+    /// The mark in an avatar whose ring is the status.
     case statusRing
 
     var id: Self { self }

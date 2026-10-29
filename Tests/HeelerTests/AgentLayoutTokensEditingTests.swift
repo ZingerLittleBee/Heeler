@@ -74,8 +74,9 @@ struct AgentLayoutTokensEditingTests {
         #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "").isEmpty)
         let statusIcon = AgentLayoutTokensEditing.description(for: .stateIcon)
         let statusText = AgentLayoutTokensEditing.description(for: .stateText)
-        #expect(statusIcon.contains("badge or ring"))
-        #expect(statusText.contains("badge or ring") && statusText.contains("add status"))
+        #expect(statusIcon.contains("status_badge field or the Status Ring"))
+        #expect(statusText.contains("status_badge field or the Status Ring") && statusText.contains("add status"))
+        #expect(AgentLayoutTokensEditing.description(for: .statusBadge).contains("capsule"))
         #expect(AgentLayoutTokensEditing.description(for: .workspace) == "Workspace or repo folder name")
         #expect(AgentLayoutTokensEditing.description(for: .host) == "Host name")
         #expect(AgentLayoutTokensEditing.description(for: .status) == "Agent Status as text")
@@ -113,14 +114,14 @@ struct AgentLayoutTokensEditingTests {
 
         #expect(AgentLayoutTokensEditing.add(
             .changes, editor: editor, hostID: hostID, rowIndex: 0, side: .trailing))
-        #expect(saved()?.trailing == [[.init(.changes)], [.init(.host)], [.init(.changes)]])
+        #expect(saved()?.trailing == [[.init(.statusBadge), .init(.changes)], [.init(.host)], [.init(.changes)]])
 
         // Across the gap: the field keeps its style and lands beside it.
         #expect(AgentLayoutTokensEditing.setStyle(
             .secondary, at: 2, editor: editor, hostID: hostID, rowIndex: 0))
         #expect(AgentLayoutTokensEditing.moveAcross(2, editor: editor, hostID: hostID, rowIndex: 0, from: .leading))
         #expect(saved()?.rows[0] == [.init(.workspace), .init(.tab)])
-        #expect(saved()?.trailing?[0] == [.init(.status, dim: true), .init(.changes)])
+        #expect(saved()?.trailing?[0] == [.init(.status, dim: true), .init(.statusBadge), .init(.changes)])
         #expect(!AgentLayoutTokensEditing.moveAcross(1, editor: editor, hostID: hostID, rowIndex: 0, from: .trailing))
         #expect(AgentLayoutTokensEditing.moveAcross(0, editor: editor, hostID: hostID, rowIndex: 1, from: .trailing))
         #expect(saved()?.rows[1] == [.init(.agent), .init(.host)])
@@ -131,11 +132,13 @@ struct AgentLayoutTokensEditingTests {
 
         #expect(AgentLayoutTokensEditing.slotFields(1, of: try #require(saved())) == [.init(.agent), .init(.host)])
         #expect(AgentLayoutTokensEditing.availableHeelerFields(in: [], side: .trailing)
-            == [.host, .status, .directory, .changes])
+            == [.host, .status, .directory, .statusBadge, .changes])
         #expect(AgentLayoutTokensEditing.availableHeelerFields(in: []) == [.host, .status, .directory])
         #expect(AgentLayoutTokensEditing.description(for: .changes).contains("Changes"))
         #expect(!AgentLayoutTokensEditing.hasStyle(.host, on: .trailing))
         #expect(!AgentLayoutTokensEditing.hasStyle(.changes, on: .trailing))
+        #expect(!AgentLayoutTokensEditing.hasStyle(.statusBadge, on: .trailing))
+        #expect(!AgentLayoutTokensEditing.accepts(.statusBadge, on: .leading))
         #expect(AgentLayoutTokensEditing.hasStyle(.status, on: .trailing))
         #expect(AgentLayoutTokensEditing.hasStyle(.host, on: .leading))
         #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac", rowIndex: 1, side: .trailing)
@@ -143,6 +146,7 @@ struct AgentLayoutTokensEditingTests {
         #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 0, side: .trailing).contains("Sync from plugin keeps them"))
         #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 3, side: .trailing).isEmpty)
         #expect(!AgentLayoutTokensEditing.canMoveAcross(.changes, from: .trailing, landing: []))
+        #expect(!AgentLayoutTokensEditing.canMoveAcross(.statusBadge, from: .trailing, landing: []))
         #expect(!AgentLayoutTokensEditing.canMoveAcross(.host, from: .leading, landing: [.init(.host)]))
         let full = (0..<AgentRowLayout.maximumTokensPerRow).map { AgentRowStyledToken(.custom("t\($0)")) }
         #expect(!AgentLayoutTokensEditing.canMoveAcross(.tab, from: .leading, landing: full))
@@ -153,7 +157,7 @@ struct AgentLayoutTokensEditingTests {
     /// on the left, so the first right-side change saves no field twice.
     @Test func rightSideDefaultsSkipAFieldTheLeftAlreadyShows() {
         let layout = AgentRowLayout(rows: [[.init(.workspace)], [.init(.agent), .init(.host)], [.init(.directory)]])
-        #expect(AgentLayoutTokensEditing.rows(.trailing, of: layout) == [[], [], [.init(.changes)]])
+        #expect(AgentLayoutTokensEditing.rows(.trailing, of: layout) == [[.init(.statusBadge)], [], [.init(.changes)]])
         #expect(AgentLayoutTokensEditing.rows(.trailing, of: AgentRowLayout(rows: [])) == AgentRowLayout.defaultTrailing)
         #expect(AgentLayoutTokensEditing.keepingRightSides(
             [[.init(.workspace), .init(.tab)], [.init(.agent)]], of: [[.init(.workspace)], [], []])
