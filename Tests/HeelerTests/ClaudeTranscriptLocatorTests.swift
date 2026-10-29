@@ -120,6 +120,78 @@ struct ClaudeTranscriptLocatorTests {
         #expect(try await Self.locate(VirtualHostFiles()) == .failure(.notFound(searchedAll: true)))
     }
 
+    // MARK: A new session
+
+    private static let sessionEnvironment = "/home/dev/.claude/session-env/\(sessionID)"
+
+    /// Claude Code makes the session's `session-env` directory at its start
+    /// and writes the transcript with the first message. It is looked at
+    /// only once the search has found nothing.
+    @Test(arguments: [false, true])
+    func aStartedSessionWithNoFileIsNotWrittenYet(hasProjects: Bool) async throws {
+        let files = VirtualHostFiles()
+        await files.makeDirectory(Self.sessionEnvironment)
+        if hasProjects {
+            await files.makeDirectory("\(Self.projects)/-home-dev-a")
+        }
+
+        #expect(try await Self.locate(files) == .failure(.notWritten))
+        #expect(await files.statuses.last == Self.sessionEnvironment)
+    }
+
+    /// Too many project directories to search all of: the session started
+    /// here, so its file is still to come rather than somewhere unsearched.
+    @Test func aStartedSessionIsNotWrittenYetWhenTheBudgetEndsTheScan() async throws {
+        let files = VirtualHostFiles()
+        await files.makeDirectory(Self.sessionEnvironment)
+        for index in 0..<6 {
+            await files.makeDirectory("\(Self.projects)/-p\(index)")
+        }
+
+        #expect(try await Self.locate(files, statBudget: 3) == .failure(.notWritten))
+    }
+
+    @Test func aFileNamingAnotherSessionOutranksAStartedSession() async throws {
+        let files = VirtualHostFiles()
+        await files.makeDirectory(Self.sessionEnvironment)
+        await files.write(
+            try ChatFixture.data("claude/probe1-transcript.jsonl"),
+            at: Self.transcriptPath(key: "-private-tmp-heeler-tmp-chat2-probe-claude"))
+
+        #expect(try await Self.locate(files) == .failure(.mismatched))
+    }
+
+    @Test func aSessionEnvironmentHeelerCannotReadIsNoSign() async throws {
+        let files = VirtualHostFiles()
+        await files.makeDirectory(Self.sessionEnvironment)
+        await files.failNext(.status, path: Self.sessionEnvironment, with: TransportError.hostFileUnreadable(status: 3))
+
+        #expect(try await Self.locate(files) == .failure(.notFound(searchedAll: true)))
+    }
+
+    /// A new session's file comes under a directory the Agent reports: while
+    /// waiting for it, Chat stats those alone.
+    @Test func searchingTheAgentsDirectoriesAloneListsNothing() async throws {
+        let files = VirtualHostFiles()
+        await files.makeDirectory(Self.sessionEnvironment)
+        await files.makeDirectory("\(Self.projects)/-home-dev-a")
+        let path = Self.transcriptPath(key: "-private-tmp-heeler-tmp-chat2-probe-claude")
+        let locator = ClaudeTranscriptLocator(files: files.hostFiles())
+
+        let missing = try await locator.locate(
+            sessionID: Self.sessionID, directories: [Self.cwd], searchesEveryProject: false)
+
+        #expect(missing == .failure(.notFound(searchedAll: false)))
+        #expect(await files.statuses == [path])
+        #expect(await files.listings.isEmpty)
+
+        await files.write(try ChatFixture.data("claude/probe2-transcript.jsonl"), at: path)
+        let found = try await locator.locate(
+            sessionID: Self.sessionID, directories: [Self.cwd], searchesEveryProject: false)
+
+        #expect(try found.get().transcriptPath == path)
+    }
+
     @Test func subagentPathsStayInsideTheSessionDirectory() {
         let location = ClaudeTranscriptLocation(
             projectDirectory: "\(Self.projects)/-k", transcriptPath: "\(Self.projects)/-k/s.jsonl",

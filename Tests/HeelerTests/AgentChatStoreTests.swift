@@ -454,8 +454,8 @@ struct AgentChatStoreTests {
     private static let savedEntry = ChatEntry(
         id: ChatEntryID("e0"), sourceOffset: 0, content: .assistant(ChatAssistantMessage(text: "hello")))
 
-    /// A first prompt sent before the program writes its transcript: the
-    /// timeline holds only the echo, and nothing is saved.
+    /// A first prompt sent before Chat finds the transcript: the timeline
+    /// holds only the echo, and nothing is saved.
     @Test func aBannerOverOnlyASentEchoDoesNotClaimSavedMessages() {
         let lines = ChatBannerLine.lines(
             hostStatus: .connected, conversation: Self.snapshot(.unavailable(.notFound(searchedAll: true))),
@@ -2592,6 +2592,77 @@ struct AgentChatStoreTests {
         await store.step()
 
         #expect(store.sendStatuses[second] == .recorded)
+    }
+
+    // MARK: A new Claude Code conversation
+
+    private static let sessionEnvironment = "/home/dev/.claude/session-env/\(first)"
+
+    /// Claude Code writes a new session's transcript with its first message:
+    /// Chat looks under the Agent's directory on every pass, without backing
+    /// off or searching every project directory again.
+    @Test func aNewClaudeConversationIsFollowedOnceItsFileAppears() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.makeDirectory(Self.sessionEnvironment)
+        await fixture.files.makeDirectory("/home/dev/.claude/projects/-p0")
+        await fixture.store.step()
+        #expect(fixture.store.conversation.phase == .unavailable(.awaitingFirstMessage(.claude)))
+
+        await fixture.files.clearRecords()
+        await fixture.store.step()
+        await fixture.store.step()
+
+        #expect(await fixture.files.statuses == [Self.path(Self.first), Self.path(Self.first)])
+        #expect(await fixture.files.listings.isEmpty)
+
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.first)))
+    }
+
+    /// Claude Code records a message as it takes it, so one sent while the
+    /// conversation is new still times out, unlike one sent to Pi, and a
+    /// session that never records it saves nothing: it is not found.
+    @Test func aMessageANewClaudeConversationNeverRecordsEndsIt() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.makeDirectory(Self.sessionEnvironment)
+        await fixture.store.step()
+        #expect(fixture.store.conversation.phase == .unavailable(.awaitingFirstMessage(.claude)))
+        let id = UUID()
+        fixture.store.updateSends([Self.sent(id, "hello ", delivered: false)])
+        fixture.store.updateSends([Self.sent(id, "hello ")])
+
+        fixture.advance(60)
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[id] == .overdue)
+
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.phase == .unavailable(.notFound(searchedAll: true)))
+
+        // Recorded late after all: still followed.
+        await fixture.files.write(NumberedChatReducer.prompt("hello"), at: Self.path(Self.first))
+        fixture.advance(2)
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.first)))
+        #expect(fixture.store.sendStatuses[id] == .recorded)
+    }
+
+    /// Claude Code saves a new conversation with its first message, Pi and
+    /// Oh My Pi with the first reply.
+    @Test(arguments: [ChatProgram.claude, .pi, .omp])
+    func aNewConversationSaysWhenItsProgramSavesIt(program: ChatProgram) {
+        let reason = ChatUnavailableReason.awaitingFirstMessage(program)
+        let banner = reason.bannerText(showingSavedMessages: false)
+        #expect(reason.title == "No Messages Yet")
+        #expect(reason.explanation.hasPrefix("\(program.chatName) saves this conversation "))
+        for text in [reason.explanation, banner] {
+            #expect(text.contains("first message") == (program == .claude))
+            #expect(text.contains("first reply") == (program != .claude))
+        }
     }
 
     // MARK: A new Pi or Oh My Pi conversation

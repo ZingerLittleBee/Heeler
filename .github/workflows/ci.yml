@@ -122,7 +122,7 @@ jobs:
     # rather than macos-latest for reproducibility.
     runs-on: macos-26
     # The job limit leaves the setup and upload steps room around the test step.
-    timeout-minutes: ${{ inputs.layout == 'serial' && 50 || 44 }}
+    timeout-minutes: ${{ inputs.layout == 'serial' && 65 || 60 }}
     strategy:
       fail-fast: false
       matrix:
@@ -133,10 +133,13 @@ jobs:
       HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
       HEELER_CI_DISABLE_COMPILATION_CACHE: '1'
       HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
-      # Hosted compilation can exceed 15 minutes even with restored sources.
+      # Hosted compilation can exceed 20 minutes even with restored sources.
       # Leave room for runner variance without treating this safety deadline
       # as a runtime target; cold and warm measurements use the same limit.
-      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1200'
+      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1800'
+      # The ordinary lane's full test call can pass every test and still
+      # exceed 10 minutes before xcodebuild exits.
+      HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '900'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -200,11 +203,11 @@ jobs:
       # A step timeout signals only the step shell, so the script's cleanup and
       # failure diagnostics survive only when its own watchdogs fire first. The
       # limit therefore nests the worst sharded budget: preparation (about 3
-      # minutes), the 20-minute build deadline, a passing first suite (about 4),
-      # and a hung second suite's 10-minute watchdog with sampling and cleanup.
+      # minutes), the 30-minute build deadline, a passing first suite (about 4),
+      # and a hung second suite's 15-minute watchdog with sampling and cleanup.
       # Serial runs every phase once and has its own wider limit.
       - name: Build and test
-        timeout-minutes: ${{ inputs.layout == 'serial' && 45 || 40 }}
+        timeout-minutes: ${{ inputs.layout == 'serial' && 60 || 55 }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something merge CI may quietly run without.

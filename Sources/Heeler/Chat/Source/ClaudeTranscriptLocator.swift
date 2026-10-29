@@ -51,9 +51,12 @@ struct ClaudeTranscriptLocation: Hashable, Sendable {
 
 enum ClaudeTranscriptUnavailable: Error, Hashable, Sendable {
     /// No searched directory holds the session's file. `searchedAll` is false
-    /// when a listing was cut short or the stat budget ran out, so the file
-    /// may still exist. Claude also writes nothing before the first prompt.
+    /// when a listing was cut short, the stat budget ran out, or the search
+    /// kept to the Agent's directories, so the file may still exist.
     case notFound(searchedAll: Bool)
+    /// No searched directory holds the file, but Claude started the session
+    /// under this home: it writes the file with the first message.
+    case notWritten
     /// A file with the session's name holds a different session or a
     /// subagent's transcript.
     case mismatched
@@ -67,6 +70,11 @@ enum ClaudeTranscriptUnavailable: Error, Hashable, Sendable {
 /// the CLI may compute differently, so directories sharing its prefix are
 /// listed. Last, every project directory is tried, closest name first,
 /// within a stat budget: `/cd` moves a session to another directory.
+///
+/// A session with no file anywhere may be new: Claude Code makes
+/// `session-env/<id>` when it starts a session, before running the
+/// SessionStart hooks that report it to herdr, keeps it after the session
+/// ends, and writes the transcript only with the first message (2.1.312).
 struct ClaudeTranscriptLocator: Sendable {
     let files: ChatHostFiles
     var statBudget = 200
@@ -76,8 +84,10 @@ struct ClaudeTranscriptLocator: Sendable {
         self.files = files
     }
 
+    /// `searchesEveryProject` false keeps to the Agent's directories, a
+    /// few stats, for a new session whose file comes under one of them.
     func locate(
-        sessionID: String, directories: [String]
+        sessionID: String, directories: [String], searchesEveryProject: Bool = true
     ) async throws -> Result<ClaudeTranscriptLocation, ClaudeTranscriptUnavailable> {
         let home = try await files.home()
         let projects = RemoteFilePath.join(home, ".claude", "projects")
@@ -115,13 +125,21 @@ struct ClaudeTranscriptLocator: Sendable {
                 if let found = try await attempt(entry.name) { return .success(found) }
             }
         }
+        guard searchesEveryProject else {
+            return .failure(sawMismatch ? .mismatched : .notFound(searchedAll: false))
+        }
+        func missing(searchedAll: Bool) async throws -> ClaudeTranscriptUnavailable {
+            if sawMismatch { return .mismatched }
+            return try await sessionStarted(home: home, sessionID: sessionID)
+                ? .notWritten : .notFound(searchedAll: searchedAll)
+        }
         guard
             let listing = try await files.list(
                 RemoteFileListingRequest(
                     directory: projects, kinds: [.directory, .symlink],
                     maximumEntries: projectListingLimit, maximumScanned: 20_000))
         else {
-            return .failure(sawMismatch ? .mismatched : .notFound(searchedAll: true))
+            return .failure(try await missing(searchedAll: true))
         }
         let ordered = Self.byClosestName(listing.entries.map(\.name), to: plan.exactKeys.first ?? "")
         var searchedAll = !listing.truncated && !listing.scanIncomplete
@@ -132,7 +150,20 @@ struct ClaudeTranscriptLocator: Sendable {
             }
             if let found = try await attempt(name) { return .success(found) }
         }
-        return .failure(sawMismatch ? .mismatched : .notFound(searchedAll: searchedAll))
+        return .failure(try await missing(searchedAll: searchedAll))
+    }
+
+    /// Whether Claude Code started the session under `home`: its
+    /// `session-env/<id>` is a directory. One the Host won't let Heeler
+    /// see is no sign either way.
+    private func sessionStarted(home: String, sessionID: String) async throws -> Bool {
+        let path = RemoteFilePath.join(home, ".claude", "session-env", sessionID)
+        do {
+            guard let status = try await files.status(path) else { return false }
+            return status.kind == nil || status.kind == .directory
+        } catch TransportError.hostFileUnreadable {
+            return false
+        }
     }
 
     struct Plan: Equatable, Sendable {

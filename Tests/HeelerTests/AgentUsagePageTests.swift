@@ -260,13 +260,20 @@ struct AgentUsagePageInteractionTests {
         })
         await transport.setAgentUsage(.success(complete))
         // The pull ends after its read; the surfaces keep the 3-second cadence.
-        try #require(await eventually { await !sleeper.durations.isEmpty })
+        // The Host section under the page and the dashboard both restart
+        // polling, and the later one supersedes the earlier.
+        try #require(await eventually { await sleeper.durations.count >= 2 })
         for duration in await sleeper.durations {
             #expect(duration > .zero && duration <= AgentUsageStore.pollInterval)
         }
         #expect(await transport.agentUsageReads == beforeRefresh + 1)
-        await sleeper.fireAll()
-        try #require(await eventually { store.state == .available(complete) && !store.isLoading })
+        // Let the cadence elapse for every loop, including one whose sleep
+        // registers after an earlier firing: firing once can leave the
+        // current loop asleep, which no real sleep would do.
+        try #require(await eventually(seconds: 30) {
+            await sleeper.fireAll()
+            return store.state == .available(complete) && !store.isLoading
+        })
         let reads = await transport.agentUsageReads
         #expect(reads == beforeRefresh + 2)
         try #require(await eventually { isNavigationSettled(controller) })

@@ -16,6 +16,8 @@ Entries reference the pull request that made the change.
   herdr instead of the one in `~/.config/herdr`. `launcher` in the plugin's
   `pair.json` overrides the generated one. Update the Heeler plugin to 0.7.1
   on the Host. (#521)
+- Check a changed host key before trusting it: the Host's page shows the new
+  key and a command to copy that prints it on the Host or Jump Host. (#531)
 
 ### Changed
 
@@ -29,6 +31,14 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Show a new Claude Code Agent's Chat, such as one started in a new
+  worktree, as No Messages Yet until its first message, instead of
+  Conversation Not Found. (#530)
+- Ask to trust the new host key as soon as an edit to a Host's routes
+  reaches a machine whose key changed, and show Trust New Host Key under
+  the Host's connection status instead of at the bottom of its page. (#531)
+- Offer to trust a Jump Host's new key after it changes, which Heeler had
+  no way to accept before. (#531)
 - Scroll the Agent and Shell terminals with a trackpad or a mouse wheel on
   iPad, not only by touch. (#512; PR #528)
 - Reattach a terminal on its own when the Host's connection drops under it,

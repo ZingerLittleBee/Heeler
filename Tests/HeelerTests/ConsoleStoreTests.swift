@@ -151,10 +151,11 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    /// A new Pi or Oh My Pi conversation has no file until its first turn,
-    /// whose status change prefetches again: looking every few seconds in
-    /// between would find nothing.
+    /// A new Claude Code, Pi or Oh My Pi conversation has no file until its
+    /// first turn, whose status change prefetches again: looking every few
+    /// seconds in between would find nothing.
     @Test func awaitingFirstMessageDoesNotRetryPrefetch() {
+        #expect(!ConsoleStore.chatPrefetchWaits(on: .unavailable(.awaitingFirstMessage(.claude))))
         #expect(!ConsoleStore.chatPrefetchWaits(on: .unavailable(.awaitingFirstMessage(.pi))))
         #expect(!ConsoleStore.chatPrefetchWaits(on: .unavailable(.awaitingFirstMessage(.omp))))
         #expect(ConsoleStore.chatPrefetchWaits(on: .unavailable(.notFound(searchedAll: true))))

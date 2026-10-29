@@ -734,7 +734,7 @@ final class AgentChatStore {
             }
             polled = true
         } else if openIsDue {
-            snapshot = await engine.open(directories: directories, context: context)
+            snapshot = await engine.open(directories: directories, context: context, lostAMessage: hasLostAMessage)
             if !Task.isCancelled, engine === self.engine { scheduleNextOpen(after: snapshot) }
             opened = true
         } else {
@@ -1298,11 +1298,21 @@ final class AgentChatStore {
         nextOpen.map { now() >= $0 } ?? true
     }
 
+    /// A message sent into this conversation went overdue: for Claude Code,
+    /// which records one as it takes it, a session with no file then saves
+    /// none rather than waiting for its first message.
+    private var hasLostAMessage: Bool {
+        sends.contains { $0.generation == conversationGeneration && sendStatuses[$0.id] == .overdue }
+    }
+
     private func scheduleNextOpen(after snapshot: ChatConversationSnapshot) {
         switch snapshot.phase {
         case .following, .unavailable(.awaitingFirstMessage):
-            // A new conversation's file comes with the first reply, during
-            // a turn that keeps the active pace: look on every pass.
+            // A new conversation's file comes with the first message or
+            // reply, during a turn that keeps the active pace: look on
+            // every pass. For Claude that stats only the Agent's
+            // directories, past one search of every project directory
+            // each time herdr reports another status.
             nextOpen = nil
             failedOpens = 0
             return
@@ -1383,10 +1393,13 @@ final class AgentChatStore {
             return candidate(offset: entry.sourceOffset, entryID: entry.id)
         }
         let date = now()
-        // A new conversation records nothing until the program writes its
-        // file, however long the first reply takes.
+        // A new Pi or Oh My Pi conversation records nothing until the
+        // program writes its file, however long the first reply takes.
+        // Claude Code writes it with the message, so its echo times out.
         var isUnwritten = false
-        if case .unavailable(.awaitingFirstMessage) = conversation.phase { isUnwritten = true }
+        if case .unavailable(.awaitingFirstMessage(let program)) = conversation.phase {
+            isUnwritten = program.writesNewConversationWithFirstReply
+        }
         var statuses: [UUID: SendStatus] = [:]
         var becameOverdue = false
         let matchedLast = discardedSends.union(misdirectedSends)

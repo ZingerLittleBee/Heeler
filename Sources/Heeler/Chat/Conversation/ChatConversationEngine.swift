@@ -15,8 +15,9 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// No transcript was found. `searchedAll` is false when the search was
     /// cut short, so the file may still exist.
     case notFound(searchedAll: Bool)
-    /// The program named the transcript's file but writes it only with the
-    /// first reply: the conversation is new, and a message starts it.
+    /// The program started the conversation but writes its file only with
+    /// the first message (Claude Code) or the first reply (Pi, Oh My Pi):
+    /// the conversation is new, and a message starts it.
     case awaitingFirstMessage(ChatProgram)
     /// Codex compressed the rollout, which Chat does not read.
     case compressed
@@ -37,6 +38,19 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// the conversation again.
     var hidesConversation: Bool {
         if case .startScreen = self { true } else { false }
+    }
+}
+
+extension ChatProgram {
+    /// Whether a new conversation's file comes only with the first reply,
+    /// as Pi and Oh My Pi write it, rather than with the first message, as
+    /// Claude Code does: a message waits for its record as long as the
+    /// reply takes.
+    var writesNewConversationWithFirstReply: Bool {
+        switch self {
+        case .pi, .omp: true
+        case .claude, .codex, .grok, .opencode: false
+        }
     }
 }
 
@@ -267,6 +281,15 @@ actor ChatConversationEngine {
     private var reducer: (any ChatTranscriptReducer)?
     /// A transcript was followed: one missing now has gone, not yet to come.
     private var hasFollowed = false
+    /// What herdr reported the Agent doing when a search of every Claude
+    /// project directory last looked for the new conversation's file. It
+    /// comes with a prompt, under a directory the Agent reports, so until
+    /// the Agent does something else, looking there is enough.
+    private var newConversationActivity: ChatAgentActivity?
+    /// The last open's word that a delivered message went unrecorded.
+    /// Claude Code writes a message as it takes it, so a session that lost
+    /// one saves nothing, and is not a new conversation still to start.
+    private var lostAMessage = false
     /// The document last restored or saved. Its entries older than the
     /// live window show above it once the window reaches what it covers.
     private var cached: ChatCacheDocument?
@@ -329,11 +352,13 @@ actor ChatConversationEngine {
     /// Finds the transcript and reads its tail, or, for a store read by
     /// query, opens the adapter's source without looking for a file.
     /// `directories` are where the Agent runs and was launched, most
-    /// current first.
+    /// current first. `lostAMessage` says a message delivered to the
+    /// Agent went unrecorded past its echo timeout.
     func open(
-        directories: [String], context: ChatProjectionContext
+        directories: [String], context: ChatProjectionContext, lostAMessage: Bool = false
     ) async -> ChatConversationSnapshot {
         self.directories = directories
+        self.lostAMessage = lostAMessage
         setContext(context)
         do {
             if let makeRecordSource = adapter.makeRecordSource {
@@ -689,12 +714,27 @@ actor ChatConversationEngine {
                 candidates.removeAll { $0 == relocatedDirectory }
                 candidates.insert(relocatedDirectory, at: 0)
             }
+            let isNew = !lostAMessage && snapshot.phase == .unavailable(.awaitingFirstMessage(.claude))
+            let searchesEveryProject = !isNew || context.activity != newConversationActivity
+            // Once per activity, so a search that fails is not repeated
+            // every pass.
+            if isNew, searchesEveryProject { newConversationActivity = context.activity }
             switch try await ClaudeTranscriptLocator(files: files).locate(
-                sessionID: reference.sessionID, directories: candidates)
+                sessionID: reference.sessionID, directories: candidates, searchesEveryProject: searchesEveryProject)
             {
             case .success(let location): return .found(location.transcriptPath)
+            case .failure(.notFound) where !searchesEveryProject:
+                return .unavailable(.awaitingFirstMessage(.claude))
             case .failure(.notFound(let searchedAll)):
                 return .unavailable(.notFound(searchedAll: searchedAll))
+            case .failure(.notWritten):
+                // A file shown before, or saved on the device, that is gone
+                // now is not a conversation still to start.
+                guard !hasFollowed, cached == nil, !lostAMessage else {
+                    return .unavailable(.notFound(searchedAll: true))
+                }
+                newConversationActivity = context.activity
+                return .unavailable(.awaitingFirstMessage(.claude))
             case .failure(.mismatched): return .unavailable(.mismatched)
             }
         case .codex:
