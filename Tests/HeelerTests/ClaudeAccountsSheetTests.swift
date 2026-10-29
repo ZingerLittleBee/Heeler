@@ -153,10 +153,16 @@ struct ClaudeAccountsSheetTests {
             claude.removeValue(forKey: "accounts")
             claude.removeValue(forKey: "accountSuggestions")
         }
+        // The toggle's section is the same one the toggle card has with
+        // several Accounts, so the Accounts screen its link pushed stays
+        // when a second Account is added or removed.
+        let several = AgentUsageLimitsCard.cards(for: try report())
+        #expect(several.map(\.sectionID) == several.map(\.id))
         for report in [lone, older] {
             let cards = AgentUsageLimitsCard.cards(for: report)
             #expect(cards.map(\.id) == ["claude", "codex"])
             #expect(cards.map(\.carriesToggle) == [true, false])
+            #expect(cards.map(\.sectionID) == ["claude.toggle", "codex"])
             guard case .limits(_, _, let name, let limits) = cards[0] else {
                 Issue.record("Expected Claude Code's windows, not \(cards[0])")
                 continue

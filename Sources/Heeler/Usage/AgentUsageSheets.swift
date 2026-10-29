@@ -554,6 +554,12 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
         }
     }
 
+    /// The card's identity among a Host's sections. The card that carries
+    /// the toggle keeps one whether it is a lone Account's windows or a
+    /// card of its own, so the link to the Accounts keeps its place, and
+    /// the screen it pushed, while the Account count changes.
+    var sectionID: String { carriesToggle ? Self.claudeToggle.id : id }
+
     static func cards(for report: AgentUsageReport) -> [Self] {
         (report.programs ?? []).flatMap { program -> [Self] in
             guard program.program == "claude" else {
@@ -610,7 +616,7 @@ struct AgentUsageHostLimits: View {
     var body: some View {
         if case .available(let report) = entry.store.state, entry.isConnected {
             let cards = AgentUsageLimitsCard.cards(for: report)
-            ForEach(Array(cards.enumerated()), id: \.element.id) { @Sendable index, card in
+            ForEach(Array(cards.enumerated()), id: \.element.sectionID) { @Sendable index, card in
                 MainActorContent { section(card, isFirst: index == 0) }
             }
         } else {
