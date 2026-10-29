@@ -807,8 +807,10 @@ run at once, and until it ends the report already leaves the Account out.
   with its own 60-second throttle, failure back-off and last good reading,
   kept in `limits.json` by Account id. An added Account runs the recorded
   `claude` with the recorded environment and `CLAUDE_CONFIG_DIR` set to its
-  `directory`. One version check of the recorded `claude` serves every
-  Account in a run.
+  `directory`, except an added `~/.claude`, which runs without the variable:
+  that directory is the one a plain `claude` signs in to, and setting the
+  variable would look for another keychain item (above). One version check
+  of the recorded `claude` serves every Account in a run.
 - On macOS the request in `claude-request.json` names the Account's
   directory, or none for the Default Account. The action reads only for the
   Default Account or a directory that the Account file lists as an `ok`
@@ -1263,8 +1265,9 @@ tests and decoded by the Swift tests.
     new cache directory; `duplicate` by real path and `overLimit`; an Account
     file that is missing, malformed or of another version; the Default
     Account without `~/.claude` when `CLAUDE_CONFIG_DIR` is recorded; a stub
-    `claude` that sees no `CLAUDE_CONFIG_DIR` for the Default Account and the
-    Account's own `directory` otherwise, with a throttle and back-off per
+    `claude` that sees the recorded `CLAUDE_CONFIG_DIR` (or none) for the
+    Default Account, none for an added `~/.claude`, and the Account's own
+    `directory` otherwise, with a throttle and back-off per
     Account; the macOS action refusing a directory the file does not list;
     suggestions from the home listing (markers, third-party folders,
     `ignored`, real-path deduplication) and from a stub `herdr pane

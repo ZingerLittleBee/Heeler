@@ -323,6 +323,17 @@ test("an added Account reads with its own CLAUDE_CONFIG_DIR and the Default Acco
   assert.equal(f.requests().length, 4);
 });
 
+test("an added ~/.claude is read without CLAUDE_CONFIG_DIR, as a plain claude signs in there", async t => {
+  const f = fixture(t, "success", { herdr: true });
+  writeFileSync(join(f.root, "darwin"), "");
+  const home = join(f.env.HOME, ".claude");
+  mkdirSync(home, { recursive: true });
+  f.accounts([{ id: "home-dir", directory: home, name: "claude" }]);
+  assert.deepEqual(accountLimits(await f.finish()).map(limits => limits.state), ["ok", "ok"]);
+  // The Default Account keeps the recorded variable; the added ~/.claude runs without one.
+  assert.deepEqual(f.requests().map(request => request.configDir), [f.env.CLAUDE_CONFIG_DIR, f.env.CLAUDE_CONFIG_DIR, null, null]);
+});
+
 test("each Account keeps its own throttle, back-off and last good reading", async t => {
   const f = fixture(t, "success", { configDir: false });
   const second = withAccount(f);

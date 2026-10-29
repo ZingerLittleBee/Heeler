@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { readJSON, writeJSON } from "./cache.js";
 import { runLimitsRequest } from "./limits-process.js";
 
@@ -80,12 +80,16 @@ export async function claudeVersion(runtime, directory, known) {
 }
 
 /**
- * The runtime that reads one Account. The Default Account keeps the recorded
- * environment unchanged: Claude Code hashes any `CLAUDE_CONFIG_DIR`, even
- * `~/.claude`, into its macOS keychain service name.
+ * The runtime that reads one Account. Claude Code hashes any `CLAUDE_CONFIG_DIR`,
+ * even `~/.claude`, into its macOS keychain service name, so each Account runs
+ * as the `claude` that signs in to it: the Default Account with the recorded
+ * environment unchanged, an added `~/.claude` without the variable, as a plain
+ * `claude`, and any other added Account with its directory.
  */
 export function accountRuntime(runtime, account) {
-  return account.isDefault ? runtime : { ...runtime, env: { ...runtime.env, CLAUDE_CONFIG_DIR: account.directory } };
+  if (account.isDefault) return runtime;
+  const plain = resolve(account.directory) === resolve(runtime.env.HOME, ".claude");
+  return { ...runtime, env: { ...runtime.env, CLAUDE_CONFIG_DIR: plain ? null : account.directory } };
 }
 
 /**
