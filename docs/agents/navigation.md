@@ -137,6 +137,9 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   The [Claude Code Accounts sheet and the Usage notice](../../Sources/Heeler/Usage/ClaudeAccountsSheet.swift)
   make those changes; `AgentUsageLimitsCard` in the sheets file gives each
   Account its Usage Limits card (focused tests: `ClaudeAccountsSheetTests`).
+  Its `readings(for:)` also feeds the chips, Host detail's closest Account
+  and the iPad strip, and `AgentUsageScope.accounts(of:range:)` gives the
+  Programs card its Account rows (focused tests: `ClaudeAccountsUsageTests`).
   The Home and Lock Screen widgets read the App Group snapshot that
   [AgentUsageWidgetPublisher](../../Sources/Heeler/Usage/AgentUsageWidgetPublisher.swift)
   writes from those stores, modeled in
