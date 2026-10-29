@@ -960,7 +960,8 @@ struct UsageLimitsLine: View {
         return ForEach(0..<2, id: \.self) { index in
             if shown.indices.contains(index) {
                 UsageWindowRow(
-                    window: shown[index], program: limits.program, now: now, showsCountdown: true, size: size - 1)
+                    window: shown[index], program: limits.program, now: now, showsCountdown: true, size: size - 1,
+                    smallNames: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
@@ -1106,6 +1107,9 @@ struct UsageWindowRow: View {
     let now: Date
     let showsCountdown: Bool
     var size: CGFloat = 12
+    /// Rows in a grid all take the smaller name size, so a short row does
+    /// not stand out among its neighbors.
+    var smallNames = false
 
     var body: some View {
         let expired = window.isExpired(at: now)
@@ -1114,9 +1118,9 @@ struct UsageWindowRow: View {
             // room at either size, before it is cut; the bar and the
             // percentage stay.
             ViewThatFits(in: .horizontal) {
-                heading(expired: expired, size: size, countdown: showsCountdown)
+                if !smallNames { heading(expired: expired, size: size, countdown: showsCountdown) }
                 heading(expired: expired, size: size - 1.5, countdown: showsCountdown)
-                heading(expired: expired, size: size, countdown: false)
+                if !smallNames { heading(expired: expired, size: size, countdown: false) }
                 heading(expired: expired, size: size - 1.5, countdown: false)
             }
             if expired {
