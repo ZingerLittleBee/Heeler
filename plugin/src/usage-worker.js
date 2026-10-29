@@ -135,14 +135,14 @@ async function run() {
     const snapshot = (complete, final = false) => {
       heartbeat();
       // A routine incremental run only adds to the totals: until it finishes,
-      // it keeps the previous run's scan state, coverage and age, so the next
-      // query restarts a worker that died mid-run.
-      const scan = final ? { complete, coveredThrough: new Date(now).toISOString(), generatedAt: new Date().toISOString() }
+      // it keeps the previous run's scan state, coverage, age and Accounts,
+      // so the next query restarts a worker that died mid-run.
+      const scan = final ? { complete, coveredThrough: new Date(now).toISOString(), generatedAt: new Date().toISOString(), countedAccounts: [...counted] }
         : { complete: !rebuilding && previousSnapshot?.complete === true, coveredThrough: previousSnapshot?.coveredThrough ?? null,
-          generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString() };
+          generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString(), countedAccounts: previousSnapshot?.countedAccounts };
       // Commit parser progress even when a rebuild is still resolving a burst.
       // The query keeps the old aggregates; the next worker resumes the new log.
-      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, countedAccounts: [...counted], claudeCandidates,
+      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, claudeCandidates,
         // The program's Claude reading stays the Default Account's, for apps that ignore Accounts.
         limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude.default?.report,
           claudeAccounts: Object.fromEntries(accounts.map(({ id }) => [id, limits.claude[id]?.report])) },

@@ -395,6 +395,20 @@ test("a routine incremental run keeps the finished scan state until it finishes"
   assert.ok(finished.scan.coveredThrough>first.scan.coveredThrough);
 });
 
+test("a worker that dies while counting an added Account is restarted by the next query",async t=>{
+  const f=fixture(t);f.transcript("default.jsonl",[assistant("default",10)]);
+  const added=join(f.root,"added");
+  for(let i=0;i<2;i++){const path=join(added,"projects","-work",`added-${i}.jsonl`);mkdirSync(join(path,".."),{recursive:true});writeFileSync(path,records([assistant(`added-${i}`,5)]));}
+  assert.equal(tokens(await f.finish()),10);
+  // Commit after every line and hold the added Account's second Transcript, then end the worker there.
+  writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR,"usage-accounts.json"),JSON.stringify({version:1,claude:{defaultName:null,accounts:[{id:"added-id",directory:added,name:"added"}]}}));
+  writeFileSync(join(f.root,"tick"),"");writeFileSync(join(f.root,"hold"),"1");
+  assert.equal(f.query().refreshing,true);await waitFor(join(f.root,"read-started"));
+  process.kill(JSON.parse(readFileSync(join(f.cache(),"worker.lock"))).pid,"SIGKILL");rmSync(join(f.root,"hold"));
+  // The committed half of the Account is not a finished count: a query starts another worker.
+  assert.equal(tokens(await f.finish()),20);
+});
+
 test("a rebuild keeps the previous snapshot visible until its replacement is complete",async t=>{
   const f=fixture(t);const path=f.transcript("rebuild.jsonl",[assistant("old",10)]);
   assert.equal(tokens(await f.finish()),10);
