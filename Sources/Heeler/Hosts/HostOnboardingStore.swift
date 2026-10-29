@@ -4,8 +4,29 @@ import Observation
 /// A verified mismatch awaiting the user's explicit decision to replace the
 /// trusted pin. Merely observing a mismatch never mutates the known-hosts store.
 struct HostKeyReplacement: Equatable, Sendable {
+    /// A Jump Host, whose trust is kept by the endpoint dialled (ADR 0022).
+    struct JumpHost: Equatable, Sendable {
+        let address: String
+        let port: Int
+
+        /// The Jump Host `route` dials, as `SSHTransportSettings(host:)`
+        /// dials it; nil for a route without one.
+        init?(_ route: HostRoute) {
+            guard route.usesJumpHost else { return nil }
+            address = route.jumpAddress.trimmingCharacters(in: .whitespaces)
+            port = route.jumpPort
+        }
+
+        /// `address`, with the port when it is not 22.
+        var endpointDescription: String {
+            port == 22 ? address : "\(address):\(port)"
+        }
+    }
+
     let known: HostKeyFingerprint
     let presented: HostKeyFingerprint
+    /// Whose key changed: this Jump Host's, or the Host's own when nil.
+    var jumpHost: JumpHost? = nil
 }
 
 /// What Host onboarding connects and authenticates with. Production uses SSH
@@ -41,8 +62,9 @@ final class HostOnboardingStore {
     /// Set while the transport waits on the user's first-connect trust
     /// decision; the UI renders it as the fingerprint confirmation sheet.
     private(set) var pendingFingerprint: HostKeyCandidate?
-    /// Set only after a hard-failed mismatch, for the UI's explicit re-trust
-    /// flow. The old pin remains authoritative until the user confirms.
+    /// Set only after a hard-failed mismatch, the Host's or a Jump Host's,
+    /// for the UI's explicit re-trust flow. The old pin remains
+    /// authoritative until the user confirms.
     private(set) var pendingHostKeyReplacement: HostKeyReplacement?
     private(set) var report: PreflightReport?
     private(set) var serverInfo: ServerInfo?
@@ -403,7 +425,12 @@ final class HostOnboardingStore {
     /// confirmation, then immediately proves the new pin by rerunning preflight.
     func trustPresentedHostKey() async {
         guard phase != .running, let replacement = pendingHostKeyReplacement else { return }
-        let key = HostKeyTrust.hostKey(host.id)
+        let key =
+            if let jumpHost = replacement.jumpHost {
+                HostKeyTrust.endpoint.storageKey(host: jumpHost.address, port: jumpHost.port)
+            } else {
+                HostKeyTrust.hostKey(host.id)
+            }
         await knownHosts.setFingerprint(replacement.presented, host: key.host, port: key.port)
         pendingHostKeyReplacement = nil
         await runChecks()
@@ -413,6 +440,12 @@ final class HostOnboardingStore {
         switch error {
         case let TransportError.hostKeyMismatch(known, presented):
             pendingHostKeyReplacement = HostKeyReplacement(known: known, presented: presented)
+        case let TransportError.jumpHostFailed(.hostKeyMismatch(known, presented)):
+            // A single route fails with its own error, unwrapped.
+            guard let jumpHost = host.routes.first.flatMap(HostKeyReplacement.JumpHost.init)
+            else { return }
+            pendingHostKeyReplacement = HostKeyReplacement(
+                known: known, presented: presented, jumpHost: jumpHost)
         case TransportError.noRouteReached(let failures):
             // Every route reaches the same Host, so a changed key is offered
             // only when the routes that saw one agree on it. A LAN address may
@@ -429,13 +462,31 @@ final class HostOnboardingStore {
             }
             let sameMachine = mismatches.filter { !$0.mayNameAnotherMachine }
             let candidates = (sameMachine.isEmpty ? mismatches : sameMachine).map(\.replacement)
-            guard let first = candidates.first, candidates.allSatisfy({ $0 == first }) else {
-                return
+            // A Jump Host's key belongs to another machine: it is offered
+            // per Jump Host, and only when the Host's own key is not.
+            let jumpHostCandidates = failures.compactMap { failure -> HostKeyReplacement? in
+                guard case let .jumpHostFailed(.hostKeyMismatch(known, presented)) = failure.error,
+                    let route = host.routes.first(where: { $0.id == failure.routeID }),
+                    let jumpHost = HostKeyReplacement.JumpHost(route)
+                else { return nil }
+                return HostKeyReplacement(known: known, presented: presented, jumpHost: jumpHost)
             }
-            pendingHostKeyReplacement = first
+            pendingHostKeyReplacement =
+                Self.agreed(candidates)
+                ?? jumpHostCandidates.lazy.compactMap { candidate in
+                    Self.agreed(jumpHostCandidates.filter { $0.jumpHost == candidate.jumpHost })
+                }.first
         default:
             return
         }
+    }
+
+    /// The replacement every candidate agrees on, if any.
+    private static func agreed(_ candidates: [HostKeyReplacement]) -> HostKeyReplacement? {
+        guard let first = candidates.first, candidates.allSatisfy({ $0 == first }) else {
+            return nil
+        }
+        return first
     }
 
     /// Runs an endpoint Host's session list as its launcher probe, before

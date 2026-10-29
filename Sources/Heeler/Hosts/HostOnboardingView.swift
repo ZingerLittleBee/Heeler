@@ -196,22 +196,19 @@ struct HostOnboardingView: View {
                     + "Key fingerprint:\n\(candidate.fingerprint.displayString)\n\n"
                     + "Verify it matches the Host's key before trusting.")
         }
-        .confirmationDialog(
-            "Replace the trusted Host key?",
+        // An alert, which also opens on its own after a route edit: iOS 26
+        // shows a confirmation dialog as a popover without Cancel.
+        .alert(
+            store.pendingHostKeyReplacement?.confirmationTitle ?? "",
             isPresented: $isConfirmingHostKeyReplacement,
-            titleVisibility: .visible
-        ) {
+            presenting: store.pendingHostKeyReplacement
+        ) { _ in
             Button("Trust New Key", role: .destructive) {
                 Task { await store.trustPresentedHostKey() }
             }
             Button("Cancel", role: .cancel) {}
-        } message: {
-            if let replacement = store.pendingHostKeyReplacement {
-                Text(
-                    "Trusted: \(replacement.known.displayString)\n\n"
-                        + "Presented: \(replacement.presented.displayString)\n\n"
-                        + "A changed key can indicate a reinstalled Host or an attack.")
-            }
+        } message: { replacement in
+            Text(replacement.confirmationMessage)
         }
         .alert(
             "Could Not Select Session",
@@ -508,13 +505,15 @@ struct HostOnboardingView: View {
     /// Right under the status card, which a changed key leaves failed.
     @ViewBuilder
     private var hostKeyReplacementSection: some View {
-        if store.pendingHostKeyReplacement != nil {
+        if let replacement = store.pendingHostKeyReplacement {
             Section {
-                Button("Trust New Host Key", systemImage: "key.horizontal", role: .destructive) {
+                Button(
+                    replacement.trustActionTitle, systemImage: "key.horizontal", role: .destructive
+                ) {
                     isConfirmingHostKeyReplacement = true
                 }
             } footer: {
-                Text("Only continue after verifying the new fingerprint with the Host owner.")
+                Text(replacement.verificationNote)
             }
         }
     }
@@ -620,6 +619,33 @@ struct HostOnboardingView: View {
         } catch {
             sessionSelectionError = "The selected session could not be saved."
         }
+    }
+}
+
+/// The re-trust flow's words, naming whose key changed.
+private extension HostKeyReplacement {
+    var trustActionTitle: String {
+        jumpHost == nil ? "Trust New Host Key" : "Trust New Jump Host Key"
+    }
+
+    var verificationNote: String {
+        jumpHost == nil
+            ? "Only continue after verifying the new fingerprint with the Host owner."
+            : "Only continue after verifying the new fingerprint with the Jump Host's owner."
+    }
+
+    var confirmationTitle: String {
+        jumpHost == nil ? "Replace the trusted Host key?" : "Replace the Jump Host's trusted key?"
+    }
+
+    var confirmationMessage: String {
+        let fingerprints =
+            "Trusted: \(known.displayString)\n\nPresented: \(presented.displayString)\n\n"
+        guard let jumpHost else {
+            return fingerprints + "A changed key can indicate a reinstalled Host or an attack."
+        }
+        return "Jump Host: \(jumpHost.endpointDescription)\n\n" + fingerprints
+            + "A changed key can indicate a reinstalled Jump Host or an attack."
     }
 }
 
