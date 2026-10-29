@@ -643,8 +643,9 @@ the app's update notice installs from that branch. See
   that Host's Claude Code usage; Heeler suggests it as an Account to add.
   Without `CLAUDE_CONFIG_DIR`, the totals stay as before.
 - The first refresh after the update reads the Transcripts again to
-  attribute them to Accounts, showing the previous totals meanwhile, and
-  reads Claude Code limits anew.
+  attribute them to Accounts and reads Claude Code limits anew. Without
+  `CLAUDE_CONFIG_DIR`, Usage shows the previous totals meanwhile; with it,
+  the totals start over and grow as the refresh reads.
 - Older plugins ignore `usage-accounts.json`: Accounts added in Heeler count
   only once the Host runs 0.8.0.
 

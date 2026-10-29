@@ -227,8 +227,11 @@ The roots of one Account are merged into one total for that Account.
 `rootsKey` hashes the Default Account's candidate roots and the Codex home as
 derived from `runtime.json`'s `env` (`HOME`, `CLAUDE_CONFIG_DIR`,
 `XDG_CONFIG_HOME`, `CODEX_HOME`), made absolute but not resolved, whether or
-not they exist yet. Installing a program, creating a legacy directory, or
-adding or removing an Account later therefore does not move the cache. Each worker run deletes sibling `<stateDir>/usage/*`
+not they exist yet, with the Claude Code roots sorted. Installing a program,
+creating a legacy directory, or adding or removing an Account later
+therefore does not move the cache, and a Host without `CLAUDE_CONFIG_DIR`
+keeps the cache of plugins before Accounts; one with it starts a new cache,
+since `~/.claude` left its roots. Each worker run deletes sibling `<stateDir>/usage/*`
 directories that no live worker holds and whose `buckets.json` has not been
 written for 31 days; a sibling without one is dated by its directory and
 files instead.

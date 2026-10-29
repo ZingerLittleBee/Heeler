@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { claudeAccounts, readAccountFile } from "../src/usage/accounts.js";
-import { usageRoots } from "../src/usage/cache.js";
+import { cacheDirectory, usageRoots } from "../src/usage/cache.js";
 
 const plugin = fileURLToPath(new URL("..", import.meta.url));
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -53,6 +53,13 @@ test("the Default Account is the directory Claude Code uses, without ~/.claude w
   assert.deepEqual(usageRoots({ env: { ...env, CLAUDE_CONFIG_DIR: ".config/claude" } }).claude, ["/home/u/.config/claude"]);
   const [account] = claudeAccounts({ env: { ...env, CLAUDE_CONFIG_DIR: "/data/claude" } }, { defaultName: "Work", accounts: [] });
   assert.deepEqual(account, { id: "default", isDefault: true, name: "Work", directory: "/data/claude", roots: ["/data/claude", "/home/u/.config/claude"], state: "ok" });
+});
+
+test("a Host without CLAUDE_CONFIG_DIR keeps the cache directory 0.7.x used, whatever its XDG_CONFIG_HOME", () => {
+  const env = { HOME: "/home/u", CLAUDE_CONFIG_DIR: null, XDG_CONFIG_HOME: null, CODEX_HOME: null };
+  assert.equal(cacheDirectory({ env, stateDir: "/s" }), "/s/usage/f2869fa3eab34f5ae8f4");
+  // Here the XDG root sorts before ~/.claude, as 0.7.x ordered its roots.
+  assert.equal(cacheDirectory({ env: { ...env, XDG_CONFIG_HOME: "/etc/xdg" }, stateDir: "/s" }), "/s/usage/5debe7688ec025030b55");
 });
 
 test("an Account file that is missing, malformed or of another version adds no Account, and broken entries are skipped", t => {

@@ -21,7 +21,8 @@ export function usageRoots(runtime) {
 }
 export function cacheDirectory(runtime) {
   const roots = usageRoots(runtime);
-  const key = createHash("sha256").update(JSON.stringify(roots)).digest("hex").slice(0, 20);
+  // Sorted as 0.7.x hashed them, so a Host whose roots are unchanged keeps its cache.
+  const key = createHash("sha256").update(JSON.stringify({ ...roots, claude: [...roots.claude].sort() })).digest("hex").slice(0, 20);
   return join(runtime.stateDir, "usage", key);
 }
 export function readJSON(path) {
