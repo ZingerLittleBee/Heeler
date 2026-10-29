@@ -729,7 +729,7 @@ struct ClaudeUsagePreferenceTests {
 
 #if DEBUG && targetEnvironment(simulator)
     @MainActor
-    @Suite("Demo Usage")
+    @Suite("Demo Usage", .serialized)
     struct DemoUsageTests {
         @Test func demoHostsShowSampleUsageInsteadOfAPlatformNote() async throws {
             let host = try #require(DemoScreenshotFixture.hosts.first)
@@ -763,6 +763,59 @@ struct ClaudeUsagePreferenceTests {
                         == daily.reduce(0) { $0 + $1.tokens.total })
                 }
             }
+        }
+
+        /// The studio Host shows several Accounts and suggestions; the build
+        /// Host keeps one Account, as a Host that never added any.
+        @Test func theStudioHostHasAccountsAndTheBuildHostOne() async throws {
+            let studio = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.studioHostID })
+            let state = try await AgentUsageStore.read(
+                over: try DemoScreenshotFixture.transport(for: studio), timeZone: "UTC", claudeLimits: true)
+            guard case .available(let report) = state else { Issue.record("No studio report"); return }
+            let claude = try #require(report.claudeProgram)
+            let accounts = try #require(claude.accounts)
+            #expect(accounts.map(\.displayName) == ["Default", "claude-2", "work"])
+            #expect(accounts.map(\.state) == [.ok, .ok, .missing])
+            #expect(accounts.map(\.directory) == ["/Users/developer/.claude", "/Users/developer/.claude-2", "/Volumes/T7/.claude"])
+            #expect(accounts[1].usageLimits?.windows?.first { $0.id == "fiveHour" }?.usedPercent == 84)
+            #expect(claude.accountSuggestions?.map(\.name) == ["claude-team", "claude-work"])
+            #expect(claude.accountSuggestions?.map(\.source) == [.agent, .home])
+            // The program's figures add up its readable Accounts.
+            let readable = accounts.compactMap { $0.tokenUsage?.totals?.last30Days.tokens.total }
+            #expect(claude.tokenUsage.totals?.last30Days.tokens.total == readable.reduce(0, +))
+
+            let build = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.buildHostID })
+            let buildState = try await AgentUsageStore.read(
+                over: try DemoScreenshotFixture.transport(for: build), timeZone: "UTC", claudeLimits: false)
+            guard case .available(let buildReport) = buildState else { Issue.record("No build report"); return }
+            #expect(buildReport.claudeProgram?.accounts?.map(\.displayName) == ["Default"])
+            #expect(buildReport.claudeProgram?.accountSuggestions == [])
+        }
+
+        /// The demo keeps the studio Host's Account file in memory, so the
+        /// Accounts sheet's changes show up in its next read.
+        @Test func theStudioHostsAccountFileCanBeEdited() async throws {
+            let studio = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.studioHostID })
+            let transport = try DemoScreenshotFixture.transport(for: studio)
+            let store = AgentUsageStore(
+                hostID: studio.id, transports: ScriptedTransportProvider(transports: [studio.id: transport]))
+            await store.refresh()
+            #expect(store.supportsClaudeAccounts)
+            guard case .available(let report) = store.state,
+                let team = report.claudeProgram?.accountSuggestions?.first(where: { $0.name == "claude-team" })
+            else { Issue.record("No suggestion to add"); return }
+            #expect(await store.addAccount(team))
+            guard case .available(let added) = store.state else { Issue.record("No report"); return }
+            #expect(added.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work", "claude-team"])
+            #expect(added.claudeProgram?.accounts?.last?.state == .ok)
+            #expect(added.claudeProgram?.accountSuggestions?.map(\.name) == ["claude-work"])
+            // A directory the demo Host does not hold is refused.
+            #expect(await store.addAccount(directory: "/Users/developer/Downloads") == .refused(.notClaudeDirectory))
+            let teamAccount = try #require(added.claudeProgram?.accounts?.last)
+            #expect(await store.removeAccount(teamAccount))
+            guard case .available(let restored) = store.state else { Issue.record("No report"); return }
+            #expect(restored.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work"])
+            #expect(store.accountChangeFailure == nil)
         }
     }
 #endif

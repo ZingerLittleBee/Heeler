@@ -288,6 +288,9 @@
              .success(HeelerPluginInstallation(version: "0.8.0", hasManifestWarning: true))),
             ("Plugin on Windows", .failure(.hostFeatureUnavailable(feature: "The Heeler plugin"))),
             ("Plugin read failed", .failure(.timedOut)),
+            // Reads Usage without Claude Code Accounts.
+            ("Plugin before Accounts (0.7.1)",
+             .success(HeelerPluginInstallation(pluginRoot: pluginRoot, version: "0.7.1"))),
         ]
 
         static let pluginStateHosts: [Host] = pluginStates.enumerated().map { index, state in
@@ -1224,6 +1227,11 @@
     /// end today in the requested time zone, with Usage Limits that reset
     /// in the future so no demo window reads as expired. The build Host
     /// reports its own figures, so All Hosts visibly adds two Hosts up.
+    ///
+    /// Claude Code Accounts follow the demo Host's Account file, which the
+    /// Accounts sheet edits in memory. The studio Host starts with the
+    /// Default Account, `claude-2` and a `work` Account on an unmounted
+    /// volume, and suggests two more; the build Host keeps one Account.
     enum DemoUsageSample {
         private struct Profile {
             let claudeDays: [Int]
@@ -1234,6 +1242,14 @@
             let codexDirectories: [String]
             let claudePercents: (Double, Double)
             let codexPercents: (Double, Double)
+            let home: String
+        }
+
+        /// A Claude Code directory the demo Host holds, besides the
+        /// Default Account's: its days and its own limits.
+        private struct AccountProfile {
+            let days: [Int]
+            let percents: (Double, Double)
         }
 
         private static let studio = Profile(
@@ -1249,7 +1265,7 @@
             codexModels: ["gpt-5.3-codex"],
             claudeDirectories: ["/Users/demo/src/storefront", "/Users/demo/src/payments-api"],
             codexDirectories: ["/Users/demo/src/payments-api", "/Users/demo/src/product-docs"],
-            claudePercents: (34, 61), codexPercents: (22, 47))
+            claudePercents: (34, 61), codexPercents: (22, 47), home: DemoChatSample.home)
 
         private static let build = Profile(
             claudeDays: [
@@ -1264,13 +1280,74 @@
             codexModels: ["gpt-5.3-codex", "gpt-5.2"],
             claudeDirectories: ["/home/builder/ci/infra", "/srv/builds/mobile"],
             codexDirectories: ["/home/builder/ci/api-gateway", "/srv/builds/mobile"],
-            claudePercents: (48, 39), codexPercents: (26, 48))
+            claudePercents: (48, 39), codexPercents: (26, 48), home: "/home/builder")
 
+        /// The studio Host's other Claude Code directories. `claude-2` runs
+        /// closer to its limits than the Default Account.
+        private static let studioAccounts: [String: AccountProfile] = [
+            "\(DemoChatSample.home)/.claude-2": AccountProfile(
+                days: [
+                    22, 0, 0, 31, 40, 18, 52, 26, 0, 35, 48, 41, 57, 29, 8, 0, 44, 61, 70, 38,
+                    49, 17, 0, 55, 72, 50, 63, 41, 58, 33,
+                ],
+                percents: (84, 52)),
+            "\(DemoChatSample.home)/.claude-team": AccountProfile(
+                days: [
+                    0, 0, 0, 0, 0, 0, 0, 10, 12, 9, 0, 0, 14, 18, 11, 0, 0, 16, 20, 13,
+                    0, 0, 9, 15, 17, 12, 0, 0, 19, 14,
+                ],
+                percents: (21, 38)),
+            "\(DemoChatSample.home)/.claude-work": AccountProfile(
+                days: [
+                    5, 0, 0, 6, 8, 4, 7, 3, 0, 6, 9, 5, 7, 4, 2, 0, 6, 8, 9, 5,
+                    7, 3, 0, 8, 9, 6, 8, 5, 7, 4,
+                ],
+                percents: (9, 17)),
+        ]
+
+        /// What the studio Host's plugin suggests while the directories are
+        /// neither added nor ignored.
+        private static let studioSuggestions: [(directory: String, name: String, source: String)] = [
+            ("\(DemoChatSample.home)/.claude-team", "claude-team", "agent"),
+            ("\(DemoChatSample.home)/.claude-work", "claude-work", "home"),
+        ]
+
+        /// The studio Host's Account file before the user changes it; other
+        /// demo Hosts start without one.
+        static func initialAccountFile(for hostID: Host.ID) -> Data? {
+            guard hostID == DemoScreenshotFixture.studioHostID else { return nil }
+            let file: [String: Any] = [
+                "version": 1,
+                "claude": [
+                    "defaultName": NSNull(),
+                    "accounts": [
+                        ["id": "c2d7a1f0", "directory": "\(DemoChatSample.home)/.claude-2", "name": "claude-2"],
+                        ["id": "9be41c07", "directory": "/Volumes/T7/.claude", "name": "work"],
+                    ],
+                    "ignored": [String](),
+                ],
+            ]
+            return try? JSONSerialization.data(withJSONObject: file)
+        }
+
+        /// The demo Host paths that hold Claude Code's files, for the check
+        /// a chosen directory must pass.
+        static func accountFileStatus(atPath path: String) -> RemoteFileStatus? {
+            for directory in studioAccounts.keys {
+                if path == directory { return RemoteFileStatus(kind: .directory, size: nil) }
+                if path == directory + "/projects" { return RemoteFileStatus(kind: .directory, size: nil) }
+                if path == directory + "/.claude.json" { return RemoteFileStatus(kind: .regular, size: 2_048) }
+            }
+            return nil
+        }
+
+        /// `accounts` nil reports as a plugin before Accounts would.
         static func report(
             timeZone identifier: String, claudeLimits: Bool, hostID: Host.ID? = nil,
-            now: Date = Date()
+            accounts: UsageAccountFile? = UsageAccountFile(), now: Date = Date()
         ) throws -> AgentUsageReport {
             let profile = hostID == DemoScreenshotFixture.buildHostID ? build : studio
+            let isStudio = hostID == DemoScreenshotFixture.studioHostID
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = TimeZone(identifier: identifier) ?? .gmt
             let timestamp = ISO8601DateFormatter()
@@ -1295,22 +1372,72 @@
                     "expired": false,
                 ]
             }
-            let claude = program(
-                "claude", days: profile.claudeDays, unit: 9_500, costPerToken: 0.000_001_1,
-                day: day, models: profile.claudeModels, directories: profile.claudeDirectories,
-                limits: claudeLimits
+            let claudeLimitsOf: ((Double, Double)) -> [String: Any] = { percents in
+                claudeLimits
                     ? limits("service", [
-                        window("fiveHour", 300, profile.claudePercents.0, 2 * 3_600),
-                        window("sevenDay", 10_080, profile.claudePercents.1, 3 * 86_400),
+                        window("fiveHour", 300, percents.0, 2 * 3_600),
+                        window("sevenDay", 10_080, percents.1, 3 * 86_400),
                     ])
-                    : ["state": "disabled"])
-            let codex = program(
-                "codex", days: profile.codexDays, unit: 7_000, costPerToken: 0.000_000_9,
-                day: day, models: profile.codexModels, directories: profile.codexDirectories,
-                limits: limits("service", [
+                    : ["state": "disabled"]
+            }
+            let claudeUnit = 9_500
+            let claudeCost = 0.000_001_1
+            let claudeUsage: ([Int]) -> [String: Any] = { totals in
+                tokenUsage(
+                    totals: totals, costPerToken: claudeCost, day: day, models: profile.claudeModels,
+                    directories: profile.claudeDirectories)
+            }
+            let defaultTotals = profile.claudeDays.map { $0 * claudeUnit }
+            var counted = [defaultTotals]
+            var claude: [String: Any] = ["program": "claude", "usageLimits": claudeLimitsOf(profile.claudePercents)]
+            if let accounts {
+                let defaultDirectory = profile.home + "/.claude"
+                var entries: [[String: Any]] = [[
+                    "id": UsageAccountFile.defaultAccountID, "isDefault": true,
+                    "name": accounts.defaultName.map { $0 as Any } ?? NSNull(),
+                    "directory": defaultDirectory, "state": "ok",
+                    "tokenUsage": claudeUsage(defaultTotals),
+                    "usageLimits": claudeLimitsOf(profile.claudePercents),
+                ]]
+                var seen: Set<String> = [defaultDirectory]
+                for account in accounts.accounts {
+                    var entry: [String: Any] = [
+                        "id": account.id, "isDefault": false, "name": account.name, "directory": account.directory,
+                    ]
+                    let accountProfile = isStudio ? studioAccounts[account.directory] : nil
+                    if let accountProfile, !seen.contains(account.directory) {
+                        seen.insert(account.directory)
+                        let totals = accountProfile.days.map { $0 * claudeUnit }
+                        counted.append(totals)
+                        entry["state"] = "ok"
+                        entry["tokenUsage"] = claudeUsage(totals)
+                        entry["usageLimits"] = claudeLimitsOf(accountProfile.percents)
+                    } else {
+                        entry["state"] = accountProfile == nil ? "missing" : "duplicate"
+                    }
+                    entries.append(entry)
+                }
+                claude["accounts"] = entries
+                claude["accountSuggestions"] = (isStudio ? studioSuggestions : []).filter { suggestion in
+                    !seen.contains(suggestion.directory)
+                        && !accounts.accounts.contains { $0.directory == suggestion.directory }
+                        && !accounts.ignored.contains(suggestion.directory)
+                }.map { ["directory": $0.directory, "name": $0.name, "source": $0.source] }
+            }
+            // The program's own Token Usage adds up its counted Accounts.
+            claude["tokenUsage"] = claudeUsage(defaultTotals.indices.map { index in
+                counted.reduce(0) { $0 + $1[index] }
+            })
+            let codex: [String: Any] = [
+                "program": "codex",
+                "usageLimits": limits("service", [
                     window("primary", 300, profile.codexPercents.0, 3 * 3_600),
                     window("secondary", 10_080, profile.codexPercents.1, 4 * 86_400),
-                ]))
+                ]),
+                "tokenUsage": tokenUsage(
+                    totals: profile.codexDays.map { $0 * 7_000 }, costPerToken: 0.000_000_9, day: day,
+                    models: profile.codexModels, directories: profile.codexDirectories),
+            ]
             let object: [String: Any] = [
                 "version": 1, "runtime": "recorded",
                 "generatedAt": timestamp.string(from: now),
@@ -1326,10 +1453,9 @@
             return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
         }
 
-        private static func program(
-            _ name: String, days: [Int], unit: Int, costPerToken: Double,
-            day: (Int) -> String, models: [String], directories: [String],
-            limits: [String: Any]
+        private static func tokenUsage(
+            totals: [Int], costPerToken: Double, day: (Int) -> String, models: [String],
+            directories: [String]
         ) -> [String: Any] {
             func tokens(_ total: Int) -> [String: Any] {
                 let input = total / 20
@@ -1347,7 +1473,6 @@
                     "unpricedTokens": 0,
                 ]
             }
-            let totals = days.map { $0 * unit }
             let last30 = totals.reduce(0, +)
             func split(_ shares: [String], key: String) -> [[String: Any]] {
                 shares.enumerated().map { index, value in
@@ -1359,23 +1484,19 @@
                 }
             }
             return [
-                "program": name,
-                "usageLimits": limits,
-                "tokenUsage": [
-                    "state": "ok",
-                    "totals": [
-                        "today": summary(totals[29]),
-                        "last7Days": summary(totals.suffix(7).reduce(0, +)),
-                        "last30Days": summary(last30),
-                    ],
-                    "daily": totals.enumerated().map { index, total in
-                        var entry = summary(total)
-                        entry["date"] = day(index)
-                        return entry
-                    },
-                    "models": split(models, key: "model"),
-                    "directories": split(directories, key: "path"),
+                "state": "ok",
+                "totals": [
+                    "today": summary(totals[29]),
+                    "last7Days": summary(totals.suffix(7).reduce(0, +)),
+                    "last30Days": summary(last30),
                 ],
+                "daily": totals.enumerated().map { index, total in
+                    var entry = summary(total)
+                    entry["date"] = day(index)
+                    return entry
+                },
+                "models": split(models, key: "model"),
+                "directories": split(directories, key: "path"),
             ]
         }
     }
@@ -1422,8 +1543,29 @@
         func readAgentUsage(
             timeZone: String, claudeLimits: Bool, pluginRoot: String
         ) async throws -> AgentUsageReport {
-            try DemoUsageSample.report(
-                timeZone: timeZone, claudeLimits: claudeLimits, hostID: hostID)
+            let version = try profile.plugin.get()?.parsedVersion
+            var accounts: UsageAccountFile?
+            if version.map(HeelerPluginFeature.claudeAccounts.isSupported) ?? true {
+                let data = await usageAccountFileData()
+                accounts = (try? UsageAccountFile.decode(data)) ?? UsageAccountFile()
+            }
+            return try DemoUsageSample.report(
+                timeZone: timeZone, claudeLimits: claudeLimits, hostID: hostID, accounts: accounts)
+        }
+
+        private func usageAccountFileData() async -> Data? {
+            await DemoPluginFiles.shared.read(UsageAccountFile.fileName, hostID: hostID)
+                ?? DemoUsageSample.initialAccountFile(for: hostID)
+        }
+
+        func readUsageAccountFile() async throws -> Data? {
+            try requireEnabledPlugin()
+            return await usageAccountFileData()
+        }
+
+        func replaceUsageAccountFile(_ contents: Data) async throws {
+            try requireEnabledPlugin()
+            await DemoPluginFiles.shared.write(contents, to: UsageAccountFile.fileName, hostID: hostID)
         }
 
         /// Plugin config files exist only where an enabled plugin would
@@ -1543,7 +1685,7 @@
         }
 
         func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
-            DemoChatSample.status(atPath: path)
+            DemoUsageSample.accountFileStatus(atPath: path) ?? DemoChatSample.status(atPath: path)
         }
 
         func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
