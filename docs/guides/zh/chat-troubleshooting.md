@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/chat-troubleshooting.md at c9c8167e -->
+<!-- Translated from docs/guides/chat-troubleshooting.md at 91542ec6 -->
 # Chat 疑难排解
 
 这里是 [Chat](chat.md) 中最常见问题的处理方法。Chat 里的其他提示大多会直接说明该怎么做。如果 Chat 做不到某件事，轻点 **Show Agent Terminal**，在终端中继续。
@@ -25,7 +25,6 @@ Codex 在 [openai/codex#48500](https://github.com/openai/codex/issues/48500) 中
 
 ## Conversation Not Found
 
-- 新的 Claude Code Agent 在你发送第一条提示之前会显示这个提示。
 - 用自定义配置目录（例如 `CLAUDE_CONFIG_DIR`、`CODEX_HOME` 或 `GROK_HOME`）启动的 Claude Code、Codex 或 Grok Build Agent 无法在 Chat 中显示，因为 Chat 只读取它们的默认目录。
 
 ## Chat 提示终端显示的是另一个对话
