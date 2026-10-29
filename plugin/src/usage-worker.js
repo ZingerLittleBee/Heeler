@@ -93,7 +93,7 @@ async function run() {
     }
     for (const group of previous?.groups.keys() || []) if (!counted.has(JSON.parse(group)[0])) previous.groups.delete(group);
     const errors = {};
-    const files = [];
+    const found = [];
     const listed = new Set();
     const unlistedPaths = [];
     const failedSources = new Set();
@@ -113,15 +113,22 @@ async function run() {
         // A Transcript that two Accounts reach (a symbolic link) counts in the first.
         if (account && listed.has(file.path)) continue;
         listed.add(file.path);
-        files.push({ ...file, program, ...(account ? { account } : {}) });
+        found.push({ ...file, program, ...(account ? { account } : {}) });
       }
       unlistedPaths.push(...listing.unreadable);
       if (listing.rootFailed) { failedSources.add(source); errors[source] = reason; }
     }
     if (accounts.every(({ id }) => failedSources.has(`claude:${id}`))) errors.claude = claudeReason;
+    const unlisted = (path, state) => failedSources.has(state.program === "claude" ? `claude:${state.account}` : state.program)
+      || unlistedPaths.some(unlisted => path === unlisted || path.startsWith(unlisted + sep));
+    // A Transcript stays with the Account whose kept state holds it while that
+    // Account cannot list it: another one reaching it would read on from its offset.
+    const files = found.filter(file => {
+      const state = previousFiles[file.path];
+      return state === undefined || state.account === file.account || !unlisted(file.path, state);
+    });
     files.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path));
-    const match = matchFiles(files, previousFiles, now, (path, state) => failedSources.has(state.program === "claude" ? `claude:${state.account}` : state.program)
-      || unlistedPaths.some(unlisted => path === unlisted || path.startsWith(unlisted + sep)));
+    const match = matchFiles(files, previousFiles, now, unlisted);
     const rebuilding = !previous || match.rebuild || previousSnapshot?.limitsVersion !== 1;
     const preserveSnapshot = previousSnapshot !== null && (rebuilding || previousSnapshot.rebuilding);
     const buckets = rebuilding ? new Map() : previous.buckets;

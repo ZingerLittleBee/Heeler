@@ -795,7 +795,8 @@ run at once, and until it ends the report already leaves the Account out.
   Account). Deduplication runs within one Account: two directories holding
   copies of the same Transcripts count twice, as two Accounts would. A
   Transcript that two Accounts reach through a symbolic link is one file
-  and counts in the first. Host totals add the Accounts up.
+  and counts in the first; while the Account that counted it cannot list
+  it, it stays that Account's. Host totals add the Accounts up.
 - An Account whose roots cannot be listed reports Token Usage `error`; the
   program's own Token Usage is `error` only when no `ok` Account's roots
   could be listed.

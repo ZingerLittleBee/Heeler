@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -187,6 +187,42 @@ test("a duplicate or over-limit Account adds nothing and reports only its state"
   assert.deepEqual(totals(report), [15, 12, undefined, 1, 1, 1, undefined]);
   assert.deepEqual(claudeOf(report).accounts[1], { id: "linkedid", isDefault: false, name: "linked", directory: link, state: "duplicate" });
   assert.deepEqual(claudeOf(report).accounts[5], { id: "account-d", isDefault: false, name: "d", directory: directories[3], state: "overLimit" });
+});
+
+test("a Transcript two Accounts reach stays with the one that counted it while that one cannot be listed", { skip: asRoot }, async t => {
+  const f = fixture(t);
+  // Both Accounts' `projects/` link to one tree outside either.
+  const shared = join(f.root, "shared-projects");
+  const streamed = assistant("streamed", 3);
+  const path = join(shared, "-work-project", "streamed.jsonl");
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(path, records([streamed]));
+  const second = join(f.root, "second");
+  for (const directory of [f.env.CLAUDE_CONFIG_DIR, second]) {
+    mkdirSync(directory, { recursive: true });
+    symlinkSync(shared, join(directory, "projects"));
+  }
+  f.accounts([{ id: "secondid", directory: second, name: "second" }]);
+  assert.deepEqual(totals(await f.finish()), [3, 3, 0]);
+  // Claude Code streams a larger snapshot of the request while it cannot be read.
+  appendFileSync(path, records([{ ...streamed, message: { ...streamed.message, usage: { input_tokens: 9 } } }]));
+  let unlisted;
+  try {
+    chmodSync(path, 0);
+    f.stale();
+    await f.finish();
+    chmodSync(path, 0o600);
+    chmodSync(f.env.CLAUDE_CONFIG_DIR, 0);
+    f.stale();
+    unlisted = await f.finish();
+  } finally {
+    chmodSync(path, 0o600);
+    chmodSync(f.env.CLAUDE_CONFIG_DIR, 0o700);
+  }
+  assert.deepEqual(totals(unlisted), [3, 0, 0]);
+  assert.equal(claudeOf(unlisted).accounts[0].tokenUsage.state, "error");
+  f.stale();
+  assert.deepEqual(totals(await f.finish()), [9, 9, 0]);
 });
 
 test("a malformed Account file leaves the Default Account as before, and ~/.claude counts only once added", async t => {
