@@ -134,6 +134,9 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [UsageAccountFile](../../Sources/Heeler/Usage/UsageAccountFile.swift)
   through `Transport.readUsageAccountFile()` and `replaceUsageAccountFile(_:)`
   (focused tests: `UsageAccountFileTests`, `ClaudeAccountsStoreTests`).
+  The [Claude Code Accounts sheet and the Usage notice](../../Sources/Heeler/Usage/ClaudeAccountsSheet.swift)
+  make those changes; `AgentUsageLimitsCard` in the sheets file gives each
+  Account its Usage Limits card (focused tests: `ClaudeAccountsSheetTests`).
   The Home and Lock Screen widgets read the App Group snapshot that
   [AgentUsageWidgetPublisher](../../Sources/Heeler/Usage/AgentUsageWidgetPublisher.swift)
   writes from those stores, modeled in
@@ -167,7 +170,10 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   the shared [usage-v1 vector](../../plugin/test-vectors/usage-v1.json).
   Price-table maintenance is in the [plugin README](../../plugin/README.md#maintaining-the-price-table).
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
-  and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter.
+  and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter. The
+  Claude Code Accounts browser comes from `AgentUsageStore.accountDirectoryBrowser()`
+  and lists through `RemoteDirectoryListing.followingLinks`, which keeps
+  symbolic links to directories.
   [RemoteDirectoryBrowserTests](../../Tests/HeelerTests/RemoteDirectoryBrowserTests.swift)
   cover store behavior; the first-presentation native check is in
   [the UI runbook](simulator-ui.md).
