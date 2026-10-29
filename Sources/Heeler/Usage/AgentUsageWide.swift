@@ -94,8 +94,9 @@ struct AgentUsageBreakdownTable: View {
     }
 }
 
-/// Each Host's Usage Limits side by side, one card per Host, on an iPad's
-/// wide layout.
+/// Each Host's Usage Limits side by side on an iPad's wide layout: a card
+/// per Host with a row per program or Claude Code Account, or, for one
+/// Host with several Accounts, a card per Account and per other program.
 struct AgentUsageLimitsStrip: View {
     let entries: [AgentUsageHostEntry]
     let showDetails: () -> Void
@@ -112,10 +113,26 @@ struct AgentUsageLimitsStrip: View {
                 Spacer(minLength: 8)
                 Button("Details", action: showDetails)
             }
-            AgentUsageTwoColumns(items: entries) { entry in
-                card(entry)
+            if let cards = Self.accountCards(entries) {
+                AgentUsageTwoColumns(items: cards) { card in
+                    readingCard(card)
+                }
+            } else {
+                AgentUsageTwoColumns(items: entries) { entry in
+                    card(entry)
+                }
             }
         }
+    }
+
+    /// One Host's readings as cards when it has several Claude Code
+    /// Accounts; nil keeps a card per Host.
+    static func accountCards(_ entries: [AgentUsageHostEntry]) -> [AgentUsageLimitsCard]? {
+        guard entries.count == 1, let entry = entries.first, entry.isConnected,
+            case .available(let report) = entry.store.state
+        else { return nil }
+        let cards = AgentUsageLimitsCard.readings(for: report)
+        return cards.contains { $0.account != nil } ? cards : nil
     }
 
     private func card(_ entry: AgentUsageHostEntry) -> some View {
@@ -123,17 +140,17 @@ struct AgentUsageLimitsStrip: View {
             Label(entry.name, systemImage: "desktopcomputer")
                 .font(.headline)
             if case .available(let report) = entry.store.state {
-                ForEach(report.programs ?? [], id: \.program) { program in
+                ForEach(AgentUsageLimitsCard.readings(for: report)) { reading in
                     Divider()
                     HStack(alignment: .top, spacing: 12) {
                         HStack(spacing: 7) {
-                            Circle().fill(AgentUsageStyle.color(for: program.program)).frame(width: 8, height: 8)
-                            Text(program.displayName).font(.subheadline.weight(.semibold))
+                            Circle().fill(AgentUsageStyle.color(for: reading.program)).frame(width: 8, height: 8)
+                            Text(AgentUsageProgramTitle.title(program: reading.program, account: reading.account))
+                                .font(.subheadline.weight(.semibold))
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .frame(width: 130, alignment: .leading)
-                        AgentUsageLimitsView(
-                            program: program.program, limits: program.usageLimits, showsTitle: false,
-                            style: .columns)
+                        readingContent(reading)
                     }
                 }
             } else {
@@ -143,7 +160,45 @@ struct AgentUsageLimitsStrip: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 24, style: .continuous))
+        .background(cardBackground)
+    }
+
+    /// One program's or one Account's card, for a Host with several
+    /// Accounts.
+    private func readingCard(_ reading: AgentUsageLimitsCard) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if case .limits(_, let program, let account, let limits) = reading {
+                AgentUsageProgramTitle(program: program, account: account, plan: limits.plan)
+            } else {
+                AgentUsageProgramTitle(program: reading.program, account: reading.account)
+            }
+            Divider()
+            readingContent(reading)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(cardBackground)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func readingContent(_ reading: AgentUsageLimitsCard) -> some View {
+        switch reading {
+        case .limits(_, let program, _, let limits):
+            AgentUsageLimitsView(program: program, limits: limits, showsTitle: false, style: .columns)
+        case .unread(_, _, let reason):
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(reason).foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+        case .claudeToggle:
+            EmptyView()
+        }
+    }
+
+    private var cardBackground: some View {
+        Color(uiColor: .secondarySystemGroupedBackground).clipShape(.rect(cornerRadius: 24, style: .continuous))
     }
 }
 
