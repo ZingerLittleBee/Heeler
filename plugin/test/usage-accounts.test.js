@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,6 +109,17 @@ test("added Accounts are missing, duplicate by real path, over the limit or ok, 
     ["account1", "ok"], ["again001", "duplicate"], ["account2", "ok"], ["account3", "ok"], ["account4", "overLimit"], ["account5", "duplicate"]]);
   // The directory stays as chosen: Claude Code keys its keychain item by that string.
   assert.deepEqual(accounts[6], { id: "again001", isDefault: false, name: "again001", directory: join(root, "link-to-one"), roots: [join(root, "link-to-one")], state: "duplicate" });
+});
+
+test("on a volume that ignores case, a directory differing only in case is a duplicate", t => {
+  const root = mkdtempSync(join(tmpdir(), "heeler-account-case-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const primary = join(root, ".claude");
+  mkdirSync(primary);
+  if (!existsSync(join(root, ".CLAUDE"))) return t.skip("the volume is case-sensitive");
+  const accounts = claudeAccounts({ env: { HOME: join(root, "home"), CLAUDE_CONFIG_DIR: primary } },
+    { defaultName: null, accounts: [{ id: "variant1", directory: join(root, ".Claude"), name: "variant" }] });
+  assert.equal(accounts[1].state, "duplicate");
 });
 
 test("per-Account totals add up to the program's, and a record copied into two Accounts counts once in each", async t => {

@@ -9,7 +9,8 @@ const ACCOUNT_ID = /^[A-Za-z0-9_-]{8,32}$/;
 const validId = id => typeof id === "string" && ACCOUNT_ID.test(id) && !(id in Object.prototype);
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const named = value => typeof value === "string" && value.trim() !== "";
-const realPath = path => { try { return realpathSync(path); } catch { return null; } };
+// The native call, as the scanner's: it also gives the stored case on a volume that ignores case.
+const realPath = path => { try { return realpathSync.native(path); } catch { return null; } };
 const isDirectory = path => { try { return statSync(path).isDirectory(); } catch { return false; } };
 
 /**

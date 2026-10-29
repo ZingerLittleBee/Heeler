@@ -99,6 +99,14 @@ test("suggestions leave out counted and dismissed directories, prefer the Agent'
   assert.deepEqual(capped.map(suggestion => suggestion.source), ["agent", ...Array(7).fill("home")]);
 });
 
+test("on a volume that ignores case, a directory differing only in case from a counted one is not suggested", t => {
+  const { root, directory } = temporary(t);
+  const primary = directory(join(root, ".claude"));
+  if (!existsSync(join(root, ".CLAUDE"))) return t.skip("the volume is case-sensitive");
+  const accounts = claudeAccounts({ env: { HOME: join(root, "home"), CLAUDE_CONFIG_DIR: primary } }, { defaultName: null, accounts: [], ignored: [] });
+  assert.deepEqual(accountSuggestions({ accounts, ignored: [], agents: [join(root, ".Claude")], candidates: [] }), []);
+});
+
 test("the query reports a running Agent's directory first, then the home listing's, as the Account file now allows", { skip: environmentReadable }, async t => {
   const { root, directory } = temporary(t, root => {
     const usage = join(root, "state", "usage");

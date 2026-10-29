@@ -2,7 +2,8 @@ import { readdirSync, realpathSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
 const SUGGESTION_LIMIT = 8;
-const realPath = path => { try { return realpathSync(path); } catch { return null; } };
+// The native call gives the stored case on a volume that ignores case, as the Accounts' check does.
+const realPath = path => { try { return realpathSync.native(path); } catch { return null; } };
 const isDirectory = path => { try { return statSync(path).isDirectory(); } catch { return false; } };
 const isFile = path => { try { return statSync(path).isFile(); } catch { return false; } };
 
