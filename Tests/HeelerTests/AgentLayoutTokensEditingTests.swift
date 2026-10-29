@@ -78,7 +78,8 @@ struct AgentLayoutTokensEditingTests {
         #expect(statusText.contains("badge or ring") && statusText.contains("add status"))
         #expect(AgentLayoutTokensEditing.description(for: .workspace) == "Workspace or repo folder name")
         #expect(AgentLayoutTokensEditing.description(for: .host) == "Host name")
-        #expect(AgentLayoutTokensEditing.description(for: .status) == "Agent Status as text")
+        #expect(AgentLayoutTokensEditing.description(for: .status).hasPrefix("Agent Status as text."))
+        #expect(AgentLayoutTokensEditing.description(for: .status).contains("Show Status Field"))
         #expect(AgentLayoutTokensEditing.description(for: .directory) == "Working directory")
         #expect(
             AgentLayoutTokensEditing.availableBuiltins(in: [], from: AgentRowToken.heelerBuiltins)

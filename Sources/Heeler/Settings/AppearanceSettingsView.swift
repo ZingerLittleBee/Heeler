@@ -14,8 +14,22 @@ struct AppearanceSettingsView: View {
             Section {
                 themePicker
             }
-            Section("Agent List") {
+            Section {
                 rowStylePicker
+                if agentRowStyle.style == .statusRing {
+                    Toggle(
+                        "Show Status Field",
+                        isOn: Binding(
+                            get: { agentRowStyle.ringShowsStatusField },
+                            set: { agentRowStyle.setRingShowsStatusField($0) }))
+                        .accessibilityIdentifier("settings.agentList.ringStatusField")
+                }
+            } header: {
+                Text("Agent List")
+            } footer: {
+                if agentRowStyle.style == .statusRing {
+                    Text(AgentListRowStyleCopy.ringStatusField)
+                }
             }
             TerminalAppearanceSection(terminal: terminal)
             ChatAppearanceSection()
@@ -54,6 +68,12 @@ struct AppearanceSettingsView: View {
         }
         .accessibilityIdentifier("settings.agentList.rowStyle")
     }
+}
+
+enum AgentListRowStyleCopy {
+    static let ringStatusField =
+        "The ring shows each Agent's status. Turn this on to also show it as text where a Host's "
+        + "Agent List Fields include status."
 }
 
 /// The terminal's font, text size, and per-appearance theme slots, each
