@@ -250,6 +250,17 @@ protocol Transport: Sendable {
         timeZone: String, claudeLimits: Bool, pluginRoot: String
     ) async throws -> AgentUsageReport
 
+    /// Reads the Claude Code Account file (`usage-accounts.json`, ADR 0030)
+    /// from this Host's Heeler plugin config dir; nil when no Account was
+    /// ever added. Same plugin gate and POSIX-only reach as the registration
+    /// read.
+    func readUsageAccountFile() async throws -> Data?
+
+    /// Atomically replaces the Account file with `contents` (temp file +
+    /// rename, file 0600 in a 0700 directory), creating it when absent. Same
+    /// plugin gate as the registration write.
+    func replaceUsageAccountFile(_ contents: Data) async throws
+
     /// Runs one change to the Host's Heeler plugin: the herdr CLI for install
     /// and uninstall, the session's `plugin.enable` request for enable.
     /// Throws `HeelerPluginStepError` when herdr refuses or fails the step,
@@ -505,6 +516,14 @@ extension Transport {
         timeZone: String, claudeLimits: Bool, pluginRoot: String
     ) async throws -> AgentUsageReport {
         throw TransportError.hostFeatureUnavailable(feature: "Usage")
+    }
+
+    func readUsageAccountFile() async throws -> Data? {
+        throw NotificationRegistrationError.pluginNotInstalled
+    }
+
+    func replaceUsageAccountFile(_ contents: Data) async throws {
+        throw NotificationRegistrationError.pluginNotInstalled
     }
 
     func runHeelerPluginStep(_ step: HeelerPluginStep) async throws {
