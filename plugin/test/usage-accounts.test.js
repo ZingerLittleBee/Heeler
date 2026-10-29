@@ -225,6 +225,24 @@ test("a Transcript two Accounts reach stays with the one that counted it while t
   assert.deepEqual(totals(await f.finish()), [9, 9, 0]);
 });
 
+test("an unreadable directory that two Accounts reach is counted once", { skip: asRoot }, async t => {
+  const f = fixture(t);
+  f.transcript(f.env.CLAUDE_CONFIG_DIR, "default.jsonl", [assistant("primary", 10)]);
+  const locked = join(f.env.CLAUDE_CONFIG_DIR, "projects", "-locked");
+  mkdirSync(locked);
+  const linked = join(f.root, "linked");
+  mkdirSync(linked);
+  symlinkSync(join(f.env.CLAUDE_CONFIG_DIR, "projects"), join(linked, "projects"));
+  f.accounts([{ id: "linkedid", directory: linked, name: "linked" }]);
+  let report;
+  try {
+    chmodSync(locked, 0);
+    report = await f.finish();
+  } finally { chmodSync(locked, 0o700); }
+  assert.deepEqual(totals(report), [10, 10, 0]);
+  assert.equal(report.scan.unreadableFiles, 1);
+});
+
 test("a malformed Account file leaves the Default Account as before, and ~/.claude counts only once added", async t => {
   const f = fixture(t);
   f.transcript(f.env.CLAUDE_CONFIG_DIR, "default.jsonl", [assistant("primary", 12)]);

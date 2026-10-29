@@ -115,7 +115,8 @@ async function run() {
         listed.add(file.path);
         found.push({ ...file, program, ...(account ? { account } : {}) });
       }
-      unlistedPaths.push(...listing.unreadable);
+      // Two Accounts that share a tree report its unreadable entries once.
+      for (const path of listing.unreadable) if (!unlistedPaths.includes(path)) unlistedPaths.push(path);
       if (listing.rootFailed) { failedSources.add(source); errors[source] = reason; }
     }
     if (accounts.every(({ id }) => failedSources.has(`claude:${id}`))) errors.claude = claudeReason;
