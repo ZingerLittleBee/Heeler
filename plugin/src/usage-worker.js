@@ -13,6 +13,7 @@ import { codexFiles, codexLines, ArchiveUnavailableError } from "./usage/codex-f
 import { createCodexState, consumeCodexLine, finishCodexRead, codexTotalSignature } from "./usage/codex-scanner.js";
 import { readCodexLimits, codexRolloutLimits, codexLimitsWithFallback } from "./usage/codex-limits.js";
 import { readClaudeLimits, readClaudeLimitsInServer, cacheClaudeLimits, claudeVersion } from "./usage/claude-limits.js";
+import { readClaudeAccounts } from "./usage/accounts.js";
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 class LockLostError extends Error {}
@@ -72,33 +73,57 @@ async function run() {
     const limits = readJSON(join(directory, "limits.json")) || {};
     const maintainHeartbeat = () => { if (Date.now() - lock.heartbeat >= 1000) heartbeat(); };
     const previous = await loadCheckpoint(directory, previousSnapshot, maintainHeartbeat);
+    const accounts = readClaudeAccounts(values.config, runtime).filter(account => account.state === "ok");
+    const counted = new Set(accounts.map(account => account.id));
+    // An Account no longer counted (removed, missing, a duplicate) leaves with
+    // its files and records, without a rebuild; one that returns is read anew.
+    const leaving = record => record.program === "claude" && !counted.has(record.account);
+    const previousFiles = Object.fromEntries(Object.entries(previous?.files || {}).filter(([, state]) => !leaving(state)));
+    let left = false;
+    for (const [key, record] of previous?.keys || []) {
+      if (!leaving(record)) continue;
+      changeBucket(previous.buckets, record, -1);
+      previous.keys.delete(key);
+      left = true;
+    }
+    for (const group of previous?.groups.keys() || []) if (!counted.has(JSON.parse(group)[0])) previous.groups.delete(group);
     const errors = {};
     const files = [];
+    const listed = new Set();
     const unlistedPaths = [];
-    const failedPrograms = new Set();
+    const failedSources = new Set();
+    const claudeReason = "Could not read the Claude Code Transcripts.";
     let olderTranscripts = false;
     // One unreadable entry is skipped and counted; only a root that cannot be
-    // listed hides its program. Neither makes its known files look deleted.
-    for (const [program, list, programRoots, reason] of [
-      ["claude", claudeFiles, roots.claude, "Could not read the Claude Code Transcripts."],
-      ["codex", codexFiles, roots.codex, "Could not read the Codex Transcripts."],
+    // listed hides its Account or program. Neither makes its known files look deleted.
+    for (const { source, program, account, list, reason } of [
+      ...accounts.map(({ id, roots: accountRoots }) => ({ source: `claude:${id}`, program: "claude", account: id,
+        list: () => claudeFiles(accountRoots, cutoff), reason: claudeReason })),
+      { source: "codex", program: "codex", list: () => codexFiles(roots.codex, cutoff), reason: "Could not read the Codex Transcripts." },
     ]) {
       let listing;
-      try { listing = await list(programRoots, cutoff); } catch { listing = { files: [], unreadable: [], rootFailed: true, older: false }; }
+      try { listing = await list(); } catch { listing = { files: [], unreadable: [], rootFailed: true, older: false }; }
       olderTranscripts ||= listing.older;
-      files.push(...listing.files.map(file => ({ ...file, program })));
+      for (const file of listing.files) {
+        // A Transcript that two Accounts reach (a symbolic link) counts in the first.
+        if (account && listed.has(file.path)) continue;
+        listed.add(file.path);
+        files.push({ ...file, program, ...(account ? { account } : {}) });
+      }
       unlistedPaths.push(...listing.unreadable);
-      if (listing.rootFailed) { failedPrograms.add(program); errors[program] = reason; }
+      if (listing.rootFailed) { failedSources.add(source); errors[source] = reason; }
     }
+    if (accounts.every(({ id }) => failedSources.has(`claude:${id}`))) errors.claude = claudeReason;
     files.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path));
-    const match = matchFiles(files, previous?.files || {}, now, (path, state) => failedPrograms.has(state.program)
+    const match = matchFiles(files, previousFiles, now, (path, state) => failedSources.has(state.program === "claude" ? `claude:${state.account}` : state.program)
       || unlistedPaths.some(unlisted => path === unlisted || path.startsWith(unlisted + sep)));
     const rebuilding = !previous || match.rebuild || previousSnapshot?.limitsVersion !== 1;
     const preserveSnapshot = previousSnapshot !== null && (rebuilding || previousSnapshot.rebuilding);
     const buckets = rebuilding ? new Map() : previous.buckets;
     const keys = rebuilding ? new Map() : previous.keys;
     const groups = rebuilding ? new Map() : previous.groups;
-    const newGeneration = rebuilding || previous.prune;
+    // The log must no longer hold the records of an Account that left.
+    const newGeneration = rebuilding || previous.prune || left;
     const log = cacheWrite(() => newGeneration ? startLog(directory, keys, groups) : openLog(directory, previous.generation));
     const fileStates = rebuilding ? {} : match.states;
     let lastSnapshot = performance.now();
@@ -112,7 +137,7 @@ async function run() {
           generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString() };
       // Commit parser progress even when a rebuild is still resolving a burst.
       // The query keeps the old aggregates; the next worker resumes the new log.
-      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors,
+      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, countedAccounts: [...counted],
         limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude?.report },
         nextLimitsAt: limits.codex?.nextAllowedAt, nextClaudeLimitsAt: limits.claude?.nextAllowedAt,
         skippedArchives: Object.values(fileStates).filter(file => file.skipped).length,
@@ -168,7 +193,7 @@ async function run() {
     for (const file of files) {
       const logicalPath = file.logicalPath || file.path;
       const state = fileStates[logicalPath] ||= { dev: file.dev, ino: file.ino, size: file.size, mtimeMs: file.mtimeMs,
-        program: file.program, compressed: Boolean(file.compressed), offset: 0, finished: false,
+        program: file.program, ...(file.account ? { account: file.account } : {}), compressed: Boolean(file.compressed), offset: 0, finished: false,
         carry: file.program === "codex" ? createCodexState(logicalPath) : {} };
       if (state.finished && !state.carry.pending?.length) continue;
       if (file.program === "codex") {
@@ -218,7 +243,7 @@ async function run() {
           state.offset = offset;
           noteFirstRecord(state, line);
           if (typeof line?.cwd === "string") state.carry.directory = line.cwd;
-          const contribution = claudeContribution(line, file.path, cutoff, state.carry.directory);
+          const contribution = claudeContribution(line, file.path, file.account, cutoff, state.carry.directory);
           if (!contribution) continue;
           const candidate = priceContribution(contribution);
           const peers = groups.get(candidate.group) || new Set();

@@ -7,6 +7,7 @@ import { cacheDirectory, readJSON, writeJSON, activeLock, reserveWorker, release
 import { reportFromSnapshot } from "./usage/buckets.js";
 import { checkpointCurrent } from "./usage/checkpoint.js";
 import { readUsageRuntime } from "./usage-runtime.js";
+import { readClaudeAccounts } from "./usage/accounts.js";
 
 /**
  * Start one detached worker unless another holds the lock; true while one runs.
@@ -53,7 +54,12 @@ try {
     const directory = cacheDirectory(runtime);
     const snapshot = readJSON(join(directory, "buckets.json"));
     const failures = refreshFailures(directory);
-    const stale = !snapshot?.complete || !checkpointCurrent(snapshot?.checkpoint)
+    const accounts = readClaudeAccounts(process.env.HERDR_PLUGIN_CONFIG_DIR, runtime);
+    const counted = accounts.filter(account => account.state === "ok").map(account => account.id);
+    // An Account added, removed or back since the last run is counted at once.
+    const accountsChanged = !Array.isArray(snapshot?.countedAccounts) || snapshot.countedAccounts.length !== counted.length
+      || !counted.every(id => snapshot.countedAccounts.includes(id));
+    const stale = !snapshot?.complete || !checkpointCurrent(snapshot?.checkpoint) || accountsChanged
       || snapshot?.breakdownsVersion !== 1 || !(Date.now() - Date.parse(snapshot.generatedAt) <= 60_000);
     let refreshing = false;
     let startFailed = false;
@@ -74,7 +80,7 @@ try {
     const failed = failures.failing ? "The background refresh failed repeatedly."
       : startFailed && stale ? "The background refresh could not start." : null;
     const served = failed ? { ...snapshot, errors: { claude: failed, codex: failed, ...snapshot?.errors } } : snapshot;
-    report = reportFromSnapshot(served, timeZone, refreshing, Date.now(), values["claude-limits"]);
+    report = reportFromSnapshot(served, timeZone, refreshing, Date.now(), values["claude-limits"], { accounts });
   }
   console.log(JSON.stringify(report));
 } catch {

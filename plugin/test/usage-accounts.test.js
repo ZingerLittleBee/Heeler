@@ -1,10 +1,49 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { claudeAccounts, readAccountFile } from "../src/usage/accounts.js";
 import { usageRoots } from "../src/usage/cache.js";
+
+const plugin = fileURLToPath(new URL("..", import.meta.url));
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const asRoot = process.getuid?.() === 0 && "root ignores directory modes";
+const records = lines => lines.map(line => JSON.stringify(line)).join("\n") + "\n";
+const assistant = (id, input, extra = {}) => ({ type: "assistant", sessionId: "session", requestId: `request-${id}`, timestamp: new Date().toISOString(),
+  cwd: "/work/project", message: { id, model: "claude-test", usage: { input_tokens: input } }, ...extra });
+const claudeOf = report => report.programs.find(program => program.program === "claude");
+const total = usage => usage?.totals?.last30Days.tokens.total ?? 0;
+const totals = report => [total(claudeOf(report).tokenUsage), ...claudeOf(report).accounts.map(account => account.tokenUsage && total(account.tokenUsage))];
+
+function fixture(t) {
+  const root = mkdtempSync(join(tmpdir(), "heeler-accounts-"));
+  const env = { PATH: "/usr/bin:/bin", HOME: join(root, "home"), CLAUDE_CONFIG_DIR: join(root, "claude"), CODEX_HOME: join(root, "codex"),
+    HERDR_PLUGIN_CONFIG_DIR: join(root, "config"), HERDR_PLUGIN_STATE_DIR: join(root, "state"), HERDR_BIN_PATH: "/missing" };
+  const run = (name, args = []) => spawnSync(process.execPath, [join(plugin, "src", name), ...args], { env, encoding: "utf8", timeout: 10_000 });
+  assert.equal(run("sidebar-hook.js").status, 0);
+  const caches = () => readdirSync(join(env.HERDR_PLUGIN_STATE_DIR, "usage"));
+  const cache = () => join(env.HERDR_PLUGIN_STATE_DIR, "usage", caches()[0]);
+  const query = () => { const result = run("usage-query.js", ["--tz", "UTC"]); assert.equal(result.status, 0, result.stderr); return JSON.parse(result.stdout); };
+  const finish = async () => { for (let i = 0; i < 400; i++) { const report = query(); if (!report.refreshing) return report; await sleep(15); } assert.fail("worker did not finish"); };
+  const stale = () => { const path = join(cache(), "buckets.json"); const snapshot = JSON.parse(readFileSync(path)); snapshot.generatedAt = new Date(Date.now() - 61_000).toISOString(); writeFileSync(path, JSON.stringify(snapshot)); };
+  const generation = () => JSON.parse(readFileSync(join(cache(), "buckets.json"))).checkpoint.generation;
+  const transcript = (base, name, lines) => {
+    const path = join(base, "projects", "-work-project", name);
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, records(lines));
+    return path;
+  };
+  const accounts = (entries, extra = {}) => writeFileSync(join(env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"),
+    JSON.stringify({ version: 1, claude: { defaultName: null, accounts: entries, ...extra } }));
+  t.after(() => {
+    try { const lock = JSON.parse(readFileSync(join(cache(), "worker.lock"))); if (lock.pid !== process.pid) process.kill(lock.pid, "SIGKILL"); } catch { /* Worker ended. */ }
+    rmSync(root, { recursive: true, force: true });
+  });
+  return { root, env, caches, cache, query, finish, stale, generation, transcript, accounts };
+}
 
 test("the Default Account is the directory Claude Code uses, without ~/.claude when CLAUDE_CONFIG_DIR is recorded", () => {
   const env = { HOME: "/home/u", CLAUDE_CONFIG_DIR: null, XDG_CONFIG_HOME: null, CODEX_HOME: null };
@@ -68,4 +107,130 @@ test("added Accounts are missing, duplicate by real path, over the limit or ok, 
     ["account1", "ok"], ["again001", "duplicate"], ["account2", "ok"], ["account3", "ok"], ["account4", "overLimit"], ["account5", "duplicate"]]);
   // The directory stays as chosen: Claude Code keys its keychain item by that string.
   assert.deepEqual(accounts[6], { id: "again001", isDefault: false, name: "again001", directory: join(root, "link-to-one"), roots: [join(root, "link-to-one")], state: "duplicate" });
+});
+
+test("per-Account totals add up to the program's, and a record copied into two Accounts counts once in each", async t => {
+  const f = fixture(t);
+  const shared = assistant("shared", 5);
+  f.transcript(f.env.CLAUDE_CONFIG_DIR, "default.jsonl", [assistant("own", 10), shared]);
+  const second = join(f.root, "second");
+  // Within one Account, copies still count once: in another session, and as a replay.
+  f.transcript(second, "second.jsonl", [shared, { ...shared, sessionId: "copy" }, assistant("other", 7)]);
+  f.transcript(second, "replay.jsonl", [{ ...shared, requestId: "replayed", isSidechain: true, message: { ...shared.message, usage: { input_tokens: 900 } } }]);
+  f.accounts([{ id: "secondid", directory: second, name: "second" }]);
+  const report = await f.finish();
+  assert.deepEqual(totals(report), [27, 15, 12]);
+  const [primary, added] = claudeOf(report).accounts;
+  assert.deepEqual(primary.tokenUsage.models.map(model => [model.model, model.tokens.total]), [["claude-test", 15]]);
+  assert.deepEqual(added.tokenUsage.directories.map(directory => [directory.path, directory.tokens.total]), [["/work/project", 12]]);
+  assert.equal(claudeOf(report).tokenUsage.daily.at(-1).tokens.total, 27);
+  assert.deepEqual(added, { id: "secondid", isDefault: false, name: "second", directory: second, state: "ok",
+    tokenUsage: added.tokenUsage, usageLimits: { state: "disabled" } });
+  assert.deepEqual(primary.usageLimits, { state: "disabled" });
+  // A rebuild from scratch gives the same split.
+  rmSync(f.cache(), { recursive: true });
+  assert.deepEqual(totals(await f.finish()), [27, 15, 12]);
+});
+
+test("an Account added, missing, returning and removed changes the totals without a rebuild or a new cache directory", { skip: asRoot }, async t => {
+  const f = fixture(t);
+  const primary = f.transcript(f.env.CLAUDE_CONFIG_DIR, "default.jsonl", [assistant("primary", 12)]);
+  assert.deepEqual(totals(await f.finish()), [12, 12]);
+  const [cache] = f.caches();
+  // A rebuild would read this Transcript again and count it unreadable.
+  chmodSync(primary, 0);
+  const extra = join(f.root, "extra");
+  f.transcript(extra, "extra.jsonl", [assistant("extra-record", 22)]);
+  const step = async expected => {
+    // The query notices the changed Accounts itself; no stale snapshot is needed.
+    assert.equal(f.query().refreshing, true);
+    const report = await f.finish();
+    assert.deepEqual(totals(report), expected);
+    assert.equal(report.scan.unreadableFiles, 0);
+    assert.deepEqual(f.caches(), [cache]);
+    return report;
+  };
+  f.accounts([{ id: "extra-id", directory: extra, name: "extra" }]);
+  const added = await step([34, 12, 22]);
+  const generation = f.generation();
+  assert.equal(claudeOf(added).accounts[1].state, "ok");
+  renameSync(extra, extra + "-away");
+  const missing = await step([12, 12, undefined]);
+  assert.deepEqual(claudeOf(missing).accounts[1], { id: "extra-id", isDefault: false, name: "extra", directory: extra, state: "missing" });
+  // Leaving rewrites the log without the Account's records.
+  assert.notEqual(f.generation(), generation);
+  assert.equal(readFileSync(join(f.cache(), "keys.log"), "utf8").includes("extra-record"), false);
+  renameSync(extra + "-away", extra);
+  await step([34, 12, 22]);
+  f.accounts([]);
+  const removed = await step([12, 12]);
+  assert.deepEqual(claudeOf(removed).accounts.map(account => account.id), ["default"]);
+  f.stale();
+  assert.deepEqual(totals(await f.finish()), [12, 12]);
+  // Added again under a new id, it is read from the start.
+  f.accounts([{ id: "extra-id-2", directory: extra, name: "extra" }]);
+  await step([34, 12, 22]);
+});
+
+test("a duplicate or over-limit Account adds nothing and reports only its state", async t => {
+  const f = fixture(t);
+  f.transcript(f.env.CLAUDE_CONFIG_DIR, "default.jsonl", [assistant("primary", 12)]);
+  const link = join(f.root, "link");
+  symlinkSync(f.env.CLAUDE_CONFIG_DIR, link);
+  const directories = ["a", "b", "c", "d"].map(name => {
+    const path = join(f.root, name);
+    f.transcript(path, `${name}.jsonl`, [assistant(`record-${name}`, 1)]);
+    return path;
+  });
+  f.accounts([{ id: "linkedid", directory: link, name: "linked" }, ...directories.map(path => ({ id: `account-${path.at(-1)}`, directory: path, name: path.at(-1) }))]);
+  const report = await f.finish();
+  assert.deepEqual(totals(report), [15, 12, undefined, 1, 1, 1, undefined]);
+  assert.deepEqual(claudeOf(report).accounts[1], { id: "linkedid", isDefault: false, name: "linked", directory: link, state: "duplicate" });
+  assert.deepEqual(claudeOf(report).accounts[5], { id: "account-d", isDefault: false, name: "d", directory: directories[3], state: "overLimit" });
+});
+
+test("a malformed Account file leaves the Default Account as before, and ~/.claude counts only once added", async t => {
+  const f = fixture(t);
+  f.transcript(f.env.CLAUDE_CONFIG_DIR, "default.jsonl", [assistant("primary", 12)]);
+  const home = join(f.env.HOME, ".claude");
+  f.transcript(home, "home.jsonl", [assistant("home", 8)]);
+  writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), "{ not json");
+  const before = await f.finish();
+  assert.deepEqual(totals(before), [12, 12]);
+  assert.deepEqual(claudeOf(before).accounts.map(({ tokenUsage, usageLimits, ...account }) => account),
+    [{ id: "default", isDefault: true, name: null, directory: f.env.CLAUDE_CONFIG_DIR, state: "ok" }]);
+  f.accounts([{ id: "home-dir", directory: home, name: "claude" }], { defaultName: "work" });
+  const after = await f.finish();
+  assert.deepEqual(totals(after), [20, 12, 8]);
+  assert.equal(claudeOf(after).accounts[0].name, "work");
+});
+
+test("an Account whose Transcripts cannot be listed reports its own error while the others add up", { skip: asRoot }, async t => {
+  const f = fixture(t);
+  f.transcript(f.env.CLAUDE_CONFIG_DIR, "default.jsonl", [assistant("primary", 12)]);
+  const extra = join(f.root, "extra");
+  f.transcript(extra, "extra.jsonl", [assistant("extra", 22)]);
+  f.accounts([{ id: "extra-id", directory: extra, name: "extra" }]);
+  assert.deepEqual(totals(await f.finish()), [34, 12, 22]);
+  const projects = [join(extra, "projects"), join(f.env.CLAUDE_CONFIG_DIR, "projects")];
+  let one;
+  let both;
+  try {
+    chmodSync(projects[0], 0);
+    f.stale();
+    one = await f.finish();
+    chmodSync(projects[1], 0);
+    f.stale();
+    both = await f.finish();
+  } finally { for (const path of projects) chmodSync(path, 0o700); }
+  const reason = "Could not read the Claude Code Transcripts.";
+  // Its known records stay counted in the Host total, as for an unreadable root.
+  assert.equal(claudeOf(one).tokenUsage.state, "ok");
+  assert.equal(total(claudeOf(one).tokenUsage), 34);
+  assert.deepEqual(claudeOf(one).accounts.map(account => account.tokenUsage.state), ["ok", "error"]);
+  assert.equal(claudeOf(one).accounts[1].tokenUsage.reason, reason);
+  assert.deepEqual(claudeOf(both).tokenUsage, { state: "error", reason });
+  assert.deepEqual(claudeOf(both).accounts.map(account => account.tokenUsage.state), ["error", "error"]);
+  f.stale();
+  assert.deepEqual(totals(await f.finish()), [34, 12, 22]);
 });

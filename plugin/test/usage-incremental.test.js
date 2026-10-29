@@ -260,7 +260,7 @@ test("an unreadable directory keeps its known Transcripts without a rebuild",asy
   chmodSync(other,0);let hidden;
   try{appendFileSync(path,records([assistant("more",3)]));f.stale();hidden=await f.finish();}finally{chmodSync(other,0o700);}
   assert.equal(tokens(hidden),15);assert.equal(hidden.scan.unreadableFiles,1);assert.equal(generation(f),initial);
-  assert.equal(JSON.stringify(hidden).includes(f.root),false);
+  assert.equal(JSON.stringify(hidden.programs.map(({accounts,...program})=>program)).includes(f.root),false);
   f.stale();const restored=await f.finish();assert.equal(tokens(restored),15);assert.equal(restored.scan.unreadableFiles,0);assert.equal(generation(f),initial);
   rmSync(f.cache(),{recursive:true});assert.deepEqual((await f.finish()).programs,restored.programs);
 });
@@ -503,7 +503,9 @@ test("a worker killed at any cache write recovers the totals of a fresh full sca
   for(const change of ["incremental","prune","rebuild"])for(let lane=0;lane<2;lane++)lanes.push(await killScenario(t,change));
   for(const lane of lanes){
     const twin=lanes.find(other=>other.change===lane.change);
-    assert.equal(lane.writes,twin.writes);assert.deepEqual(lane.expected,twin.expected);assert.ok(lane.writes>=15,`${lane.writes} writes`);
+    // Twins run in their own fixtures, so their Account directories differ.
+    const portable=programs=>programs.map(({accounts,...program})=>({...program,accounts:accounts?.map(({directory,...account})=>account)}));
+    assert.equal(lane.writes,twin.writes);assert.deepEqual(portable(lane.expected),portable(twin.expected));assert.ok(lane.writes>=15,`${lane.writes} writes`);
   }
   t.diagnostic(lanes.filter((_,i)=>i%2===0).map(lane=>`${lane.change}: ${lane.writes} writes`).join(", "));
   await Promise.all(lanes.map(async (lane,index)=>{for(let k=1+index%2;k<=lane.writes;k+=2)await lane.killAt(k);}));

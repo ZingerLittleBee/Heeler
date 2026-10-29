@@ -451,8 +451,9 @@ size:
     1 GB Host; at 500,000 every run there runs out of memory and the
     refresh fails (see [Worker scheduling](#worker-scheduling)). Keys older
     than 31 days leave the totals at once, but the log is rewritten only when
-    a rebuild starts or a whole UTC day of its keys has expired, so at most
-    once a day. The rewrite streams the live keys into a temporary file and
+    a rebuild starts, an Account leaves ([Account states](#account-states)),
+    or a whole UTC day of its keys has expired, so at most once a day unless
+    Accounts change. The rewrite streams the live keys into a temporary file and
     renames it over the log; a crash leaves either the old log, which its
     checkpoint still matches, or a new generation that no checkpoint matches
     yet, which rebuilds.
@@ -522,7 +523,8 @@ size:
 
 - The query spawns the worker (detached in its own session, `stdio:
   "ignore"`, `nice` where available) when the cache is older than 60 seconds,
-  a rebuild is pending, or Usage Limits are due, and the lock is free. The
+  a rebuild is pending, the `ok` Accounts differ from those the last run
+  counted, or Usage Limits are due, and the lock is free. The
   worker must hold no descriptor of the SSH exec, so the exec ends while the
   worker keeps running, and its own session puts it outside the bounded
   script's watchdog process group.
@@ -781,16 +783,19 @@ Each added Account, checked in this order, is:
 Only `ok` Accounts are scanned and asked for Usage Limits; the others keep
 their place in the list and add nothing. An Account that stops being `ok`
 (removed from the file, missing, duplicate) leaves the cache with its
-counted records and limit readings, without a rebuild. One that returns is
-read from the start, like new Transcripts.
+counted records and limit readings, without a rebuild: the next run
+subtracts its records and rewrites `keys.log` without them. One that
+returns is read from the start, like new Transcripts. The query starts that
+run at once, and until it ends the report already leaves the Account out.
 
 ### Counting
 
 - Each `ok` Account's `projects/` is listed on its own. Files, dedupe keys,
   groups and buckets carry the Account's id (`default` for the Default
   Account). Deduplication runs within one Account: two directories holding
-  copies of the same Transcripts count twice, as two Accounts would.
-  Host totals add the Accounts up.
+  copies of the same Transcripts count twice, as two Accounts would. A
+  Transcript that two Accounts reach through a symbolic link is one file
+  and counts in the first. Host totals add the Accounts up.
 - An Account whose roots cannot be listed reports Token Usage `error`; the
   program's own Token Usage is `error` only when no `ok` Account's roots
   could be listed.
