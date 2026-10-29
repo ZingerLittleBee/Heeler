@@ -15,6 +15,7 @@ struct HostOnboardingStoreTests {
         host: Host = .fixture(),
         outcome: FakeTransportConnector.Outcome = .connects(pingResult: healthyPing),
         presentedKeyBlob: Data? = nil,
+        presentedJumpKeyBlob: Data? = nil,
         knownHosts: InMemoryKnownHostsStore = InMemoryKnownHostsStore(),
         password: String? = nil,
         sessions: [HerdrSession] = [],
@@ -23,7 +24,8 @@ struct HostOnboardingStoreTests {
         fingerprintTimeout: Duration = .seconds(5)
     ) throws -> (HostOnboardingStore, FakeTransportConnector) {
         let connector = FakeTransportConnector(
-            outcome: outcome, presentedKeyBlob: presentedKeyBlob, sessions: sessions,
+            outcome: outcome, presentedKeyBlob: presentedKeyBlob,
+            presentedJumpKeyBlob: presentedJumpKeyBlob, sessions: sessions,
             plugin: plugin, pluginSteps: pluginSteps)
         let secrets = InMemorySecretStore()
         if let password {
@@ -673,6 +675,92 @@ struct HostOnboardingStoreTests {
         #expect(
             store.pendingHostKeyReplacement
                 == HostKeyReplacement(known: known, presented: overlayKey))
+    }
+
+    /// A Jump Host keeps its trust by endpoint (ADR 0022), so its new key
+    /// replaces that entry and leaves the Host's own trust alone.
+    @Test func aJumpHostsChangedKeyIsReplacedUnderItsEndpoint() async throws {
+        var host = Host.fixture(address: "127.0.0.1")
+        host.routes[0].jumpAddress = " vps.example "
+        host.routes[0].jumpPort = 2222
+        let knownHosts = InMemoryKnownHostsStore()
+        let trusted = HostKeyFingerprint(publicKeyBlob: Data("old-jump-key".utf8))
+        let presented = HostKeyFingerprint(publicKeyBlob: keyBlob)
+        await knownHosts.setFingerprint(trusted, host: "vps.example", port: 2222)
+        let (store, _) = try makeStore(
+            host: host, presentedJumpKeyBlob: keyBlob, knownHosts: knownHosts)
+
+        await store.runChecks()
+
+        let replacement = try #require(store.pendingHostKeyReplacement)
+        #expect(replacement.known == trusted)
+        #expect(replacement.presented == presented)
+        #expect(replacement.jumpHost?.endpointDescription == "vps.example:2222")
+
+        await store.trustPresentedHostKey()
+
+        #expect(store.pendingHostKeyReplacement == nil)
+        #expect(store.report?.isFullyPassed == true)
+        #expect(await knownHosts.fingerprint(host: "vps.example", port: 2222) == presented)
+        #expect(await knownHosts.fingerprint(trustedFor: host) == nil)
+    }
+
+    @Test func aJumpHostsChangedKeyIsOfferedWhenNoRouteReachedTheHost() async throws {
+        let direct = HostRoute(address: "192.168.1.5")
+        let viaJump = HostRoute(address: "127.0.0.1", port: 2222, jumpAddress: "vps.example")
+        let host = Host(username: "dev", routes: [direct, viaJump])
+        let known = HostKeyFingerprint(digest: Data(repeating: 1, count: 32))
+        let presented = HostKeyFingerprint(digest: Data(repeating: 2, count: 32))
+        let (store, _) = try makeStore(
+            host: host,
+            outcome: .connectFails(
+                .noRouteReached([
+                    RouteFailure(
+                        route: "192.168.1.5", mayNameAnotherMachine: true, error: .timedOut,
+                        routeID: direct.id),
+                    RouteFailure(
+                        route: "127.0.0.1:2222 via vps.example", mayNameAnotherMachine: false,
+                        error: .jumpHostFailed(.hostKeyMismatch(known: known, presented: presented)),
+                        routeID: viaJump.id),
+                ])))
+
+        await store.runChecks()
+
+        #expect(
+            store.pendingHostKeyReplacement
+                == HostKeyReplacement(
+                    known: known, presented: presented,
+                    jumpHost: HostKeyReplacement.JumpHost(viaJump)))
+    }
+
+    /// The Host's own changed key is asked about first; its Jump Host's
+    /// waits for the next checks.
+    @Test func theHostsChangedKeyIsOfferedBeforeAJumpHosts() async throws {
+        let direct = HostRoute(address: "box.example")
+        let viaJump = HostRoute(address: "127.0.0.1", port: 2222, jumpAddress: "vps.example")
+        let host = Host(username: "dev", routes: [direct, viaJump])
+        let known = HostKeyFingerprint(digest: Data(repeating: 1, count: 32))
+        let hostKey = HostKeyFingerprint(digest: Data(repeating: 2, count: 32))
+        let jumpKey = HostKeyFingerprint(digest: Data(repeating: 3, count: 32))
+        let (store, _) = try makeStore(
+            host: host,
+            outcome: .connectFails(
+                .noRouteReached([
+                    RouteFailure(
+                        route: "box.example", mayNameAnotherMachine: false,
+                        error: .hostKeyMismatch(known: known, presented: hostKey),
+                        routeID: direct.id),
+                    RouteFailure(
+                        route: "127.0.0.1:2222 via vps.example", mayNameAnotherMachine: false,
+                        error: .jumpHostFailed(.hostKeyMismatch(known: known, presented: jumpKey)),
+                        routeID: viaJump.id),
+                ])))
+
+        await store.runChecks()
+
+        #expect(
+            store.pendingHostKeyReplacement
+                == HostKeyReplacement(known: known, presented: hostKey))
     }
 
     @Test func settingsCarryTheHostCoordinatesAndStoredPassword() async throws {

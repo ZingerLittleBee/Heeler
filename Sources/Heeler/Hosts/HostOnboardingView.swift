@@ -4,6 +4,9 @@ import SwiftUI
 /// plus the TOFU fingerprint confirmation. Checks run automatically on
 /// arrival; the goal is zero to green checkmarks without desktop docs.
 struct HostOnboardingView: View {
+    /// The catalog's copy of this Host. Onboarding restarts for it when it
+    /// changes (see `adopt`).
+    let host: Host
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
     let usage: AgentUsageStore?
@@ -24,9 +27,18 @@ struct HostOnboardingView: View {
     /// Stops the Console's attempt to connect this Host; nil where the
     /// Host detail does not offer it.
     let stopConnecting: (@MainActor @Sendable () async -> Void)?
+    private let dependencies: HostOnboardingDependencies
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
+    /// From Edit until its sheet is fully gone, which `isEditing` turns
+    /// false before. A Host saved meanwhile waits, so its checks never
+    /// present a trust prompt over the dismissing sheet.
+    @State private var isEditorOnScreen = false
+    /// Set by a route change until its first checks finish, which then ask
+    /// about a changed key at once: the edit may now reach another machine.
+    @State private var offersHostKeyReplacement = false
     @State private var isConfirmingHostKeyReplacement = false
+    @State private var didCopyFingerprintCommand = false
     @State private var sessionSelectionError: String?
     /// A passing preflight not yet acted on: it may restart the Console's
     /// connection once (see `HostOnboardingConsoleRecovery`).
@@ -48,6 +60,7 @@ struct HostOnboardingView: View {
         stopConnecting: (@MainActor @Sendable () async -> Void)? = nil,
         dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
+        self.host = host
         self.catalog = catalog
         self.usage = usage
         self.openUsage = openUsage
@@ -58,17 +71,58 @@ struct HostOnboardingView: View {
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         self.stopConnecting = stopConnecting
-        _store = State(
-            initialValue: HostOnboardingStore(
-                host: host,
-                connector: dependencies.connector,
-                knownHosts: dependencies.knownHosts,
-                credentials: dependencies.credentials))
+        self.dependencies = dependencies
+        _store = State(initialValue: Self.makeStore(host, dependencies))
     }
 
+    private static func makeStore(
+        _ host: Host, _ dependencies: HostOnboardingDependencies
+    ) -> HostOnboardingStore {
+        HostOnboardingStore(
+            host: host,
+            connector: dependencies.connector,
+            knownHosts: dependencies.knownHosts,
+            credentials: dependencies.credentials)
+    }
+
+    /// The page with its Edit sheet, outside `page`'s modifier chain, which
+    /// stays under Xcode 26.6's type-checking limit.
     var body: some View {
+        page
+            .sheet(isPresented: $isEditing, onDismiss: { isEditorOnScreen = false }) {
+                HostFormView(store: catalog, editing: store.host)
+            }
+            .onChange(of: host) { _, updated in
+                if !isEditorOnScreen { adopt(updated) }
+            }
+            .onChange(of: isEditorOnScreen) { _, isOnScreen in
+                if !isOnScreen { adopt(host) }
+            }
+            .onChange(of: store.phase) { _, phase in
+                guard phase == .finished, offersHostKeyReplacement else { return }
+                offersHostKeyReplacement = false
+                isConfirmingHostKeyReplacement = store.pendingHostKeyReplacement != nil
+            }
+    }
+
+    /// Restarts onboarding for a changed Host: a selected session at once,
+    /// an edit once its sheet is gone.
+    private func adopt(_ updated: Host) {
+        guard updated != store.host else { return }
+        offersHostKeyReplacement = updated.routes != store.host.routes
+        store = Self.makeStore(updated, dependencies)
+        isConfirmingHostKeyReplacement = false
+        didCopyFingerprintCommand = false
+        sessionSelectionError = nil
+        isConsoleRecoveryArmed = false
+        isShowingPluginNotice = false
+    }
+
+    private var page: some View {
         List {
             connectionSection
+
+            hostKeyReplacementSection
 
             routesSection
 
@@ -111,16 +165,6 @@ struct HostOnboardingView: View {
             availableSessionsSection
 
             overlaySignInSection
-
-            if store.pendingHostKeyReplacement != nil {
-                Section {
-                    Button("Trust New Host Key", systemImage: "key.horizontal", role: .destructive) {
-                        isConfirmingHostKeyReplacement = true
-                    }
-                } footer: {
-                    Text("Only continue after verifying the new fingerprint with the Host owner.")
-                }
-            }
         }
         .readableColumnPage()
         .refreshable {
@@ -130,13 +174,12 @@ struct HostOnboardingView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Edit") { isEditing = true }
+                Button("Edit") {
+                    isEditorOnScreen = true
+                    isEditing = true
+                }
             }
         }
-        .sheet(isPresented: $isEditing) {
-            HostFormView(store: catalog, editing: store.host)
-        }
-
         .pluginNoticeSheet(
             pluginPresentation.notice, isPresented: $isShowingPluginNotice,
             actionState: store.pluginAction,
@@ -155,22 +198,19 @@ struct HostOnboardingView: View {
                     + "Key fingerprint:\n\(candidate.fingerprint.displayString)\n\n"
                     + "Verify it matches the Host's key before trusting.")
         }
-        .confirmationDialog(
-            "Replace the trusted Host key?",
+        // An alert, which also opens on its own after a route edit: iOS 26
+        // shows a confirmation dialog as a popover without Cancel.
+        .alert(
+            store.pendingHostKeyReplacement?.confirmationTitle ?? "",
             isPresented: $isConfirmingHostKeyReplacement,
-            titleVisibility: .visible
-        ) {
+            presenting: store.pendingHostKeyReplacement
+        ) { _ in
             Button("Trust New Key", role: .destructive) {
                 Task { await store.trustPresentedHostKey() }
             }
             Button("Cancel", role: .cancel) {}
-        } message: {
-            if let replacement = store.pendingHostKeyReplacement {
-                Text(
-                    "Trusted: \(replacement.known.displayString)\n\n"
-                        + "Presented: \(replacement.presented.displayString)\n\n"
-                        + "A changed key can indicate a reinstalled Host or an attack.")
-            }
+        } message: { replacement in
+            Text(replacement.confirmationMessage)
         }
         .alert(
             "Could Not Select Session",
@@ -180,7 +220,8 @@ struct HostOnboardingView: View {
         } message: {
             Text(sessionSelectionError ?? "")
         }
-        .task {
+        // A new store, after `adopt`, cancels the old one's checks.
+        .task(id: ObjectIdentifier(store)) {
             if store.phase == .idle {
                 await store.runChecks()
             }
@@ -463,6 +504,60 @@ struct HostOnboardingView: View {
         }
     }
 
+    /// Right under the status card, which a changed key leaves failed: the
+    /// new key, the command that prints it on the machine, then the trust.
+    @ViewBuilder
+    private var hostKeyReplacementSection: some View {
+        if let replacement = store.pendingHostKeyReplacement {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("New key")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    // One line: a wrapped fingerprint gains hyphens that are
+                    // not in it.
+                    Text(replacement.presented.displayString)
+                        .font(.callout.monospaced())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .textSelection(.enabled)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(replacement.checkPrompt)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(replacement.fingerprintCommand)
+                        .font(.callout.monospaced())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .textSelection(.enabled)
+                }
+                Button {
+                    UIPasteboard.general.string = replacement.fingerprintCommand
+                    didCopyFingerprintCommand = true
+                } label: {
+                    Label {
+                        Text(didCopyFingerprintCommand ? "Copied" : "Copy Command")
+                    } icon: {
+                        // The tall two-page glyph otherwise outgrows the text.
+                        Image(systemName: didCopyFingerprintCommand ? "checkmark" : "doc.on.doc")
+                            .font(.footnote)
+                    }
+                }
+                Button(
+                    replacement.trustActionTitle, systemImage: "key.horizontal", role: .destructive
+                ) {
+                    isConfirmingHostKeyReplacement = true
+                }
+                // A List row tints the icon with the accent color; the role
+                // only reddens the title.
+                .listItemTint(.red)
+            } footer: {
+                Text(replacement.verificationNote)
+            }
+        }
+    }
+
     /// The overlay sign-in link, while a check is waiting on it.
     @ViewBuilder
     private var overlaySignInSection: some View {
@@ -564,6 +659,53 @@ struct HostOnboardingView: View {
         } catch {
             sessionSelectionError = "The selected session could not be saved."
         }
+    }
+}
+
+/// The re-trust flow's words, naming whose key changed, and how to check
+/// the new key on that machine before trusting it.
+extension HostKeyReplacement {
+    /// Prints the fingerprint of the macOS or Linux host key of the
+    /// presented key's type, which sshd serves.
+    var fingerprintCommand: String {
+        let keyType =
+            if presented.algorithm.contains("ecdsa") {
+                "ecdsa"
+            } else if presented.algorithm.contains("rsa") {
+                "rsa"
+            } else {
+                "ed25519"
+            }
+        return "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub"
+    }
+
+    fileprivate var trustActionTitle: String {
+        jumpHost == nil ? "Trust New Host Key" : "Trust New Jump Host Key"
+    }
+
+    fileprivate var checkPrompt: String {
+        jumpHost == nil ? "On the Host, run" : "On the Jump Host, run"
+    }
+
+    fileprivate var verificationNote: String {
+        "Trust the new key only if this prints the same fingerprint. On Windows, the key "
+            + "is under %ProgramData%\\ssh."
+    }
+
+    fileprivate var confirmationTitle: String {
+        jumpHost == nil ? "Replace the trusted Host key?" : "Replace the Jump Host's trusted key?"
+    }
+
+    /// Leaves the fingerprint to the page: an alert wraps it with hyphens
+    /// that are not in it.
+    fileprivate var confirmationMessage: String {
+        guard let jumpHost else {
+            return "Compare the new key with what the command prints on the Host first. "
+                + "A changed key can indicate a reinstalled Host or an attack."
+        }
+        return "Jump Host: \(jumpHost.endpointDescription)\n\n"
+            + "Compare the new key with what the command prints on the Jump Host first. "
+            + "A changed key can indicate a reinstalled Jump Host or an attack."
     }
 }
 
