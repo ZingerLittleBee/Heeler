@@ -130,13 +130,21 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   `ConsoleStore.agentUsageStore(for:)` retains an
   [AgentUsageStore](../../Sources/Heeler/Usage/AgentUsageStore.swift) per Host;
   it owns refresh polling and the device's per-Host Claude limits preference.
-  Its Claude Code Account changes edit the Host's
-  [UsageAccountFile](../../Sources/Heeler/Usage/UsageAccountFile.swift)
-  through `Transport.readUsageAccountFile()` and `replaceUsageAccountFile(_:)`
+  Claude Code Accounts ([ADR 0030](../adr/0030-usage-counts-the-accounts-the-user-adds.md),
+  the design's [Accounts](../design/agent-usage.md#accounts)) arrive as the
+  report's `accounts` and `accountSuggestions` (`ClaudeAccountsReportTests`)
+  and need plugin 0.8.0 (`HeelerPluginFeature.claudeAccounts`).
+  The store's `addAccount`, `renameAccount`, `removeAccount` and
+  `ignoreSuggestion` edit the Host's `usage-accounts.json`, modeled by
+  [UsageAccountFile](../../Sources/Heeler/Usage/UsageAccountFile.swift),
+  through `Transport.readUsageAccountFile()` and `replaceUsageAccountFile(_:)`,
+  one change at a time behind ConsoleStore's `usageAccountFileGate`
   (focused tests: `UsageAccountFileTests`, `ClaudeAccountsStoreTests`).
   The [Claude Code Accounts sheet and the Usage notice](../../Sources/Heeler/Usage/ClaudeAccountsSheet.swift)
   make those changes; `AgentUsageLimitsCard` in the sheets file gives each
   Account its Usage Limits card (focused tests: `ClaudeAccountsSheetTests`).
+  Demo mode's Studio Mac keeps Accounts and suggestions in an in-memory file
+  (`DemoUsageSample`, `DemoUsageTests`).
   Its `readings(for:)` also feeds the chips, Host detail's closest Account
   and the iPad strip, and `AgentUsageScope.accounts(of:range:)` gives the
   Programs card its Account rows (focused tests: `ClaudeAccountsUsageTests`).
@@ -161,6 +169,12 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   herdr's environment, [usage-query.js](../../plugin/src/usage-query.js)
   reads snapshots, and [usage-worker.js](../../plugin/src/usage-worker.js)
   coordinates [scanners, limit readers, buckets and pricing](../../plugin/src/usage).
+  There, [accounts.js](../../plugin/src/usage/accounts.js) reads the Account
+  file and gives each Account its state,
+  [account-suggestions.js](../../plugin/src/usage/account-suggestions.js)
+  lists home candidates and merges the suggestions, and
+  [claude-agents.js](../../plugin/src/usage/claude-agents.js) records the
+  `CLAUDE_CONFIG_DIR` of running Claude Code Agents from the activity hook.
   Read the [design](../design/agent-usage.md) and
   [ADR 0028](../adr/0028-plugin-collects-agent-usage-on-the-host.md).
   Focused app coverage: `AgentUsageStoreTests` and `ClaudeUsagePreferenceTests`
