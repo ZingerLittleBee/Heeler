@@ -144,9 +144,11 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [AgentUsageWidgetPublisher](../../Sources/Heeler/Usage/AgentUsageWidgetPublisher.swift)
   writes from those stores, modeled in
   [UsageWidgetSnapshot](../../Sources/HeelerUsageCore/UsageWidgetSnapshot.swift)
-  (shared with the extension, as are the formats in `AgentUsageStyle`).
+  (shared with the extension, as are the formats in `AgentUsageStyle`);
+  its Usage Limits follow `readings(for:)`, one entry per Claude Code Account.
   [UsageWidgetViews](../../Sources/HeelerWidgets/Usage/UsageWidgetViews.swift)
-  draws every size and is compiled into the app for tests;
+  draws every size, with `UsageLimitsLayout` and `UsageLimitsPick` choosing
+  each size's layout and reading, and is compiled into the app for tests;
   [UsageWidgets](../../Sources/HeelerWidgets/Usage/UsageWidgets.swift) holds
   the timelines and configuration. Stale Hosts are re-read for the widgets
   by `ConsoleStore.refreshStaleWidgetUsage()` in the foreground and by
