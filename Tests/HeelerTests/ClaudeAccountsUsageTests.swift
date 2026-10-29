@@ -198,7 +198,7 @@ struct ClaudeAccountsUsageTests {
             AgentUsageSection(hostID: studio.id, hostName: studio.name, store: studio.store)
         }
         let labels = try await renderedLabels(section, until: { $0.contains { $0.contains("resets in") } })
-        #expect(labels.contains { $0.hasPrefix("5-hour, Claude Code · claude-2 · resets in") && $0.hasSuffix("84%") },
+        #expect(labels.contains { $0.hasPrefix("claude-2 · 5-hour, Claude Code · resets in") && $0.hasSuffix("84%") },
             "\(labels.sorted())")
     }
 

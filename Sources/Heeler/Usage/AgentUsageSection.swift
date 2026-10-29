@@ -234,14 +234,18 @@ struct AgentUsageDayStrip: View {
     }
 }
 
-/// The tightest Usage Limits window on one Host, with its Claude Code
-/// Account when the Host has several.
+/// The tightest Usage Limits window on one Host, named "claude-2 · 5-hour"
+/// for one of several Claude Code Accounts.
 struct AgentUsageLimitRow: View {
     let chip: AgentUsageLimitChip
     @Environment(\.locale) private var locale
 
+    private var title: String {
+        chip.account.map { "\($0) · \(chip.title)" } ?? chip.title
+    }
+
     private func subtitle(now: Date) -> String {
-        let name = chip.programTitle
+        let name = AgentUsageReport.Program.displayName(for: chip.program)
         guard let reset = chip.resetsAt, reset > now else { return name }
         return "\(name) · resets in \(AgentUsageStyle.countdown(to: reset, now: now, locale: locale))"
     }
@@ -260,7 +264,7 @@ struct AgentUsageLimitRow: View {
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 0) {
-                Text(chip.title)
+                Text(title)
                 TimelineView(.periodic(from: .now, by: 60)) { context in
                     Text(subtitle(now: context.date))
                 }
