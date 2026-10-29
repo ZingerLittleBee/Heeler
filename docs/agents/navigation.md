@@ -130,6 +130,10 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   `ConsoleStore.agentUsageStore(for:)` retains an
   [AgentUsageStore](../../Sources/Heeler/Usage/AgentUsageStore.swift) per Host;
   it owns refresh polling and the device's per-Host Claude limits preference.
+  Its Claude Code Account changes edit the Host's
+  [UsageAccountFile](../../Sources/Heeler/Usage/UsageAccountFile.swift)
+  through `Transport.readUsageAccountFile()` and `replaceUsageAccountFile(_:)`
+  (focused tests: `UsageAccountFileTests`, `ClaudeAccountsStoreTests`).
   The Home and Lock Screen widgets read the App Group snapshot that
   [AgentUsageWidgetPublisher](../../Sources/Heeler/Usage/AgentUsageWidgetPublisher.swift)
   writes from those stores, modeled in
