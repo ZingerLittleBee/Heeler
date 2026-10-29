@@ -38,6 +38,7 @@ struct HostOnboardingView: View {
     /// about a changed key at once: the edit may now reach another machine.
     @State private var offersHostKeyReplacement = false
     @State private var isConfirmingHostKeyReplacement = false
+    @State private var didCopyFingerprintCommand = false
     @State private var sessionSelectionError: String?
     /// A passing preflight not yet acted on: it may restart the Console's
     /// connection once (see `HostOnboardingConsoleRecovery`).
@@ -111,6 +112,7 @@ struct HostOnboardingView: View {
         offersHostKeyReplacement = updated.routes != store.host.routes
         store = Self.makeStore(updated, dependencies)
         isConfirmingHostKeyReplacement = false
+        didCopyFingerprintCommand = false
         sessionSelectionError = nil
         isConsoleRecoveryArmed = false
         isShowingPluginNotice = false
@@ -502,11 +504,46 @@ struct HostOnboardingView: View {
         }
     }
 
-    /// Right under the status card, which a changed key leaves failed.
+    /// Right under the status card, which a changed key leaves failed: the
+    /// new key, the command that prints it on the machine, then the trust.
     @ViewBuilder
     private var hostKeyReplacementSection: some View {
         if let replacement = store.pendingHostKeyReplacement {
             Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("New key")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    // One line: a wrapped fingerprint gains hyphens that are
+                    // not in it.
+                    Text(replacement.presented.displayString)
+                        .font(.callout.monospaced())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .textSelection(.enabled)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(replacement.checkPrompt)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(replacement.fingerprintCommand)
+                        .font(.callout.monospaced())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .textSelection(.enabled)
+                }
+                Button {
+                    UIPasteboard.general.string = replacement.fingerprintCommand
+                    didCopyFingerprintCommand = true
+                } label: {
+                    Label {
+                        Text(didCopyFingerprintCommand ? "Copied" : "Copy Command")
+                    } icon: {
+                        // The tall two-page glyph otherwise outgrows the text.
+                        Image(systemName: didCopyFingerprintCommand ? "checkmark" : "doc.on.doc")
+                            .font(.footnote)
+                    }
+                }
                 Button(
                     replacement.trustActionTitle, systemImage: "key.horizontal", role: .destructive
                 ) {
@@ -625,29 +662,49 @@ struct HostOnboardingView: View {
     }
 }
 
-/// The re-trust flow's words, naming whose key changed.
-private extension HostKeyReplacement {
-    var trustActionTitle: String {
+/// The re-trust flow's words, naming whose key changed, and how to check
+/// the new key on that machine before trusting it.
+extension HostKeyReplacement {
+    /// Prints the fingerprint of the macOS or Linux host key of the
+    /// presented key's type, which sshd serves.
+    var fingerprintCommand: String {
+        let keyType =
+            if presented.algorithm.contains("ecdsa") {
+                "ecdsa"
+            } else if presented.algorithm.contains("rsa") {
+                "rsa"
+            } else {
+                "ed25519"
+            }
+        return "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub"
+    }
+
+    fileprivate var trustActionTitle: String {
         jumpHost == nil ? "Trust New Host Key" : "Trust New Jump Host Key"
     }
 
-    var verificationNote: String {
-        jumpHost == nil
-            ? "Only continue after verifying the new fingerprint with the Host owner."
-            : "Only continue after verifying the new fingerprint with the Jump Host's owner."
+    fileprivate var checkPrompt: String {
+        jumpHost == nil ? "On the Host, run" : "On the Jump Host, run"
     }
 
-    var confirmationTitle: String {
+    fileprivate var verificationNote: String {
+        "Trust the new key only if this prints the same fingerprint. On Windows, the key "
+            + "is under %ProgramData%\\ssh."
+    }
+
+    fileprivate var confirmationTitle: String {
         jumpHost == nil ? "Replace the trusted Host key?" : "Replace the Jump Host's trusted key?"
     }
 
-    var confirmationMessage: String {
-        let fingerprints =
-            "Trusted: \(known.displayString)\n\nPresented: \(presented.displayString)\n\n"
+    /// Leaves the fingerprint to the page: an alert wraps it with hyphens
+    /// that are not in it.
+    fileprivate var confirmationMessage: String {
         guard let jumpHost else {
-            return fingerprints + "A changed key can indicate a reinstalled Host or an attack."
+            return "Compare the new key with what the command prints on the Host first. "
+                + "A changed key can indicate a reinstalled Host or an attack."
         }
-        return "Jump Host: \(jumpHost.endpointDescription)\n\n" + fingerprints
+        return "Jump Host: \(jumpHost.endpointDescription)\n\n"
+            + "Compare the new key with what the command prints on the Jump Host first. "
             + "A changed key can indicate a reinstalled Jump Host or an attack."
     }
 }

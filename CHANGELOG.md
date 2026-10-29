@@ -16,6 +16,8 @@ Entries reference the pull request that made the change.
   herdr instead of the one in `~/.config/herdr`. `launcher` in the plugin's
   `pair.json` overrides the generated one. Update the Heeler plugin to 0.7.1
   on the Host. (#521)
+- Check a changed host key before trusting it: the Host's page shows the new
+  key and a command to copy that prints it on the Host or Jump Host. (#531)
 
 ### Changed
 
