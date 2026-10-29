@@ -56,6 +56,24 @@ struct AgentUsageWidgetRefreshTests {
         #expect(after.host(added.id)?.excludedReason == "Not read yet")
     }
 
+    @Test func claudeCodeAccountsReachTheWidgetsAsEntriesOfTheirOwn() throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+
+        publisher.publish(
+            [Self.reading(host, .available(try ClaudeAccountsUsageFixture.report()), readAt: Self.now)], now: Self.now)
+        #expect(Self.snapshot(directory)?.host(host.id)?.limits.map(\.title) == [
+            "Claude Code · Default", "Claude Code · claude-2", "Claude Code · work", "Codex",
+        ])
+
+        // Down to the Default Account, Claude Code is one entry again.
+        let later = Self.now.addingTimeInterval(60)
+        let lone = try ClaudeAccountsUsageFixture.report(ClaudeAccountsUsageFixture.lone)
+        publisher.publish([Self.reading(host, .available(lone), readAt: later)], now: later)
+        #expect(Self.snapshot(directory)?.host(host.id)?.limits.map(\.id) == ["claude", "codex"])
+    }
+
     @Test func aHostIsStaleOnceBothTheAppAndTheSnapshotReadingsAgePastTheInterval() throws {
         let (publisher, directory) = try Self.publisher()
         defer { try? FileManager.default.removeItem(at: directory) }

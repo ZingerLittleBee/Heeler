@@ -184,7 +184,7 @@ struct AgentUsageWidgetTests {
     @Test func automaticShowsTheProgramClosestToItsLimit() {
         func limits(_ program: String, _ percent: Double?) -> UsageWidgetSnapshot.Limits {
             .init(
-                program: program, name: program, message: percent == nil ? "Usage Limits are off." : nil,
+                program: program, name: program, account: nil, message: percent == nil ? "Usage Limits are off." : nil,
                 isLastReading: false, source: nil, observedAt: nil,
                 windows: percent.map {
                     [.init(id: "weekly", name: "Weekly", usedPercent: $0,
@@ -199,6 +199,67 @@ struct AgentUsageWidgetTests {
         #expect(UsageLimitsPick.program(both, preferring: nil, now: Self.now)?.program == "codex")
         #expect(UsageLimitsPick.program(off, preferring: "claude", now: Self.now)?.program == "claude")
         #expect(UsageLimitsPick.program([limits("claude", nil)], preferring: nil, now: Self.now)?.program == "claude")
+    }
+
+    // MARK: Claude Code Accounts
+
+    @Test func eachClaudeCodeAccountIsAnEntryInTheAppsOrder() throws {
+        let report = try ClaudeAccountsUsageFixture.report()
+        let host = UsageWidgetSnapshot.Host(id: studio, name: "Studio Mac", report: report, readAt: Self.now)
+
+        // The Default Account, the Account file's order, then Codex, as Usage lists them.
+        #expect(host.limits.map(\.account) == ["Default", "claude-2", "work", nil])
+        #expect(host.limits.map(\.id) == ["claude.Default", "claude.claude-2", "claude.work", "codex"])
+        #expect(host.limits.map(\.title) == [
+            "Claude Code · Default", "Claude Code · claude-2", "Claude Code · work", "Codex",
+        ])
+        #expect(host.limits.map(\.program) == AgentUsageLimitsCard.readings(for: report).map(\.program))
+        // Each Account carries its own windows; one that is not counted says why.
+        #expect(host.limits[0].windows.map(\.usedPercent) == [34, 61])
+        #expect(host.limits[1].windows.map(\.usedPercent) == [84, 52])
+        #expect(host.limits[2].windows.isEmpty && host.limits[2].message == "Directory not found")
+        // Token Usage stays per program, the Accounts already added up.
+        #expect(host.programs.filter { $0.program == "claude" }.map(\.today.tokens) == [1_000])
+    }
+
+    @Test func aLoneAccountAnOldPluginOrLimitsOffKeepOneClaudeCodeEntry() throws {
+        let reports = [
+            try ClaudeAccountsUsageFixture.report(ClaudeAccountsUsageFixture.lone),
+            try ClaudeAccountsUsageFixture.report(nil),
+            try ClaudeAccountsUsageFixture.report(claudeLimits: false),
+        ]
+        let hosts = reports.map { UsageWidgetSnapshot.Host(id: studio, name: "Studio Mac", report: $0, readAt: Self.now) }
+
+        for host in hosts {
+            #expect(host.limits.map(\.id) == ["claude", "codex"])
+            #expect(host.limits.allSatisfy { $0.account == nil })
+            #expect(host.limits.first?.title == "Claude Code")
+        }
+        #expect(hosts[2].limits.first?.message == "Usage Limits are off.")
+    }
+
+    @Test func aSnapshotFromBeforeAccountsStillReads() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = UsageWidgetSnapshotStore(containerURL: directory)
+        let older = """
+            {"version": 1, "hosts": [{"id": "\(studio.uuidString)", "name": "Studio Mac", "programs": [],
+              "limits": [{"program": "claude", "name": "Claude Code", "isLastReading": false, "source": "program",
+                "windows": [{"id": "fiveHour", "name": "5-hour", "usedPercent": 62, "expired": false}]}]}]}
+            """
+        try Data(older.utf8).write(to: directory.appendingPathComponent("usage-widgets.json"))
+
+        let limits = try #require(store.read()?.host(studio)?.limits.first)
+        #expect(limits.account == nil && limits.id == "claude" && limits.title == "Claude Code")
+        #expect(limits.windows.map(\.usedPercent) == [62])
+
+        // Accounts round-trip through the file.
+        let snapshot = UsageWidgetSnapshot(hosts: [UsageWidgetSnapshot.Host(
+            id: studio, name: "Studio Mac", report: try ClaudeAccountsUsageFixture.report(), readAt: Self.now)])
+        store.write(snapshot)
+        #expect(store.read() == snapshot)
+        #expect(store.read()?.hosts.first?.limits.map(\.account) == ["Default", "claude-2", "work", nil])
     }
 
     private func reading(

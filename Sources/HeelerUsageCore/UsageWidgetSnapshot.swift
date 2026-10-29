@@ -86,6 +86,10 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
 
         let program: String
         let name: String
+        /// The Claude Code Account these limits are for, while the Host has
+        /// several: each Account is an entry of its own, in the app's order.
+        /// nil for a program's own, and in snapshots from before Accounts.
+        let account: String?
         /// Why there are no windows to show; nil when the program reported them.
         let message: String?
         /// The program would not answer again yet: these are its last windows.
@@ -94,7 +98,11 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
         let observedAt: Date?
         let windows: [Window]
 
-        var id: String { program }
+        /// Account names are unique on a Host, the Default Account's included.
+        var id: String { account.map { "\(program).\($0)" } ?? program }
+
+        /// "Claude Code · claude-2", or the program alone.
+        var title: String { account.map { "\(name) · \($0)" } ?? name }
     }
 
     struct Window: Codable, Equatable, Sendable, Identifiable {
