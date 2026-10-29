@@ -260,7 +260,10 @@ struct AgentUsagePageInteractionTests {
         })
         await transport.setAgentUsage(.success(complete))
         // The pull ends after its read; the surfaces keep the 3-second cadence.
-        try #require(await eventually { await !sleeper.durations.isEmpty })
+        // The Host section under the page and the dashboard both restart
+        // polling, and the later one supersedes the earlier. Firing before
+        // both wait would leave the later one asleep.
+        try #require(await eventually { await sleeper.durations.count == 2 })
         for duration in await sleeper.durations {
             #expect(duration > .zero && duration <= AgentUsageStore.pollInterval)
         }
