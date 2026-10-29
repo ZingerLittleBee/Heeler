@@ -50,6 +50,8 @@ struct AgentUsageDashboard: View {
     @State private var selectedDay: String?
     @State private var daySheet: AgentUsageDaySelection?
     @State private var isShowingLimits = false
+    /// The Host whose Claude Code Accounts sheet is open.
+    @State private var accountsHostID: Host.ID?
     @State private var breakdown = AgentUsageBreakdown.Kind.models
     @State private var width: CGFloat = 0
     @Environment(\.locale) private var locale
@@ -66,7 +68,9 @@ struct AgentUsageDashboard: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if isWide && showsLimits {
-                    AgentUsageLimitsPage(entries: scopedEntries) { showsLimits = false }
+                    AgentUsageLimitsPage(entries: scopedEntries, showAccounts: { accountsHostID = $0 }) {
+                        showsLimits = false
+                    }
                 } else {
                     if !isWide { controls }
                     content(scope)
@@ -109,6 +113,7 @@ struct AgentUsageDashboard: View {
         .sheet(isPresented: $isShowingLimits) {
             AgentUsageLimitsSheet(entries: scopedEntries)
         }
+        .modifier(ClaudeAccountsSheetPresenter(hostID: $accountsHostID, entries: entries))
         .onChange(of: scopeHostID) { selectedDay = nil }
         // Waits for the first layout: until then the page cannot tell wide
         // from compact.
@@ -173,6 +178,7 @@ struct AgentUsageDashboard: View {
             ForEach(scope.included.filter { $0.refreshFailure != nil }) { host in
                 failureBanner(host, isOnlyHost: scope.included.count == 1)
             }
+            accountsNotice
             if isWide {
                 AgentUsageWideColumns {
                     VStack(alignment: .leading, spacing: 0) {
@@ -684,6 +690,18 @@ struct AgentUsageDashboard: View {
         .padding(16)
         .background(cardBackground)
         .padding(.top, 18)
+    }
+
+    /// One Host's suggested Claude Code directories, under any failure.
+    @ViewBuilder
+    private var accountsNotice: some View {
+        if scopedEntries.count == 1, let entry = scopedEntries.first, entry.isConnected,
+            let title = ClaudeAccountsListing.noticeTitle(
+                state: entry.store.state, supportsAccounts: entry.store.supportsClaudeAccounts)
+        {
+            ClaudeAccountsNotice(title: title) { accountsHostID = entry.id }
+                .padding(.top, 14)
+        }
     }
 
     private func failureBanner(_ host: AgentUsageScope.IncludedHost, isOnlyHost: Bool) -> some View {

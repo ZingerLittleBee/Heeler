@@ -147,10 +147,13 @@ struct AgentUsageLimitsStrip: View {
     }
 }
 
-/// An iPad's Usage Limits view: each program's windows in full, per Host,
-/// with each Host's Claude Code limits consent.
+/// An iPad's Usage Limits view: each program's windows in full, per Host
+/// and Claude Code Account, with each Host's Claude Code limits consent and
+/// its Accounts.
 struct AgentUsageLimitsPage: View {
     let entries: [AgentUsageHostEntry]
+    /// Opens a Host's Claude Code Accounts as a form sheet.
+    let showAccounts: (Host.ID) -> Void
     /// Back to Token Usage.
     let showTokenUsage: () -> Void
     @Environment(\.locale) private var locale
@@ -184,17 +187,17 @@ struct AgentUsageLimitsPage: View {
     @ViewBuilder
     private func hostLimits(_ entry: AgentUsageHostEntry) -> some View {
         if case .available(let report) = entry.store.state {
-            let programs = report.programs ?? []
+            let cards = AgentUsageLimitsCard.cards(for: report)
             HStack(alignment: .top, spacing: 30) {
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(programs.indices.filter { $0.isMultiple(of: 2) }, id: \.self) { index in
-                        programCard(programs[index], store: entry.store)
+                    ForEach(cards.indices.filter { $0.isMultiple(of: 2) }, id: \.self) { index in
+                        card(cards[index], entry: entry)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(programs.indices.filter { !$0.isMultiple(of: 2) }, id: \.self) { index in
-                        programCard(programs[index], store: entry.store)
+                    ForEach(cards.indices.filter { !$0.isMultiple(of: 2) }, id: \.self) { index in
+                        card(cards[index], entry: entry)
                     }
                     if entry.id == entries.first?.id { perHostCard }
                 }
@@ -209,26 +212,29 @@ struct AgentUsageLimitsPage: View {
         }
     }
 
-    private func programCard(_ program: AgentUsageReport.Program, store: AgentUsageStore) -> some View {
+    private func card(_ card: AgentUsageLimitsCard, entry: AgentUsageHostEntry) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 12) {
-                if program.program == "claude" && program.usageLimits.state == "disabled" {
-                    AgentUsageProgramTitle(program: program.program, plan: nil)
-                    ClaudeUsageLimitsToggle(store: store)
-                } else {
-                    AgentUsageProgramTitle(program: program.program, plan: program.usageLimits.plan)
-                    AgentUsageLimitsView(program: program.program, limits: program.usageLimits, showsTitle: false)
-                    if program.program == "claude" {
+                switch card {
+                case .limits(_, let program, let account, let limits):
+                    AgentUsageProgramTitle(program: program, account: account, plan: limits.plan)
+                    AgentUsageLimitsView(program: program, limits: limits, showsTitle: false)
+                case .unread(_, let account, let reason):
+                    AgentUsageUncountedAccount(account: account, reason: reason)
+                case .claudeToggle:
+                    ClaudeUsageLimitsToggle(store: entry.store)
+                    if ClaudeAccountsEntry.isShown(for: entry.store) {
                         Divider()
-                        ClaudeUsageLimitsToggle(store: store)
+                        ClaudeAccountsEntry(hostName: entry.name, store: entry.store) { showAccounts(entry.id) }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
             .background(cardBackground)
             Group {
-                if program.program == "claude" { ClaudeUsageLimitsNote() }
-                if program.program == "codex" { CodexUsageLimitsNote() }
+                if card == .claudeToggle { ClaudeUsageLimitsNote() }
+                if case .limits(_, "codex", _, _) = card { CodexUsageLimitsNote() }
             }
             .padding(.horizontal, 18)
         }
