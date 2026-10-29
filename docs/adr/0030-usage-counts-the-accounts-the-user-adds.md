@@ -83,4 +83,4 @@ anyway.
 - An Agent started from a second Account's directory still lacks herdr's
   Claude Code hook, which herdr installs into one directory only, and Chat
   looks for Claude Code Transcripts under `~/.claude` only. Chat for such
-  Agents is a separate problem.
+  Agents is a separate problem (#532).
