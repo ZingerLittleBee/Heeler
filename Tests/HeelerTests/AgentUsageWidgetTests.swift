@@ -262,6 +262,80 @@ struct AgentUsageWidgetTests {
         #expect(store.read()?.hosts.first?.limits.map(\.account) == ["Default", "claude-2", "work", nil])
     }
 
+    @Test func circularAndInlineNameTheAccountClosestToALimit() {
+        let accounts = [
+            Self.limits("Default", [Self.window("fiveHour", 62, resetsIn: 2), Self.window("weeklyOpus", 71, resetsIn: 88)]),
+            Self.limits("claude-2", [Self.window("fiveHour", 84, resetsIn: 0.5), Self.window("weekly", 57, resetsIn: 113)]),
+            Self.limits("work", []),
+        ]
+        let codex = Self.limits(nil, program: "codex", [
+            Self.window("primary", 24, resetsIn: 1), Self.window("secondary", 47, resetsIn: 70),
+        ])
+
+        let closest = UsageLimitsPick.reading(accounts, now: Self.now)
+        #expect(closest?.limits.account == "claude-2" && closest?.window.id == "fiveHour")
+        // Once claude-2's 5-hour window resets, Default's weekly Opus window is the closest.
+        let later = UsageLimitsPick.reading(accounts, now: Self.now.addingTimeInterval(3_600))
+        #expect(later?.limits.account == "Default" && later?.window.id == "weeklyOpus")
+        // One program alone keeps the window that resets soonest.
+        #expect(UsageLimitsPick.reading([codex], now: Self.now)?.window.id == "primary")
+        #expect(UsageLimitsPick.reading([], now: Self.now) == nil)
+
+        // The chosen program brings every Account; Automatic picks the
+        // program of the entry closest to a limit.
+        let all = accounts + [codex]
+        #expect(UsageLimitsPick.entries(all, preferring: "claude", now: Self.now).map(\.account)
+            == ["Default", "claude-2", "work"])
+        #expect(UsageLimitsPick.entries(all, preferring: "codex", now: Self.now).map(\.id) == ["codex"])
+        #expect(UsageLimitsPick.entries(all, preferring: nil, now: Self.now).map(\.program) == ["claude", "claude", "claude"])
+        let tightCodex = Self.limits(nil, program: "codex", [Self.window("primary", 95, resetsIn: 1)])
+        #expect(UsageLimitsPick.entries(accounts + [tightCodex], preferring: nil, now: Self.now).map(\.id) == ["codex"])
+    }
+
+    @Test func theLayoutFollowsHowManyEntriesAHostHas() {
+        func entries(_ count: Int) -> [UsageWidgetSnapshot.Limits] {
+            (0..<count).map { Self.limits("account-\($0)", []) }
+        }
+
+        // Small and rectangular: one program's figure, or a line per Account.
+        #expect((0...4).map { UsageLimitsLayout.program(entries($0)) } == [.figure, .figure, .lines, .lines, .lines])
+        // Medium: two columns for up to two entries, then a line each.
+        #expect((0...5).map { UsageLimitsLayout.medium(entries($0)) }
+            == [.columns, .columns, .columns, .lines, .lines, .lines])
+        // Large: up to four windows each for up to three entries, then two each.
+        #expect((0...5).map { UsageLimitsLayout.large(entries($0)) }
+            == [.windows, .windows, .windows, .windows, .pairs, .pairs])
+    }
+
+    @Test func aPairNamesItsResetByTheTimeTodayAndByTheDayAfter() throws {
+        let noon = try #require(Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Self.now))
+        let today = noon.addingTimeInterval(1_800)
+        let later = noon.addingTimeInterval(72 * 3_600)
+        func window(_ resetsAt: Date) -> UsageWidgetSnapshot.Window {
+            .init(id: "w", name: "Weekly", usedPercent: 50, resetsAt: resetsAt, expired: false)
+        }
+
+        #expect(UsageWidgetText.resetDay(window(today), now: noon)
+            == "resets \(today.formatted(date: .omitted, time: .shortened))")
+        #expect(UsageWidgetText.resetDay(window(later), now: noon)
+            == "resets \(later.formatted(.dateTime.month(.abbreviated).day()))")
+        // An ended window has none: its row says so.
+        #expect(UsageWidgetText.resetDay(window(today), now: noon.addingTimeInterval(3_600)) == nil)
+    }
+
+    private static func window(_ id: String, _ percent: Double, resetsIn hours: Double) -> UsageWidgetSnapshot.Window {
+        .init(id: id, name: id, usedPercent: percent, resetsAt: now.addingTimeInterval(hours * 3_600), expired: false)
+    }
+
+    private static func limits(
+        _ account: String?, program: String = "claude", _ windows: [UsageWidgetSnapshot.Window]
+    ) -> UsageWidgetSnapshot.Limits {
+        .init(
+            program: program, name: AgentUsageReport.Program.displayName(for: program), account: account,
+            message: windows.isEmpty ? "Directory not found" : nil, isLastReading: false,
+            source: windows.isEmpty ? nil : .program, observedAt: now, windows: windows)
+    }
+
     private func reading(
         _ id: UUID, _ name: String, _ state: AgentUsageStore.State, readAt: Date? = nil, isConnected: Bool = true
     ) -> AgentUsageWidgetReading {
