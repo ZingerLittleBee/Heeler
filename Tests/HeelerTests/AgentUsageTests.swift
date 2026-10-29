@@ -821,8 +821,9 @@ struct ClaudeUsagePreferenceTests {
         }
 
         /// The demo's other Claude Code directories are the studio Host's:
-        /// the build Host's browser neither lists nor accepts them, rather
-        /// than add one it then reports as not found.
+        /// the build Host's browser neither lists nor accepts them, nor the
+        /// one holding Chat's sample transcripts, rather than add one it
+        /// then reports as not found.
         @Test func onlyTheStudioHostHoldsTheDemoAccountDirectories() async throws {
             let build = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.buildHostID })
             let transport = try DemoScreenshotFixture.transport(for: build)
@@ -834,6 +835,15 @@ struct ClaudeUsagePreferenceTests {
             #expect(await store.addAccount(directory: directory) == .refused(.notClaudeDirectory))
             let home = try await transport.listFiles(RemoteFileListingRequest(directory: DemoChatSample.home))
             #expect(home?.entries.contains { $0.name == ".claude-2" } != true)
+            let chat = "\(DemoChatSample.home)/.claude"
+            #expect(await store.addAccount(directory: chat) == .refused(.notClaudeDirectory))
+            // Chat still finds and reads its transcripts there.
+            let projects = try await transport.listFiles(
+                RemoteFileListingRequest(directory: chat + "/projects", kinds: [.directory]))
+            #expect(projects?.entries.isEmpty == false)
+            for path in DemoChatSample.files.keys {
+                #expect(try await transport.fileStatus(atPath: path)?.kind == .regular, "\(path)")
+            }
 
             let studio = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.studioHostID })
             let studioTransport = try DemoScreenshotFixture.transport(for: studio)

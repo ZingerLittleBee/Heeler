@@ -1736,8 +1736,15 @@
         }
 
         func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
-            (holdsAccountDirectories ? DemoUsageSample.accountFileStatus(atPath: path) : nil)
-                ?? DemoChatSample.status(atPath: path)
+            guard holdsAccountDirectories else {
+                // Chat's sample transcripts sit in a `.claude` this Host's
+                // report does not count either. Chat reads only the files
+                // under its `projects/`, so the markers can be refused.
+                let chatClaude = DemoChatSample.home + "/.claude"
+                guard path != chatClaude + "/projects", path != chatClaude + "/.claude.json" else { return nil }
+                return DemoChatSample.status(atPath: path)
+            }
+            return DemoUsageSample.accountFileStatus(atPath: path) ?? DemoChatSample.status(atPath: path)
         }
 
         func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
