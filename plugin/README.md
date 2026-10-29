@@ -587,7 +587,9 @@ tests in the app both read it.
 Bump `version` in `herdr-plugin.toml`, `package.json` and `package-lock.json`
 together with `test-vectors/plugin-version-v1.json` and
 `HeelerPluginCompatibility.bundled` in the app; the Node and Swift tests
-check that they agree. The app recommends updating any Host whose plugin is
+check that they agree. Move the demo plugin states in
+`DemoScreenshotMode.swift` that stand for the current version to it, and
+the one newer than the app past it. The app recommends updating any Host whose plugin is
 older, and its per-feature notes (`HeelerPluginFeature`) trust the version
 alone, so bump it with every change the app relies on rather than shipping
 behavior under an unchanged number, as 0.3.0 and 0.4.0 did.
@@ -636,6 +638,19 @@ the app's update notice installs from that branch. See
   v1 there, which pairs the phone with the user's default herdr; re-pair such
   a Host after the update. A herdr in `~/.config/herdr` pairs as before.
 
+### Updating to 0.8.0
+
+- Plugin 0.8.0 counts [Claude Code Accounts](#usage). When herdr's
+  environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
+  that Host's Claude Code usage; Heeler suggests it as an Account to add.
+  Without `CLAUDE_CONFIG_DIR`, the totals stay as before.
+- The first refresh after the update reads the Transcripts again to
+  attribute them to Accounts and reads Claude Code limits anew. Without
+  `CLAUDE_CONFIG_DIR`, Usage shows the previous totals meanwhile; with it,
+  the totals start over and grow as the refresh reads.
+- Older plugins ignore `usage-accounts.json`: Accounts added in Heeler count
+  only once the Host runs 0.8.0.
+
 ## Usage
 
 Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts.
@@ -669,6 +684,38 @@ use, so the plugin's `usage-claude-limits` action reads the limits in
 herdr's session. Start herdr from a terminal on the Mac, not over SSH.
 Current terms remain a pre-release check in the
 [design's open questions](../docs/design/agent-usage.md#open-questions).
+
+**Claude Code Accounts** (plugin 0.8.0) keep subscriptions apart when one
+Host runs several, each from its own config directory (for example an Agent
+started with `CLAUDE_CONFIG_DIR=~/.claude-2`). The Default Account is the
+directory Claude Code uses in herdr's environment, `CLAUDE_CONFIG_DIR` or
+else `~/.claude`, with the legacy `~/.config/claude` folded in. Heeler adds up
+to three more and writes the list over SFTP to `usage-accounts.json` in the
+plugin's config directory, beside `runtime.json`; the plugin only reads it,
+so every device and Host entry that reaches that directory shares it. Each
+Account reports its own Token Usage and, with Claude Code limits on, its own
+Usage Limits; the Host total adds them up. An Account whose directory is
+gone, or that resolves to a directory already counted, stays listed and
+adds nothing.
+
+Heeler suggests directories to add, and counts none until the user adds it:
+
+- the `CLAUDE_CONFIG_DIR` a running Claude Code Agent was started with. On
+  that Agent's status changes, the activity hook asks herdr for the pane's
+  processes (`herdr pane process-info`) at most once per pane every 10
+  minutes and reads only that variable from the Claude Code process's
+  environment (`ps -E` on macOS, `/proc/<pid>/environ` on Linux). It keeps
+  the directory in `usage/claude-agents.json` under the plugin's state
+  directory for 30 days after it was last seen. macOS hides the environment
+  of Apple platform binaries, and a `CLAUDE_CONFIG_DIR` set in a settings
+  file's `env` is not visible at all.
+- `.claude*` directories in `$HOME` and `claude*` directories in
+  `${XDG_CONFIG_HOME:-~/.config}` that hold Claude Code's `.claude.json` or
+  `projects/`, from one listing of each per refresh.
+
+Dismissed suggestions stay in the file's `ignored` list. See
+[Accounts](../docs/design/agent-usage.md#accounts) in the design and
+[ADR 0030](../docs/adr/0030-usage-counts-the-accounts-the-user-adds.md).
 
 Token Usage covers at most 30 days and only the Transcripts still on the
 Host. The page reports coverage, skipped compressed archives and Transcripts
@@ -983,6 +1030,11 @@ Activity size budget.
 Last-state (`activity/last-state.json`: `sent_at_ms`, `statuses`, `ended`) is
 written only after at least one successful delivery. All state writes are
 temp-file + rename.
+
+For a Claude Code Agent's event, the hook also looks up the config directory
+that Agent runs with, as a [Usage](#usage) Account suggestion. The lookup
+runs beside the Live Activity update, gives up after 3 seconds, and never
+fails the hook.
 
 ## Tests
 

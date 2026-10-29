@@ -143,7 +143,7 @@ extension UsageWidgetSnapshot.Host {
                     last30Days: .init(totals.last30Days),
                     days: (program.tokenUsage.daily ?? []).map { .init(date: $0.date, summary: .init($0.summary)) })
             },
-            limits: programs.map(UsageWidgetSnapshot.Limits.init))
+            limits: AgentUsageLimitsCard.readings(for: report).compactMap(UsageWidgetSnapshot.Limits.init))
     }
 }
 
@@ -154,8 +154,26 @@ extension UsageWidgetSnapshot.Summary {
 }
 
 extension UsageWidgetSnapshot.Limits {
-    init(_ program: AgentUsageReport.Program) {
-        let limits = program.usageLimits
+    /// A reading in the order Usage lists them: Codex's, Claude Code's, or
+    /// with several Accounts each Account's, those not counted saying why.
+    init?(_ card: AgentUsageLimitsCard) {
+        let name = AgentUsageReport.Program.displayName(for: card.program)
+        switch card {
+        case .limits(let accountID, let program, let account, let limits):
+            self.init(program: program, name: name, account: account, accountID: accountID, limits: limits)
+        case .unread(let accountID, let account, let reason):
+            self.init(
+                program: card.program, name: name, account: account, accountID: accountID, message: reason,
+                isLastReading: false, source: nil, observedAt: nil, windows: [])
+        case .claudeToggle:
+            return nil
+        }
+    }
+
+    private init(
+        program: String, name: String, account: String?, accountID: String?,
+        limits: AgentUsageReport.Program.UsageLimits
+    ) {
         let shown = limits.state == "ok" || limits.state == "throttled"
         let windows = shown ? limits.windows ?? [] : []
         let message: String? = if shown {
@@ -163,16 +181,16 @@ extension UsageWidgetSnapshot.Limits {
         } else if limits.state == "unavailable" && limits.reason == "notReadYet" {
             "Open Heeler to read Usage Limits."
         } else {
-            AgentUsageLimitsView.unavailableMessage(limits, program: program.program)
+            AgentUsageLimitsView.unavailableMessage(limits, program: program)
         }
         self.init(
-            program: program.program, name: program.displayName, message: message,
+            program: program, name: name, account: account, accountID: accountID, message: message,
             isLastReading: limits.state == "throttled",
             source: shown ? (limits.source == "lastSession" ? .lastSession : .program) : nil,
             observedAt: AgentUsageLimitsView.date(limits.observedAt),
             windows: windows.map { window in
                 UsageWidgetSnapshot.Window(
-                    id: window.id, name: AgentUsageLimitsView.windowName(window, program: program.program),
+                    id: window.id, name: AgentUsageLimitsView.windowName(window, program: program),
                     usedPercent: window.usedPercent, resetsAt: AgentUsageLimitsView.date(window.resetsAt),
                     expired: window.expired)
             })

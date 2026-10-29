@@ -141,12 +141,16 @@ test("query returns the empty cache without exposing runtime paths", async (t) =
     refreshing: false,
     scan: { state: "complete", coveredFrom: null, coveredThrough: "2026-10-23T12:34:56.000Z", skippedArchives: 0, unreadableFiles: 0 },
     programs: [
-      { program: "claude", tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" } },
+      { program: "claude", tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" },
+        accounts: [{ id: "default", isDefault: true, name: null, directory: f.env.CLAUDE_CONFIG_DIR, state: "ok",
+          tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" } }],
+        accountSuggestions: [] },
       { program: "codex", tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" } },
     ],
   };
   assert.deepEqual(report, expected);
-  assert.equal(result.stdout.includes(f.root), false);
+  // Only the Default Account's directory names a Host path.
+  assert.equal(result.stdout.replace(JSON.stringify(f.env.CLAUDE_CONFIG_DIR), "").includes(f.root), false);
 
 });
 
@@ -229,6 +233,7 @@ test("a cached 30-day report with 60480 buckets completes within the SSH deadlin
   writeFileSync(join(directory, "buckets.json"), JSON.stringify({
     complete: true, generatedAt: new Date(now).toISOString(), coveredThrough: new Date(now).toISOString(),
     coveredSince: start, checkpoint: { version: CHECKPOINT_VERSION, scannerVersion: SCANNER_VERSION, pricingFingerprint }, breakdownsVersion: 1, limitsVersion: 1,
+    countedAccounts: ["default"],
     nextLimitsAt: now + 60_000, buckets,
   }));
   // Exercise the real query process, including JSON decoding and encoding, under

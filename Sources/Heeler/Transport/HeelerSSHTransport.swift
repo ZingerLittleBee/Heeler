@@ -1370,6 +1370,14 @@ actor HeelerSSHTransport: Transport {
         try await readPluginConfigFile(named: Self.sidebarLayoutFileName)
     }
 
+    func readUsageAccountFile() async throws -> Data? {
+        try await readPluginConfigFile(named: UsageAccountFile.fileName)
+    }
+
+    func replaceUsageAccountFile(_ contents: Data) async throws {
+        try await replacePluginConfigFile(named: UsageAccountFile.fileName, contents: contents)
+    }
+
     private func readPluginConfigFile(named name: String) async throws -> Data? {
         try await withNotificationFileRequestDeadline {
             guard await self.notificationConnectionIsAvailable() else {

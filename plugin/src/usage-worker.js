@@ -12,7 +12,9 @@ import { priceContribution, pricingVersion } from "./usage/pricing.js";
 import { codexFiles, codexLines, ArchiveUnavailableError } from "./usage/codex-files.js";
 import { createCodexState, consumeCodexLine, finishCodexRead, codexTotalSignature } from "./usage/codex-scanner.js";
 import { readCodexLimits, codexRolloutLimits, codexLimitsWithFallback } from "./usage/codex-limits.js";
-import { readClaudeLimits, readClaudeLimitsInServer, cacheClaudeLimits, claudeVersion } from "./usage/claude-limits.js";
+import { readClaudeLimits, readClaudeLimitsInServer, cacheClaudeLimits, claudeVersion, accountRuntime, claudeLimitsEntries, nextClaudeRead } from "./usage/claude-limits.js";
+import { readClaudeAccounts } from "./usage/accounts.js";
+import { homeCandidates } from "./usage/account-suggestions.js";
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 class LockLostError extends Error {}
@@ -60,9 +62,10 @@ async function run() {
     const now = Date.now();
     const cutoff = now - RETENTION;
     const roots = usageRoots(runtime);
-    for (const name of readdirSync(join(runtime.stateDir, "usage"))) {
-      const sibling = join(runtime.stateDir, "usage", name);
-      if (sibling === directory) continue;
+    // Only directories are caches; claude-agents.json sits beside them.
+    for (const entry of readdirSync(join(runtime.stateDir, "usage"), { withFileTypes: true })) {
+      const sibling = join(runtime.stateDir, "usage", entry.name);
+      if (sibling === directory || !entry.isDirectory()) continue;
       try { if (lastWritten(sibling) < cutoff && !activeLock(sibling)) rmSync(sibling, { recursive: true, force: true }); }
       catch { /* An unreadable sibling is left for its owner. */ }
     }
@@ -72,49 +75,86 @@ async function run() {
     const limits = readJSON(join(directory, "limits.json")) || {};
     const maintainHeartbeat = () => { if (Date.now() - lock.heartbeat >= 1000) heartbeat(); };
     const previous = await loadCheckpoint(directory, previousSnapshot, maintainHeartbeat);
+    const accounts = readClaudeAccounts(values.config, runtime).filter(account => account.state === "ok");
+    const counted = new Set(accounts.map(account => account.id));
+    // The query suggests these as Accounts against the Account file it reads.
+    const claudeCandidates = homeCandidates(runtime);
+    limits.claude = claudeLimitsEntries(limits.claude, accounts);
+    // An Account no longer counted (removed, missing, a duplicate) leaves with
+    // its files and records, without a rebuild; one that returns is read anew.
+    const leaving = record => record.program === "claude" && !counted.has(record.account);
+    const previousFiles = Object.fromEntries(Object.entries(previous?.files || {}).filter(([, state]) => !leaving(state)));
+    let left = false;
+    for (const [key, record] of previous?.keys || []) {
+      if (!leaving(record)) continue;
+      changeBucket(previous.buckets, record, -1);
+      previous.keys.delete(key);
+      left = true;
+    }
+    for (const group of previous?.groups.keys() || []) if (!counted.has(JSON.parse(group)[0])) previous.groups.delete(group);
     const errors = {};
-    const files = [];
+    const found = [];
+    const listed = new Set();
     const unlistedPaths = [];
-    const failedPrograms = new Set();
+    const failedSources = new Set();
+    const claudeReason = "Could not read the Claude Code Transcripts.";
     let olderTranscripts = false;
     // One unreadable entry is skipped and counted; only a root that cannot be
-    // listed hides its program. Neither makes its known files look deleted.
-    for (const [program, list, programRoots, reason] of [
-      ["claude", claudeFiles, roots.claude, "Could not read the Claude Code Transcripts."],
-      ["codex", codexFiles, roots.codex, "Could not read the Codex Transcripts."],
+    // listed hides its Account or program. Neither makes its known files look deleted.
+    for (const { source, program, account, list, reason } of [
+      ...accounts.map(({ id, roots: accountRoots }) => ({ source: `claude:${id}`, program: "claude", account: id,
+        list: () => claudeFiles(accountRoots, cutoff), reason: claudeReason })),
+      { source: "codex", program: "codex", list: () => codexFiles(roots.codex, cutoff), reason: "Could not read the Codex Transcripts." },
     ]) {
       let listing;
-      try { listing = await list(programRoots, cutoff); } catch { listing = { files: [], unreadable: [], rootFailed: true, older: false }; }
+      try { listing = await list(); } catch { listing = { files: [], unreadable: [], rootFailed: true, older: false }; }
       olderTranscripts ||= listing.older;
-      files.push(...listing.files.map(file => ({ ...file, program })));
-      unlistedPaths.push(...listing.unreadable);
-      if (listing.rootFailed) { failedPrograms.add(program); errors[program] = reason; }
+      for (const file of listing.files) {
+        // A Transcript that two Accounts reach (a symbolic link) counts in the first.
+        if (account && listed.has(file.path)) continue;
+        listed.add(file.path);
+        found.push({ ...file, program, ...(account ? { account } : {}) });
+      }
+      // Two Accounts that share a tree report its unreadable entries once.
+      for (const path of listing.unreadable) if (!unlistedPaths.includes(path)) unlistedPaths.push(path);
+      if (listing.rootFailed) { failedSources.add(source); errors[source] = reason; }
     }
+    if (accounts.every(({ id }) => failedSources.has(`claude:${id}`))) errors.claude = claudeReason;
+    const unlisted = (path, state) => failedSources.has(state.program === "claude" ? `claude:${state.account}` : state.program)
+      || unlistedPaths.some(unlisted => path === unlisted || path.startsWith(unlisted + sep));
+    // A Transcript stays with the Account whose kept state holds it while that
+    // Account cannot list it: another one reaching it would read on from its offset.
+    const files = found.filter(file => {
+      const state = previousFiles[file.path];
+      return state === undefined || state.account === file.account || !unlisted(file.path, state);
+    });
     files.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path));
-    const match = matchFiles(files, previous?.files || {}, now, (path, state) => failedPrograms.has(state.program)
-      || unlistedPaths.some(unlisted => path === unlisted || path.startsWith(unlisted + sep)));
+    const match = matchFiles(files, previousFiles, now, unlisted);
     const rebuilding = !previous || match.rebuild || previousSnapshot?.limitsVersion !== 1;
     const preserveSnapshot = previousSnapshot !== null && (rebuilding || previousSnapshot.rebuilding);
     const buckets = rebuilding ? new Map() : previous.buckets;
     const keys = rebuilding ? new Map() : previous.keys;
     const groups = rebuilding ? new Map() : previous.groups;
-    const newGeneration = rebuilding || previous.prune;
+    // The log must no longer hold the records of an Account that left.
+    const newGeneration = rebuilding || previous.prune || left;
     const log = cacheWrite(() => newGeneration ? startLog(directory, keys, groups) : openLog(directory, previous.generation));
     const fileStates = rebuilding ? {} : match.states;
     let lastSnapshot = performance.now();
     const snapshot = (complete, final = false) => {
       heartbeat();
       // A routine incremental run only adds to the totals: until it finishes,
-      // it keeps the previous run's scan state, coverage and age, so the next
-      // query restarts a worker that died mid-run.
-      const scan = final ? { complete, coveredThrough: new Date(now).toISOString(), generatedAt: new Date().toISOString() }
+      // it keeps the previous run's scan state, coverage, age and Accounts,
+      // so the next query restarts a worker that died mid-run.
+      const scan = final ? { complete, coveredThrough: new Date(now).toISOString(), generatedAt: new Date().toISOString(), countedAccounts: [...counted] }
         : { complete: !rebuilding && previousSnapshot?.complete === true, coveredThrough: previousSnapshot?.coveredThrough ?? null,
-          generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString() };
+          generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString(), countedAccounts: previousSnapshot?.countedAccounts };
       // Commit parser progress even when a rebuild is still resolving a burst.
       // The query keeps the old aggregates; the next worker resumes the new log.
-      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors,
-        limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude?.report },
-        nextLimitsAt: limits.codex?.nextAllowedAt, nextClaudeLimitsAt: limits.claude?.nextAllowedAt,
+      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, claudeCandidates,
+        // The program's Claude reading stays the Default Account's, for apps that ignore Accounts.
+        limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude.default?.report,
+          claudeAccounts: Object.fromEntries(accounts.map(({ id }) => [id, limits.claude[id]?.report])) },
+        nextLimitsAt: limits.codex?.nextAllowedAt, nextClaudeLimitsAt: nextClaudeRead(limits.claude, accounts),
         skippedArchives: Object.values(fileStates).filter(file => file.skipped).length,
         unreadableFiles: unlistedPaths.length + files.filter(file => fileStates[file.logicalPath || file.path]?.unreadable).length,
         // Coverage starts at the earliest record any remaining Transcript holds;
@@ -122,7 +162,7 @@ async function run() {
         coveredSince: Object.values(fileStates).reduce((earliest, file) => Number.isFinite(file.firstAt) && (earliest === null || file.firstAt < earliest)
           ? file.firstAt : earliest, olderTranscripts ? cutoff : null) };
       cacheWrite(() => saveCheckpoint(directory, fileStates, log, preserveSnapshot && !scan.complete
-        ? { ...previousSnapshot, complete: false, rebuilding: true, limitsVersion: 1,
+        ? { ...previousSnapshot, complete: false, rebuilding: true, limitsVersion: 1, claudeCandidates,
           usageLimits: progress.usageLimits, nextLimitsAt: progress.nextLimitsAt, nextClaudeLimitsAt: progress.nextClaudeLimitsAt }
         : { ...progress, rebuilding: false }));
       lastSnapshot = performance.now();
@@ -168,7 +208,7 @@ async function run() {
     for (const file of files) {
       const logicalPath = file.logicalPath || file.path;
       const state = fileStates[logicalPath] ||= { dev: file.dev, ino: file.ino, size: file.size, mtimeMs: file.mtimeMs,
-        program: file.program, compressed: Boolean(file.compressed), offset: 0, finished: false,
+        program: file.program, ...(file.account ? { account: file.account } : {}), compressed: Boolean(file.compressed), offset: 0, finished: false,
         carry: file.program === "codex" ? createCodexState(logicalPath) : {} };
       if (state.finished && !state.carry.pending?.length) continue;
       if (file.program === "codex") {
@@ -218,7 +258,7 @@ async function run() {
           state.offset = offset;
           noteFirstRecord(state, line);
           if (typeof line?.cwd === "string") state.carry.directory = line.cwd;
-          const contribution = claudeContribution(line, file.path, cutoff, state.carry.directory);
+          const contribution = claudeContribution(line, file.path, file.account, cutoff, state.carry.directory);
           if (!contribution) continue;
           const candidate = priceContribution(contribution);
           const peers = groups.get(candidate.group) || new Set();
@@ -267,14 +307,22 @@ async function run() {
       limits.codex = { service: await readCodexLimits(runtime, directory), nextAllowedAt: Date.now() + 60_000 };
       heartbeat();
     }
-    if (values["claude-limits"] && (!limits.claude || !Number.isFinite(limits.claude.nextAllowedAt) || Date.now() >= limits.claude.nextAllowedAt)) {
-      limits.claude = { ...limits.claude, nextAllowedAt: Date.now() + 60_000 };
+    // Each Account keeps its own cadence, back-off and last good reading;
+    // one check of the recorded claude's version serves them all.
+    let version;
+    for (const account of values["claude-limits"] ? accounts : []) {
+      const entry = limits.claude[account.id];
+      if (Number.isFinite(entry?.nextAllowedAt) && Date.now() < entry.nextAllowedAt) continue;
+      limits.claude[account.id] = { ...entry, nextAllowedAt: Date.now() + 60_000 };
       writeJSON(join(directory, "limits.json"), limits);
-      const version = await claudeVersion(runtime, directory, limits.claude.version);
+      if (version === undefined) {
+        version = await claudeVersion(runtime, directory, limits.claudeVersion);
+        limits.claudeVersion = version ?? undefined;
+      }
       const inServer = process.platform === "darwin" ? await readClaudeLimitsInServer(runtime, directory, version?.version, {
-        socketPath: process.env.HERDR_SOCKET_PATH, wait: async () => { await sleep(100); maintainHeartbeat(); } }) : null;
-      const reading = inServer ?? await readClaudeLimits(runtime, directory, version?.version);
-      limits.claude = { ...cacheClaudeLimits(limits.claude, reading), ...(version ? { version } : {}) };
+        account, socketPath: process.env.HERDR_SOCKET_PATH, wait: async () => { await sleep(100); maintainHeartbeat(); } }) : null;
+      const reading = inServer ?? await readClaudeLimits(accountRuntime(runtime, account), directory, version?.version);
+      limits.claude[account.id] = cacheClaudeLimits(limits.claude[account.id], reading);
       heartbeat();
     }
     const fallback = Object.values(fileStates).map(file => file.carry.latestLimits).filter(reading => reading?.windows?.length)
