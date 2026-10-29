@@ -34,6 +34,26 @@ The estimated cost is not a bill. It prices the tokens this Host's Transcripts s
 
 Claude Code limits are off until you turn them on for each Host. Tap **Details** beside **Usage Limits**, then turn on **Claude Code limits**. The plugin asks Claude Code on that computer for your plan limits; Heeler never handles your sign-in.
 
+## Add Claude Code Accounts
+
+If a Host runs more than one Claude Code subscription, each signed in from its own config directory (for example, Agents started with `CLAUDE_CONFIG_DIR=~/.claude-2`), add each directory as an Account so Usage keeps them apart. Accounts need the Heeler plugin 0.8.0 or newer on that Host; the install command above also updates it.
+
+Every Host starts with the **Default** Account: the directory Claude Code uses when herdr starts it. Each Account you add gets its own Token Usage, listed under Claude Code. With **Claude Code limits** on, it also gets its own Usage Limits and its own line in the Usage Limits widget.
+
+1. In Usage, choose one Host. If Heeler found directories that look like Claude Code's, a notice such as **Found 1 Claude Code directory** appears; tap it. Otherwise tap **Details** beside **Usage Limits**, then **Claude Code Accounts**.
+2. Under **Suggestions**, tap **Add** to count a directory, or **Ignore** to stop suggesting it. Heeler suggests directories that a running Agent uses or that sit in your home folder, and counts none until you add it.
+3. To add a directory Heeler didn't suggest, tap **Choose Another Directory…** and pick it on the Host. It must hold a Claude Code sign-in or Transcripts: a `.claude.json` file or a `projects` folder.
+
+A new Account counts from the next refresh. A Host can have up to four Claude Code Accounts, Default included; at four, remove one to add another.
+
+Tap an Account to rename it. Names appear in Usage, Usage Limits, and widgets, so each Account on a Host needs its own. Clear the Default Account's name to call it Default again.
+
+To remove an added Account, swipe left on it or touch and hold it, then tap **Remove** and **Remove Account**. Its Token Usage and Usage Limits stop showing; the directory and its sign-in stay on the Host. The Default Account can be renamed but not removed.
+
+If herdr itself starts Claude Code with `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward the Default Account. Heeler suggests it instead, so add it if you still use it.
+
+The Accounts are saved on the Host, so every device you connect from shows the same list.
+
 ## Add a widget
 
 1. Touch and hold an empty spot on the Home Screen, then tap **Edit** > **Add Widget**.
