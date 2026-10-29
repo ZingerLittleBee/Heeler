@@ -320,9 +320,7 @@ struct UsageLimitsWidgetView: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .padding(.top, 1)
                 Spacer(minLength: 4)
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(entries) { UsageAccountLine(limits: $0, now: now, barWidth: 26) }
-                }
+                UsageAccountLines(entries: entries, now: now, barWidths: (26, 16), spacing: 5)
             }
             .lineLimit(1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -540,7 +538,8 @@ struct UsageLimitsWidgetView: View {
                 Text("\(Text(first.name).fontWeight(.semibold)) \(Text("· \(host.name)").foregroundStyle(.secondary))")
                     .font(.system(size: 13))
                 // The three it holds, in the app's order.
-                ForEach(entries.prefix(3)) { UsageAccountLine(limits: $0, now: now, size: 13, barWidth: 44) }
+                UsageAccountLines(
+                    entries: Array(entries.prefix(3)), now: now, size: 13, barWidths: (44, 30), spacing: 1)
             }
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -832,6 +831,29 @@ struct UsageProgramTitle: View {
             }
         }
         .lineLimit(1)
+    }
+}
+
+/// A program's Accounts, one line each. Every line's bar is as wide, and
+/// narrows when the longest name would not fit beside it.
+struct UsageAccountLines: View {
+    let entries: [UsageWidgetSnapshot.Limits]
+    let now: Date
+    var size: CGFloat = 12
+    let barWidths: (wide: CGFloat, narrow: CGFloat)
+    let spacing: CGFloat
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            lines(barWidth: barWidths.wide)
+            lines(barWidth: barWidths.narrow)
+        }
+    }
+
+    private func lines(barWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            ForEach(entries) { UsageAccountLine(limits: $0, now: now, size: size, barWidth: barWidth) }
+        }
     }
 }
 
