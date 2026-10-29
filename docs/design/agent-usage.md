@@ -821,14 +821,20 @@ Directories that look like an Account, offered for the user to add. None is
 counted until the user adds it.
 
 - **Running Agents.** On a `pane.agent_status_changed` event whose agent is
-  `claude`, the activity hook asks herdr for the pane's processes
-  (`herdr pane process-info --pane <id>`, available since herdr 0.7.0), at
-  most once per pane every 10 minutes. It reads `CLAUDE_CONFIG_DIR` from the
-  initial environment of the foreground process whose `argv0` base name is
-  `claude`: `/proc/<pid>/environ` on Linux, `ps -E -ww -o command= -p <pid>`
-  on macOS. Only that variable is kept, in
-  `<stateDir>/usage/claude-agents.json` with when it was last seen; entries
-  unseen for 30 days are dropped, and a read that fails records nothing.
+  `claude`, once Usage has a recorded runtime, the activity hook asks herdr
+  for the pane's processes (`herdr pane process-info --pane <id>`, available
+  since herdr 0.7.0), at most once per pane every 10 minutes (pane ids repeat
+  across herdr sessions, so a pane is keyed by its session too). The lookup
+  runs beside the Live Activity update, gives up after 3 seconds, and never
+  fails the hook. It reads `CLAUDE_CONFIG_DIR` from the initial environment
+  of the foreground process whose `argv0` base name is `claude`, the
+  foreground process group's leader when one is: `/proc/<pid>/environ` on
+  Linux, `ps -E -ww -o command= -p <pid>` on macOS, where the environment
+  follows the arguments that `ps -ww -o command=` prints and a value runs
+  until the next ` NAME=` or the end. Only an absolute value of that
+  variable is kept, in `<stateDir>/usage/claude-agents.json` with when it
+  was last seen; entries unseen for 30 days are dropped, and a read that
+  fails records no directory, though the pane still waits 10 minutes.
   macOS shows no environment for Apple platform binaries, Linux none for a
   process that is not dumpable, and neither shows a `CLAUDE_CONFIG_DIR` set
   in a settings file's `env`.
@@ -841,8 +847,9 @@ counted until the user adds it.
   or `~/.claude-mem` hold neither. The run stores the result in its
   snapshot. On one development machine, the listing and checks took under
   half a millisecond.
-- The query merges both lists and drops a directory whose real path is a
-  Default Account root, an added Account's, or that of a path in `ignored`.
+- The query merges both lists and drops a directory that no longer exists,
+  or whose path or real path is a Default Account root, an added Account's,
+  or that of a path in `ignored`.
   Of two suggestions with one real path, the Agent's wins, since its string
   is the one Claude Code was given. At most 8 are reported, Agents' first,
   each with a name made from its base name without a leading dot

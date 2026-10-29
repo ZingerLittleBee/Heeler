@@ -3,14 +3,15 @@
 // activity-hook.js runs as a herdr [[events]] hook command, so these tests
 // exercise it the same way: a real child process launched with the env herdr
 // injects, against an in-test fake relay HTTP server and a stub HERDR_BIN_PATH
-// that answers `herdr agent list`.
+// that answers `herdr agent list` and, for Account suggestions,
+// `herdr pane process-info`.
 
 import { test, suite, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createDecipheriv } from "node:crypto";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,14 +82,17 @@ async function startFakeRelay(respond = () => ({ status: 200, body: { apnsId: "x
   });
 }
 
+// `processInfo` answers `pane process-info`: an object, "fail" (exit 1),
+// "invalid" (not JSON) or "hang" (never answers).
 function writeHerdrStub(
   agents,
   workspaces = [{ workspace_id: "w1", label: "Heeler" }],
   tabs = [],
   panes = [],
+  processInfo = undefined,
 ) {
   const binPath = join(stubDir, "herdr");
-  writeFileSync(join(stubDir, "response.json"), JSON.stringify({ agents, workspaces, tabs, panes }));
+  writeFileSync(join(stubDir, "response.json"), JSON.stringify({ agents, workspaces, tabs, panes, processInfo }));
   writeFileSync(
     binPath,
     [
@@ -109,6 +113,11 @@ function writeHerdrStub(
       '} else if (["tab", "pane"].includes(args[0]) && args[1] === "list") {',
       '  const key = args[0] + "s";',
       '  process.stdout.write(JSON.stringify({ result: { [key]: response[key] } }));',
+      '} else if (args[0] === "pane" && args[1] === "process-info" && response.processInfo !== undefined) {',
+      '  if (response.processInfo === "fail") process.exit(1);',
+      '  if (response.processInfo === "hang") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000);',
+      '  process.stdout.write(response.processInfo === "invalid" ? "not json"',
+      '    : JSON.stringify({ id: "cli:pane:process-info", result: { type: "pane_process_info", process_info: response.processInfo } }));',
       '} else {',
       '  process.stderr.write(`stub: unexpected subcommand ${args.join(" ")}`);',
       "  process.exit(64);",
@@ -614,5 +623,125 @@ suite("activity-hook: herdr sessions", () => {
     assert.deepEqual(stubInvocations().map((entry) => entry.args), [["agent", "list"]]);
     assert.equal(relay.requests.length, 1);
     assert.equal(relay.requests[0].body.event, "end");
+  });
+});
+
+suite("activity-hook: Claude Code Account suggestions", () => {
+  // Suggestions serve Usage, so the hook looks only once it records a runtime.
+  const usageEnv = { HOME: "/home/ada" };
+  const environmentReadable = ["darwin", "linux"].includes(process.platform) ? false : "reads environments on macOS and Linux only";
+  let processes = [];
+  afterEach(() => {
+    for (const child of processes) child.kill("SIGKILL");
+    processes = [];
+  });
+  // A running Agent stand-in: a non-Apple program whose environment the test sets.
+  function startProcess(env) {
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { env, stdio: "ignore" });
+    processes.push(child);
+    return child.pid;
+  }
+  const claudeProcess = (pid, argv0 = "claude") => ({ pid, name: "2.1.312", argv0, argv: [argv0], cmdline: argv0, cwd: "/" });
+  const processInfo = (foreground, leader = null) => ({
+    pane_id: PANE_ID, tty: "/dev/ttys001", shell_pid: 1, foreground_process_group_id: leader, foreground_processes: foreground,
+  });
+  const agentsPath = () => join(stateDir, "usage", "claude-agents.json");
+  const agentsFile = () => JSON.parse(readFileSync(agentsPath(), "utf8"));
+  const lookups = () => stubInvocations().filter((entry) => entry.args[0] === "pane" && entry.args[1] === "process-info");
+
+  test("keeps only CLAUDE_CONFIG_DIR of the pane's Claude Code process, preferring the group leader", { skip: environmentReadable }, async () => {
+    const leader = startProcess({ CLAUDE_CONFIG_DIR: "/agents/work dir/.claude-work", SECRET_TOKEN: "must-not-be-kept" });
+    const follower = startProcess({ CLAUDE_CONFIG_DIR: "/agents/follower" });
+    const other = startProcess({ CLAUDE_CONFIG_DIR: "/agents/other" });
+    writeHerdrStub([listedAgent()], undefined, [], [], processInfo([
+      claudeProcess(follower, "/opt/claude/bin/claude"), claudeProcess(other, "node"), claudeProcess(leader),
+    ], leader));
+
+    const result = await runHook(statusEvent("working"), { env: usageEnv });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(lookups().map((entry) => entry.args), [["pane", "process-info", "--pane", PANE_ID]]);
+    const file = agentsFile();
+    assert.deepEqual(Object.keys(file.directories), ["/agents/work dir/.claude-work"]);
+    assert.equal(Object.keys(file.panes).length, 1);
+    assert.equal(readFileSync(agentsPath(), "utf8").includes("must-not-be-kept"), false);
+    assert.equal(statSync(agentsPath()).mode & 0o777, 0o600);
+
+    // Without a group leader among them, the first Claude Code process counts.
+    rmSync(agentsPath());
+    writeHerdrStub([listedAgent()], undefined, [], [], processInfo([claudeProcess(other, "node"), claudeProcess(follower, "/opt/claude/bin/claude")]));
+    assert.equal((await runHook(statusEvent("working"), { env: usageEnv })).status, 0);
+    assert.deepEqual(Object.keys(agentsFile().directories), ["/agents/follower"]);
+  });
+
+  test("a process without CLAUDE_CONFIG_DIR, or with a relative one, suggests nothing", { skip: environmentReadable }, async () => {
+    for (const env of [{ OTHER: "1" }, { CLAUDE_CONFIG_DIR: "relative/claude" }]) {
+      rmSync(agentsPath(), { force: true });
+      const pid = startProcess(env);
+      writeHerdrStub([listedAgent()], undefined, [], [], processInfo([claudeProcess(pid)], pid));
+      const result = await runHook(statusEvent("working"), { env: usageEnv });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(agentsFile().directories, {});
+    }
+  });
+
+  test("a pane is looked up at most once every 10 minutes per herdr session, and old directories expire", async () => {
+    const now = Date.now();
+    mkdirSync(join(stateDir, "usage"), { recursive: true });
+    writeFileSync(agentsPath(), JSON.stringify({ panes: {}, directories: {
+      "/agents/old": now - 31 * 86_400_000, "/agents/recent": now - 86_400_000, "relative": now,
+    } }));
+    writeHerdrStub([listedAgent()], undefined, [], [], processInfo([]));
+    const run = async (event, env = {}) => {
+      const result = await runHook(event, { env: { ...usageEnv, ...env } });
+      assert.equal(result.status, 0, result.stderr);
+      return lookups().length;
+    };
+
+    assert.equal(await run(statusEvent("working")), 1);
+    assert.deepEqual(Object.keys(agentsFile().directories), ["/agents/recent"]);
+    assert.equal(await run(statusEvent("blocked")), 1);
+    assert.equal(await run(statusEvent("working", { paneId: "w1:p3" })), 2);
+    // Pane ids repeat across herdr sessions.
+    assert.equal(await run(statusEvent("working"), { HERDR_SOCKET_PATH: "/home/ada/.config/herdr/sessions/work/herdr.sock" }), 3);
+    const file = agentsFile();
+    for (const pane of Object.keys(file.panes)) file.panes[pane] -= 11 * 60_000;
+    writeFileSync(agentsPath(), JSON.stringify(file));
+    assert.equal(await run(statusEvent("working")), 4);
+    // Checks past their interval leave the file.
+    assert.equal(Object.keys(agentsFile().panes).length, 1);
+  });
+
+  test("only Claude Code Agents are looked up", async () => {
+    writeHerdrStub([listedAgent()], undefined, [], [], processInfo([]));
+    for (const agent of ["codex", null]) {
+      const result = await runHook(statusEvent("working", { agent }), { env: usageEnv });
+      assert.equal(result.status, 0, result.stderr);
+    }
+    assert.equal(lookups().length, 0);
+    assert.equal(existsSync(agentsPath()), false);
+  });
+
+  test("a process-info that fails, answers garbage or hangs never fails the hook or its Live Activity", async () => {
+    await startFakeRelay();
+    writeConfig();
+    writeRegistration([device()]);
+    for (const [index, answer] of ["fail", "invalid", "hang"].entries()) {
+      writeHerdrStub([listedAgent()], undefined, [], [], answer);
+      rmSync(join(stateDir, "activity"), { recursive: true, force: true });
+      const started = Date.now();
+
+      const result = await runHook(statusEvent("working", { paneId: `w1:p${index + 10}` }), { env: usageEnv });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stderr, "");
+      assert.equal(relay.requests.length, index + 1);
+      // A lookup that never answers is given up after 3 seconds.
+      assert.ok(Date.now() - started < 8_000);
+    }
+    assert.equal(lookups().length, 3);
+    const file = agentsFile();
+    assert.deepEqual(file.directories, {});
+    assert.equal(Object.keys(file.panes).length, 3);
   });
 });

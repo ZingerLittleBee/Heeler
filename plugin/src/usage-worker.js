@@ -14,6 +14,7 @@ import { createCodexState, consumeCodexLine, finishCodexRead, codexTotalSignatur
 import { readCodexLimits, codexRolloutLimits, codexLimitsWithFallback } from "./usage/codex-limits.js";
 import { readClaudeLimits, readClaudeLimitsInServer, cacheClaudeLimits, claudeVersion, accountRuntime, claudeLimitsEntries, nextClaudeRead } from "./usage/claude-limits.js";
 import { readClaudeAccounts } from "./usage/accounts.js";
+import { homeCandidates } from "./usage/account-suggestions.js";
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 class LockLostError extends Error {}
@@ -61,9 +62,10 @@ async function run() {
     const now = Date.now();
     const cutoff = now - RETENTION;
     const roots = usageRoots(runtime);
-    for (const name of readdirSync(join(runtime.stateDir, "usage"))) {
-      const sibling = join(runtime.stateDir, "usage", name);
-      if (sibling === directory) continue;
+    // Only directories are caches; claude-agents.json sits beside them.
+    for (const entry of readdirSync(join(runtime.stateDir, "usage"), { withFileTypes: true })) {
+      const sibling = join(runtime.stateDir, "usage", entry.name);
+      if (sibling === directory || !entry.isDirectory()) continue;
       try { if (lastWritten(sibling) < cutoff && !activeLock(sibling)) rmSync(sibling, { recursive: true, force: true }); }
       catch { /* An unreadable sibling is left for its owner. */ }
     }
@@ -75,6 +77,8 @@ async function run() {
     const previous = await loadCheckpoint(directory, previousSnapshot, maintainHeartbeat);
     const accounts = readClaudeAccounts(values.config, runtime).filter(account => account.state === "ok");
     const counted = new Set(accounts.map(account => account.id));
+    // The query suggests these as Accounts against the Account file it reads.
+    const claudeCandidates = homeCandidates(runtime);
     limits.claude = claudeLimitsEntries(limits.claude, accounts);
     // An Account no longer counted (removed, missing, a duplicate) leaves with
     // its files and records, without a rebuild; one that returns is read anew.
@@ -138,7 +142,7 @@ async function run() {
           generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString() };
       // Commit parser progress even when a rebuild is still resolving a burst.
       // The query keeps the old aggregates; the next worker resumes the new log.
-      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, countedAccounts: [...counted],
+      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, countedAccounts: [...counted], claudeCandidates,
         // The program's Claude reading stays the Default Account's, for apps that ignore Accounts.
         limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude.default?.report,
           claudeAccounts: Object.fromEntries(accounts.map(({ id }) => [id, limits.claude[id]?.report])) },
@@ -150,7 +154,7 @@ async function run() {
         coveredSince: Object.values(fileStates).reduce((earliest, file) => Number.isFinite(file.firstAt) && (earliest === null || file.firstAt < earliest)
           ? file.firstAt : earliest, olderTranscripts ? cutoff : null) };
       cacheWrite(() => saveCheckpoint(directory, fileStates, log, preserveSnapshot && !scan.complete
-        ? { ...previousSnapshot, complete: false, rebuilding: true, limitsVersion: 1,
+        ? { ...previousSnapshot, complete: false, rebuilding: true, limitsVersion: 1, claudeCandidates,
           usageLimits: progress.usageLimits, nextLimitsAt: progress.nextLimitsAt, nextClaudeLimitsAt: progress.nextClaudeLimitsAt }
         : { ...progress, rebuilding: false }));
       lastSnapshot = performance.now();

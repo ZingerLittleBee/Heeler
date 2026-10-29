@@ -42,7 +42,9 @@ readline.createInterface({input: process.stdin}).on('line', line => {
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   };
-  const cache = () => join(env.HERDR_PLUGIN_STATE_DIR, "usage", readdirSync(join(env.HERDR_PLUGIN_STATE_DIR, "usage"))[0]);
+  // claude-agents.json sits beside the cache directory.
+  const cache = () => join(env.HERDR_PLUGIN_STATE_DIR, "usage", readdirSync(join(env.HERDR_PLUGIN_STATE_DIR, "usage"), { withFileTypes: true })
+    .find(entry => entry.isDirectory()).name);
   t.after(() => {
     try {
       const lock = JSON.parse(readFileSync(join(cache(), "worker.lock"), "utf8"));
@@ -148,11 +150,15 @@ test("root identity stays stable when missing roots appear and old siblings are 
   utimesSync(join(abandoned, "keys.log"), old, old);
   utimesSync(abandoned, old, old);
   utimesSync(fresh, old, old);
+  // The Agent suggestions file beside the caches is not one.
+  const agents = join(f.env.HERDR_PLUGIN_STATE_DIR, "usage", "claude-agents.json");
+  writeFileSync(agents, "{}");
+  utimesSync(agents, old, old);
   f.transcript("new.jsonl", [assistant("new")]);
   f.stale();
   assert.equal(claude(await f.finish()).totals.today.tokens.total, 12);
   assert.equal(f.cache(), original);
-  assert.deepEqual(readdirSync(join(f.env.HERDR_PLUGIN_STATE_DIR, "usage")).sort(), ["zz-fresh", original.split("/").at(-1)].sort());
+  assert.deepEqual(readdirSync(join(f.env.HERDR_PLUGIN_STATE_DIR, "usage")).sort(), ["claude-agents.json", "zz-fresh", original.split("/").at(-1)].sort());
   rmSync(fresh, { recursive: true });
   assert.equal(statSync(original).mode & 0o777, 0o700);
 });
@@ -216,6 +222,13 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   mkdirSync(join(f.root, "claude-2"));
   writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1, claude: { defaultName: null, accounts: [
     { id: "7f3c9a2e", directory: join(f.root, "claude-2"), name: "claude-2" }, { id: "c41d07b9", directory: join(f.root, "gone"), name: "work" }] } }));
+  // A running Agent's directory, also in the home listing, and one only the listing finds.
+  mkdirSync(join(f.env.HOME, ".claude-work", "projects"), { recursive: true });
+  mkdirSync(join(f.env.HOME, ".claude-personal"));
+  writeFileSync(join(f.env.HOME, ".claude-personal", ".claude.json"), "{}");
+  mkdirSync(join(f.env.HERDR_PLUGIN_STATE_DIR, "usage"), { recursive: true });
+  writeFileSync(join(f.env.HERDR_PLUGIN_STATE_DIR, "usage", "claude-agents.json"), JSON.stringify({ panes: {},
+    directories: { [join(f.env.HOME, ".claude-work")]: Date.now() } }));
   f.transcript("vector.jsonl", [assistant("vector", 1200, { message: { id: "vector", model: "claude-opus-4-5", usage: { input_tokens: 1200, cache_read_input_tokens: 830000, cache_creation_input_tokens: 41000, output_tokens: 9800 } } })]);
   const codexDirectory = join(f.env.HOME, ".codex", "sessions", "2026", "10", "23");
   mkdirSync(codexDirectory, { recursive: true });
@@ -257,6 +270,10 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
     usageLimits.observedAt = claudeLimits.observedAt;
   }
   for (const [index, directory] of ["/Users/u/.claude", "/Users/u/.claude-2", "/Volumes/x/.claude"].entries()) accounts[index].directory = directory;
+  const suggestions = report.programs[0].accountSuggestions;
+  assert.deepEqual(suggestions.map(suggestion => [suggestion.directory, suggestion.source]),
+    [[join(f.env.HOME, ".claude-work"), "agent"], [join(f.env.HOME, ".claude-personal"), "home"]]);
+  for (const suggestion of suggestions) suggestion.directory = `/Users/u/.${suggestion.name}`;
   const limits = report.programs[1].usageLimits;
   assert.equal(limits.source, "lastSession");
   assert.deepEqual(limits.windows.map(window => [window.id, window.durationMinutes, window.usedPercent, window.expired]),
