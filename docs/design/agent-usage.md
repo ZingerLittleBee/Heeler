@@ -78,6 +78,7 @@ sequenceDiagram
 | Component | Runs in | Role |
 | --- | --- | --- |
 | Runtime recorder (in the startup hook `src/sidebar-hook.js` and the `pane.agent_status_changed` hook `src/activity-hook.js`) | herdr's environment | Writes `runtime.json` and `runtime-node` to the plugin config directory |
+| Agent directory recorder (in `src/activity-hook.js`) | herdr's environment | Records running Claude Code Agents' `CLAUDE_CONFIG_DIR` as Account suggestions |
 | `src/usage-query.js` | the app's SSH exec | Reads the cache, spawns the worker when needed, prints the contract |
 | `src/usage-worker.js` | detached from the query | Scans Transcripts, reads Usage Limits, writes the cache |
 | `src/usage/claude-*.js`, `src/usage/codex-*.js` | worker | Per-program Transcript scanners and limit readers |
@@ -197,9 +198,11 @@ visible in the user's herdr command palette.
 
 ### Sources
 
-- **Claude Code**: every `*.jsonl` under `projects/` of each root:
-  `CLAUDE_CONFIG_DIR` as one path (Claude Code does not split it; the
-  comma-separated list is a ccusage convention), `~/.claude`, and the legacy
+- **Claude Code**: every `*.jsonl` under `projects/` of each Account's
+  roots ([Accounts](#accounts)). The Default Account's roots are the
+  directory Claude Code uses in the recorded environment, `CLAUDE_CONFIG_DIR`
+  as one path (Claude Code does not split it; the comma-separated list is a
+  ccusage convention) or else `~/.claude`, and the legacy
   `${XDG_CONFIG_HOME:-~/.config}/claude` when it exists, deduplicated by real
   path. This includes subagent and workflow files under
   `<project>/<session>/subagents/`.
@@ -220,12 +223,12 @@ visible in the user's herdr command palette.
   and treats an archive whose last frame is incomplete as a read error, as
   `zstd -dc` does. A cut exactly between two frames cannot be detected.
 
-Multiple roots per program are merged into one total for that program.
-`rootsKey` hashes the candidate roots of both programs as derived from
-`runtime.json`'s `env` (`HOME`, `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME`,
-`CODEX_HOME`), made absolute but not resolved, whether or not they exist yet.
-Installing a program or creating a legacy directory later therefore does not
-move the cache. Each worker run deletes sibling `<stateDir>/usage/*`
+The roots of one Account are merged into one total for that Account.
+`rootsKey` hashes the Default Account's candidate roots and the Codex home as
+derived from `runtime.json`'s `env` (`HOME`, `CLAUDE_CONFIG_DIR`,
+`XDG_CONFIG_HOME`, `CODEX_HOME`), made absolute but not resolved, whether or
+not they exist yet. Installing a program, creating a legacy directory, or
+adding or removing an Account later therefore does not move the cache. Each worker run deletes sibling `<stateDir>/usage/*`
 directories that no live worker holds and whose `buckets.json` has not been
 written for 31 days; a sibling without one is dated by its directory and
 files instead.
@@ -408,10 +411,11 @@ size:
 
 ### Buckets, window and cache
 
-- Usage is aggregated into 15-minute UTC buckets per program × model, plus
-  per program × directory, each holding normalized tokens, estimated cost and
-  unpriced tokens. 15 minutes makes any IANA offset (+5:30, +5:45) exact when
-  the query folds buckets into the device's calendar days.
+- Usage is aggregated into 15-minute UTC buckets per program × Account ×
+  model, plus per program × Account × directory, each holding normalized
+  tokens, estimated cost and unpriced tokens. 15 minutes makes any IANA
+  offset (+5:30, +5:45) exact when the query folds buckets into the device's
+  calendar days.
 - The window is the last 30 days of the device's calendar. The worker does
   not know the device's time zone, so it prunes buckets and dedupe keys older
   than 31 days, which keeps the 30th day complete for any offset. The plugin
@@ -613,7 +617,8 @@ The plugin does not call the ChatGPT web backend directly.
 ### Claude Code
 
 Off unless the app passes `--claude-limits` (the per-Host toggle). The
-plugin asks Claude Code itself, as it asks Codex.
+plugin asks Claude Code itself, as it asks Codex, once for each Account
+([Accounts](#accounts)); everything below describes one Account's read.
 
 - The worker runs the `claude` recorded in `runtime.json` with the recorded
   environment and the cache directory as its working directory:
@@ -709,6 +714,135 @@ OAuth token and calling `/api/oauth/usage` directly was rejected (ADR 0028).
 > Usage Limits therefore stay opt-in per Host, and the toggle's explanation
 > names the risk. Revisit before release.
 
+## Accounts
+
+Claude Code usage is read per Account
+([ADR 0030](../adr/0030-usage-counts-the-accounts-the-user-adds.md)). Codex
+has only its Default Account, `${CODEX_HOME:-~/.codex}`.
+
+### Default Account
+
+- The directory Claude Code uses in the recorded environment:
+  `CLAUDE_CONFIG_DIR` when set, else `~/.claude`, with the legacy
+  `${XDG_CONFIG_HOME:-~/.config}/claude` folded in. When
+  `CLAUDE_CONFIG_DIR` is set, `~/.claude` is not part of it; it can be
+  suggested instead (below).
+- Its Usage Limits run Claude Code with the recorded environment unchanged.
+  Claude Code adds a hash of the directory to its macOS keychain service
+  name whenever `CLAUDE_CONFIG_DIR` is set, even to `~/.claude` (2.1.312), so
+  setting the variable for the Default Account would look for another
+  keychain item.
+
+### Account file
+
+`usage-accounts.json` in the plugin config directory, beside
+`runtime.json`. The app writes it over SFTP (atomic replace, file 0600,
+directory 0700); the query and the worker only read it.
+
+```json
+{
+  "version": 1,
+  "claude": {
+    "defaultName": null,
+    "accounts": [
+      { "id": "7f3c9a2e", "directory": "/home/u/.claude-2", "name": "claude-2" }
+    ],
+    "ignored": ["/home/u/.claude-backup"]
+  }
+}
+```
+
+- `defaultName`: the Default Account's name, or null for the app's own
+  label ("Default").
+- `accounts`: the added Accounts in the order the user added them, at most
+  3. `id` is a stable identifier the app generates (8 to 32 characters of
+  `[A-Za-z0-9_-]`, never `default`). `directory` is absolute and kept as
+  chosen, not resolved: Claude Code keys its keychain item by the string it
+  is given. `name` is non-empty and unique in the file, `defaultName`
+  included.
+- `ignored`: suggested directories the user dismissed.
+- A missing or unreadable file means no added Accounts. An entry that breaks
+  these rules is skipped; a file with another `version` is ignored (an app
+  newer than the plugin). Hosts that resolve to the same plugin config
+  directory share the file, which is right: they share one home and so the
+  same Claude Code directories.
+
+### Account states
+
+Each added Account, checked in this order, is:
+
+- `missing`: its directory does not exist or is not a directory (an
+  unmounted volume, a deleted folder);
+- `duplicate`: its real path equals a Default Account root or an earlier
+  Account's;
+- `overLimit`: after three Accounts that are neither (a hand-edited file);
+- `ok`: counted.
+
+Only `ok` Accounts are scanned and asked for Usage Limits; the others keep
+their place in the list and add nothing. An Account that stops being `ok`
+(removed from the file, missing, duplicate) leaves the cache with its
+counted records and limit readings, without a rebuild. One that returns is
+read from the start, like new Transcripts.
+
+### Counting
+
+- Each `ok` Account's `projects/` is listed on its own. Files, dedupe keys,
+  groups and buckets carry the Account's id (`default` for the Default
+  Account). Deduplication runs within one Account: two directories holding
+  copies of the same Transcripts count twice, as two Accounts would.
+  Host totals add the Accounts up.
+- An Account whose roots cannot be listed reports Token Usage `error`; the
+  program's own Token Usage is `error` only when no `ok` Account's roots
+  could be listed.
+
+### Usage Limits per Account
+
+- With `--claude-limits`, the worker reads every `ok` Account in order, each
+  with its own 60-second throttle, failure back-off and last good reading,
+  kept in `limits.json` by Account id. An added Account runs the recorded
+  `claude` with the recorded environment and `CLAUDE_CONFIG_DIR` set to its
+  `directory`. One version check of the recorded `claude` serves every
+  Account in a run.
+- On macOS the request in `claude-request.json` names the Account's
+  directory, or none for the Default Account. The action reads only for the
+  Default Account or a directory that the Account file lists as an `ok`
+  Account, and answers anything else with `error` and `requestFailed`.
+- A query starts a worker when any `ok` Account's next allowed read has
+  come.
+
+### Suggestions
+
+Directories that look like an Account, offered for the user to add. None is
+counted until the user adds it.
+
+- **Running Agents.** On a `pane.agent_status_changed` event whose agent is
+  `claude`, the activity hook asks herdr for the pane's processes
+  (`herdr pane process-info --pane <id>`, available since herdr 0.7.0), at
+  most once per pane every 10 minutes. It reads `CLAUDE_CONFIG_DIR` from the
+  initial environment of the foreground process whose `argv0` base name is
+  `claude`: `/proc/<pid>/environ` on Linux, `ps -E -ww -o command= -p <pid>`
+  on macOS. Only that variable is kept, in
+  `<stateDir>/usage/claude-agents.json` with when it was last seen; entries
+  unseen for 30 days are dropped, and a read that fails records nothing.
+  macOS shows no environment for Apple platform binaries, Linux none for a
+  process that is not dumpable, and neither shows a `CLAUDE_CONFIG_DIR` set
+  in a settings file's `env`.
+- **Home listing.** Each worker run lists `$HOME` and
+  `${XDG_CONFIG_HOME:-~/.config}` once, by name, without recursion. It keeps
+  directories (following symbolic links) whose names start with `.claude` in
+  `$HOME` or with `claude` in the config directory (case-sensitive: Claude
+  Desktop uses `Claude`), and accepts one that holds a `.claude.json` file
+  or a `projects/` directory. Third-party folders such as `~/.claude-squad`
+  or `~/.claude-mem` hold neither. The run stores the result in its
+  snapshot. On one development machine, the listing and checks took under
+  half a millisecond.
+- The query merges both lists and drops a directory whose real path is a
+  Default Account root, an added Account's, or that of a path in `ignored`.
+  Of two suggestions with one real path, the Agent's wins, since its string
+  is the one Claude Code was given. At most 8 are reported, Agents' first,
+  each with a name made from its base name without a leading dot
+  (`.claude-work` becomes `claude-work`).
+
 ## Contract: `usage` v1
 
 The query prints exactly one JSON object. Unknown fields are ignored by the
@@ -757,7 +891,25 @@ tests and decoded by the Swift tests.
       },
       "usageLimits": {
         "state": "disabled"
-      }
+      },
+      "accounts": [
+        {
+          "id": "default", "isDefault": true, "name": null,
+          "directory": "/Users/u/.claude", "state": "ok",
+          "tokenUsage": { "state": "ok", "...": "same shape as above" },
+          "usageLimits": { "state": "disabled" }
+        },
+        {
+          "id": "7f3c9a2e", "isDefault": false, "name": "claude-2",
+          "directory": "/Users/u/.claude-2", "state": "ok",
+          "tokenUsage": { "state": "ok", "...": "same shape as above" },
+          "usageLimits": { "state": "disabled" }
+        },
+        { "id": "c41d07b9", "isDefault": false, "name": "work", "directory": "/Volumes/x/.claude", "state": "missing" }
+      ],
+      "accountSuggestions": [
+        { "directory": "/Users/u/.claude-work", "name": "claude-work", "source": "agent" }
+      ]
     },
     {
       "program": "codex",
@@ -829,8 +981,19 @@ tests and decoded by the Swift tests.
   included, by `durationMinutes` ("5-hour", "Weekly"), never by id.
 - `daily` always has one entry per day in the window, zero-filled.
 - `directories` holds at most 10 entries over 30 days, by total tokens.
+- `accounts` and `accountSuggestions` (plugin 0.8.0 and later, Claude Code
+  only): every Account, the Default Account first and the rest in the
+  Account file's order ([Accounts](#accounts)). The program's own
+  `tokenUsage` adds up its `ok` Accounts and its `usageLimits` is the
+  Default Account's, so an app that ignores `accounts` sees the Host total
+  and the Default Account's limits. `state` is `ok`, `missing`,
+  `duplicate` or `overLimit`; only `ok` carries `tokenUsage` and
+  `usageLimits`, in the program-level shapes. `name` is null only for the
+  Default Account without a `defaultName`. A suggestion's `source` is
+  `agent` (a running Agent's environment) or `home` (the home listing).
 - Never present: prompts, outputs, session titles, file contents, account
-  emails, tokens or credential paths.
+  emails, tokens or credential paths. Account directories are present: the
+  user chose them, or Claude Code uses them.
 
 ## App
 
@@ -847,7 +1010,38 @@ tests and decoded by the Swift tests.
 - **Toggle:** "Claude Code limits" per Host, in the Usage Limits sheet and
   an iPad's Limits view, stored on the device, default off, with an explanation that the plugin asks Claude Code on the computer
   for its plan limits, that neither the plugin nor Heeler ever handles the
-  sign-in, and that this use is not officially supported.
+  sign-in, and that this use is not officially supported. It covers every
+  Account on the Host.
+- **Accounts:** gated by `HeelerPluginFeature.claudeAccounts` (plugin
+  0.8.0); an older plugin keeps the single-Account surfaces and the Accounts
+  entry asks for a plugin update.
+  - A "Claude Code Accounts" sheet opens from the single-Host Usage view,
+    beside the Claude Code limits toggle. It lists the Accounts (name, the
+    directory with `~` for the home, and any state other than `ok`), renames
+    one (names unique on the Host; the Default Account defaults to
+    "Default"), removes an added one after a confirmation, lists suggestions
+    with Add and Ignore, and offers "Choose Another Directory…" through the
+    remote directory browser, which also shows symbolic links to
+    directories. A chosen directory must hold `.claude.json` or
+    `projects/`, and must not be one already listed. A Host has at most four
+    Accounts, the Default Account included; at four, adding is disabled with
+    the reason. Every change reads, edits and atomically replaces
+    `usage-accounts.json`, serialized per Host like the Notification
+    Registration file, then reads the usage again.
+  - While suggestions are pending, the Host's Usage view shows a one-line
+    notice that opens the sheet.
+  - Accounts keep one order everywhere: the Default Account, then the order
+    they were added. With one Account every surface looks as before.
+  - Usage Limits: one card or row per Account, titled "Claude Code ·
+    <name>". Token Usage keeps the program totals and the chart by program,
+    and adds a split by Account under Claude Code for the selected range
+    (an iPad table shows Account rows under Claude Code). All Hosts adds
+    Accounts into their program's totals and lists Usage Limits per Host and
+    Account. Host detail's short section shows the Account closest to a
+    limit, with its name.
+  - A `missing` Account shows "Directory not found" and a `duplicate` one
+    "Same directory as another Account", each with no figures until the user
+    removes it or it recovers.
 - **Surfaces:**
   - A Usage tab, between Terminals and Hosts, reads All Hosts by default
     and can switch to one Host from its scope menu. Token Usage adds up
@@ -887,7 +1081,17 @@ tests and decoded by the Swift tests.
     or by default of the program closest to its limit (small), each program
     side by side (medium), or every window with its reset time and source
     (large); the Lock Screen shows the soonest window and the tightest of
-    the rest. Neither widget reads a Host. The app writes a snapshot of
+    the rest. With several Claude Code Accounts, Usage Limits shows every
+    Account, each on at least one line with its name, its tightest window
+    and a bar: the small size lists the chosen program's Accounts without
+    countdowns; the medium size keeps its two columns for up to two entries
+    (Codex and each Account count as one) and otherwise gives each entry
+    one line with its soonest and tightest windows; the large size keeps
+    up to four windows each for up to three entries and two each beyond;
+    the rectangular Lock Screen size gives each Account a line, up to
+    three. The circular and inline sizes hold one reading and show the
+    Account closest to a limit, named. Usage stays per program. Neither
+    widget reads a Host. The app writes a snapshot of
     every Host's last report to the App Group whenever a read lands, and
     reloads the widgets when it changes. A Host without a newer report
     keeps its last one, so a launch or a dropped connection does not blank
@@ -953,8 +1157,8 @@ tests and decoded by the Swift tests.
 | Transcript older than 30 days deleted; rollout archived, compressed, or decompressed to append | No rebuild |
 | `.zst` rollout with neither Node zstd nor `zstd` on `PATH` | Counted in `skippedArchives`; coverage note |
 | Transcript, rollout or directory unreadable (permissions, corrupt or truncated `.zst`) | Skipped and counted in `unreadableFiles`; known totals kept, no rebuild; retried next run |
-| One of several Claude Code roots unreadable | Counted in `unreadableFiles`; its known totals kept |
-| Every Claude Code root, or a Codex root, unreadable | That program's Token Usage `error`; its known files are not treated as deleted |
+| One of an Account's several Claude Code roots unreadable | Counted in `unreadableFiles`; its known totals kept |
+| Every root of every `ok` Claude Code Account, or a Codex root, unreadable | That program's Token Usage `error`; its known files are not treated as deleted |
 | Worker crashed | Stale lock reclaimed; next query restarts it |
 | Cache directory not writable or disk full | `refreshing: false`, no worker; Token Usage `error` unless the snapshot is current; retried by the next query |
 | Worker fails 3 runs in a row | Token Usage `error`, Usage Limits without a reading `error`, `refreshing: false`; retried after 10 minutes |
@@ -968,6 +1172,11 @@ tests and decoded by the Swift tests.
 | `get_usage` fails otherwise or times out | `throttled` with last good reading, retry after 5 minutes |
 | Unknown model | Tokens shown, cost marked unpriced |
 | Query exceeds 10 s | Bounded-script timeout; shown as a failed request |
+| Account file missing, unreadable or of another version | No added Accounts; the Default Account as before |
+| Added Account's directory gone or not a directory | That Account `missing`, "Directory not found", left out of totals; read from the start if it returns |
+| Added Account resolves to a directory already counted | That Account `duplicate`, left out of totals |
+| One Account's `projects/` cannot be listed | That Account's Token Usage `error`; the others still add up |
+| An Agent's environment cannot be read (Apple binary, not dumpable, permissions) | No suggestion from that Agent |
 
 ## Testing
 
@@ -1035,6 +1244,18 @@ tests and decoded by the Swift tests.
     `runtime-node`, records `HOME`, and leaves identical files alone;
     `runtime: "missing"` carrying `version`; `refreshing` staying true until
     the limit requests finish; the shared `usage-v1.json` vector.
+  - Accounts: per-Account totals that add up to the program's; a record
+    copied into two Accounts counted once in each; an added, removed,
+    missing and returning Account changing totals without a rebuild or a
+    new cache directory; `duplicate` by real path and `overLimit`; an Account
+    file that is missing, malformed or of another version; the Default
+    Account without `~/.claude` when `CLAUDE_CONFIG_DIR` is recorded; a stub
+    `claude` that sees no `CLAUDE_CONFIG_DIR` for the Default Account and the
+    Account's own `directory` otherwise, with a throttle and back-off per
+    Account; the macOS action refusing a directory the file does not list;
+    suggestions from the home listing (markers, third-party folders,
+    `ignored`, real-path deduplication) and from a stub `herdr pane
+    process-info` with a readable process environment.
 - **App:** decoding the shared vector, unknown fields and window ids,
   windows labeled by length, feature gating, store re-query loop, toggle
   plumbing, and the bounded script's quoting.
@@ -1071,6 +1292,7 @@ Tracked under #494 as vertical slices:
    Claude Code's `get_usage`, 60-second throttle and failure back-off).
 9. #503 — `CHANGELOG.md` Unreleased entry, plugin README section, and
    `docs/agents/navigation.md` source map row.
+10. #529 — Claude Code Accounts (plugin 0.8.0, ADR 0030).
 
 ## Open questions
 
