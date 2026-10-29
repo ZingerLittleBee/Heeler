@@ -5,12 +5,17 @@ import { join, resolve } from "node:path";
 
 export const DAY = 86_400_000;
 export const RETENTION = 31 * DAY;
+/**
+ * The roots this environment names. Claude Code's are the Default Account's:
+ * the directory Claude Code uses, first, with the legacy XDG one folded in.
+ * Added Accounts are not roots, so adding one never moves the cache.
+ */
 export function usageRoots(runtime) {
   const env = runtime.env;
   const home = env.HOME;
   const absolute = value => resolve(home, value);
   return {
-    claude: [...new Set([env.CLAUDE_CONFIG_DIR, join(home, ".claude"), join(env.XDG_CONFIG_HOME || join(home, ".config"), "claude")].filter(Boolean).map(absolute))].sort(),
+    claude: [...new Set([env.CLAUDE_CONFIG_DIR || join(home, ".claude"), join(env.XDG_CONFIG_HOME || join(home, ".config"), "claude")].map(absolute))],
     codex: [absolute(env.CODEX_HOME || join(home, ".codex"))],
   };
 }

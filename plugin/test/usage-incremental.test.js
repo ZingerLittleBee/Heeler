@@ -267,8 +267,8 @@ test("an unreadable directory keeps its known Transcripts without a rebuild",asy
 
 test("an unreadable Claude root is counted while another root can be listed",{skip:process.getuid?.()===0&&"root ignores directory modes"},async t=>{
   const f=fixture(t);f.transcript("main.jsonl",[assistant("main",5)]);
-  // ~/.claude is the second root beside CLAUDE_CONFIG_DIR.
-  const second=join(f.env.HOME,".claude","projects");mkdirSync(join(second,"-work-two"),{recursive:true});
+  // The legacy XDG directory is the second root beside CLAUDE_CONFIG_DIR.
+  const second=join(f.env.HOME,".config","claude","projects");mkdirSync(join(second,"-work-two"),{recursive:true});
   writeFileSync(join(second,"-work-two","two.jsonl"),records([assistant("two",7)]));
   assert.equal(tokens(await f.finish()),12);const initial=generation(f);
   const main=join(f.env.CLAUDE_CONFIG_DIR,"projects");

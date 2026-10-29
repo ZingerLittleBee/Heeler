@@ -98,7 +98,7 @@ test("Claude copies, streamed snapshots, parent replays and cache splits count o
   const original = assistant("shared", 10, { timestamp });
   const larger = { ...original, message: { ...original.message, usage: { input_tokens: 10, cache_read_input_tokens: 20, cache_creation_input_tokens: 99, cache_creation: { ephemeral_5m_input_tokens: 3, ephemeral_1h_input_tokens: 7 }, output_tokens: 5, iterations: [{ type: "advisor_message", input_tokens: 5000 }], speed: "fast" } } };
   f.transcript("original.jsonl", [original, larger, original, { ...larger, sessionId: "copy" }, assistant("synthetic", 900, { message: { id: "synthetic", model: "<synthetic>", usage: { input_tokens: 900 } } })]);
-  f.transcript("session/subagents/replay.jsonl", [{ ...larger, isSidechain: true, requestId: "replay-request" }, assistant("child", 4, { isSidechain: true }), assistant("fallback", 6, { requestId: undefined, timestamp }), assistant("fallback", 6, { requestId: undefined, timestamp })], join(f.env.HOME, ".claude"));
+  f.transcript("session/subagents/replay.jsonl", [{ ...larger, isSidechain: true, requestId: "replay-request" }, assistant("child", 4, { isSidechain: true }), assistant("fallback", 6, { requestId: undefined, timestamp }), assistant("fallback", 6, { requestId: undefined, timestamp })], join(f.env.HOME, ".config", "claude"));
   f.transcript("legacy.jsonl", [assistant("legacy", 8, { message: { id: "legacy", model: "claude-test", usage: { input_tokens: 8, cache_creation_input_tokens: 9, cache_creation: {}, output_tokens: 2 } } })], join(f.env.HOME, ".config", "claude"));
   const report = await f.finish();
   assert.deepEqual(claude(report).totals.last30Days.tokens, { input: 28, cacheRead: 20, cacheWrite: 19, output: 11, reasoning: 0, total: 78 });
@@ -158,8 +158,8 @@ test("root identity stays stable when missing roots appear and old siblings are 
 test("symlinked Claude roots are scanned once and old records are excluded", async t => {
   const f = fixture(t);
   f.transcript("one.jsonl", [assistant("one"), assistant("old", 1000, { timestamp: new Date(Date.now() - 32 * 86_400_000).toISOString() })]);
-  mkdirSync(f.env.HOME, { recursive: true });
-  symlinkSync(f.env.CLAUDE_CONFIG_DIR, join(f.env.HOME, ".claude"));
+  mkdirSync(join(f.env.HOME, ".config"), { recursive: true });
+  symlinkSync(f.env.CLAUDE_CONFIG_DIR, join(f.env.HOME, ".config", "claude"));
   assert.equal(claude(await f.finish()).totals.last30Days.tokens.total, 12);
   const log = readFileSync(join(f.cache(), "keys.log"), "utf8");
   assert.equal(log.includes('"message-old"'), false);
