@@ -180,7 +180,8 @@ final class AgentListFieldsEditor {
     }
 
     /// Fetches the Host's first two plugin rows, row gap, and token styles,
-    /// preserving its Heeler row. A missing snapshot fills fallback fields; a failed
+    /// preserving its Heeler row and every row's right side, which herdr has
+    /// no say in. A missing snapshot fills fallback fields; a failed
     /// read leaves the draft unchanged. Results are dropped once editing
     /// ended or the draft was edited since. Draft-only; the screen uses
     /// `replaceWithPluginFields`.
@@ -192,18 +193,25 @@ final class AgentListFieldsEditor {
         let request = UUID()
         syncRequests[hostID] = request
         syncStates[hostID] = .syncing
-        let thirdRow = AgentRowSlot.slotRows(layout(for: hostID).rows)[AgentRowSlot.herdrRowCount]
+        let current = layout(for: hostID)
+        let thirdRow = AgentRowSlot.slotRows(current.rows)[AgentRowSlot.herdrRowCount]
+        func kept(_ synced: AgentRowLayout) -> AgentRowLayout {
+            var synced = synced
+            synced.rows = AgentLayoutTokensEditing.keepingRightSides(synced.rows, of: current.trailing)
+            synced.trailing = current.trailing
+            return synced
+        }
         let state = await fetch(hostID)
         guard isEditing, syncRequests[hostID] == request else { return }
         syncRequests[hostID] = nil
         switch state {
         case .loaded(let snapshot?):
-            drafts[hostID] = snapshot.layout.withHeelerRow(thirdRow)
+            drafts[hostID] = kept(snapshot.layout.withHeelerRow(thirdRow))
             syncStates[hostID] = .filled(snapshot.diagnostics.isEmpty
                 ? "Replaced with plugin fields."
                 : AgentListFieldsCopy.syncDiagnostics)
         case .loaded(nil):
-            drafts[hostID] = AgentRowLayout.heelerDefault.withHeelerRow(thirdRow)
+            drafts[hostID] = kept(AgentRowLayout.heelerDefault.withHeelerRow(thirdRow))
             syncStates[hostID] = .filled(
                 "This Host has no plugin fields snapshot, so Heeler's fallback fields were used.")
         case .unavailable:

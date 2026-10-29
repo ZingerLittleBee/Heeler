@@ -21,6 +21,9 @@ Entries reference the pull request that made the change.
 - Choose the Agents list's row style in Settings › Appearance: Status Ring
   shows each Agent's program mark inside a ring that carries its status, the
   Working ring turning, in place of the status capsule.
+- Choose what ends each Agent row on the right in Agent List Fields: any
+  field, the Host name, or the Checkout's Changes totals, per Host. Sync
+  from plugin keeps them.
 
 ### Changed
 

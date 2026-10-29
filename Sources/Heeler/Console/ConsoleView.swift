@@ -2119,7 +2119,7 @@ struct ConsoleView: View {
                 hiding: isByWorkspace
                     ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [],
                 leadsWithMark: true)
-            return .init(title: card.headline, namesAgent: card.namesAgent(inFirst: card.rows.count))
+            return .init(title: card.headline, namesAgent: card.cardNamesAgent)
         }
     }
 

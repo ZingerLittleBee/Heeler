@@ -117,6 +117,7 @@ struct AgentListFieldsSettingsTests {
         #expect(!AgentListFieldsCopy.detailIntro.localizedCaseInsensitiveContains("tap edit"))
         #expect(AgentListFieldsCopy.detailIntro.contains("save right away"))
         #expect(AgentListFieldsCopy.syncConfirmation.contains("saved right away"))
+        #expect(AgentListFieldsCopy.syncConfirmation.contains("right side stay"))
     }
 
     @Test func destinationsAreKeyedByFixedSlotIndexAndHost() {
@@ -126,12 +127,14 @@ struct AgentListFieldsSettingsTests {
         #expect(hostSlot != AgentListFieldsEditorDestination(hostID: hostA, rowIndex: 0))
         #expect(hostSlot != AgentListFieldsEditorDestination(hostID: hostB, rowIndex: 1))
         #expect(hostSlot.id != AgentListFieldsEditorDestination(hostID: hostB, rowIndex: 1).id)
+        #expect(hostSlot.id != AgentListFieldsEditorDestination(hostID: hostA, rowIndex: 1, side: .trailing).id)
     }
 
     @Test func rowSlotCopyNamesHerdrRowsAndHeelersRow() {
         #expect(AgentListFieldsCopy.rowSlots.contains("Row 1 and Row 2 start from herdr"))
         #expect(AgentListFieldsCopy.rowSlots.contains("Any row can use herdr and Heeler fields"))
         #expect(AgentListFieldsCopy.rowSlots.contains("The status ends Row 1"))
+        #expect(AgentListFieldsCopy.rowSlots.contains("right side end its line"))
         #expect(AgentListFieldsRowLabel.emptyText(slot: .herdr) == "No fields")
         #expect(AgentListFieldsRowLabel.emptyText(slot: .heeler) == "Not configured")
         #expect(AgentListFieldsRowLabel.emptyText(slot: nil) == "No fields")
@@ -154,6 +157,11 @@ struct AgentListFieldsSettingsTests {
             AgentListFieldsRowLabel.accessibilityLabel(index: 0, row: [plain, dim])
                 == "Row 1, herdr row, Field 1 of 2: agent, default style, Field 2 of 2: workspace, secondary style")
         #expect(AgentListFieldsRowLabel.accessibilityLabel(index: 1, row: []) == "Row 2, herdr row, No fields")
+        #expect(
+            AgentListFieldsRowLabel.accessibilityLabel(
+                index: 1, row: [], trailing: [.init(.host, dim: true), .init(.status, dim: true)])
+                == "Row 2, herdr row, No fields, Right side field 1 of 2: host, "
+                + "Right side field 2 of 2: status, secondary style")
         #expect(AgentListFieldsRowLabel.accessibilityLabel(index: 2, row: []) == "Row 3, Heeler row, Not configured")
     }
 }

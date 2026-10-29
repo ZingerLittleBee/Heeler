@@ -3,8 +3,8 @@ import SwiftUI
 /// Console preview for a Host's current rows.
 ///
 /// Draws the same `AgentCardView` the Agent list uses, with sample values, so
-/// typography, status, Host footer, Changes totals, and field emphasis
-/// cannot drift. The Host section owns the strip label, tint, and padding.
+/// typography, status, each row's right side, Changes totals, and field
+/// emphasis cannot drift. The Host section owns the strip label, tint, and padding.
 struct AgentListFieldsPreview: View {
     let layout: AgentRowLayout
     let hostName: String

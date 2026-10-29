@@ -188,11 +188,15 @@ _Avoid_: list theme, row skin
 **Row Slot**:
 One of the three fixed positions in an Agent Row Layout. Row 1 and Row 2 are
 herdr rows: they start from herdr's sidebar fields and are what Sync from
-plugin refills. Row 3 is Heeler's row, which Sync fills only when herdr
-defines a third row. Every slot accepts herdr fields and the Heeler-only
-fields herdr does not define (Host name, Agent Status as text, working
-directory). Slots are never added, moved, or deleted; an empty slot renders
-nothing.
+plugin refills. Row 3 is Heeler's row, which Sync keeps. Every slot accepts
+herdr fields and the Heeler-only fields herdr does not define (Host name,
+Agent Status as text, working directory). Each slot also has a right side
+that ends its line, Heeler's own, which Sync keeps and which alone can hold
+the Checkout's Changes totals; a field sits on one side of a slot at most.
+Until a Host's layout chooses its right sides, the Console places them: the
+Host name ends the first line under the title and the totals the last.
+Titles, the switcher, and Live Activities read only the left sides. Slots are
+never added, moved, or deleted; an empty slot renders nothing.
 _Avoid_: extra row, custom row
 
 **Pin**:

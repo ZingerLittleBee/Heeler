@@ -1444,17 +1444,127 @@ struct AgentCardChangesTotalsTests {
     /// actor traps there, so a regression crashes this test.
     @Test func buildsAdditionalRowsOffTheMainThread() async throws {
         let card = AgentCardView(agent: Self.agent, layout: .consoleDefault)
-        let rows = Array(
-            AgentCardPresentation(agent: Self.agent, layout: .consoleDefault).rows.dropFirst())
-        try #require(rows.count > 1)
-        let forEach = card.additionalRowViews(rows)
-        let row = UncheckedSendable(value: forEach.content)
-        let elements = Array(rows.enumerated())
+        let lines = AgentCardLines(
+            presentation: AgentCardPresentation(agent: Self.agent, layout: .consoleDefault),
+            headingTakesTitle: false, showsHost: true, showsTotals: true).details
+        try #require(lines.count > 1)
+        let line = UncheckedSendable(value: card.detailLineViews(lines).content)
+        let lineElements = Array(lines.enumerated())
+        let entries: [AgentCardTrailing] = [.fields([.separator]), .host, .changes]
+        let entry = UncheckedSendable(value: card.trailingEntryViews(entries).content)
+        let entryElements = Array(entries.enumerated())
         await Task.detached {
-            for element in elements {
-                _ = row.value(element)
+            for element in lineElements {
+                _ = line.value(element)
+            }
+            for element in entryElements {
+                _ = entry.value(element)
             }
         }.value
+    }
+
+    /// A layout that leaves its right side to the list keeps today's
+    /// places: the Host ends the first line under the title and the totals
+    /// the last, both on a line of their own under a title alone, and
+    /// Row 1's line under a heading.
+    @Test func theListPlacesTheRightSideNoLayoutChose() {
+        let presentation = AgentCardPresentation(agent: Self.agent, layout: .consoleDefault)
+        let lines = AgentCardLines(
+            presentation: presentation, headingTakesTitle: false, showsHost: true, showsTotals: true)
+        #expect(lines.title.isEmpty)
+        #expect(lines.details.map(\.leading) == Array(presentation.rows.dropFirst()))
+        #expect(lines.details.map(\.trailing) == [[.host], [.changes]])
+
+        let titleOnly = AgentCardPresentation(agent: Self.agent, layout: AgentRowLayout(rows: [[.init(.workspace)]]))
+        func details(heading: Bool, host: Bool, totals: Bool) -> [AgentCardLines.Line] {
+            AgentCardLines(
+                presentation: titleOnly, headingTakesTitle: heading, showsHost: host, showsTotals: totals
+            ).details
+        }
+        #expect(details(heading: false, host: true, totals: true) == [.init(leading: [], trailing: [.host, .changes])])
+        #expect(details(heading: false, host: false, totals: true) == [.init(leading: [], trailing: [.changes])])
+        #expect(details(heading: false, host: false, totals: false).isEmpty)
+        #expect(details(heading: true, host: true, totals: true)
+            == [.init(leading: titleOnly.rows[0], trailing: [.host, .changes])])
+    }
+
+    /// Each row slot's chosen right side ends its own line: one whose left
+    /// side shows nothing still gets a line, and one before the title's slot
+    /// joins the title's line.
+    @Test func eachRowEndsWithTheRightSideItChose() throws {
+        let layout = AgentRowLayout(
+            rows: [[], [.init(.workspace)], []],
+            trailing: [[.init(.status)], [.init(.host)], [.init(.changes)]])
+        let presentation = AgentCardPresentation(agent: Self.agent, layout: layout)
+        #expect(presentation.slots == [1])
+        let status = try #require(presentation.trailing?[0].first)
+        #expect(status == .fields([RenderedToken(token: .status, text: "Idle", fg: nil, bold: nil, dim: nil)]))
+        func lines(heading: Bool = false, shows: Bool = true) -> AgentCardLines {
+            AgentCardLines(
+                presentation: presentation, headingTakesTitle: heading, showsHost: shows, showsTotals: shows)
+        }
+        #expect(lines().title == [status, .host])
+        #expect(lines().details == [.init(leading: [], trailing: [.changes])])
+        #expect(lines(shows: false).title == [status])
+        #expect(lines(shows: false).details.isEmpty)
+        #expect(lines(heading: true).title.isEmpty)
+        #expect(lines(heading: true).details == [
+            .init(leading: [], trailing: [status]),
+            .init(leading: presentation.rows[0], trailing: [.host]),
+            .init(leading: [], trailing: [.changes]),
+        ])
+    }
+
+    /// An Agent field on a right side names the Agent on the card, so rows
+    /// sharing a title get no program name for it.
+    @Test func anAgentFieldOnTheRightNamesTheAgentOnTheCard() {
+        let agent = ConsoleAgent(
+            hostID: UUID(), hostName: "devbox",
+            agent: Agent(
+                terminalID: "term_b", kind: "aider", title: "Fix the flaky test",
+                status: .idle, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p2",
+                cwd: "/work/proj", revision: 3),
+            workspaceLabel: "proj", repositoryCheckout: nil)
+        let left = AgentRowLayout(rows: [[.init(.workspace)]])
+        #expect(!AgentCardPresentation(agent: agent, layout: left, leadsWithMark: true).cardNamesAgent)
+        var right = left
+        right.trailing = [[.init(.agent)]]
+        let presentation = AgentCardPresentation(agent: agent, layout: right, leadsWithMark: true)
+        #expect(presentation.cardNamesAgent)
+        #expect(!presentation.namesAgent(inFirst: 1))
+    }
+
+    /// A saved entry keeps its Host, whose tone stands in for a status,
+    /// where its layout's right side leaves the Host out.
+    @Test func aSavedEntryKeepsItsHostWhereTheRightSideLeavesItOut() {
+        let layout = AgentRowLayout(
+            rows: [[.init(.workspace)], [.init(.agent)]], trailing: [[], [], [.init(.changes)]])
+        let presentation = AgentCardPresentation(agent: Self.agent, layout: layout)
+        let lines = AgentCardLines(
+            presentation: presentation, headingTakesTitle: false, showsHost: true, showsTotals: true,
+            requiresHost: true)
+        #expect(lines.details == [
+            .init(leading: presentation.rows[1], trailing: [.host]),
+            .init(leading: [], trailing: [.changes]),
+        ])
+    }
+
+    /// The Host chosen for Row 1's right side ends the title's line, before
+    /// the status, and the totals end Row 3's line of their own.
+    @Test func aHostOnRowOnesRightSideEndsTheTitlesLine() async throws {
+        let store = try await Self.store(added: 12, removed: 7)
+        let layout = AgentRowLayout(
+            rows: [[.init(.workspace)], [.init(.agent)]], trailing: [[.init(.host)], [], [.init(.changes)]])
+        let (controller, window) = try await Self.host(store, width: 402, layout: layout)
+        defer { window.isHidden = true }
+        let root: UIView = controller.view
+        let host = try #require(AccessibilityProbe.frame(labeled: "devbox", in: root))
+        let status = try #require(AccessibilityProbe.frame(labeled: "Idle", in: root))
+        let totals = try #require(AccessibilityProbe.frame(
+            labeled: "Changes: 12 lines added, 7 lines removed", in: root))
+        #expect(abs(host.midY - status.midY) <= 2, "\(host) and \(status) sit on different lines")
+        #expect(host.maxX <= status.minX, "\(host) overlaps \(status)")
+        #expect(totals.minY >= host.maxY - 0.5, "\(totals) does not sit below \(host)")
     }
 
     /// With more rows, the Host ends the first one after Row 1 and the

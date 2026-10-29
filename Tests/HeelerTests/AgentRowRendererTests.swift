@@ -68,6 +68,26 @@ struct AgentRowRendererTests {
         #expect(texts(kindAgent("claude"), hiding: [.workspace]) == ["claude"])
     }
 
+    /// A row's right side counts as part of it: the kind word leaves either
+    /// side of a slot with another field, but the Host and the totals the
+    /// card draws on the right do not count.
+    @Test func aMarkedKindWordLeavesASlotWithAFieldOnEitherSide() throws {
+        let layout = AgentRowLayout(
+            rows: [[.init(.workspace)], [.init(.agent)], [.init(.agent)]],
+            trailing: [[.init(.agent), .init(.host)], [.init(.workspace)], [.init(.host), .init(.changes)]])
+        let agent = kindAgent("claude")
+        #expect(AgentRowRenderer.render(layout: layout, agent: agent, omittingMarkedKind: true)
+            .map { $0.map(\.text).joined() } == ["Heeler", "claude"])
+        let trailing = try #require(
+            AgentRowRenderer.renderTrailing(layout: layout, agent: agent, omittingMarkedKind: true))
+        #expect(trailing[0] == [.host])
+        #expect(trailing[1] == [.fields([RenderedToken(token: .workspace, text: "Heeler", fg: nil, bold: nil, dim: nil)])])
+        #expect(trailing[2] == [.host, .changes])
+        let kept = try #require(AgentRowRenderer.renderTrailing(layout: layout, agent: agent))
+        #expect(kept[0] == [.fields([RenderedToken(token: .agent, text: "claude", fg: nil, bold: nil, dim: nil)]), .host])
+        #expect(AgentRowRenderer.renderTrailing(layout: AgentRowLayout(rows: layout.rows), agent: agent) == nil)
+    }
+
     /// A CLI Agent whose launch directory and SSH account are the only things
     /// a directory row depends on.
     private func directoryAgent(cwd: String, hostUsername: String?) -> ConsoleAgent {
