@@ -144,7 +144,14 @@ final class TerminalKeyboardInset {
             return measureWindowKeyboardOverride()
         }
         guard let window else { return nil }
-        return Self.layoutGuideHeight(
+        return keyboardHeight(in: window)
+    }
+
+    /// The keyboard's reach above the terminal's bottom edge in `window`, as
+    /// the layout guide tracks it, measured the way this inset measures:
+    /// against ``contentBottomInset(of:in:)`` for its content anchor.
+    func keyboardHeight(in window: UIWindow) -> CGFloat? {
+        Self.layoutGuideHeight(
             in: window,
             contentBottomInset: Self.contentBottomInset(of: contentAnchor, in: window))
     }
