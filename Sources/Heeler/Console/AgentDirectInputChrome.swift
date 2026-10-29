@@ -182,7 +182,9 @@ struct AgentDirectInputChrome: View {
     /// 34 pt tall it disables itself, so it is laid out at 34 pt and scaled
     /// to the key caps' 30 pt.
     private var pasteKeyButton: some View {
-        KeyCapPasteControl { text in
+        PinnedPasteControl(
+            backgroundColor: PinnedPasteControl.keyCapFill, cornerRadius: 7
+        ) { text in
             UIDevice.current.playInputClick()
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             interactions.paste(text)
@@ -237,28 +239,27 @@ struct AgentDirectInputChrome: View {
     }
 }
 
-/// UIKit's paste control dressed as a Direct Input key cap. SwiftUI's
-/// `PasteButton` cannot be: its glyph is always white, and in light mode iOS
-/// darkens a light tint behind it.
-private struct KeyCapPasteControl: UIViewRepresentable {
+/// UIKit's paste control, pinned edge to edge inside a plain view that
+/// takes SwiftUI's frame. SwiftUI's `PasteButton` sizes its control from the
+/// control's own measurement, which can come back 0×0 when it is first laid
+/// out, leaving a blank slot where the glyph belongs. Pinned, the control is
+/// always exactly the frame SwiftUI gives it, and follows that frame if it
+/// changes. Its colors are set here too: `PasteButton`'s glyph is always
+/// white, and in light mode iOS darkens a light tint behind it.
+///
+/// The control resolves its colors once, when it is created, so callers
+/// rebuild it when the color scheme changes.
+struct PinnedPasteControl: UIViewRepresentable {
+    /// Painted opaque by the control behind its glyph.
+    let backgroundColor: UIColor
+    /// A fixed corner radius, or nil for a capsule.
+    var cornerRadius: CGFloat? = nil
     let paste: (String) -> Void
 
-    func makeUIView(context: Context) -> KeyCapPasteView {
-        KeyCapPasteView(paste: paste)
-    }
-
-    func updateUIView(_ view: KeyCapPasteView, context: Context) {
-        view.onPaste = paste
-    }
-}
-
-private final class KeyCapPasteView: UIView {
-    var onPaste: (String) -> Void
-
-    /// The key caps' translucent `secondarySystemFill` flattened onto the
-    /// row's `secondarySystemBackground`, because the control paints its
-    /// background opaque.
-    private static let keyCapFill = UIColor { traits in
+    /// The Direct Input key caps' translucent `secondarySystemFill`
+    /// flattened onto the row's `secondarySystemBackground`, because the
+    /// control paints its background opaque.
+    static let keyCapFill = UIColor { traits in
         let fill = UIColor.secondarySystemFill.resolvedColor(with: traits)
         let base = UIColor.secondarySystemBackground.resolvedColor(with: traits)
         var (fillRed, fillGreen, fillBlue, fillAlpha): (CGFloat, CGFloat, CGFloat, CGFloat) =
@@ -277,17 +278,37 @@ private final class KeyCapPasteView: UIView {
             alpha: 1)
     }
 
-    init(paste: @escaping (String) -> Void) {
+    func makeUIView(context: Context) -> PinnedPasteView {
+        PinnedPasteView(
+            backgroundColor: backgroundColor, cornerRadius: cornerRadius, paste: paste)
+    }
+
+    func updateUIView(_ view: PinnedPasteView, context: Context) {
+        view.onPaste = paste
+    }
+}
+
+final class PinnedPasteView: UIView {
+    var onPaste: (String) -> Void
+
+    init(
+        backgroundColor: UIColor, cornerRadius: CGFloat?,
+        paste: @escaping (String) -> Void
+    ) {
         onPaste = paste
         super.init(frame: .zero)
         pasteConfiguration = UIPasteConfiguration(forAccepting: NSString.self)
 
         let configuration = UIPasteControl.Configuration()
         configuration.displayMode = .iconOnly
-        configuration.cornerStyle = .fixed
-        configuration.cornerRadius = 7
+        if let cornerRadius {
+            configuration.cornerStyle = .fixed
+            configuration.cornerRadius = cornerRadius
+        } else {
+            configuration.cornerStyle = .capsule
+        }
         configuration.baseForegroundColor = .label
-        configuration.baseBackgroundColor = Self.keyCapFill
+        configuration.baseBackgroundColor = backgroundColor
         let control = UIPasteControl(configuration: configuration)
         control.target = self
         control.translatesAutoresizingMaskIntoConstraints = false

@@ -31,6 +31,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep the paste button on a terminal's keyboard row visible: it could
+  appear as an empty space when the terminal opened. In light mode it is
+  now a plain glyph like the row's other buttons, without a gray backing.
 - Show a new Claude Code Agent's Chat, such as one started in a new
   worktree, as No Messages Yet until its first message, instead of
   Conversation Not Found. (#530)
