@@ -29,6 +29,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Ask to trust the new host key as soon as an edit to a Host's routes
+  reaches a machine whose key changed, and show Trust New Host Key under
+  the Host's connection status instead of at the bottom of its page.
 - Scroll the Agent and Shell terminals with a trackpad or a mouse wheel on
   iPad, not only by touch. (#512; PR #528)
 - Reattach a terminal on its own when the Host's connection drops under it,

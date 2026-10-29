@@ -390,9 +390,9 @@ final class HostOnboardingStore {
         resolveFingerprint(trusted)
     }
 
-    /// Persists a discovered session through the Host catalog. The enclosing
-    /// navigation destination is keyed by the Host value, so this recreates
-    /// onboarding and immediately checks the selected socket.
+    /// Persists a discovered session through the Host catalog. The Host
+    /// detail then restarts onboarding for the updated Host, which
+    /// immediately checks the selected socket.
     func selectSession(_ session: HerdrSession, in catalog: HostStore) throws {
         var updated = host
         updated.sessionName = session.isDefault ? "" : session.name

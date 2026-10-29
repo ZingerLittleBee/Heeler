@@ -4,6 +4,9 @@ import SwiftUI
 /// plus the TOFU fingerprint confirmation. Checks run automatically on
 /// arrival; the goal is zero to green checkmarks without desktop docs.
 struct HostOnboardingView: View {
+    /// The catalog's copy of this Host. Onboarding restarts for it when it
+    /// changes (see `adopt`).
+    let host: Host
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
     let usage: AgentUsageStore?
@@ -24,8 +27,16 @@ struct HostOnboardingView: View {
     /// Stops the Console's attempt to connect this Host; nil where the
     /// Host detail does not offer it.
     let stopConnecting: (@MainActor @Sendable () async -> Void)?
+    private let dependencies: HostOnboardingDependencies
     @State private var store: HostOnboardingStore
     @State private var isEditing = false
+    /// From Edit until its sheet is fully gone, which `isEditing` turns
+    /// false before. A Host saved meanwhile waits, so its checks never
+    /// present a trust prompt over the dismissing sheet.
+    @State private var isEditorOnScreen = false
+    /// Set by a route change until its first checks finish, which then ask
+    /// about a changed key at once: the edit may now reach another machine.
+    @State private var offersHostKeyReplacement = false
     @State private var isConfirmingHostKeyReplacement = false
     @State private var sessionSelectionError: String?
     /// A passing preflight not yet acted on: it may restart the Console's
@@ -48,6 +59,7 @@ struct HostOnboardingView: View {
         stopConnecting: (@MainActor @Sendable () async -> Void)? = nil,
         dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
+        self.host = host
         self.catalog = catalog
         self.usage = usage
         self.openUsage = openUsage
@@ -58,17 +70,57 @@ struct HostOnboardingView: View {
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         self.stopConnecting = stopConnecting
-        _store = State(
-            initialValue: HostOnboardingStore(
-                host: host,
-                connector: dependencies.connector,
-                knownHosts: dependencies.knownHosts,
-                credentials: dependencies.credentials))
+        self.dependencies = dependencies
+        _store = State(initialValue: Self.makeStore(host, dependencies))
     }
 
+    private static func makeStore(
+        _ host: Host, _ dependencies: HostOnboardingDependencies
+    ) -> HostOnboardingStore {
+        HostOnboardingStore(
+            host: host,
+            connector: dependencies.connector,
+            knownHosts: dependencies.knownHosts,
+            credentials: dependencies.credentials)
+    }
+
+    /// The page with its Edit sheet, outside `page`'s modifier chain, which
+    /// stays under Xcode 26.6's type-checking limit.
     var body: some View {
+        page
+            .sheet(isPresented: $isEditing, onDismiss: { isEditorOnScreen = false }) {
+                HostFormView(store: catalog, editing: store.host)
+            }
+            .onChange(of: host) { _, updated in
+                if !isEditorOnScreen { adopt(updated) }
+            }
+            .onChange(of: isEditorOnScreen) { _, isOnScreen in
+                if !isOnScreen { adopt(host) }
+            }
+            .onChange(of: store.phase) { _, phase in
+                guard phase == .finished, offersHostKeyReplacement else { return }
+                offersHostKeyReplacement = false
+                isConfirmingHostKeyReplacement = store.pendingHostKeyReplacement != nil
+            }
+    }
+
+    /// Restarts onboarding for a changed Host: a selected session at once,
+    /// an edit once its sheet is gone.
+    private func adopt(_ updated: Host) {
+        guard updated != store.host else { return }
+        offersHostKeyReplacement = updated.routes != store.host.routes
+        store = Self.makeStore(updated, dependencies)
+        isConfirmingHostKeyReplacement = false
+        sessionSelectionError = nil
+        isConsoleRecoveryArmed = false
+        isShowingPluginNotice = false
+    }
+
+    private var page: some View {
         List {
             connectionSection
+
+            hostKeyReplacementSection
 
             routesSection
 
@@ -111,16 +163,6 @@ struct HostOnboardingView: View {
             availableSessionsSection
 
             overlaySignInSection
-
-            if store.pendingHostKeyReplacement != nil {
-                Section {
-                    Button("Trust New Host Key", systemImage: "key.horizontal", role: .destructive) {
-                        isConfirmingHostKeyReplacement = true
-                    }
-                } footer: {
-                    Text("Only continue after verifying the new fingerprint with the Host owner.")
-                }
-            }
         }
         .readableColumnPage()
         .refreshable {
@@ -130,13 +172,12 @@ struct HostOnboardingView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Edit") { isEditing = true }
+                Button("Edit") {
+                    isEditorOnScreen = true
+                    isEditing = true
+                }
             }
         }
-        .sheet(isPresented: $isEditing) {
-            HostFormView(store: catalog, editing: store.host)
-        }
-
         .pluginNoticeSheet(
             pluginPresentation.notice, isPresented: $isShowingPluginNotice,
             actionState: store.pluginAction,
@@ -180,7 +221,8 @@ struct HostOnboardingView: View {
         } message: {
             Text(sessionSelectionError ?? "")
         }
-        .task {
+        // A new store, after `adopt`, cancels the old one's checks.
+        .task(id: ObjectIdentifier(store)) {
             if store.phase == .idle {
                 await store.runChecks()
             }
@@ -460,6 +502,20 @@ struct HostOnboardingView: View {
             }
             .font(.subheadline)
             .textCase(nil)
+        }
+    }
+
+    /// Right under the status card, which a changed key leaves failed.
+    @ViewBuilder
+    private var hostKeyReplacementSection: some View {
+        if store.pendingHostKeyReplacement != nil {
+            Section {
+                Button("Trust New Host Key", systemImage: "key.horizontal", role: .destructive) {
+                    isConfirmingHostKeyReplacement = true
+                }
+            } footer: {
+                Text("Only continue after verifying the new fingerprint with the Host owner.")
+            }
         }
     }
 
