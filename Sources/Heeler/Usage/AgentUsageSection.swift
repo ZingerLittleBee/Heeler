@@ -190,7 +190,7 @@ struct AgentUsageSection: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
-        if let chip = AgentUsageLimitChip.chips(in: scope).first {
+        if let chip = AgentUsageLimitChip.closest(in: scope) {
             AgentUsageLimitRow(chip: chip)
         }
     }
@@ -234,13 +234,14 @@ struct AgentUsageDayStrip: View {
     }
 }
 
-/// The tightest Usage Limits window on one Host.
+/// The tightest Usage Limits window on one Host, with its Claude Code
+/// Account when the Host has several.
 struct AgentUsageLimitRow: View {
     let chip: AgentUsageLimitChip
     @Environment(\.locale) private var locale
 
     private func subtitle(now: Date) -> String {
-        let name = AgentUsageReport.Program.displayName(for: chip.program)
+        let name = chip.programTitle
         guard let reset = chip.resetsAt, reset > now else { return name }
         return "\(name) · resets in \(AgentUsageStyle.countdown(to: reset, now: now, locale: locale))"
     }

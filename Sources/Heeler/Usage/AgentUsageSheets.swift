@@ -1,47 +1,60 @@
 import SwiftUI
 
-/// One Host's tightest Usage Limits window for one program, as a chip.
+/// One Host's tightest Usage Limits window for one program, or for one of
+/// its Claude Code Accounts, as a chip.
 struct AgentUsageLimitChip: Identifiable, Equatable {
     let hostID: Host.ID
     let hostName: String
     let program: String
+    /// The Claude Code Account, named when its Host has several.
+    var account: String? = nil
     /// nil while there is no live reading to fill the ring with.
     let percent: Double?
+    /// The tightest window's name, or why there is none.
     let title: String
     /// When the live window resets.
     var resetsAt: Date? = nil
-    var id: String { "\(hostID)\(program)" }
+    /// The Usage Limits card the chip reads, unique on its Host.
+    var cardID: String
+    var id: String { "\(hostID)\(cardID)" }
 
-    /// Live readings first, fullest first; Usage Limits stay per Host.
+    /// The program, and the Account when its Host has several.
+    var programTitle: String { AgentUsageProgramTitle.title(program: program, account: account) }
+
+    /// The chip's two lines: the program over the window, or, when the
+    /// scope has several Hosts, the Host over the program or Account and
+    /// the window.
+    func lines(showsHost: Bool) -> (top: String, bottom: String) {
+        showsHost
+            ? (hostName, "\(account ?? AgentUsageReport.Program.displayName(for: program)) · \(title)")
+            : (programTitle, title)
+    }
+
+    /// Live readings first, fullest first; Usage Limits stay per Host. A
+    /// Host with several Claude Code Accounts keeps its chips together in
+    /// the Accounts' order, the ones without figures after the readable
+    /// ones, then its other programs, placed by its fullest reading.
     static func chips(in scope: AgentUsageScope, now: Date = .now) -> [Self] {
-        let chips = scope.included.flatMap { host in
-            host.programs.map { program -> Self in
-                let limits = program.usageLimits
-                let live = (limits.windows ?? []).filter { window in
-                    !window.expired && window.usedPercent != nil
-                        && AgentUsageLimitsView.date(window.resetsAt).map { $0 > now } != false
-                }
-                let tightest = live.max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) }
-                let title: String
-                if let tightest, limits.state == "ok" || limits.state == "throttled" {
-                    title = AgentUsageLimitsView.windowName(tightest, program: program.program)
-                } else if limits.state == "disabled" {
-                    title = "Limits off"
-                } else if limits.state == "unavailable" && limits.reason == "notReadYet" {
-                    title = "Reading…"
-                } else {
-                    title = "Unavailable"
-                }
-                let isLive = limits.state == "ok" || limits.state == "throttled"
-                return Self(
-                    hostID: host.id, hostName: host.name, program: program.program,
-                    percent: isLive ? tightest?.usedPercent : nil,
-                    title: title,
-                    resetsAt: isLive ? AgentUsageLimitsView.date(tightest?.resetsAt) : nil)
+        let groups = scope.included.flatMap { host -> [[Self]] in
+            let chips = AgentUsageLimitsCard.readings(for: host.report).compactMap { card in
+                chip(card, hostID: host.id, hostName: host.name, now: now)
             }
+            return chips.contains { $0.account != nil } ? [chips] : chips.map { [$0] }
         }
-        return chips.enumerated().sorted { lhs, rhs in
-            switch (lhs.element.percent, rhs.element.percent) {
+        return fullestFirst(groups) { $0.compactMap(\.percent).max() }.flatMap { $0 }
+    }
+
+    /// The chip closest to a limit, named by its Account when its Host has
+    /// several; the first chip while none has a live reading.
+    static func closest(in scope: AgentUsageScope, now: Date = .now) -> Self? {
+        fullestFirst(chips(in: scope, now: now), by: \.percent).first
+    }
+
+    /// `items` with a live percentage first, fullest first, otherwise in
+    /// their order.
+    private static func fullestFirst<Item>(_ items: [Item], by percent: (Item) -> Double?) -> [Item] {
+        items.enumerated().sorted { lhs, rhs in
+            switch (percent(lhs.element), percent(rhs.element)) {
             case (let left?, let right?): left == right ? lhs.offset < rhs.offset : left > right
             case (.some, nil): true
             case (nil, .some): false
@@ -49,6 +62,40 @@ struct AgentUsageLimitChip: Identifiable, Equatable {
             }
         }
         .map(\.element)
+    }
+
+    /// A card's chip; the toggle card reads nothing.
+    private static func chip(_ card: AgentUsageLimitsCard, hostID: Host.ID, hostName: String, now: Date) -> Self? {
+        switch card {
+        case .unread(let id, let account, let reason):
+            return Self(hostID: hostID, hostName: hostName, program: "claude", account: account, percent: nil,
+                title: reason, cardID: id)
+        case .claudeToggle:
+            return nil
+        case .limits(let id, let program, let account, let limits):
+            let live = (limits.windows ?? []).filter { window in
+                !window.expired && window.usedPercent != nil
+                    && AgentUsageLimitsView.date(window.resetsAt).map { $0 > now } != false
+            }
+            let tightest = live.max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) }
+            let title: String
+            if let tightest, limits.state == "ok" || limits.state == "throttled" {
+                title = AgentUsageLimitsView.windowName(tightest, program: program)
+            } else if limits.state == "disabled" {
+                title = "Limits off"
+            } else if limits.state == "unavailable" && limits.reason == "notReadYet" {
+                title = "Reading…"
+            } else {
+                title = "Unavailable"
+            }
+            let isLive = limits.state == "ok" || limits.state == "throttled"
+            return Self(
+                hostID: hostID, hostName: hostName, program: program, account: account,
+                percent: isLive ? tightest?.usedPercent : nil,
+                title: title,
+                resetsAt: isLive ? AgentUsageLimitsView.date(tightest?.resetsAt) : nil,
+                cardID: id)
+        }
     }
 }
 
@@ -73,17 +120,15 @@ struct AgentUsageLimitChipView: View {
                 }
             }
             .frame(width: 36, height: 36)
+            let lines = chip.lines(showsHost: showsHost)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 5) {
                     Circle().fill(AgentUsageStyle.color(for: chip.program)).frame(width: 7, height: 7)
-                    Text(showsHost ? chip.hostName
-                        : AgentUsageReport.Program.displayName(for: chip.program))
+                    Text(lines.top)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                Text(showsHost
-                    ? "\(AgentUsageReport.Program.displayName(for: chip.program)) · \(chip.title)"
-                    : chip.title)
+                Text(lines.bottom)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(chip.percent == nil ? .secondary : .primary)
             }
@@ -480,12 +525,38 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
         }
     }
 
+    var program: String {
+        if case .limits(_, let program, _, _) = self { return program }
+        return "claude"
+    }
+
+    /// The Claude Code Account a card is for, when its Host has several.
+    var account: String? {
+        switch self {
+        case .limits(_, _, let account, _): account
+        case .unread(_, let account, _): account
+        case .claudeToggle: nil
+        }
+    }
+
     static func cards(for report: AgentUsageReport) -> [Self] {
         (report.programs ?? []).flatMap { program -> [Self] in
             guard program.program == "claude" else {
                 return [.limits(id: program.program, program: program.program, account: nil, limits: program.usageLimits)]
             }
             return claudeCards(program) + [.claudeToggle]
+        }
+    }
+
+    /// The cards that carry a reading, in the same order, for the chips,
+    /// Host detail and an iPad's strip: no toggle, and Claude Code as one
+    /// card saying its limits are off while they are.
+    static func readings(for report: AgentUsageReport) -> [Self] {
+        (report.programs ?? []).flatMap { program -> [Self] in
+            let whole = Self.limits(id: program.program, program: program.program, account: nil, limits: program.usageLimits)
+            guard program.program == "claude" else { return [whole] }
+            let cards = claudeCards(program)
+            return cards.isEmpty ? [whole] : cards
         }
     }
 
