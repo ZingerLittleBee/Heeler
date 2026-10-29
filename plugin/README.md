@@ -587,7 +587,9 @@ tests in the app both read it.
 Bump `version` in `herdr-plugin.toml`, `package.json` and `package-lock.json`
 together with `test-vectors/plugin-version-v1.json` and
 `HeelerPluginCompatibility.bundled` in the app; the Node and Swift tests
-check that they agree. The app recommends updating any Host whose plugin is
+check that they agree. Move the demo plugin states in
+`DemoScreenshotMode.swift` that stand for the current version to it, and
+the one newer than the app past it. The app recommends updating any Host whose plugin is
 older, and its per-feature notes (`HeelerPluginFeature`) trust the version
 alone, so bump it with every change the app relies on rather than shipping
 behavior under an unchanged number, as 0.3.0 and 0.4.0 did.
