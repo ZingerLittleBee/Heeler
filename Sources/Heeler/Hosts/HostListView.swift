@@ -355,8 +355,8 @@ struct HostListView: View {
             .navigationDestination(for: HostDetailDestination.self) { route in
                 let id = route.hostID
                 if let host = store.hosts.first(where: { $0.id == id }) {
-                    // Keyed by the Host value: editing recreates the
-                    // onboarding store so checks run against fresh settings.
+                    // Keyed by the Host's id: onboarding restarts itself for
+                    // an edited Host once the Edit sheet is gone.
                     HostOnboardingView(
                         host: host,
                         catalog: store,
@@ -370,7 +370,7 @@ struct HostListView: View {
                         retryConnection: retryAction(for: id),
                         stopConnecting: stopAction(for: id),
                         dependencies: onboardingDependencies)
-                        .id(host)
+                        .id(id)
                         .modifier(ReturnToOrigin(origin: route.isRequested ? origin : nil))
                 } else {
                     ContentUnavailableView("Host removed", systemImage: "server.rack")

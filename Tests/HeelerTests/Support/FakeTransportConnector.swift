@@ -186,6 +186,9 @@ final actor FakeTransportConnector: TransportConnector {
     /// The host key the fake "server" presents; nil skips host key
     /// evaluation entirely.
     private let presentedKeyBlob: Data?
+    /// The key the first route's Jump Host presents, evaluated before the
+    /// Host's under the Jump Host's endpoint; nil skips it.
+    private let presentedJumpKeyBlob: Data?
     private let sessions: [HerdrSession]
     private let plugin: Result<HeelerPluginInstallation?, TransportError>?
     private let pluginSteps: FakePluginSteps
@@ -193,13 +196,14 @@ final actor FakeTransportConnector: TransportConnector {
     private(set) var transports: [FakeTransport] = []
 
     init(
-        outcome: Outcome, presentedKeyBlob: Data? = nil,
+        outcome: Outcome, presentedKeyBlob: Data? = nil, presentedJumpKeyBlob: Data? = nil,
         sessions: [HerdrSession] = [],
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
         pluginSteps: FakePluginSteps = FakePluginSteps()
     ) {
         self.outcome = outcome
         self.presentedKeyBlob = presentedKeyBlob
+        self.presentedJumpKeyBlob = presentedJumpKeyBlob
         self.sessions = sessions
         self.plugin = plugin
         self.pluginSteps = pluginSteps
@@ -207,6 +211,15 @@ final actor FakeTransportConnector: TransportConnector {
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
         capturedSettings.append(settings)
+        if let presentedJumpKeyBlob, let jump = settings.routes.first?.jump {
+            let presented = HostKeyFingerprint(publicKeyBlob: presentedJumpKeyBlob)
+            if let known = await settings.hostKeyPolicy.knownHosts.fingerprint(
+                host: jump.host, port: jump.port), known != presented
+            {
+                throw TransportError.jumpHostFailed(
+                    .hostKeyMismatch(known: known, presented: presented))
+            }
+        }
         if let presentedKeyBlob {
             try await evaluateHostKey(
                 HostKeyFingerprint(publicKeyBlob: presentedKeyBlob), settings: settings)

@@ -185,6 +185,25 @@ struct HostOnboardingPresentationTests {
             #expect(HostOnboardingConsoleRecovery.action(for: input) == expected)
         }
     }
+
+    /// The check prints the fingerprint of the host key file sshd serves for
+    /// the presented key's algorithm.
+    @Test func changedKeyCheckNamesTheHostKeyFileOfThePresentedAlgorithm() {
+        let rows: [(algorithm: String, file: String)] = [
+            ("ssh-ed25519", "ssh_host_ed25519_key.pub"),
+            ("ecdsa-sha2-nistp256", "ssh_host_ecdsa_key.pub"),
+            ("rsa-sha2-512", "ssh_host_rsa_key.pub"),
+            ("ssh-rsa", "ssh_host_rsa_key.pub"),
+            (HostKeyFingerprint.unknownAlgorithm, "ssh_host_ed25519_key.pub"),
+        ]
+        for (algorithm, file) in rows {
+            let replacement = HostKeyReplacement(
+                known: HostKeyFingerprint(digest: Data(repeating: 0, count: 32)),
+                presented: HostKeyFingerprint(
+                    digest: Data(repeating: 1, count: 32), algorithm: algorithm))
+            #expect(replacement.fingerprintCommand == "ssh-keygen -lf /etc/ssh/\(file)")
+        }
+    }
 }
 
 @Suite("Host detail route status")

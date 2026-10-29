@@ -62,7 +62,10 @@ Notification Registration, Live Activities, and pins in two.
   offers to trust the new key only when the Routes that saw one agree on
   it. If any Route whose address names the same machine everywhere saw a
   changed key, only those Routes are compared; a local address's
-  disagreement is another machine answering elsewhere.
+  disagreement is another machine answering elsewhere. A Jump Host's changed
+  key is its own machine's: it is offered under the Jump Host's endpoint,
+  when the Routes through that Jump Host agree on it, and only when no
+  change to the Host's own key is offered.
 - Pairing makes the address that answered the first Route and every other
   candidate address in the Pairing Code a Route of its own.
 - Network changes do not switch Routes on a live connection. The next
