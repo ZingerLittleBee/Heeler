@@ -946,6 +946,9 @@ enum RemoteHostPath {
 struct RemoteDirectoryListing: Sendable, Equatable {
     let directories: [String]
     let truncated: Bool
+    /// The names in `directories` that are symbolic links to a directory.
+    /// Only a listing that follows links has any.
+    var symbolicLinks: Set<String> = []
 }
 
 /// A coding agent process running inside a herdr Pane.

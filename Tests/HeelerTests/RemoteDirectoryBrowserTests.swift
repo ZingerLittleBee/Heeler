@@ -226,6 +226,54 @@ struct RemoteDirectoryBrowserTests {
         #expect(browser.errorMessage == nil)
     }
 
+    @Test func aListingThatFollowsLinksKeepsLinksToDirectories() async throws {
+        let files = VirtualHostFiles(home: "/home/you")
+        await files.makeDirectory("/home/you/.claude")
+        await files.write("{}", at: "/home/you/.claude/.claude.json")
+        await files.write("notes", at: "/home/you/notes.txt")
+        await files.makeDirectory("/Volumes/T7/.claude")
+        await files.symlink("/home/you/claude-shared", to: "/Volumes/T7/.claude")
+        await files.symlink("/home/you/claude-relative", to: ".claude")
+        await files.symlink("/home/you/broken", to: "/home/you/gone")
+        await files.symlink("/home/you/notes-link", to: "notes.txt")
+        let transport = ScriptedTransport()
+        await transport.scriptChat(
+            files: files.hostFiles(), agent: Agent(.fixture(paneID: "w1:p1", status: .idle)))
+
+        let listing = try await RemoteDirectoryListing.followingLinks(at: "/home/you", over: transport)
+
+        #expect(listing.directories == [".claude", "claude-relative", "claude-shared"])
+        #expect(listing.symbolicLinks == ["claude-relative", "claude-shared"])
+        #expect(!listing.truncated)
+        await #expect(throws: TransportError.invalidDirectoryPath(path: "/home/you/absent")) {
+            _ = try await RemoteDirectoryListing.followingLinks(at: "/home/you/absent", over: transport)
+        }
+    }
+
+    @Test func linksStayMarkedAndARefusalClearsOnAnotherFolder() async throws {
+        let fake = FakeLister()
+        fake.listings = [
+            "/home/you": RemoteDirectoryListing(
+                directories: [".claude", "claude-shared"], truncated: false, symbolicLinks: ["claude-shared"]),
+            "/home/you/.claude": RemoteDirectoryListing(directories: ["projects"], truncated: false),
+        ]
+        let browser = makeBrowser(fake)
+        browser.start()
+        try await waitUntil("home loaded") { browser.currentPath == "/home/you" }
+        #expect(browser.isSymbolicLink("claude-shared"))
+        #expect(!browser.isSymbolicLink(".claude"))
+
+        browser.refusal = "This directory is already an Account."
+        browser.retry()
+        try await waitUntil("home listed again") { fake.calls.count == 2 && !browser.isLoading }
+        #expect(browser.refusal == "This directory is already an Account.")
+
+        browser.enter(".claude")
+        try await waitUntil("child loaded") { browser.currentPath == "/home/you/.claude" }
+        #expect(browser.refusal == nil)
+        #expect(browser.symbolicLinks.isEmpty)
+    }
+
     @Test func pathHelpersHandleRootAndNonAbsolutePaths() {
         #expect(RemoteDirectoryBrowser.childPath("/", name: "x") == "/x")
         #expect(RemoteDirectoryBrowser.childPath("/home/you", name: "src") == "/home/you/src")
