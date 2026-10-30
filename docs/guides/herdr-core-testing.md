@@ -59,8 +59,9 @@ on the fixture.
 
 ## Connect states
 
-Add the Host in a build with herdr-core Hosts enabled, as **herdr-app / herdr-core**,
-and run its checks in each state. Use a unique core session for the Host.
+Launch the app with `--offer-herdr-core-hosts` unless the build already offers
+herdr-core. Add the Host by hand with a unique core session, confirm **herdr-core**
+in its detail, and run its checks in each state.
 
 | State | How to get there | Heeler reads | Check again |
 | --- | --- | --- | --- |
@@ -73,3 +74,15 @@ and run its checks in each state. Use a unique core session for the Host.
 
 Each check run must leave the Host as it found it: no core started, and no process
 or file added.
+
+## Detection states
+
+Add a Host by hand, with `--offer-herdr-core-hosts`, and read its Server Kind section
+before confirming. Tap **Run Checks Again** after changing a state.
+
+| State | How to get there | herdr-core row reads |
+| --- | --- | --- |
+| Not installed | Rename `~/.local/bin/herdr-core` for the check, and restore it after | **Not installed** |
+| Not running | `server stop` by absolute path, or a session never used | The core's version, then **not running** |
+
+Detection must leave the Host as it found it too: no core or herdr server started.
