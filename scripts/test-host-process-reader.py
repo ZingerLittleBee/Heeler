@@ -108,6 +108,35 @@ default:
 """
 
 
+# Overwrites its argv the way libuv's process title does (Node's process.title):
+# the title, then NULs to the end of the argv area, which keeps its length.
+REWRITER = r"""
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+int main(int argc, char **argv) {
+    char *end = argv[argc - 1] + strlen(argv[argc - 1]) + 1;
+    size_t area = (size_t)(end - argv[0]);
+    if (strcmp(argv[1], "keep") != 0) {
+        char *title = malloc(area);
+        size_t length = area - 1;
+        if (strcmp(argv[1], "fill") == 0) {
+            memset(title, 'x', length);
+        } else {
+            length = strlen(argv[1]);
+            memcpy(title, argv[1], length);
+        }
+        memcpy(argv[0], title, length);
+        memset(argv[0] + length, 0, area - length);
+    }
+    write(1, "ready\n", 6);
+    pause();
+    return 0;
+}
+"""
+
+
 def shells() -> list[list[str]]:
     found = [["/bin/sh"]]
     for name in ("dash", "bash", "ksh"):
@@ -484,6 +513,13 @@ class MacOSReadTests(ReaderTestCase):
         "NOT_ASKED": "sekrit",
     }
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        (cls.build / "rewriter.c").write_text(REWRITER)
+        cls.rewriter = cls.build / "rewriter"
+        subprocess.run(["cc", str(cls.build / "rewriter.c"), "-o", str(cls.rewriter)], check=True)
+
     def setUp(self) -> None:
         super().setUp()
         self.sleep = self.proc / "sleep-copy"
@@ -506,6 +542,20 @@ class MacOSReadTests(ReaderTestCase):
         self.running.append(process)
         time.sleep(0.3)
         return str(process.pid)
+
+    def start_ready(self, *argv: str, executable: str | None = None,
+                    env: dict[str, str] | None = None, cwd: Path | None = None) -> str:
+        """A process that says it is ready once its argv holds what it will hold."""
+        process = subprocess.Popen(
+            list(argv), executable=executable, env=self.ENV if env is None else env, cwd=cwd,
+            stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE)
+        self.running.append(process)
+        self.addCleanup(process.stdout.close)
+        self.assertEqual(process.stdout.readline(), b"ready\n")
+        return str(process.pid)
+
+    def rewritten(self, *argv: str, **options) -> str:
+        return self.start_ready(str(self.rewriter), *argv, **options)
 
     def test_the_host_kernel_form_takes_the_macos_branch(self) -> None:
         pid = self.start()
@@ -563,6 +613,52 @@ class MacOSReadTests(ReaderTestCase):
             facts = self.read(shell, pids=[pid], values=["NAMED"], names=["TMUX"], macOS=True)
             self.assertEqual(facts[pid]["variables"], {"NAMED": "unavailable"})
             self.assertEqual(facts[pid]["names"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_a_title_shorter_than_argv_leaves_the_environment_readable(self) -> None:
+        pid = self.rewritten("claude", "a-long-argument", "another-long-argument")
+
+        def check(shell: list[str]) -> None:
+            asked = ["NAMED", "BLANK", "LINES", "UNICODE", "FORGED", "ABSENT"]
+            variables = self.read(shell, pids=[pid], values=asked, macOS=True)[pid]["variables"]
+            self.assertEqual(variables, {
+                "NAMED": {"value": self.ENV["NAMED"]},
+                "BLANK": {"value": ""},
+                "LINES": {"value": self.ENV["LINES"]},
+                "UNICODE": {"value": self.ENV["UNICODE"]},
+                "FORGED": "unset",
+                "ABSENT": "unset",
+            })
+            request = {"pids": [pid], "names": ["TMUX", "STY"], "prefixes": ["HERDR_"], "macOS": True}
+            raw = self.run_script(shell, **request)
+            self.assertEqual(raw.count("="), 0, raw)
+            self.assertEqual(self.parse(raw, **request)[pid]["names"], ["HERDR_SOCKET_PATH", "TMUX"])
+        self.for_each_shell(check)
+
+    def test_an_environment_with_no_entries_is_read_and_holds_nothing(self) -> None:
+        kept = self.rewritten("keep", env={})
+        titled = self.rewritten("claude", "a-long-argument", env={})
+
+        def check(shell: list[str]) -> None:
+            for pid in (kept, titled):
+                facts = self.read(shell, pids=[pid], values=["NAMED"], names=["TMUX"], macOS=True)
+                self.assertEqual(facts[pid]["variables"], {"NAMED": "unset"})
+                self.assertEqual(facts[pid]["names"], [])
+        self.for_each_shell(check)
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_node_reads_the_same_with_and_without_a_process_title(self) -> None:
+        idle = 'console.log("ready");setInterval(()=>{},60000)'
+        plain = self.start_ready(shutil.which("node"), "-e", idle)
+        titled = self.start_ready(shutil.which("node"), "-e", f'process.title="claude";{idle}')
+
+        def check(shell: list[str]) -> None:
+            for pid in (plain, titled):
+                facts = self.read(shell, pids=[pid], values=["NAMED", "ABSENT"],
+                                  names=["TMUX"], macOS=True)[pid]
+                self.assertEqual(facts["variables"], {
+                    "NAMED": {"value": self.ENV["NAMED"]}, "ABSENT": "unset"})
+                self.assertEqual(facts["names"], ["TMUX"])
         self.for_each_shell(check)
 
     def test_open_files_come_back_decoded(self) -> None:

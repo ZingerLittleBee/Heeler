@@ -210,8 +210,14 @@ enum HostProcessReader {
     /// each one with its macOS version. `ps -o lstart=` for the start,
     /// `KERN_PROCARGS2` through `/usr/bin/perl` for variables (`ps -E` cannot
     /// frame a value holding a space), `lsof -F` for descriptors. macOS
-    /// withholds a platform binary's environment, so no entries read as
-    /// unavailable, as an empty read does on Linux.
+    /// withholds a platform binary's environment and ends the buffer there, so
+    /// no entries read as unavailable, as an empty read does on Linux. Anywhere
+    /// else dyld's own `apple` strings follow the environment, so an empty
+    /// environment still has entries past its NULs and holds no asked name.
+    ///
+    /// `argc` frames an argv the process left alone. One that took a title
+    /// (Node's `process.title`) has the title and NULs in the same bytes, so
+    /// the NULs past `argc` strings are skipped to find the environment.
     private static func macOSReads(_ request: Request) -> [String] {
         [
             "s() {",
@@ -228,7 +234,7 @@ enum HostProcessReader {
             "syscall(202,$m,3,$b,$l,0,0)==0 or exit 1;",
             "my $d=substr($b,0,unpack(\"Q\",$l));my $c=unpack(\"i\",$d);",
             "my $r=substr($d,4);$r=~s/^[^\\0]*\\0+//;",
-            "my @a=split(/\\0/,$r,-1);splice(@a,0,$c);",
+            "my @a=split(/\\0/,$r,-1);$c++ while $c<@a&&$a[$c] eq \"\";splice(@a,0,$c);",
             "my $o=\"\";my $n=0;my %G;",
             "for my $x(@a){last if $x eq \"\";$n++;my($k,$v)=split(/=/,$x,2);",
             "next if !defined $v||$G{$k}++;",
