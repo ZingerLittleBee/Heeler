@@ -82,6 +82,19 @@ final class HostHelperStore {
         if case .read(let reading) = reading { reading.offersLinger } else { false }
     }
 
+    /// A preflight has begun. What the Host last said no longer answers for it,
+    /// and until the preflight reads it again nothing is known.
+    func checkStarted() {
+        if running == nil { failure = nil }
+        forgetReading(.checking)
+    }
+
+    /// A preflight has ended. One that never got to read the Host leaves its
+    /// Helper unknown, not still being checked.
+    func checkEnded(unreadBecause reason: String) {
+        if reading == .checking { forgetReading(.unavailable(message: reason)) }
+    }
+
     /// Checks the Host over a connection the caller owns, such as the preflight's.
     /// A new check answers for the Host as it is now, so the last action's failure
     /// goes, unless that action is still running and has yet to report.
@@ -98,7 +111,7 @@ final class HostHelperStore {
             await read(over: transport)
             try? await transport.close()
         } catch {
-            if !Task.isCancelled { reading = .unavailable(message: Self.message(for: error)) }
+            if !Task.isCancelled { forgetReading(.unavailable(message: Self.message(for: error))) }
         }
     }
 
@@ -125,7 +138,7 @@ final class HostHelperStore {
             let read = try await installer(transport).read()
             if !Task.isCancelled { adopt(read) }
         } catch {
-            if !Task.isCancelled { reading = .unavailable(message: Self.message(for: error)) }
+            if !Task.isCancelled { forgetReading(.unavailable(message: Self.message(for: error))) }
         }
     }
 
@@ -133,6 +146,12 @@ final class HostHelperStore {
         reading = .read(read)
         plan = read.installAction == nil
             ? nil : (try? bundle()).flatMap { try? HostHelperInstallPlan(reading: read, bundle: $0) }
+    }
+
+    /// The file list came from the reading, so it goes with it.
+    private func forgetReading(_ replacement: Reading) {
+        reading = replacement
+        plan = nil
     }
 
     /// Works from what the Host says now, not what the sheet last read: another

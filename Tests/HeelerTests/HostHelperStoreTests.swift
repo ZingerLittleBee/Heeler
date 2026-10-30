@@ -152,6 +152,18 @@ struct HostHelperStoreTests {
         #expect(store.rowValue == "Unavailable")
     }
 
+    @Test func aHostThatCannotBeAskedListsNoFiles() async throws {
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let bundle = bundle
+        let store = HostHelperStore(connect: { throw TransportError.timedOut }, bundle: { bundle })
+        await store.refresh(over: core.transport())
+        #expect(store.plan != nil)
+
+        await store.refresh()
+        #expect(store.rowValue == "Unavailable")
+        #expect(store.plan == nil)
+    }
+
     @Test func aBuildWithoutTheHelperSaysSoAndLeavesTheHostAlone() async {
         let core = ScriptedCoreHost(helper: helper, channel: .refused)
         let store = HostHelperStore(
@@ -325,19 +337,45 @@ struct HostNotificationFilesRoutingTests {
 @Suite("Host Helper on Host detail")
 @MainActor
 struct HostHelperOnboardingTests {
-    private let credentials = HostCredentialsProvider(
-        deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
-        rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
-        secrets: InMemorySecretStore())
+    private static let unreachableHint =
+        "Could not reach the Host over SSH. Check the address and port. (no route)"
+    private static let cancelledHint = "The check was cancelled before it finished."
 
-    private func coreStore(_ core: ScriptedCoreHost) throws -> HostOnboardingStore {
-        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore, sessionName: "work")
-        return HostOnboardingStore(
-            host: host,
-            connector: FakeTransportConnector(
-                outcome: .connects(pingResult: .success(ServerInfo(version: "0", protocolVersion: 1))), core: core),
+    private let secrets = InMemorySecretStore()
+    private var credentials: HostCredentialsProvider {
+        HostCredentialsProvider(
+            deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+            rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+            secrets: secrets)
+    }
+
+    private func coreStore(
+        _ connector: FakeTransportConnector, authMethod: Host.AuthMethod = .deviceKey
+    ) -> HostOnboardingStore {
+        HostOnboardingStore(
+            host: Host(
+                address: "box.example", username: "dev", authMethod: authMethod,
+                serverKind: .herdrCore, sessionName: "work"),
+            connector: connector,
             knownHosts: InMemoryKnownHostsStore(),
             credentials: credentials)
+    }
+
+    private func coreStore(_ core: ScriptedCoreHost) throws -> HostOnboardingStore {
+        coreStore(reaching(core))
+    }
+
+    private func reaching(_ core: ScriptedCoreHost) -> FakeTransportConnector {
+        FakeTransportConnector(
+            outcome: .connects(pingResult: .success(ServerInfo(version: "0", protocolVersion: 1))), core: core)
+    }
+
+    private func waitUntilRunning(_ store: HostOnboardingStore) async throws {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while store.phase != .running, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require(store.phase == .running)
     }
 
     @Test func thePreflightReadsTheHelperAndLeavesTheCoreLogAlone() async throws {
@@ -355,6 +393,126 @@ struct HostHelperOnboardingTests {
         await store.runChecks()
         #expect(store.report?.isFullyPassed != true)
         #expect(store.hostHelper?.status == .notInstalled)
+    }
+
+    @Test func aHostOutOfReachOnTheFirstCheckReadsAsUnavailable() async throws {
+        let store = coreStore(
+            FakeTransportConnector(outcome: .connectFails(.sshUnreachable(detail: "no route"))))
+        await store.runChecks()
+        let helper = try #require(store.hostHelper)
+        #expect(helper.reading == .unavailable(message: Self.unreachableHint))
+        #expect(helper.rowValue == "Unavailable")
+        #expect(helper.detail == Self.unreachableHint)
+    }
+
+    @Test func aHostOutOfReachOnALaterCheckDropsAnInstalledReading() async throws {
+        let connector = reaching(ScriptedCoreHost(helper: ScriptedHelperHost(), channel: .refused))
+        let store = coreStore(connector)
+        await store.runChecks()
+        let helper = try #require(store.hostHelper)
+        await helper.install()
+        guard case .installed = helper.status else {
+            Issue.record("Expected an installed Helper, read \(String(describing: helper.status))")
+            return
+        }
+        #expect(helper.offersRemoval)
+
+        await connector.setOutcome(.connectFails(.sshUnreachable(detail: "no route")))
+        await store.runChecks()
+        #expect(store.hostHelper === helper)
+        #expect(helper.reading == .unavailable(message: Self.unreachableHint))
+        #expect(helper.status == nil)
+        #expect(!helper.offersRemoval)
+    }
+
+    @Test func aHostOutOfReachOnALaterCheckOffersNoInstall() async throws {
+        let connector = reaching(ScriptedCoreHost(helper: ScriptedHelperHost(), channel: .refused))
+        let store = coreStore(connector)
+        await store.runChecks()
+        let helper = try #require(store.hostHelper)
+        #expect(helper.installAction == .install)
+        #expect(helper.plan != nil)
+
+        await connector.setOutcome(.connectFails(.sshUnreachable(detail: "no route")))
+        await store.runChecks()
+        #expect(helper.installAction == nil)
+        #expect(helper.plan == nil)
+    }
+
+    @Test func aHostOutOfReachClearsTheLastActionsFailure() async throws {
+        let scripted = ScriptedHelperHost()
+        await scripted.configure {
+            $0.lingerOn = false
+            $0.lingerRefusal = "Interactive authentication required."
+        }
+        let connector = reaching(ScriptedCoreHost(helper: scripted, channel: .refused))
+        let store = coreStore(connector)
+        await store.runChecks()
+        let helper = try #require(store.hostHelper)
+        await helper.turnOnLinger()
+        #expect(helper.failure != nil)
+
+        await connector.setOutcome(.connectFails(.sshUnreachable(detail: "no route")))
+        await store.runChecks()
+        #expect(helper.failure == nil)
+    }
+
+    /// The preflight stops before it dials, so the Host's Helper goes unread.
+    @Test func credentialsThatCannotLoadLeaveTheHelperUnread() async throws {
+        let store = coreStore(
+            reaching(ScriptedCoreHost(helper: ScriptedHelperHost(), channel: .refused)),
+            authMethod: .password)
+        let account = HostStore.passwordAccount(for: store.host.id)
+        try secrets.write(Data("hunter2".utf8), account: account)
+        await store.runChecks()
+        let helper = try #require(store.hostHelper)
+        #expect(helper.status == .notInstalled)
+
+        try secrets.removeSecret(account: account)
+        await store.runChecks()
+        #expect(store.hostHelper === helper)
+        #expect(
+            helper.reading
+                == .unavailable(message: "No password is saved for this Host. Edit the Host and enter one."))
+    }
+
+    @Test func aFirstCheckWithoutCredentialsStillShowsTheRow() async throws {
+        let store = coreStore(
+            reaching(ScriptedCoreHost(helper: ScriptedHelperHost(), channel: .refused)),
+            authMethod: .password)
+        await store.runChecks()
+        #expect(store.hostHelper?.rowValue == "Unavailable")
+    }
+
+    @Test func aCancelledCheckStopsSayingItIsChecking() async throws {
+        let store = coreStore(FakeTransportConnector(outcome: .hangs(.milliseconds(300))))
+        let running = Task { await store.runChecks() }
+        try await waitUntilRunning(store)
+        #expect(store.hostHelper?.reading == .checking)
+
+        store.cancelChecks()
+        #expect(store.hostHelper?.reading == .unavailable(message: Self.cancelledHint))
+
+        // The abandoned connect times out later; that is never shown.
+        await running.value
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(store.hostHelper?.reading == .unavailable(message: Self.cancelledHint))
+    }
+
+    /// A check in flight has yet to say anything about the Host.
+    @Test func aLaterCheckInFlightShowsNoEarlierReading() async throws {
+        let connector = reaching(ScriptedCoreHost(helper: ScriptedHelperHost(), channel: .refused))
+        let store = coreStore(connector)
+        await store.runChecks()
+        let helper = try #require(store.hostHelper)
+        #expect(helper.status == .notInstalled)
+
+        await connector.setOutcome(.hangs(.milliseconds(200)))
+        let running = Task { await store.runChecks() }
+        try await waitUntilRunning(store)
+        #expect(helper.reading == .checking)
+        #expect(helper.installAction == nil)
+        await running.value
     }
 
     @Test func aHerdrTUIHostHasNoHelper() async throws {

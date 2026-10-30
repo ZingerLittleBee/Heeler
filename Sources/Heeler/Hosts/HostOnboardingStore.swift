@@ -152,6 +152,11 @@ final class HostOnboardingStore {
         notRunningCore = nil
         coreStartConfirmation = nil
         coreStart = .idle
+        if host.serverKind == .herdrCore {
+            let hostHelper = hostHelper ?? makeHostHelper()
+            hostHelper.checkStarted()
+            self.hostHelper = hostHelper
+        }
         let run = UUID()
         currentRun = run
         let task = Task { await self.performChecks(run: run, coreReportedRunning: coreReportedRunning) }
@@ -166,9 +171,16 @@ final class HostOnboardingStore {
         if task.isCancelled {
             markCancelled()
         } else {
-            if pluginStatus == .checking { pluginStatus = .unavailable }
+            settleUnreadStatuses()
             phase = .finished
         }
+    }
+
+    /// What a finished run never got to read is unknown, not still being checked.
+    private func settleUnreadStatuses() {
+        if pluginStatus == .checking { pluginStatus = .unavailable }
+        hostHelper?.checkEnded(
+            unreadBecause: report?.failureHint ?? "The checks ended before reading this Host.")
     }
 
     /// Stops a preflight still connecting — through an Overlay Network
@@ -187,7 +199,7 @@ final class HostOnboardingStore {
         resolveFingerprint(false)
         report = .failure(TransportError.cancelled, authMethod: host.authMethod)
         overlayLoginURL = nil
-        if pluginStatus == .checking { pluginStatus = .unavailable }
+        settleUnreadStatuses()
         phase = .finished
     }
 
@@ -289,8 +301,6 @@ final class HostOnboardingStore {
     /// answers, and no Herdr TUI session is looked for.
     private func performCoreChecks(settings: SSHTransportSettings, coreReportedRunning: Bool) async {
         pluginStatus = .unsupportedBackend
-        let hostHelper = hostHelper ?? makeHostHelper()
-        self.hostHelper = hostHelper
         do {
             let transport = try await connector.connectCore(settings: settings)
             guard !Task.isCancelled else {
@@ -298,7 +308,7 @@ final class HostOnboardingStore {
                 return
             }
             // The Helper does not need a core, so it reads whether one runs or not.
-            await hostHelper.refresh(over: transport)
+            await hostHelper?.refresh(over: transport)
             do {
                 let info = try await transport.hello()
                 if !Task.isCancelled {
