@@ -354,6 +354,91 @@ class NamesOnlyTests(ReaderTestCase):
         self.for_each_shell(check)
 
 
+class OpenFileTests(ReaderTestCase):
+    def descriptors(self, pid: int, targets: dict[int, bytes]) -> Path:
+        directory = self.process(pid) / "fd"
+        directory.mkdir()
+        for number, target in targets.items():
+            os.symlink(target, os.fsencode(directory / str(number)))
+        return directory
+
+    def test_reads_the_file_targets_a_process_holds(self) -> None:
+        self.descriptors(77, {
+            0: b"/dev/null",
+            1: b"pipe:[1234]",
+            2: b"socket:[99]",
+            3: b"anon_inode:[eventpoll]",
+            4: b"/home/me/.codex/sessions/rollout-1.jsonl",
+            5: b"/home/me/my files/\xe8\xb7\xaf\xe5\xbe\x84.jsonl",
+            6: b"/home/me/new\nline.jsonl",
+            7: b"/home/me/gone.jsonl (deleted)",
+        })
+
+        def check(shell: list[str]) -> None:
+            files = self.read(shell, pids=["77"], files=True)["77"]["files"]
+            self.assertCountEqual(files, [
+                "/dev/null",
+                "/home/me/.codex/sessions/rollout-1.jsonl",
+                "/home/me/my files/\u8def\u5f84.jsonl",
+                "/home/me/new\nline.jsonl",
+                "/home/me/gone.jsonl (deleted)",
+            ])
+        self.for_each_shell(check)
+
+    def test_a_file_name_cannot_forge_another_answer(self) -> None:
+        self.descriptors(77, {4: b"/x\nV 77 CLAUDE_CONFIG_DIR 2f\nE 77 ok"})
+
+        def check(shell: list[str]) -> None:
+            raw = self.run_script(shell, pids=["77"], files=True)
+            self.assertNotIn("CLAUDE_CONFIG_DIR", raw)
+            self.assertEqual(len(self.parse(raw, pids=["77"], files=True)["77"]["files"]), 1)
+        self.for_each_shell(check)
+
+    def test_no_descriptors_is_an_empty_answer(self) -> None:
+        self.descriptors(77, {})
+
+        def check(shell: list[str]) -> None:
+            self.assertEqual(self.read(shell, pids=["77"], files=True)["77"]["files"], [])
+        self.for_each_shell(check)
+
+    def test_a_process_whose_descriptors_cannot_be_read_is_unavailable(self) -> None:
+        self.process(12)
+        cases = ["12", "404"]
+        if os.geteuid() != 0:
+            self.descriptors(13, {4: b"/secret"}).chmod(0)
+            cases.append("13")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=cases, files=True)
+            for pid in cases:
+                self.assertEqual(facts[pid]["files"], "unavailable", pid)
+        self.for_each_shell(check)
+
+    def test_too_many_descriptors_read_as_unavailable_rather_than_part_of_a_list(self) -> None:
+        self.descriptors(77, {number: b"/f" for number in range(1025)})
+        self.descriptors(78, {number: b"/f" for number in range(1024)})
+        facts = self.read(["/bin/sh"], pids=["77", "78"], files=True)
+        self.assertEqual(facts["77"]["files"], "unavailable")
+        self.assertEqual(len(facts["78"]["files"]), 1024)
+
+    def test_every_read_for_every_pid_comes_from_one_script(self) -> None:
+        for pid in (77, 78):
+            directory = self.descriptors(pid, {4: f"/open/{pid}".encode()})
+            (directory.parent / "environ").write_bytes(f"NAMED={pid}\0TMUX=x\0".encode())
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["77", "78"], start=True, files=True,
+                              values=["NAMED"], names=["TMUX"])
+            for pid in ("77", "78"):
+                self.assertEqual(facts[pid], {
+                    "start": "4242",
+                    "variables": {"NAMED": {"value": pid}},
+                    "names": ["TMUX"],
+                    "files": [f"/open/{pid}"],
+                })
+        self.for_each_shell(check)
+
+
 if __name__ == "__main__":
     if not shutil.which("swiftc"):
         sys.exit("swiftc is required")

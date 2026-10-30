@@ -58,6 +58,8 @@ enum HostProcessReader {
     }
 
     private static let outputCap = 2_097_152
+    /// More open descriptors than this read as unavailable.
+    private static let openFileCap = 1024
 
     static func makeNonce() -> String {
         var generator = SystemRandomNumberGenerator()
@@ -105,6 +107,7 @@ enum HostProcessReader {
         for pid in request.pids {
             if request.readsStart { lines.append("s \(pid)") }
             if request.readsEnvironment { lines.append("e \(pid)") }
+            if request.readsOpenFiles { lines.append("f \(pid)") }
         }
         lines.append("printf '\\n%s\\n' '\(endMarker(nonce))'")
         lines.append("} | head -c \(outputCap)")
@@ -154,6 +157,35 @@ enum HostProcessReader {
             "  esac",
             "  printf 'S %s %s\\n' \"$p\" \"$v\"",
             "}",
+            // Only targets that are paths. A process that ends during the
+            // loop must not read as one that closed everything, and past the
+            // cap a partial list could hide the one file a caller looks for.
+            "f() {",
+            "  p=$1",
+            "  d=$R/$p/fd",
+            "  if [ ! -r \"$d\" ] || [ ! -x \"$d\" ] || ! command -v readlink >/dev/null; then",
+            "    printf 'O %s -\\n' \"$p\"",
+            "    return",
+            "  fi",
+            "  set +f",
+            "  set -- \"$d\"/*",
+            "  set -f",
+            "  if [ \"$#\" -gt \(openFileCap) ]; then",
+            "    printf 'O %s -\\n' \"$p\"",
+            "    return",
+            "  fi",
+            "  {",
+            "    for l in \"$@\"; do",
+            "      t=$(readlink \"$l\") || continue",
+            "      case $t in /*) printf '%s\\000' \"$t\" ;; esac",
+            "    done | od -An -v -tx1",
+            "    [ -r \"$d\" ] && echo ok",
+            "  } | awk -v p=\"$p\" '",
+            "$1==\"ok\"{k=1;next}",
+            "{for(i=1;i<=NF;i++){if($i==\"00\"){o=o \"F \" p \" \" v \"\\n\";v=\"\"}else v=v $i}}",
+            "END{if(k){printf \"%s\",o;print \"O\",p,\"ok\"}else print \"O\",p,\"-\"}",
+            "'",
+            "}",
         ]
     }
 
@@ -166,6 +198,7 @@ enum HostProcessReader {
         [
             "s() { printf 'S %s -\\n' \"$1\"; }",
             "e() { printf 'E %s -\\n' \"$1\"; }",
+            "f() { printf 'O %s -\\n' \"$1\"; }",
         ]
     }
 
@@ -218,6 +251,8 @@ enum HostProcessReader {
         var readable: Set<String> = []
         var values: [String: [String: Variable]] = [:]
         var names: [String: Set<String>] = [:]
+        var listed: Set<String> = []
+        var files: [String: [String]] = [:]
         for line in lines[(begin + 1)..<end] where !line.isEmpty {
             let fields = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
                 .map(String.init)
@@ -246,6 +281,18 @@ enum HostProcessReader {
                 guard fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
                 if fields[2] == "ok" { readable.insert(pid) }
                 answered.insert("E \(pid)")
+            case "F":
+                guard let bytes = bytes(fromHex: Substring(fields[2])) else {
+                    throw MalformedOutput()
+                }
+                // A path that is not UTF-8 is no path a caller could name.
+                if let path = String(data: bytes, encoding: .utf8) {
+                    files[pid, default: []].append(path)
+                }
+            case "O":
+                guard fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
+                if fields[2] == "ok" { listed.insert(pid) }
+                answered.insert("O \(pid)")
             default:
                 throw MalformedOutput()
             }
@@ -253,7 +300,9 @@ enum HostProcessReader {
         for pid in request.pids {
             if request.readsStart, !answered.contains("S \(pid)") { throw MalformedOutput() }
             if request.readsEnvironment, !answered.contains("E \(pid)") { throw MalformedOutput() }
+            if request.readsOpenFiles, !answered.contains("O \(pid)") { throw MalformedOutput() }
             var fact = facts[pid] ?? Facts()
+            if listed.contains(pid) { fact.openFiles = .value(files[pid] ?? []) }
             let isReadable = readable.contains(pid)
             for name in request.valuesOf {
                 fact.variables[name] = isReadable ? values[pid]?[name] ?? .unset : .unavailable
