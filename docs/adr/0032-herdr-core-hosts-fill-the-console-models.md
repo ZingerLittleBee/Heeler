@@ -52,15 +52,17 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   shell in the foreground ends the Agent, whatever was reported last. The
   foreground is read after unwrapping: the desktop app's wrapper forms, `sh -c
   <command line>`, and interpreters running an agent's script.
-- Heeler starts an Agent the way the desktop app does: a kept Terminal whose
-  argv is the user's shell running the agent and then staying,
-  `$SHELL -ic '"$@"; exec "$0" -i' $SHELL <agent> ...`, or for fish
-  `fish -ic 'command $argv[2..]; exec $argv[1] -i' fish <agent> ...`, or on
-  Windows PowerShell's `-NoExit -Command "& '<agent>' ..."`. The interactive
-  shell supplies the user's own PATH and variables, and the Pane returns to
-  that shell when the Agent exits, as on Herdr TUI. The launch request adds no
-  PATH of its own. A Template is launched by name, as the core runs it, without
-  the wrapper or the session flags of ADR 0034.
+- Heeler starts an Agent as a kept Terminal, as the desktop app does, whose
+  argv is the user's interactive shell replacing itself with the agent:
+  `$SHELL -ic 'exec "$@"' $SHELL <agent> ...`, or for fish
+  `fish -ic 'exec $argv[2..]' fish <agent> ...`, or on Windows PowerShell's
+  `-Command "& '<agent>' ...; exit $LASTEXITCODE"`. The interactive shell
+  supplies the user's own PATH and variables, and then no shell stays: the
+  Terminal ends when the Agent exits. A kept Terminal whose program is lost
+  rather than exited still comes back as a shell, one that has reported
+  nothing. The launch request adds no PATH of its own. A Template is launched
+  by name, as the core runs it, without the shell or the session flags of
+  ADR 0034.
 - Worktrees follow the desktop app's convention: `git worktree add -b
   worktree/<name> ~/.herdr/worktrees/<repository>/<name> HEAD` in the
   Checkout, then a labeled new Workspace there. Removing one ends that
@@ -83,7 +85,10 @@ time, and a program's first report arrives before the foreground sample that
 names it, so the rule matches names, not order. Launching through the user's
 interactive shell matches the desktop app, which a Terminal Heeler starts may
 end up shown in, and avoids copying the SSH session's PATH over a core that the
-desktop app started with the user's login PATH.
+desktop app started with the user's login PATH. Heeler's launch does not keep
+the desktop app's shell after the agent: the core types a child Terminal's
+note, its last lines and Enter, into any Terminal that has reported and is not
+blocked, and a shell left there runs those lines as commands.
 
 ## Evidence
 
@@ -109,6 +114,9 @@ with test clients, not the app.
   defines `space.rename` with an id and a name, and
   [model.rs](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/model.rs#L232-L242)
   names an unnamed space after its first Terminal's checkout folder.
+- [notes.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/notes.rs#L56-L58)
+  takes a note for any live Terminal that has reported and is not blocked,
+  whatever holds its foreground.
 - [window.rs](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/window.rs#L110-L119)
   builds the POSIX and fish wrappers, and
   [programs.rs](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/programs.rs#L268-L287)
@@ -138,8 +146,11 @@ with test clients, not the app.
   labels (PR #538). Simple, but a desktop user would see a different
   organization on the phone than on the desktop.
 - Running the agent's executable directly, with the PATH an SSH probe found
-  (PR #538). It needs no shell, but the Pane ends with the Agent, and the
-  agent misses what only the user's shell rc sets.
+  (PR #538). It needs no shell, but the agent misses what only the user's
+  shell rc sets.
+- The desktop app's wrapper, which leaves the user's shell behind as Herdr
+  TUI's Pane does. It matches the desktop app, but the core goes on typing
+  child notes into that shell, which runs them.
 
 ## Consequences
 
@@ -153,6 +164,9 @@ with test clients, not the app.
   and go. A kept Terminal that restarts takes its last directory as its new
   launch directory, so the device remembers the directory it first saw a
   Terminal launched in and keeps it in the same derived Workspace.
+- When an Agent Heeler started exits, its Pane closes, where a Herdr TUI Pane
+  returns to the shell. Its foreground is the agent itself from the moment the
+  shell replaces itself.
 - Recognizing an Agent works on the foreground's arguments, not the launch
   arguments, and needs a table from reported `app` names (`claude-code`,
   `codex`, `opencode`, `pi`, `omp`, `grok-build`) to Heeler's agent kinds.
@@ -174,7 +188,7 @@ with test clients, not the app.
   parent shell's.
 - Any process on the core can rewrite any Terminal's labels, desktop labels
   included, so labels place Terminals but prove nothing.
-- On a host whose zsh has no startup files, a zsh wrapper launch stops at
+- On a host whose zsh has no startup files, a launch through zsh stops at
   zsh's new-user wizard until someone answers it in the terminal.
 - The desktop app prefers a reported `app` over the foreground
   ([window.rs](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/window.rs#L4363-L4367)),

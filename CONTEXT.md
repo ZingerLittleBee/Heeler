@@ -167,10 +167,9 @@ it ended. A kept Terminal is one the core restores when its program is lost
 rather than exited, as when the machine restarts: it comes back as a fresh
 shell at the same address, and until then shows as restarting and hosts no
 Agent. Only the Host's own core's Terminals are shown, not those it reaches on
-other machines. Heeler
-starts an Agent on herdr-core as the Herdr desktop app does: a kept Terminal
-whose program is the user's interactive shell running the agent, so the Pane
-returns to that shell when the Agent exits, as on Herdr TUI.
+other machines. Heeler starts an Agent on herdr-core as a kept Terminal whose
+program is the user's interactive shell replacing itself with the agent, so
+the Terminal ends when the Agent exits instead of returning to a shell.
 _Avoid_: pane (for the core's record), session
 
 **Template**:
@@ -276,9 +275,10 @@ Blocked: Send then inserts the draft into Attach without Enter, and the tools
 keyboard submits or cancels. Delivered means the Host accepted the text into
 the pane — whether the Agent queues or acts on it is the Agent's business,
 and the Composer never claims otherwise.
-On herdr-core, Send pastes the draft into the Attach, checks that the Agent
-still holds the foreground, and only then submits it; when the check fails the
-text stays in the terminal unsubmitted and the Composer says so. While Agent
+On herdr-core, Send pastes the draft into the Attach and submits it only once
+a fresh look at the foreground finds the same Agent process; otherwise nothing
+is submitted, a shell that received the paste discards it, and the Composer
+keeps the draft and says so. While Agent
 Status is Blocked it only pastes, as on Herdr TUI. It pastes only into a
 terminal that accepts a bracketed paste, and otherwise says so. A Send with no
 answer has an unknown outcome and is never repeated (ADR 0035). Stop there is

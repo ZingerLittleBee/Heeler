@@ -15,11 +15,18 @@ the shell that stays behind, and a retry can deliver it twice.
 ## Decision
 
 - Composer Send on a herdr-core Agent writes into the Attach the user is
-  viewing, over the framed connection (ADR 0031), in two steps. It pastes the
-  draft as a bracketed paste. It then checks that the Agent still holds the
-  foreground, and only then submits: Enter, or the submit key of the
-  Template on the Terminal's record, encoded for the keyboard mode the
-  program set (Enter is `CSI 13 u` once it asks for kitty's flag 8).
+  viewing, over the framed connection (ADR 0031), in two steps. It notes the
+  pid of the Agent's foreground process and pastes the draft as a bracketed
+  paste. It then waits for a foreground sample taken after the paste: the
+  next foreground event, or 550 ms, one sampling period with margin, after
+  which it reads the Terminal's foreground. Only when that sample shows the
+  same pid running the same agent program does it submit: Enter, or the
+  submit key of the Template on the Terminal's record, encoded for the
+  keyboard mode the program set (Enter is `CSI 13 u` once it asks for kitty's
+  flag 8).
+- Submit goes out within two seconds of the paste or not at all, because a
+  note the core types between the two steps ends with Enter and would submit
+  the draft with the note appended.
 - A terminal with bracketed paste off gets nothing: the Composer keeps the
   draft and says the program is not accepting a paste. Heeler reads both
   modes from its own emulator after processing the Attach's output in order,
@@ -27,10 +34,12 @@ the shell that stays behind, and a retry can deliver it twice.
   can arrive in the middle of the stream.
 - While Agent Status is Blocked, Send only pastes, as on Herdr TUI, and the
   tools keyboard submits or cancels.
-- If the check fails, nothing is submitted. Text the Agent had read goes
-  with it; text it had not read reaches whatever now holds the terminal,
-  usually the shell's line editor as a pending paste. The Composer keeps the
-  draft and says it may be in the terminal.
+- If the check fails or runs out of time, nothing is submitted. Text the
+  Agent had read goes with it; text it had not read reaches whatever now
+  holds the terminal, usually the shell's line editor as a pending paste.
+  When a shell holds the foreground, Send presses Ctrl+C once, which makes
+  the shell drop that line. The Composer keeps the draft and says whether the
+  text may still be in the terminal.
 - A Send whose steps get no answer has an unknown outcome and is never
   repeated. The core holds a viewer's input while it types a note or stitches
   a long read, and writes it once it finishes, so a paste or Enter can still
@@ -82,6 +91,10 @@ confirm or refine these points with test clients, not the app.
 
 - `terminal.send`. One call, and it waits for a person to stop typing, but it
   can deliver into the wrong program or twice, as above.
+- Checking the foreground as soon as the paste is written. Faster, but the
+  core samples the foreground every 500 ms, so the check can still see an
+  Agent that has just exited, and Enter then runs the paste in the shell; a
+  live test did exactly that.
 - Insert without Enter and leave submission to the user (PR #538). Nothing can
   submit into a shell, but every message needs the user to finish it in the
   terminal, and the core's own child notes, typed with Enter, can submit the
@@ -90,8 +103,11 @@ confirm or refine these points with test clients, not the app.
 ## Consequences
 
 - Send needs a live Attach to the Agent; Composer opens one before sending.
-- Send waits for one foreground check between paste and submit, under a
-  second on a healthy connection.
+- Send takes at least 550 ms between paste and submit. On a link slow
+  enough that the check passes two seconds, the text stays in the Agent's
+  input unsubmitted, and the Composer says so.
+- Under the desktop app's fish wrapper the agent shares the wrapper's pid, so
+  only the program behind that pid tells an exited Agent from a live one.
 - A person typing into the same Terminal on another client at that moment can
   interleave with the paste, as on Herdr TUI.
 - Typing through a viewer makes it the Terminal's size leader; the viewed
