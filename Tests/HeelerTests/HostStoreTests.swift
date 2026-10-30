@@ -83,6 +83,24 @@ struct HostTests {
         }
     }
 
+    @Test func aHostWithAnEndpointIsHerdrTUIHoweverItIsBuilt() throws {
+        let endpoint = try #require(
+            HerdrEndpoint(socketPath: Self.endpointSocket, executablePath: Self.endpointLauncher))
+        let built = Host(
+            address: "studio.local", username: "ada", serverKind: .herdrCore, herdrEndpoint: endpoint)
+        #expect(built.serverKind == .herdrTUI)
+
+        let json = """
+            {"id":"\(UUID().uuidString)","name":"","address":"studio.local","port":22,
+             "username":"ada","authMethod":"deviceKey","serverKind":"herdrCore",
+             "herdrEndpoint":{"socketPath":"\(Self.endpointSocket)",
+             "executablePath":"\(Self.endpointLauncher)"}}
+            """
+        let decoded = try JSONDecoder().decode(Host.self, from: Data(json.utf8))
+        #expect(decoded.serverKind == .herdrTUI)
+        #expect(decoded.herdrEndpoint == endpoint)
+    }
+
     @Test func displayNameFallsBackToUserAtAddress() {
         var host = Host.fixture(name: "", address: "box.example", username: "dev")
         #expect(host.displayName == "dev@box.example")
@@ -346,57 +364,44 @@ struct HostStoreTests {
         #expect(HostStore(defaults: defaults, secrets: InMemorySecretStore()).hosts == [added])
     }
 
-    @Test func registeredNotificationsPreventBackendChangeWithoutChangingSecretsOrCatalog() throws {
+    @Test(arguments: [ServerKind.herdrTUI, .herdrCore])
+    func updateRefusesAServerKindChange(_ kind: ServerKind) throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let secrets = InMemorySecretStore()
-        let keys = NotificationKeyStore(secrets: InMemorySecretStore(), mirror: nil)
-        let store = HostStore(defaults: defaults, secrets: secrets, notificationKeys: keys)
-        let host = Host.fixture(name: "Desktop", authMethod: .password)
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        let host = Host(
+            name: "Desktop", address: "box.example", username: "dev", authMethod: .password,
+            serverKind: kind)
         try store.add(host, password: "old password")
-        try keys.save(.init(hostID: host.id, hostName: host.displayName, key: NotificationKeyStore.generateKey()))
-        let saved = defaults.data(forKey: "hosts")
-        var core = host
-        core.serverKind = .herdrCore
+        let saved = defaults.dictionaryRepresentation().filter { $0.key.lowercased().contains("hosts") }
+        var switched = host
+        switched.serverKind = kind == .herdrTUI ? .herdrCore : .herdrTUI
+        switched.name = "Switched"
 
-        #expect(throws: HostStoreError.notificationsPreventBackendChange) {
-            try store.update(core, password: "new password")
+        #expect(throws: HostStoreError.serverKindChanged) {
+            try store.update(switched, password: "new password")
         }
+
         #expect(store.hosts == [host])
-        #expect(defaults.data(forKey: "hosts") == saved)
         #expect(try store.password(for: host) == "old password")
-        #expect(try keys.record(forHost: host.id) != nil)
-        // Turning notifications off removes this key after the remote revoke.
-        try keys.removeRecord(forHost: host.id)
-        try store.update(core)
-        #expect(store.hosts == [core])
+        let unchanged = defaults.dictionaryRepresentation().filter { $0.key.lowercased().contains("hosts") }
+        #expect(NSDictionary(dictionary: unchanged).isEqual(to: saved))
     }
 
-    @Test func aPendingNotificationWritePreventsBackendChangeBeforeItCreatesAKey() throws {
-        let store = HostStore(volatileHosts: [Host.fixture(name: "Desktop")])
-        let host = try #require(store.hosts.first)
-        store.notificationWriteInProgress = { $0 == host.id }
-        var core = host
-        core.serverKind = .herdrCore
-        #expect(throws: HostStoreError.notificationsPreventBackendChange) { try store.update(core) }
-        #expect(store.hosts == [host])
-        store.notificationWriteInProgress = { _ in false }
-        try store.update(core)
-        #expect(store.hosts == [core])
-    }
-
+    /// The warning about a Host Heeler cannot reach applies to every kind, and
+    /// only while the Host is disconnected.
     @Test(arguments: [false, true])
-    func keyedCoreRemovalExplainsHowToStopTheLegacyRegistration(_ connected: Bool) throws {
-        var host = Host.fixture(name: "Desktop")
-        host.serverKind = .herdrCore
-        let store = HostStore(volatileHosts: [host])
-        let removal = HostRemovalStore(store: store)
+    func removalOfAKeyedCoreHostWarnsOnlyWhileDisconnected(_ connected: Bool) throws {
+        let host = Host(name: "Desktop", address: "box.example", username: "dev", serverKind: .herdrCore)
+        let removal = HostRemovalStore(store: HostStore(volatileHosts: [host]))
+
         removal.requestRemoval([host.id], dependencies: HostRemovalDependencies(
             isConnected: { _ in connected }, hasNotificationKey: { _ in true }))
+
         let request = try #require(removal.pendingRequest)
-        #expect(request.leavesNotificationsBehind)
-        #expect(request.message.contains("Switch the Host back to herdr and turn off notifications"))
-        #expect(!request.message.contains("Connect to it first"))
+        #expect(request.leavesNotificationsBehind == !connected)
+        #expect(request.message.contains("Connect to it first to stop them.") == !connected)
+        #expect(!request.message.contains("legacy"))
     }
 
     @Test func unknownAuthMethodSkipsOnlyThatHost() throws {

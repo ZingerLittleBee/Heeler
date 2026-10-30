@@ -4,8 +4,8 @@ import Observation
 enum HostStoreError: Error, Equatable {
     /// `update`/`remove` addressed a Host id the catalog does not contain.
     case unknownHost
-    /// Changing protocol would strand the old plugin registration.
-    case notificationsPreventBackendChange
+    /// `update` was handed a Host of another Server Kind (ADR 0031).
+    case serverKindChanged
     /// Persisted bytes could not be decoded. They are deliberately left
     /// untouched so a later write cannot turn a recoverable catalog into loss.
     case catalogUnreadable
@@ -105,19 +105,14 @@ final class HostStore {
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults?
     @ObservationIgnored private let secrets: any SecretStore
-    @ObservationIgnored private let notificationKeys: NotificationKeyStore
-    /// Includes writes waiting to borrow a connection, before they save a key.
-    @ObservationIgnored var notificationWriteInProgress: (Host.ID) -> Bool = { _ in false }
     @ObservationIgnored private var catalogEntries: [PersistedHosts.Entry]
 
     init(
         defaults: UserDefaults = .standard,
-        secrets: any SecretStore = KeychainSecretStore(service: "dev.bybee.heeler.ssh"),
-        notificationKeys: NotificationKeyStore = NotificationKeyStore()
+        secrets: any SecretStore = KeychainSecretStore(service: "dev.bybee.heeler.ssh")
     ) {
         self.defaults = defaults
         self.secrets = secrets
-        self.notificationKeys = notificationKeys
         catalogEntries = []
         guard let data = defaults.data(forKey: Self.defaultsKey) else {
             hosts = []
@@ -155,7 +150,6 @@ final class HostStore {
     init(volatileHosts: [Host]) {
         defaults = nil
         secrets = VolatileSecretStore()
-        notificationKeys = NotificationKeyStore(secrets: VolatileSecretStore(), mirror: nil)
         hosts = volatileHosts
         catalogEntries = volatileHosts.map(PersistedHosts.Entry.known)
         catalogLoadError = nil
@@ -170,20 +164,16 @@ final class HostStore {
         try persist()
     }
 
-    /// Replaces the stored Host with the same id. `password` nil leaves any
-    /// stored password untouched, so editing unrelated fields never requires
-    /// re-entering it.
+    /// Replaces the stored Host with the same id, which must keep its Server
+    /// Kind (ADR 0031). `password` nil leaves any stored password untouched, so
+    /// editing unrelated fields never requires re-entering it.
     func update(_ host: Host, password: String? = nil) throws {
         try ensureCatalogIsWritable()
         guard let index = hosts.firstIndex(where: { $0.id == host.id }) else {
             throw HostStoreError.unknownHost
         }
-        if hosts[index].serverKind == .herdrTUI, host.serverKind == .herdrCore {
-            // An unreadable Keychain is not proof that no registration remains.
-            let hasKey = (try? notificationKeys.record(forHost: host.id) == nil) != true
-            guard !hasKey, !notificationWriteInProgress(host.id) else {
-                throw HostStoreError.notificationsPreventBackendChange
-            }
+        guard hosts[index].serverKind == host.serverKind else {
+            throw HostStoreError.serverKindChanged
         }
         try applyPassword(password, to: host)
         hosts[index] = host

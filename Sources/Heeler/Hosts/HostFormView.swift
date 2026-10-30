@@ -15,7 +15,6 @@ struct HostFormView: View {
     @State private var rsaPublicKeyLine: String?
     @State private var didCopyKeyLine = false
     @State private var saveFailed = false
-    @State private var saveFailureMessage: String?
     @State private var deviceKeyIsCorrupt = false
     @State private var rsaKeyIsCorrupt = false
     @State private var isConfirmingDeviceKeyReplacement = false
@@ -81,8 +80,6 @@ struct HostFormView: View {
             }
             .alert("Could not save the Host", isPresented: $saveFailed) {
                 Button("OK", role: .cancel) {}
-            } message: {
-                if let saveFailureMessage { Text(saveFailureMessage) }
             }
             .alert(
                 "Could not replace the Device Key",
@@ -164,6 +161,7 @@ struct HostFormView: View {
     private var herdrSection: some View {
         if let herdrEndpoint = draft.herdrEndpoint {
             Section {
+                serverKindRow
                 LabeledContent("Socket", value: herdrEndpoint.socketPath)
                 LabeledContent("Launcher", value: herdrEndpoint.executablePath)
             } header: {
@@ -173,21 +171,26 @@ struct HostFormView: View {
             }
         } else {
             Section {
-                Picker("Backend", selection: $draft.serverKind) {
-                    ForEach(ServerKind.allCases, id: \.self) { kind in
-                        Text(kind.displayName).tag(kind)
-                    }
-                }
+                serverKindRow
                 TextField("Session name", text: $draft.sessionName)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
             } header: {
-                Text("Backend and Session")
+                Text(draft.serverKind == .herdrCore ? "herdr-core Session" : "herdr Session")
             } footer: {
                 Text(draft.serverKind == .herdrCore
-                    ? "Choose herdr-app / herdr-core for desktop agents. Leave the session blank for default. Add this Host with an SSH key or password; TUI Pairing Codes select herdr."
+                    ? "Leave blank for the default session."
                     : "Leave blank for the default herdr session.")
             }
+        }
+    }
+
+    /// A Host keeps its Server Kind (ADR 0031), so Edit only names it. A new
+    /// Host is Herdr TUI, and so is a copy of one, with nothing to say yet.
+    @ViewBuilder
+    private var serverKindRow: some View {
+        if editing != nil || draft.serverKind != .herdrTUI {
+            LabeledContent("Server Kind", value: draft.serverKind.displayName)
         }
     }
 
@@ -422,13 +425,7 @@ struct HostFormView: View {
             } else {
                 try store.update(host, password: draft.passwordUpdate)
             }
-        } catch HostStoreError.notificationsPreventBackendChange {
-            saveFailureMessage = "Turn off notifications for this Host before changing its backend. "
-                + "Wait for any notification update to finish, then try again."
-            saveFailed = true
-            return
         } catch {
-            saveFailureMessage = nil
             saveFailed = true
             return
         }

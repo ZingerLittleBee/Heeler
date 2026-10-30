@@ -71,7 +71,9 @@ struct HostDraft: Equatable, Sendable {
     var name = ""
     var username = ""
     var authMethod: Host.AuthMethod = .deviceKey
-    var serverKind: ServerKind = .herdrTUI
+    /// Set from the Host being edited or duplicated. Nothing in the form
+    /// changes it (ADR 0031).
+    private(set) var serverKind: ServerKind = .herdrTUI
     /// Blank means "keep the stored password" when editing.
     var password = ""
     var sessionName = ""
@@ -240,7 +242,9 @@ struct HostDraft: Equatable, Sendable {
             username: username.trimmingCharacters(in: .whitespaces),
             authMethod: authMethod,
             serverKind: serverKind,
-            sessionName: sessionName.trimmingCharacters(in: .whitespaces),
+            sessionName: serverKind == .herdrCore
+                ? HerdrCoreSessionName.normalized(sessionName)
+                : sessionName.trimmingCharacters(in: .whitespaces),
             herdrEndpoint: herdrEndpoint,
             routes: routes)
     }

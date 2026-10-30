@@ -8,8 +8,6 @@ struct HostRemovalRequest: Equatable {
     /// Whether a Host with a Notification Key is not connected, so its
     /// registration of this device cannot be revoked (#414).
     var leavesNotificationsBehind = false
-    /// A previously switched core Host cannot revoke its legacy registration.
-    var leavesLegacyNotificationsBehind = false
 
     var title: String {
         if hosts.count == 1, let host = hosts.first {
@@ -30,11 +28,7 @@ struct HostRemovalRequest: Equatable {
                 : "This permanently deletes the Host configuration and any saved password "
                     + "from the Keychain."
         ]
-        if leavesLegacyNotificationsBehind {
-            sentences.append(
-                "A legacy herdr registration may keep sending notifications to this device. "
-                    + "Switch the Host back to herdr and turn off notifications before removing it.")
-        } else if leavesNotificationsBehind {
+        if leavesNotificationsBehind {
             sentences.append(
                 hosts.count == 1
                     ? "Heeler can't reach this Host, so it may keep sending notifications "
@@ -162,10 +156,7 @@ final class HostRemovalStore {
         pendingRequest = HostRemovalRequest(
             hosts: hosts,
             deletesNotificationKey: !keyed.isEmpty,
-            leavesNotificationsBehind: keyed.contains {
-                $0.serverKind == .herdrCore || !dependencies.isConnected($0.id)
-            },
-            leavesLegacyNotificationsBehind: keyed.contains { $0.serverKind == .herdrCore })
+            leavesNotificationsBehind: keyed.contains { !dependencies.isConnected($0.id) })
     }
 
     func cancelRemoval() {

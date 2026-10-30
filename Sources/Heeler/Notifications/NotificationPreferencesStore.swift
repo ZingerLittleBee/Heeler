@@ -52,11 +52,6 @@ final class NotificationPreferencesStore {
     private(set) var states: [Host.ID: HostState] = [:]
     /// A catalog edit/removal invalidates every result captured for that Host.
     private var operations: [Host.ID: UUID] = [:]
-    private var pendingWrites: [Host.ID: Int] = [:]
-
-    func hasPendingWrite(for hostID: Host.ID) -> Bool {
-        pendingWrites[hostID, default: 0] > 0
-    }
 
     private let transports: any NotificationTransportProvider
     private let deviceToken: @MainActor () -> APNSDeviceToken?
@@ -286,11 +281,6 @@ final class NotificationPreferencesStore {
         }
         let operationID = UUID()
         operations[host.id] = operationID
-        pendingWrites[host.id, default: 0] += 1
-        defer {
-            pendingWrites[host.id, default: 0] -= 1
-            if pendingWrites[host.id] == 0 { pendingWrites[host.id] = nil }
-        }
         states[host.id] = .updating(settings)
         do {
             let ceremony = ceremony

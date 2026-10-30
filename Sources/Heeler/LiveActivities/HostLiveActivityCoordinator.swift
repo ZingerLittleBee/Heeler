@@ -104,9 +104,8 @@ final class HostLiveActivityCoordinator {
         self.now = now
     }
 
-    /// Core cannot receive the plugin's Live Activity updates. Treat a Host
-    /// switched to that backend as outside this coordinator's inventory,
-    /// retaining its saved preference but ending activities and queued writes.
+    /// A herdr-core Host has no plugin to receive Live Activity updates, so it
+    /// stays outside this coordinator's inventory.
     private func supportedHostIDs() -> Set<Host.ID> {
         knownHostIDs().filter { supportsHost($0) }
     }
