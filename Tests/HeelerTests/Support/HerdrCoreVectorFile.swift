@@ -3,10 +3,11 @@ import Foundation
 @testable import Heeler
 
 /// The shared herdr-core frame vectors from `plugin/test-vectors/`, bundled
-/// into the test target as a resource. They are provisional until a capture
-/// from the fixture replaces them; every case names its source.
+/// into the test target as a resource. Captured from a fixture core; every case
+/// names its capture, or is listed in `notCaptured` with its source review.
 struct HerdrCoreVectorFile: Decodable, Sendable {
     let provisional: Bool
+    let notCaptured: [String]
     let coreVersion: String
     let coreCommit: String
     let hello: Hello

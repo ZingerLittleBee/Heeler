@@ -1,43 +1,43 @@
 {
-  "description": "Shared herdr-core framed protocol vectors: frames, the hello line, channel-0 exchanges and event lines. Swift reads them now and the Host Helper reads them later. PROVISIONAL: built by hand from a source review, never captured from a running core. \"Connect over the framed link and retire the exec bridge\" replaces them with bytes captured from the fixture through scripts/lab/herdr-core-capture.py, which writes this same shape. Hex strings hold exact bytes; a frame is channel (u32 LE), kind (u8) and length (u32 LE) before its payload.",
-  "provisional": true,
+  "description": "Shared herdr-core framed protocol vectors: frames, the hello line, channel-0 exchanges and event lines. Swift reads them now and the Host Helper reads them later. Captured from a fixture core and scrubbed by scripts/fixtures/herdr-core-capture-scenario.py; every case names its capture, and those in notCaptured keep a source review a fixture cannot reach. Hex strings hold exact bytes; a frame is channel (u32 LE), kind (u8) and length (u32 LE) before its payload.",
+  "provisional": false,
   "coreVersion": "0.1.13",
   "coreCommit": "88fe4e7",
   "hello": {
     "name": "hello",
-    "source": "source review of herdr-core v0.1.13 (88fe4e7): api.rs:168-184, api/types.rs:99-120, server.rs:158-159",
-    "reply": "{\"jsonrpc\":\"2.0\",\"id\":\"hello\",\"result\":{\"generation\":1,\"version\":\"0.1.13\",\"core\":{\"id\":\"c0re1d\",\"name\":\"lab-core\"},\"framed\":true,\"methods\":[\"hello\",\"server.status\",\"server.stop\",\"server.restart\",\"terminal.run\",\"templates.list\",\"terminal.list\",\"terminal.get\",\"terminal.kill\",\"terminal.rm\",\"terminal.keep\",\"terminal.label\",\"terminal.read\",\"terminal.attach\",\"terminal.send\",\"terminal.wait\",\"terminal.keys\",\"terminal.interrupt\",\"terminal.put\",\"machine.exec\",\"file.read\",\"file.write\",\"file.edit\",\"doc.get\",\"doc.set\",\"events.subscribe\",\"machine.add\",\"machine.list\",\"machine.connect\",\"machine.rename\",\"machine.rm\",\"rpc.discover\"],\"features\":[\"framed\",\"attach\",\"events\",\"status\",\"shell\"]}}"
+    "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: the plain hello reply",
+    "reply": "{\"id\":\"hello\",\"jsonrpc\":\"2.0\",\"result\":{\"core\":{\"id\":\"scrubbed-core-id\",\"name\":\"lab-core\"},\"features\":[\"framed\",\"attach\",\"events\",\"status\",\"shell\"],\"framed\":true,\"generation\":1,\"methods\":[\"hello\",\"server.status\",\"server.stop\",\"server.restart\",\"terminal.run\",\"templates.list\",\"terminal.list\",\"terminal.get\",\"terminal.kill\",\"terminal.rm\",\"terminal.keep\",\"terminal.label\",\"terminal.read\",\"terminal.attach\",\"terminal.send\",\"terminal.wait\",\"terminal.keys\",\"terminal.interrupt\",\"terminal.put\",\"machine.exec\",\"file.read\",\"file.write\",\"file.edit\",\"doc.get\",\"doc.set\",\"events.subscribe\",\"machine.add\",\"machine.list\",\"machine.connect\",\"machine.rename\",\"machine.rm\",\"rpc.discover\"],\"version\":\"0.1.13\"}}"
   },
   "frames": [
     {
       "name": "data-channel-0-reply",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:31-38, server.rs:320",
-      "bytes": "0000000000260000007b226a736f6e727063223a22322e30222c226964223a2231222c22726573756c74223a7b7d7d"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a doc.set reply",
+      "bytes": "0000000000330000007b226964223a22313134222c226a736f6e727063223a22322e30222c22726573756c74223a7b2276657273696f6e223a317d7d"
     },
     {
       "name": "data-attach-raw-bytes",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:31-38, viewers.rs:79",
-      "bytes": "01000000000a0000001b5b3f32303034682420"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an attach channel's bytes from an inert program",
+      "bytes": "02000000000700000068656c6c6f0d0a"
     },
     {
       "name": "credit-256-kib",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:12-13, server.rs:335-338",
-      "bytes": "01000000010400000000000400"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: sent to the core, which kept the channel open",
+      "bytes": "02000000010400000000000400"
     },
     {
       "name": "close-from-client",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:14-15, server.rs:348-351",
-      "bytes": "010000000200000000"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: sent to the core, which answered with its own CLOSE",
+      "bytes": "020000000200000000"
     },
     {
       "name": "close-program-ended",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:14-15, runtime.rs:601",
-      "bytes": "01000000024b0000007b22726561736f6e223a22657869746564222c22657869745f636f6465223a302c227369676e616c223a6e756c6c2c2266696e69736865645f6d73223a313739303030303030313030307d"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: the core's CLOSE when an attached program exited",
+      "bytes": "03000000024b0000007b22657869745f636f6465223a302c2266696e69736865645f6d73223a313739333339313735323130352c22726561736f6e223a22657869746564222c227369676e616c223a6e756c6c7d"
     },
     {
       "name": "resize-80x24",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:16-17, server.rs:339-341",
-      "bytes": "01000000030400000050001800"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: sent to the core, which reported the new size",
+      "bytes": "02000000030400000050001800"
     },
     {
       "name": "resize-largest",
@@ -46,318 +46,229 @@
     },
     {
       "name": "focus-gained",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:18-19, server.rs:342",
-      "bytes": "01000000040100000001"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: sent to the core, which kept the channel open",
+      "bytes": "02000000040100000001"
     },
     {
       "name": "focus-lost",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:18-19, server.rs:342",
-      "bytes": "01000000040100000000"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: sent to the core, which kept the channel open",
+      "bytes": "02000000040100000000"
     },
     {
       "name": "facts",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:20-21, viewers.rs:17-26",
-      "bytes": "0100000005410000007b226667223a2223666666666666222c226267223a2223303030303030222c22637572736f72223a2223666630303030222c2263656c6c223a5b31302c32305d7d"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: sent to the core, which kept the channel open",
+      "bytes": "0200000005410000007b226667223a2223666666666666222c226267223a2223303030303030222c22637572736f72223a2223666630303030222c2263656c6c223a5b31302c32305d7d"
     }
   ],
   "exchanges": [
     {
       "name": "server-status",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): api.rs:186-215, api/types.rs:133-147, server.rs:316-321",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a server.status exchange with one live and one finished Terminal",
       "method": "server.status",
       "params": {},
       "result": {
         "core": {
-          "id": "c0re1d",
+          "id": "scrubbed-core-id",
           "name": "lab-core"
         },
-        "version": "0.1.13",
-        "pid": 31337,
-        "uptime_ms": 86400123,
+        "finished": 1,
         "holder": {
-          "pid": 31338,
-          "instance": "h1",
           "current": true,
-          "terminals": 2
+          "instance": "1f60bd9521cc5b8db3f07f6a04ab43f6",
+          "pid": 51186,
+          "terminals": 1
         },
         "holders": [
           {
-            "pid": 31338,
-            "instance": "h1",
             "current": true,
-            "terminals": 2
+            "instance": "1f60bd9521cc5b8db3f07f6a04ab43f6",
+            "pid": 51186,
+            "terminals": 1
           }
         ],
-        "live": 2,
-        "finished": 1,
         "installed_by": null,
-        "future_field": 1
+        "live": 1,
+        "pid": 51181,
+        "uptime_ms": 119,
+        "version": "0.1.13"
       },
       "requestFrame": "00000000003f0000007b226a736f6e727063223a22322e30222c226964223a2231222c226d6574686f64223a227365727665722e737461747573222c22706172616d73223a7b7d7d",
-      "replyFrame": "0000000000480100007b226a736f6e727063223a22322e30222c226964223a2231222c22726573756c74223a7b22636f7265223a7b226964223a22633072653164222c226e616d65223a226c61622d636f7265227d2c2276657273696f6e223a22302e312e3133222c22706964223a33313333372c22757074696d655f6d73223a38363430303132332c22686f6c646572223a7b22706964223a33313333382c22696e7374616e6365223a226831222c2263757272656e74223a747275652c227465726d696e616c73223a327d2c22686f6c64657273223a5b7b22706964223a33313333382c22696e7374616e6365223a226831222c2263757272656e74223a747275652c227465726d696e616c73223a327d5d2c226c697665223a322c2266696e6973686564223a312c22696e7374616c6c65645f6279223a6e756c6c2c226675747572655f6669656c64223a317d7d"
+      "replyFrame": "0000000000780100007b226964223a2231222c226a736f6e727063223a22322e30222c22726573756c74223a7b22636f7265223a7b226964223a2273637275626265642d636f72652d6964222c226e616d65223a226c61622d636f7265227d2c2266696e6973686564223a312c22686f6c646572223a7b2263757272656e74223a747275652c22696e7374616e6365223a223166363062643935323163633562386462336630376636613034616234336636222c22706964223a35313138362c227465726d696e616c73223a317d2c22686f6c64657273223a5b7b2263757272656e74223a747275652c22696e7374616e6365223a223166363062643935323163633562386462336630376636613034616234336636222c22706964223a35313138362c227465726d696e616c73223a317d5d2c22696e7374616c6c65645f6279223a6e756c6c2c226c697665223a312c22706964223a35313138312c22757074696d655f6d73223a3131392c2276657273696f6e223a22302e312e3133227d7d"
     },
     {
       "name": "events-subscribe",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): api.rs:522-556, api/types.rs:407-417",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a subscribe with one live and one finished Terminal",
       "method": "events.subscribe",
       "params": {},
       "result": {
-        "seq": 10,
+        "channel": 1,
+        "seq": 3,
         "terminals": [
           {
-            "address": "t7",
-            "name": "review",
-            "labels": {
-              "heeler.workspace": "w1"
-            },
+            "address": "t1",
             "argv": [
-              "/usr/local/bin/claude",
-              "--resume"
+              "/usr/local/bin/heeler-inert"
             ],
-            "cwd": "/work/project",
-            "keep": true,
-            "state": "live",
-            "pid": 4242,
+            "cols": 200,
+            "created_ms": 1793391751905,
+            "cwd": "/home/user",
+            "die_with_parent": false,
             "exit_code": null,
-            "signal": null,
-            "reason": null,
-            "created_ms": 1790000000000,
             "finished_ms": null,
-            "screen": "exact",
-            "cols": 120,
-            "rows": 40,
-            "identity": "ghostty 1.4.0",
-            "status": {
-              "state": "blocked",
-              "kind": "permission",
-              "progress": 40,
-              "app": "claude-code",
-              "title": "Reviewing",
-              "msg": "Allow edit?"
-            },
-            "status_ms": 1790000000500,
-            "records": {
-              "child": {
-                "state": "working",
-                "app": "claude-code"
-              }
-            },
-            "turn": 3,
-            "reported": true,
-            "title": "Reviewing",
-            "parent": "t3",
+            "identity": "ghostty",
+            "keep": false,
+            "labels": {},
+            "name": "live",
             "notify": true,
-            "die_with_parent": false,
-            "rm": false,
-            "template": "reviewer",
-            "submit": "enter",
-            "stop": "esc",
-            "paste_gap_ms": 120,
-            "foreground": {
-              "pid": 4300,
-              "name": "node",
-              "argv": [
-                "node",
-                "/opt/claude/cli.js"
-              ],
-              "cwd": "/work/project/child"
-            },
-            "future_field": {
-              "ignored": true
-            }
-          },
-          {
-            "address": "t8",
-            "labels": {},
-            "argv": [
-              "/bin/sh"
-            ],
-            "cwd": "/work",
-            "keep": false,
-            "state": "finished",
-            "pid": null,
-            "exit_code": 0,
-            "signal": null,
-            "reason": "exited",
-            "created_ms": 1790000000000,
-            "finished_ms": 1790000001000,
-            "screen": "exact",
-            "cols": 200,
-            "rows": 120,
-            "identity": "",
-            "status": null,
-            "status_ms": null,
-            "turn": 0,
-            "reported": false,
-            "title": "",
             "parent": null,
-            "notify": false,
-            "die_with_parent": false,
+            "pid": 51187,
+            "reason": null,
+            "reported": false,
             "rm": false,
-            "template": null
-          },
-          {
-            "address": "rohan/t3",
-            "labels": {},
-            "argv": [
-              "/bin/sh"
-            ],
-            "cwd": "/work",
-            "keep": false,
+            "rows": 120,
+            "screen": "exact",
+            "signal": null,
             "state": "live",
-            "pid": null,
-            "exit_code": 0,
-            "signal": null,
-            "reason": "exited",
-            "created_ms": 1790000000000,
-            "finished_ms": 1790000001000,
-            "screen": "exact",
-            "cols": 200,
-            "rows": 120,
-            "identity": "",
             "status": null,
             "status_ms": null,
-            "turn": 0,
-            "reported": false,
+            "template": null,
             "title": "",
-            "parent": null,
-            "notify": false,
+            "turn": 0
+          },
+          {
+            "address": "t2",
+            "argv": [
+              "/bin/sh",
+              "<scrubbed>",
+              "<scrubbed>"
+            ],
+            "cols": 200,
+            "created_ms": 1793391751919,
+            "cwd": "/home/user",
             "die_with_parent": false,
+            "exit_code": 0,
+            "finished_ms": 1793391751936,
+            "identity": "ghostty",
+            "keep": false,
+            "labels": {},
+            "name": null,
+            "notify": true,
+            "parent": null,
+            "pid": 51188,
+            "reason": "exited",
+            "reported": false,
             "rm": false,
-            "template": null
+            "rows": 120,
+            "screen": "exact",
+            "signal": null,
+            "state": "finished",
+            "status": null,
+            "status_ms": null,
+            "template": null,
+            "title": "",
+            "turn": 0
           }
-        ],
-        "channel": 1
+        ]
       },
       "requestFrame": "0000000000420000007b226a736f6e727063223a22322e30222c226964223a2232222c226d6574686f64223a226576656e74732e737562736372696265222c22706172616d73223a7b7d7d",
-      "replyFrame": "0000000000cd0600007b226a736f6e727063223a22322e30222c226964223a2232222c22726573756c74223a7b22736571223a31302c227465726d696e616c73223a5b7b2261646472657373223a227437222c226e616d65223a22726576696577222c226c6162656c73223a7b226865656c65722e776f726b7370616365223a227731227d2c2261726776223a5b222f7573722f6c6f63616c2f62696e2f636c61756465222c222d2d726573756d65225d2c22637764223a222f776f726b2f70726f6a656374222c226b656570223a747275652c227374617465223a226c697665222c22706964223a343234322c22657869745f636f6465223a6e756c6c2c227369676e616c223a6e756c6c2c22726561736f6e223a6e756c6c2c22637265617465645f6d73223a313739303030303030303030302c2266696e69736865645f6d73223a6e756c6c2c2273637265656e223a226578616374222c22636f6c73223a3132302c22726f7773223a34302c226964656e74697479223a2267686f7374747920312e342e30222c22737461747573223a7b227374617465223a22626c6f636b6564222c226b696e64223a227065726d697373696f6e222c2270726f6772657373223a34302c22617070223a22636c617564652d636f6465222c227469746c65223a22526576696577696e67222c226d7367223a22416c6c6f7720656469743f227d2c227374617475735f6d73223a313739303030303030303530302c227265636f726473223a7b226368696c64223a7b227374617465223a22776f726b696e67222c22617070223a22636c617564652d636f6465227d7d2c227475726e223a332c227265706f72746564223a747275652c227469746c65223a22526576696577696e67222c22706172656e74223a227433222c226e6f74696679223a747275652c226469655f776974685f706172656e74223a66616c73652c22726d223a66616c73652c2274656d706c617465223a227265766965776572222c227375626d6974223a22656e746572222c2273746f70223a22657363222c2270617374655f6761705f6d73223a3132302c22666f726567726f756e64223a7b22706964223a343330302c226e616d65223a226e6f6465222c2261726776223a5b226e6f6465222c222f6f70742f636c617564652f636c692e6a73225d2c22637764223a222f776f726b2f70726f6a6563742f6368696c64227d2c226675747572655f6669656c64223a7b2269676e6f726564223a747275657d7d2c7b2261646472657373223a227438222c226c6162656c73223a7b7d2c2261726776223a5b222f62696e2f7368225d2c22637764223a222f776f726b222c226b656570223a66616c73652c227374617465223a2266696e6973686564222c22706964223a6e756c6c2c22657869745f636f6465223a302c227369676e616c223a6e756c6c2c22726561736f6e223a22657869746564222c22637265617465645f6d73223a313739303030303030303030302c2266696e69736865645f6d73223a313739303030303030313030302c2273637265656e223a226578616374222c22636f6c73223a3230302c22726f7773223a3132302c226964656e74697479223a22222c22737461747573223a6e756c6c2c227374617475735f6d73223a6e756c6c2c227475726e223a302c227265706f72746564223a66616c73652c227469746c65223a22222c22706172656e74223a6e756c6c2c226e6f74696679223a66616c73652c226469655f776974685f706172656e74223a66616c73652c22726d223a66616c73652c2274656d706c617465223a6e756c6c7d2c7b2261646472657373223a22726f68616e2f7433222c226c6162656c73223a7b7d2c2261726776223a5b222f62696e2f7368225d2c22637764223a222f776f726b222c226b656570223a66616c73652c227374617465223a226c697665222c22706964223a6e756c6c2c22657869745f636f6465223a302c227369676e616c223a6e756c6c2c22726561736f6e223a22657869746564222c22637265617465645f6d73223a313739303030303030303030302c2266696e69736865645f6d73223a313739303030303030313030302c2273637265656e223a226578616374222c22636f6c73223a3230302c22726f7773223a3132302c226964656e74697479223a22222c22737461747573223a6e756c6c2c227374617475735f6d73223a6e756c6c2c227475726e223a302c227265706f72746564223a66616c73652c227469746c65223a22222c22706172656e74223a6e756c6c2c226e6f74696679223a66616c73652c226469655f776974685f706172656e74223a66616c73652c22726d223a66616c73652c2274656d706c617465223a6e756c6c7d5d2c226368616e6e656c223a317d7d"
+      "replyFrame": "0000000000c70300007b226964223a2232222c226a736f6e727063223a22322e30222c22726573756c74223a7b226368616e6e656c223a312c22736571223a332c227465726d696e616c73223a5b7b2261646472657373223a227431222c2261726776223a5b222f7573722f6c6f63616c2f62696e2f6865656c65722d696e657274225d2c22636f6c73223a3230302c22637265617465645f6d73223a313739333339313735313930352c22637764223a222f686f6d652f75736572222c226469655f776974685f706172656e74223a66616c73652c22657869745f636f6465223a6e756c6c2c2266696e69736865645f6d73223a6e756c6c2c226964656e74697479223a2267686f73747479222c226b656570223a66616c73652c226c6162656c73223a7b7d2c226e616d65223a226c697665222c226e6f74696679223a747275652c22706172656e74223a6e756c6c2c22706964223a35313138372c22726561736f6e223a6e756c6c2c227265706f72746564223a66616c73652c22726d223a66616c73652c22726f7773223a3132302c2273637265656e223a226578616374222c227369676e616c223a6e756c6c2c227374617465223a226c697665222c22737461747573223a6e756c6c2c227374617475735f6d73223a6e756c6c2c2274656d706c617465223a6e756c6c2c227469746c65223a22222c227475726e223a307d2c7b2261646472657373223a227432222c2261726776223a5b222f62696e2f7368222c223c73637275626265643e222c223c73637275626265643e225d2c22636f6c73223a3230302c22637265617465645f6d73223a313739333339313735313931392c22637764223a222f686f6d652f75736572222c226469655f776974685f706172656e74223a66616c73652c22657869745f636f6465223a302c2266696e69736865645f6d73223a313739333339313735313933362c226964656e74697479223a2267686f73747479222c226b656570223a66616c73652c226c6162656c73223a7b7d2c226e616d65223a6e756c6c2c226e6f74696679223a747275652c22706172656e74223a6e756c6c2c22706964223a35313138382c22726561736f6e223a22657869746564222c227265706f72746564223a66616c73652c22726d223a66616c73652c22726f7773223a3132302c2273637265656e223a226578616374222c227369676e616c223a6e756c6c2c227374617465223a2266696e6973686564222c22737461747573223a6e756c6c2c227374617475735f6d73223a6e756c6c2c2274656d706c617465223a6e756c6c2c227469746c65223a22222c227475726e223a307d5d7d7d"
     },
     {
       "name": "terminal-attach",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): api.rs:378-406, api/types.rs:352-389",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an attach to an inert Terminal",
       "method": "terminal.attach",
       "params": {
-        "terminal": "t7",
+        "terminal": "t3",
         "cols": 80,
         "rows": 24,
-        "resumed": true,
         "observe": false
       },
       "result": {
         "channel": 2,
         "terminal": {
-          "address": "t7",
-          "name": "review",
+          "address": "t3",
+          "argv": [
+            "/usr/local/bin/heeler-inert"
+          ],
+          "cols": 80,
+          "created_ms": 1793391751993,
+          "cwd": "/home/user",
+          "die_with_parent": false,
+          "exit_code": null,
+          "finished_ms": null,
+          "identity": "ghostty",
+          "keep": true,
           "labels": {
             "heeler.workspace": "w1"
           },
-          "argv": [
-            "/usr/local/bin/claude",
-            "--resume"
-          ],
-          "cwd": "/work/project",
-          "keep": true,
-          "state": "live",
-          "pid": 4242,
-          "exit_code": null,
-          "signal": null,
-          "reason": null,
-          "created_ms": 1790000000000,
-          "finished_ms": null,
-          "screen": "exact",
-          "cols": 120,
-          "rows": 40,
-          "identity": "ghostty 1.4.0",
-          "status": {
-            "state": "blocked",
-            "kind": "permission",
-            "progress": 40,
-            "app": "claude-code",
-            "title": "Reviewing",
-            "msg": "Allow edit?"
-          },
-          "status_ms": 1790000000500,
-          "records": {
-            "child": {
-              "state": "working",
-              "app": "claude-code"
-            }
-          },
-          "turn": 3,
-          "reported": true,
-          "title": "Reviewing",
-          "parent": "t3",
+          "name": "review",
           "notify": true,
-          "die_with_parent": false,
+          "parent": null,
+          "pid": 51189,
+          "reason": null,
+          "reported": false,
           "rm": false,
-          "template": "reviewer",
-          "submit": "enter",
-          "stop": "esc",
-          "paste_gap_ms": 120,
-          "foreground": {
-            "pid": 4300,
-            "name": "node",
-            "argv": [
-              "node",
-              "/opt/claude/cli.js"
-            ],
-            "cwd": "/work/project/child"
-          },
-          "future_field": {
-            "ignored": true
-          }
+          "rows": 24,
+          "screen": "exact",
+          "signal": null,
+          "state": "live",
+          "status": null,
+          "status_ms": null,
+          "template": null,
+          "title": "",
+          "turn": 0
         }
       },
-      "requestFrame": "0000000000830000007b226a736f6e727063223a22322e30222c226964223a2233222c226d6574686f64223a227465726d696e616c2e617474616368222c22706172616d73223a7b227465726d696e616c223a227437222c22636f6c73223a38302c22726f7773223a32342c22726573756d6564223a747275652c226f627365727665223a66616c73657d7d",
-      "replyFrame": "0000000000910300007b226a736f6e727063223a22322e30222c226964223a2233222c22726573756c74223a7b226368616e6e656c223a322c227465726d696e616c223a7b2261646472657373223a227437222c226e616d65223a22726576696577222c226c6162656c73223a7b226865656c65722e776f726b7370616365223a227731227d2c2261726776223a5b222f7573722f6c6f63616c2f62696e2f636c61756465222c222d2d726573756d65225d2c22637764223a222f776f726b2f70726f6a656374222c226b656570223a747275652c227374617465223a226c697665222c22706964223a343234322c22657869745f636f6465223a6e756c6c2c227369676e616c223a6e756c6c2c22726561736f6e223a6e756c6c2c22637265617465645f6d73223a313739303030303030303030302c2266696e69736865645f6d73223a6e756c6c2c2273637265656e223a226578616374222c22636f6c73223a3132302c22726f7773223a34302c226964656e74697479223a2267686f7374747920312e342e30222c22737461747573223a7b227374617465223a22626c6f636b6564222c226b696e64223a227065726d697373696f6e222c2270726f6772657373223a34302c22617070223a22636c617564652d636f6465222c227469746c65223a22526576696577696e67222c226d7367223a22416c6c6f7720656469743f227d2c227374617475735f6d73223a313739303030303030303530302c227265636f726473223a7b226368696c64223a7b227374617465223a22776f726b696e67222c22617070223a22636c617564652d636f6465227d7d2c227475726e223a332c227265706f72746564223a747275652c227469746c65223a22526576696577696e67222c22706172656e74223a227433222c226e6f74696679223a747275652c226469655f776974685f706172656e74223a66616c73652c22726d223a66616c73652c2274656d706c617465223a227265766965776572222c227375626d6974223a22656e746572222c2273746f70223a22657363222c2270617374655f6761705f6d73223a3132302c22666f726567726f756e64223a7b22706964223a343330302c226e616d65223a226e6f6465222c2261726776223a5b226e6f6465222c222f6f70742f636c617564652f636c692e6a73225d2c22637764223a222f776f726b2f70726f6a6563742f6368696c64227d2c226675747572655f6669656c64223a7b2269676e6f726564223a747275657d7d7d7d"
+      "requestFrame": "0000000000740000007b226a736f6e727063223a22322e30222c226964223a2233222c226d6574686f64223a227465726d696e616c2e617474616368222c22706172616d73223a7b227465726d696e616c223a227433222c22636f6c73223a38302c22726f7773223a32342c226f627365727665223a66616c73657d7d",
+      "replyFrame": "0000000000090200007b226964223a2233222c226a736f6e727063223a22322e30222c22726573756c74223a7b226368616e6e656c223a322c227465726d696e616c223a7b2261646472657373223a227433222c2261726776223a5b222f7573722f6c6f63616c2f62696e2f6865656c65722d696e657274225d2c22636f6c73223a38302c22637265617465645f6d73223a313739333339313735313939332c22637764223a222f686f6d652f75736572222c226469655f776974685f706172656e74223a66616c73652c22657869745f636f6465223a6e756c6c2c2266696e69736865645f6d73223a6e756c6c2c226964656e74697479223a2267686f73747479222c226b656570223a747275652c226c6162656c73223a7b226865656c65722e776f726b7370616365223a227731227d2c226e616d65223a22726576696577222c226e6f74696679223a747275652c22706172656e74223a6e756c6c2c22706964223a35313138392c22726561736f6e223a6e756c6c2c227265706f72746564223a66616c73652c22726d223a66616c73652c22726f7773223a32342c2273637265656e223a226578616374222c227369676e616c223a6e756c6c2c227374617465223a226c697665222c22737461747573223a6e756c6c2c227374617475735f6d73223a6e756c6c2c2274656d706c617465223a6e756c6c2c227469746c65223a22222c227475726e223a307d7d7d"
     }
   ],
   "errors": [
     {
       "name": "unknown-method",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): rpc.rs:27-29, rpc.rs:41-43",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a plain request for a method no core has",
       "kind": "unknown_method",
-      "line": "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"error\":{\"code\":-32601,\"message\":\"unknown method \\\"future.method\\\"\",\"data\":{\"kind\":\"unknown_method\",\"hint\":\"see `hc schema`\"}}}"
+      "line": "{\"error\":{\"code\":-32601,\"data\":{\"hint\":\"<scrubbed>\",\"kind\":\"unknown_method\"},\"message\":\"<scrubbed>\"},\"id\":\"1\",\"jsonrpc\":\"2.0\"}"
     },
     {
       "name": "needs-framed",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): api.rs:379-385",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an attach on a plain connection",
       "kind": "needs_framed",
-      "line": "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"error\":{\"code\":-32000,\"message\":\"attach needs a framed connection\",\"data\":{\"kind\":\"needs_framed\",\"hint\":\"send hello with framed: true first, or use `hc attach`\"}}}"
+      "line": "{\"error\":{\"code\":-32000,\"data\":{\"hint\":\"<scrubbed>\",\"kind\":\"needs_framed\"},\"message\":\"<scrubbed>\"},\"id\":\"1\",\"jsonrpc\":\"2.0\"}"
     },
     {
       "name": "unsupported-generation",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): api.rs:169-175",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a hello for a generation no core has",
       "kind": "unsupported_generation",
-      "line": "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"error\":{\"code\":-32000,\"message\":\"protocol generation 2 not supported\",\"data\":{\"kind\":\"unsupported_generation\",\"hint\":\"this core speaks generation 1\"}}}"
+      "line": "{\"error\":{\"code\":-32000,\"data\":{\"hint\":\"<scrubbed>\",\"kind\":\"unsupported_generation\"},\"message\":\"<scrubbed>\"},\"id\":\"1\",\"jsonrpc\":\"2.0\"}"
     },
     {
       "name": "domain-error",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): rpc.rs:15-17, api.rs:388-394",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an attach from the Terminal itself",
       "kind": "refused",
-      "line": "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"error\":{\"code\":-32000,\"message\":\"t7 is the terminal you are in\",\"data\":{\"kind\":\"refused\",\"hint\":\"attach from another terminal\"}}}"
+      "line": "{\"error\":{\"code\":-32000,\"data\":{\"hint\":\"<scrubbed>\",\"kind\":\"refused\"},\"message\":\"<scrubbed>\"},\"id\":\"1\",\"jsonrpc\":\"2.0\"}"
     }
   ],
   "events": [
     {
-      "name": "created",
+      "name": "created-every-field",
       "source": "source review of herdr-core v0.1.13 (88fe4e7): events.rs:117 with runtime.rs:488",
       "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"created\",\"data\":{\"address\":\"t7\",\"name\":\"review\",\"labels\":{\"heeler.workspace\":\"w1\"},\"argv\":[\"/usr/local/bin/claude\",\"--resume\"],\"cwd\":\"/work/project\",\"keep\":true,\"state\":\"live\",\"pid\":4242,\"exit_code\":null,\"signal\":null,\"reason\":null,\"created_ms\":1790000000000,\"finished_ms\":null,\"screen\":\"exact\",\"cols\":120,\"rows\":40,\"identity\":\"ghostty 1.4.0\",\"status\":{\"state\":\"blocked\",\"kind\":\"permission\",\"progress\":40,\"app\":\"claude-code\",\"title\":\"Reviewing\",\"msg\":\"Allow edit?\"},\"status_ms\":1790000000500,\"records\":{\"child\":{\"state\":\"working\",\"app\":\"claude-code\"}},\"turn\":3,\"reported\":true,\"title\":\"Reviewing\",\"parent\":\"t3\",\"notify\":true,\"die_with_parent\":false,\"rm\":false,\"template\":\"reviewer\",\"submit\":\"enter\",\"stop\":\"esc\",\"paste_gap_ms\":120,\"foreground\":{\"pid\":4300,\"name\":\"node\",\"argv\":[\"node\",\"/opt/claude/cli.js\"],\"cwd\":\"/work/project/child\"},\"future_field\":{\"ignored\":true}},\"seq\":11,\"terminal\":\"t7\"}}\n"
     },
     {
       "name": "size",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): viewers.rs:273",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"size\",\"data\":{\"cols\":100,\"rows\":30},\"seq\":12,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a RESIZE frame",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"cols\":100,\"rows\":30},\"seq\":6,\"terminal\":\"t3\",\"type\":\"size\"}}\n"
     },
     {
       "name": "title",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): viewers.rs:140",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"title\",\"data\":{\"title\":\"Working\"},\"seq\":13,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an inert program's OSC 2",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"title\":\"Working\"},\"seq\":8,\"terminal\":\"t3\",\"type\":\"title\"}}\n"
     },
     {
       "name": "foreground",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): foreground.rs:172",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"foreground\",\"data\":{\"pid\":4300,\"name\":\"node\",\"argv\":[\"node\",\"cli.js\"],\"cwd\":\"/work/project\"},\"seq\":14,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: the core's foreground watcher",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"/bin/zsh\"],\"cwd\":\"/home/user\",\"name\":\"zsh\",\"pid\":51209},\"seq\":27,\"terminal\":\"t3\",\"type\":\"foreground\"}}\n"
     },
     {
       "name": "foreground-cleared",
@@ -366,87 +277,98 @@
     },
     {
       "name": "status",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): viewers.rs:164-169",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"status\",\"data\":{\"status\":{\"state\":\"working\",\"app\":\"claude-code\",\"progress\":10},\"records\":{},\"reported\":true},\"seq\":16,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an inert program's OSC 7501",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"records\":{},\"reported\":true,\"status\":{\"app\":\"claude-code\",\"progress\":10,\"state\":\"working\"}},\"seq\":9,\"terminal\":\"t3\",\"type\":\"status\"}}\n"
     },
     {
       "name": "status-cleared",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): viewers.rs:164-169, state=clear",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"status\",\"data\":{\"status\":null,\"records\":{},\"reported\":true},\"seq\":17,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an inert program's OSC 7501 state=clear",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"records\":{},\"reported\":true,\"status\":null},\"seq\":13,\"terminal\":\"t3\",\"type\":\"status\"}}\n"
     },
     {
       "name": "turn",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): viewers.rs:173",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"turn\",\"data\":{\"turn\":4,\"state\":\"done\"},\"seq\":18,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a working program reporting done",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"state\":\"done\",\"turn\":1},\"seq\":11,\"terminal\":\"t3\",\"type\":\"turn\"}}\n"
     },
     {
       "name": "turn-cleared",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): viewers.rs:172-173, a null state",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"turn\",\"data\":{\"turn\":5,\"state\":null},\"seq\":19,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a working program clearing its status",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"state\":null,\"turn\":2},\"seq\":14,\"terminal\":\"t3\",\"type\":\"turn\"}}\n"
     },
     {
       "name": "labels",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): api.rs:329",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"labels\",\"data\":{\"labels\":{\"heeler.workspace\":\"w2\"}},\"seq\":20,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: terminal.label",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"labels\":{\"heeler.workspace\":\"w2\"}},\"seq\":15,\"terminal\":\"t3\",\"type\":\"labels\"}}\n"
     },
     {
       "name": "keep",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): api.rs:312",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"keep\",\"data\":{\"keep\":false},\"seq\":21,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: terminal.keep",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"keep\":false},\"seq\":16,\"terminal\":\"t3\",\"type\":\"keep\"}}\n"
     },
     {
       "name": "doc",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): api/doc.rs:37 with events.rs:123",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"doc\",\"data\":{\"name\":\"herdr-app-layout\",\"version\":9},\"seq\":22}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: doc.set",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"name\":\"herdr-app-layout\",\"version\":1},\"seq\":18,\"type\":\"doc\"}}\n"
     },
     {
       "name": "lost",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): runtime.rs:588-590",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"lost\",\"data\":{\"reason\":\"signaled\",\"exit_code\":null,\"signal\":9,\"finished_ms\":null},\"seq\":23,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a kept program killed by SIGKILL",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":null,\"finished_ms\":null,\"reason\":\"signaled\",\"signal\":9},\"seq\":24,\"terminal\":\"t3\",\"type\":\"lost\"}}\n"
     },
     {
       "name": "restarted",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): runtime.rs:488",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"restarted\",\"data\":{\"address\":\"t7\",\"name\":\"review\",\"labels\":{\"heeler.workspace\":\"w1\"},\"argv\":[\"/usr/local/bin/claude\",\"--resume\"],\"cwd\":\"/work/project\",\"keep\":true,\"state\":\"live\",\"pid\":4242,\"exit_code\":null,\"signal\":null,\"reason\":null,\"created_ms\":1790000000000,\"finished_ms\":null,\"screen\":\"exact\",\"cols\":120,\"rows\":40,\"identity\":\"ghostty 1.4.0\",\"status\":null,\"status_ms\":1790000000500,\"records\":{\"child\":{\"state\":\"working\",\"app\":\"claude-code\"}},\"turn\":3,\"reported\":false,\"title\":\"Reviewing\",\"parent\":\"t3\",\"notify\":true,\"die_with_parent\":false,\"rm\":false,\"template\":\"reviewer\",\"submit\":\"enter\",\"stop\":\"esc\",\"paste_gap_ms\":120,\"foreground\":{\"pid\":4300,\"name\":\"node\",\"argv\":[\"node\",\"/opt/claude/cli.js\"],\"cwd\":\"/work/project/child\"},\"future_field\":{\"ignored\":true}},\"seq\":24,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a kept program's replacement shell",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"address\":\"t3\",\"argv\":[\"/bin/zsh\"],\"cols\":200,\"created_ms\":1793391751993,\"cwd\":\"/home/user\",\"die_with_parent\":false,\"exit_code\":null,\"finished_ms\":null,\"identity\":\"ghostty\",\"keep\":true,\"labels\":{\"heeler.workspace\":\"w2\"},\"name\":\"review\",\"notify\":true,\"parent\":null,\"pid\":51209,\"reason\":null,\"reported\":false,\"rm\":false,\"rows\":120,\"screen\":\"exact\",\"signal\":null,\"state\":\"live\",\"status\":null,\"status_ms\":1793391752042,\"template\":null,\"title\":\"\",\"turn\":2},\"seq\":26,\"terminal\":\"t3\",\"type\":\"restarted\"}}\n"
     },
     {
       "name": "finished",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): runtime.rs:588-590",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"finished\",\"data\":{\"reason\":\"exited\",\"exit_code\":0,\"signal\":null,\"finished_ms\":1790000001000},\"seq\":25,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an attached program's exit",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":0,\"finished_ms\":1793391752105,\"reason\":\"exited\",\"signal\":null},\"seq\":22,\"terminal\":\"t4\",\"type\":\"finished\"}}\n"
     },
     {
       "name": "removed",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): runtime.rs:645",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"type\":\"removed\",\"data\":{},\"seq\":26,\"terminal\":\"t7\"}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: terminal.rm",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{},\"seq\":23,\"terminal\":\"t4\",\"type\":\"removed\"}}\n"
     },
     {
       "name": "heartbeat",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): events.rs:210-212",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"heartbeat\",\"params\":{\"seq\":26}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: the events channel's heartbeat, every second by HC_HEARTBEAT_MS",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"heartbeat\",\"params\":{\"seq\":25}}\n"
     },
     {
       "name": "missed",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): events.rs:149 with events.rs:78-80",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"missed\",\"params\":{\"seq\":40,\"terminals\":[{\"address\":\"t7\",\"name\":\"review\",\"labels\":{\"heeler.workspace\":\"w1\"},\"argv\":[\"/usr/local/bin/claude\",\"--resume\"],\"cwd\":\"/work/project\",\"keep\":true,\"state\":\"live\",\"pid\":4242,\"exit_code\":null,\"signal\":null,\"reason\":null,\"created_ms\":1790000000000,\"finished_ms\":null,\"screen\":\"exact\",\"cols\":120,\"rows\":40,\"identity\":\"ghostty 1.4.0\",\"status\":{\"state\":\"blocked\",\"kind\":\"permission\",\"progress\":40,\"app\":\"claude-code\",\"title\":\"Reviewing\",\"msg\":\"Allow edit?\"},\"status_ms\":1790000000500,\"records\":{\"child\":{\"state\":\"working\",\"app\":\"claude-code\"}},\"turn\":3,\"reported\":true,\"title\":\"Reviewing\",\"parent\":\"t3\",\"notify\":true,\"die_with_parent\":false,\"rm\":false,\"template\":\"reviewer\",\"submit\":\"enter\",\"stop\":\"esc\",\"paste_gap_ms\":120,\"foreground\":{\"pid\":4300,\"name\":\"node\",\"argv\":[\"node\",\"/opt/claude/cli.js\"],\"cwd\":\"/work/project/child\"},\"future_field\":{\"ignored\":true}},{\"address\":\"t8\",\"labels\":{},\"argv\":[\"/bin/sh\"],\"cwd\":\"/work\",\"keep\":false,\"state\":\"finished\",\"pid\":null,\"exit_code\":0,\"signal\":null,\"reason\":\"exited\",\"created_ms\":1790000000000,\"finished_ms\":1790000001000,\"screen\":\"exact\",\"cols\":200,\"rows\":120,\"identity\":\"\",\"status\":null,\"status_ms\":null,\"turn\":0,\"reported\":false,\"title\":\"\",\"parent\":null,\"notify\":false,\"die_with_parent\":false,\"rm\":false,\"template\":null},{\"address\":\"rohan/t3\",\"labels\":{},\"argv\":[\"/bin/sh\"],\"cwd\":\"/work\",\"keep\":false,\"state\":\"live\",\"pid\":null,\"exit_code\":0,\"signal\":null,\"reason\":\"exited\",\"created_ms\":1790000000000,\"finished_ms\":1790000001000,\"screen\":\"exact\",\"cols\":200,\"rows\":120,\"identity\":\"\",\"status\":null,\"status_ms\":null,\"turn\":0,\"reported\":false,\"title\":\"\",\"parent\":null,\"notify\":false,\"die_with_parent\":false,\"rm\":false,\"template\":null}]}}\n"
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a backlog past the core's limit with credit withheld",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"missed\",\"params\":{\"seq\":2517,\"terminals\":[{\"address\":\"t1\",\"argv\":[\"/usr/local/bin/heeler-inert\"],\"cols\":200,\"created_ms\":1793391751905,\"cwd\":\"/home/user\",\"die_with_parent\":false,\"exit_code\":null,\"finished_ms\":null,\"foreground\":{\"argv\":[\"/usr/local/bin/python3\",\"<scrubbed>\"],\"cwd\":\"/home/user\",\"name\":\"Python\",\"pid\":51187},\"identity\":\"ghostty\",\"keep\":false,\"labels\":{\"f\":\"<scrubbed>\"},\"name\":\"live\",\"notify\":true,\"parent\":null,\"pid\":51187,\"reason\":null,\"reported\":false,\"rm\":false,\"rows\":120,\"screen\":\"exact\",\"signal\":null,\"state\":\"live\",\"status\":null,\"status_ms\":null,\"template\":null,\"title\":\"\",\"turn\":0},{\"address\":\"t2\",\"argv\":[\"/bin/sh\",\"<scrubbed>\",\"<scrubbed>\"],\"cols\":200,\"created_ms\":1793391751919,\"cwd\":\"/home/user\",\"die_with_parent\":false,\"exit_code\":0,\"finished_ms\":1793391751936,\"identity\":\"ghostty\",\"keep\":false,\"labels\":{},\"name\":null,\"notify\":true,\"parent\":null,\"pid\":51188,\"reason\":\"exited\",\"reported\":false,\"rm\":false,\"rows\":120,\"screen\":\"exact\",\"signal\":null,\"state\":\"finished\",\"status\":null,\"status_ms\":null,\"template\":null,\"title\":\"\",\"turn\":0},{\"address\":\"t3\",\"argv\":[\"/bin/zsh\"],\"cols\":200,\"created_ms\":1793391751993,\"cwd\":\"/home/user\",\"die_with_parent\":false,\"exit_code\":null,\"finished_ms\":null,\"foreground\":{\"argv\":[\"/bin/zsh\"],\"cwd\":\"/home/user\",\"name\":\"zsh\",\"pid\":51209},\"identity\":\"ghostty\",\"keep\":true,\"labels\":{\"heeler.workspace\":\"w2\"},\"name\":\"review\",\"notify\":true,\"parent\":null,\"pid\":51209,\"reason\":null,\"reported\":false,\"rm\":false,\"rows\":120,\"screen\":\"exact\",\"signal\":null,\"state\":\"live\",\"status\":null,\"status_ms\":1793391752042,\"template\":null,\"title\":\"\",\"turn\":2}]}}\n"
     },
     {
       "name": "missed-killed-rm-record",
       "source": "source review of herdr-core v0.1.13 (88fe4e7): events.rs:149 with events.rs:78-80, terminals.rs:324-345, runtime.rs:575-577 for killed, runtime.rs:612-614 for rm kept while a parent waits",
       "line": "{\"jsonrpc\":\"2.0\",\"method\":\"missed\",\"params\":{\"seq\":41,\"terminals\":[{\"address\":\"t9\",\"labels\":{},\"argv\":[\"/usr/local/bin/claude\"],\"cwd\":\"/work\",\"keep\":false,\"state\":\"finished\",\"pid\":null,\"exit_code\":null,\"signal\":9,\"reason\":\"killed\",\"created_ms\":1790000000000,\"finished_ms\":1790000002000,\"screen\":\"exact\",\"cols\":80,\"rows\":24,\"identity\":\"\",\"status\":null,\"status_ms\":null,\"turn\":0,\"reported\":false,\"title\":\"\",\"parent\":\"t3\",\"notify\":true,\"die_with_parent\":true,\"rm\":true,\"template\":null}]}}\n"
+    },
+    {
+      "name": "created",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: a Terminal started with a name, labels and keep",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"address\":\"t3\",\"argv\":[\"/usr/local/bin/heeler-inert\"],\"cols\":200,\"created_ms\":1793391751993,\"cwd\":\"/home/user\",\"die_with_parent\":false,\"exit_code\":null,\"finished_ms\":null,\"identity\":\"ghostty\",\"keep\":true,\"labels\":{\"heeler.workspace\":\"w1\"},\"name\":\"review\",\"notify\":true,\"parent\":null,\"pid\":51189,\"reason\":null,\"reported\":false,\"rm\":false,\"rows\":120,\"screen\":\"exact\",\"signal\":null,\"state\":\"live\",\"status\":null,\"status_ms\":null,\"template\":null,\"title\":\"\",\"turn\":0},\"seq\":4,\"terminal\":\"t3\",\"type\":\"created\"}}\n"
     }
   ],
   "eventFrames": [
     {
       "name": "two-lines-in-one-frame",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:233-251, events.rs:65-67",
-      "bytes": "0100000000e40000007b226a736f6e727063223a22322e30222c226d6574686f64223a226576656e74222c22706172616d73223a7b2274797065223a2273697a65222c2264617461223a7b22636f6c73223a3130302c22726f7773223a33307d2c22736571223a31322c227465726d696e616c223a227437227d7d0a7b226a736f6e727063223a22322e30222c226d6574686f64223a226576656e74222c22706172616d73223a7b2274797065223a227469746c65222c2264617461223a7b227469746c65223a22576f726b696e67227d2c22736571223a31332c227465726d696e616c223a227437227d7d0a",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: two event lines the credit released together",
+      "bytes": "0100000000f40000007b226a736f6e727063223a22322e30222c226d6574686f64223a226576656e74222c22706172616d73223a7b2264617461223a7b226c6162656c73223a7b2266223a22303032313531227d7d2c22736571223a323137392c227465726d696e616c223a227431222c2274797065223a226c6162656c73227d7d0a7b226a736f6e727063223a22322e30222c226d6574686f64223a226576656e74222c22706172616d73223a7b2264617461223a7b226c6162656c73223a7b2266223a22303032313532227d7d2c22736571223a323138302c227465726d696e616c223a227431222c2274797065223a226c6162656c73227d7d0a",
       "lines": 2
     },
     {
       "name": "one-line-across-two-frames",
-      "source": "source review of herdr-core v0.1.13 (88fe4e7): wire.rs:233-251, cut at the credit edge",
-      "bytes": "01000000000a0000007b226a736f6e727063220100000000690000003a22322e30222c226d6574686f64223a226576656e74222c22706172616d73223a7b2274797065223a2273697a65222c2264617461223a7b22636f6c73223a3130302c22726f7773223a33307d2c22736571223a31322c227465726d696e616c223a227437227d7d0a",
+      "source": "captured from herdr-core 0.1.13 by scripts/fixtures/herdr-core-capture-scenario.py: an event line cut at the credit edge",
+      "bytes": "0100000000290000007b226a736f6e727063223a22322e30222c226d6574686f64223a226576656e74222c22706172616d73010000000051000000223a7b2264617461223a7b226c6162656c73223a7b2266223a22303032313530227d7d2c22736571223a323137382c227465726d696e616c223a227431222c2274797065223a226c6162656c73227d7d0a",
       "lines": 1
     }
+  ],
+  "notCaptured": [
+    "resize-largest",
+    "created-every-field",
+    "foreground-cleared",
+    "missed-killed-rm-record"
   ]
 }

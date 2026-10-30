@@ -85,11 +85,11 @@ def start_environment(root, user, session=None):
     return environment
 
 
-def start_core(root, session):
+def start_core(root, session, extra=None):
     """Starts this session's core: the only way one starts here."""
     state = backend.load_state(root)
     return subprocess.run([str(core_executable(root)), "server", "start"],
-        env=start_environment(root, state.user, session), stdin=subprocess.DEVNULL,
+        env=dict(start_environment(root, state.user, session), **(extra or {})), stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30, check=False)
 
 

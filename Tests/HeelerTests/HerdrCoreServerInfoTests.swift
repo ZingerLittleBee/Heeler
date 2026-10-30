@@ -39,7 +39,7 @@ import Testing
         let info = try HerdrCoreServerInfo(hello: reply)
         #expect(info.version == "0.1.13")
         #expect(info.generation == 1)
-        #expect(info.coreID == "c0re1d")
+        #expect(info.coreID == "scrubbed-core-id")
         #expect(info.features == ["framed", "attach", "events", "status", "shell"])
     }
 
@@ -100,11 +100,11 @@ import Testing
         let frame = try #require(try decoder.next())
         let result = try HerdrCoreServerInfo.result(from: frame.payload, id: "1")
         let status = try HerdrCoreServerStatus(result: result)
-        #expect(status.coreID == "c0re1d")
+        #expect(status.coreID == "scrubbed-core-id")
         #expect(status.version == "0.1.13")
-        #expect(status.pid == 31337)
-        #expect(status.uptimeMilliseconds == 86_400_123)
-        #expect(status.live == 2)
+        #expect(status.pid > 0)
+        #expect(status.uptimeMilliseconds > 0)
+        #expect(status.live == 1)
         #expect(status.finished == 1)
     }
 

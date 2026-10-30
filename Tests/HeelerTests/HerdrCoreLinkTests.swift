@@ -258,7 +258,7 @@ struct HerdrCoreLinkTests {
         let request = await harness.socket.nextRequest()
         #expect(request.method == "server.status")
         try await harness.socket.reply(to: request.id, result: exchange.result)
-        #expect(try await status.value.pid == 31337)
+        #expect(try await status.value.pid == HerdrCoreWire.integer(exchange.result["pid"]))
     }
 
     @Test func anOlderCoresUnknownMethodReadsAsUpdateRequired() async throws {
@@ -587,12 +587,13 @@ struct HerdrCoreLinkTests {
         let request = await harness.socket.nextRequest()
         try await harness.socket.reply(to: request.id, result: exchange.result)
         let stream = try await subscribed.value
-        #expect(stream.snapshot.sequence == 10)
-        #expect(stream.snapshot.terminals.map(\.address) == ["t7", "t8"])
+        let sequence = stream.snapshot.sequence
+        #expect(sequence > 0)
+        #expect(stream.snapshot.terminals.map(\.address) == ["t1", "t2"])
 
         var events = stream.events.makeAsyncIterator()
-        try await harness.socket.deliver(dataFrame(1, removedLine(sequence: 10)))
-        try await harness.socket.deliver(dataFrame(1, removedLine(sequence: 11)))
+        try await harness.socket.deliver(dataFrame(1, removedLine(sequence: sequence)))
+        try await harness.socket.deliver(dataFrame(1, removedLine(sequence: sequence + 1)))
         #expect(try await events.next() == .removed(terminal: "t1"))
         await stream.end()
     }

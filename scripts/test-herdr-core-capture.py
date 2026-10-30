@@ -317,5 +317,49 @@ class ScrubberTests(unittest.TestCase):
         self.assertEqual(capture.Scrubber(["alice"]).text("alice@laptop"), "scrubbed@laptop")
 
 
+class ScenarioMergeTests(unittest.TestCase):
+    """The fixture scenario's rewrite of the vector file. Its capture runs against a real core."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        path = ROOT / "scripts" / "fixtures" / "herdr-core-capture-scenario.py"
+        scenario_spec = importlib.util.spec_from_file_location("herdr_core_capture_scenario", path)
+        assert scenario_spec and scenario_spec.loader
+        cls.scenario = importlib.util.module_from_spec(scenario_spec)
+        sys.modules["herdr_core_capture_scenario"] = cls.scenario
+        scenario_spec.loader.exec_module(cls.scenario)
+
+    def old(self) -> dict:
+        return {
+            "description": "old", "provisional": True, "coreVersion": "0.1.13", "coreCommit": "abc",
+            "hello": {"name": "hello", "source": "source review", "reply": "old"},
+            "frames": [{"name": "kept-frame", "source": "x.rs", "bytes": "00"}, {"name": "new-frame", "source": "x.rs", "bytes": "00"}],
+            "exchanges": [], "errors": [],
+            "events": [{"name": "only-by-hand", "source": "y.rs", "line": "old"}], "eventFrames": [],
+        }
+
+    def captured(self) -> dict:
+        return {
+            "hello": {"name": "hello", "source": "captured", "reply": "new"},
+            "frames": [{"name": "new-frame", "source": "captured", "bytes": "01"}],
+            "exchanges": [], "errors": [], "events": [{"name": "added", "source": "captured", "line": "l"}], "eventFrames": [],
+        }
+
+    def test_captured_cases_replace_those_of_their_name_and_the_rest_are_listed(self) -> None:
+        merged = self.scenario.merge(self.old(), self.captured(), "0.1.13")
+        self.assertFalse(merged["provisional"])
+        self.assertEqual(merged["hello"]["reply"], "new")
+        self.assertEqual([case["bytes"] for case in merged["frames"]], ["00", "01"])
+        self.assertEqual(merged["notCaptured"], ["kept-frame", "only-by-hand"])
+        self.assertEqual([case["name"] for case in merged["events"]], ["only-by-hand", "added"])
+        self.assertEqual(merged["coreCommit"], "abc")
+
+    def test_the_scenario_runs_no_hc_and_starts_only_through_the_fixture(self) -> None:
+        source = (ROOT / "scripts" / "fixtures" / "herdr-core-capture-scenario.py").read_text()
+        self.assertEqual(ast.parse(source).__class__, ast.Module)
+        self.assertNotIn("subprocess", source)
+        self.assertIn("fixture.start_core(root, SESSION", source)
+
+
 if __name__ == "__main__":
     unittest.main()
