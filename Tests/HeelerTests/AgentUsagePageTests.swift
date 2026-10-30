@@ -134,7 +134,7 @@ struct AgentUsageDetailTests {
         #expect(both.hasPrefix("Recorded on these 2 Hosts since"), "Actual: \(both)")
         #expect(both.contains("Build Box: 3 compressed archives skipped."), "Actual: \(both)")
         #expect(!both.contains("Studio Mac:"), "Actual: \(both)")
-        #expect(both.hasSuffix("Price table: 2026-10-23."), "Actual: \(both)")
+        #expect(both.hasSuffix("Price table: 2026-10-30."), "Actual: \(both)")
     }
 
     @Test func calendarDaysAreLocalizedWithoutShiftingTheirDay() {
@@ -183,7 +183,7 @@ struct AgentUsageDetailTests {
                 let window = try await makeTestWindow(frame: bounds, rootViewController: controller)
                 defer { window.isHidden = true }
                 let expected = kind == .models
-                    ? ["Last 30 days", "Programs", "Breakdown", "claude-opus-4-5", "Price table: 2026-10-23.",
+                    ? ["Last 30 days", "Programs", "Breakdown", "claude-opus-4-5", "Price table: 2026-10-30.",
                        "Recorded on this Host since Oct 23, 2026.",
                        "Estimated API cost is based on recorded Token Usage"]
                     : ["/work/project", "/work/codex"]
