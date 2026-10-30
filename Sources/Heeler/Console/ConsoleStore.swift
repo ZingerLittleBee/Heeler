@@ -185,8 +185,7 @@ final class ConsoleStore {
             chatPrefetchRetries = chatPrefetchRetries.filter { $0.key.hostID != id }
             chatCacheValidatedGenerations[id] = nil
         }
-        for (id, session) in composerSessions where incoming[id.hostID] == nil
-            || incoming[id.hostID]?.serverKind != projections[id.hostID]?.host.serverKind {
+        for (id, session) in composerSessions where incoming[id.hostID] == nil {
             session.leaveStaging()
             composerSessions[id] = nil
         }
@@ -609,7 +608,6 @@ final class ConsoleStore {
         let hostID = agent.hostID
         let composer = AgentComposerStore(
             target: agent.agent.paneID,
-            requiresTerminalConfirmation: projections[hostID]?.host.serverKind == .herdrCore,
             initialStatus: agent.agent.status,
             statusUpdates: agentStatusUpdates(for: agent.id)
         ) { [weak self] params in

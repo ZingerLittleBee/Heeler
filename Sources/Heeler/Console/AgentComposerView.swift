@@ -477,7 +477,7 @@ struct AgentComposerView: View {
             }
 
             Spacer(minLength: 0)
-            if store.hasPendingDroppedImages || store.requiresTerminalConfirmation {
+            if store.hasPendingDroppedImages {
                 pendingDropHint
             }
             primaryButton
@@ -486,8 +486,7 @@ struct AgentComposerView: View {
 
     /// Why Send waits; its VoiceOver hint already says so.
     private var pendingDropHint: some View {
-        Text(store.requiresTerminalConfirmation && !store.hasPendingDroppedImages
-            ? "Insert, then press Enter in Terminal" : store.sendAccessibilityHint)
+        Text(store.sendAccessibilityHint)
             .font(.footnote)
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -523,8 +522,7 @@ struct AgentComposerView: View {
         case .send:
             AgentComposerSendButton(
                 isEnabled: store.canSend,
-                accessibilityHint: store.sendAccessibilityHint,
-                requiresTerminalConfirmation: store.requiresTerminalConfirmation
+                accessibilityHint: store.sendAccessibilityHint
             ) {
                 sendDraft()
             }
@@ -803,18 +801,17 @@ private struct AgentComposerSkillSuggestions: View {
 struct AgentComposerSendButton: View {
     let isEnabled: Bool
     var accessibilityHint: String = "Delivers the complete draft to the Agent"
-    var requiresTerminalConfirmation = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: requiresTerminalConfirmation ? "arrow.down.to.line" : "arrow.up")
+            Image(systemName: "arrow.up")
                 .font(.system(size: 15, weight: .bold))
                 .frame(width: 18, height: 18)
         }
         .buttonStyle(AgentComposerSendButtonStyle())
         .disabled(!isEnabled)
-        .accessibilityLabel(requiresTerminalConfirmation ? "Insert into Terminal" : "Send")
+        .accessibilityLabel("Send")
         .accessibilityHint(accessibilityHint)
     }
 }
