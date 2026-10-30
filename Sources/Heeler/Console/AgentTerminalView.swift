@@ -1046,9 +1046,10 @@ struct AgentTerminalView: View {
         // Keep the edge gesture below the input chrome and tools dock so
         // its transparent hit region cannot intercept their leading keys.
         // A detail pushed over the list has the back header and the
-        // system's own swipe instead, which follows the finger.
+        // system's own swipe instead, which follows the finger; so does a
+        // detail beside a sidebar, whose split view's swipe brings it out.
         .overlay(alignment: .leading) {
-            if !showsBackButton {
+            if !showsBackButton, revealDetailSidebar == nil {
                 AgentEdgeBackGesture { backToConsole() }
             }
         }
@@ -1928,8 +1929,7 @@ struct AgentTerminalView: View {
     }
 }
 
-/// Preserve edge-swipe navigation after the title bar is removed. Beside
-/// a regular-width sidebar the swipe brings it out instead of going back.
+/// Preserve edge-swipe navigation after the title bar is removed.
 struct AgentEdgeBackGesture: View {
     let dismiss: @MainActor () -> Void
 

@@ -358,9 +358,10 @@ struct AgentChatSurfaceView: View {
             }
         }
         // Below the Composer, like the terminal's, so its transparent hit
-        // region never covers the Composer's leading controls.
+        // region never covers the Composer's leading controls. Beside a
+        // sidebar the split view's own swipe brings it out instead.
         .overlay(alignment: .leading) {
-            if !showsBackButton {
+            if !showsBackButton, revealDetailSidebar == nil {
                 AgentEdgeBackGesture { backToConsole() }
             }
         }

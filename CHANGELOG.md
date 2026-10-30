@@ -55,8 +55,9 @@ Entries reference the pull request that made the change.
 ### Fixed
 
 - Bring out the Agents list when swiping in from the left edge of an
-  Agent or Shell Terminal on an iPhone Duo's inner display, as on iPad,
-  instead of closing it to No Agent Selected. (#TBD)
+  Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
+  Duo's inner display or a Pro Max in landscape, instead of closing it to
+  No Agent Selected. The sidebar now follows the finger, on iPad too. (#TBD)
 - Keep each row's fields in Agent List Fields on their own line. The last
   one, often the add button, could drop below the row onto the next.
   (#591)

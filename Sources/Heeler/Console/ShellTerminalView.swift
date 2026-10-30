@@ -207,11 +207,11 @@ struct ShellTerminalView: View {
             .overlay { statusOverlay }
             // The input row and controls dock must stay above the edge
             // gesture's hit region, including their leftmost buttons.
+            // Beside a sidebar the split view's own swipe brings it out,
+            // following the finger; a strip here would take the touch first.
             .overlay(alignment: .leading) {
-                if !usesSystemBackSwipe {
-                    ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                        if let revealDetailSidebar { revealDetailSidebar() } else { await goBack() }
-                    }
+                if !usesSystemBackSwipe, revealDetailSidebar == nil {
+                    ShellTerminalEdgeBackGesture(isEnabled: !isReturning) { await goBack() }
                 }
             }
             // Always present, keyboard up or down: with no title bar, its
@@ -787,8 +787,7 @@ struct ShellTerminalKeysDock: View {
     }
 }
 
-/// Goes back on an edge swipe, or beside a regular-width sidebar brings the
-/// sidebar out instead.
+/// Goes back on an edge swipe.
 private struct ShellTerminalEdgeBackGesture: View {
     let isEnabled: Bool
     let onBack: @MainActor () async -> Void

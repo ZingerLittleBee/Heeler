@@ -1319,11 +1319,10 @@ struct ConsoleView: View {
             || stagedTerminalChromeScheme.map { $0 == colorScheme } ?? true
     }
 
-    /// What an edge swipe on a regular-width detail does instead of going
-    /// back: the detail stands beside its list there, on an iPad or a wide
-    /// iPhone alike, so the swipe brings the sidebar out rather than leaving
-    /// the screen. Nil in compact width, where the detail is pushed and the
-    /// swipe goes back.
+    /// What going back from a regular-width detail does instead: the detail
+    /// stands beside its list there, on an iPad or a wide iPhone alike, so
+    /// the sidebar comes out rather than the detail leaving the screen. Nil
+    /// in compact width, where the detail is pushed and goes back.
     private func sidebarReveal(for tab: ConsoleTab) -> (@MainActor @Sendable () -> Void)? {
         guard horizontalSizeClass == .regular else { return nil }
         return { [splitVisibilities = $splitVisibilities, reduceMotion] in
@@ -2819,9 +2818,10 @@ extension EnvironmentValues {
     /// sidebar's glass, and keeps its search field in view, or on an iPad
     /// searches from the sidebar's foot.
     @Entry var isSidebarColumn = false
-    /// Brings out the sidebar beside a regular-width detail column. A detail's
-    /// edge swipe calls it in place of going back; nil where the detail has
-    /// no sidebar to show.
+    /// Brings out the sidebar beside a regular-width detail column. Back to
+    /// Console calls it in place of going back, and a detail drops its own
+    /// edge swipe for the split view's; nil where the detail has no sidebar
+    /// to show.
     @Entry var revealDetailSidebar: (@MainActor @Sendable () -> Void)? = nil
     /// The detail is pushed over the list, on an iPhone or in a compact iPad
     /// window, so its floating header carries a Back button. A window's
