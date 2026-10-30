@@ -327,6 +327,7 @@ actor HeelerSSHTransport: Transport {
     nonisolated let routeID: UUID?
     private let backend: HostBackend
     private let coreSessionName: String
+    private var coreExecutableTask: Task<String, any Error>?
     private let socketLocation: HerdrSocketLocation
     private let requestTimeout: Duration
     private let gitExecTimeout: Duration
@@ -720,7 +721,11 @@ actor HeelerSSHTransport: Transport {
 
     func ping() async throws -> ServerInfo {
         if backend == .herdrCore {
-            return try HerdrCoreWire.serverInfo(from: await coreRequest("hello", params: ["generation": .number(1)]))
+            do {
+                return try HerdrCoreWire.serverInfo(from: await coreRequest("hello", params: ["generation": .number(1)]))
+            } catch let error as HerdrAPIError where error.code == "unsupported_generation" {
+                throw TransportError.hostFeatureUnavailable(feature: "This herdr-core protocol generation is not supported")
+            }
         }
         let pong = try await request(method: "ping", decoding: PongResponse.self)
         return try Self.serverInfo(from: pong)
@@ -1101,18 +1106,11 @@ actor HeelerSSHTransport: Transport {
 
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
         if backend == .herdrCore {
-            // Read before dispatch: a successful send must never look failed
-            // because a subsequent status lookup lost the connection.
-            let agent = try await agentInfo(AgentTarget(target: params.target))
-            do {
-                _ = try await coreRequest(
-                    "terminal.send", target: params.target, params: ["text": .string(params.text)])
-            } catch let error as HerdrAPIError where error.code == "blocked" {
-                // Preserve Composer's stale-status fallback: insert the draft
-                // into its live Attach without Enter; never force a core send.
-                throw HerdrAPIError(code: "agent_blocked", message: error.message)
-            }
-            return agent
+            // Generation one queues terminal.send without binding it to an
+            // Agent process or cancelling it when the client disconnects.
+            // Even a fresh agentInfo preflight can become stale in that queue.
+            throw TransportError.hostFeatureUnavailable(
+                feature: "Insert the draft into the live Terminal and confirm it with Enter")
         }
         let response = try await request(
             method: "agent.prompt", params: params, decoding: AgentPromptedResponse.self)
@@ -3063,7 +3061,7 @@ actor HeelerSSHTransport: Transport {
         let channel: any HeelerSSHAPIChannel
         do {
             if isCore {
-                channel = try await openCoreChannel()
+                channel = try await openCoreChannel(executable: resolvedCoreExecutable())
             } else if environment.isWindows {
                 try await checkWindowsBridge()
                 let exec = try await connection.openExec(
@@ -3251,6 +3249,7 @@ actor HeelerSSHTransport: Transport {
         var admissionLease: SSHChannelAdmissionLease?
 
         do {
+            let coreExecutable = backend == .herdrCore ? try await resolvedCoreExecutable() : nil
             let lease = try await channelAdmission.acquire(.attach)
             admissionLease = lease
             let socketPath = backend == .herdrCore ? "" : try await resolvedSocketPath()
@@ -3267,7 +3266,7 @@ actor HeelerSSHTransport: Transport {
             do {
                 if backend == .herdrCore {
                     try await requirePOSIXHost(feature: "herdr-core Hosts")
-                    let command = try HerdrCoreCommand.attach(session: coreSessionName, request: request)
+                    let command = try HerdrCoreCommand.attach(session: coreSessionName, request: request, executable: coreExecutable ?? "")
                     channel = try await connection.openPTY(command: command, columns: request.cols, rows: request.rows, timeout: requestTimeout)
                     dropsStartupProbe = false
                 } else if environment.isWindows {
@@ -3635,14 +3634,46 @@ actor HeelerSSHTransport: Transport {
 
 // MARK: - herdr-core generation-one API over its official SSH exec bridge
 extension HeelerSSHTransport {
-    private func openCoreChannel() async throws -> BootstrappedExecChannel {
-        try await requirePOSIXHost(feature: "herdr-core Hosts")
+    /// Resolve once before taking an API lease. Each identity probe has the
+    /// existing remote process-group watchdog; an unrelated/hung hc cannot
+    /// shadow a working herdr-core or exhaust the session budget.
+    private func resolvedCoreExecutable() async throws -> String {
+        if let coreExecutableTask { return try await coreExecutableTask.value }
+        let task = Task { [self] in
+            try await requirePOSIXHost(feature: "herdr-core Hosts")
+            for name in ["hc", "herdr-core"] {
+                do {
+                    let result = try await runBoundedScript(
+                        HerdrCoreCommand.identityProbe(name: name), feature: "herdr-core Hosts",
+                        deadline: .seconds(5), remoteSeconds: 2,
+                        timeoutMarkerPrefix: "__HEELER_CORE_PROBE_TIMEOUT_",
+                        timedOut: .hostFeatureUnavailable(feature: "herdr-core executable probe timed out"))
+                    let stdout = result.stdout
+                    if result.exitStatus == 0,
+                       let path = Self.markerValue(in: stdout, prefix: HerdrCoreCommand.executableMarker),
+                       path.hasPrefix("/"), !path.contains("\0") {
+                        return path
+                    }
+                } catch TransportError.hostFeatureUnavailable {
+                    // A bounded identity probe may time out for an unrelated
+                    // hc. Link failures must retain their reconnect diagnosis.
+                    continue
+                }
+            }
+            throw TransportError.herdrBinaryNotFound
+        }
+        coreExecutableTask = task
+        do { return try await task.value }
+        catch { coreExecutableTask = nil; throw error }
+    }
+
+    private func openCoreChannel(executable: String) async throws -> BootstrappedExecChannel {
         do {
             let exec = try await connection.openExec(
-                command: HerdrCoreCommand.connect(session: coreSessionName), timeout: requestTimeout)
+                command: HerdrCoreCommand.connect(session: coreSessionName, executable: executable), timeout: requestTimeout)
             return BootstrappedExecChannel(
                 channel: exec, marker: HerdrCoreCommand.streamMarker,
-                startupFailure: "herdr-core could not start its API bridge. Install hc or herdr-core on the Host and check the selected session.")
+                startupFailure: "herdr-core could not start its API bridge. Check the selected session and the Host's core configuration.")
         } catch let error as SSHError {
             throw await mapOperationError(error)
         }
@@ -3659,32 +3690,45 @@ extension HeelerSSHTransport {
             try HerdrCoreCommand.validateTarget(target)
             fields["terminal"] = .string(target)
         }
+        let executable = try await resolvedCoreExecutable()
         let id = UUID().uuidString
         let request = Data(try HerdrCoreWire.requestLine(id: id, method: method, params: .object(fields)).utf8)
-        return try await withRequestDeadline {
-            try await self.channelAdmission.withChannel(.ordinarySession) {
-                let channel = try await self.openCoreChannel()
-                do {
-                    try await channel.write(request, timeout: self.requestTimeout)
-                    var pending = Data()
-                    while let chunk = try await channel.read(maximumBytes: 16 * 1024, timeout: self.requestTimeout) {
-                        pending.append(chunk)
-                        guard pending.count <= Self.maximumResponseBytes else {
-                            throw TransportError.malformedResponse("herdr-core response exceeds the size limit")
+        let mutation = ["terminal.run", "terminal.kill", "terminal.keys"].contains(method)
+        let dispatch = CoreMutationDispatch()
+        do {
+            return try await withRequestDeadline {
+                try await self.channelAdmission.withChannel(.ordinarySession) {
+                    let channel = try await self.openCoreChannel(executable: executable)
+                    do {
+                        // A failed/partial write can still reach the server.
+                        if mutation { try await dispatch.begin() }
+                        try await channel.write(request, timeout: self.requestTimeout)
+                        var pending = Data()
+                        while let chunk = try await channel.read(maximumBytes: 16 * 1024, timeout: self.requestTimeout) {
+                            pending.append(chunk)
+                            guard pending.count <= Self.maximumResponseBytes else {
+                                throw TransportError.malformedResponse("herdr-core response exceeds the size limit")
+                            }
+                            if let line = Self.takeLine(from: &pending) {
+                                let result = try HerdrCoreWire.result(from: line, id: id)
+                                try? await channel.close(timeout: .seconds(2))
+                                return result
+                            }
                         }
-                        if let line = Self.takeLine(from: &pending) {
-                            let result = try HerdrCoreWire.result(from: line, id: id)
-                            try? await channel.close(timeout: .seconds(2))
-                            return result
-                        }
+                        throw TransportError.channelFailed(detail: "herdr-core closed its API bridge before replying; check the selected session and Host core configuration")
+                    } catch {
+                        try? await channel.close(timeout: .seconds(2))
+                        if error is SSHError { throw await self.mapOperationError(error) }
+                        throw error
                     }
-                    throw TransportError.channelFailed(detail: "herdr-core closed its API bridge before replying")
-                } catch {
-                    try? await channel.close(timeout: .seconds(2))
-                    if error is SSHError { throw await self.mapOperationError(error) }
-                    throw error
                 }
             }
+        } catch let error as HerdrAPIError {
+            // An explicit rejection has a known result and keeps its remedy.
+            throw error
+        } catch {
+            if await dispatch.seal() { throw TransportError.coreMutationOutcomeUnknown }
+            throw error
         }
     }
 
@@ -3692,8 +3736,9 @@ extension HeelerSSHTransport {
         guard format == nil || format == .text else {
             throw TransportError.hostFeatureUnavailable(feature: "ANSI screen reads are not supported on herdr-core; use the live Terminal")
         }
-        let history = source == .visible || source == .detection ? 0 : max(0, lines ?? 100)
-        let result = try await coreRequest("terminal.read", target: target, params: ["lines": .number(Double(history))])
+        // Positive history asks core to scroll alternate-screen applications.
+        // Console previews must remain passive across every supported source.
+        let result = try await coreRequest("terminal.read", target: target, params: ["lines": .number(0)])
         return try HerdrCoreWire.read(from: result, target: target, source: source)
     }
 
@@ -3711,14 +3756,36 @@ extension HeelerSSHTransport {
         }
         let probe = try await runHostCommand(HerdrCoreCommand.executableProbe(for: kind))
         guard let executable = Self.markerValue(in: probe, prefix: HerdrCoreCommand.executableMarker),
-              executable.hasPrefix("/"), !executable.contains("\0") else {
+              executable.hasPrefix("/"), !executable.contains("\0"),
+              let path = Self.markerValue(in: probe, prefix: HerdrCoreCommand.pathMarker), !path.contains("\0") else {
             throw TransportError.hostFeatureUnavailable(
                 feature: "\(kind.displayName) needs an executable on this Host's SSH PATH")
         }
         let terminal = try await coreRequest("terminal.run", params: [
             "argv": .array(([executable] + launch.arguments).map(JSONValue.string)),
-            "cwd": .string(directory), "name": .string(launch.name), "no_parent": .bool(true)
+            "cwd": .string(directory), "name": .string(launch.name), "no_parent": .bool(true),
+            "env": .object(["PATH": .string(path)])
         ])
         return try HerdrCoreWire.agent(from: terminal)
+    }
+}
+
+/// The deadline's operation can outlive its caller; actor ownership keeps
+/// partial-write evidence visible to the timeout path without a data race.
+actor CoreMutationDispatch {
+    private var wasAttempted = false
+    private var sealed = false
+
+    func begin() throws {
+        try Task.checkCancellation()
+        guard !sealed else { throw TransportError.cancelled }
+        wasAttempted = true
+    }
+
+    /// Atomically prevents a timed-out pre-dispatch continuation from writing
+    /// later, while preserving uncertainty if a write already began.
+    func seal() -> Bool {
+        sealed = true
+        return wasAttempted
     }
 }

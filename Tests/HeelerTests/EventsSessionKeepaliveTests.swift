@@ -29,6 +29,42 @@ struct EventsSessionKeepaliveTests {
             keepalive: keepalive)
     }
 
+    @Test func uncertainCoreMutationIsNotReplayedOrRedialed() async throws {
+        let first = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, replacement])
+        let session = EventsSession(
+            subscriptions: subscriptions, connect: { try await connector.connect() }, keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+        let attempts = CoreMutationAttemptCounter()
+        do {
+            let _: Void = try await session.withTransport { transport in
+                await attempts.record()
+                // The server may have accepted this mutation before its
+                // acknowledgement was lost. A replay would duplicate it.
+                _ = try await transport.promptAgent(.init(target: "t3", text: "one mutation"))
+                throw TransportError.coreMutationOutcomeUnknown
+            }
+            Issue.record("the uncertain mutation must surface its outcome")
+        } catch {
+            #expect(error as? TransportError == .coreMutationOutcomeUnknown)
+        }
+        #expect(await attempts.count == 1)
+        #expect(await connector.connectCount == 1)
+        #expect(await first.agentPromptParams.count == 1)
+        #expect(await replacement.agentPromptParams.isEmpty)
+        #expect(await !first.isClosed)
+        // The ambiguity is not a broken connection: ordinary reads still
+        // use the installed transport and the next action stays user-owned.
+        _ = try await session.withTransport { try await $0.ping() }
+        #expect(await connector.connectCount == 1)
+        #expect(await first.pingCount == 2)
+        await session.end()
+    }
+
     @Test func keepalivePingsFlowWhileIdleAndAPingTimeoutForcesReconnect() async throws {
         let first = ScriptedTransport()
         let second = ScriptedTransport()
@@ -122,4 +158,9 @@ struct EventsSessionKeepaliveTests {
         }
         Issue.record(Comment(rawValue: message))
     }
+}
+
+private actor CoreMutationAttemptCounter {
+    private(set) var count = 0
+    func record() { count += 1 }
 }

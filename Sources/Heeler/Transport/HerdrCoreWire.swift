@@ -100,7 +100,7 @@ enum HerdrCoreWire {
             tabs: terminals.enumerated().map { index, terminal in
                 TabInfo(
                     agentStatus: terminal.status, focused: false,
-                    label: terminal.name ?? terminal.address,
+                    label: terminal.name ?? "",
                     number: index + 1, paneCount: 1, tabID: terminal.address,
                     workspaceID: workspaceID(for: terminal.cwd))
             },
@@ -152,6 +152,7 @@ enum HerdrCoreWire {
                 data: .object([
                     "pane_id": .string(target),
                     "agent_status": .string(status(from: params["data"]?["status"]).rawValue),
+                    "core_status": params["data"]?["status"] ?? .null,
                 ]))
         }
         if type == "title" {
@@ -210,7 +211,7 @@ enum HerdrCoreWire {
     }
 
     private static func aggregateStatus(_ terminals: [Terminal]) -> AgentStatus {
-        for status in [AgentStatus.blocked, .working, .done, .idle] {
+        for status in [AgentStatus.blocked, .error, .working, .done, .idle] {
             if terminals.contains(where: { $0.kind != nil && $0.status == status }) { return status }
         }
         return .unknown
@@ -285,6 +286,20 @@ enum HerdrCoreWire {
         return recognizedKind(stem)
     }
 
+    /// A foreground shell's retained report may belong to the Agent that
+    /// just exited. Only veto a positively identified plain shell: a shell
+    /// running a command or script can itself be an Agent launcher.
+    private static func isPlainShell(_ arguments: [String]) -> Bool {
+        guard let executable = arguments.first else { return false }
+        let name = executable.split(separator: "/").last.map(String.init) ?? ""
+        let shells: Set<String> = ["sh", "bash", "zsh", "fish", "dash", "ksh", "nu", "elvish", "xonsh", "tcsh", "csh"]
+        guard shells.contains(String(name.drop(while: { $0 == "-" })).lowercased()) else { return false }
+        return arguments.dropFirst().allSatisfy { option in
+            ["--interactive", "--login", "--norc", "--noprofile"].contains(option)
+                || (option.hasPrefix("-") && option.count > 1 && option.dropFirst().allSatisfy { "il".contains($0) })
+        }
+    }
+
     private struct Terminal {
         let address: String
         let cwd: String
@@ -323,7 +338,8 @@ enum HerdrCoreWire {
             } else {
                 processKind = HerdrCoreWire.kind(in: launchArguments)
             }
-            kind = recognizedKind(record["status"]?["app"]?.stringValue) ?? processKind
+            kind = HerdrCoreWire.isPlainShell(foregroundArguments)
+                ? nil : recognizedKind(record["status"]?["app"]?.stringValue) ?? processKind
         }
 
         var agentInfo: AgentInfo {

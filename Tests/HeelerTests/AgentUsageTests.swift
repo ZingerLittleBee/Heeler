@@ -54,6 +54,18 @@ struct AgentUsageStoreTests {
             "Usage needs plugin 0.7.0 or newer; this Host has 0.6.2."))
         #expect(await transport.agentUsageReads == 0)
     }
+    @Test func coreIsUnsupportedWithoutStartingAUsageQuery() async {
+        let hostID = UUID()
+        let transport = ScriptedTransport()
+        await transport.setHeelerPlugin(.failure(HeelerPluginUnavailableError.herdrCore))
+        let store = AgentUsageStore(hostID: hostID,
+            transports: ScriptedTransportProvider(transports: [hostID: transport]))
+        await store.refresh()
+        #expect(store.state == .unsupportedBackend)
+        #expect(await transport.agentUsageReads == 0)
+        #expect(AgentUsageScope.reason(for: store.state) == "Not supported on herdr-core")
+    }
+
     @Test func windowsIsExplainedWithoutStartingAQuery() async {
         let hostID = UUID()
         let transport = ScriptedTransport()
@@ -307,7 +319,7 @@ struct AgentUsageStoreTests {
             (decoding, .failed(AgentUsageStore.pluginFailureMessage)),
             (AgentUsageError.unsupportedVersion, .updateRequired),
             (TransportError.hostFeatureUnavailable(feature: "Usage"), .unsupportedPlatform),
-            (HeelerPluginUnavailableError.herdrCore, .requirement("Usage is not supported on herdr-core.")),
+            (HeelerPluginUnavailableError.herdrCore, .unsupportedBackend),
         ]
         for (error, expected) in cases {
             #expect(AgentUsageStore.state(for: error) == expected, "\(error)")

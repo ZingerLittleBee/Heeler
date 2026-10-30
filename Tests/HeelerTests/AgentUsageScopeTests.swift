@@ -51,14 +51,15 @@ struct AgentUsageScopeTests {
         let scope = AgentUsageScope(readings: [
             .init(id: UUID(), name: "Studio Mac", state: .available(report)),
             .init(id: UUID(), name: "Office PC", state: .unsupportedPlatform),
+            .init(id: UUID(), name: "Desktop core", state: .unsupportedBackend),
             .init(id: UUID(), name: "Pi Lab", state: .failed(AgentUsageStore.connectionFailureMessage)),
             .init(id: UUID(), name: "Mini", state: .loading),
             .init(id: UUID(), name: "Lab", state: .loading, isConnected: false),
         ])
 
-        #expect(scope.excluded.map(\.name) == ["Office PC", "Pi Lab", "Lab"])
+        #expect(scope.excluded.map(\.name) == ["Office PC", "Desktop core", "Pi Lab", "Lab"])
         #expect(scope.excluded.map(\.reason)
-            == ["Not supported on Windows", "Could not read Usage", "Not connected"])
+            == ["Not supported on Windows", "Not supported on herdr-core", "Could not read Usage", "Not connected"])
         #expect(scope.loading.map(\.name) == ["Mini"])
         // Unpriced throughout stays unpriced instead of reading $0.00.
         #expect(scope.total(.last30Days).estimatedCostUSD == nil)

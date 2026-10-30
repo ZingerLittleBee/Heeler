@@ -74,11 +74,38 @@ struct HostRoute: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+/// The folder-name contract from herdr-core 0.1.13 paths.rs. Socket path
+/// length depends on the remote platform and is checked by the core itself.
+enum HerdrCoreSessionName {
+    static func normalized(_ value: String) -> String {
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "default" : name
+    }
+
+    static func isValid(_ value: String) -> Bool {
+        let name = normalized(value)
+        return name != "." && name != ".."
+            && !name.unicodeScalars.contains {
+                $0.properties.generalCategory == .control || #"/\:*?"<>|"#.unicodeScalars.contains($0)
+            }
+    }
+}
+
 /// The server a Host reaches. Desktop herdr-core is a separate backend,
 /// not another socket spelling of the legacy herdr protocol.
 enum HostBackend: String, Codable, CaseIterable, Hashable, Sendable {
     case herdr
     case herdrCore
+
+    func isValidSessionName(_ value: String) -> Bool {
+        switch self {
+        case .herdr:
+            let name = value.trimmingCharacters(in: .whitespaces)
+            return name.isEmpty || HerdrSessionName.isValid(name)
+        case .herdrCore:
+            return HerdrCoreSessionName.isValid(value)
+        }
+    }
 
     var displayName: String {
         switch self {
@@ -240,10 +267,9 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             ]
         }
 
-        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
-        guard trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName) else {
+        guard backend.isValidSessionName(sessionName) else {
             throw DecodingError.dataCorruptedError(
-                forKey: .sessionName, in: container, debugDescription: "Invalid herdr session name")
+                forKey: .sessionName, in: container, debugDescription: "Invalid session name for this backend")
         }
     }
 

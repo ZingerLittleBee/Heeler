@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite download_core_fixture_binary assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
+for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary claim_core_port assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
     claim_simulator claim_resource_lock release_resource_lock write_lock_owner \
     lock_is_stale acquire_claim_guard release_claim_guard \
     clear_simulator_environment push_simulator_environment; do
@@ -109,7 +109,7 @@ export ORIGINAL=AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA
 export REPLACEMENT=BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB
 export OCCUPIED=CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC
 
-fail() { echo "FAIL $SCENARIO: $*" >&2; exit 1; }
+fail() { echo "FAIL ${SCENARIO:-controls}: $*" >&2; exit 1; }
 # Avoid delays in the test; simulator recovery still runs the shipped loop.
 sleep() { :; }
 
@@ -314,7 +314,7 @@ run_shard_case() (
     run_suite() { printf 'suite %s\n' "$*" >> "$fixture_dir/events"; }
     start_password_sshd() { echo start-password >> "$fixture_dir/events"; }
     stop_privileged_sshd() { echo stop-password >> "$fixture_dir/events"; }
-    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests; }
+    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests; }
     run_app_fixture_suites
     case "$shard" in
         session-weak)
@@ -330,7 +330,7 @@ EXPECTED
             cat > "$fixture_dir/expected" <<'EXPECTED'
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 118 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
-suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
             ;;
@@ -341,7 +341,7 @@ suite HeelerSSHSessionE2ETests 13 1 0 HeelerSSHSessionE2ETests
 stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 129 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
-suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             ;;
         ordinary)
@@ -354,6 +354,75 @@ EXPECTED
     printf 'PASS shard-%s\n' "$shard"
 )
 for shard in all session-weak transport ordinary; do run_shard_case "$shard"; done
+
+# Preserve the historical block grid across revisions. A separately locked
+# core port cannot collide with the base runner's next deferred main block.
+(
+    gate="$repo_root/scripts/run-ci-ios-tests.sh"
+    port_block_size=$(sed -n 's/^port_block_size=//p' "$gate")
+    port_block_base_default=$(sed -n 's/^port_block_base_default=//p' "$gate")
+    port_block_count=$(sed -n 's/^port_block_count=//p' "$gate")
+    core_port_base_default=$(sed -n 's/^core_port_base_default=//p' "$gate")
+    core_port_count=$(sed -n 's/^core_port_count=//p' "$gate")
+    post_quantum_port=0
+    core_port=0
+    core_port_lock_dir=""
+    [[ "$port_block_size" == 13 ]] || fail 'main reservation no longer shares the base revision grid'
+    assign_port_block "$port_block_base_default"
+    old_second=$((port_block_base_default + 13))
+    [[ "$post_quantum_port" -lt "$old_second" ]] || fail 'new first block overlaps old second block'
+    # The former 14-wide candidate is covered by the new separate pool too.
+    [[ "$core_port_base_default" -gt "$((port_block_base_default + 14 * port_block_count - 1))" ]] \
+        || fail 'core pool overlaps a historical default block'
+    lock_root="$work/core-port-locks"
+    mkdir -p "$lock_root"
+    lock_owner_token=ours
+    lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
+    active_resource_lock=""
+    active_claim_guard=""
+    port_is_busy() { return 1; }
+    # Simulate an old 13-port runner's existing reservation before any listener
+    # starts. Core must be independently reservable and keep that lock intact.
+    claim_resource_lock "$lock_root/block-$old_second" old-main
+    claim_core_port
+    first_core=$core_port
+    first_core_lock=$core_port_lock_dir
+    [[ -d "$lock_root/block-$old_second" ]] || fail 'core removed an old reservation'
+    claim_core_port
+    [[ "$core_port" != "$first_core" ]] || fail 'second core caller reused a reserved port'
+    release_resource_lock "$core_port_lock_dir" core
+    release_resource_lock "$first_core_lock" core
+    release_resource_lock "$lock_root/block-$old_second" old-main
+    # An explicit main override in the separate pool must exclude its own ports.
+    assign_port_block "$core_port_base_default"
+    if claim_core_port; then fail 'core port overlaps its explicit main reservation'; fi
+    echo 'PASS core-port-cross-revision-reservation'
+)
+
+# Diagnostic I/O is fallible, but must not bypass the actual process owner.
+for stop_result in pass fail; do (
+    fixture_dir="$work/core-logcopy-$stop_result/main"
+    core_fixture_dir="$work/core-logcopy-$stop_result/core"
+    mkdir -p "$fixture_dir" "$core_fixture_dir/logs" "$core_fixture_dir/bin"
+    echo fixture-log > "$core_fixture_dir/logs/sshd.log"
+    echo retained-executable > "$core_fixture_dir/bin/herdr-core"
+    core_log="$work/core-logcopy-$stop_result/called"
+    fixture_python=core_stop_stub
+    core_stop_stub() { echo called > "$core_log"; [[ "$stop_result" == pass ]]; }
+    cp() { return 1; }
+    status=0
+    stop_core_fixture || status=$?
+    [[ -f "$core_log" ]] || fail 'log-copy error skipped core shutdown'
+    [[ "$status" == 1 ]] || fail 'log-copy failure disappeared from final status'
+    if [[ "$stop_result" == pass ]]; then
+        [[ -z "$core_fixture_dir" ]] || fail 'successful shutdown retained ownership'
+    else
+        [[ -n "$core_fixture_dir" ]] || fail 'failed shutdown lost cleanup ownership'
+        rm -rf "$fixture_dir"
+        [[ -f "$core_fixture_dir/bin/herdr-core" ]] || fail 'outer cleanup deleted retry executable'
+    fi
+    echo "PASS core-logcopy-stop-$stop_result"
+); done
 
 # The core phase must swap the actual Simulator config, restore the legacy
 # config afterwards, and retain ownership for cleanup when native tests fail.
@@ -381,7 +450,7 @@ for result in pass fail; do (
     cat > "$fixture_dir/expected" <<'EXPECTED'
 start
 config core-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
-suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
     if [[ "$result" == pass ]]; then
         [[ "$status" == 0 && -z "$core_fixture_dir" ]] || fail 'core success retained fixture ownership'
@@ -467,7 +536,7 @@ for function in cleanup preserve_failure_diagnostics dump_fixture_logs; do
     [[ -n "$body" ]] || fail "missing cleanup function $function"
     eval "$body"
 done
-for reason in preparation-failure parent-cancellation; do
+for reason in preparation-failure parent-cancellation core-stop-failure; do
     (
         export SCENARIO=background-stall
         export CASE_DIR="$work/$reason"
@@ -493,12 +562,22 @@ for reason in preparation-failure parent-cancellation; do
         password_pid=""
         password_log="$fixture_dir/password.log"
         password_log_printed=0
+        fixture_log_tail_lines=80
         password_user_cleanup_needed=0
         active_claim_guard=""
         active_resource_lock=""
         account_lock_dir=""
         run_lock_dir=""
         device_lock_dir=""
+        core_fixture_dir=""
+        if [[ "$reason" == core-stop-failure ]]; then
+            core_fixture_dir="$CASE_DIR/core"
+            mkdir -p "$core_fixture_dir/bin" "$core_fixture_dir/logs"
+            echo retained-core > "$core_fixture_dir/bin/herdr-core"
+            echo fixture-log > "$core_fixture_dir/logs/sshd.log"
+            fixture_python=core_stop_failure
+            core_stop_failure() { echo called > "$CASE_DIR/core-stop-called"; return 1; }
+        fi
         start_background_build first
         for _ in $(seq 1 100); do
             [[ -s "$CASE_DIR/build-child.pid" ]] && break
@@ -521,11 +600,15 @@ for reason in preparation-failure parent-cancellation; do
     [[ "$reason" != parent-cancellation ]] || expected=143
     [[ "$status" == "$expected" ]] || { cat "$work/$reason.log" >&2; fail "$reason changed parent exit status $status"; }
     [[ "$(cat "$work/$reason/cancel-order")" == fixture-present ]] || fail 'fixture deleted before build reaped'
-    [[ ! -d "$work/$reason/fixture" ]] || fail 'fixture not cleaned after build cancellation'
+    [[ ! -d "$work/$reason/fixture" ]] || { cat "$work/$reason.log" >&2; fail 'fixture not cleaned after build cancellation'; }
     ! kill -0 "$(cat "$work/$reason/build-child.pid")" 2>/dev/null || fail 'owned build child survived cleanup'
+    if [[ "$reason" == core-stop-failure ]]; then
+        [[ -f "$work/$reason/core-stop-called" ]] || fail 'outer cleanup did not attempt core shutdown'
+        [[ -f "$work/$reason/core/bin/herdr-core" ]] || fail 'outer cleanup lost retained core executable'
+    fi
     printf 'PASS overlap-%s\n' "$reason"
 done
-echo 'Passed 2 owned build cleanup scenarios.'
+echo 'Passed 3 owned build cleanup scenarios.'
 
 for scenario in new settings stale-phase stale-worker stale-metrics unexpected symlink; do
     (

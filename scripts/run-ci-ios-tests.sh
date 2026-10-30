@@ -131,7 +131,7 @@ print(f"==> Fixture Python: {sys.executable} (Python {sys.version.split()[0]})",
 PYRUNTIME
 
 # Fixture ports are a contiguous block that a run claims at startup rather than
-# fourteen fixed numbers every run shares. Fixed numbers made this script a
+# thirteen fixed numbers every run shares. Fixed numbers made this script a
 # machine-wide mutex: whichever run started second failed its port preflight and
 # could only wait for the first to finish.
 #
@@ -141,12 +141,16 @@ PYRUNTIME
 
 # Must equal the number of ports assign_port_block sets; assign_port_block
 # asserts that itself rather than trusting this comment.
-port_block_size=14
+port_block_size=13
 # The historical block. A run that finds the machine idle still lands exactly
 # here, so the common case is unchanged.
 port_block_base_default=55222
 # How many disjoint blocks the machine hands out before it refuses to guess.
 port_block_count=8
+# Keep the historical 13-port grid: older runners reserve by its block start.
+# Core uses a separate pool outside both the 13- and former 14-port default grids.
+core_port_base_default=55400
+core_port_count=8
 # Pin a block explicitly, for a caller that would rather not negotiate.
 port_block_base_override="${HEELER_CI_PORT_BASE:-}"
 
@@ -158,6 +162,7 @@ port_block_base_override="${HEELER_CI_PORT_BASE:-}"
 # "something crashed".
 lock_root=/tmp/heeler-ci-locks
 run_lock_dir=""
+core_port_lock_dir=""
 device_lock_dir=""
 account_lock_dir=""
 active_claim_guard=""
@@ -729,6 +734,7 @@ cleanup() {
         release_claim_guard "$active_claim_guard"
     fi
     release_resource_lock "$account_lock_dir" "password account allocation" || status=1
+    release_resource_lock "${core_port_lock_dir:-}" "core fixture port" || status=1
     release_resource_lock "$run_lock_dir" "fixture port block" || status=1
     release_resource_lock "$device_lock_dir" "simulator" || status=1
 
@@ -1140,7 +1146,7 @@ start_unprivileged_sshd() {
 }
 
 # The single place fixture ports are named. Every other reference in this
-# script, and every port the tests are handed, comes from these fourteen
+# script, and every port the tests are handed, comes from these thirteen
 # variables, so moving the base moves the whole fixture.
 assign_port_block() {
     local base=$1
@@ -1163,12 +1169,10 @@ assign_port_block() {
     # Post-quantum coverage uses a dedicated endpoint so the established
     # resource and timing suites keep exercising their Curve25519 baseline.
     post_quantum_port=$((base + 12))
-    # Real herdr-core has its own isolated home and sshd.
-    core_port=$((base + 13))
 
     # Adding a port above without widening port_block_size would overlap the
     # next block, which no test could distinguish from a flaky fixture.
-    highest=$core_port
+    highest=$post_quantum_port
     if [[ "$highest" -ne "$((base + port_block_size - 1))" ]]; then
         echo "assign_port_block assigns past port_block_size=$port_block_size" >&2
         exit 1
@@ -1301,10 +1305,36 @@ claim_port_block() {
     exit 1
 }
 
+# A core reservation is independent of the established block lock, so a
+# base-revision runner cannot claim its deferred port before core starts.
+claim_core_port() {
+    local candidate slot lock
+    for ((slot = 0; slot < core_port_count; slot += 1)); do
+        candidate=$((core_port_base_default + slot))
+        # Explicit main-block overrides can occupy this pool too.
+        if ((candidate >= modern_port && candidate <= post_quantum_port)); then
+            continue
+        fi
+        port_is_busy "$candidate" && continue
+        lock="$lock_root/core-port-$candidate"
+        if claim_resource_lock "$lock" "core fixture port $candidate"; then
+            core_port_lock_dir="$lock"
+            core_port=$candidate
+            return 0
+        fi
+    done
+    echo "Every separate core fixture port is reserved or listening" >&2
+    return 1
+}
+
 if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
 claim_port_block
 printf 'Claimed fixture port block %s-%s\n' \
     "$modern_port" "$((modern_port + port_block_size - 1))" >&2
+if [[ "$ci_lane" == app && -z "$ci_diagnostic_target" ]] \
+    && [[ "$ci_app_shard" == all || "$ci_app_shard" == transport ]]; then
+    claim_core_port
+fi
 fi
 
 # Claim the simulator before fixture keygen/sshd work so boot overlaps that
@@ -2231,15 +2261,18 @@ start_core_fixture() {
 
 stop_core_fixture() {
     [[ -n "${core_fixture_dir:-}" ]] || return 0
+    local log_copy_status=0
     if [[ -f "$core_fixture_dir/logs/sshd.log" ]]; then
-        cp "$core_fixture_dir/logs/sshd.log" "$fixture_dir/herdr-core-sshd.log" || return 1
+        cp "$core_fixture_dir/logs/sshd.log" "$fixture_dir/herdr-core-sshd.log" || log_copy_status=1
     fi
+    # Diagnostic preservation cannot short-circuit process shutdown.
     "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" stop \
         --root "$core_fixture_dir" || {
         echo "Could not stop isolated herdr-core fixture; preserved $core_fixture_dir" >&2
         return 1
     }
     core_fixture_dir=""
+    return "$log_copy_status"
 }
 
 run_core_fixture_suite() {
@@ -2249,7 +2282,7 @@ run_core_fixture_suite() {
     HEELER_SSH_E2E_CONFIG=$(<"$core_fixture_dir/core-test-config")
     push_simulator_environment HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
-    run_suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests || return $?
+    run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests || return $?
     HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
     push_simulator_environment HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1

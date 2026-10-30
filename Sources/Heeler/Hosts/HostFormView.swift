@@ -15,6 +15,7 @@ struct HostFormView: View {
     @State private var rsaPublicKeyLine: String?
     @State private var didCopyKeyLine = false
     @State private var saveFailed = false
+    @State private var saveFailureMessage: String?
     @State private var deviceKeyIsCorrupt = false
     @State private var rsaKeyIsCorrupt = false
     @State private var isConfirmingDeviceKeyReplacement = false
@@ -80,6 +81,8 @@ struct HostFormView: View {
             }
             .alert("Could not save the Host", isPresented: $saveFailed) {
                 Button("OK", role: .cancel) {}
+            } message: {
+                if let saveFailureMessage { Text(saveFailureMessage) }
             }
             .alert(
                 "Could not replace the Device Key",
@@ -419,7 +422,13 @@ struct HostFormView: View {
             } else {
                 try store.update(host, password: draft.passwordUpdate)
             }
+        } catch HostStoreError.notificationsPreventBackendChange {
+            saveFailureMessage = "Turn off notifications for this Host before changing its backend. "
+                + "Wait for any notification update to finish, then try again."
+            saveFailed = true
+            return
         } catch {
+            saveFailureMessage = nil
             saveFailed = true
             return
         }

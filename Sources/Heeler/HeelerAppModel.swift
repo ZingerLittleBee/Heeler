@@ -91,6 +91,9 @@ final class HeelerAppModel {
             relayBaseURL: { [weak relaySettings] in relaySettings?.relayURL },
             ceremony: NotificationRegistrationCeremony(gate: registrationGate))
         self.notificationPreferences = notificationPreferences
+        hostStore.notificationWriteInProgress = { [weak notificationPreferences] id in
+            notificationPreferences?.hasPendingWrite(for: id) ?? false
+        }
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on

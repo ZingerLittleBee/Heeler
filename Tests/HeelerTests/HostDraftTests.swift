@@ -145,6 +145,29 @@ struct HostDraftTests {
         }
     }
 
+    @Test(arguments: ["desktop session", "作業", "O'Brien $project `local`", String(repeating: "a", count: 65)])
+    func coreDraftsAcceptTheCoreSessionNameContract(_ name: String) throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        draft.backend = .herdrCore
+        draft.sessionName = name
+        #expect(try #require(draft.makeHost()).sessionName == name)
+        draft.backend = .herdr
+        #expect(!draft.isValid)
+    }
+
+    @Test(arguments: [".", "..", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "a\tb"])
+    func coreDraftsRejectInvalidFolderNames(_ name: String) {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        draft.backend = .herdrCore
+        draft.sessionName = name
+        #expect(!draft.isValid)
+        #expect(draft.makeHost() == nil)
+    }
+
     @Test func acceptsHerdrSessionNameCharacterSetAndLengthLimit() {
         var draft = HostDraft()
         draft.address = "host.example"

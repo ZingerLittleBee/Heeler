@@ -130,6 +130,46 @@ import Testing
         #expect(try inventory(arguments: local, foreground: ["/bin/zsh", "-i"]).agents.isEmpty)
     }
 
+    @Test func staleReportsCannotKeepAnAgentInAPositivelyIdentifiedPlainShell() throws {
+        let wrapper = ["/bin/zsh", "-ic", "\"$@\"; exec \"$0\" -i", "/bin/zsh", "claude"]
+        for foreground in [
+            ["/bin/sh", "-i"], ["-zsh"], ["bash", "--noprofile", "--norc", "-il"], ["fish"],
+        ] {
+            let record: JSONValue = .object([
+                "address": .string("t1"), "cwd": .string("/project"), "state": .string("live"),
+                "argv": .array(wrapper.map(JSONValue.string)),
+                "foreground": .object(["argv": .array(foreground.map(JSONValue.string))]),
+                "status": .object(["app": .string("claude-code"), "state": .string("idle")]),
+            ])
+            let snapshot = try HerdrCoreWire.snapshot(from: .object(["terminals": .array([record])]))
+            #expect(snapshot.agents.isEmpty, "\(foreground)")
+            #expect(snapshot.panes.count == 1 && snapshot.panes.first?.agent == nil)
+            #expect(throws: HerdrAPIError.self) { try HerdrCoreWire.agent(from: record) }
+        }
+        // A shell still executing a command/script is not a known returned shell.
+        for foreground in [wrapper, ["sh", "-c", "custom-agent-wrapper"], ["sh", "/opt/agent.sh"], []] {
+            let record: JSONValue = .object([
+                "address": .string("t1"), "cwd": .string("/project"), "state": .string("live"),
+                "argv": .array(wrapper.map(JSONValue.string)),
+                "foreground": .object(["name": .string("sh"), "argv": .array(foreground.map(JSONValue.string))]),
+                "status": .object(["app": .string("claude-code"), "state": .string("idle")]),
+            ])
+            #expect(try HerdrCoreWire.agent(from: record).kind == "claude")
+        }
+    }
+
+    @Test func coreErrorRemainsAnErrorAndGetsWorkspaceAttention() throws {
+        let snapshot = try HerdrCoreWire.snapshot(from: json(#"{"terminals":[{"address":"t1","cwd":"/project","state":"live","argv":["claude"],"status":{"app":"claude-code","state":"error"}}]}"#))
+        #expect(snapshot.agents.first?.agentStatus == .error)
+        #expect(snapshot.panes.first?.agentStatus == .error)
+        #expect(snapshot.tabs.first?.agentStatus == .error)
+        #expect(snapshot.workspaces.first?.agentStatus == .error)
+        let event = try HerdrCoreWire.decodeEvent(fromLine: Data(#"{"jsonrpc":"2.0","method":"event","params":{"seq":1,"type":"status","terminal":"t1","data":{"status":{"app":"claude-code","state":"error","title":"Authentication failed"}}}}"#.utf8))
+        #expect(event?.data["agent_status"] == .string("error"))
+        #expect(event?.data["core_status"]?["app"] == .string("claude-code"))
+        #expect(event?.data["core_status"]?["title"] == .string("Authentication failed"))
+    }
+
     @Test func unrelatedArgumentsAndEvaluatedCodeDoNotCreateAgents() throws {
         for arguments in [
             ["echo", "claude"],
@@ -220,7 +260,7 @@ import Testing
         #expect(event.data == .object(["pane_id": .string("t3"), "title": .string("Working")]))
         let snapshot = try HerdrCoreWire.snapshot(from: json(Self.inventory))
         #expect(snapshot.tabs.first?.label == "review")
-        #expect(snapshot.tabs[1].label == "t9")
+        #expect(snapshot.tabs[1].label == "")
         #expect(snapshot.panes.first?.terminalTitleStripped == "Reviewing")
         // An explicit empty terminal title stays cleared on the next snapshot.
         let cleared = try HerdrCoreWire.snapshot(from: json(#"{"terminals":[{"address":"t3","cwd":"/work","state":"live","argv":["claude"],"title":"","status":{"app":"claude-code","state":"idle","title":"Status label"}}]}"#))
@@ -285,13 +325,12 @@ import Testing
 
 @Suite struct HerdrCoreCommandTests {
     @Test func bridgeSelectsAnExplicitCoreSessionAndClearsInheritedTargets() throws {
-        let command = try HerdrCoreCommand.connect(session: "phone-work")
+        let command = try HerdrCoreCommand.connect(session: "phone-work", executable: "/opt/bin/hc")
         #expect(command.hasPrefix("/bin/sh -c "))
         #expect(command.contains("export HC_SESSION=\"$1\"; shift"))
         #expect(command.contains("unset HC_SOCKET HC_TERMINAL_ID"))
-        #expect(command.contains("command -v hc"))
-        #expect(command.contains("command -v herdr-core"))
-        #expect(command.hasSuffix("'phone-work' 'connect'"))
+        #expect(command.contains("core=\"$1\"; shift"))
+        #expect(command.hasSuffix("'phone-work' '/opt/bin/hc' 'connect'"))
         #expect(command.contains(HerdrCoreCommand.streamMarker))
         #expect(!command.contains("HERDR_SOCKET_PATH"))
         #expect(!command.contains("remote-client-bridge"))
@@ -300,39 +339,69 @@ import Testing
     @Test func attachmentUsesTheCoreAddressAndReleasesTheBootstrapGate() throws {
         let command = try HerdrCoreCommand.attach(
             session: "default",
-            request: TerminalAttachRequest(target: .agentPane("t10"), takeover: true, cols: 80, rows: 24))
-        #expect(command.hasSuffix("'default' 'attach' 't10'"))
+            request: TerminalAttachRequest(target: .agentPane("t10"), takeover: true, cols: 80, rows: 24), executable: "/opt/bin/hc")
+        #expect(command.hasSuffix("'default' '/opt/bin/hc' 'attach' 't10'"))
         #expect(!command.contains("--takeover"))
         #expect(!command.contains(HerdrCoreCommand.streamMarker))
         // The shared PTY pump withholds all screen bytes until this marker.
         #expect(command.contains(AttachBootstrapHandshake.markerPrintfFormat))
         let shell = try HerdrCoreCommand.attach(
             session: "default",
-            request: TerminalAttachRequest(target: .terminal("t10"), cols: 80, rows: 24))
+            request: TerminalAttachRequest(target: .terminal("t10"), cols: 80, rows: 24), executable: "/opt/bin/hc")
         #expect(shell == command)
     }
 
     @Test func unsafeSessionsAndTargetsNeverReachARemoteShell() throws {
-        for session in ["", ".", "..", "a/b", "work; id", "$(id)", "a'b", "a\nb", String(repeating: "a", count: 65)] {
-            #expect(throws: TransportError.self) { try HerdrCoreCommand.connect(session: session) }
+        for session in [".", "..", "a/b", "a\nb", "a:b", "bad|name"] {
+            #expect(throws: TransportError.self) { try HerdrCoreCommand.connect(session: session, executable: "/opt/bin/hc") }
         }
         for target in ["", "-option", "other/t1", "t1; id", "$(id)", "t1'", "t1\n", "t1 t2"] {
             #expect(throws: TransportError.self) { try HerdrCoreCommand.validateTarget(target) }
             #expect(throws: TransportError.self) {
                 try HerdrCoreCommand.attach(
-                    session: "default", request: TerminalAttachRequest(target: target, cols: 80, rows: 24))
+                    session: "default", request: TerminalAttachRequest(target: target, cols: 80, rows: 24), executable: "/opt/bin/hc")
             }
         }
+    }
+
+    @Test func coreSessionNamesStayQuotedAndAreNotLimitedToLegacyGrammar() throws {
+        for session in ["work team", "東京", "work; id", "$(id)", "a'b", String(repeating: "a", count: 65)] {
+            let command = try HerdrCoreCommand.connect(session: session, executable: "/opt/bin/my core")
+            #expect(command.hasSuffix(GitProbe.singleQuoted(session) + " '/opt/bin/my core' 'connect'"))
+        }
+    }
+
+    @Test func aDeadlineSealsDispatchBeforeALateChannelCanWrite() async throws {
+        let dispatch = CoreMutationDispatch()
+        #expect(await dispatch.seal() == false)
+        await #expect(throws: TransportError.cancelled) { try await dispatch.begin() }
+        #expect(await dispatch.seal() == false)
+        let written = CoreMutationDispatch()
+        try await written.begin()
+        #expect(await written.seal())
+        await #expect(throws: TransportError.cancelled) { try await written.begin() }
+    }
+
+    @Test func aCancelledContinuationCannotBeginAMutation() async {
+        let dispatch = CoreMutationDispatch()
+        let operation = Task {
+            // Simulate an underlying channel open that ignores cancellation.
+            try? await Task.sleep(for: .seconds(1))
+            try await dispatch.begin()
+        }
+        operation.cancel()
+        await #expect(throws: CancellationError.self) { try await operation.value }
+        #expect(await dispatch.seal() == false)
     }
 
     @Test func attachmentRejectsUnrepresentableGeometry() throws {
         for (columns, rows) in [(0, 24), (80, 0), (-1, 24), (65536, 24), (80, 65536)] {
             #expect(throws: TransportError.self) {
                 try HerdrCoreCommand.attach(
-                    session: "default", request: TerminalAttachRequest(target: "t1", cols: columns, rows: rows))
+                    session: "default", request: TerminalAttachRequest(target: "t1", cols: columns, rows: rows), executable: "/opt/bin/hc")
             }
         }
         _ = try HerdrCoreCommand.attach(
-            session: "default", request: TerminalAttachRequest(target: "t1", cols: 65535, rows: 65535))
+            session: "default", request: TerminalAttachRequest(target: "t1", cols: 65535, rows: 65535), executable: "/opt/bin/hc")
     }
 }

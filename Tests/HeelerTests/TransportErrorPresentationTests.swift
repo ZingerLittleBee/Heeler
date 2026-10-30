@@ -5,6 +5,15 @@ import Testing
 
 @Suite("Transport error presentation")
 struct TransportErrorPresentationTests {
+    @Test func uncertainCoreMutationRequiresInspectionInsteadOfAutomaticRetry() {
+        let failure = TransportError.coreMutationOutcomeUnknown
+        #expect(!failure.isRetryable)
+        #expect(!TransportError.jumpHostFailed(failure).isRetryable)
+        #expect(failure.presentation.summary == "The Host did not confirm the action")
+        #expect(failure.presentation.detail == "It may still complete. Check the Terminal before trying again.")
+        #expect(failure.presentation.recoverySuggestion == nil)
+    }
+
     @Test func gitDeadlineIsNotRetryableOrPresentedAsAConnectionFailure() {
         let failure = TransportError.gitTimedOut
         #expect(!failure.isRetryable)

@@ -12,6 +12,7 @@ final class AgentUsageStore {
         case loading
         case requirement(String)
         case unsupportedPlatform
+        case unsupportedBackend
         case runtimeMissing
         case updateRequired
         case available(AgentUsageReport)
@@ -293,7 +294,7 @@ final class AgentUsageStore {
     nonisolated static func state(for error: any Error) -> State {
         switch error {
         case HeelerPluginUnavailableError.herdrCore:
-            .requirement("Usage is not supported on herdr-core.")
+            .unsupportedBackend
         case AgentUsageError.unsupportedVersion: .updateRequired
         case TransportError.hostFeatureUnavailable: .unsupportedPlatform
         case TransportError.hostFileTimedOut: .failed(timeoutMessage)

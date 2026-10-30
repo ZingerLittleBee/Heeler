@@ -394,7 +394,7 @@ def verify_records(records: list[dict], layout: str) -> tuple[set[str], set[str]
                         "Full ordinary lane executed fewer than 769 tests")
             else:
                 count, suites = {
-                    SESSION: (13, {SESSION}), DIRECT: (9, {DIRECT}), WEAK: (11, {WEAK}), CORE: (6, {CORE}),
+                    SESSION: (13, {SESSION}), DIRECT: (9, {DIRECT}), WEAK: (11, {WEAK}), CORE: (9, {CORE}),
                     "SharedFixtureE2ETests": (129, SHARED | {WEAK}) if layout == "serial" else (118, SHARED),
                 }[phase]
                 require(len(tests) == count and memberships == suites, f"Fixture suite/count contract changed: {phase}")

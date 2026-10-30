@@ -280,22 +280,24 @@ struct ConsoleHostSection: Identifiable, Equatable {
     var id: Host.ID { hostID }
 }
 
-/// The Live Activity-eligible Agent statuses shown in a collapsed Host
-/// section. Keeping the same order and labels as the Live Activity makes the
-/// two summaries directly comparable.
+/// Active and attention statuses shown in a collapsed Host section. Core
+/// errors retain their own wording rather than being counted as Blocked.
 struct ConsoleHostAgentStatusCounts: Equatable {
     let blocked: Int
+    let error: Int
     let working: Int
     let done: Int
 
-    init(blocked: Int = 0, working: Int = 0, done: Int = 0) {
+    init(blocked: Int = 0, error: Int = 0, working: Int = 0, done: Int = 0) {
         self.blocked = blocked
+        self.error = error
         self.working = working
         self.done = done
     }
 
     init(agents: [ConsoleAgent]) {
         blocked = agents.count { $0.agent.status == .blocked }
+        error = agents.count { $0.agent.status == .error }
         working = agents.count { $0.agent.status == .working }
         done = agents.count { $0.agent.status == .done }
     }
@@ -303,6 +305,7 @@ struct ConsoleHostAgentStatusCounts: Equatable {
     var items: [ConsoleHostAgentStatusCount] {
         var items: [ConsoleHostAgentStatusCount] = []
         if blocked > 0 { items.append(.init(status: .blocked, count: blocked)) }
+        if error > 0 { items.append(.init(status: .error, count: error)) }
         if working > 0 { items.append(.init(status: .working, count: working)) }
         if done > 0 { items.append(.init(status: .done, count: done)) }
         return items

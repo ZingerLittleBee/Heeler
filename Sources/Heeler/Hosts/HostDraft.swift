@@ -211,11 +211,10 @@ struct HostDraft: Equatable, Sendable {
     }
 
     var isValid: Bool {
-        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
         return !routes.isEmpty
             && routes.allSatisfy(\.isValid)
             && !username.trimmingCharacters(in: .whitespaces).isEmpty
-            && (trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName))
+            && (herdrEndpoint == nil ? backend : .herdr).isValidSessionName(sessionName)
     }
 
     /// Form-level validity including credential intent. A blank password can

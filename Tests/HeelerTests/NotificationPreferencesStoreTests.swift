@@ -120,6 +120,113 @@ struct NotificationPreferencesStoreTests {
         #expect(store.confirmedTriggers(for: core.id) == nil)
     }
 
+    @Test(arguments: [false, true])
+    func aReadFinishingAfterBackendChangeCannotRestoreLegacySettings(_ fails: Bool) async throws {
+        let transport = ScriptedTransport()
+        await transport.setNotificationRegistration(
+            try ownEntryFile(notify: #"{"blocked":true,"done":true}"#, session: "default"))
+        if fails { await transport.setNotificationRegistrationReadFailure(.readFailed(detail: "old connection")) }
+        let provider = CompletionHoldingNotificationProvider(transport: transport)
+        let store = NotificationPreferencesStore(
+            transports: provider, deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host])
+        let hold = CancellablePhaseGate()
+        await provider.holdNextCompletion(on: hold)
+        let refresh = Task { await store.refresh() }
+        try await hold.waitUntilEntered()
+        var core = host
+        core.backend = .herdrCore
+        store.setHosts([core])
+        await hold.release()
+        await refresh.value
+
+        #expect(store.states[host.id] == .unavailable(
+            message: NotificationPreferencesStore.coreUnavailableMessage))
+        #expect(store.confirmedTriggers(for: host.id) == nil)
+        // A stale view cannot issue another legacy write with its old Host.
+        await store.setNotificationsEnabled(false, for: host)
+        #expect(await transport.replacedNotificationRegistrations.isEmpty)
+    }
+
+    @Test(arguments: [false, true])
+    func aWriteFinishingAfterBackendChangeCannotRestoreSettingsOrNotifyRegistration(_ fails: Bool) async throws {
+        let transport = ScriptedTransport()
+        await transport.setNotificationRegistration(
+            try ownEntryFile(notify: #"{"blocked":true,"done":true}"#, session: "default"))
+        let provider = CompletionHoldingNotificationProvider(transport: transport)
+        let store = NotificationPreferencesStore(
+            transports: provider, deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host])
+        await store.refresh()
+        var registrations: [Host.ID] = []
+        store.onRegistered = { registrations.append($0) }
+        if fails { await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "old connection")) }
+        let hold = CancellablePhaseGate()
+        await provider.holdNextCompletion(on: hold)
+        let write = Task { await store.setDoneEnabled(false, for: host) }
+        try await hold.waitUntilEntered()
+        #expect(store.hasPendingWrite(for: host.id))
+        var core = host
+        core.backend = .herdrCore
+        store.setHosts([core])
+        await hold.release()
+        await write.value
+
+        #expect(store.states[host.id] == .unavailable(
+            message: NotificationPreferencesStore.coreUnavailableMessage))
+        #expect(store.confirmedTriggers(for: host.id) == nil)
+        #expect(registrations.isEmpty)
+        #expect(!store.hasPendingWrite(for: host.id))
+    }
+
+    @Test(arguments: ["removed", "edited", "returned"])
+    func catalogChangesInvalidateAnOldReadEvenIfTheSameHostReturns(_ change: String) async throws {
+        let transport = ScriptedTransport()
+        let provider = CompletionHoldingNotificationProvider(transport: transport)
+        let store = NotificationPreferencesStore(
+            transports: provider, deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host])
+        let hold = CancellablePhaseGate()
+        await provider.holdNextCompletion(on: hold)
+        let refresh = Task { await store.refresh() }
+        try await hold.waitUntilEntered()
+        if change == "edited" {
+            var edited = host
+            edited.sessionName = "other"
+            store.setHosts([edited])
+        } else {
+            store.setHosts([])
+            if change == "returned" { store.setHosts([host]) }
+        }
+        await hold.release()
+        await refresh.value
+        #expect(store.states[host.id] == nil)
+        #expect(store.confirmedTriggers(for: host.id) == nil)
+    }
+
+    @Test func aQueuedWriteBlocksBackendEditingBeforeItCreatesANotificationKey() async throws {
+        let transport = ScriptedTransport()
+        let provider = CompletionHoldingNotificationProvider(transport: transport)
+        let store = NotificationPreferencesStore(
+            transports: provider, deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host])
+        await store.refresh()
+        let hold = CancellablePhaseGate()
+        await provider.holdNextBorrow(on: hold)
+        let write = Task { await store.setNotificationsEnabled(true, for: host) }
+        try await hold.waitUntilEntered()
+        #expect(!store.hasNotificationKey(for: host.id))
+        #expect(store.hasPendingWrite(for: host.id))
+        await hold.release()
+        await write.value
+        #expect(store.hasNotificationKey(for: host.id))
+        #expect(!store.hasPendingWrite(for: host.id))
+    }
+
     @Test func refreshReflectsAnUnregisteredHost() async throws {
         let store = makeStore(transport: ScriptedTransport())
 
@@ -770,5 +877,37 @@ private final class StallingTransportProvider: NotificationTransportProvider {
         borrowCount.withLock { $0 += 1 }
         try await Task.sleep(for: .seconds(3600))
         throw CancellationError()
+    }
+}
+
+/// Pauses after an operation has produced its old result, so tests can edit
+/// the catalog before that result is delivered to the preferences store.
+private actor CompletionHoldingNotificationProvider: NotificationTransportProvider {
+    let transport: any Transport
+    private var completionHold: CancellablePhaseGate?
+    private var borrowHold: CancellablePhaseGate?
+
+    init(transport: any Transport) { self.transport = transport }
+
+    func holdNextCompletion(on gate: CancellablePhaseGate) { completionHold = gate }
+    func holdNextBorrow(on gate: CancellablePhaseGate) { borrowHold = gate }
+
+    func withNotificationTransport<Value: Sendable>(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        let before = borrowHold
+        borrowHold = nil
+        let after = completionHold
+        completionHold = nil
+        if let before { await before.enterAndHold() }
+        let result: Result<Value, any Error>
+        do {
+            result = .success(try await operation(transport))
+        } catch {
+            result = .failure(error)
+        }
+        if let after { await after.enterAndHold() }
+        return try result.get()
     }
 }

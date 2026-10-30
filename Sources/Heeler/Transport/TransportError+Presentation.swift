@@ -134,6 +134,11 @@ extension TransportError {
                 summary: "Connection timed out",
                 detail: nil,
                 recoverySuggestion: nil)
+        case .coreMutationOutcomeUnknown:
+            TransportErrorPresentation(
+                summary: "The Host did not confirm the action",
+                detail: "It may still complete. Check the Terminal before trying again.",
+                recoverySuggestion: nil)
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: "Reading Changes timed out",

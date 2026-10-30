@@ -81,6 +81,9 @@ final class HostConsoleProjection {
     private var latestStatusChanges: [
         String: (revision: UInt64, status: AgentStatus)
     ] = [:]
+    /// Core emits a status event for every report, including child progress.
+    /// Only root state, identity or title changes need an inventory refresh.
+    private var coreStatusPresentations: [String: JSONValue] = [:]
     private var snippetFetchesInFlight: Set<String> = []
     private var pendingSnippetRefreshes: Set<String> = []
     private var hasEnded = false
@@ -679,6 +682,13 @@ final class HostConsoleProjection {
             } else if event.kind == GlobalEventKind.paneUpdated.kind {
                 applyPaneChange(event.data)
             } else if Self.resyncEventKinds.contains(event.kind) {
+                if host.backend == .herdrCore {
+                    if let paneID = event.data["pane_id"]?.stringValue {
+                        coreStatusPresentations.removeValue(forKey: paneID)
+                    } else {
+                        coreStatusPresentations.removeAll(keepingCapacity: true)
+                    }
+                }
                 scheduleResync()
             }
         }
@@ -738,8 +748,12 @@ final class HostConsoleProjection {
                 preservingPaneChangesAfter: paneRevisionBeforeSnapshot,
                 preservingTitleChangesAfter: titleRevisionBeforeSnapshot,
                 requestGeneration: requestGeneration)
-            await session.updateSubscriptions(
-                Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
+            // Core's one stream already includes every terminal. Replacing a
+            // legacy per-Agent subscription list only recycles that stream.
+            if host.backend != .herdrCore {
+                await session.updateSubscriptions(
+                    Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
+            }
             refreshSnippets()
         } catch {
             guard
@@ -776,6 +790,7 @@ final class HostConsoleProjection {
         resyncRetryTask = nil
         syncError = nil
         latestStatusChanges.removeAll(keepingCapacity: true)
+        coreStatusPresentations.removeAll(keepingCapacity: true)
         latestPaneChanges.removeAll(keepingCapacity: true)
         latestTitleChanges.removeAll(keepingCapacity: true)
         terminalsByPane.removeAll(keepingCapacity: true)
@@ -794,6 +809,7 @@ final class HostConsoleProjection {
     ) {
         sidebarRevision &+= 1
         let paneByID = Dictionary(snapshot.panes.map { ($0.paneID, $0) }) { first, _ in first }
+        coreStatusPresentations = coreStatusPresentations.filter { paneByID[$0.key] != nil }
         let workspaceByID = Dictionary(
             snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
         let tabByID = Dictionary(
@@ -1018,6 +1034,14 @@ final class HostConsoleProjection {
             let rawStatus = data["agent_status"]?.stringValue
         else { return nil }
         let status = AgentStatus(rawValue: rawStatus)
+        if host.backend == .herdrCore, let report = data["core_status"] {
+            let presentation = JSONValue.object([
+                "state": .string(rawStatus), "app": report["app"] ?? .null,
+                "title": report["title"] ?? .null,
+            ])
+            guard coreStatusPresentations[paneID] != presentation else { return nil }
+            coreStatusPresentations[paneID] = presentation
+        }
         statusChangeRevision &+= 1
         latestStatusChanges[paneID] = (statusChangeRevision, status)
         guard var row = agentsByPane[paneID] else { return status }

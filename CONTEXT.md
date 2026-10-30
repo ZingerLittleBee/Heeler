@@ -118,7 +118,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-herdr's detected state of an Agent: Idle, Working, Blocked, Done, or Unknown. Blocked means the agent is waiting for human input and drives sort order and (later) notifications.
+The backend's reported or detected state of an Agent: Idle, Working, Blocked, Done, Unknown, or core Error. Blocked means the Agent is waiting for human input. Error reports a failure and receives the same attention priority, while keeping its own wording; it does not imply an approval dialog. Unknown remains distinct from either.
 _Avoid_: agent state, activity
 
 **Pane**:
@@ -197,11 +197,17 @@ directly to the Agent without editing the draft, while its Snippet and Skill
 tools insert into that draft. A draft insertion edits the draft and nothing
 more; delivery is a separate,
 explicit act.
-Authored delivery is one `agent.prompt` request, except when Agent Status is
+On legacy Hosts, authored delivery is one `agent.prompt` request, except when Agent Status is
 Blocked: Send then inserts the draft into Attach without Enter, and the tools
 keyboard submits or cancels. Delivered means the Host accepted the text into
 the pane — whether the Agent queues or acts on it is the Agent's business,
 and the Composer never claims otherwise.
+On core Hosts, Composer instead offers Insert into Terminal: one line without
+control characters is inserted into an already live Attach without Enter.
+The user checks the terminal and presses Enter to submit. Multiline drafts stay
+local for the Terminal's reviewed Paste action. Core's queued send cannot bind
+the submission to a specific Agent process, so automatic prompt delivery is
+disabled. An uncertain dispatched core mutation is not automatically repeated.
 While Agent Status is Working and the draft is blank, Send becomes Stop: the
 program's Stop keys (one Esc; in Chat, two for OpenCode, whose first Esc only
 arms its interrupt, or Ctrl+C in Grok Build, whose turns Esc doesn't stop),
@@ -225,9 +231,10 @@ it is display-only: libghostty renders the complete TUI, owns local scrollback,
 and reports its grid size so the remote PTY resizes with the view, while
 authored input belongs to Composer. Direct Input is the scoped exception that
 lets the system keyboard type that same Attach PTY.
-Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
-which case Composer Send inserts the draft into Attach without Enter and the
-tools keyboard submits or cancels. Only Composer's explicit tools-keyboard
+On legacy Hosts, delivery is one `agent.prompt` request, except when Agent Status
+is Blocked: Composer Send then inserts the draft into Attach without Enter and
+the tools keyboard submits or cancels. Core always uses the explicit single-line
+Insert contract above. Only Composer's explicit tools-keyboard
 controls and its Stop (and Direct Input's shortcut row / system Return) send
 terminal control sequences. The directly interactive surface on an ordinary
 shell is the Shell Terminal, never unqualified "Attach".

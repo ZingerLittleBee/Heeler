@@ -76,6 +76,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     let stop: AgentComposerStopStore
 
     private let target: String
+    let requiresTerminalConfirmation: Bool
     private var agentStatus: AgentStatus
     private var statusRevision: UInt64 = 0
     private let statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>?
@@ -125,6 +126,7 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     init(
         target: String,
+        requiresTerminalConfirmation: Bool = false,
         initialStatus: AgentStatus = .idle,
         statusUpdates: AsyncStream<ConsoleStore.AgentStatusUpdate>? = nil,
         agentNotReadyRetryDelay: Duration = AgentComposerStore.defaultAgentNotReadyRetryDelay,
@@ -133,6 +135,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         prompt: @escaping @Sendable (AgentPromptParams) async throws -> Agent
     ) {
         self.target = target
+        self.requiresTerminalConfirmation = requiresTerminalConfirmation
         agentStatus = initialStatus
         self.statusUpdates = statusUpdates
         self.stop = stop
@@ -165,7 +168,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     var sendAccessibilityHint: String {
         hasPendingDroppedImages
             ? "Waiting for image…"
-            : "Delivers the complete draft to the Agent"
+            : requiresTerminalConfirmation
+                ? "Inserts one line into the Terminal without Enter. Check it, then press Enter to send."
+                : "Delivers the complete draft to the Agent"
     }
 
     var pendingDropPlaceholders: [String] {
@@ -321,6 +326,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
         guard canSend, !containsPendingPlaceholderInDraft else { return .ignored }
         if let refusal = policy.validate(draft) { return .refused(refusal) }
+        if let refusal = terminalInsertionRefusal(draft, route: policy.route) { return .refused(refusal) }
         let message = Message(
             id: UUID(), text: draft, route: policy.route,
             agentWasWorkingAtSend: agentStatus == .working,
@@ -353,6 +359,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             return .ignored
         }
         if let refusal = policy.validate(messages[index].text) { return .refused(refusal) }
+        if let refusal = terminalInsertionRefusal(messages[index].text, route: policy.route) { return .refused(refusal) }
         messages[index].agentWasWorkingAtSend = agentStatus == .working
         messages[index].statusRevisionAtSend = statusRevision
         messages[index].observedWorkingAfterSend = false
@@ -426,11 +433,28 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
     }
 
+    private func terminalInsertionRefusal(_ text: String, route: ComposerRoute) -> ComposerRefusal? {
+        guard requiresTerminalConfirmation else { return nil }
+        guard route == .terminal, text.unicodeScalars.allSatisfy({
+            !CharacterSet.controlCharacters.contains($0) && !CharacterSet.newlines.contains($0)
+        }) else {
+            return .unsafeText("Core Terminal insertion accepts one line without control characters. Your draft is kept here; review multiline text using Paste in the Terminal.")
+        }
+        return nil
+    }
+
     private func deliver(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         let text = messages[index].text
         if Self.containsDropPlaceholder(text) {
             return .ignored
+        }
+        if requiresTerminalConfirmation {
+            if let refusal = terminalInsertionRefusal(text, route: policy.route) {
+                returnToDraft(id)
+                return .refused(refusal)
+            }
+            return deliverThroughAttach(id, text: text)
         }
         if agentStatus == .blocked {
             return deliverWhileBlocked(id, text: text, policy: policy)
