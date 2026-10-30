@@ -34,7 +34,7 @@ covers the fixture and CI.
 make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
 ```
 
-It authorizes a throwaway key through `instabox port-forward`, runs the three
+It authorizes a throwaway key through `instabox port-forward`, runs the five
 methods of `HerdrCoreTransportE2ETests` on the Simulator, then starts a core for a
 unique session and checks:
 
@@ -74,6 +74,19 @@ in its detail, and run its checks in each state.
 
 Each check run must leave the Host as it found it: no core started, and no process
 or file added.
+
+## Console
+
+With a core running in your unique session and the Host connected, open the
+Terminals tab. Start Terminals on the box, since a core Host offers no New Terminal
+yet, and read each pid from `server.status` or `terminal.list`.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Derived Workspaces | Terminals launched in two directories | One card per directory, named for its last path component, with one row per Terminal; the rows open nothing and their menu offers only Copy Path |
+| Kept restart | `kill -9` the program of a Terminal started with `keep` | The row reads **Restarting** with its launch directory, then comes back in the same card |
+| Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | The Host stays Connected in the Hosts list and every row stays in its card |
+| Stopped core | `server stop` by absolute path | The Host reads **herdr-core is not running** and retries; no core process appears until you start it |
 
 ## Detection states
 

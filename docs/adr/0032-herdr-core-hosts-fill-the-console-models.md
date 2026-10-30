@@ -176,7 +176,10 @@ with test clients, not the app.
 - Derived Workspaces exist only in the app's view and change as Terminals come
   and go. A kept Terminal that restarts takes its last directory as its new
   launch directory, so the device remembers the directory it first saw a
-  Terminal launched in and keeps it in the same derived Workspace.
+  Terminal launched in and keeps it in the same derived Workspace. The
+  Workspace's id is a hash of that directory, and its label the directory's
+  last path component, so two directories of one name are two cards that read
+  alike.
 - When an Agent Heeler started exits, its Pane closes, where a Herdr TUI Pane
   returns to the shell. Its foreground is the agent itself from the moment the
   shell replaces itself. Which process the core reports as the foreground
