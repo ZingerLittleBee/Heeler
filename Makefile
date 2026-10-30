@@ -108,6 +108,7 @@ test-tools: check-agent-docs check-test-membership ## Test agent tooling without
 	python3 scripts/test-isolated-herdr-backend.py
 	python3 scripts/test-herdr-core-capture.py
 	python3 scripts/test-herdr-core-locator.py
+	python3 scripts/test-herdr-core-start.py
 	python3 scripts/test-server-kind-detection.py
 	python3 scripts/test-herdr-core-lab-check.py
 	python3 scripts/test-node-toolchain-probe.py

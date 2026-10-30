@@ -86,6 +86,11 @@ final class HostOnboardingStore {
     private(set) var detectionFailure: String?
     /// Why the last confirmation was refused, for the user to read.
     private(set) var confirmationRefusal: String?
+    /// What the locator found on a core Host the last checks read as not running.
+    private var notRunningCore: HerdrCoreLocator.Location?
+    /// Set from the user's request until they answer it.
+    private(set) var coreStartConfirmation: CoreStartConfirmation?
+    private(set) var coreStart: CoreStartState = .idle
 
     /// A herdr-core Host's Host Helper, read with its checks.
     private(set) var hostHelper: HostHelperStore?
@@ -128,8 +133,10 @@ final class HostOnboardingStore {
 
     /// Runs the preflight once: connect + ping, rendered into `report`.
     /// `cancelChecks()` (or cancelling the caller) ends it at once.
-    func runChecks() async {
-        guard phase != .running, pluginAction != .running else { return }
+    /// `coreReportedRunning` is true only straight after a Start, when the core
+    /// has just said it runs, which a refused channel then cannot contradict.
+    func runChecks(coreReportedRunning: Bool = false) async {
+        guard phase != .running, pluginAction != .running, coreStart != .running else { return }
         phase = .running
         pluginAction = .idle
         report = nil
@@ -142,9 +149,12 @@ final class HostOnboardingStore {
         detection = nil
         detectionFailure = nil
         confirmationRefusal = nil
+        notRunningCore = nil
+        coreStartConfirmation = nil
+        coreStart = .idle
         let run = UUID()
         currentRun = run
-        let task = Task { await self.performChecks(run: run) }
+        let task = Task { await self.performChecks(run: run, coreReportedRunning: coreReportedRunning) }
         checks = task
         await withTaskCancellationHandler {
             await task.value
@@ -183,7 +193,7 @@ final class HostOnboardingStore {
 
     /// The checks themselves. Every write after an await first checks for
     /// cancellation: a cancelled run may still finish in the background.
-    private func performChecks(run: UUID) async {
+    private func performChecks(run: UUID, coreReportedRunning: Bool) async {
         let resolved: SSHCredentials
         do {
             resolved = try credentials.credentials(for: host)
@@ -215,7 +225,7 @@ final class HostOnboardingStore {
             await performDetection(settings: settings)
             return
         case .herdrCore:
-            await performCoreChecks(settings: settings)
+            await performCoreChecks(settings: settings, coreReportedRunning: coreReportedRunning)
             return
         case .herdrTUI:
             break
@@ -277,7 +287,7 @@ final class HostOnboardingStore {
     /// A core Host's preflight: the locator, `hello` with its feature gate, and
     /// close. It starts nothing. The plugin does not run here, whatever the core
     /// answers, and no Herdr TUI session is looked for.
-    private func performCoreChecks(settings: SSHTransportSettings) async {
+    private func performCoreChecks(settings: SSHTransportSettings, coreReportedRunning: Bool) async {
         pluginStatus = .unsupportedBackend
         let hostHelper = hostHelper ?? makeHostHelper()
         self.hostHelper = hostHelper
@@ -295,8 +305,14 @@ final class HostOnboardingStore {
                     serverInfo = ServerInfo(version: info.version, protocolVersion: info.generation)
                     report = .allPassed
                 }
-            } catch {
+            } catch let TransportError.herdrCoreNotRunning(socketPath, _) where coreReportedRunning {
                 if !Task.isCancelled {
+                    report = failureReport(TransportError.herdrCoreForwardingRefused(socketPath: socketPath))
+                }
+            } catch {
+                let location = await transport.lastLocation()
+                if !Task.isCancelled {
+                    if case TransportError.herdrCoreNotRunning = error { notRunningCore = location }
                     report = failureReport(error)
                 }
             }
@@ -400,6 +416,106 @@ final class HostOnboardingStore {
 
     func dismissConfirmationRefusal() {
         confirmationRefusal = nil
+    }
+
+    /// What this Host offers once its checks read not running: Start on Linux,
+    /// instructions anywhere else, naming the probed path and the core session.
+    var coreStartOffer: CoreStartOffer? {
+        guard phase == .finished, let notRunningCore, let path = notRunningCore.executablePath else {
+            return nil
+        }
+        return notRunningCore.appMayStartCore
+            ? .start
+            : .instructions(
+                command: HerdrCoreStart.manualCommand(executablePath: path, session: host.sessionName))
+    }
+
+    /// Asks the user. Nothing runs until `confirmCoreStart`.
+    func requestCoreStart() {
+        guard coreStartOffer == .start, coreStart != .running else { return }
+        coreStartConfirmation = CoreStartConfirmation(
+            session: HerdrCoreSessionName.normalized(host.sessionName))
+    }
+
+    func cancelCoreStart() {
+        coreStartConfirmation = nil
+    }
+
+    /// The one action that starts a core (ADR 0031), after which the checks run
+    /// again. A core that reported itself running and still refuses its channel
+    /// leaves only the SSH server to blame.
+    func confirmCoreStart() async {
+        guard let confirmation = coreStartConfirmation else { return }
+        coreStartConfirmation = nil
+        guard phase != .running, coreStart != .running, pluginAction != .running else { return }
+        coreStart = .running
+        let result = await performCoreStart()
+        switch result {
+        case .failed(let message):
+            coreStart = .failed(message: message)
+        case .started, .alreadyRunning:
+            coreStart = .idle
+            await runChecks(coreReportedRunning: true)
+            coreStart =
+                result == .started
+                ? .started(session: confirmation.session)
+                : .alreadyRunning(session: confirmation.session)
+        }
+    }
+
+    private enum CoreStartResult: Equatable {
+        case started
+        case alreadyRunning
+        case failed(message: String)
+    }
+
+    /// The start over a connection of its own, like a plugin action's. The
+    /// preflight already settled the Host key, so a key that still needs
+    /// trusting is declined rather than asked about.
+    private func performCoreStart() async -> CoreStartResult {
+        let summary = "herdr-core did not start"
+        let resolved: SSHCredentials
+        do {
+            resolved = try credentials.credentials(for: host)
+        } catch {
+            return .failed(message: "\(summary): Could not load this Host's credentials. (\(error))")
+        }
+        let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
+        let settings = SSHTransportSettings(
+            host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays)
+        let transport: any HerdrCoreTransport
+        do {
+            transport = try await connector.connectCore(settings: settings)
+        } catch {
+            return .failed(message: "\(summary): \(Self.reason(error))")
+        }
+        let outcome: Result<HerdrCoreStart.Outcome, any Error>
+        do {
+            outcome = .success(try await transport.startCore())
+        } catch {
+            outcome = .failure(error)
+        }
+        try? await transport.close()
+        switch outcome {
+        case .success(.started):
+            return .started
+        case .success(.alreadyRunning):
+            return .alreadyRunning
+        case .success(.failed(let detail?)):
+            return .failed(message: "\(summary): \(detail).")
+        case .success(.failed(nil)):
+            return .failed(message: "\(summary).")
+        case .failure(TransportError.timedOut):
+            return .failed(
+                message: "The start did not finish in time, and a startup file in your shell may be "
+                    + "waiting for input. Run the checks again to see whether the core came up.")
+        case .failure(let error):
+            return .failed(message: "\(summary): \(Self.reason(error))")
+        }
+    }
+
+    private static func reason(_ error: any Error) -> String {
+        (error as? TransportError)?.presentation.message ?? "\(error)"
     }
 
     /// The Host's kind, with the version a core's `hello` reported, which is

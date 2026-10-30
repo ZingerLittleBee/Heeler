@@ -104,6 +104,55 @@ import Testing
         #expect(await host.log.last == "close")
     }
 
+    // MARK: The confirmed Start
+
+    @Test func startLocatesThenRunsTheProbedPathForTheSession() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+
+        let outcome = try await host.transport(session: "work team").startCore()
+
+        #expect(outcome == .started)
+        #expect(await host.log == ["locator", "start"])
+        let script = try #require(await host.scripts.last)
+        #expect(script == #""$SHELL" -lic 'HC_SESSION='\''work team'\'' exec '\''/home/me/.local/bin/herdr-core'\'' server start'"#)
+    }
+
+    @Test func startReadsTheOutcomeOfTheExec() async throws {
+        let running = ScriptedCoreHost(start: .alreadyRunning, channel: .refused)
+        #expect(try await running.transport().startCore() == .alreadyRunning)
+
+        let refused = ScriptedCoreHost(
+            start: .exits(status: 1, stdout: "", stderr: "bash: no job control\nnope\n"), channel: .refused)
+        #expect(try await refused.transport().startCore() == .failed(detail: "nope"))
+    }
+
+    @Test func aMacOSCoreIsNeverStartedEvenIfAsked() async throws {
+        let host = ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(kernel: "Darwin"), channel: .refused)
+
+        await #expect(throws: TransportError.self) { try await host.transport().startCore() }
+
+        #expect(await host.log == ["locator"])
+    }
+
+    @Test func noProgramStartsNothing() async throws {
+        let host = ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(executable: nil), channel: .refused)
+
+        await #expect(throws: TransportError.herdrCoreNotInstalled) { try await host.transport().startCore() }
+
+        #expect(await host.log == ["locator"])
+    }
+
+    @Test func aFailedHelloLeavesWhatTheLocatorFound() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+        let transport = host.transport()
+        #expect(await transport.lastLocation() == nil)
+
+        _ = try? await transport.hello()
+
+        #expect(await transport.lastLocation()?.executablePath == ScriptedCoreHost.installedPath)
+        #expect(await transport.lastLocation()?.kernel == "Linux")
+    }
+
     // MARK: What the Host reads
 
     @Test func noProgramReadsNotInstalledAndOpensNothing() async {
