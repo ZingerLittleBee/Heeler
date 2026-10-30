@@ -13,6 +13,10 @@ enum HostProcessReader {
         var namesOf: [String] = []
         var namesWithPrefix: [String] = []
         var readsOpenFiles = false
+
+        var readsEnvironment: Bool {
+            !valuesOf.isEmpty || !namesOf.isEmpty || !namesWithPrefix.isEmpty
+        }
     }
 
     /// Which reads the script carries. Production asks the Host's kernel, in
@@ -25,6 +29,7 @@ enum HostProcessReader {
 
     enum Refusal: Error, Equatable {
         case pid(String)
+        case variableName(String)
         case procRoot(String)
     }
 
@@ -69,6 +74,9 @@ enum HostProcessReader {
         for pid in request.pids where !isProcessID(pid) {
             throw Refusal.pid(pid)
         }
+        for name in request.valuesOf where !isVariableName(name) {
+            throw Refusal.variableName(name)
+        }
         var lines = [
             "LC_ALL=C",
             "export LC_ALL",
@@ -78,13 +86,13 @@ enum HostProcessReader {
         switch platform {
         case .linux(let root):
             guard isProcRoot(root) else { throw Refusal.procRoot(root) }
-            lines += linuxReads(root: root)
+            lines += linuxReads(request, root: root)
         case .macOS:
             lines += unavailableReads()
         case .hostKernel:
             lines.append("case $(uname -s) in")
             lines.append("Linux)")
-            lines += linuxReads(root: "/proc")
+            lines += linuxReads(request, root: "/proc")
             lines.append(";;")
             lines.append("*)")
             lines += unavailableReads()
@@ -95,15 +103,41 @@ enum HostProcessReader {
         lines.append("printf '%s\\n' '\(beginMarker(nonce))'")
         for pid in request.pids {
             if request.readsStart { lines.append("s \(pid)") }
+            if request.readsEnvironment { lines.append("e \(pid)") }
         }
         lines.append("printf '\\n%s\\n' '\(endMarker(nonce))'")
         lines.append("} | head -c \(outputCap)")
         return Data((lines.joined(separator: "\n") + "\n").utf8)
     }
 
-    private static func linuxReads(root: String) -> [String] {
+    private static func linuxReads(_ request: Request, root: String) -> [String] {
         [
             "R=\(root)",
+            // `od` keeps the environment's NUL framing exact whatever a value
+            // holds, and a program that cannot hold a value it does not want
+            // cannot print it. `ok` follows only a whole read, and an empty
+            // read (a zombie, a kernel thread) says nothing about any name.
+            "e() {",
+            "  { od -An -v -tx1 <\"$R/$1/environ\" && echo ok; } | awk -v p=\"$1\" '",
+            "function d(x,i,s,c){for(i=1;i<length(x);i+=2){c=T[substr(x,i,2)];"
+                + "if(c==\"\")return \"\";s=s c}return s}",
+            "function f(){if(m!=\"\"&&!(m in G)){G[m]=1;"
+                + "if(m in W)o=o \"V \" p \" \" m \" \" (v==\"\"?\"-\":v) \"\\n\"}"
+                + "c++;n=\"\";v=\"\";e=0;m=\"\"}",
+            "BEGIN{x=\"\(nameBytesHex)\";y=\"\(nameBytes)\";"
+                + "for(i=1;i<=length(y);i++)T[substr(x,2*i-1,2)]=substr(y,i,1)",
+            request.valuesOf.map { "W[\"\($0)\"]=1" }.joined(separator: ";"),
+            "}",
+            "$1==\"ok\"{k=1;next}",
+            "{for(i=1;i<=NF;i++){b=$i",
+            "if(b==\"00\")f()",
+            "else if(e){if(m in W)v=v b}",
+            "else if(b==\"3d\"){e=1;m=d(n)}",
+            "else n=n b}}",
+            "END{if(n!=\"\"||e)f();if(k&&c>0){printf \"%s\",o;print \"E\",p,\"ok\"}"
+                + "else print \"E\",p,\"-\"}",
+            "'",
+            "}",
             // Field 22 counted past the last `) `, which ends the command
             // name whatever the name holds.
             "s() {",
@@ -121,8 +155,16 @@ enum HostProcessReader {
     }
 
     private static func unavailableReads() -> [String] {
-        ["s() { printf 'S %s -\\n' \"$1\"; }"]
+        [
+            "s() { printf 'S %s -\\n' \"$1\"; }",
+            "e() { printf 'E %s -\\n' \"$1\"; }",
+        ]
     }
+
+    /// The bytes a variable name the script reports may hold, and their hex.
+    private static let nameBytes =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
+    private static let nameBytesHex = nameBytes.utf8.map { String(format: "%02x", $0) }.joined()
 
     private static func beginMarker(_ nonce: String) -> String { "__HEELER_PROC_BEGIN_\(nonce)" }
     private static func endMarker(_ nonce: String) -> String { "__HEELER_PROC_END_\(nonce)" }
@@ -131,6 +173,12 @@ enum HostProcessReader {
         let bytes = Array(text.utf8)
         return !bytes.isEmpty && bytes.count <= 10 && bytes[0] != UInt8(ascii: "0")
             && bytes.allSatisfy { (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }
+    }
+
+    private static func isVariableName(_ text: String) -> Bool {
+        guard let first = text.utf8.first, !(UInt8(ascii: "0")...UInt8(ascii: "9")).contains(first)
+        else { return false }
+        return text.utf8.allSatisfy { nameBytes.utf8.contains($0) }
     }
 
     private static func isProcRoot(_ text: String) -> Bool {
@@ -159,6 +207,8 @@ enum HostProcessReader {
 
         var facts: [String: Facts] = [:]
         var answered: Set<String> = []
+        var readable: Set<String> = []
+        var values: [String: [String: Variable]] = [:]
         for line in lines[(begin + 1)..<end] where !line.isEmpty {
             let fields = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
                 .map(String.init)
@@ -171,15 +221,55 @@ enum HostProcessReader {
                 guard let start = startReading(fields[2]) else { throw MalformedOutput() }
                 facts[pid, default: Facts()].start = start
                 answered.insert("S \(pid)")
+            case "V":
+                let parts = fields[2].split(separator: " ", omittingEmptySubsequences: false)
+                guard parts.count == 2, request.valuesOf.contains(String(parts[0])),
+                    let bytes = bytes(fromHex: parts[1])
+                else { throw MalformedOutput() }
+                values[pid, default: [:]][String(parts[0])] =
+                    String(data: bytes, encoding: .utf8).map(Variable.value) ?? .unavailable
+            case "E":
+                guard fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
+                if fields[2] == "ok" { readable.insert(pid) }
+                answered.insert("E \(pid)")
             default:
                 throw MalformedOutput()
             }
         }
         for pid in request.pids {
-            if facts[pid] == nil { facts[pid] = Facts() }
             if request.readsStart, !answered.contains("S \(pid)") { throw MalformedOutput() }
+            if request.readsEnvironment, !answered.contains("E \(pid)") { throw MalformedOutput() }
+            var fact = facts[pid] ?? Facts()
+            let isReadable = readable.contains(pid)
+            for name in request.valuesOf {
+                fact.variables[name] = isReadable ? values[pid]?[name] ?? .unset : .unavailable
+            }
+            facts[pid] = fact
         }
         return facts
+    }
+
+    /// `-` is an empty value.
+    private static func bytes(fromHex text: Substring) -> Data? {
+        if text == "-" { return Data() }
+        let digits = Array(text.utf8)
+        guard !digits.isEmpty, digits.count.isMultiple(of: 2) else { return nil }
+        var bytes = Data(capacity: digits.count / 2)
+        for index in stride(from: 0, to: digits.count, by: 2) {
+            guard let high = hexDigit(digits[index]), let low = hexDigit(digits[index + 1]) else {
+                return nil
+            }
+            bytes.append(high << 4 | low)
+        }
+        return bytes
+    }
+
+    private static func hexDigit(_ byte: UInt8) -> UInt8? {
+        switch byte {
+        case UInt8(ascii: "0")...UInt8(ascii: "9"): byte - UInt8(ascii: "0")
+        case UInt8(ascii: "a")...UInt8(ascii: "f"): byte - UInt8(ascii: "a") + 10
+        default: nil
+        }
     }
 
     private static func startReading(_ text: String) -> Reading<String>? {

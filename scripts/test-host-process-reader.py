@@ -221,6 +221,77 @@ class StartTimeTests(ReaderTestCase):
         self.for_each_shell(check)
 
 
+class NamedValueTests(ReaderTestCase):
+    ENVIRON = (
+        b"PATH=/usr/bin\0"
+        b"CLAUDE_CONFIG_DIR=/home/me/my config=dir\0"
+        b"BLANK=\0"
+        b"LINES=one\ntwo\0"
+        b"UNICODE=\xe8\xb7\xaf\xe5\xbe\x84\0"
+        b"OTHER=sekrit\nFORGED=by-a-newline\0"
+        b"CLAUDE_CONFIG_DIR_MORE=near-miss\0"
+        b"TWICE=first\0"
+        b"TWICE=second\0"
+    )
+    ASKED = ["CLAUDE_CONFIG_DIR", "BLANK", "LINES", "UNICODE", "FORGED", "ABSENT", "TWICE"]
+
+    def environ(self, pid: int, data: bytes) -> None:
+        (self.process(pid) / "environ").write_bytes(data)
+
+    def test_named_values_are_told_apart_from_unset(self) -> None:
+        self.environ(77, self.ENVIRON)
+
+        def check(shell: list[str]) -> None:
+            variables = self.read(shell, pids=["77"], values=self.ASKED)["77"]["variables"]
+            self.assertEqual(variables, {
+                "CLAUDE_CONFIG_DIR": {"value": "/home/me/my config=dir"},
+                "BLANK": {"value": ""},
+                "LINES": {"value": "one\ntwo"},
+                "UNICODE": {"value": "\u8def\u5f84"},
+                "FORGED": "unset",
+                "ABSENT": "unset",
+                "TWICE": {"value": "first"},
+            })
+        self.for_each_shell(check)
+
+    def test_a_last_entry_without_its_nul_still_counts(self) -> None:
+        self.environ(77, b"A=1\0B=2")
+
+        def check(shell: list[str]) -> None:
+            variables = self.read(shell, pids=["77"], values=["A", "B"])["77"]["variables"]
+            self.assertEqual(variables, {"A": {"value": "1"}, "B": {"value": "2"}})
+        self.for_each_shell(check)
+
+    def test_nothing_it_was_not_asked_for_leaves_the_host(self) -> None:
+        self.environ(77, self.ENVIRON)
+        unasked = [b"PATH", b"/usr/bin", b"OTHER", b"sekrit", b"near-miss", b"SECRET_OF_THE_EXEC"]
+
+        def check(shell: list[str]) -> None:
+            raw = self.run_script(shell, pids=["77"], values=["CLAUDE_CONFIG_DIR"]).encode()
+            for word in unasked:
+                self.assertNotIn(word, raw)
+                self.assertNotIn(word.hex().encode(), raw)
+        self.for_each_shell(check)
+
+    def test_a_process_whose_entries_cannot_be_read_is_not_unset(self) -> None:
+        self.environ(10, b"")
+        (self.process(11) / "environ").mkdir()
+        self.process(12)  # no environ at all
+        pids = ["10", "11", "12", "404"]
+        cases = list(pids)
+        if os.geteuid() != 0:
+            self.environ(13, self.ENVIRON)
+            (self.proc / "13/environ").chmod(0)
+            cases.append("13")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=cases, values=["CLAUDE_CONFIG_DIR", "ABSENT"])
+            for pid in cases:
+                self.assertEqual(facts[pid]["variables"], {
+                    "CLAUDE_CONFIG_DIR": "unavailable", "ABSENT": "unavailable"}, pid)
+        self.for_each_shell(check)
+
+
 if __name__ == "__main__":
     if not shutil.which("swiftc"):
         sys.exit("swiftc is required")
