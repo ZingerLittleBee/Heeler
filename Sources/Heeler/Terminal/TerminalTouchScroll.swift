@@ -105,10 +105,110 @@ struct TerminalKeyboardResponderGate {
     }
 }
 
-struct TerminalModeTracker {
-    private static let privateModePrefix: [UInt8] = [0x1B, 0x5B, 0x3F]
+/// What the remote application asked of its terminal, read from the output
+/// stream in order. Only set and reset requests change a mode: a restore
+/// (`CSI ? Pm r`) leaves the tracker where it was, although an emulator would
+/// go back to the saved value.
+struct TerminalModeTracker: Equatable {
+    private enum ParseState: Equatable {
+        case ground
+        case escape
+        case controlSequence
+    }
 
-    private var pending: [UInt8] = []
+    /// One CSI sequence as it arrives. A chunk can end anywhere, so this is
+    /// all that is kept between chunks, and it never grows with the input.
+    private struct ControlSequence: Equatable {
+        /// More parameters than any request the tracker reads carries.
+        private static let parameterLimit = 32
+        /// Larger than any mode or flags value, and small enough to add to.
+        private static let parameterCeiling = 99_999
+
+        /// The private marker that opens the sequence: `?`, `>`, `<` or `=`.
+        private(set) var marker: UInt8?
+        /// An intermediate byte (`$` in DECRQM) or a shape no request here
+        /// has. Either way the sequence changes nothing the tracker follows.
+        private(set) var isIgnored = false
+        private(set) var parameters: [Int] = []
+        private var hasParameterBytes = false
+        private var current = 0
+
+        mutating func appendDigit(_ digit: Int) {
+            hasParameterBytes = true
+            current = min(current * 10 + digit, Self.parameterCeiling)
+        }
+
+        mutating func endParameter() {
+            hasParameterBytes = true
+            appendCurrent()
+        }
+
+        /// A marker counts only as the sequence's first byte.
+        mutating func setMarker(_ byte: UInt8) {
+            if marker != nil || hasParameterBytes {
+                isIgnored = true
+            } else {
+                marker = byte
+            }
+        }
+
+        mutating func ignore() {
+            isIgnored = true
+        }
+
+        /// Closes the parameter list at the final byte. `CSI > u` has no
+        /// parameters at all, which `CSI > 0 u` does.
+        mutating func finish() {
+            if hasParameterBytes { appendCurrent() }
+        }
+
+        private mutating func appendCurrent() {
+            if parameters.count < Self.parameterLimit {
+                parameters.append(current)
+            }
+            current = 0
+        }
+    }
+
+    /// The kitty keyboard protocol's progressive enhancement flags, as a
+    /// stack. Each screen has its own.
+    private struct KittyKeyboardStack: Equatable {
+        /// The emulator's depth: a full stack loses its oldest entry.
+        private static let capacity = 8
+
+        private var entries: [UInt8] = []
+
+        var current: UInt8 { entries.last ?? 0 }
+
+        mutating func push(_ flags: UInt8) {
+            if entries.count == Self.capacity {
+                entries.removeFirst()
+            }
+            entries.append(flags)
+        }
+
+        mutating func pop(_ count: Int) {
+            entries.removeLast(min(count, entries.count))
+        }
+
+        /// An empty stack still has a current value to change: the base that
+        /// later pushes sit on.
+        mutating func replaceCurrent(with flags: UInt8) {
+            if entries.isEmpty {
+                entries.append(flags)
+            } else {
+                entries[entries.count - 1] = flags
+            }
+        }
+    }
+
+    /// Five flags are defined; a larger value is not a request.
+    private static let kittyFlagsCeiling = 31
+
+    private var parseState = ParseState.ground
+    private var sequence = ControlSequence()
+    private var mainKittyStack = KittyKeyboardStack()
+    private var alternateKittyStack = KittyKeyboardStack()
     private var mouseTrackingModes: Set<Int> = []
     private(set) var usesApplicationCursorKeys = false
     private(set) var isAlternateScreen = false
@@ -121,40 +221,19 @@ struct TerminalModeTracker {
         !mouseTrackingModes.isEmpty
     }
 
+    /// The kitty keyboard flags in force on the current screen.
+    var kittyKeyboardFlags: UInt8 {
+        isAlternateScreen ? alternateKittyStack.current : mainKittyStack.current
+    }
+
     private var mouseEncoding: TerminalMouseEncoding {
         usesSGRMouseEncoding ? .sgr : .legacy
     }
 
     mutating func receive(_ data: Data) {
-        pending.append(contentsOf: data)
-
-        while let prefixIndex = nextPrivateModePrefixIndex() {
-            if prefixIndex > 0 {
-                pending.removeFirst(prefixIndex)
-            }
-
-            guard let terminatorIndex = privateModeTerminatorIndex() else {
-                retainIncompletePrefix()
-                return
-            }
-
-            let terminator = pending[terminatorIndex]
-            let modeBytes = pending[Self.privateModePrefix.count..<terminatorIndex]
-            // Only set and reset change a mode. Any other final byte ends a
-            // different request about those modes: a query (`$p`), a save
-            // (`s`) or a restore (`r`).
-            if terminator == 0x68 || terminator == 0x6C,
-                let modeList = String(bytes: modeBytes, encoding: .ascii)
-            {
-                let enabled = terminator == 0x68
-                for mode in modeList.split(separator: ";").compactMap({ Int($0) }) {
-                    update(mode: mode, enabled: enabled)
-                }
-            }
-            pending.removeFirst(terminatorIndex + 1)
+        for byte in data {
+            advance(byte)
         }
-
-        retainIncompletePrefix()
     }
 
     /// A wheel report lands on `cell` when the scroll has a pointer to aim
@@ -216,37 +295,114 @@ struct TerminalModeTracker {
         }
     }
 
-    private func nextPrivateModePrefixIndex() -> Int? {
-        guard pending.count >= Self.privateModePrefix.count else { return nil }
-        return pending.indices.dropLast(Self.privateModePrefix.count - 1).first { index in
-            pending[index] == Self.privateModePrefix[0]
-                && pending[index + 1] == Self.privateModePrefix[1]
-                && pending[index + 2] == Self.privateModePrefix[2]
+    private mutating func advance(_ byte: UInt8) {
+        switch byte {
+        case 0x1B:
+            enter(.escape)
+            return
+        case 0x18, 0x1A:
+            // CAN and SUB cancel whatever is in progress.
+            enter(.ground)
+            return
+        default:
+            break
+        }
+        switch parseState {
+        case .ground:
+            break
+        case .escape:
+            enter(byte == 0x5B ? .controlSequence : .ground)
+        case .controlSequence:
+            switch byte {
+            case 0x00...0x1F, 0x7F:
+                // Other control bytes take effect without ending the sequence.
+                break
+            case 0x30...0x39:
+                sequence.appendDigit(Int(byte - 0x30))
+            case 0x3B:
+                sequence.endParameter()
+            case 0x3C...0x3F:
+                sequence.setMarker(byte)
+            case 0x20...0x2F, 0x3A:
+                // An intermediate, or a colon sub-parameter.
+                sequence.ignore()
+            case 0x40...0x7E:
+                sequence.finish()
+                if !sequence.isIgnored {
+                    dispatchSequence(final: byte)
+                }
+                enter(.ground)
+            default:
+                enter(.ground)
+            }
         }
     }
 
-    private func privateModeTerminatorIndex() -> Int? {
-        guard pending.count > Self.privateModePrefix.count else { return nil }
-        for index in Self.privateModePrefix.count..<pending.count {
-            let byte = pending[index]
-            if byte == 0x68 || byte == 0x6C {
-                return index
-            }
-            if byte != 0x3B && !(0x30...0x39).contains(byte) {
-                return index
-            }
-        }
-        return nil
+    /// Whatever state comes next, a sequence in progress is over.
+    private mutating func enter(_ state: ParseState) {
+        parseState = state
+        sequence = ControlSequence()
     }
 
-    private mutating func retainIncompletePrefix() {
-        if pending.suffix(2) == Self.privateModePrefix.prefix(2) {
-            pending = Array(pending.suffix(2))
-        } else if pending.last == Self.privateModePrefix.first {
-            pending = [Self.privateModePrefix[0]]
-        } else if nextPrivateModePrefixIndex() == nil {
-            pending.removeAll(keepingCapacity: true)
+    private mutating func dispatchSequence(final: UInt8) {
+        switch (sequence.marker, final) {
+        case (0x3F, 0x68), (0x3F, 0x6C):
+            // `CSI ? Pm h` and `CSI ? Pm l`. Every other final byte is a
+            // different request about those modes: a query (`$p`), a save
+            // (`s`) or a restore (`r`).
+            for mode in sequence.parameters {
+                update(mode: mode, enabled: final == 0x68)
+            }
+        case (0x3E, 0x75):
+            pushKittyFlags(sequence.parameters)
+        case (0x3C, 0x75):
+            popKittyFlags(sequence.parameters)
+        case (0x3D, 0x75):
+            setKittyFlags(sequence.parameters)
+        default:
+            break
         }
+    }
+
+    /// `CSI > flags u`. Flags default to none.
+    private mutating func pushKittyFlags(_ parameters: [Int]) {
+        guard let flags = Self.kittyFlags(parameters.count == 1 ? parameters[0] : 0) else {
+            return
+        }
+        changeKittyStack { $0.push(flags) }
+    }
+
+    /// `CSI < n u`. One entry by default; zero pops nothing.
+    private mutating func popKittyFlags(_ parameters: [Int]) {
+        let count = parameters.count == 1 ? parameters[0] : 1
+        changeKittyStack { $0.pop(count) }
+    }
+
+    /// `CSI = flags ; mode u`. Mode 1, the default, replaces every flag; 2 adds
+    /// the set bits; 3 removes them.
+    private mutating func setKittyFlags(_ parameters: [Int]) {
+        guard let flags = Self.kittyFlags(parameters.first ?? 0) else { return }
+        let mode = parameters.count >= 2 ? parameters[1] : 1
+        changeKittyStack { stack in
+            switch mode {
+            case 1: stack.replaceCurrent(with: flags)
+            case 2: stack.replaceCurrent(with: stack.current | flags)
+            case 3: stack.replaceCurrent(with: stack.current & ~flags)
+            default: break
+            }
+        }
+    }
+
+    private mutating func changeKittyStack(_ change: (inout KittyKeyboardStack) -> Void) {
+        if isAlternateScreen {
+            change(&alternateKittyStack)
+        } else {
+            change(&mainKittyStack)
+        }
+    }
+
+    private static func kittyFlags(_ value: Int) -> UInt8? {
+        value <= kittyFlagsCeiling ? UInt8(value) : nil
     }
 }
 
