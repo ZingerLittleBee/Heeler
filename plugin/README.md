@@ -907,8 +907,8 @@ such as `machine`. The app resolves whole layouts in this order: the Host's
 saved user layout, the Host's plugin snapshot, Heeler default. There is no
 global user layout, and the default is never offered as a choice. Rows are
 never merged across sources. Its renderer skips `state_icon` and
-`state_text` because Heeler draws Agent Status itself, as the Agent Row
-Style's badge or ring; `$name`
+`state_text` because Heeler draws Agent Status itself, as the ring around
+each Agent's mark or the app's own `status_badge` field; `$name`
 resolves as plain text from `AgentInfo.tokens["name"]`. Heeler's Pin is
 independent. Styles are retained in the Swift model; rendering may ignore
 them (color is ignored by default).
