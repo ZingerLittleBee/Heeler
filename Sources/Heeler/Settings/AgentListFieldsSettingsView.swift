@@ -122,7 +122,7 @@ struct AgentListFieldsHostDetailView: View {
                 previewRow
                 hostRows
                 slotsNote
-                syncRow
+                if host.capabilities.syncLayoutFromPlugin { syncRow }
             }
             .listSectionSeparator(.hidden)
             AgentLayoutErrorView(editor: editor)
@@ -211,7 +211,7 @@ struct AgentListFieldsHostDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .listRowInsets(AgentListFieldsChrome.slotsNoteInsets)
             .listRowSeparator(.hidden)
-            .agentListHostSurface(isFirst: false, isLast: false)
+            .agentListHostSurface(isFirst: false, isLast: !host.capabilities.syncLayoutFromPlugin)
     }
 
     @ViewBuilder

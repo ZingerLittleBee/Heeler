@@ -206,7 +206,9 @@ struct ConsoleView: View {
         .sheet(isPresented: $isStartingAgent) {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
-                StartAgentView(hosts: hosts.consoleHosts, console: console) { id in
+                StartAgentView(
+                    hosts: hosts.consoleHosts.offeringNewItem(listsTerminals: false), console: console
+                ) { id in
                     // A fresh launch lands in its own terminal, exactly
                     // as tapping the new row would, on the list that has it.
                     if currentTab != .agents { selectedTab.wrappedValue = .agents }
@@ -233,7 +235,8 @@ struct ConsoleView: View {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // NewTerminalView brings its own NavigationStack.
                 NewTerminalView(
-                    hosts: hosts.consoleHosts, console: console, initialHostID: hostFilter
+                    hosts: hosts.consoleHosts.offeringNewItem(listsTerminals: true), console: console,
+                    initialHostID: hostFilter
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
@@ -1077,10 +1080,17 @@ struct ConsoleView: View {
 
     /// One button for both lists, so a sidebar switching lists keeps its
     /// bar as it is.
+    @ViewBuilder
     private func newItemButton(for tab: ConsoleTab) -> some View {
-        Button(tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus") {
-            if tab == .terminals { isStartingTerminal = true } else { isStartingAgent = true }
+        if offersNewItem(on: tab) {
+            Button(tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus") {
+                if tab == .terminals { isStartingTerminal = true } else { isStartingAgent = true }
+            }
         }
+    }
+
+    private func offersNewItem(on tab: ConsoleTab) -> Bool {
+        hosts.consoleHosts.offersNewItem(listsTerminals: tab == .terminals)
     }
 
     /// An iPad sidebar's foot, standing in for the tab bar: Hosts and
@@ -1135,7 +1145,8 @@ struct ConsoleView: View {
                         || isShowingHostsSheet || isShowingSettingsSheet
                         || isPresentingOverConsole,
                     inputMode: inputMode.mode,
-                    navigationAnchor: agentsListAnchor)
+                    navigationAnchor: agentsListAnchor,
+                    offersNewItem: offersNewItem(on: currentTab))
             },
             titles: ConsoleCommandTitles(
                 listsTerminals: currentTab == .terminals,
@@ -1268,6 +1279,7 @@ struct ConsoleView: View {
     }
 
     private func selectTerminal(_ terminal: ConsoleTerminal) {
+        guard console.capabilities(for: terminal.hostID).opensDetail else { return }
         if let agentID = terminal.agentID {
             selectAgent(agentID)
         } else {
@@ -1446,7 +1458,8 @@ struct ConsoleView: View {
                 presentation: ConsoleEmptyDetailPresentation(
                     hasHosts: !hosts.consoleHosts.isEmpty,
                     showsAgentsAction: splitVisibility(for: tab).showsAgentsAction,
-                    listsTerminals: tab == .terminals)
+                    listsTerminals: tab == .terminals,
+                    offersNewItem: offersNewItem(on: tab))
             ) { action in
                 switch action {
                 case .showAgents:

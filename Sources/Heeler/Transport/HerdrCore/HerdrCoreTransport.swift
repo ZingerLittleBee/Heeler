@@ -7,6 +7,12 @@ protocol HerdrCoreTransport: Sendable {
     /// The route that won the dial; nil when there was only ever one way in.
     nonisolated var routeID: UUID? { get }
 
+    /// The Host's exec and SFTP services, on the same SSH connection.
+    nonisolated var hostServices: any HostServices { get }
+
+    /// Whether the SSH connection is up, whatever became of the link on it.
+    var isConnected: Bool { get async }
+
     /// Runs the read-only locator once. Its facts are also what `hello` acts on.
     func locate() async throws -> HerdrCoreLocator.Location
 
@@ -18,20 +24,48 @@ protocol HerdrCoreTransport: Sendable {
     func startCore() async throws -> HerdrCoreStart.Outcome
 
     /// Locates the core, opens the framed link and checks the core's `hello`.
-    /// A later call reuses the open link.
+    /// A later call reuses the link while it lives, and opens a new one on the
+    /// same SSH connection once it ended.
     func hello() async throws -> HerdrCoreServerInfo
+
+    /// `hello` at the socket the last locator found, without another exec, for
+    /// polling a channel the core refused while its holder restarts it.
+    func helloAtLastLocation() async throws -> HerdrCoreServerInfo
 
     /// `server.status` over the link, which it opens if it has to.
     func serverStatus() async throws -> HerdrCoreServerStatus
+
+    /// Subscribes to every Terminal's events. Each subscription has a fresh
+    /// cursor from its own snapshot, and no event number outlives the link.
+    func subscribeEvents() async throws -> HerdrCoreEventStream
+
+    /// One channel-0 call. A mutation the link had already handed to its
+    /// writer when the link ended throws `.coreMutationOutcomeUnknown`, and
+    /// nothing here sends it again.
+    func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue
 
     /// Closes the link, then the connection.
     func close() async throws
 }
 
+extension HerdrCoreTransport {
+    /// The Terminal's screen. Passive: `lines: 0` never scrolls a full-screen
+    /// program, which asking for history would.
+    func readTerminal(_ address: String) async throws -> HerdrCoreTerminalRead {
+        try HerdrCoreWire.typed(
+            await call(
+                "terminal.read",
+                params: .object(["terminal": .string(try HerdrCoreWire.address(address)), "lines": .number(0)]),
+                isMutation: false))
+    }
+}
+
 /// The parts of an SSH connection a herdr-core transport uses. Real SSH is
 /// `HeelerSSHTransport`; tests script the exec and hand over a fake socket.
-protocol HerdrCoreHostConnection: Sendable {
+protocol HerdrCoreHostConnection: HostServices {
     nonisolated var routeID: UUID? { get }
+
+    var isConnected: Bool { get async }
 
     /// Runs the locator's script in one bounded exec.
     func runCoreLocator(_ script: Data) async throws -> GitExecResult
@@ -52,7 +86,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private static let callDeadline: Duration = .seconds(10)
 
     nonisolated let routeID: UUID?
-    private let connection: any HerdrCoreHostConnection
+    nonisolated var hostServices: any HostServices { connection }
+    private nonisolated let connection: any HerdrCoreHostConnection
     private let session: String
     private let nonce: @Sendable () -> String
     /// Callers that race share one opening. A failed one is not kept, so the
@@ -100,6 +135,10 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
     }
 
+    var isConnected: Bool {
+        get async { await connection.isConnected }
+    }
+
     func lastLocation() async -> HerdrCoreLocator.Location? {
         located
     }
@@ -125,15 +164,24 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     }
 
     func hello() async throws -> HerdrCoreServerInfo {
-        try await open().info
+        try await open(reusingLocation: false).info
+    }
+
+    func helloAtLastLocation() async throws -> HerdrCoreServerInfo {
+        try await open(reusingLocation: true).info
     }
 
     func serverStatus() async throws -> HerdrCoreServerStatus {
-        let opened = try await open()
-        do {
-            return try await opened.link.serverStatus(deadline: Self.callDeadline)
-        } catch is HerdrCoreUpdateRequired {
-            throw TransportError.herdrCoreUpdateRequired(command: Self.updateCommand(opened.executablePath))
+        try await onLink { link in try await link.serverStatus(deadline: Self.callDeadline) }
+    }
+
+    func subscribeEvents() async throws -> HerdrCoreEventStream {
+        try await onLink { link in try await link.subscribeEvents(deadline: Self.callDeadline) }
+    }
+
+    func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
+        try await onLink { link in
+            try await link.call(method, params: params, deadline: Self.callDeadline, isMutation: isMutation)
         }
     }
 
@@ -145,9 +193,26 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         try await connection.close()
     }
 
-    private func open() async throws -> Opened {
-        if let opening { return try await opening.value }
-        let task = Task { try await self.establish() }
+    private func onLink<Value: Sendable>(
+        _ operation: @Sendable (HerdrCoreLink) async throws -> Value
+    ) async throws -> Value {
+        let opened = try await open(reusingLocation: false)
+        do {
+            return try await operation(opened.link)
+        } catch is HerdrCoreUpdateRequired {
+            throw TransportError.herdrCoreUpdateRequired(command: Self.updateCommand(opened.executablePath))
+        }
+    }
+
+    private func open(reusingLocation: Bool) async throws -> Opened {
+        while let current = opening {
+            let opened = try await current.value
+            if await opened.link.isOpen { return opened }
+            // A link that ended stays ended: the next one is a new channel.
+            if opening == current { opening = nil }
+            await opened.link.close()
+        }
+        let task = Task { try await self.establish(reusingLocation: reusingLocation) }
         opening = task
         do {
             return try await task.value
@@ -157,8 +222,13 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
     }
 
-    private func establish() async throws -> Opened {
-        let location = try await locate()
+    private func establish(reusingLocation: Bool) async throws -> Opened {
+        let location: HerdrCoreLocator.Location
+        if reusingLocation, let located {
+            location = located
+        } else {
+            location = try await locate()
+        }
         guard let executablePath = location.executablePath else {
             throw TransportError.herdrCoreNotInstalled
         }

@@ -87,6 +87,8 @@ final class ConsoleStore {
     }
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
+    @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
+    @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     @ObservationIgnored private let snapshotRetryDelay: Duration
     @ObservationIgnored private let chatPrefetchRetryDelay: Duration
     @ObservationIgnored private var isActive = false
@@ -149,8 +151,13 @@ final class ConsoleStore {
             ConsoleStore.sshSessionFactory(),
         chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = {
             ChatTranscriptAdapter.standard(for: $0)
-        }
+        },
+        makeCoreSession: @escaping @Sendable (Host) -> HerdrCoreHostSession =
+            ConsoleStore.coreSessionFactory(),
+        coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory()
     ) {
+        self.makeCoreSession = makeCoreSession
+        self.coreHostMemory = coreHostMemory
         self.chatCache = chatCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
@@ -178,13 +185,9 @@ final class ConsoleStore {
     func setHosts(_ catalogHosts: [Host]) {
         let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
-        // With no projection to end, a core Host's reads go with its entry.
-        for host in catalog where host.serverKind == .herdrCore && incoming[host.id] != host {
-            pluginStatuses.invalidate(host.id)
-            agentUsageStores.removeValue(forKey: host.id)?.invalidate()
-            widgetUsageRefreshes.removeValue(forKey: host.id)?.task.cancel()
-        }
         catalog = hosts
+        coreHostMemory.retainHosts(
+            Set(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id)))
         cachedChats.setHosts(hosts)
         for id in projections.keys where incoming[id] != projections[id]?.host {
             chatPrefetchTasks[id]?.cancel()
@@ -976,20 +979,22 @@ final class ConsoleStore {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
     }
 
-    /// A herdr-core Host gets no projection: this one speaks herdr's API,
-    /// which a core does not serve, and nothing may dial it (ADR 0032).
+    /// Each Server Kind has its own projection, behind one seam (ADR 0032).
     private func startProjection(for host: Host) {
-        guard host.serverKind == .herdrTUI else { return }
-        let session = makeSession(
-            host,
-            HostConsoleProjection.subscriptions(paneIDs: []))
-        let projection = HostConsoleProjection(
-            host: host,
-            session: session,
-            snapshotRetryDelay: snapshotRetryDelay
-        ) { [weak self] in
-            self?.rebuild()
-        }
+        let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.rebuild() }
+        let projection: any ConsoleHostProjection =
+            switch host.serverKind {
+            case .herdrCore:
+                HerdrCoreConsoleProjection(
+                    host: host, session: makeCoreSession(host), memory: coreHostMemory,
+                    onChange: onChange)
+            default:
+                HostConsoleProjection(
+                    host: host,
+                    session: makeSession(host, HostConsoleProjection.subscriptions(paneIDs: [])),
+                    snapshotRetryDelay: snapshotRetryDelay,
+                    onChange: onChange)
+            }
         projections[host.id] = projection
         projection.start(isActive: isActive)
     }
@@ -1053,7 +1058,8 @@ final class ConsoleStore {
         }
         let sidebarConnections = Dictionary(uniqueKeysWithValues: current.compactMap { projection
             -> (Host.ID, HerdrSidebarSnapshotStore.Connection)? in
-            guard isActive, projection.status == .connected, !projection.isAwaitingSnapshot,
+            guard projection.host.capabilities.syncLayoutFromPlugin, isActive,
+                projection.status == .connected, !projection.isAwaitingSnapshot,
                 let generation = hostConnectionGenerations[projection.host.id]
             else { return nil }
             return (projection.host.id, HerdrSidebarSnapshotStore.Connection(
@@ -1448,16 +1454,13 @@ final class ConsoleStore {
 extension ConsoleStore: NotificationTransportProvider {
     /// Notification Registration work borrows the Host's live Console
     /// connection (#75) instead of dialing a second one; an unconnected Host
-    /// fails loudly like every other Host-scoped RPC here. A herdr-core Host
-    /// has no such connection, and its plugin surfaces say so.
+    /// fails loudly like every other Host-scoped RPC here. A herdr-core Host's
+    /// projection says it has no plugin, and its plugin surfaces say so.
     func withNotificationTransport<Value: Sendable>(
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
-        guard catalog.first(where: { $0.id == hostID })?.serverKind != .herdrCore else {
-            throw HeelerPluginUnavailableError.herdrCore
-        }
-        return try await projection(for: hostID).withNotificationTransport(operation)
+        try await projection(for: hostID).withNotificationTransport(operation)
     }
 }
 
@@ -1473,20 +1476,43 @@ extension ConsoleStore {
     ) -> @Sendable (Host, [EventSubscription]) -> EventsSession {
         { host, subscriptions in
             EventsSession(subscriptions: subscriptions) {
-                let resolved: SSHCredentials
-                do {
-                    resolved = try credentials.credentials(for: host)
-                } catch HostCredentialsError.passwordNotSet {
-                    throw TransportError.authenticationFailed
-                }
-                let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
-                return try await connector.connect(
-                    settings: SSHTransportSettings(
-                        host: host,
-                        credentials: resolved,
-                        hostKeyPolicy: policy,
-                        overlays: overlays))
+                try await connector.connect(
+                    settings: consoleSettings(
+                        for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
             }
         }
+    }
+
+    /// The herdr-core Hosts' equivalent, with the same trust rules.
+    static func coreSessionFactory(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) -> HerdrCoreHostSession {
+        { host in
+            HerdrCoreHostSession {
+                try await connector.connectCore(
+                    settings: consoleSettings(
+                        for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
+            }
+        }
+    }
+
+    private static func consoleSettings(
+        for host: Host, knownHosts: any KnownHostsStore, credentials: HostCredentialsProvider,
+        overlays: OverlayNetworkRuntime
+    ) throws -> SSHTransportSettings {
+        let resolved: SSHCredentials
+        do {
+            resolved = try credentials.credentials(for: host)
+        } catch HostCredentialsError.passwordNotSet {
+            throw TransportError.authenticationFailed
+        }
+        return SSHTransportSettings(
+            host: host,
+            credentials: resolved,
+            hostKeyPolicy: HostKeyPolicy(knownHosts: knownHosts) { _ in false },
+            overlays: overlays)
     }
 }

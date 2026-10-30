@@ -18,6 +18,11 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
     let tabPosition: Int?
     let snapshotOrder: Int
     let snapshotAgentKind: String?
+    /// A core Terminal between losing its program and its new shell.
+    var isRestarting = false
+    /// A core Terminal's grid. Herdr TUI Hosts do not report one.
+    var gridColumns: Int?
+    var gridRows: Int?
 
     var id: ID { ID(hostID: hostID, paneID: paneID) }
     var paneID: String { pane.paneID }

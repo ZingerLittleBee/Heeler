@@ -59,7 +59,8 @@ final class HeelerAppModel {
         sceneDirectory: AgentSceneDirectory,
         hostStore: HostStore = HostStore(),
         console: ConsoleStore = ConsoleStore(
-            chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher()),
+            chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher(),
+            coreHostMemory: HerdrCoreHostMemory(defaults: .standard)),
         overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator()
     ) {

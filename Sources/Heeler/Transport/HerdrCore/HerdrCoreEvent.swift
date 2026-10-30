@@ -80,27 +80,27 @@ struct HerdrCoreTerminalEnd: Decodable, Equatable, Sendable {
 struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
     let address: String
     let name: String?
-    let labels: [String: String]
+    var labels: [String: String]
     let argv: [String]
     let cwd: String
-    let keep: Bool
-    let state: String
-    let pid: Int?
+    var keep: Bool
+    var state: String
+    var pid: Int?
     let exitCode: Int?
     let signal: Int?
-    let reason: String?
+    var reason: String?
     let createdMilliseconds: Int?
     let finishedMilliseconds: Int?
     let screen: String?
-    let columns: Int
-    let rows: Int
+    var columns: Int
+    var rows: Int
     let identity: String?
     let status: HerdrCoreTerminalStatus?
     let statusMilliseconds: Int?
     let records: [String: HerdrCoreTerminalStatus]
     let turn: Int
     let reported: Bool
-    let title: String
+    var title: String
     let parent: String?
     let notify: Bool
     let dieWithParent: Bool
@@ -109,7 +109,17 @@ struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
     let submit: String?
     let stop: String?
     let pasteGapMilliseconds: Int?
-    let foreground: HerdrCoreForeground?
+    var foreground: HerdrCoreForeground?
+
+    /// The core keeps a finished Terminal until it is removed. The Console hides it.
+    var hasFinished: Bool { state == "finished" }
+
+    /// Between losing a kept Terminal's program and its new shell: live, with
+    /// no process and a reason that is not a first spawn still pending.
+    var isRestarting: Bool {
+        guard state == "live", pid == nil, let reason else { return false }
+        return reason != "spawn_pending"
+    }
 
     private enum CodingKeys: String, CodingKey {
         case address, name, labels, argv, cwd, keep, state, pid, signal, reason, screen, rows
@@ -368,6 +378,22 @@ struct HerdrCoreLineBuffer {
     }
 }
 
+/// The bytes of an events channel. Real ones are a `HerdrCoreLinkStream`.
+protocol HerdrCoreEventBytes: Sendable {
+    /// The next bytes, or nil once the channel ended.
+    func read() async throws -> Data?
+    func close() async
+}
+
+/// What `terminal.read` returns. `lines: 0` reads the screen as the core holds
+/// it, so a full-screen program is never scrolled to read it.
+struct HerdrCoreTerminalRead: Decodable, Equatable, Sendable {
+    let text: String
+    let complete: Bool
+    /// "screen", "history", or "stitched" for a full-screen program scrolled to read it.
+    let how: String
+}
+
 /// A live subscription: the subscribe snapshot, then what follows it.
 ///
 /// The snapshot is a property, so no flood can shed it. `events` is bounded:
@@ -380,11 +406,11 @@ final class HerdrCoreEventStream: Sendable {
     let snapshot: HerdrCoreSnapshot
     /// Finishes without error after `end()` or a server CLOSE, and throws if the link dies.
     let events: AsyncThrowingStream<HerdrCoreEvent, any Error>
-    private let source: HerdrCoreLinkStream
+    private let source: any HerdrCoreEventBytes
     private let pump: Task<Void, Never>
 
     init(
-        snapshot: HerdrCoreSnapshot, source: HerdrCoreLinkStream,
+        snapshot: HerdrCoreSnapshot, source: any HerdrCoreEventBytes,
         bufferLimit: Int = HerdrCoreEventStream.bufferLimit
     ) {
         self.snapshot = snapshot
