@@ -27,7 +27,6 @@
 // unknown fields are ignored.
 
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -37,14 +36,12 @@ import { readNotificationConfig } from "./notification-config.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { forDisplay, optionalText } from "./display-text.js";
 import { hookSession, sessionStateDir } from "./session.js";
+import { collapseKeyFor, sendAlertPush } from "./delivery/push.js";
 import { pruneAlertTokens, readAlertDevices } from "./delivery/registrations.js";
 
 // Statuses that notify (ADR 0008: Working/Idle transitions never do), keyed
 // by the registration file's per-device `notify` preference flag they gate on.
 const NOTIFY_FLAG_BY_STATUS = { blocked: "blocked", done: "done" };
-
-const SEND_ATTEMPTS = 3;
-const REQUEST_TIMEOUT_MS = 10_000;
 
 /** Parse HERDR_PLUGIN_EVENT_JSON leniently: require pane id and status only. */
 function parseStatusEvent(raw) {
@@ -168,54 +165,6 @@ async function workspaceLabel(binPath, workspaceId) {
   }
 }
 
-/**
- * The `apns-collapse-id` passed through the relay so a newer status replaces
- * an older notification for the same pane. Keyed by the device's Notification
- * Key so it stays opaque: the relay can neither read nor dictionary-guess the
- * pane id behind it. 16 bytes -> 22 chars, well under APNs' 64-byte cap.
- */
-function collapseKeyFor(key, paneId) {
-  return createHash("sha256")
-    .update(key)
-    .update("HERDR-NOTIFY-COLLAPSE:")
-    .update(paneId, "utf8")
-    .digest()
-    .subarray(0, 16)
-    .toString("base64url");
-}
-
-/**
- * POST one push, retrying transient failures (network errors, 429, 5xx) up
- * to SEND_ATTEMPTS. The relay itself never retries by design (ADR 0008).
- * Returns "ok", "pruned" (APNs 410 Unregistered: the token is dead), or a
- * thrown Error for a delivery that conclusively failed.
- */
-async function postPush(relayUrl, device, envelope, collapse, retryDelayMs) {
-  const body = JSON.stringify({ token: device.token, env: device.env, envelope, collapse });
-  let lastFailure = "";
-  for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt += 1) {
-    if (attempt > 1) await sleep(retryDelayMs);
-    let response;
-    try {
-      response = await fetch(`${relayUrl}/push`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-    } catch (error) {
-      lastFailure = `relay unreachable: ${error.message}`;
-      continue;
-    }
-    if (response.ok) return "ok";
-    const detail = (await response.text().catch(() => "")).slice(0, 200);
-    if (response.status === 410) return "pruned";
-    lastFailure = `relay answered ${response.status}: ${detail}`;
-    if (response.status !== 429 && response.status < 500) break;
-  }
-  throw new Error(`push for token ${device.token.slice(0, 8)}… failed: ${lastFailure}`);
-}
-
 function requireEnv(name) {
   const value = process.env[name];
   if (typeof value !== "string" || value.length === 0) {
@@ -281,7 +230,7 @@ async function main() {
     const envelope = encryptNotificationEnvelope(payload, device.key);
     const collapse = collapseKeyFor(device.key, event.paneId);
     try {
-      const outcome = await postPush(config.relayUrl, device, envelope, collapse, config.retryDelayMs);
+      const outcome = await sendAlertPush(config.relayUrl, device, envelope, collapse, config.retryDelayMs);
       if (outcome === "ok") delivered = true;
       else pruned.add(device.token);
     } catch (error) {

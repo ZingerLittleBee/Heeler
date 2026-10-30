@@ -32,14 +32,13 @@ import { noteClaudeAgent } from "./usage/claude-agents.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { optionalText } from "./display-text.js";
 import { hookSession, sessionStateDir } from "./session.js";
+import { sendLiveActivityPush } from "./delivery/push.js";
 import {
   liveActivityPreferences,
   pruneLiveActivityTokens,
   readLiveActivityDevices,
 } from "./delivery/registrations.js";
 
-const SEND_ATTEMPTS = 3;
-const REQUEST_TIMEOUT_MS = 10_000;
 const CT_BUDGET = 2800;
 const APNS_PAYLOAD_BUDGET = 4096;
 const RELAY_REQUEST_BUDGET = 8192;
@@ -296,47 +295,6 @@ function sealFitting(plaintextObject, device, request) {
   return { envelope, step };
 }
 
-/**
- * POST one Live Activity push. Transient failures (network, 429, 5xx) retry
- * up to SEND_ATTEMPTS. Returns "ok", "pruned" (APNs 410), or "too_large"
- * (relay-origin 413). Other conclusive failures throw.
- */
-async function postPush(relayUrl, body, retryDelayMs) {
-  const payload = JSON.stringify(body);
-  let lastFailure = "";
-  for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt += 1) {
-    if (attempt > 1) await sleep(retryDelayMs);
-    let response;
-    try {
-      response = await fetch(`${relayUrl}/push`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: payload,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-    } catch (error) {
-      lastFailure = `relay unreachable: ${error.message}`;
-      continue;
-    }
-    if (response.ok) return "ok";
-    const detail = (await response.text().catch(() => "")).slice(0, 200);
-    if (response.status === 410) return "pruned";
-    if (response.status === 413 && isRelayOrigin413(detail)) return "too_large";
-    lastFailure = `relay answered ${response.status}: ${detail}`;
-    if (response.status !== 429 && response.status < 500) break;
-  }
-  throw new Error(`push for token ${body.token.slice(0, 8)}… failed: ${lastFailure}`);
-}
-
-function isRelayOrigin413(detail) {
-  try {
-    const parsed = JSON.parse(detail);
-    return typeof parsed?.error === "string";
-  } catch {
-    return false;
-  }
-}
-
 function requireEnv(name) {
   const value = process.env[name];
   if (typeof value !== "string" || value.length === 0) {
@@ -348,7 +306,7 @@ function requireEnv(name) {
 async function deliver(config, device, plaintextObject, request) {
   let { envelope, step } = sealFitting(plaintextObject, device, request);
   while (true) {
-    const outcome = await postPush(
+    const outcome = await sendLiveActivityPush(
       config.relayUrl,
       relayBody({ ...request, device, envelope }),
       config.retryDelayMs,
