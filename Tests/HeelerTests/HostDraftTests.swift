@@ -31,15 +31,30 @@ struct HostDraftTests {
         #expect(copied.name == "Desktop copy")
     }
 
-    @Test func aNewDraftAndItsCopyAreHerdrTUI() throws {
+    @Test func aNewDraftIsUnconfirmedAndACopyKeepsItsHostsKind() throws {
         var draft = HostDraft()
         draft.address = "box.example"
         draft.username = "dev"
         let host = try #require(draft.makeHost())
-        #expect(host.serverKind == .herdrTUI)
-
+        #expect(host.serverKind == .unconfirmed)
         let copy = HostDraft(duplicating: host, password: nil, existingNames: [])
-        #expect(try #require(copy.makeHost()).serverKind == .herdrTUI)
+        #expect(try #require(copy.makeHost()).serverKind == .unconfirmed)
+
+        let tui = Host(address: "box.example", username: "dev", serverKind: .herdrTUI)
+        let tuiCopy = HostDraft(duplicating: tui, password: nil, existingNames: [])
+        #expect(try #require(tuiCopy.makeHost()).serverKind == .herdrTUI)
+    }
+
+    /// Which rule a name answers to depends on the kind the user confirms, and
+    /// confirming says why it was refused.
+    @Test(arguments: ["work session", "a/b", ".", String(repeating: "a", count: 65)])
+    func aNewDraftAcceptsAnySessionNameUntilItsKindIsConfirmed(_ name: String) throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        draft.sessionName = "  \(name) "
+
+        #expect(try #require(draft.makeHost()).sessionName == name)
     }
 
     /// `serverKind` has no setter outside the draft, so Edit can only hand the
@@ -166,9 +181,7 @@ struct HostDraftTests {
         ]
 
         for sessionName in invalidNames {
-            var draft = HostDraft()
-            draft.address = "host.example"
-            draft.username = "dev"
+            var draft = HostDraft(host: Host(address: "host.example", username: "dev", serverKind: .herdrTUI))
             draft.sessionName = sessionName
 
             #expect(!draft.isValid, "unexpectedly accepted session name: \(sessionName)")
@@ -185,9 +198,7 @@ struct HostDraftTests {
     func coreDraftsAcceptNamesTheTUIRefuses(_ name: String) throws {
         #expect(try #require(coreDraft(sessionName: name).makeHost()).sessionName == name)
 
-        var tui = HostDraft()
-        tui.address = "box.example"
-        tui.username = "dev"
+        var tui = HostDraft(host: Host(address: "box.example", username: "dev", serverKind: .herdrTUI))
         tui.sessionName = name
         #expect(!tui.isValid)
     }

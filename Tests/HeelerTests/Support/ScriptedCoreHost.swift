@@ -6,11 +6,27 @@ import Foundation
 /// prints scripted lines, and the forwarded channel is either refused or a
 /// `FakeCoreSocket` that answers `hello` with a scripted line. What is under
 /// test above it is the real `HerdrCoreSSHTransport` and `HerdrCoreLink`.
-actor ScriptedCoreHost: HerdrCoreHostConnection {
+actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     enum Channel: Sendable {
         case refused
         /// Answers the plain `hello` line with these bytes.
         case answersHello(Data)
+    }
+
+    /// What `herdr session list --json` does in the detection exec.
+    enum HerdrRead: Sendable, CustomStringConvertible {
+        /// The shell cannot find it: status 127, nothing on stdout.
+        case notInstalled
+        case answers(String)
+        case fails(status: Int32, output: String)
+
+        var description: String {
+            switch self {
+            case .notInstalled: "not installed"
+            case .answers(let output): "answers \(output)"
+            case .fails(let status, let output): "fails \(status) \(output)"
+            }
+        }
     }
 
     static let nonce = "scripted-core-host-nonce"
@@ -71,6 +87,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection {
     private let locatorStatus: Int32
     private let shellBanner: Data
     private let channel: Channel
+    private let herdrRead: HerdrRead
+    private let detectionFailure: TransportError?
 
     /// Everything that happened, in order.
     private(set) var log: [String] = []
@@ -80,8 +98,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection {
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
         locator: [String] = locatorLines(), locatorStatus: Int32 = 0, shellBanner: Data = Data(),
+        herdrRead: HerdrRead = .notInstalled, detectionFailure: TransportError? = nil,
         channel: Channel
     ) {
+        self.herdrRead = herdrRead
+        self.detectionFailure = detectionFailure
         self.locator = locator
         self.locatorStatus = locatorStatus
         self.shellBanner = shellBanner
@@ -93,6 +114,34 @@ actor ScriptedCoreHost: HerdrCoreHostConnection {
         scripts.append(String(decoding: script, as: UTF8.self))
         let output = (["\(Self.nonce) begin"] + locator + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: locatorStatus)
+    }
+
+    /// Prints what the script asked for, framed by the nonce the script carries.
+    func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
+        log.append("detection")
+        let body = String(decoding: script, as: UTF8.self)
+        scripts.append(body)
+        if let detectionFailure { throw detectionFailure }
+        let nonce = Self.nonce(in: body)
+        let (status, output): (Int32, String) =
+            switch herdrRead {
+            case .notInstalled: (127, "")
+            case .answers(let output): (0, output)
+            case .fails(let status, let output): (status, output)
+            }
+        var printed = "\n\(nonce) herdr-tui begin\n\(output)\n\(nonce) herdr-tui status \(status)\n"
+        if body.contains("__session=") {
+            printed += (["\(nonce) begin"] + locator + ["\(nonce) end"]).joined(separator: "\n") + "\n"
+        }
+        return GitExecResult(stdout: shellBanner + Data(printed.utf8), stderr: Data(), exitStatus: locatorStatus)
+    }
+
+    private static func nonce(in script: String) -> String {
+        let marker = "herdr-tui begin\\n' '"
+        guard let start = script.range(of: marker)?.upperBound,
+            let end = script[start...].firstIndex(of: "'")
+        else { return "" }
+        return String(script[start..<end])
     }
 
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {

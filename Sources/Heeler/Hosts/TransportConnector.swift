@@ -9,9 +9,21 @@ protocol TransportConnector: Sendable {
     /// Dials a herdr-core Host. It never reaches `connect`'s Herdr TUI
     /// transport, and connecting starts no core (ADR 0031).
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport
+
+    /// Dials an unconfirmed Host for the one exec that detects its Server Kind.
+    /// It reaches SSH and nothing past it, so no server starts (ADR 0031).
+    func connectForDetection(
+        settings: SSHTransportSettings
+    ) async throws -> any ServerKindDetectionConnection
 }
 
 extension TransportConnector {
+    func connectForDetection(
+        settings: SSHTransportSettings
+    ) async throws -> any ServerKindDetectionConnection {
+        throw TransportError.hostFeatureUnavailable(feature: "Server Kind detection")
+    }
+
     /// A connector that serves only Herdr TUI Hosts says so.
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
         throw TransportError.hostFeatureUnavailable(feature: "herdr-core Hosts")
@@ -25,11 +37,19 @@ extension TransportConnector {
 struct SSHTransportConnector: TransportConnector {
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
         // No Herdr TUI request ever goes to a herdr-core Host, whose core is
-        // not the server this transport speaks to.
-        guard settings.serverKind != .herdrCore else {
-            throw TransportError.hostFeatureUnavailable(feature: "Herdr TUI on a herdr-core Host")
+        // not the server this transport speaks to, or to a Host whose kind is
+        // not confirmed yet.
+        guard settings.serverKind == .herdrTUI else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: "Herdr TUI on a \(settings.serverKind.displayName) Host")
         }
         return try await HeelerSSHTransport.connect(settings: settings)
+    }
+
+    func connectForDetection(
+        settings: SSHTransportSettings
+    ) async throws -> any ServerKindDetectionConnection {
+        try await HeelerSSHTransport.connect(settings: settings)
     }
 
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {

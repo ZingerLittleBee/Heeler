@@ -210,6 +210,19 @@ struct AgentUsageWidgetRefreshTests {
         #expect(await transport.agentUsageReads == 0)
     }
 
+    @Test func anUnconfirmedHostNeverReachesTheWidgets() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (console, _, host) = try await Self.console(publisher: publisher)
+        defer { console.setHosts([]) }
+
+        console.setHosts([
+            host, Host(address: "new.example", username: "dev", serverKind: .unconfirmed),
+        ])
+
+        #expect(Self.snapshot(directory)?.hosts.map(\.id) == [host.id])
+    }
+
     private static func console(
         publisher: AgentUsageWidgetPublisher
     ) async throws -> (ConsoleStore, ScriptedTransport, Host) {

@@ -120,6 +120,34 @@ struct NotificationPreferencesStoreTests {
         #expect(store.confirmedTriggers(for: core.id) == nil)
     }
 
+    @Test func anUnconfirmedHostIsSkippedUntilConfirmedAsHerdrTUI() async throws {
+        let catalog = HostStore(volatileHosts: [
+            Host(address: "box.example", username: "dev", serverKind: .unconfirmed)
+        ])
+        let unconfirmed = try #require(catalog.hosts.first)
+        let transport = ScriptedTransport()
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(transports: [unconfirmed.id: transport]),
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+
+        store.setHosts(catalog.hosts)
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: unconfirmed)
+
+        #expect(store.hosts.isEmpty)
+        #expect(store.states[unconfirmed.id] == nil)
+        #expect(await transport.notificationRegistrationReads == 0)
+        #expect(await transport.notificationRegistration == nil)
+
+        let confirmed = try catalog.confirmServerKind(.herdrTUI, for: unconfirmed.id)
+        store.setHosts(catalog.hosts)
+        await store.refresh()
+
+        #expect(store.hosts == [confirmed])
+        #expect(await transport.notificationRegistrationReads == 1)
+    }
+
     @Test(arguments: ["removed", "edited", "returned"])
     func catalogChangesInvalidateAnOldReadEvenIfTheSameHostReturns(_ change: String) async throws {
         let transport = ScriptedTransport()

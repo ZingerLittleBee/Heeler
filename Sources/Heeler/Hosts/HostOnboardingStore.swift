@@ -35,13 +35,16 @@ struct HostOnboardingDependencies: Sendable {
     var connector: any TransportConnector = SSHTransportConnector()
     var knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared
     var credentials = HostCredentialsProvider()
+    var offersHerdrCore = ServerKind.herdrCore.isOfferedOnAdd()
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
 /// connect (surfacing the TOFU first-connect prompt), discover sessions,
 /// ping the selected session, and render the outcome as the checklist. A
 /// Host with a herdr endpoint (ADR 0023) skips discovery, because its socket
-/// already fixes the session, and must instead prove its launcher answers.
+/// already fixes the session, and must instead prove its launcher answers. A
+/// Host added unconfirmed first detects which servers it runs and has the user
+/// confirm one kind, then runs that kind's checks (ADR 0031).
 @MainActor
 @Observable
 final class HostOnboardingStore {
@@ -77,8 +80,15 @@ final class HostOnboardingStore {
     /// Set when the last run stopped at an Overlay Network that needs an
     /// interactive sign-in; the UI offers to open it.
     private(set) var overlayLoginURL: URL?
+    /// What an unconfirmed Host's one detection exec found.
+    private(set) var detection: ServerKindDetection?
+    /// Why a reached Host could not be read, which leaves its kind to the user.
+    private(set) var detectionFailure: String?
+    /// Why the last confirmation was refused, for the user to read.
+    private(set) var confirmationRefusal: String?
 
-    let host: Host
+    private(set) var host: Host
+    let offersHerdrCore: Bool
 
     @ObservationIgnored private let connector: any TransportConnector
     @ObservationIgnored private let knownHosts: any KnownHostsStore
@@ -101,9 +111,11 @@ final class HostOnboardingStore {
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider(),
         overlays: OverlayNetworkRuntime = .shared,
-        fingerprintTimeout: Duration = .seconds(60)
+        fingerprintTimeout: Duration = .seconds(60),
+        offersHerdrCore: Bool = ServerKind.herdrCore.isOfferedOnAdd()
     ) {
         self.host = host
+        self.offersHerdrCore = offersHerdrCore
         self.connector = connector
         self.knownHosts = knownHosts
         self.credentials = credentials
@@ -124,6 +136,9 @@ final class HostOnboardingStore {
         pluginStatus = .checking
         pendingHostKeyReplacement = nil
         overlayLoginURL = nil
+        detection = nil
+        detectionFailure = nil
+        confirmationRefusal = nil
         let run = UUID()
         currentRun = run
         let task = Task { await self.performChecks(run: run) }
@@ -192,9 +207,15 @@ final class HostOnboardingStore {
         }
         let settings = SSHTransportSettings(
             host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays)
-        if host.serverKind == .herdrCore {
+        switch host.serverKind {
+        case .unconfirmed:
+            await performDetection(settings: settings)
+            return
+        case .herdrCore:
             await performCoreChecks(settings: settings)
             return
+        case .herdrTUI:
+            break
         }
         do {
             let transport = try await connector.connect(settings: settings)
@@ -278,6 +299,91 @@ final class HostOnboardingStore {
             captureHostKeyReplacement(error)
             report = failureReport(error)
         }
+    }
+
+    /// One exec over a connection of its own, which starts no server. A Host
+    /// out of reach reads as the preflight's connection failure.
+    private func performDetection(settings: SSHTransportSettings) async {
+        do {
+            let connection = try await connector.connectForDetection(settings: settings)
+            guard !Task.isCancelled else {
+                try? await connection.close()
+                return
+            }
+            do {
+                let found = try await ServerKindDetection.run(over: connection, session: host.sessionName)
+                if !Task.isCancelled { detection = found }
+            } catch {
+                if !Task.isCancelled {
+                    detectionFailure = (error as? TransportError)?.presentation.message ?? "\(error)"
+                }
+            }
+            try? await connection.close()
+        } catch {
+            guard !Task.isCancelled else { return }
+            captureHostKeyReplacement(error)
+            report = failureReport(error)
+        }
+    }
+
+    /// The kinds the user may confirm: none until the Host has been reached.
+    var offeredKinds: [ServerKind] {
+        guard host.serverKind == .unconfirmed else { return [] }
+        if let detection { return detection.offeredKinds(offersCore: offersHerdrCore) }
+        return detectionFailure == nil
+            ? [] : ServerKindDetection.offeredWithoutFindings(offersCore: offersHerdrCore)
+    }
+
+    /// What the confirmation adds to the findings it lists, if anything.
+    var confirmationNote: String? {
+        if let detectionFailure {
+            return "Heeler could not read what this Host runs, so the choice is yours. \(detectionFailure)"
+        }
+        guard let detection else { return nil }
+        guard offersHerdrCore else {
+            if case .notFound = detection.herdrTUI {
+                return "herdr was not found. Its checks say how to set it up."
+            }
+            return nil
+        }
+        if case .sessionRefused(let reason) = detection.herdrCore {
+            return reason
+        }
+        if detection.foundKinds.count > 1 {
+            return "This machine runs both. A Host is one kind: confirm one here, then add the "
+                + "machine again for the other."
+        }
+        return detection.foundKinds.isEmpty
+            ? "Neither was found. Choose the one you will use, and its checks say how to set it up."
+            : nil
+    }
+
+    /// Confirms the Host's kind, once, then runs that kind's checks. A name the
+    /// kind's server refuses leaves the Host as it was and says why.
+    func confirmServerKind(_ kind: ServerKind, in catalog: HostStore) async {
+        guard phase != .running, offeredKinds.contains(kind) else { return }
+        do {
+            host = try catalog.confirmServerKind(kind, for: host.id)
+        } catch HostStoreError.sessionNameRefused(let reason) {
+            confirmationRefusal = reason
+            return
+        } catch {
+            confirmationRefusal = "The Server Kind could not be saved. (\(error))"
+            return
+        }
+        await runChecks()
+    }
+
+    func dismissConfirmationRefusal() {
+        confirmationRefusal = nil
+    }
+
+    /// The Host's kind, with the version a core's `hello` reported, which is
+    /// advisory: a core other than the one this build was tested with still
+    /// connects if `hello` passes.
+    var serverKindSummary: String {
+        guard host.serverKind == .herdrCore, let serverInfo else { return host.serverKind.displayName }
+        return "\(host.serverKind.displayName) \(serverInfo.version)"
     }
 
     var pluginPresentation: HeelerPluginPresentation {

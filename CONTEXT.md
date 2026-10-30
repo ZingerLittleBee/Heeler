@@ -13,9 +13,11 @@ Which of two servers a Host's Agents live in: Herdr TUI (the original herdr
 server) or herdr-core (the vendor's headless terminal runtime, `hc`). The two
 share no Agents. A herdr-core Host whose core also serves the Herdr desktop
 app is still herdr-core; the app's organization is data the Host carries, not
-another kind. Adding a Host detects it and the user confirms it, except that a
-Pairing Code always adds a Herdr TUI Host. The Host keeps it: neither a
-connection nor an edit switches a Host to the other kind (ADR 0031).
+another kind. Adding a Host by hand saves it unconfirmed, a stored state no
+connection, Agent or notification reaches. Its Host detail detects the kinds
+and the user confirms one, once; a Pairing Code always adds a confirmed Herdr
+TUI Host. The Host keeps it: neither a connection nor an edit switches a Host
+to the other kind (ADR 0031).
 _Avoid_: backend, server type, flavor
 
 **Herdr desktop app**:

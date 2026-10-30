@@ -222,6 +222,29 @@ final actor FakeTransportConnector: TransportConnector {
         return core.transport(session: settings.coreSessionName)
     }
 
+    func connectForDetection(
+        settings: SSHTransportSettings
+    ) async throws -> any ServerKindDetectionConnection {
+        capturedSettings.append(settings)
+        if let presentedKeyBlob {
+            try await evaluateHostKey(
+                HostKeyFingerprint(publicKeyBlob: presentedKeyBlob), settings: settings)
+        }
+        switch outcome {
+        case .connectFails(let error):
+            throw error
+        case .hangs(let duration):
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+            throw TransportError.timedOut
+        case .connects:
+            break
+        }
+        guard let core else {
+            throw TransportError.hostFeatureUnavailable(feature: "Server Kind detection")
+        }
+        return core
+    }
+
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
         capturedSettings.append(settings)
         if let presentedJumpKeyBlob, let jump = settings.routes.first?.jump {

@@ -176,20 +176,21 @@ struct HostFormView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
             } header: {
-                Text(draft.serverKind == .herdrCore ? "herdr-core Session" : "herdr Session")
+                Text(draft.serverKind == .herdrTUI ? "herdr Session" : draft.serverKind == .herdrCore ? "herdr-core Session" : "Session")
             } footer: {
-                Text(draft.serverKind == .herdrCore
-                    ? "Leave blank for the default session."
-                    : "Leave blank for the default herdr session.")
+                Text(draft.serverKind == .herdrTUI
+                    ? "Leave blank for the default herdr session."
+                    : "Leave blank for the default session.")
             }
         }
     }
 
     /// A Host keeps its Server Kind (ADR 0031), so Edit only names it. A new
-    /// Host is Herdr TUI, and so is a copy of one, with nothing to say yet.
+    /// Host confirms its kind in Host detail, and a copy of a Herdr TUI Host is
+    /// one too, with nothing to say yet.
     @ViewBuilder
     private var serverKindRow: some View {
-        if editing != nil || draft.serverKind != .herdrTUI {
+        if editing != nil || draft.serverKind == .herdrCore {
             LabeledContent("Server Kind", value: draft.serverKind.displayName)
         }
     }
