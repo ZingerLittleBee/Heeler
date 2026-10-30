@@ -63,22 +63,86 @@ struct ConsoleStoreTests {
             tabPaneCount: tabPaneCount)
     }
 
-    @Test func coreAgentsOfferNeitherLegacyManagementNorUnidentifiedChat() async throws {
-        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
-        let transport = ScriptedTransport()
-        let info = AgentInfo.fixture(paneID: "t3", kind: "claude")
-        await transport.setSnapshot(.fixture(agents: [info]))
-        let store = makeStore(transports: [host.id: transport])
-        store.setHosts([host])
-        await store.resume()
+    /// The Herdr TUI projection speaks herdr's API, which a core does not
+    /// serve, and the herdr-core projection does not exist yet (ADR 0032).
+    @Test func aCoreHostGetsNoProjectionAndAddsNothingToTheConsole() async throws {
+        let tui = Host.fixture()
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let inventory = SessionSnapshot(
+            agents: [.fixture(paneID: "w1:p1")], layouts: [],
+            panes: [
+                PaneInfo(
+                    agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+                    tabID: "w1:t1", terminalID: "term", workspaceID: "w1")
+            ],
+            protocolVersion: 17, tabs: [], version: "0.7.5-fake",
+            workspaces: [.fixture(workspaceID: "w1", label: "Proj")])
+        let scripted = [
+            tui.id: ScriptedTransport(snapshot: inventory),
+            core.id: ScriptedTransport(snapshot: inventory),
+        ]
+        let sessionsMade = Mutex<[Host.ID]>([])
+        let dials = Mutex<[Host.ID]>([])
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
+            sessionsMade.withLock { $0.append(host.id) }
+            return EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    dials.withLock { $0.append(host.id) }
+                    guard let transport = scripted[host.id] else {
+                        throw TransportError.sshUnreachable(detail: "unscripted host")
+                    }
+                    return transport
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
         defer { store.setHosts([]) }
-        try await waitUntil("core Agent is in the Console") { store.agents.count == 1 }
-        let agent = try #require(store.agents.first)
+
+        store.setHosts([core, tui])
+        await store.resume()
+        await store.retryHost(core.id)
+        await store.reactivate()
+        try await waitUntil("the Herdr TUI Host is listed") { store.agents.count == 1 }
+
+        #expect(sessionsMade.withLock { $0 } == [tui.id])
+        #expect(dials.withLock { Set($0) } == [tui.id])
+        #expect(store.agents.map(\.hostID) == [tui.id])
+        #expect(store.terminals.map(\.hostID) == [tui.id])
+        #expect(store.workspaces(for: tui.id).map(\.id) == ["w1"])
+        #expect(store.workspacesByHost[core.id] == nil)
+        #expect(store.hostStatuses[core.id] == nil)
+        #expect(!store.hostsAwaitingSnapshot.contains(core.id))
+    }
+
+    /// With no projection a core Host has no connection to lend, and its
+    /// plugin surfaces keep saying why rather than blaming the link.
+    @Test func aCoreHostsUsageStaysUnsupportedWithoutAProjection() async {
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let store = makeStore(transports: [:])
+        defer { store.setHosts([]) }
+        store.setHosts([core])
+
+        let usage = store.agentUsageStore(for: core.id)
+        await usage.refresh()
+
+        #expect(usage.state == .unsupportedBackend)
+
+        store.setHosts([])
+        #expect(store.agentUsageStore(for: core.id) !== usage)
+    }
+
+    @Test func coreAgentsOfferNeitherLegacyManagementNorChat() {
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let store = makeStore(transports: [:])
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        let agent = consoleAgent(
+            hostID: host.id, hostName: host.name, paneID: "t3", status: .idle)
 
         #expect(!store.usesLegacyHerdr(on: host.id))
         #expect(store.chatProgram(for: agent) == nil)
         #expect(store.chatStore(for: agent, program: .claude) == nil)
-        #expect(await transport.chatAgentReads.isEmpty)
     }
 
     @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {

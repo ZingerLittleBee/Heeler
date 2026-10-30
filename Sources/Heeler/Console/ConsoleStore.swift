@@ -176,6 +176,12 @@ final class ConsoleStore {
     /// projection because its connection coordinates may have changed.
     func setHosts(_ hosts: [Host]) {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
+        // With no projection to end, a core Host's reads go with its entry.
+        for host in catalog where host.serverKind == .herdrCore && incoming[host.id] != host {
+            pluginStatuses.invalidate(host.id)
+            agentUsageStores.removeValue(forKey: host.id)?.invalidate()
+            widgetUsageRefreshes.removeValue(forKey: host.id)?.task.cancel()
+        }
         catalog = hosts
         cachedChats.setHosts(hosts)
         for id in projections.keys where incoming[id] != projections[id]?.host {
@@ -990,7 +996,10 @@ final class ConsoleStore {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
     }
 
+    /// A herdr-core Host gets no projection: this one speaks herdr's API,
+    /// which a core does not serve, and nothing may dial it (ADR 0032).
     private func startProjection(for host: Host) {
+        guard host.serverKind == .herdrTUI else { return }
         let session = makeSession(
             host,
             HostConsoleProjection.subscriptions(paneIDs: []))
@@ -1310,7 +1319,7 @@ final class ConsoleStore {
     /// Core's terminal inventory does not carry legacy management or exact
     /// conversation-session metadata. Keep those actions off its Agent surface.
     func usesLegacyHerdr(on hostID: Host.ID) -> Bool {
-        projections[hostID]?.host.serverKind != .herdrCore
+        catalog.first(where: { $0.id == hostID })?.serverKind != .herdrCore
     }
 
     func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {
@@ -1458,12 +1467,16 @@ final class ConsoleStore {
 extension ConsoleStore: NotificationTransportProvider {
     /// Notification Registration work borrows the Host's live Console
     /// connection (#75) instead of dialing a second one; an unconnected Host
-    /// fails loudly like every other Host-scoped RPC here.
+    /// fails loudly like every other Host-scoped RPC here. A herdr-core Host
+    /// has no such connection, and its plugin surfaces say so.
     func withNotificationTransport<Value: Sendable>(
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {
-        try await projection(for: hostID).session.withTransport(operation)
+        guard catalog.first(where: { $0.id == hostID })?.serverKind != .herdrCore else {
+            throw HeelerPluginUnavailableError.herdrCore
+        }
+        return try await projection(for: hostID).session.withTransport(operation)
     }
 }
 
