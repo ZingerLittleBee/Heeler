@@ -31,7 +31,9 @@ extension EnvironmentValues {
 }
 
 /// The icon column's width, scaled with the text it sits beside, and the
-/// gap after it.
+/// gap after it. A view without its own initializer holds it in an
+/// internal property: with Xcode 26's Swift, a private one makes the view's
+/// memberwise initializer private.
 struct CardIconWidth: DynamicProperty {
     @ScaledMetric(relativeTo: .subheadline) private var iconWidth = ConsoleWorkspaceCardMetrics.iconWidth
 
@@ -226,7 +228,7 @@ struct ConsoleWorkspaceCardHeader: View {
     let subtitle: String
     let checkouts: [ConsoleCheckoutSummary]
     let onToggle: () -> Void
-    private var iconColumn = CardIconWidth()
+    var iconColumn = CardIconWidth()
 
     var body: some View {
         Button(action: onToggle) {
@@ -333,7 +335,7 @@ struct ConsoleCheckoutHeader: View {
     let section: ConsoleWorkspaceSection
     let title: ConsoleCheckoutTitle
     let onToggle: (() -> Void)?
-    private var iconColumn = CardIconWidth()
+    var iconColumn = CardIconWidth()
 
     var body: some View {
         if let onToggle {

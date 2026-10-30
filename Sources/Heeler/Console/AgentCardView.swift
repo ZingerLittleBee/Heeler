@@ -32,7 +32,7 @@ struct AgentCardView: View {
     /// Where the Agent's mark goes.
     var lead = AgentCardLead.row
 
-    private var cardColumn = CardIconWidth()
+    var cardColumn = CardIconWidth()
 
     /// A list row's avatar and the gap after it.
     private static let rowAvatarDiameter: CGFloat = 34
