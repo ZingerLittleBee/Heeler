@@ -8,13 +8,58 @@ import Foundation
 /// presented the bytes (#141).
 @MainActor
 protocol TerminalByteSink: AnyObject {
+    /// Output that no feed has read modes from.
     func receive(_ data: Data)
+    /// Output whose modes are already in the feed's source.
+    func receiveTracked(_ data: Data)
+    /// The modes of the stream this sink now shows.
+    func adoptModes(_ modes: TerminalModeSource)
+}
+
+extension TerminalByteSink {
+    func receiveTracked(_ data: Data) {
+        receive(data)
+    }
+
+    func adoptModes(_ modes: TerminalModeSource) {}
+}
+
+/// The modes of one terminal stream, shared by its pipeline and the view that
+/// shows it. A view can be remade at any time; the program that set the modes
+/// is still running, so they outlive the view.
+@MainActor
+final class TerminalModeSource {
+    private(set) var tracker = TerminalModeTracker()
+    /// Alternate screen or mouse tracking flipped.
+    var onScrollModesChange: (() -> Void)?
+
+    func receive(_ data: Data) {
+        change { $0.receive(data) }
+    }
+
+    func reset() {
+        change { $0 = TerminalModeTracker() }
+    }
+
+    private func change(_ update: (inout TerminalModeTracker) -> Void) {
+        let wasAlternateScreen = tracker.isAlternateScreen
+        let didTrackMouse = tracker.tracksMouse
+        update(&tracker)
+        if tracker.isAlternateScreen != wasAlternateScreen
+            || tracker.tracksMouse != didTrackMouse
+        {
+            onScrollModesChange?()
+        }
+    }
 }
 
 /// The byte pipe between an Attach store and its terminal view. Bytes that
 /// arrive before the view exists are buffered, so opening output is never lost.
 @MainActor
 final class TerminalByteFeed {
+    /// Read from every chunk before the view receives it, including chunks no
+    /// view is around to receive.
+    let modes = TerminalModeSource()
     private weak var sink: (any TerminalByteSink)?
     /// Whether a surface has ever attached. Distinguishes "no surface yet",
     /// whose bytes are still coming, from "the surface is gone", whose bytes
@@ -27,10 +72,11 @@ final class TerminalByteFeed {
     func attach(_ sink: any TerminalByteSink) {
         self.sink = sink
         hasAttached = true
+        sink.adoptModes(modes)
         let pending = buffered
         buffered.removeAll(keepingCapacity: true)
         for data in pending {
-            sink.receive(data)
+            sink.receiveTracked(data)
         }
     }
 
@@ -43,8 +89,9 @@ final class TerminalByteFeed {
 
     func write(_ data: Data) {
         guard !data.isEmpty else { return }
+        modes.receive(data)
         if let sink {
-            sink.receive(data)
+            sink.receiveTracked(data)
             return
         }
         // Opening bytes wait for the first surface. Once a surface has gone
