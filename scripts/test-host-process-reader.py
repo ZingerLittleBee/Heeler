@@ -615,6 +615,71 @@ class MacOSReadTests(ReaderTestCase):
             self.assertEqual(facts[pid]["names"], "unavailable")
         self.for_each_shell(check)
 
+    def test_a_title_that_fills_argv_never_reads_a_set_variable_as_unset(self) -> None:
+        # Past argc lie entries the argv area no longer holds: PATH, NAMED and
+        # BLANK sit where argv strings are expected.
+        pid = self.rewritten("fill", "a", "b")
+
+        def check(shell: list[str]) -> None:
+            for asked in (["NAMED"], ["BLANK"], ["NAMED", "TMUX"]):
+                variables = self.read(shell, pids=[pid], values=asked, macOS=True)[pid]["variables"]
+                self.assertEqual(variables, {name: "unavailable" for name in asked})
+            for form in ({"names": ["NAMED", "TMUX"]}, {"prefixes": ["NAM"]}):
+                request = {"pids": [pid], "macOS": True, **form}
+                self.assertEqual(self.read(shell, **request)[pid]["names"], "unavailable")
+            variables = self.read(shell, pids=[pid], values=["TMUX", "ABSENT"], macOS=True)[pid]["variables"]
+            self.assertEqual(variables, {"TMUX": {"value": self.ENV["TMUX"]}, "ABSENT": "unset"})
+        self.for_each_shell(check)
+
+    def test_an_environment_shorter_than_argv_is_not_read_as_empty(self) -> None:
+        # Only NULs and dyld's strings follow where the environment should start.
+        pid = self.rewritten("fill", "a", "b", "c", "d", env={"ONLY": "made-up"})
+
+        def check(shell: list[str]) -> None:
+            variables = self.read(shell, pids=[pid], values=["ONLY"], macOS=True)[pid]["variables"]
+            self.assertEqual(variables, {"ONLY": "unavailable"})
+            variables = self.read(shell, pids=[pid], values=["ABSENT"], macOS=True)[pid]["variables"]
+            self.assertEqual(variables, {"ABSENT": "unset"})
+        self.for_each_shell(check)
+
+    def test_an_argument_shaped_like_an_asked_variable_is_never_read_as_one(self) -> None:
+        pid = self.rewritten("keep", "NAMED=from-argv", "IN_ARGV=argv-only")
+
+        def check(shell: list[str]) -> None:
+            for asked in ("NAMED", "IN_ARGV"):
+                request = {"pids": [pid], "values": [asked], "macOS": True}
+                raw = self.run_script(shell, **request)
+                self.assertNotIn(b"argv".hex(), raw)
+                self.assertEqual(self.parse(raw, **request)[pid]["variables"], {asked: "unavailable"})
+            request = {"pids": [pid], "names": ["IN_ARGV"], "macOS": True}
+            self.assertEqual(self.read(shell, **request)[pid]["names"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_an_argument_nobody_asked_about_changes_nothing(self) -> None:
+        pid = self.rewritten("keep", "--flag=value", "OTHER=x", "a.js")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[pid], values=["NAMED", "ABSENT"], names=["TMUX"], macOS=True)[pid]
+            self.assertEqual(facts["variables"], {"NAMED": {"value": self.ENV["NAMED"]}, "ABSENT": "unset"})
+            self.assertEqual(facts["names"], ["TMUX"])
+        self.for_each_shell(check)
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_node_with_a_title_that_fills_a_short_argv_is_not_read_as_unset(self) -> None:
+        # `n` and `x.js` take exactly the bytes `claude` needs, so no NUL is left
+        # to show that argv changed.
+        (self.proc / "x.js").write_text(
+            'process.title="claude";console.log("ready");setInterval(()=>{},60000)')
+        env = {"FIRST": "made-up", "SECOND": "made-up-too", "TMUX": "made-up-socket"}
+        pid = self.start_ready("n", "x.js", executable=shutil.which("node"), env=env, cwd=self.proc)
+
+        def check(shell: list[str]) -> None:
+            variables = self.read(shell, pids=[pid], values=["FIRST"], macOS=True)[pid]["variables"]
+            self.assertEqual(variables, {"FIRST": "unavailable"})
+            variables = self.read(shell, pids=[pid], values=["TMUX", "ABSENT"], macOS=True)[pid]["variables"]
+            self.assertEqual(variables, {"TMUX": {"value": env["TMUX"]}, "ABSENT": "unset"})
+        self.for_each_shell(check)
+
     def test_a_title_shorter_than_argv_leaves_the_environment_readable(self) -> None:
         pid = self.rewritten("claude", "a-long-argument", "another-long-argument")
 

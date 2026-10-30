@@ -217,7 +217,11 @@ enum HostProcessReader {
     ///
     /// `argc` frames an argv the process left alone. One that took a title
     /// (Node's `process.title`) has the title and NULs in the same bytes, so
-    /// the NULs past `argc` strings are skipped to find the environment.
+    /// the NULs past `argc` strings are skipped to find the environment. A title
+    /// that fills the area leaves fewer strings than `argc`, and entries sit
+    /// where arguments should. The bytes cannot tell `NAME=x` the argument from
+    /// `NAME=x` the entry, so an asked name among those strings makes the read
+    /// unavailable, and neither `unset` nor the wrong value can come of it.
     private static func macOSReads(_ request: Request) -> [String] {
         [
             "s() {",
@@ -230,17 +234,19 @@ enum HostProcessReader {
             "my %W=map{($_,1)}qw(\(request.valuesOf.joined(separator: " ")));",
             "my %N=map{($_,1)}qw(\(request.namesOf.joined(separator: " ")));",
             "my @P=qw(\(request.namesWithPrefix.joined(separator: " ")));",
+            "sub l{my $k=shift;$N{$k}||grep{index($k,$_)==0}@P}",
             "my $m=pack(\"i3\",1,49,$p);my $b=\"\\0\"x1048576;my $l=pack(\"Q\",1048576);",
             "syscall(202,$m,3,$b,$l,0,0)==0 or exit 1;",
             "my $d=substr($b,0,unpack(\"Q\",$l));my $c=unpack(\"i\",$d);",
             "my $r=substr($d,4);$r=~s/^[^\\0]*\\0+//;",
-            "my @a=split(/\\0/,$r,-1);$c++ while $c<@a&&$a[$c] eq \"\";splice(@a,0,$c);",
+            "my @a=split(/\\0/,$r,-1);$c++ while $c<@a&&$a[$c] eq \"\";",
+            "for my $x(splice(@a,0,$c)){my($k,$v)=split(/=/,$x,2);"
+                + "exit 1 if defined $v&&($W{$k}||l($k));}",
             "my $o=\"\";my $n=0;my %G;",
             "for my $x(@a){last if $x eq \"\";$n++;my($k,$v)=split(/=/,$x,2);",
             "next if !defined $v||$G{$k}++;",
             "$o.=\"V $p $k \".(length $v?unpack(\"H*\",$v):\"-\").\"\\n\" if $W{$k};",
-            "$o.=\"N $p $k\\n\" if length $v&&$k=~/\\A[A-Za-z0-9_]+\\z/"
-                + "&&($N{$k}||grep{index($k,$_)==0}@P);}",
+            "$o.=\"N $p $k\\n\" if length $v&&$k=~/\\A[A-Za-z0-9_]+\\z/&&l($k);}",
             "exit 1 if !$n;print $o,\"E $p ok\\n\";",
             "' \"$1\" </dev/null || printf 'E %s -\\n' \"$1\"",
             "}",

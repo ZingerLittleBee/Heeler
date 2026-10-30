@@ -138,5 +138,7 @@ herdr-core Hosts only.
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from
   `lsof`. macOS withholds an Apple platform binary's environment, which reads
-  as unavailable. Any of these that fails leaves the program to its candidate
-  list and the leak notice to show nothing.
+  as unavailable, and so does an asked name that a process's rewritten argv
+  (Node's `process.title`) leaves indistinguishable from an argument; a title
+  shorter than argv still reads. Any of these that fails leaves the program to
+  its candidate list and the leak notice to show nothing.
