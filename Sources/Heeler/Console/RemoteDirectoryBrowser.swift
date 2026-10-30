@@ -16,11 +16,16 @@ final class RemoteDirectoryBrowser: Identifiable {
     private(set) var currentPath: String?
     /// The current path's subdirectories, as the last listing reported.
     private(set) var directories: [String] = []
+    /// The names in `directories` that are symbolic links.
+    private(set) var symbolicLinks: Set<String> = []
     /// Whether the last listing hit the server-side entry cap.
     private(set) var truncated = false
     private(set) var isLoading = false
     /// User-facing message for the last home or listing failure.
     private(set) var errorMessage: String?
+    /// Why the owner turned down the folder it was offered, shown in place
+    /// until the browser moves to another folder.
+    var refusal: String?
     /// Narrows the current listing only; it never walks the tree.
     var filter = ""
 
@@ -40,6 +45,11 @@ final class RemoteDirectoryBrowser: Identifiable {
         return directories.filter {
             $0.localizedCaseInsensitiveContains(filter)
         }
+    }
+
+    /// Whether a listed name is a symbolic link to a directory.
+    func isSymbolicLink(_ name: String) -> Bool {
+        symbolicLinks.contains(name)
     }
 
     /// Whether Back has a parent to return to. The filesystem root has none.
@@ -110,9 +120,11 @@ final class RemoteDirectoryBrowser: Identifiable {
                 guard !Task.isCancelled else { return }
                 if self.currentPath != target {
                     self.filter = ""
+                    self.refusal = nil
                 }
                 self.currentPath = target
                 self.directories = listing.directories
+                self.symbolicLinks = listing.symbolicLinks
                 self.truncated = listing.truncated
                 self.errorMessage = nil
                 self.isLoading = false
@@ -133,5 +145,47 @@ final class RemoteDirectoryBrowser: Identifiable {
             return transportError.presentation.message
         }
         return "Loading directories failed: \(error)"
+    }
+}
+
+extension RemoteDirectoryListing {
+    /// Links one listing follows; past them it reads as truncated.
+    static let maximumFollowedLinks = 100
+
+    /// One POSIX Host directory's subdirectories and the symbolic links in
+    /// it that resolve to a directory, sorted by name, over the Host file
+    /// reads. For a folder a program reads by the path it is given, such as
+    /// a Claude Code Account, a link is as good a choice as a directory. A
+    /// link that is broken or cannot be followed is left out.
+    static func followingLinks(at path: String, over transport: any Transport) async throws -> Self {
+        let request = RemoteFileListingRequest(directory: path, kinds: [.directory, .symlink])
+        guard let listing = try await transport.listFiles(request) else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        var directories: [String] = []
+        var links: Set<String> = []
+        var truncated = listing.truncated || listing.scanIncomplete
+        var followed = 0
+        for entry in listing.entries {
+            try Task.checkCancellation()
+            switch entry.status.kind {
+            case .directory:
+                directories.append(entry.name)
+            case .symlink:
+                guard followed < maximumFollowedLinks else {
+                    truncated = true
+                    continue
+                }
+                followed += 1
+                let target = try? await transport.fileStatus(
+                    atPath: RemoteHostPath.childPath(path, name: entry.name))
+                guard target?.kind == .directory else { continue }
+                directories.append(entry.name)
+                links.insert(entry.name)
+            default:
+                continue
+            }
+        }
+        return Self(directories: directories, truncated: truncated, symbolicLinks: links)
     }
 }

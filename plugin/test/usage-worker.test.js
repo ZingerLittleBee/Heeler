@@ -42,7 +42,9 @@ readline.createInterface({input: process.stdin}).on('line', line => {
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   };
-  const cache = () => join(env.HERDR_PLUGIN_STATE_DIR, "usage", readdirSync(join(env.HERDR_PLUGIN_STATE_DIR, "usage"))[0]);
+  // claude-agents.json sits beside the cache directory.
+  const cache = () => join(env.HERDR_PLUGIN_STATE_DIR, "usage", readdirSync(join(env.HERDR_PLUGIN_STATE_DIR, "usage"), { withFileTypes: true })
+    .find(entry => entry.isDirectory()).name);
   t.after(() => {
     try {
       const lock = JSON.parse(readFileSync(join(cache(), "worker.lock"), "utf8"));
@@ -77,6 +79,8 @@ function assistant(id, tokens = 10, extra = {}) {
     requestId: `request-${id}`, message: { id, model: "claude-test", usage: { input_tokens: tokens, output_tokens: 2 } }, ...extra };
 }
 const claude = report => report.programs.find(p => p.program === "claude").tokenUsage;
+// Account directories are reported by design; no other Host path may be.
+const withoutAccounts = report => JSON.stringify({ ...report, programs: report.programs.map(({ accounts, ...program }) => program) });
 
 test("query starts a detached scan and returns Claude normalized usage", async t => {
   const f = fixture(t);
@@ -98,7 +102,7 @@ test("Claude copies, streamed snapshots, parent replays and cache splits count o
   const original = assistant("shared", 10, { timestamp });
   const larger = { ...original, message: { ...original.message, usage: { input_tokens: 10, cache_read_input_tokens: 20, cache_creation_input_tokens: 99, cache_creation: { ephemeral_5m_input_tokens: 3, ephemeral_1h_input_tokens: 7 }, output_tokens: 5, iterations: [{ type: "advisor_message", input_tokens: 5000 }], speed: "fast" } } };
   f.transcript("original.jsonl", [original, larger, original, { ...larger, sessionId: "copy" }, assistant("synthetic", 900, { message: { id: "synthetic", model: "<synthetic>", usage: { input_tokens: 900 } } })]);
-  f.transcript("session/subagents/replay.jsonl", [{ ...larger, isSidechain: true, requestId: "replay-request" }, assistant("child", 4, { isSidechain: true }), assistant("fallback", 6, { requestId: undefined, timestamp }), assistant("fallback", 6, { requestId: undefined, timestamp })], join(f.env.HOME, ".claude"));
+  f.transcript("session/subagents/replay.jsonl", [{ ...larger, isSidechain: true, requestId: "replay-request" }, assistant("child", 4, { isSidechain: true }), assistant("fallback", 6, { requestId: undefined, timestamp }), assistant("fallback", 6, { requestId: undefined, timestamp })], join(f.env.HOME, ".config", "claude"));
   f.transcript("legacy.jsonl", [assistant("legacy", 8, { message: { id: "legacy", model: "claude-test", usage: { input_tokens: 8, cache_creation_input_tokens: 9, cache_creation: {}, output_tokens: 2 } } })], join(f.env.HOME, ".config", "claude"));
   const report = await f.finish();
   assert.deepEqual(claude(report).totals.last30Days.tokens, { input: 28, cacheRead: 20, cacheWrite: 19, output: 11, reasoning: 0, total: 78 });
@@ -146,11 +150,15 @@ test("root identity stays stable when missing roots appear and old siblings are 
   utimesSync(join(abandoned, "keys.log"), old, old);
   utimesSync(abandoned, old, old);
   utimesSync(fresh, old, old);
+  // The Agent suggestions file beside the caches is not one.
+  const agents = join(f.env.HERDR_PLUGIN_STATE_DIR, "usage", "claude-agents.json");
+  writeFileSync(agents, "{}");
+  utimesSync(agents, old, old);
   f.transcript("new.jsonl", [assistant("new")]);
   f.stale();
   assert.equal(claude(await f.finish()).totals.today.tokens.total, 12);
   assert.equal(f.cache(), original);
-  assert.deepEqual(readdirSync(join(f.env.HERDR_PLUGIN_STATE_DIR, "usage")).sort(), ["zz-fresh", original.split("/").at(-1)].sort());
+  assert.deepEqual(readdirSync(join(f.env.HERDR_PLUGIN_STATE_DIR, "usage")).sort(), ["claude-agents.json", "zz-fresh", original.split("/").at(-1)].sort());
   rmSync(fresh, { recursive: true });
   assert.equal(statSync(original).mode & 0o777, 0o700);
 });
@@ -158,8 +166,8 @@ test("root identity stays stable when missing roots appear and old siblings are 
 test("symlinked Claude roots are scanned once and old records are excluded", async t => {
   const f = fixture(t);
   f.transcript("one.jsonl", [assistant("one"), assistant("old", 1000, { timestamp: new Date(Date.now() - 32 * 86_400_000).toISOString() })]);
-  mkdirSync(f.env.HOME, { recursive: true });
-  symlinkSync(f.env.CLAUDE_CONFIG_DIR, join(f.env.HOME, ".claude"));
+  mkdirSync(join(f.env.HOME, ".config"), { recursive: true });
+  symlinkSync(f.env.CLAUDE_CONFIG_DIR, join(f.env.HOME, ".config", "claude"));
   assert.equal(claude(await f.finish()).totals.last30Days.tokens.total, 12);
   const log = readFileSync(join(f.cache(), "keys.log"), "utf8");
   assert.equal(log.includes('"message-old"'), false);
@@ -210,6 +218,17 @@ test("query folds UTC quarter-hours into Nepal days and the spring DST day", asy
 
 test("the shared v1 vector comes from the worker's Claude and Codex aggregation", async t => {
   const f = fixture(t, true);
+  // An added Account without Transcripts and one whose directory is gone.
+  mkdirSync(join(f.root, "claude-2"));
+  writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1, claude: { defaultName: null, accounts: [
+    { id: "7f3c9a2e", directory: join(f.root, "claude-2"), name: "claude-2" }, { id: "c41d07b9", directory: join(f.root, "gone"), name: "work" }] } }));
+  // A running Agent's directory, also in the home listing, and one only the listing finds.
+  mkdirSync(join(f.env.HOME, ".claude-work", "projects"), { recursive: true });
+  mkdirSync(join(f.env.HOME, ".claude-personal"));
+  writeFileSync(join(f.env.HOME, ".claude-personal", ".claude.json"), "{}");
+  mkdirSync(join(f.env.HERDR_PLUGIN_STATE_DIR, "usage"), { recursive: true });
+  writeFileSync(join(f.env.HERDR_PLUGIN_STATE_DIR, "usage", "claude-agents.json"), JSON.stringify({ panes: {},
+    directories: { [join(f.env.HOME, ".claude-work")]: Date.now() } }));
   f.transcript("vector.jsonl", [assistant("vector", 1200, { message: { id: "vector", model: "claude-opus-4-5", usage: { input_tokens: 1200, cache_read_input_tokens: 830000, cache_creation_input_tokens: 41000, output_tokens: 9800 } } })]);
   const codexDirectory = join(f.env.HOME, ".codex", "sessions", "2026", "10", "23");
   mkdirSync(codexDirectory, { recursive: true });
@@ -241,6 +260,20 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   assert.deepEqual(claudeLimits.windows.map(window => [window.id, window.usedPercent, window.expired]),
     [["fiveHour", 12, false], ["sevenDayOpus", 23, false], ["sevenDaySonnet", 34, false], ["claude:model:Custom model", null, true]]);
   claudeLimits.observedAt = "2026-10-23T12:34:50.000Z";
+  const accounts = report.programs[0].accounts;
+  assert.deepEqual(accounts.map(account => [account.id, account.state, account.tokenUsage?.state]),
+    [["default", "ok", "ok"], ["7f3c9a2e", "ok", "noData"], ["c41d07b9", "missing", undefined]]);
+  assert.deepEqual(accounts[0].tokenUsage, claude(report));
+  // The program's reading is the Default Account's; the stub answers the added one alike.
+  for (const { usageLimits } of accounts.slice(0, 2)) {
+    assert.deepEqual(usageLimits, { ...claudeLimits, observedAt: usageLimits.observedAt });
+    usageLimits.observedAt = claudeLimits.observedAt;
+  }
+  for (const [index, directory] of ["/Users/u/.claude", "/Users/u/.claude-2", "/Volumes/x/.claude"].entries()) accounts[index].directory = directory;
+  const suggestions = report.programs[0].accountSuggestions;
+  assert.deepEqual(suggestions.map(suggestion => [suggestion.directory, suggestion.source]),
+    [[join(f.env.HOME, ".claude-work"), "agent"], [join(f.env.HOME, ".claude-personal"), "home"]]);
+  for (const suggestion of suggestions) suggestion.directory = `/Users/u/.${suggestion.name}`;
   const limits = report.programs[1].usageLimits;
   assert.equal(limits.source, "lastSession");
   assert.deepEqual(limits.windows.map(window => [window.id, window.durationMinutes, window.usedPercent, window.expired]),
@@ -250,8 +283,8 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   limits.windows[1].resetsAt = "2026-10-22T00:00:00.000Z";
   report.generatedAt = report.scan.coveredThrough = "2026-10-23T12:34:56.000Z";
   report.scan.coveredFrom = "2026-10-23";
-  for (const program of report.programs) {
-    for (const [index, day] of program.tokenUsage.daily.entries()) day.date = new Date(Date.parse("2026-10-23T12:00:00Z") - (29 - index) * 86_400_000).toISOString().slice(0, 10);
+  for (const { tokenUsage } of [...report.programs, ...accounts]) {
+    for (const [index, day] of (tokenUsage?.daily || []).entries()) day.date = new Date(Date.parse("2026-10-23T12:00:00Z") - (29 - index) * 86_400_000).toISOString().slice(0, 10);
   }
   const path = join(plugin, "test-vectors", "usage-v1.json");
   if (process.env.UPDATE_USAGE_VECTOR === "1") writeFileSync(path, JSON.stringify(report, null, 2) + "\n");
@@ -271,7 +304,7 @@ test("an unreadable Transcript is skipped, counted and retried without hiding it
   assert.equal(claude(report).state, "ok");
   assert.equal(claude(report).totals.today.tokens.total, 12);
   assert.equal(report.scan.unreadableFiles, 1);
-  assert.equal(JSON.stringify(report).includes(f.root), false);
+  assert.equal(withoutAccounts(report).includes(f.root), false);
   chmodSync(path, 0o600);
   f.stale();
   const retried = await f.finish();
@@ -291,7 +324,7 @@ test("a Transcript root that cannot be listed reports its program's error", asyn
   assert.equal(claude(report).reason, "Could not read the Claude Code Transcripts.");
   assert.equal(report.programs[1].tokenUsage.state, "noData");
   assert.equal(report.scan.unreadableFiles, 0);
-  assert.equal(JSON.stringify(report).includes(f.root), false);
+  assert.equal(withoutAccounts(report).includes(f.root), false);
 });
 
 test("a corrupt abandoned worker lock can be reclaimed", async t => {

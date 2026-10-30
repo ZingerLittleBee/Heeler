@@ -18,6 +18,14 @@ Entries reference the pull request that made the change.
   on the Host. (#521)
 - Check a changed host key before trusting it: the Host's page shows the new
   key and a command to copy that prints it on the Host or Jump Host. (#531)
+- Count several Claude Code sign-ins on one Host. Usage shows each Claude
+  Code Account, one config directory each, with its own Usage Limits and
+  its share of Token Usage, in the app and in the Usage Limits widgets.
+  Heeler suggests directories that running Agents or your home folder use,
+  and you can choose another; a Host has up to four Accounts. When herdr's
+  environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
+  it until you add it as an Account. Update the Heeler plugin to 0.8.0 on
+  the Host. (#529; PR #533)
 
 ### Changed
 
@@ -35,6 +43,10 @@ Entries reference the pull request that made the change.
   the keyboard on an iPhone Duo's inner display, where the Console's tab
   bar stays below them. A gap the height of the tab bar opened between
   them. (#534)
+- Keep the paste button on a terminal's keyboard row visible: it could
+  appear as an empty space when the terminal opened. In light mode it is
+  now a plain glyph like the row's other buttons, without a gray backing.
+  (#536)
 - Show a new Claude Code Agent's Chat, such as one started in a new
   worktree, as No Messages Yet until its first message, instead of
   Conversation Not Found. (#530)

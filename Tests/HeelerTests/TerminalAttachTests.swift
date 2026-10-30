@@ -828,6 +828,40 @@ struct TerminalAttachTests {
         #expect(pastes == ["provider paste"])
     }
 
+    /// The input row's paste control takes its size from the frame SwiftUI
+    /// gives it, never from its own first measurement, which came back 0×0
+    /// and left an empty slot. A later frame resizes it too.
+    @MainActor
+    @Test func pinnedPasteControlFillsTheFrameItIsGiven() throws {
+        let view = PinnedPasteView(
+            backgroundColor: .secondarySystemBackground, cornerRadius: nil, paste: { _ in })
+        let control = try #require(view.subviews.compactMap { $0 as? UIPasteControl }.first)
+
+        view.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+        view.layoutIfNeeded()
+        #expect(control.frame == view.bounds)
+
+        view.frame = CGRect(x: 0, y: 0, width: 60, height: 34)
+        view.layoutIfNeeded()
+        #expect(control.frame == view.bounds)
+    }
+
+    @MainActor
+    @Test func pinnedPasteControlLoadsTextFromItsItemProvider() async throws {
+        var pastes: [String] = []
+        let view = PinnedPasteView(
+            backgroundColor: .secondarySystemBackground, cornerRadius: nil,
+            paste: { pastes.append($0) })
+
+        view.paste(itemProviders: [NSItemProvider(object: "pinned paste" as NSString)])
+        let deadline = ContinuousClock.now + .seconds(2)
+        while pastes.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(pastes == ["pinned paste"])
+    }
+
     @MainActor
     @Test func keyboardPasteSynchronizesTheTextInputContext() {
         var events: [String] = []

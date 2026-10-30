@@ -442,6 +442,26 @@ struct HeelerPluginPresentationTests {
         #expect(requirements.allSatisfy { $0.note.contains(version) })
     }
 
+    /// Plugin 0.8.0 reports Accounts and reads the Account file the app
+    /// writes; 0.7.x does neither, so the update notice names it.
+    @Test func claudeCodeAccountsNeedPlugin080() throws {
+        #expect(HeelerPluginFeature.claudeAccounts.minimumVersion == PluginVersion(0, 8, 0))
+        #expect(!HeelerPluginFeature.claudeAccounts.isSupported(by: PluginVersion(0, 7, 1)))
+        #expect(HeelerPluginFeature.claudeAccounts.isSupported(by: PluginVersion(0, 8, 0)))
+        #expect(HeelerPluginFeature.claudeAccounts.isSupported(by: PluginVersion(0, 9, 0)))
+        let status = HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.7.1"))
+        #expect(
+            status.requirements(for: [.usage, .claudeAccounts]).map(\.note)
+                == ["Claude Code Accounts need plugin 0.8.0 or newer; this Host has 0.7.1."])
+        let notice = try #require(
+            HeelerPluginPresentation(status, session: "", bundled: PluginVersion(0, 8, 0)).notice)
+        #expect(notice.message.contains("0.7.1 → 0.8.0"))
+        #expect(notice.notes == ["Claude Code Accounts need plugin 0.8.0 or newer; this Host has 0.7.1."])
+        #expect(
+            HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.8.0"))
+                .requirements(for: HeelerPluginFeature.allCases).isEmpty)
+    }
+
     @Test func requirementNotesNeedAConfirmedVersion() {
         let old = HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.3.0"))
         #expect(old.requirements(for: [.sidebarFields]).map(\.feature) == [.sidebarFields])

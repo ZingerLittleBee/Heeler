@@ -184,7 +184,8 @@ struct AgentUsageWidgetTests {
     @Test func automaticShowsTheProgramClosestToItsLimit() {
         func limits(_ program: String, _ percent: Double?) -> UsageWidgetSnapshot.Limits {
             .init(
-                program: program, name: program, message: percent == nil ? "Usage Limits are off." : nil,
+                program: program, name: program, account: nil, accountID: nil,
+                message: percent == nil ? "Usage Limits are off." : nil,
                 isLastReading: false, source: nil, observedAt: nil,
                 windows: percent.map {
                     [.init(id: "weekly", name: "Weekly", usedPercent: $0,
@@ -199,6 +200,159 @@ struct AgentUsageWidgetTests {
         #expect(UsageLimitsPick.program(both, preferring: nil, now: Self.now)?.program == "codex")
         #expect(UsageLimitsPick.program(off, preferring: "claude", now: Self.now)?.program == "claude")
         #expect(UsageLimitsPick.program([limits("claude", nil)], preferring: nil, now: Self.now)?.program == "claude")
+    }
+
+    // MARK: Claude Code Accounts
+
+    @Test func eachClaudeCodeAccountIsAnEntryInTheAppsOrder() throws {
+        let report = try ClaudeAccountsUsageFixture.report()
+        let host = UsageWidgetSnapshot.Host(id: studio, name: "Studio Mac", report: report, readAt: Self.now)
+
+        // The Default Account, the Account file's order, then Codex, as Usage lists them.
+        #expect(host.limits.map(\.account) == ["Default", "claude-2", "work", nil])
+        // Each entry keeps its Account's report id.
+        #expect(host.limits.map(\.accountID) == ["default", "c2d7a1f0", "9be41c07", nil])
+        #expect(host.limits.map(\.id) == ["claude.default", "claude.c2d7a1f0", "claude.9be41c07", "codex"])
+        #expect(host.limits.map(\.title) == [
+            "Claude Code · Default", "Claude Code · claude-2", "Claude Code · work", "Codex",
+        ])
+        #expect(host.limits.map(\.program) == AgentUsageLimitsCard.readings(for: report).map(\.program))
+        // Each Account carries its own windows; one that is not counted says why.
+        #expect(host.limits[0].windows.map(\.usedPercent) == [34, 61])
+        #expect(host.limits[1].windows.map(\.usedPercent) == [84, 52])
+        #expect(host.limits[2].windows.isEmpty && host.limits[2].message == "Directory not found")
+        // Token Usage stays per program, the Accounts already added up.
+        #expect(host.programs.filter { $0.program == "claude" }.map(\.today.tokens) == [1_000])
+    }
+
+    /// The plugin accepts an added Account named "Default" while the
+    /// Default Account has no name of its own; the two entries stay apart.
+    @Test func accountsSharingANameStayApart() throws {
+        let report = try ClaudeAccountsUsageFixture.report([
+            .init(id: "default", daily: 100), .init(id: "d3f00d11", name: "Default", daily: 100),
+        ])
+        let host = UsageWidgetSnapshot.Host(id: studio, name: "Studio Mac", report: report, readAt: Self.now)
+        #expect(host.limits.map(\.account) == ["Default", "Default", nil])
+        #expect(host.limits.map(\.id) == ["claude.default", "claude.d3f00d11", "codex"])
+    }
+
+    @Test func aLoneAccountAnOldPluginOrLimitsOffKeepOneClaudeCodeEntry() throws {
+        let reports = [
+            try ClaudeAccountsUsageFixture.report(ClaudeAccountsUsageFixture.lone),
+            try ClaudeAccountsUsageFixture.report(nil),
+            try ClaudeAccountsUsageFixture.report(claudeLimits: false),
+        ]
+        let hosts = reports.map { UsageWidgetSnapshot.Host(id: studio, name: "Studio Mac", report: $0, readAt: Self.now) }
+
+        for host in hosts {
+            #expect(host.limits.map(\.id) == ["claude", "codex"])
+            #expect(host.limits.allSatisfy { $0.account == nil && $0.accountID == nil })
+            #expect(host.limits.first?.title == "Claude Code")
+        }
+        #expect(hosts[2].limits.first?.message == "Usage Limits are off.")
+    }
+
+    @Test func aSnapshotFromBeforeAccountsStillReads() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = UsageWidgetSnapshotStore(containerURL: directory)
+        let older = """
+            {"version": 1, "hosts": [{"id": "\(studio.uuidString)", "name": "Studio Mac", "programs": [],
+              "limits": [{"program": "claude", "name": "Claude Code", "isLastReading": false, "source": "program",
+                "windows": [{"id": "fiveHour", "name": "5-hour", "usedPercent": 62, "expired": false}]},
+                {"program": "claude", "name": "Claude Code", "account": "claude-2", "isLastReading": false,
+                 "windows": []}]}]}
+            """
+        try Data(older.utf8).write(to: directory.appendingPathComponent("usage-widgets.json"))
+
+        let limits = try #require(store.read()?.host(studio)?.limits.first)
+        #expect(limits.account == nil && limits.id == "claude" && limits.title == "Claude Code")
+        #expect(limits.windows.map(\.usedPercent) == [62])
+        // An Account from before its id was kept goes by its name.
+        let named = try #require(store.read()?.host(studio)?.limits.last)
+        #expect(named.accountID == nil && named.id == "claude.claude-2")
+
+        // Accounts round-trip through the file.
+        let snapshot = UsageWidgetSnapshot(hosts: [UsageWidgetSnapshot.Host(
+            id: studio, name: "Studio Mac", report: try ClaudeAccountsUsageFixture.report(), readAt: Self.now)])
+        store.write(snapshot)
+        #expect(store.read() == snapshot)
+        #expect(store.read()?.hosts.first?.limits.map(\.account) == ["Default", "claude-2", "work", nil])
+    }
+
+    @Test func circularAndInlineNameTheAccountClosestToALimit() {
+        let accounts = [
+            Self.limits("Default", [Self.window("fiveHour", 62, resetsIn: 2), Self.window("weeklyOpus", 71, resetsIn: 88)]),
+            Self.limits("claude-2", [Self.window("fiveHour", 84, resetsIn: 0.5), Self.window("weekly", 57, resetsIn: 113)]),
+            Self.limits("work", []),
+        ]
+        let codex = Self.limits(nil, program: "codex", [
+            Self.window("primary", 24, resetsIn: 1), Self.window("secondary", 47, resetsIn: 70),
+        ])
+
+        let closest = UsageLimitsPick.reading(accounts, now: Self.now)
+        #expect(closest?.limits.account == "claude-2" && closest?.window.id == "fiveHour")
+        // Once claude-2's 5-hour window resets, Default's weekly Opus window is the closest.
+        let later = UsageLimitsPick.reading(accounts, now: Self.now.addingTimeInterval(3_600))
+        #expect(later?.limits.account == "Default" && later?.window.id == "weeklyOpus")
+        // One program alone keeps the window that resets soonest.
+        #expect(UsageLimitsPick.reading([codex], now: Self.now)?.window.id == "primary")
+        #expect(UsageLimitsPick.reading([], now: Self.now) == nil)
+
+        // The chosen program brings every Account; Automatic picks the
+        // program of the entry closest to a limit.
+        let all = accounts + [codex]
+        #expect(UsageLimitsPick.entries(all, preferring: "claude", now: Self.now).map(\.account)
+            == ["Default", "claude-2", "work"])
+        #expect(UsageLimitsPick.entries(all, preferring: "codex", now: Self.now).map(\.id) == ["codex"])
+        #expect(UsageLimitsPick.entries(all, preferring: nil, now: Self.now).map(\.program) == ["claude", "claude", "claude"])
+        let tightCodex = Self.limits(nil, program: "codex", [Self.window("primary", 95, resetsIn: 1)])
+        #expect(UsageLimitsPick.entries(accounts + [tightCodex], preferring: nil, now: Self.now).map(\.id) == ["codex"])
+    }
+
+    @Test func theLayoutFollowsHowManyEntriesAHostHas() {
+        func entries(_ count: Int) -> [UsageWidgetSnapshot.Limits] {
+            (0..<count).map { Self.limits("account-\($0)", []) }
+        }
+
+        // Small and rectangular: one program's figure, or a line per Account.
+        #expect((0...4).map { UsageLimitsLayout.program(entries($0)) } == [.figure, .figure, .lines, .lines, .lines])
+        // Medium: two columns for up to two entries, then a line each.
+        #expect((0...5).map { UsageLimitsLayout.medium(entries($0)) }
+            == [.columns, .columns, .columns, .lines, .lines, .lines])
+        // Large: up to four windows each for up to three entries, then two each.
+        #expect((0...5).map { UsageLimitsLayout.large(entries($0)) }
+            == [.windows, .windows, .windows, .windows, .pairs, .pairs])
+    }
+
+    @Test func aPairNamesItsResetByTheTimeTodayAndByTheDayAfter() throws {
+        let noon = try #require(Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Self.now))
+        let today = noon.addingTimeInterval(1_800)
+        let later = noon.addingTimeInterval(72 * 3_600)
+        func window(_ resetsAt: Date) -> UsageWidgetSnapshot.Window {
+            .init(id: "w", name: "Weekly", usedPercent: 50, resetsAt: resetsAt, expired: false)
+        }
+
+        #expect(UsageWidgetText.resetDay(window(today), now: noon)
+            == "resets \(today.formatted(date: .omitted, time: .shortened))")
+        #expect(UsageWidgetText.resetDay(window(later), now: noon)
+            == "resets \(later.formatted(.dateTime.month(.abbreviated).day()))")
+        // An ended window has none: its row says so.
+        #expect(UsageWidgetText.resetDay(window(today), now: noon.addingTimeInterval(3_600)) == nil)
+    }
+
+    private static func window(_ id: String, _ percent: Double, resetsIn hours: Double) -> UsageWidgetSnapshot.Window {
+        .init(id: id, name: id, usedPercent: percent, resetsAt: now.addingTimeInterval(hours * 3_600), expired: false)
+    }
+
+    private static func limits(
+        _ account: String?, program: String = "claude", _ windows: [UsageWidgetSnapshot.Window]
+    ) -> UsageWidgetSnapshot.Limits {
+        .init(
+            program: program, name: AgentUsageReport.Program.displayName(for: program), account: account,
+            accountID: account, message: windows.isEmpty ? "Directory not found" : nil, isLastReading: false,
+            source: windows.isEmpty ? nil : .program, observedAt: now, windows: windows)
     }
 
     private func reading(

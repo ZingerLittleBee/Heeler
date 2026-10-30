@@ -87,6 +87,15 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
         let program: String
         let tokenUsage: TokenUsage
         var usageLimits: UsageLimits
+        /// Claude Code's Accounts, the Default Account first and the rest in
+        /// the Account file's order (plugin 0.8.0 and later). The program's
+        /// own `tokenUsage` already adds up the `ok` ones, and its
+        /// `usageLimits` are the Default Account's. nil from older plugins
+        /// and for other programs.
+        var accounts: [Account]?
+        /// Directories that look like a Claude Code Account, none counted
+        /// until the user adds it. nil where `accounts` is.
+        let accountSuggestions: [AccountSuggestion]?
 
         var displayName: String { Self.displayName(for: program) }
 
@@ -101,6 +110,111 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
         }
     }
 
+    /// One Claude Code config directory the plugin reads usage from
+    /// (ADR 0030). Only `ok` Accounts carry figures.
+    struct Account: Decodable, Equatable, Sendable, Identifiable {
+        enum State: Equatable, Sendable {
+            case ok
+            /// Its directory does not exist or is not a directory.
+            case missing
+            /// Its real path is one another Account already counts.
+            case duplicate
+            /// After three counted Accounts, in a hand-edited file.
+            case overLimit
+            /// A state a newer plugin reports; counted as not readable.
+            case other(String)
+
+            init(_ value: String) {
+                switch value {
+                case "ok": self = .ok
+                case "missing": self = .missing
+                case "duplicate": self = .duplicate
+                case "overLimit": self = .overLimit
+                default: self = .other(value)
+                }
+            }
+        }
+
+        /// `default` for the Default Account; otherwise the Account file's id.
+        let id: String
+        let isDefault: Bool
+        /// nil only for the Default Account without a name of its own.
+        let name: String?
+        /// As chosen, not resolved; the Default Account's first root.
+        let directory: String
+        let state: State
+        let tokenUsage: Program.TokenUsage?
+        var usageLimits: Program.UsageLimits?
+
+        /// The app's own label for a Default Account without a name.
+        static let defaultDisplayName = "Default"
+
+        var displayName: String { name ?? Self.defaultDisplayName }
+
+        /// Whether its Transcripts and Usage Limits count.
+        var isReadable: Bool { state == .ok }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, isDefault, name, directory, state, tokenUsage, usageLimits
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
+            name = try container.decodeIfPresent(String.self, forKey: .name)
+            directory = try container.decode(String.self, forKey: .directory)
+            state = State(try container.decode(String.self, forKey: .state))
+            tokenUsage = try container.decodeIfPresent(Program.TokenUsage.self, forKey: .tokenUsage)
+            usageLimits = try container.decodeIfPresent(Program.UsageLimits.self, forKey: .usageLimits)
+        }
+    }
+
+    /// A directory the plugin offers as an Account: from a running Agent's
+    /// environment or the home folder listing.
+    struct AccountSuggestion: Decodable, Equatable, Sendable, Identifiable {
+        enum Source: Equatable, Sendable {
+            /// `CLAUDE_CONFIG_DIR` of a running Claude Code Agent.
+            case agent
+            /// A `.claude*` directory in the home or config folder.
+            case home
+            /// A source a newer plugin reports.
+            case other(String)
+
+            init(_ value: String) {
+                switch value {
+                case "agent": self = .agent
+                case "home": self = .home
+                default: self = .other(value)
+                }
+            }
+        }
+
+        let directory: String
+        /// Its base name without the leading dot.
+        let name: String
+        let source: Source
+
+        var id: String { directory }
+
+        private enum CodingKeys: String, CodingKey {
+            case directory, name, source
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            directory = try container.decode(String.self, forKey: .directory)
+            name = try container.decode(String.self, forKey: .name)
+            source = Source(try container.decodeIfPresent(String.self, forKey: .source) ?? "")
+        }
+
+        init(directory: String, name: String, source: Source) {
+            self.directory = directory
+            self.name = name
+            self.source = source
+        }
+    }
+
     let version: Int
     let runtime: String
     let generatedAt: String?
@@ -109,6 +223,9 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
     let pricingVersion: String?
     let scan: Scan?
     var programs: [Program]?
+
+    /// Claude Code's entry, when the report has one.
+    var claudeProgram: Program? { programs?.first { $0.program == "claude" } }
 
     /// A device that opted out must never show a reading cached by another query.
     func hidingClaudeLimits() -> Self {
@@ -127,13 +244,22 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
         replacingClaudeLimits(state: "error", reason: "requestFailed")
     }
 
+    /// Every Account's limits follow the program's: the toggle covers them
+    /// all. An Account without limits (not `ok`) keeps none.
     private func replacingClaudeLimits(state: String, reason: String?) -> Self {
+        let limits = Program.UsageLimits(state: state, reason: reason, source: nil,
+            observedAt: nil, retryAt: nil, plan: nil, windows: nil)
         var report = self
         report.programs = programs?.map { program in
             guard program.program == "claude" else { return program }
             var replaced = program
-            replaced.usageLimits = .init(state: state, reason: reason, source: nil,
-                observedAt: nil, retryAt: nil, plan: nil, windows: nil)
+            replaced.usageLimits = limits
+            replaced.accounts = program.accounts?.map { account in
+                guard account.isReadable || account.usageLimits != nil else { return account }
+                var replaced = account
+                replaced.usageLimits = limits
+                return replaced
+            }
             return replaced
         }
         return report

@@ -465,6 +465,100 @@ struct AgentUsageStoreTests {
 }
 
 
+@MainActor
+@Suite("Claude Code Accounts report")
+struct ClaudeAccountsReportTests {
+    private func vector(_ change: (inout [String: Any]) throws -> Void) throws -> AgentUsageReport {
+        var object = try #require(JSONSerialization.jsonObject(with: AgentUsageFixture.data()) as? [String: Any])
+        var programs = try #require(object["programs"] as? [[String: Any]])
+        try change(&programs[0])
+        object["programs"] = programs
+        return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+    }
+
+    @Test func theSharedVectorCarriesEveryAccountInOrder() throws {
+        let report = try AgentUsageReport.decode(AgentUsageFixture.data())
+        let claude = try #require(report.claudeProgram)
+        let accounts = try #require(claude.accounts)
+        #expect(accounts.map(\.id) == ["default", "7f3c9a2e", "c41d07b9"])
+        #expect(accounts.map(\.displayName) == ["Default", "claude-2", "work"])
+        #expect(accounts.map(\.isDefault) == [true, false, false])
+        #expect(accounts.map(\.state) == [.ok, .ok, .missing])
+        #expect(accounts[0].name == nil)
+        #expect(accounts[0].directory == "/Users/u/.claude")
+        #expect(accounts[0].tokenUsage == claude.tokenUsage)
+        #expect(accounts[0].usageLimits == claude.usageLimits)
+        #expect(accounts[1].tokenUsage?.state == "noData")
+        #expect(accounts[1].usageLimits?.windows?.first?.id == "fiveHour")
+        #expect(!accounts[2].isReadable)
+        #expect(accounts[2].tokenUsage == nil)
+        #expect(accounts[2].usageLimits == nil)
+        #expect(claude.accountSuggestions == [
+            .init(directory: "/Users/u/.claude-work", name: "claude-work", source: .agent),
+            .init(directory: "/Users/u/.claude-personal", name: "claude-personal", source: .home),
+        ])
+        let codex = try #require(report.programs?.last)
+        #expect(codex.accounts == nil)
+        #expect(codex.accountSuggestions == nil)
+    }
+
+    @Test func aReportFromAPluginBeforeAccountsStillDecodes() throws {
+        let report = try AgentUsageFixture.tokenReport(refreshing: false)
+        #expect(report.claudeProgram?.accounts == nil)
+        #expect(report.claudeProgram?.accountSuggestions == nil)
+        #expect(report.hidingClaudeLimits().claudeProgram?.accounts == nil)
+    }
+
+    /// A newer plugin's states, sources and fields must not cost the report.
+    @Test func unknownStatesSourcesAndFieldsDecode() throws {
+        let report = try vector { claude in
+            var accounts = try #require(claude["accounts"] as? [[String: Any]])
+            accounts[2]["state"] = "archived"
+            accounts[2]["futureField"] = ["anything": true]
+            claude["accounts"] = accounts
+            var suggestions = try #require(claude["accountSuggestions"] as? [[String: Any]])
+            suggestions[0]["source"] = "cloud"
+            suggestions[1]["seenAt"] = "2026-10-29T00:00:00Z"
+            claude["accountSuggestions"] = suggestions
+        }
+        let claude = try #require(report.claudeProgram)
+        #expect(claude.accounts?[2].state == .other("archived"))
+        #expect(claude.accounts?[2].isReadable == false)
+        #expect(claude.accountSuggestions?.map(\.source) == [.other("cloud"), .home])
+    }
+
+    @Test func everyAccountsLimitsFollowTheToggle() throws {
+        let report = try ClaudeUsageFixture.report()
+        let cases: [(AgentUsageReport, String, String?)] = [
+            (report.hidingClaudeLimits(), "disabled", nil),
+            (report.readingClaudeLimits(), "unavailable", "notReadYet"),
+            (report.failedClaudeLimits(), "error", "requestFailed"),
+        ]
+        for (replaced, state, reason) in cases {
+            let accounts = try #require(replaced.claudeProgram?.accounts)
+            for account in accounts.prefix(2) {
+                #expect(account.usageLimits?.state == state)
+                #expect(account.usageLimits?.reason == reason)
+                #expect(account.usageLimits?.windows == nil)
+                #expect(account.tokenUsage == report.claudeProgram?.accounts?.first { $0.id == account.id }?.tokenUsage)
+            }
+            // A missing Account has no limits to replace.
+            #expect(accounts[2].usageLimits == nil)
+        }
+    }
+
+    @Test func aDeviceThatOptedOutSeesNoAccountsLimits() async throws {
+        let name = "claude-accounts-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let report = try ClaudeUsageFixture.report()
+        let store = AgentUsageStore(hostID: UUID(), defaults: defaults) { _, _ in .available(report) }
+        await store.refresh()
+        guard case .available(let shown) = store.state else { Issue.record("Missing report"); return }
+        #expect(shown.claudeProgram?.accounts?.compactMap(\.usageLimits?.state) == ["disabled", "disabled"])
+    }
+}
+
 enum AgentUsageFixture {
     private final class BundleLocator {}
 
@@ -524,11 +618,19 @@ enum AgentUsageFixture {
         return try AgentUsageReport.decode(Data(json.utf8))
     }
 
+    /// As a query without `--claude-limits` answers: every Claude Code
+    /// Account's limits are off too.
     static func report(refreshing: Bool) throws -> AgentUsageReport {
         var object = try #require(JSONSerialization.jsonObject(with: data()) as? [String: Any])
         object["refreshing"] = refreshing
         var programs = try #require(object["programs"] as? [[String: Any]])
         programs[0]["usageLimits"] = ["state": "disabled"]
+        if var accounts = programs[0]["accounts"] as? [[String: Any]] {
+            for index in accounts.indices where accounts[index]["usageLimits"] != nil {
+                accounts[index]["usageLimits"] = ["state": "disabled"]
+            }
+            programs[0]["accounts"] = accounts
+        }
         object["programs"] = programs
         return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
     }
@@ -627,7 +729,7 @@ struct ClaudeUsagePreferenceTests {
 
 #if DEBUG && targetEnvironment(simulator)
     @MainActor
-    @Suite("Demo Usage")
+    @Suite("Demo Usage", .serialized)
     struct DemoUsageTests {
         @Test func demoHostsShowSampleUsageInsteadOfAPlatformNote() async throws {
             let host = try #require(DemoScreenshotFixture.hosts.first)
@@ -661,6 +763,93 @@ struct ClaudeUsagePreferenceTests {
                         == daily.reduce(0) { $0 + $1.tokens.total })
                 }
             }
+        }
+
+        /// The studio Host shows several Accounts and suggestions; the build
+        /// Host keeps one Account, as a Host that never added any.
+        @Test func theStudioHostHasAccountsAndTheBuildHostOne() async throws {
+            let studio = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.studioHostID })
+            let state = try await AgentUsageStore.read(
+                over: try DemoScreenshotFixture.transport(for: studio), timeZone: "UTC", claudeLimits: true)
+            guard case .available(let report) = state else { Issue.record("No studio report"); return }
+            let claude = try #require(report.claudeProgram)
+            let accounts = try #require(claude.accounts)
+            #expect(accounts.map(\.displayName) == ["Default", "claude-2", "work"])
+            #expect(accounts.map(\.state) == [.ok, .ok, .missing])
+            #expect(accounts.map(\.directory) == ["/Users/developer/.claude", "/Users/developer/.claude-2", "/Volumes/T7/.claude"])
+            #expect(accounts[1].usageLimits?.windows?.first { $0.id == "fiveHour" }?.usedPercent == 84)
+            #expect(claude.accountSuggestions?.map(\.name) == ["claude-team", "claude-work"])
+            #expect(claude.accountSuggestions?.map(\.source) == [.agent, .home])
+            // The program's figures add up its readable Accounts.
+            let readable = accounts.compactMap { $0.tokenUsage?.totals?.last30Days.tokens.total }
+            #expect(claude.tokenUsage.totals?.last30Days.tokens.total == readable.reduce(0, +))
+
+            let build = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.buildHostID })
+            let buildState = try await AgentUsageStore.read(
+                over: try DemoScreenshotFixture.transport(for: build), timeZone: "UTC", claudeLimits: false)
+            guard case .available(let buildReport) = buildState else { Issue.record("No build report"); return }
+            #expect(buildReport.claudeProgram?.accounts?.map(\.displayName) == ["Default"])
+            #expect(buildReport.claudeProgram?.accountSuggestions == [])
+        }
+
+        /// The demo keeps the studio Host's Account file in memory, so the
+        /// Accounts sheet's changes show up in its next read.
+        @Test func theStudioHostsAccountFileCanBeEdited() async throws {
+            let studio = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.studioHostID })
+            let transport = try DemoScreenshotFixture.transport(for: studio)
+            let store = AgentUsageStore(
+                hostID: studio.id, transports: ScriptedTransportProvider(transports: [studio.id: transport]))
+            await store.refresh()
+            #expect(store.supportsClaudeAccounts)
+            guard case .available(let report) = store.state,
+                let team = report.claudeProgram?.accountSuggestions?.first(where: { $0.name == "claude-team" })
+            else { Issue.record("No suggestion to add"); return }
+            #expect(await store.addAccount(team))
+            guard case .available(let added) = store.state else { Issue.record("No report"); return }
+            #expect(added.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work", "claude-team"])
+            #expect(added.claudeProgram?.accounts?.last?.state == .ok)
+            #expect(added.claudeProgram?.accountSuggestions?.map(\.name) == ["claude-work"])
+            // A directory the demo Host does not hold is refused.
+            #expect(await store.addAccount(directory: "/Users/developer/Downloads") == .refused(.notClaudeDirectory))
+            let teamAccount = try #require(added.claudeProgram?.accounts?.last)
+            #expect(await store.removeAccount(teamAccount))
+            guard case .available(let restored) = store.state else { Issue.record("No report"); return }
+            #expect(restored.claudeProgram?.accounts?.map(\.displayName) == ["Default", "claude-2", "work"])
+            // Removed, it is not offered again at once.
+            #expect(restored.claudeProgram?.accountSuggestions?.map(\.name) == ["claude-work"])
+            #expect(store.accountChangeFailure == nil)
+        }
+
+        /// The demo's other Claude Code directories are the studio Host's:
+        /// the build Host's browser neither lists nor accepts them, nor the
+        /// one holding Chat's sample transcripts, rather than add one it
+        /// then reports as not found.
+        @Test func onlyTheStudioHostHoldsTheDemoAccountDirectories() async throws {
+            let build = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.buildHostID })
+            let transport = try DemoScreenshotFixture.transport(for: build)
+            let store = AgentUsageStore(
+                hostID: build.id, transports: ScriptedTransportProvider(transports: [build.id: transport]))
+            await store.refresh()
+            #expect(store.supportsClaudeAccounts)
+            let directory = "\(DemoChatSample.home)/.claude-2"
+            #expect(await store.addAccount(directory: directory) == .refused(.notClaudeDirectory))
+            let home = try await transport.listFiles(RemoteFileListingRequest(directory: DemoChatSample.home))
+            #expect(home?.entries.contains { $0.name == ".claude-2" } != true)
+            let chat = "\(DemoChatSample.home)/.claude"
+            #expect(await store.addAccount(directory: chat) == .refused(.notClaudeDirectory))
+            // Chat still finds and reads its transcripts there.
+            let projects = try await transport.listFiles(
+                RemoteFileListingRequest(directory: chat + "/projects", kinds: [.directory]))
+            #expect(projects?.entries.isEmpty == false)
+            for path in DemoChatSample.files.keys {
+                #expect(try await transport.fileStatus(atPath: path)?.kind == .regular, "\(path)")
+            }
+
+            let studio = try #require(DemoScreenshotFixture.hosts.first { $0.id == DemoScreenshotFixture.studioHostID })
+            let studioTransport = try DemoScreenshotFixture.transport(for: studio)
+            #expect(try await studioTransport.fileStatus(atPath: directory + "/.claude.json")?.kind == .regular)
+            let studioHome = try await studioTransport.listFiles(RemoteFileListingRequest(directory: DemoChatSample.home))
+            #expect(studioHome?.entries.contains { $0.name == ".claude-2" } == true)
         }
     }
 #endif
