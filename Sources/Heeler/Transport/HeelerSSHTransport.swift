@@ -3549,6 +3549,17 @@ actor HeelerSSHTransport: Transport {
     }
 }
 
+// MARK: - What Server Kind detection uses of this connection
+extension HeelerSSHTransport: ServerKindDetectionConnection {
+    /// One bounded exec, cut off on the Host if a read hangs. Native Windows has
+    /// no probe yet, so the POSIX script does not go there.
+    func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "Server Kind detection", deadline: .seconds(16), remoteSeconds: 12,
+            timeoutMarkerPrefix: "__HEELER_KIND_DETECTION_TIMEOUT_", timedOut: .timedOut)
+    }
+}
+
 // MARK: - What the framed herdr-core transport uses of this connection
 extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// One bounded exec, cut off on the Host if a `--version` hangs.
