@@ -394,7 +394,8 @@ struct ShellTerminalView: View {
     /// A terminal pushed over the Console list goes back the system's way,
     /// following the finger. One opened from an Agent stands in for that
     /// Agent on the same screen, so a system swipe there would leave the
-    /// Agent too; it keeps the edge gesture that returns to it.
+    /// Agent too; it keeps the edge gesture that returns to it. Beside a
+    /// sidebar neither applies: the split view's swipe brings the list out.
     private var usesSystemBackSwipe: Bool {
         showsBackButton && !backReturnsToAgent
     }
