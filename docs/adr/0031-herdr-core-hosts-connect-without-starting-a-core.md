@@ -29,20 +29,27 @@ stays as it is.
   over SSH exec, because a pipe cannot be forwarded. As in ADR 0018, the
   Windows path is a platform branch, never a fallback. `<s>`, and the
   `core.lock` the app reads on either platform, follow the core session the
-  Host stores: hc's `HC_SESSION`, `default` unless the user names another.
+  Host stores: hc's `HC_SESSION`, `default` unless the user names another,
+  trimmed and refused as hc refuses it. Where no `core.lock` exists yet, the
+  app tries the session's default socket path.
 - The app requires `hello`'s generation 1 and the features `framed`, `attach`,
   `events` and `status`. A core without them reads as unsupported and the Host
   says to run `hc update` on that machine, as does a request answered with
   `unknown_method`. The version Heeler was tested with is advisory, as for
-  Herdr TUI. The app offers no update of its own.
+  Herdr TUI. The app offers no update of its own. Errors are told apart by
+  `error.data.kind`, since every domain error shares one code.
 - Connecting never starts a core. A Host with no core running reads as not
   running. On Linux the user may start one with a confirmed action that runs
-  `herdr-core server start` through the user's interactive login shell, so
-  the core and every Terminal it starts get the environment of the user's own
-  terminal; the confirmation says that the start also tries to turn on
-  systemd linger for the user. macOS and Windows Hosts only say how to start
-  it on that machine: a core started over SSH runs outside the user's desktop
-  login session.
+  the probed `herdr-core` by its absolute path through the user's interactive
+  login shell (`$SHELL -lic`), so the core and every Terminal it starts get the
+  environment of the user's own terminal; the confirmation says that the start
+  also tries to turn on systemd linger for the user when it is off. macOS and
+  Windows Hosts only say how to start it on that machine: a core started over
+  SSH runs outside the user's desktop login session.
+- The app never runs `hc` by that name. The installer links `hc` only when no
+  other program owns the name, so the probe looks for `herdr-core`: on the
+  exec's `PATH`, then at the installer's `~/.local/bin/herdr-core`, which a
+  plain SSH exec's `PATH` lacks.
 
 ## Why
 
@@ -75,7 +82,9 @@ not.
 ## Evidence
 
 Source-reviewed against herdr-core v0.1.13 (`88fe4e7`). This is source
-evidence, not runtime acceptance from the app.
+evidence, not runtime acceptance from the app. The 2026-10-30 live observations
+on a Debian 13 VM in [herdr compatibility](../agents/herdr-compatibility.md)
+confirm or refine these points with test clients, not the app.
 
 - [cli.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/cli.rs#L808-L809)
   `connect` uses `connect_or_start`;
@@ -115,14 +124,16 @@ evidence, not runtime acceptance from the app.
   exits for `--version` while parsing arguments, before any path or
   connection, so `--version` is a safe install probe.
 - [server.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/server.rs#L92-L121)
-  keeps the core's identity in `core.json` until its state is wiped or the disk
-  turns up under another machine id;
+  keeps the core's identity in `core.json` until its state is wiped or the
+  disk turns up under another machine id;
   [api.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/api.rs#L168-L184)
   returns it as `core` in the `hello` reply, beside the generation and the
-  [feature list](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/api.rs#L15-L16).
+  [feature
+  list](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/api.rs#L15-L16).
   [paths.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/paths.rs#L83-L84)
-  names the session `default` when `HC_SESSION` is unset or blank. The terminal registry, saved in
-  `terminals.json`, keeps its `next_id` across restarts
+  names the session `default` when `HC_SESSION` is unset or blank. The
+  terminal registry, saved in `terminals.json`, keeps its `next_id` across
+  restarts
   ([terminals.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/terminals.rs#L202-L208)).
 
 ## Considered options
@@ -137,13 +148,27 @@ evidence, not runtime acceptance from the app.
 
 - Add Host and preflight need a read-only exec probe (`command -v`,
   `--version`, read `core.lock`) to tell not installed, not running, and a
-  wrong path apart; a refused channel alone cannot.
+  wrong path apart; a refused channel alone cannot. SSH reports a missing
+  socket, a refused one and a forbidden path with the same channel error.
 - `core.lock` outlives its core. Its stale path refuses the channel and reads
   as not running, never as another core.
+- A core that dies while it still holds Terminals comes back about three
+  seconds later: the core's terminal holder restarts it, with the environment
+  of whoever started the first one. The app retries briefly before it shows
+  not running or offers Start, and a core can return without anyone
+  connecting.
+- A start through an interactive shell over an exec without a terminal writes
+  job-control warnings, and the user's rc files may print, so the action
+  judges by exit status and the last line of output. `server start` against a
+  running core changes nothing, which the reported uptime shows; the action
+  promises the user's environment only for a fresh start.
+- One SSH session's forwarding survives core restarts: each connection is a
+  new channel.
 - On Windows a core that stops between the pipe check and `connect` is
   started by `connect`; the window is one round trip.
 - The state directory follows `XDG_STATE_HOME`. An override set only in an
-  interactive shell's rc file is invisible to the probe (unverified).
+  interactive shell's rc file is invisible to the probe, and a core started
+  under it has another `core.id` behind the same socket path.
 - The app's `hello` request never carries a `core` field, which would register
   the connection as a peer core
   ([remote.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/remote.rs#L589-L613)).

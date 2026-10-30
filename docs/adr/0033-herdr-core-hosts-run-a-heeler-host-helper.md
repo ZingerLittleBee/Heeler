@@ -25,12 +25,22 @@ that Heeler can read from outside the process.
   replaces it only with a newer version, or when it is missing or damaged,
   never over a newer one another device installed, as ADR 0027 does for the
   plugin. It runs on the Node.js the Host already has, found as for the
-  plugin. A user service does not start with the core's environment, so for
-  Usage the Helper reads the variables that locate Accounts, such as
-  `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core process's environment,
-  only those by name.
+  plugin and named by its absolute path in the service, since a systemd user
+  unit's `PATH` holds only system directories. The service restarts whenever
+  it stops, not only on failure. A user service does not start with the
+  core's environment, so for Usage the Helper reads the variables that locate
+  Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core
+  process's environment, only those by name.
+- On Linux the Helper needs systemd linger, as the core does, to run while
+  nobody is logged in. The install screen checks it and offers to turn it on.
 - The Helper connects to the core's socket directly, never through `hc`, so it
-  never starts a core. While no core runs it waits for one.
+  never starts a core. While no core runs it waits for one. It finds the
+  socket as the app does (ADR 0031): the session's `core.lock`, else the
+  session's default socket path, because `core.lock` appears only once a core
+  has started for that session. On each connection it asks `server.status`
+  for the core's pid before it subscribes, and it rebuilds its inventory from
+  the subscription's snapshot, since event numbers restart with every core
+  process.
 - It subscribes to status and turn events and sends Agent Notifications for
   Blocked, Error and Done, and Live Activity updates, through the Push Relay,
   to the devices whose Notification Registrations it holds, encrypted with
@@ -38,12 +48,19 @@ that Heeler can read from outside the process.
   Notification Registrations live in the Helper's own directory, one entry
   per device for the core session the Host targets, never in the plugin's
   registration file.
-- Done is per device there as in the app. When the app opens an Agent it
-  writes a small seen mark (device, Terminal address, turn) into the Helper's
-  directory over SFTP. The Helper counts a turn that ended after that
-  device's last mark as Done for that device, in notifications and Live
-  Activity updates alike. A device's marks go with its registration, and all
-  of them with the Helper.
+- A turn's end comes from the status word, as in the app: a program that
+  reports done ends a turn when it reports done, and one that never does
+  (OpenCode, or a program whose `app` Heeler does not know) when it goes
+  from Working to Idle. Turn events cannot tell it: the turn count also moves
+  when an Agent enters Blocked or Error, or when Codex passes through Working
+  as it starts, and a move from Blocked straight to Done brings no turn event.
+- Done is per device there as in the app. When the app opens an Agent, or
+  has one open as it ends a turn, it writes a small seen mark (device, core
+  id, Terminal address, turn, status word) into the Helper's directory over
+  SFTP. The Helper counts an Agent as Done for a device when it ended a turn
+  after that device's last mark and still reports idle or done, in
+  notifications and Live Activity updates alike. A device's marks go with its
+  registration, and all of them with the Helper.
 - With the Helper come Heeler's extensions for Pi and Oh My Pi, placed in the
   folders those programs load extensions from on their own
   (`~/.pi/agent/extensions`, and `~/.omp/agent/extensions` for each Oh My Pi
@@ -51,8 +68,9 @@ that Heeler can read from outside the process.
   a herdr-core Terminal (no `HC_TERMINAL_ID`); inside one it reports its
   session as a `heeler.*` label on its own Terminal, through one JSON-RPC line
   to `$HC_TERMINAL_SOCKET`, and Pi's also reports Program Status for Pi
-  releases before 1.1.0. The install screen lists every file, and removing
-  the Helper removes them.
+  releases before 1.1.0. The install screen lists every file. Removing the
+  Helper removes them, its service and its directory, and any folder the
+  install created that is then empty.
 - A harness configuration file changes only when the user accepts that one
   change, shown exactly, and every such change can be undone. There are two:
   - OpenCode, offered from Chat when an OpenCode Agent's session cannot be
@@ -94,6 +112,19 @@ Hosts are unchanged.
 
 - A Host without Node.js gets no Helper; the app says so where the user turns
   on notifications.
+- Without linger, systemd stops the Helper and the core about ten seconds
+  after the user's last login ends, so the Helper runs only while some login,
+  Heeler's own included, is open. Debian 13 lets a user turn linger on
+  without a password; other distributions can ask for an administrator.
+- The app runs `systemctl --user` over SSH exec with `XDG_RUNTIME_DIR` set
+  itself, since a Host without `pam_systemd` leaves it unset. Its health
+  check reads the unit's state, result and restart count, because a Helper
+  that keeps failing at start, for example after Node.js moved, ends up
+  failed for good.
+- The Helper computes the default socket path from its own environment. A
+  core started under another `XDG_STATE_HOME` keeps its `core.lock` where the
+  Helper does not look and has another core id behind the same socket path,
+  so seen marks written for the earlier core do not apply to it.
 - Opening an Agent on a Host with the Helper costs one small SFTP write. A mark
   that fails to write leaves that Agent counted as Done in the next push.
 - Pairing still requires Herdr TUI; herdr-core Hosts are added by hand.

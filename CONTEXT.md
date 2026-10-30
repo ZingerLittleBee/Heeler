@@ -131,7 +131,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn since this device last opened it and now reports idle or done; opening it clears Done on this device only. Blocked means the agent is waiting for human input; Error, herdr-core only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn since this device last opened it and now reports idle or done; opening it clears Done on this device only. A program that reports done finishes a turn by reporting it; one that never does, such as OpenCode, finishes a turn by going from working to idle. Blocked means the agent is waiting for human input; Error, herdr-core only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:

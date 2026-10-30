@@ -18,32 +18,45 @@ never show or send into a conversation it has guessed.
   takes no part.
 - A check starts from the Terminal's foreground process and its descendants
   that share the Terminal's `HC_SCOPE`, so an npm or Node launcher leads to
-  the real agent process. It reads only the variables it names from a process
-  environment, on the Host, because environments hold secrets.
+  the real agent process. It skips Codex's shared daemon
+  (`app-server --managed-daemon`), which keeps the `HC_SCOPE` of the Terminal
+  that started it while serving every window. It reads only the variables it
+  names from a process environment, on the Host, because environments hold
+  secrets.
 - Evidence by program, without installing anything:
 
   | Program | Evidence |
   | --- | --- |
-  | Claude Code | `<config dir>/sessions/<pid>.json`, read by name, whose process start matches |
+  | Claude Code | `<config dir>/sessions/<pid>.json`, read by name once Claude Code reaches its prompt, whose process start matches |
   | Codex | in embedded mode only, the rollout the process holds open, one root thread by `session_meta` |
   | Oh My Pi | Heeler's extension (ADR 0033); without it, `<agent dir>/terminal-sessions/<tty>`, confirmed by the process's own session lock or open file |
   | Grok Build | the one `active_sessions.json` row whose pid and process start match |
-  | Pi, OpenCode | none; Heeler's extension or, on the user's word, plugin (ADR 0033) |
+  | OpenCode | from 2.x, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
+  | Pi | none; Heeler's extension (ADR 0033) |
 
+- Claude Code's registry entry appears only at its prompt. Before that, during
+  sign-in or the trust dialog, its sessions folder holds a `<pid>.<hash>.key`
+  file instead, which Heeler never reads. The entry follows `/clear` and
+  `/resume`. Its process start is, on Linux, the start time from
+  `/proc/<pid>/stat` in clock ticks since boot. The entry's own status word
+  cannot tell Done or Error from Idle, so it is no Program Status.
 - A `heeler.*` label is a hint. Chat adopts it only when its pid and process
   start match the resolved agent process, and clears it when it can.
 - An Agent Heeler starts carries its session from the start: `--session-id`
-  for Claude Code and Pi, `-s` for Grok Build and OpenCode, and `--no-daemon`
-  for Codex, which cannot be given an id; Oh My Pi relies on its extension.
-  The launch also passes `TERM_PROGRAM=ghostty`, the terminal the core answers
-  queries as: Grok Build asks for Program Status only in a terminal it
-  recognizes, and the core's own default for a request without one could
-  change. Some variables break session records or Program Status when the
-  core leaks them (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `HERDR_*`,
-  `TMUX`, `STY`, `ZELLIJ`, `CURSOR_TRACE_ID`, `VSCODE_GIT_ASKPASS_MAIN`,
-  `CODEX_THREAD_ID`, `OMPCODE`). The launch blanks none of them until a test
-  shows the program they affect reads a blank value as unset; until then the
-  leak is reported as below.
+  for Claude Code and Pi, `-s` for Grok Build, `-s ses…` for OpenCode 2.x, and
+  `--no-daemon` for Codex, which cannot be given an id. Oh My Pi relies on its
+  extension. OpenCode 1.x's `-s` only continues an existing session, so an
+  OpenCode 1.x Agent starts without one.
+- Some variables break session records or Program Status when the core leaks
+  them (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY`,
+  `CLAUDECODE`, `HERDR_*`, `TMUX`, `STY`, `ZELLIJ`, `CURSOR_TRACE_ID`,
+  `VSCODE_GIT_ASKPASS_MAIN`, `CODEX_THREAD_ID`, `OMPCODE`,
+  `PI_PROGRAM_STATUS`). A launch request cannot unset a variable, only set it
+  empty, so the launch blanks those a test showed the affected program reads
+  blank as unset: `CLAUDE_CODE_CHILD_SESSION` and
+  `CLAUDE_CODE_SKIP_PROMPT_HISTORY` for Claude Code, and `TMUX`, `STY` and
+  `ZELLIJ` for Grok Build, which turns Program Status off inside a terminal
+  multiplexer. Every other leak is reported as below.
 - Without exact evidence Chat says it cannot tell the session, and offers the
   fix: install the Helper, accept the one configuration edit, or reopen Codex
   with `codex resume --no-daemon`, picking the session in Codex's own list. If
@@ -64,12 +77,15 @@ never show or send into a conversation it has guessed.
   only reopening with `--no-daemon` offers Chat.
 - When the core's own environment carries such leaked variables, the Host
   says what they break and that restarting the core from the user's own
-  terminal fixes it. Heeler does not restart it. A Claude Code session that
-  keeps no Transcript, because of `CLAUDE_CODE_CHILD_SESSION` or
-  `CLAUDE_CODE_SKIP_PROMPT_HISTORY`, says so instead of waiting for a file.
-  `HERDR_*` in a herdr-core Terminal is never trusted.
+  terminal fixes it. Heeler does not restart it. A Claude Code Agent started
+  with `CLAUDE_CODE_CHILD_SESSION` keeps neither a registry entry nor a
+  Transcript, and one with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` keeps no
+  Transcript; Chat says so instead of waiting for a file. `HERDR_*` in a
+  herdr-core Terminal is never trusted.
 - An Agent with no Program Status shows Unknown and says which release
-  reports one. No status is inferred from the screen.
+  reports one ([herdr compatibility](../agents/herdr-compatibility.md)). A
+  Terminal that has reported but holds no state, as Claude Code leaves it
+  before sign-in, has none. No status is inferred from the screen.
 - Chat covers the six programs it reads today. On native Windows herdr-core
   Hosts it opens for Claude Code and Grok Build (session registry plus the
   Windows process tree and creation times) and Pi and Oh My Pi (their
@@ -96,12 +112,22 @@ herdr-core Hosts only.
   plugin cannot notice an in-process `/new`. Send still reaches whatever
   session the program shows, but Chat keeps showing the old one until a guard
   catches it.
+- Ending the Terminal that started Codex's shared daemon ends the daemon, and
+  every other default-mode Codex on the same `CODEX_HOME` loses its backend
+  while it still reports Idle.
+- Oh My Pi reports Idle while its sign-in waits, so that sign-in shows as
+  Idle, not Blocked.
+- Oh My Pi's breadcrumb names a session file before the file exists and
+  outlives the process on a reused terminal name, so without the extension an
+  Oh My Pi Agent binds only once its first message opens the file.
 - A Transcript locator takes the config root from the Agent's own process
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.
   The two differ when the user's shell rc sets the variable.
-- Unverified: Program Status from each harness inside a herdr-core terminal;
-  Claude Code's registry after `/clear` and `/resume`; Grok Build's `pid_start`
-  encoding and its leader mode; whether Oh My Pi's security scan rewrites the
-  breadcrumb; `HC_TERMINAL_SOCKET`'s form on Windows; and whether Windows
+- Unverified: the rollout Codex holds open in embedded mode, Pi's and Oh My
+  Pi's session files and Grok Build's `active_sessions.json` rows, all of which
+  need a signed-in model; Grok Build's `pid_start` encoding and its leader
+  mode; whether Oh My Pi's security scan rewrites the breadcrumb; OpenCode
+  2.x at runtime, read only from source; Claude Code's process start on
+  macOS; `HC_TERMINAL_SOCKET`'s form on Windows; and whether Windows
   Transcripts are read over SFTP or the core's `file.read`.

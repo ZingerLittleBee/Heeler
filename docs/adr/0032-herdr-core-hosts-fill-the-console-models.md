@@ -46,11 +46,12 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   when the app cannot be reached. Derived Workspaces have no name to rename,
   and Rename Agent is not offered.
 - A Terminal is an Agent while its foreground program is a known agent
-  program, or a program that has reported a Program Status of its own. A
-  Program Status counts only while it can be tied to the current foreground
-  program: its `app` names that program, or it was reported after the
-  foreground last changed. A shell or any other program in the foreground
-  ends the Agent, whatever was reported last.
+  program, or, while the Terminal has a Program Status whose `app` is missing
+  or unknown to Heeler, any program other than a shell. A Program Status with
+  a known `app` counts only while that `app` names the foreground program. A
+  shell in the foreground ends the Agent, whatever was reported last. The
+  foreground is read after unwrapping: the desktop app's wrapper forms, `sh -c
+  <command line>`, and interpreters running an agent's script.
 - Heeler starts an Agent the way the desktop app does: a kept Terminal whose
   argv is the user's shell running the agent and then staying,
   `$SHELL -ic '"$@"; exec "$0" -i' $SHELL <agent> ...`, or for fish
@@ -77,16 +78,20 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
 The desktop app's wrapper shell outlives the agent, and the core keeps the
 agent's last Program Status while the Terminal runs on, so a reported status
 alone keeps an exited Agent, or the program that replaced it, looking like the
-Agent that left. Launching through the user's interactive shell matches the
-desktop app, which a Terminal Heeler starts may end up shown in, and avoids
-copying the SSH session's PATH over a core that the desktop app started with
-the user's login PATH.
+Agent that left. Nothing ties a report to a process: a report carries no pid or
+time, and a program's first report arrives before the foreground sample that
+names it, so the rule matches names, not order. Launching through the user's
+interactive shell matches the desktop app, which a Terminal Heeler starts may
+end up shown in, and avoids copying the SSH session's PATH over a core that the
+desktop app started with the user's login PATH.
 
 ## Evidence
 
 Source-reviewed against herdr-core v0.1.13 (`88fe4e7`) and the Herdr desktop
 app v0.1.9 (`3e32d75`). This is source evidence, not runtime acceptance from
-the app.
+the app. The 2026-10-30 live observations on a Debian 13 VM in [herdr
+compatibility](../agents/herdr-compatibility.md) confirm or refine these points
+with test clients, not the app.
 
 - [defaults/AGENTS.md](https://github.com/herdrdev/herdr-app/blob/v0.1.9/defaults/AGENTS.md#L131-L139)
   and [src/SKILL.md](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/SKILL.md#L63-L66)
@@ -148,11 +153,32 @@ the app.
   and go. A kept Terminal that restarts takes its last directory as its new
   launch directory, so the device remembers the directory it first saw a
   Terminal launched in and keeps it in the same derived Workspace.
-- Recognizing an Agent needs both wrapper forms, interpreters running an
-  agent's script, and a table mapping reported `app` names to Heeler's agent
-  kinds.
+- Recognizing an Agent works on the foreground's arguments, not the launch
+  arguments, and needs a table from reported `app` names (`claude-code`,
+  `codex`, `opencode`, `pi`, `omp`, `grok-build`) to Heeler's agent kinds.
+  Under fish the agent runs in the wrapper's process group, so the foreground
+  stays the wrapper and the agent's exit shows only as new arguments on the
+  same pid. Debian's `/bin/sh` runs a Template's command as a child, so a
+  Template Agent's foreground is `sh -c` for its whole life.
+- An Agent whose `app` Heeler does not know keeps its status when the user
+  runs another program in the shell it left, until something reports again.
 - A kept Terminal between losing its program and restarting has no foreground;
-  it shows as restarting and is no Agent.
+  it shows as restarting and is no Agent. The core announces the loss without
+  clearing the foreground, so the app clears it, and reattaches after the
+  restart, since the loss closes the attach. A kept Terminal whose program
+  exits with a code, including a user's `exit`, ends for good; only a lost
+  program restarts.
+- A Template launch returns once the program first reports, which can take
+  30 seconds, and the record carries the Template's submit and stop keys.
+- A subagent started with `hc run` gets the core's environment, not its
+  parent shell's.
+- Any process on the core can rewrite any Terminal's labels, desktop labels
+  included, so labels place Terminals but prove nothing.
+- On a host whose zsh has no startup files, a zsh wrapper launch stops at
+  zsh's new-user wizard until someone answers it in the terminal.
+- The desktop app prefers a reported `app` over the foreground
+  ([window.rs](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/window.rs#L4363-L4367)),
+  so it can show an exited Agent's status that Heeler hides.
 - Renaming over SSH depends on `herdr-app do` reaching the desktop app's
   socket from an SSH session (unverified).
 - On Windows a Staged Image or File larger than 8 MiB is refused before it is
