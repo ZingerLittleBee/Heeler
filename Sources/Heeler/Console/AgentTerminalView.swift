@@ -1929,7 +1929,7 @@ struct AgentTerminalView: View {
 }
 
 /// Preserve edge-swipe navigation after the title bar is removed. Beside
-/// an iPad's sidebar the swipe brings the sidebar out instead of going back.
+/// a regular-width sidebar the swipe brings it out instead of going back.
 struct AgentEdgeBackGesture: View {
     let dismiss: @MainActor () -> Void
 

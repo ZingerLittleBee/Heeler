@@ -787,7 +787,7 @@ struct ShellTerminalKeysDock: View {
     }
 }
 
-/// Goes back on an edge swipe, or beside an iPad's sidebar brings the
+/// Goes back on an edge swipe, or beside a regular-width sidebar brings the
 /// sidebar out instead.
 private struct ShellTerminalEdgeBackGesture: View {
     let isEnabled: Bool
