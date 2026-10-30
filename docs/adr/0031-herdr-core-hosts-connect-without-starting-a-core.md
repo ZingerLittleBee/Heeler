@@ -147,6 +147,11 @@ confirm or refine these points with test clients, not the app.
 
 ## Consequences
 
+- An older Heeler build cannot switch a Host either. herdr-core Hosts persist in
+  a second defaults catalog of the same shape, which builds before this change
+  never read, so such a build can neither show one nor re-save it as Herdr TUI.
+  The merged Host order is stored with that catalog; ids it lacks follow in the
+  shared catalog's order. A Host found in both loads as herdr-core.
 - Add Host and preflight need a read-only exec probe (`command -v`,
   `--version`, read `core.lock`) to tell not installed, not running, and a
   wrong path apart; a refused channel alone cannot. SSH reports a missing

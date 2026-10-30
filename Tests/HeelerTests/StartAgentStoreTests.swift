@@ -1135,7 +1135,7 @@ struct StartAgentStoreTests {
     @Test(arguments: [false, true])
     func coreLaunchDropsHiddenLabelsButKeepsAgentNameAndArguments(newWorkspace: Bool) async {
         let legacy = Host.fixture()
-        let core = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let recorder = StartRecorder()
         let store = makeStore(
             hosts: [legacy, core],
@@ -1166,7 +1166,7 @@ struct StartAgentStoreTests {
     }
 
     @Test func coreLaunchNeverDispatchesALegacyWorktreeCreation() async {
-        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let recorder = StartRecorder()
         let store = makeStore(
             hosts: [host],

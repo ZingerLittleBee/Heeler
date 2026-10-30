@@ -274,6 +274,20 @@ struct PairingScanStoreTests {
         #expect(await env.connector.capturedCodes.first?.endpoint == expected)
     }
 
+    @Test func aPairingCodeAddsAHerdrTUIHost() async throws {
+        for code in [Self.bootstrapVector.code, Self.endpointVector.code] {
+            let env = try makeEnv()
+            defer { env.cleanup() }
+            env.store.submit(scannedCode: code)
+
+            await env.store.pair()
+
+            let paired = try #require(env.store.pairedHost)
+            #expect(paired.serverKind == .herdrTUI)
+            #expect(env.catalog.hosts == [paired])
+        }
+    }
+
     @Test func pairingAgainAfterSuccessIsIgnored() async throws {
         let env = try makeEnv()
         defer { env.cleanup() }

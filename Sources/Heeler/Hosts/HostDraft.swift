@@ -71,7 +71,9 @@ struct HostDraft: Equatable, Sendable {
     var name = ""
     var username = ""
     var authMethod: Host.AuthMethod = .deviceKey
-    var backend: HostBackend = .herdr
+    /// Set from the Host being edited or duplicated. Nothing in the form
+    /// changes it (ADR 0031).
+    private(set) var serverKind: ServerKind = .herdrTUI
     /// Blank means "keep the stored password" when editing.
     var password = ""
     var sessionName = ""
@@ -90,7 +92,7 @@ struct HostDraft: Equatable, Sendable {
         name = host.name
         username = host.username
         authMethod = host.authMethod
-        backend = host.backend
+        serverKind = host.serverKind
         sessionName = host.sessionName
         herdrEndpoint = host.herdrEndpoint
         routes = host.routes.map(HostRouteDraft.init(route:))
@@ -214,7 +216,7 @@ struct HostDraft: Equatable, Sendable {
         return !routes.isEmpty
             && routes.allSatisfy(\.isValid)
             && !username.trimmingCharacters(in: .whitespaces).isEmpty
-            && (herdrEndpoint == nil ? backend : .herdr).isValidSessionName(sessionName)
+            && (herdrEndpoint == nil ? serverKind : .herdrTUI).isValidSessionName(sessionName)
     }
 
     /// Form-level validity including credential intent. A blank password can
@@ -239,8 +241,10 @@ struct HostDraft: Equatable, Sendable {
             name: name.trimmingCharacters(in: .whitespaces),
             username: username.trimmingCharacters(in: .whitespaces),
             authMethod: authMethod,
-            backend: backend,
-            sessionName: sessionName.trimmingCharacters(in: .whitespaces),
+            serverKind: serverKind,
+            sessionName: serverKind == .herdrCore
+                ? HerdrCoreSessionName.normalized(sessionName)
+                : sessionName.trimmingCharacters(in: .whitespaces),
             herdrEndpoint: herdrEndpoint,
             routes: routes)
     }

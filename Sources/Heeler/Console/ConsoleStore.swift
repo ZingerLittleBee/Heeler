@@ -185,8 +185,7 @@ final class ConsoleStore {
             chatPrefetchRetries = chatPrefetchRetries.filter { $0.key.hostID != id }
             chatCacheValidatedGenerations[id] = nil
         }
-        for (id, session) in composerSessions where incoming[id.hostID] == nil
-            || incoming[id.hostID]?.backend != projections[id.hostID]?.host.backend {
+        for (id, session) in composerSessions where incoming[id.hostID] == nil {
             session.leaveStaging()
             composerSessions[id] = nil
         }
@@ -609,7 +608,6 @@ final class ConsoleStore {
         let hostID = agent.hostID
         let composer = AgentComposerStore(
             target: agent.agent.paneID,
-            requiresTerminalConfirmation: projections[hostID]?.host.backend == .herdrCore,
             initialStatus: agent.agent.status,
             statusUpdates: agentStatusUpdates(for: agent.id)
         ) { [weak self] params in
@@ -1155,7 +1153,7 @@ final class ConsoleStore {
         for projection in current
         where projection.status == .connected && !projection.isAwaitingSnapshot {
             let hostID = projection.host.id
-            guard projection.host.backend == .herdr,
+            guard projection.host.serverKind == .herdrTUI,
                 hostPlatformGenerations[hostID] != projection.transportGeneration,
                 projection.agentsByPane.values.contains(where: {
                     AgentChatAvailability.mayOfferChat(for: $0.agent, hasAdapter: { chatAdapter($0) != nil })
@@ -1288,7 +1286,7 @@ final class ConsoleStore {
     private var savedChatAgents: [(agent: ConsoleAgent, readiness: HostReadiness)] {
         let live = Set(agents.map(\.id))
         return projections.values.flatMap { projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
-            guard projection.host.backend == .herdr,
+            guard projection.host.serverKind == .herdrTUI,
                 projection.status != .connected || projection.isAwaitingSnapshot else { return [] }
             let saved = cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
             guard !saved.isEmpty else { return [] }
@@ -1312,7 +1310,7 @@ final class ConsoleStore {
     /// Core's terminal inventory does not carry legacy management or exact
     /// conversation-session metadata. Keep those actions off its Agent surface.
     func usesLegacyHerdr(on hostID: Host.ID) -> Bool {
-        projections[hostID]?.host.backend != .herdrCore
+        projections[hostID]?.host.serverKind != .herdrCore
     }
 
     func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {
@@ -1331,7 +1329,7 @@ final class ConsoleStore {
     private func reconcileChatCache() {
         for projection in projections.values {
             let host = projection.host
-            guard host.backend == .herdr, isActive,
+            guard host.serverKind == .herdrTUI, isActive,
                 projection.status == .connected, !projection.isAwaitingSnapshot else {
                 chatPrefetchTasks[host.id]?.cancel()
                 chatPrefetchTasks[host.id] = nil

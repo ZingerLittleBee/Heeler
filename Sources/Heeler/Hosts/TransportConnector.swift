@@ -55,9 +55,8 @@ extension SSHTransportSettings {
             hostKeyPolicy: hostKeyPolicy,
             hostKeyTrust: .host(host.id),
             socket: host.socketLocation)
-        backend = host.backend
-        let session = host.sessionName.trimmingCharacters(in: .whitespaces)
-        coreSessionName = session.isEmpty ? "default" : session
+        serverKind = host.serverKind
+        coreSessionName = HerdrCoreSessionName.normalized(host.sessionName)
         // A Pairing Code v2 endpoint (ADR 0023) replaces the `herdr` on the
         // SSH PATH for every herdr exec; `socket` already names its socket.
         if let endpoint = host.herdrEndpoint,
