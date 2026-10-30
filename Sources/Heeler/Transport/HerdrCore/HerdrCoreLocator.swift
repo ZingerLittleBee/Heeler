@@ -50,7 +50,8 @@ enum HerdrCoreLocator {
     }
 
     /// Everything from the Host is a quoted word or a variable, so a session
-    /// name can never become shell syntax. `nonce` frames the output.
+    /// name can never become shell syntax. `nonce` frames the output, whose
+    /// begin marker starts its own line after whatever the user's shell printed.
     static func script(session: String, nonce: String) throws -> Data {
         guard HerdrCoreSessionName.isValid(session) else { throw SessionRefused(session: session) }
         let name = HerdrCoreSessionName.normalized(session)
@@ -59,7 +60,7 @@ enum HerdrCoreLocator {
             __session=\(quoted(name))
             __nl='
             '
-            printf '%s begin\\n' \(quoted(nonce))
+            printf '\\n%s begin\\n' \(quoted(nonce))
             printf 'kernel %s\\n' "$(uname -s 2>/dev/null)"
             __probe() {
                 case "$1" in /*) ;; *) return 1 ;; esac
@@ -100,16 +101,21 @@ enum HerdrCoreLocator {
             """.utf8)
     }
 
+    /// Reads only what lies between the markers: the user's shell runs its
+    /// startup and logout files around the script, and they may print anything,
+    /// in any encoding. A read that lacks either marker was cut short.
     static func parse(stdout: Data, nonce: String) throws -> Location {
-        guard let text = String(data: stdout, encoding: .utf8) else { throw MalformedOutput() }
-        var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        if lines.last == "" { lines.removeLast() }
-        guard lines.count >= 2, lines.first == "\(nonce) begin", lines.last == "\(nonce) end" else {
-            throw MalformedOutput()
+        let rawLines = stdout.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false)
+        guard let begin = rawLines.firstIndex(where: { $0.elementsEqual("\(nonce) begin".utf8) }),
+            let end = rawLines.lastIndex(where: { $0.elementsEqual("\(nonce) end".utf8) }), begin < end
+        else { throw MalformedOutput() }
+        let lines = try rawLines[(begin + 1)..<end].map { line in
+            guard let text = String(data: line, encoding: .utf8) else { throw MalformedOutput() }
+            return text
         }
 
         var fields: [String: String] = [:]
-        for line in lines.dropFirst().dropLast() {
+        for line in lines {
             let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
             let key = String(parts[0])
             guard ["kernel", "executable", "version", "default", "lock", "socket-file", "shell"].contains(key),

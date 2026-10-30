@@ -307,6 +307,54 @@ class SocketTests(LocatorTestCase):
         self.assertEqual(parsed.returncode, 66)
 
 
+class StartupOutputTests(LocatorTestCase):
+    """The exec's command line is parsed by the user's shell, which reads its
+    startup files first, so whatever they print comes before the script's output."""
+
+    BANNERS = {
+        "a line": b"Welcome to box\n",
+        "no newline": b"Welcome to box",
+        "not UTF-8": b"\xff\xfe caf\xe9\n",
+        "not UTF-8 and no newline": b"caf\xe9",
+    }
+
+    def startup_shells(self) -> list[tuple[list[str], str]]:
+        found = []
+        bash = shutil.which("bash")
+        if bash:
+            found.append(([bash, "--login", "-c", "/bin/sh -s"], ".bash_profile"))
+        zsh = shutil.which("zsh")
+        if zsh:
+            found.append(([zsh, "-c", "/bin/sh -s"], ".zshenv"))
+        if not found:
+            self.skipTest("needs bash or zsh")
+        return found
+
+    def test_a_startup_file_that_prints_leaves_the_read_intact(self) -> None:
+        program = self.installed()
+        socket_path = self.root / "elsewhere.sock"
+        self.bound_socket(socket_path)
+        self.lock("work", str(socket_path))
+        for shell, startup_file in self.startup_shells():
+            for name, banner in self.BANNERS.items():
+                with self.subTest(shell=shell[0], banner=name):
+                    (self.home / startup_file).write_bytes(
+                        b"printf '%b' '" + b"".join(b"\\0%03o" % byte for byte in banner) + b"'\n")
+                    output = self.run_script(shell)
+                    self.assertTrue(output.startswith(banner), output)
+                    location = self.locate(shell)
+                    self.assertEqual(location["executable"], str(program))
+                    self.assertEqual(location["socket"], str(socket_path))
+                    self.assertEqual(location["source"], "lock")
+                    self.assertTrue(location["socketFile"])
+
+    def test_a_startup_file_that_prints_leaves_not_installed_readable(self) -> None:
+        for shell, startup_file in self.startup_shells():
+            with self.subTest(shell=shell[0]):
+                (self.home / startup_file).write_text("echo Welcome to box\n")
+                self.assertIsNone(self.locate(shell)["executable"])
+
+
 class ShellTests(LocatorTestCase):
     def test_the_login_shell_comes_from_the_account_database(self) -> None:
         for shell in shells():

@@ -69,6 +69,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection {
     nonisolated let routeID: UUID? = nil
     private let locator: [String]
     private let locatorStatus: Int32
+    private let shellBanner: Data
     private let channel: Channel
 
     /// Everything that happened, in order.
@@ -76,9 +77,14 @@ actor ScriptedCoreHost: HerdrCoreHostConnection {
     private(set) var scripts: [String] = []
     private(set) var socket: FakeCoreSocket?
 
-    init(locator: [String] = locatorLines(), locatorStatus: Int32 = 0, channel: Channel) {
+    /// `shellBanner` is what the user's shell prints before it runs the script.
+    init(
+        locator: [String] = locatorLines(), locatorStatus: Int32 = 0, shellBanner: Data = Data(),
+        channel: Channel
+    ) {
         self.locator = locator
         self.locatorStatus = locatorStatus
+        self.shellBanner = shellBanner
         self.channel = channel
     }
 
@@ -86,7 +92,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection {
         log.append("locator")
         scripts.append(String(decoding: script, as: UTF8.self))
         let output = (["\(Self.nonce) begin"] + locator + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
-        return GitExecResult(stdout: Data(output.utf8), stderr: Data(), exitStatus: locatorStatus)
+        return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: locatorStatus)
     }
 
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {

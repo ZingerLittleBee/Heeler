@@ -240,6 +240,53 @@ import Testing
         #expect(await host.scripts.first?.hasPrefix("__session='phone work'\n") == true)
     }
 
+    @Test func aShellThatPrintsAtStartupStillConnects() async throws {
+        let host = ScriptedCoreHost(
+            shellBanner: Data("Welcome to box\n".utf8) + Data([0xFF, 0xFE, 0x0A]),
+            channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = host.transport()
+
+        #expect(try await transport.hello().coreID == "c1")
+        #expect(await host.log == ["locator", "open \(ScriptedCoreHost.socketPath)"])
+        try await transport.close()
+    }
+
+    @Test func aShellThatPrintsAtStartupStillReadsEachConnectState() async {
+        let banner = Data("Welcome to box\n".utf8)
+        let notInstalled = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(executable: nil), shellBanner: banner, channel: .refused)
+        await #expect(throws: TransportError.herdrCoreNotInstalled) {
+            try await notInstalled.transport().hello()
+        }
+
+        let notRunning = ScriptedCoreHost(shellBanner: banner, channel: .refused)
+        await #expect {
+            try await notRunning.transport().hello()
+        } throws: { error in
+            if case TransportError.herdrCoreNotRunning = error { return true }
+            return false
+        }
+
+        let tooLong = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(defaultPath: "/" + String(repeating: "a", count: 200)),
+            shellBanner: banner, channel: .refused)
+        await #expect {
+            try await tooLong.transport().hello()
+        } throws: { error in
+            if case TransportError.herdrCoreSocketPathTooLong = error { return true }
+            return false
+        }
+
+        let oldCore = ScriptedCoreHost(
+            shellBanner: banner, channel: .answersHello(ScriptedCoreHost.helloReply(features: ["framed"])))
+        await #expect {
+            try await oldCore.transport().hello()
+        } throws: { error in
+            if case TransportError.herdrCoreUpdateRequired = error { return true }
+            return false
+        }
+    }
+
     @Test func aLocatorThatFailsOrPrintsNonsenseIsMalformed() async {
         let failed = ScriptedCoreHost(locatorStatus: 127, channel: .refused)
         await #expect {

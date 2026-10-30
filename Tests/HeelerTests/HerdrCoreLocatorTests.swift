@@ -35,6 +35,10 @@ private struct SessionNameVectors: Decodable {
         return try HerdrCoreLocator.parse(stdout: Data(output.utf8), nonce: Self.nonce)
     }
 
+    /// The bytes the script prints, its leading newline included.
+    private static let scriptOutput = Data(
+        "\n\(nonce) begin\nkernel Linux\ndefault /tmp/s.sock\nsocket-file 0\n\(nonce) end\n".utf8)
+
     // MARK: The script
 
     @Test func theScriptRunsNoHCAndExportsNoPATH() throws {
@@ -187,7 +191,80 @@ private struct SessionNameVectors: Decodable {
         #expect(unknown.loginShell == nil)
     }
 
+    // MARK: What the shell prints around the script
+
+    @Test func theBeginMarkerStartsItsOwnLineAfterAnythingTheShellPrinted() throws {
+        #expect(try script().contains(#"printf '\n%s begin\n'"#))
+    }
+
+    @Test(arguments: [
+        Data("Welcome to box\n".utf8),
+        Data("Welcome to box".utf8),
+        Data("line one\n\nkernel Darwin\nsocket-file 1\n".utf8),
+        Data([0xFF, 0xFE, 0x0A]),
+        Data([0x63, 0x61, 0x66, 0xE9]),
+    ])
+    func whatTheShellPrintsBeforeTheScriptIsNotRead(banner: Data) throws {
+        let location = try HerdrCoreLocator.parse(stdout: banner + Self.scriptOutput, nonce: Self.nonce)
+        #expect(location.socketPath == "/tmp/s.sock")
+        #expect(location.socketPathLimit == 107)
+        #expect(!location.socketFilePresent)
+        #expect(location.executablePath == nil)
+    }
+
+    @Test func whatTheShellPrintsAfterTheScriptIsNotRead() throws {
+        for trailer in [Data("logout\nsocket-file 1\n".utf8), Data([0xFF, 0xFE])] {
+            let location = try HerdrCoreLocator.parse(stdout: Self.scriptOutput + trailer, nonce: Self.nonce)
+            #expect(!location.socketFilePresent)
+        }
+    }
+
     // MARK: Output it cannot trust
+
+    @Test func aCutOutputStillFailsTheReadAfterTheShellPrinted() {
+        let banner = Data("Welcome to box\n".utf8)
+        // The final newline is not part of the end marker.
+        for length in 0..<(Self.scriptOutput.count - 1) {
+            #expect(throws: HerdrCoreLocator.MalformedOutput.self, "\(length)") {
+                try HerdrCoreLocator.parse(
+                    stdout: banner + Self.scriptOutput.prefix(length), nonce: Self.nonce)
+            }
+        }
+    }
+
+    @Test func markersOutsideTheirOwnLineOrFromAnotherReadDoNotFrameTheOutput() {
+        let fields = "kernel Linux\ndefault /tmp/s.sock\nsocket-file 0\n"
+        for output in [
+            "Welcome \(Self.nonce) begin\n\(fields)\(Self.nonce) end\n",
+            "\(Self.nonce) begin\n\(fields)bye \(Self.nonce) end\n",
+            "fedcba9876543210 begin\n\(fields)fedcba9876543210 end\n",
+            "\(Self.nonce) end\n\(fields)\(Self.nonce) begin\n",
+        ] {
+            #expect(throws: HerdrCoreLocator.MalformedOutput.self, "\(output)") {
+                try HerdrCoreLocator.parse(stdout: Data(output.utf8), nonce: Self.nonce)
+            }
+        }
+    }
+
+    @Test func aSecondFrameInsideTheOutputFailsTheRead() {
+        let fields = "kernel Linux\ndefault /tmp/s.sock\nsocket-file 0\n"
+        let begin = "\(Self.nonce) begin\n"
+        let end = "\(Self.nonce) end\n"
+        for output in ["\(begin)\(begin)\(fields)\(end)", "\(begin)\(fields)\(end)\(end)"] {
+            #expect(throws: HerdrCoreLocator.MalformedOutput.self, "\(output)") {
+                try HerdrCoreLocator.parse(stdout: Data(output.utf8), nonce: Self.nonce)
+            }
+        }
+    }
+
+    @Test func bytesThatAreNotTextBetweenTheMarkersFailTheRead() {
+        var output = Data("\(Self.nonce) begin\nkernel Linux\ndefault /tmp/".utf8)
+        output.append(contentsOf: [0xFF, 0xFE])
+        output.append(Data("\nsocket-file 0\n\(Self.nonce) end\n".utf8))
+        #expect(throws: HerdrCoreLocator.MalformedOutput.self) {
+            try HerdrCoreLocator.parse(stdout: output, nonce: Self.nonce)
+        }
+    }
 
     @Test func outputThatIsNotTheScriptsFailsTheRead() throws {
         let good = [
