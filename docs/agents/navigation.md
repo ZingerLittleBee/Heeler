@@ -234,7 +234,7 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
 
 | Area | Entry and verification |
 | --- | --- |
-| herdr plugin | [plugin/README.md](../../plugin/README.md), `plugin/herdr-plugin.toml`, `npm test` in `plugin/`; `make plugin` ([publish-plugin.sh](../../scripts/publish-plugin.sh), `bash scripts/test-publish-plugin.sh`) publishes it to the `plugin` branch ([ADR 0026](../adr/0026-plugin-distribution-branch.md)) |
+| herdr plugin | [plugin/README.md](../../plugin/README.md), `plugin/herdr-plugin.toml`, `npm test` in `plugin/`; `make plugin` ([publish-plugin.sh](../../scripts/publish-plugin.sh), `bash scripts/test-publish-plugin.sh`) publishes it to the `plugin` branch ([ADR 0026](../adr/0026-plugin-distribution-branch.md)). `plugin/src/delivery/` is shared with the Host Helper ([ADR 0033](../adr/0033-herdr-core-hosts-run-a-heeler-host-helper.md)), so it imports only relative paths and Node built-ins and reads no `HERDR_*` variable; `plugin/helper/` stays off the branch |
 | Push Relay | [relay/README.md](../../relay/README.md), `npm test` in `relay/` |
 | Marketing site | [landing](../../landing), its `package.json` scripts, [landing CI](../../.github/workflows/landing.yml) |
 | Docs site | [docs-site/README.md](../../docs-site/README.md) publishes selected `docs/guides/` (English and `docs/guides/zh/`); `pnpm test`, `pnpm run check`, `pnpm run build`, `pnpm run check:links` in `docs-site/`, [docs site CI](../../.github/workflows/docs-site.yml) |
