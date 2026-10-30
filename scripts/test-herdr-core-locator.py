@@ -77,6 +77,9 @@ def shells() -> list[list[str]]:
 class LocatorTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        # HerdrCoreLocatorTests covers the script's text and parsing on any machine.
+        if shutil.which("swiftc") is None:
+            raise unittest.SkipTest("needs swiftc to build the locator")
         cls.build = Path(tempfile.mkdtemp(prefix="heeler-core-locator-build-"))
         (cls.build / "main.swift").write_text(MAIN)
         cls.binary = cls.build / "locator"
