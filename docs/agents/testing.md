@@ -170,7 +170,9 @@ from compilation, an executed suite, or native UI acceptance.
 
 ### herdr-core backend
 
-A herdr-core Host connects over one framed link: a read-only locator exec, then a direct-streamlocal channel under the events slot. Nothing starts a core (ADR 0031).
+A herdr-core Host connects over one framed link: a read-only locator exec, then a direct-streamlocal channel under the events slot. Only the user's confirmed Start starts a core, on Linux (ADR 0031).
+
+`HerdrCoreStartTests` covers the Start command and the parse of its result, `HostOnboardingCoreStartTests` covers what a Host offers and what the scripted exec sees, and `scripts/test-herdr-core-start.py` (in `make test-tools`) runs the command through real bash, zsh and fish against a fake core. The fixture is macOS, so a Simulator reads the macOS instructions. To drive the Linux Start against it, put a `uname` that prints `Linux` in the fixture root's `bin`, whose path comes first on an exec: the confirmed Start then runs a real core in the fixture, through the account's login shell over its sshd. This proves the UI and the command, not Linux; `AllowStreamLocalForwarding no` in the fixture's `sshd.conf`, with a HUP, gives the refused channel.
 
 `ServerKindDetectionTests` covers the detection script and what it parses, and `scripts/test-server-kind-detection.py` (in `make test-tools`) runs that script through a real shell. `HostOnboardingStoreTests` covers the confirmation through `ScriptedCoreHost`, whose `herdrRead` scripts the Herdr TUI half. Launch with `--offer-herdr-core-hosts` to offer herdr-core on a Simulator: `xcrun simctl launch <udid> dev.bybee.heeler --offer-herdr-core-hosts`. The fixture's `herdr` tripwire logs detection's one read, `session list --json`, so its `legacyLog` is not empty after a detection; `hc` stays uncalled.
 
