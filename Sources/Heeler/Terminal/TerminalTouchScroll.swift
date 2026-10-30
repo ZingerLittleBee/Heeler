@@ -140,7 +140,12 @@ struct TerminalModeTracker {
 
             let terminator = pending[terminatorIndex]
             let modeBytes = pending[Self.privateModePrefix.count..<terminatorIndex]
-            if let modeList = String(bytes: modeBytes, encoding: .ascii) {
+            // Only set and reset change a mode. Any other final byte ends a
+            // different request about those modes: a query (`$p`), a save
+            // (`s`) or a restore (`r`).
+            if terminator == 0x68 || terminator == 0x6C,
+                let modeList = String(bytes: modeBytes, encoding: .ascii)
+            {
                 let enabled = terminator == 0x68
                 for mode in modeList.split(separator: ";").compactMap({ Int($0) }) {
                     update(mode: mode, enabled: enabled)
