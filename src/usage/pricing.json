@@ -1,7 +1,7 @@
 {
-  "pricingVersion": "2026-10-23",
+  "pricingVersion": "2026-10-30",
   "source": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
-  "sourceSHA256": "4c46c08d56cc2b81bd37d0d44cbbd8d3fdbcdd9459b7238772a96a5064d81b95",
+  "sourceSHA256": "57b13f6a6971d32d740d997d2307380a0f525aa839e746eade4d35a23671d159",
   "license": "MIT",
   "models": {
     "claude-fable-5": {
@@ -1356,6 +1356,47 @@
           "output": 0.0000075,
           "cacheRead": 1e-7,
           "cacheWrite": 0.0000025
+        }
+      }
+    },
+    "gpt-6.1-terra": {
+      "base": {
+        "input": 0.000001,
+        "output": 0.000005,
+        "cacheRead": 5e-8,
+        "cacheWrite": 0.00000125
+      },
+      "fast": {
+        "input": 0.000002,
+        "output": 0.00001,
+        "cacheRead": 1e-7,
+        "cacheWrite": 0.0000025
+      },
+      "flex": {
+        "input": 5e-7,
+        "output": 0.0000025,
+        "cacheRead": 2.5e-8,
+        "cacheWrite": 6.25e-7
+      },
+      "longContext": {
+        "threshold": 272000,
+        "base": {
+          "input": 0.000002,
+          "output": 0.0000075,
+          "cacheRead": 1e-7,
+          "cacheWrite": 0.0000025
+        },
+        "fast": {
+          "input": 0.000004,
+          "output": 0.000015,
+          "cacheRead": 2e-7,
+          "cacheWrite": 0.000005
+        },
+        "flex": {
+          "input": 0.000001,
+          "output": 0.00000375,
+          "cacheRead": 5e-8,
+          "cacheWrite": 0.00000125
         }
       }
     },

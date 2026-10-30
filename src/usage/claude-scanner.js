@@ -52,7 +52,12 @@ export async function* transcriptEntries(path, onChunk = () => {}, start = 0) {
   yield* jsonLines(createReadStream(path, { start }), start, 0, onChunk);
 }
 const count = value => Number.isFinite(value) && value >= 0 ? value : 0;
-export function claudeContribution(line, path, cutoff, sessionDirectory) {
+/**
+ * One record's contribution to its Account. Keys and groups carry the
+ * Account, so deduplication runs within one Account: copies of a Transcript in
+ * two Accounts count in each, as they would on their own.
+ */
+export function claudeContribution(line, path, account, cutoff, sessionDirectory) {
   if (line?.type !== "assistant" || !line.message?.usage || line.message.model === "<synthetic>" || typeof line.message.id !== "string") return null;
   const timestamp = typeof line.timestamp === "string" ? Date.parse(line.timestamp) : NaN;
   if (!Number.isFinite(timestamp) || timestamp < cutoff) return null;
@@ -69,9 +74,9 @@ export function claudeContribution(line, path, cutoff, sessionDirectory) {
   const project = components[components.lastIndexOf("projects") + 1] || "unknown";
   const directory = typeof line.cwd === "string" ? line.cwd : sessionDirectory || project.replaceAll("-", "/");
   return {
-    key: JSON.stringify(requestId ? ["claude", line.message.id, requestId] : ["claude", line.message.id, sessionId, line.timestamp]),
-    group: JSON.stringify([line.message.id, sessionId]), sessionId, sidechain: line.isSidechain === true,
-    program: "claude", model: typeof line.message.model === "string" ? line.message.model : "unknown", directory,
+    key: JSON.stringify(requestId ? ["claude", account, line.message.id, requestId] : ["claude", account, line.message.id, sessionId, line.timestamp]),
+    group: JSON.stringify([account, line.message.id, sessionId]), sessionId, sidechain: line.isSidechain === true,
+    program: "claude", account, model: typeof line.message.model === "string" ? line.message.model : "unknown", directory,
     timestamp, bucket: Math.floor(timestamp / 900_000) * 900_000, tokens, write5m, write1h, speed: usage.speed === "fast" ? "fast" : "standard",
   };
 }

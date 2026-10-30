@@ -145,6 +145,7 @@ herdr plugin action invoke heeler.pair
 | ---------- | ------- | ------- |
 | `ssh_port` | integer | SSH port advertised in the Pairing Code, `1..65535`. Default 22. An absent `pair.json` means 22; a file that cannot be read or parsed, or an `ssh_port` outside that range, also falls back to 22 and says so in the checklist. |
 | `addresses` | string[] | Addresses (IPs or host names) the phone reaches this machine on but its interfaces do not show: a container behind a published port, a NAT, a DNS name. Listed first in the checklist and pre-checked; the enumerated addresses follow unchecked. Default none. A value that is not a list of non-empty strings without whitespace is ignored and says so in the checklist. |
+| `launcher` | string | Absolute path of a launcher to put in a [Pairing Code v2](#pairing-a-herdr-outside-configherdr) instead of the generated one. Used only when this herdr runs outside `~/.config/herdr`. A path with `'`, `\` or control characters is ignored and says so in the checklist. Read once when the popup opens. |
 
 `addresses` (plugin 0.6.2 and later; older plugins ignore it) is what a
 machine behind a port mapping needs, for example
@@ -291,9 +292,10 @@ older app would drop `sock` and `herdr` and pair against the default socket and
 the `herdr` on `PATH`, without any error. Under version 2 it refuses the code
 (`unsupported_version`) and saves nothing.
 
-Only the app decodes v2. This plugin emits and decodes v1 and rejects v2 as
-`unsupported_version`. A v1 code that carries `sock` or `herdr` still pairs
-without an endpoint. Endpoints work on macOS and Linux Hosts only; a native
+Only the app decodes v2. This plugin decodes v1 and rejects v2 as
+`unsupported_version`; it emits v2 only for a herdr outside `~/.config/herdr`
+([below](#pairing-a-herdr-outside-configherdr)) and v1 otherwise. A v1 code
+that carries `sock` or `herdr` still pairs without an endpoint. Endpoints work on macOS and Linux Hosts only; a native
 Windows Host paired from a v2 code fails with an explicit error.
 
 ### Launcher contract
@@ -333,6 +335,44 @@ The launcher must:
 An exit status of 126 or 127 from the launcher's `session list`, `plugin list`
 or attach is reported as a missing launcher, not as herdr missing from `PATH`.
 A failed wake keeps the original socket error.
+
+### Pairing a herdr outside ~/.config/herdr
+
+A herdr run with its own `XDG_CONFIG_HOME`, such as a per-project instance or
+a profile started by a wrapper script, keeps its socket and this plugin's
+config dir apart from `~/.config/herdr/plugins/config/<id>`. The pairing popup
+detects that from `HERDR_PLUGIN_CONFIG_DIR` and emits a Pairing Code v2 whose `sock` is its
+`HERDR_SOCKET_PATH` ([ADR 0029](../docs/adr/0029-plugin-generates-the-herdr-endpoint-launcher.md)):
+
+- The herdr must also run with its own `XDG_STATE_HOME`, so its
+  `HERDR_PLUGIN_STATE_DIR` is not `~/.local/state/herdr/plugins/<id>` (see the
+  launcher contract above).
+- Unless `pair.json` names a `launcher`, the popup writes one to `launcher`
+  in the plugin config dir (mode 0700) each time it opens. It refuses a
+  config dir other users can write. It exports the
+  popup's `PATH`, its `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_DATA_HOME` and
+  `XDG_CACHE_HOME` when set, and its `HERDR_*` variables except the ones herdr
+  sets per process and an inherited client socket (`HERDR_SOCKET_PATH`,
+  `HERDR_CLIENT_SOCKET_PATH`, `HERDR_BIN_PATH`, `HERDR_ENV`,
+  `HERDR_SESSION`, `HERDR_PLUGIN_*`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`,
+  `HERDR_PANE*`), then `exec`s
+  `HERDR_BIN_PATH`. The popup runs inside the server, so these are the
+  server's own settings.
+- Before the launcher goes in the code, the popup runs
+  `plugin config-dir <plugin id>` through it the way the app does, from a
+  minimal environment, and requires this plugin's config dir back with nothing
+  on stderr within 5 seconds. A generated launcher is tested under a staging
+  name and replaces the previous one only when it passes.
+- The checklist shows `Endpoint <sock> via <launcher>`. When the state home is
+  shared, the socket or launcher breaks a v2 rule, no launcher can be written,
+  or the test run fails, the popup says why and offers no code: a v1 code
+  would pair the phone with the user's own herdr instead.
+
+A herdr that shares the user's config home but listens on another socket gets
+a warning instead: an endpoint there would share `notifications.json` with the
+user's own herdr. The phone keeps the launcher's path, so after moving herdr
+or changing the environment it starts with, opening the popup once rewrites
+the launcher in place.
 
 ## Bootstrap Key lifecycle
 
@@ -395,7 +435,8 @@ re-encode to the exact code; invalid vectors must fail with the given error
 code (`bad_prefix`, `unsupported_version`, `bad_encoding`, `bad_payload` —
 these map to the "parse" step of the pairing failure taxonomy).
 `test-vectors/pairing-code-v2.json` has the same shape plus each endpoint's
-`socketPath` and `herdrPath`, and only the Swift tests read it.
+`socketPath` and `herdrPath`. The Swift tests decode it; the Node tests encode
+its canonical codes and reject its invalid ones.
 
 ## Notification envelope (v1)
 
@@ -546,7 +587,9 @@ tests in the app both read it.
 Bump `version` in `herdr-plugin.toml`, `package.json` and `package-lock.json`
 together with `test-vectors/plugin-version-v1.json` and
 `HeelerPluginCompatibility.bundled` in the app; the Node and Swift tests
-check that they agree. The app recommends updating any Host whose plugin is
+check that they agree. Move the demo plugin states in
+`DemoScreenshotMode.swift` that stand for the current version to it, and
+the one newer than the app past it. The app recommends updating any Host whose plugin is
 older, and its per-feature notes (`HeelerPluginFeature`) trust the version
 alone, so bump it with every change the app relies on rather than shipping
 behavior under an unchanged number, as 0.3.0 and 0.4.0 did.
@@ -588,6 +631,26 @@ the app's update notice installs from that branch. See
   machine's own interfaces, so a Host behind a port mapping needs 0.6.2 to
   pair. Without `addresses` the checklist is unchanged.
 
+### Updating to 0.7.1
+
+- Plugin 0.7.1 emits a Pairing Code v2 from a herdr that runs outside
+  `~/.config/herdr` and reads `launcher` from `pair.json`. Older plugins emit
+  v1 there, which pairs the phone with the user's default herdr; re-pair such
+  a Host after the update. A herdr in `~/.config/herdr` pairs as before.
+
+### Updating to 0.8.0
+
+- Plugin 0.8.0 counts [Claude Code Accounts](#usage). When herdr's
+  environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
+  that Host's Claude Code usage; Heeler suggests it as an Account to add.
+  Without `CLAUDE_CONFIG_DIR`, the totals stay as before.
+- The first refresh after the update reads the Transcripts again to
+  attribute them to Accounts and reads Claude Code limits anew. Without
+  `CLAUDE_CONFIG_DIR`, Usage shows the previous totals meanwhile; with it,
+  the totals start over and grow as the refresh reads.
+- Older plugins ignore `usage-accounts.json`: Accounts added in Heeler count
+  only once the Host runs 0.8.0.
+
 ## Usage
 
 Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts.
@@ -621,6 +684,38 @@ use, so the plugin's `usage-claude-limits` action reads the limits in
 herdr's session. Start herdr from a terminal on the Mac, not over SSH.
 Current terms remain a pre-release check in the
 [design's open questions](../docs/design/agent-usage.md#open-questions).
+
+**Claude Code Accounts** (plugin 0.8.0) keep subscriptions apart when one
+Host runs several, each from its own config directory (for example an Agent
+started with `CLAUDE_CONFIG_DIR=~/.claude-2`). The Default Account is the
+directory Claude Code uses in herdr's environment, `CLAUDE_CONFIG_DIR` or
+else `~/.claude`, with the legacy `~/.config/claude` folded in. Heeler adds up
+to three more and writes the list over SFTP to `usage-accounts.json` in the
+plugin's config directory, beside `runtime.json`; the plugin only reads it,
+so every device and Host entry that reaches that directory shares it. Each
+Account reports its own Token Usage and, with Claude Code limits on, its own
+Usage Limits; the Host total adds them up. An Account whose directory is
+gone, or that resolves to a directory already counted, stays listed and
+adds nothing.
+
+Heeler suggests directories to add, and counts none until the user adds it:
+
+- the `CLAUDE_CONFIG_DIR` a running Claude Code Agent was started with. On
+  that Agent's status changes, the activity hook asks herdr for the pane's
+  processes (`herdr pane process-info`) at most once per pane every 10
+  minutes and reads only that variable from the Claude Code process's
+  environment (`ps -E` on macOS, `/proc/<pid>/environ` on Linux). It keeps
+  the directory in `usage/claude-agents.json` under the plugin's state
+  directory for 30 days after it was last seen. macOS hides the environment
+  of Apple platform binaries, and a `CLAUDE_CONFIG_DIR` set in a settings
+  file's `env` is not visible at all.
+- `.claude*` directories in `$HOME` and `claude*` directories in
+  `${XDG_CONFIG_HOME:-~/.config}` that hold Claude Code's `.claude.json` or
+  `projects/`, from one listing of each per refresh.
+
+Dismissed suggestions stay in the file's `ignored` list. See
+[Accounts](../docs/design/agent-usage.md#accounts) in the design and
+[ADR 0030](../docs/adr/0030-usage-counts-the-accounts-the-user-adds.md).
 
 Token Usage covers at most 30 days and only the Transcripts still on the
 Host. The page reports coverage, skipped compressed archives and Transcripts
@@ -812,7 +907,8 @@ such as `machine`. The app resolves whole layouts in this order: the Host's
 saved user layout, the Host's plugin snapshot, Heeler default. There is no
 global user layout, and the default is never offered as a choice. Rows are
 never merged across sources. Its renderer skips `state_icon` and
-`state_text` because the status column already shows Agent Status; `$name`
+`state_text` because Heeler draws Agent Status itself, as the ring around
+each Agent's mark or the app's own `status_badge` field; `$name`
 resolves as plain text from `AgentInfo.tokens["name"]`. Heeler's Pin is
 independent. Styles are retained in the Swift model; rendering may ignore
 them (color is ignored by default).
@@ -935,6 +1031,11 @@ Activity size budget.
 Last-state (`activity/last-state.json`: `sent_at_ms`, `statuses`, `ended`) is
 written only after at least one successful delivery. All state writes are
 temp-file + rename.
+
+For a Claude Code Agent's event, the hook also looks up the config directory
+that Agent runs with, as a [Usage](#usage) Account suggestion. The lookup
+runs beside the Live Activity update, gives up after 3 seconds, and never
+fails the hook.
 
 ## Tests
 
