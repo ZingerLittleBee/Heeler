@@ -87,6 +87,9 @@ final class HostOnboardingStore {
     /// Why the last confirmation was refused, for the user to read.
     private(set) var confirmationRefusal: String?
 
+    /// A herdr-core Host's Host Helper, read with its checks.
+    private(set) var hostHelper: HostHelperStore?
+
     private(set) var host: Host
     let offersHerdrCore: Bool
 
@@ -276,12 +279,16 @@ final class HostOnboardingStore {
     /// answers, and no Herdr TUI session is looked for.
     private func performCoreChecks(settings: SSHTransportSettings) async {
         pluginStatus = .unsupportedBackend
+        let hostHelper = hostHelper ?? makeHostHelper()
+        self.hostHelper = hostHelper
         do {
             let transport = try await connector.connectCore(settings: settings)
             guard !Task.isCancelled else {
                 try? await transport.close()
                 return
             }
+            // The Helper does not need a core, so it reads whether one runs or not.
+            await hostHelper.refresh(over: transport)
             do {
                 let info = try await transport.hello()
                 if !Task.isCancelled {
@@ -299,6 +306,23 @@ final class HostOnboardingStore {
             captureHostKeyReplacement(error)
             report = failureReport(error)
         }
+    }
+
+    /// The Helper's actions dial for themselves, after the preflight settled the
+    /// Host key: a key that still needs trusting is declined.
+    private func makeHostHelper() -> HostHelperStore {
+        let host = host
+        let connector = connector
+        let knownHosts = knownHosts
+        let credentials = credentials
+        let overlays = overlays
+        return HostHelperStore(connect: {
+            let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
+            return try await connector.connectCore(
+                settings: SSHTransportSettings(
+                    host: host, credentials: try credentials.credentials(for: host),
+                    hostKeyPolicy: policy, overlays: overlays))
+        })
     }
 
     /// One exec over a connection of its own, which starts no server. A Host

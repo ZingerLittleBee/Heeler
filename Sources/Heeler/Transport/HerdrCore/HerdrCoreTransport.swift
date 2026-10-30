@@ -7,6 +7,10 @@ protocol HerdrCoreTransport: Sendable {
     /// The route that won the dial; nil when there was only ever one way in.
     nonisolated var routeID: UUID? { get }
 
+    /// This connection's exec and SFTP, for the Host Helper, which works with
+    /// or without a running core (ADR 0033).
+    nonisolated var hostHelperHost: any HostHelperHost { get }
+
     /// Runs the read-only locator once. Its facts are also what `hello` acts on.
     func locate() async throws -> HerdrCoreLocator.Location
 
@@ -23,7 +27,7 @@ protocol HerdrCoreTransport: Sendable {
 
 /// The parts of an SSH connection a herdr-core transport uses. Real SSH is
 /// `HeelerSSHTransport`; tests script the exec and hand over a fake socket.
-protocol HerdrCoreHostConnection: Sendable {
+protocol HerdrCoreHostConnection: HostHelperHost {
     nonisolated var routeID: UUID? { get }
 
     /// Runs the locator's script in one bounded exec.
@@ -42,7 +46,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private static let callDeadline: Duration = .seconds(10)
 
     nonisolated let routeID: UUID?
-    private let connection: any HerdrCoreHostConnection
+    nonisolated var hostHelperHost: any HostHelperHost { connection }
+    private nonisolated let connection: any HerdrCoreHostConnection
     private let session: String
     private let nonce: @Sendable () -> String
     /// Callers that race share one opening. A failed one is not kept, so the

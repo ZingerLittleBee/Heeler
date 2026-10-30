@@ -2,7 +2,8 @@ import Foundation
 
 /// Notification and Usage file access on a Host. `Transport` refines this and
 /// stays rooted at the Heeler plugin's directories on Herdr TUI, which is what
-/// the member documentation below describes.
+/// the member documentation below describes. `HostHelperFiles` implements it for
+/// herdr-core Hosts, rooted at the Host Helper's directory (ADR 0033).
 protocol HostNotificationFiles: Sendable {
     /// Reads the Notification Registration file (v1, `plugin/README.md`)
     /// from the Heeler plugin's config dir on this Host; nil when no

@@ -87,6 +87,9 @@ final class ConsoleStore {
     }
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
+    /// A core Host's connection for the files rooted at its Host Helper. The
+    /// Console holds none of its own for such a Host.
+    @ObservationIgnored private let connectCore: @Sendable (Host) async throws -> any HerdrCoreTransport
     @ObservationIgnored private let snapshotRetryDelay: Duration
     @ObservationIgnored private let chatPrefetchRetryDelay: Duration
     @ObservationIgnored private var isActive = false
@@ -147,6 +150,8 @@ final class ConsoleStore {
         usageWidgets: AgentUsageWidgetPublisher? = nil,
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory(),
+        connectCore: @escaping @Sendable (Host) async throws -> any HerdrCoreTransport =
+            ConsoleStore.sshCoreConnector(),
         chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = {
             ChatTranscriptAdapter.standard(for: $0)
         }
@@ -163,6 +168,7 @@ final class ConsoleStore {
         self.pins = pins
         self.rowLayouts = rowLayouts
         self.makeSession = makeSession
+        self.connectCore = connectCore
     }
 
     /// Pins or unpins the Agent and re-sorts the published list in the same
@@ -1459,9 +1465,54 @@ extension ConsoleStore: NotificationTransportProvider {
         }
         return try await projection(for: hostID).withNotificationTransport(operation)
     }
+
+    /// The root follows the Server Kind: a herdr-core Host's files are the Host
+    /// Helper's, over a connection of their own; every other Host's are the
+    /// plugin's, over its live connection.
+    func withNotificationFiles<Value: Sendable>(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
+    ) async throws -> Value {
+        guard let host = catalog.first(where: { $0.id == hostID }), host.serverKind == .herdrCore else {
+            return try await projection(for: hostID).withNotificationTransport { transport in
+                try await operation(transport)
+            }
+        }
+        let transport = try await connectCore(host)
+        do {
+            let value = try await operation(HostHelperFiles(host: transport.hostHelperHost))
+            try? await transport.close()
+            return value
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+    }
 }
 
 extension ConsoleStore {
+    /// A core Host's connection, from the catalog's credentials. As for the
+    /// session factory, a key that still needs trusting is declined.
+    static func sshCoreConnector(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) async throws -> any HerdrCoreTransport {
+        { host in
+            let resolved: SSHCredentials
+            do {
+                resolved = try credentials.credentials(for: host)
+            } catch HostCredentialsError.passwordNotSet {
+                throw TransportError.authenticationFailed
+            }
+            let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
+            return try await connector.connectCore(
+                settings: SSHTransportSettings(
+                    host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays))
+        }
+    }
+
     /// The production session factory: SSH transports built from the Host
     /// catalog's credentials. TOFU is restricted to already-trusted
     /// fingerprints; the Console never prompts.
