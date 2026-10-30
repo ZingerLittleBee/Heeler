@@ -10,6 +10,7 @@ Entries reference the pull request that made the change.
 ### Added
 
 - Connect to herdr-app / herdr-core Hosts over SSH: list recognized desktop Agents, follow their status, use live terminals, and start or close terminals. Previews do not scroll the remote program. (#535; PR #538)
+- Install, check and remove the Host Helper on a Linux herdr-core Host from the Host's detail. The sheet lists every file the install writes, including the systemd user unit, and offers to turn on systemd linger. Heeler replaces a Helper only with a newer version, or when it is missing or damaged. Removal stops the service and deletes what the install recorded, and leaves systemd linger and the Grok Build edit as they are. The Helper only starts and stays running for now; native Windows and macOS Hosts offer no install. (#570; PR #538)
 
 - Pair a herdr that runs with its own config home, such as a per-project
   instance or a profile started by a wrapper script. Its pairing popup now
