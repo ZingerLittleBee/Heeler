@@ -279,10 +279,11 @@ and `release.yml` never touch it.
 1. **Fetch** `origin/main` and `origin/plugin`. The tree comes from
    `SOURCE`, which defaults to `origin/main` and must be on it, so local
    commits and uncommitted edits never reach the branch.
-2. **Refuse** an entry of `plugin/` that is listed as neither shipped nor
-   dev-only, a `herdr-plugin.toml` version that differs from
+2. **Refuse** an entry of `plugin/` that is listed as neither shipped,
+   dev-only nor helper-only, a `herdr-plugin.toml` version that differs from
    `package.json`, and changed files under a version that is not newer
-   than the published one. An unchanged tree publishes nothing.
+   than the published one. An unchanged tree publishes nothing, and
+   `plugin/helper/` never counts: the Host Helper ships inside the app.
 3. **Check** the tree: `npm ci` the way herdr's build step runs it, then
    the plugin tests against it.
 4. **Print the plan and ask**, then append one commit,
