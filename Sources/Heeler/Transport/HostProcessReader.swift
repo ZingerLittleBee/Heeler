@@ -29,6 +29,7 @@ enum HostProcessReader {
 
     enum Refusal: Error, Equatable {
         case pid(String)
+        case tooManyProcesses(Int)
         case variableName(String)
         case procRoot(String)
     }
@@ -57,7 +58,10 @@ enum HostProcessReader {
         var openFiles: Reading<[String]> = .unavailable
     }
 
+    /// The script's output past this is cut, with its end marker, so the read
+    /// fails rather than answering in part. The exec's watchdog bounds its time.
     private static let outputCap = 2_097_152
+    private static let processCap = 64
     /// More open descriptors than this read as unavailable.
     private static let openFileCap = 1024
 
@@ -75,6 +79,9 @@ enum HostProcessReader {
     ) throws -> Data {
         for pid in request.pids where !isProcessID(pid) {
             throw Refusal.pid(pid)
+        }
+        guard request.pids.count <= processCap else {
+            throw Refusal.tooManyProcesses(request.pids.count)
         }
         for name in request.valuesOf + request.namesOf + request.namesWithPrefix
         where !isVariableName(name) {

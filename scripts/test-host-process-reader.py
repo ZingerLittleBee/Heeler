@@ -441,6 +441,32 @@ class OpenFileTests(ReaderTestCase):
         self.for_each_shell(check)
 
 
+class UnknownKernelTests(ReaderTestCase):
+    def test_every_read_is_unavailable_on_a_kernel_with_no_recorded_method(self) -> None:
+        tools = self.proc / "tools"
+        tools.mkdir()
+        fake = tools / "uname"
+        fake.write_text("#!/bin/sh\necho FreeBSD\n")
+        fake.chmod(0o755)
+        request = {"pids": ["1"], "start": True, "files": True, "values": ["A"], "names": ["B"], "root": None}
+        script = subprocess.run(
+            [str(self.binary), "script", json.dumps(request)], check=True, capture_output=True
+        ).stdout
+
+        def check(shell: list[str]) -> None:
+            result = subprocess.run(
+                shell, input=script, capture_output=True, timeout=60,
+                env={"PATH": f"{tools}:/usr/bin:/bin"},
+            )
+            self.assertEqual(self.parse(result.stdout.decode(), **request)["1"], {
+                "start": "unavailable",
+                "variables": {"A": "unavailable"},
+                "names": "unavailable",
+                "files": "unavailable",
+            })
+        self.for_each_shell(check)
+
+
 @unittest.skipUnless(sys.platform == "darwin", "the macOS reads need a Mac")
 class MacOSReadTests(ReaderTestCase):
     """Real reads on this Mac, against processes these tests start themselves
