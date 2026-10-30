@@ -633,6 +633,16 @@ struct HostOnboardingStoreTests {
         }
     }
 
+    /// The locator did not run, so "neither was found" would claim too much.
+    @Test func aRefusedSessionNameSaysWhyHerdrCoreWasNotRead() async throws {
+        let (store, _, _) = try unconfirmedStore(
+            ScriptedCoreHost(channel: .refused), session: "a/b", offersHerdrCore: true)
+
+        await store.runChecks()
+
+        #expect(store.confirmationNote == ServerKind.herdrCore.sessionNameRefusal("a/b"))
+    }
+
     @Test func anUnreachableHostOffersNothing() async throws {
         let core = ScriptedCoreHost(channel: .refused)
         let (store, _, _) = try unconfirmedStore(

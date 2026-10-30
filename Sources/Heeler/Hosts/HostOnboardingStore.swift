@@ -346,6 +346,9 @@ final class HostOnboardingStore {
             }
             return nil
         }
+        if case .sessionRefused(let reason) = detection.herdrCore {
+            return reason
+        }
         if detection.foundKinds.count > 1 {
             return "This machine runs both. A Host is one kind: confirm one here, then add the "
                 + "machine again for the other."
