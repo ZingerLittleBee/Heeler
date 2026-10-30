@@ -79,6 +79,9 @@ final class NotificationPreferencesStore {
         self.hosts = hosts
         let known = Set(hosts.map(\.id))
         states = states.filter { known.contains($0.key) }
+        for host in hosts where host.backend == .herdrCore {
+            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
+        }
     }
 
     /// Re-reads every Host's registration file so the toggles reflect what
@@ -161,7 +164,8 @@ final class NotificationPreferencesStore {
     func revokeRegistration(
         for host: Host, isConnected: Bool, timeout: Duration = .seconds(6)
     ) async {
-        guard isConnected, (try? ceremony.keys.record(forHost: host.id)) != nil else { return }
+        guard host.backend == .herdr, isConnected,
+            (try? ceremony.keys.record(forHost: host.id)) != nil else { return }
         let ceremony = ceremony
         let transports = transports
         do {
@@ -193,7 +197,13 @@ final class NotificationPreferencesStore {
             HostSettings(isRegistered: false, notify: NotificationTriggerPreferences()))
     }
 
+    static let coreUnavailableMessage = "Notifications are not supported on herdr-core."
+
     private func load(_ host: Host) async {
+        guard host.backend == .herdr else {
+            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
+            return
+        }
         if case .updating = states[host.id] { return }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
@@ -243,6 +253,10 @@ final class NotificationPreferencesStore {
             NotificationRegistrationCeremony, APNSDeviceToken, any Transport
         ) async throws -> HostSettings
     ) async {
+        guard host.backend == .herdr else {
+            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
+            return
+        }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
                 message: "Waiting for push registration on this device.")
@@ -308,6 +322,8 @@ final class NotificationPreferencesStore {
 
     static func message(for error: any Error) -> String {
         switch error {
+        case HeelerPluginUnavailableError.herdrCore:
+            coreUnavailableMessage
         case NotificationRegistrationError.pluginNotInstalled:
             "The Heeler plugin is missing or turned off on this Host. "
                 + "See this Host's page in Hosts, then check again."

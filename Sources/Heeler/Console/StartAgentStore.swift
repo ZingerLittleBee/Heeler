@@ -264,7 +264,10 @@ final class StartAgentStore {
     /// hold, so the origin flow drops the option rather than silently
     /// ignoring the requested directory. New Workspace likewise has no
     /// source Workspace to branch from.
-    var offersWorktree: Bool { origin == nil && launchTarget == .existingWorkspace }
+    var offersWorktree: Bool {
+        origin == nil && launchTarget == .existingWorkspace
+            && hosts.first(where: { $0.id == selectedHostID })?.backend != .herdrCore
+    }
 
     /// Whether the form offers Existing vs New Workspace. Origin launches
     /// inherit the origin agent's Workspace and directory, so the choice

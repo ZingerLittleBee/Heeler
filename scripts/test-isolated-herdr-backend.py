@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import base64
+import contextlib
+import io
 import hashlib
 import importlib.util
 import json
@@ -28,6 +30,14 @@ if SPEC is None or SPEC.loader is None:
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+
+CORE_SPEC = importlib.util.spec_from_file_location(
+    "core_ssh_fixture", Path(__file__).with_name("fixtures") / "herdr-core-ssh.py")
+if CORE_SPEC is None or CORE_SPEC.loader is None:
+    raise RuntimeError("Cannot load the herdr-core SSH fixture script")
+CORE = importlib.util.module_from_spec(CORE_SPEC)
+sys.modules[CORE_SPEC.name] = CORE
+CORE_SPEC.loader.exec_module(CORE)
 
 # A fixed ed25519 public key; its OpenSSH fingerprint is computed independently below.
 HOST_KEY = ("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL/TtCrTn19JU6AMQvLzHjYdHuV7TZEKSa7v7BfVdStP "
@@ -204,6 +214,76 @@ class ExecutableTests(unittest.TestCase):
             link.symlink_to(binary)
             self.assertEqual(MODULE.resolve_executable(str(link), "node"),
                              os.path.realpath(binary))
+
+
+class CoreFixtureCleanupTests(unittest.TestCase):
+    def stop_fixture(self, root, outcomes):
+        root = Path(root)
+        (root / CORE.backend.MARKER).write_text("fixture")
+        for name in ("first", "second"):
+            (root / "state/herdr-core" / name).mkdir(parents=True)
+        state = CORE.backend.State(root=str(root), user="tester", herdr="", sessions=[],
+            sshd=CORE.backend.ProcessRecord(123456, str(root / "ssh/sshd.conf"), "sshd.log"))
+        CORE.backend.save_state(state)
+        with patch.object(sys, "argv", ["herdr-core-ssh.py", "stop", "--root", str(root)]), \
+             patch.object(CORE.subprocess, "run", side_effect=outcomes) as commands, \
+             patch.object(CORE.backend, "stop_processes", return_value=[]) as stop_owned, \
+             patch.object(CORE.backend, "is_ours", return_value=False), \
+             patch.object(CORE.backend, "processes_mentioning", return_value=[]), \
+             contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            result = CORE.main()
+        stop_owned.assert_called_once_with(state)
+        self.assertEqual(commands.call_count, 2, "a failed core must not skip other session cleanup")
+        return result
+
+    def test_failed_core_stop_preserves_state_but_stops_owned_sshd(self):
+        with tempfile.TemporaryDirectory(prefix="hc-clean-") as directory:
+            root = Path(directory)
+            result = self.stop_fixture(root, [subprocess.CompletedProcess([], 1),
+                                             subprocess.CompletedProcess([], 0)])
+            self.assertNotEqual(result, 0)
+            self.assertTrue((root / "state.json").is_file())
+            self.assertTrue((root / "state/herdr-core/first").is_dir())
+
+    def test_timed_out_core_stop_preserves_state_but_stops_owned_sshd(self):
+        with tempfile.TemporaryDirectory(prefix="hc-clean-") as directory:
+            root = Path(directory)
+            result = self.stop_fixture(root, [subprocess.TimeoutExpired("hc server stop", 20),
+                                             subprocess.CompletedProcess([], 0)])
+            self.assertNotEqual(result, 0)
+            self.assertTrue((root / "state.json").is_file())
+
+    def test_missing_core_launcher_preserves_state_but_stops_owned_sshd(self):
+        with tempfile.TemporaryDirectory(prefix="hc-clean-") as directory:
+            root = Path(directory)
+            result = self.stop_fixture(root, [FileNotFoundError("hc missing"),
+                                             subprocess.CompletedProcess([], 0)])
+            self.assertNotEqual(result, 0)
+            self.assertTrue((root / "state.json").is_file())
+
+    def test_start_cannot_replace_core_state_preserved_after_failed_stop(self):
+        with tempfile.TemporaryDirectory(prefix="hc-r-", dir="/tmp") as directory:
+            root = Path(directory).resolve()
+            (root / "state/herdr-core/first").mkdir(parents=True)
+            state = root / "state/herdr-core/first/core.lock"
+            state.write_text("socket path needed for recovery")
+            with patch.object(sys, "argv", ["herdr-core-ssh.py", "start", "--root", str(root),
+                                           "--core", sys.executable]), \
+                 patch.object(CORE.backend, "prepare_root") as prepare, \
+                 contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as failure:
+                    CORE.main()
+            self.assertEqual(failure.exception.code, 2)
+            prepare.assert_not_called()
+            self.assertTrue(state.is_file())
+
+    def test_successful_core_and_sshd_stop_removes_the_fixture(self):
+        with tempfile.TemporaryDirectory(prefix="hc-clean-") as directory:
+            root = Path(directory)
+            result = self.stop_fixture(root, [subprocess.CompletedProcess([], 0),
+                                             subprocess.CompletedProcess([], 0)])
+            self.assertEqual(result, 0)
+            self.assertFalse(root.exists())
 
 
 class RelayTests(unittest.TestCase):

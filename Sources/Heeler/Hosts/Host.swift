@@ -74,6 +74,20 @@ struct HostRoute: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+/// The server a Host reaches. Desktop herdr-core is a separate backend,
+/// not another socket spelling of the legacy herdr protocol.
+enum HostBackend: String, Codable, CaseIterable, Hashable, Sendable {
+    case herdr
+    case herdrCore
+
+    var displayName: String {
+        switch self {
+        case .herdr: "herdr"
+        case .herdrCore: "herdr-app / herdr-core"
+        }
+    }
+}
+
 /// A user-added Host (CONTEXT.md): who the machine is, how to authenticate,
 /// which herdr session to reach, and the Routes it can be reached on. Never
 /// carries a secret — the password lives in the Keychain keyed by `id`, and
@@ -92,6 +106,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     var name: String
     var username: String
     var authMethod: AuthMethod
+    var backend: HostBackend
     /// Persisted session selection; onboarding discovers available sessions,
     /// while this field remains editable for older herdr versions. Blank
     /// means the default herdr session.
@@ -111,7 +126,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// on decode and drops it on the Host's next save.
     private enum CodingKeys: String, CodingKey {
         case herdrEndpoint
-        case id, name, username, authMethod, sessionName
+        case id, name, username, authMethod, backend, sessionName
         case routes
         // The primary route, flattened as Hosts were saved before Routes
         // (ADR 0022), so a build without them still decodes and connects it.
@@ -124,6 +139,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         name: String = "",
         username: String,
         authMethod: AuthMethod = .deviceKey,
+        backend: HostBackend = .herdr,
         sessionName: String = "",
         herdrEndpoint: HerdrEndpoint? = nil,
         routes: [HostRoute]
@@ -133,6 +149,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.name = name
         self.username = username
         self.authMethod = authMethod
+        self.backend = herdrEndpoint == nil ? backend : .herdr
         self.sessionName = sessionName
         self.herdrEndpoint = herdrEndpoint
         self.routes = routes
@@ -146,6 +163,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         port: Int = 22,
         username: String,
         authMethod: AuthMethod = .deviceKey,
+        backend: HostBackend = .herdr,
         sessionName: String = "",
         jumpAddress: String = "",
         jumpPort: Int = 22,
@@ -158,6 +176,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             name: name,
             username: username,
             authMethod: authMethod,
+            backend: backend,
             sessionName: sessionName,
             herdrEndpoint: herdrEndpoint,
             routes: [
@@ -185,10 +204,16 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
                 debugDescription: "Unknown authentication method: \(authMethodValue)")
         }
         authMethod = decodedAuthMethod
+        backend = try container.decodeIfPresent(HostBackend.self, forKey: .backend) ?? .herdr
         sessionName = try container.decodeIfPresent(String.self, forKey: .sessionName) ?? ""
         // Absent in Hosts saved before Pairing Code v2, and in every Host not
         // paired from one. The encoder omits nil for those Hosts.
         herdrEndpoint = try container.decodeIfPresent(HerdrEndpoint.self, forKey: .herdrEndpoint)
+        guard herdrEndpoint == nil || backend == .herdr else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .backend, in: container,
+                debugDescription: "A paired herdr endpoint requires the herdr backend")
+        }
         if let routes = try container.decodeIfPresent([HostRoute].self, forKey: .routes),
            !routes.isEmpty
         {
@@ -228,6 +253,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         try container.encode(name, forKey: .name)
         try container.encode(username, forKey: .username)
         try container.encode(authMethod, forKey: .authMethod)
+        try container.encode(backend, forKey: .backend)
         try container.encode(sessionName, forKey: .sessionName)
         try container.encodeIfPresent(herdrEndpoint, forKey: .herdrEndpoint)
         try container.encode(routes, forKey: .routes)

@@ -420,6 +420,31 @@ struct HostOnboardingStoreTests {
         #expect(store.availableSessions == sessions)
     }
 
+    @Test func corePreflightDoesNotDiscoverLegacySessions() async throws {
+        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let (store, _) = try makeStore(
+            host: host,
+            sessions: [HerdrSession(name: "tui-only", isDefault: false, isRunning: true)])
+
+        await store.runChecks()
+
+        #expect(store.report?.isFullyPassed == true)
+        #expect(store.serverInfo != nil)
+        #expect(store.availableSessions.isEmpty)
+        #expect(store.sessionDiscoveryError == nil)
+    }
+
+    @Test func corePreflightStillRequiresAHealthyBackend() async throws {
+        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let (store, _) = try makeStore(
+            host: host, outcome: .connects(pingResult: .failure(.timedOut)))
+
+        await store.runChecks()
+
+        #expect(store.report?.isFullyPassed == false)
+        #expect(store.serverInfo == nil)
+    }
+
     @Test func selectingADiscoveredSessionUpdatesTheCatalogHost() throws {
         let host = Host.fixture()
         let suiteName = "HostOnboardingStoreTests.\(UUID().uuidString)"

@@ -168,6 +168,12 @@ The flag-less generator queries the locally installed herdr. Generation,
 `git diff --check`, parsing, and guard-fixture success are different evidence
 from compilation, an executed suite, or native UI acceptance.
 
+### herdr-core backend
+
+`HerdrCoreWireTests` and `HerdrCoreCommandTests` cover generation-one mapping, sequencing and command validation. `HerdrCoreTransportE2ETests` runs all six methods against a real core and disposable SSH server in the transport CI shard (and the serial lane); CI downloads the pinned 0.1.13 archive and checks its SHA-256 before extraction. The evidence gate requires those passes before accepting their ordinary-lane skips.
+
+For a local focused run, `scripts/fixtures/herdr-core-ssh.py --help` describes setup, the private Simulator environment configuration and cleanup, using an already installed core. The fixture owns a separate home, runtime directory, state and session; it never updates or stops a user's core. Native fixture success on macOS and a Linux CLI/protocol smoke are separate evidence: neither alone establishes iOS-to-Linux SSH acceptance.
+
 ## Host and platform acceptance
 
 Local real-SSH tests may skip without a configured sshd/key. The CI runner

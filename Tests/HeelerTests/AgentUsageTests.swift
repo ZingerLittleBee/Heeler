@@ -307,6 +307,7 @@ struct AgentUsageStoreTests {
             (decoding, .failed(AgentUsageStore.pluginFailureMessage)),
             (AgentUsageError.unsupportedVersion, .updateRequired),
             (TransportError.hostFeatureUnavailable(feature: "Usage"), .unsupportedPlatform),
+            (HeelerPluginUnavailableError.herdrCore, .requirement("Usage is not supported on herdr-core.")),
         ]
         for (error, expected) in cases {
             #expect(AgentUsageStore.state(for: error) == expected, "\(error)")

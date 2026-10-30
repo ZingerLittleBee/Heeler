@@ -32,10 +32,32 @@ struct HostTests {
 
         let host = try JSONDecoder().decode(Host.self, from: Data(legacy.utf8))
         #expect(host.address == "old.example")
+        #expect(host.backend == .herdr)
 
         let fields = try #require(
             JSONSerialization.jsonObject(with: try JSONEncoder().encode(host)) as? [String: Any])
         #expect(fields["socatPath"] == nil)
+    }
+
+    @Test func coreBackendPersistsSeparatelyFromTheLegacySession() throws {
+        let host = Host(
+            name: "Desktop", address: "linux.example", username: "dev",
+            backend: .herdrCore, sessionName: "work")
+        let decoded = try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(host))
+
+        #expect(decoded == host)
+        #expect(decoded.backend == .herdrCore)
+        #expect(decoded.sessionName == "work")
+    }
+
+    @Test func anUnknownBackendDoesNotSilentlyConnectToLegacyHerdr() {
+        let json = """
+            {"id":"\(UUID().uuidString)","name":"Desktop","address":"box.example","port":22,
+             "username":"dev","authMethod":"deviceKey","backend":"future-backend"}
+            """
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Host.self, from: Data(json.utf8))
+        }
     }
 
     @Test func displayNameFallsBackToUserAtAddress() {
@@ -369,8 +391,9 @@ struct HostStoreTests {
         let keys = try Set(persistedHost(id: id, in: defaults).keys)
         #expect(keys == [
             "id", "name", "address", "port", "username", "authMethod", "sessionName",
-            "jumpAddress", "jumpPort", "jumpUsername", "routes",
+            "jumpAddress", "jumpPort", "jumpUsername", "routes", "backend",
         ])
+        #expect(try persistedHost(id: id, in: defaults)["backend"] as? String == "herdr")
         #expect(try persistedCatalogVersion(in: defaults) == 1)
     }
 

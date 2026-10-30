@@ -63,6 +63,24 @@ struct ConsoleStoreTests {
             tabPaneCount: tabPaneCount)
     }
 
+    @Test func coreAgentsOfferNeitherLegacyManagementNorUnidentifiedChat() async throws {
+        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let transport = ScriptedTransport()
+        let info = AgentInfo.fixture(paneID: "t3", kind: "claude")
+        await transport.setSnapshot(.fixture(agents: [info]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        defer { store.setHosts([]) }
+        try await waitUntil("core Agent is in the Console") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+
+        #expect(!store.usesLegacyHerdr(on: host.id))
+        #expect(store.chatProgram(for: agent) == nil)
+        #expect(store.chatStore(for: agent, program: .claude) == nil)
+        #expect(await transport.chatAgentReads.isEmpty)
+    }
+
     @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {
         // (#swipe): the confirmation only stands between the swipe and a
         // close when the tab is the workspace's last one — closing it takes

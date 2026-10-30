@@ -17,6 +17,7 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private let ceremony: NotificationRegistrationCeremony
     @ObservationIgnored private let deviceToken: @MainActor () -> APNSDeviceToken?
     @ObservationIgnored private let knownHostIDs: @MainActor () -> Set<Host.ID>
+    @ObservationIgnored private let supportsHost: @MainActor (Host.ID) -> Bool
     @ObservationIgnored private let hostDisplayName: @MainActor (Host.ID) -> String
     @ObservationIgnored private let isAwaitingSnapshot: @MainActor (Host.ID) -> Bool
     @ObservationIgnored private let connectionStatus: @MainActor (Host.ID) -> EventsSessionStatus?
@@ -80,6 +81,7 @@ final class HostLiveActivityCoordinator {
         hostDisplayName: @escaping @MainActor (Host.ID) -> String,
         isAwaitingSnapshot: @escaping @MainActor (Host.ID) -> Bool,
         connectionStatus: @escaping @MainActor (Host.ID) -> EventsSessionStatus?,
+        supportsHost: @escaping @MainActor (Host.ID) -> Bool = { _ in true },
         pinnedPaneIDs: @escaping @MainActor (Host.ID) -> [String] = { _ in [] },
         rowLayout: @escaping @MainActor (Host.ID) -> AgentRowLayout? = { _ in nil },
         settleDuration: Duration = .seconds(3),
@@ -92,6 +94,7 @@ final class HostLiveActivityCoordinator {
         self.ceremony = ceremony ?? NotificationRegistrationCeremony(keys: keys)
         self.deviceToken = deviceToken
         self.knownHostIDs = knownHostIDs
+        self.supportsHost = supportsHost
         self.hostDisplayName = hostDisplayName
         self.isAwaitingSnapshot = isAwaitingSnapshot
         self.connectionStatus = connectionStatus
@@ -99,6 +102,13 @@ final class HostLiveActivityCoordinator {
         self.rowLayout = rowLayout
         self.settleDuration = settleDuration
         self.now = now
+    }
+
+    /// Core cannot receive the plugin's Live Activity updates. Treat a Host
+    /// switched to that backend as outside this coordinator's inventory,
+    /// retaining its saved preference but ending activities and queued writes.
+    private func supportedHostIDs() -> Set<Host.ID> {
+        knownHostIDs().filter { supportsHost($0) }
     }
 
     func isEnabled(for hostID: Host.ID) -> Bool {
@@ -126,7 +136,7 @@ final class HostLiveActivityCoordinator {
     func start() {
         guard !didStart else { return }
         didStart = true
-        let known = knownHostIDs()
+        let known = supportedHostIDs()
         for (id, hostID) in controller.currentActivities() {
             if !known.contains(hostID) {
                 controller.end(id: id, finalContent: nil, immediate: true)
@@ -150,7 +160,7 @@ final class HostLiveActivityCoordinator {
     func agentsDidChange(_ agents: [ConsoleAgent]) {
         // A removed Host's Agents linger until the Console drops its
         // projection; they must not bring its activity back.
-        let known = knownHostIDs()
+        let known = supportedHostIDs()
         let grouped = Dictionary(
             grouping: agents.filter { known.contains($0.hostID) }, by: \.hostID)
         var hosts = Set(latestAgents.keys)
@@ -187,7 +197,7 @@ final class HostLiveActivityCoordinator {
     /// token writes.
     func reconcile() {
         guard didStart else { return }
-        let known = knownHostIDs()
+        let known = supportedHostIDs()
         let current = controller.currentActivities()
         let currentByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0.hostID) })
 
@@ -265,7 +275,7 @@ final class HostLiveActivityCoordinator {
     // MARK: Desire / settle
 
     private func scheduleSettle(for hostID: Host.ID) {
-        guard knownHostIDs().contains(hostID) else {
+        guard supportedHostIDs().contains(hostID) else {
             settleTasks.removeValue(forKey: hostID)?.cancel()
             return
         }
@@ -292,7 +302,7 @@ final class HostLiveActivityCoordinator {
     }
 
     private func apply(_ hostID: Host.ID) {
-        guard didStart, knownHostIDs().contains(hostID) else { return }
+        guard didStart, supportedHostIDs().contains(hostID) else { return }
         holdIfUnknown(hostID)
         if shouldDeferApply(for: hostID) { return }
         let desired = computeDesired(for: hostID)
@@ -518,7 +528,7 @@ final class HostLiveActivityCoordinator {
     private func enqueue(_ job: TokenJob, for hostID: Host.ID) {
         // A Host outside the catalog has nothing to write through, so a job
         // for it would only stay dirty and retry forever (#414).
-        guard didStart, knownHostIDs().contains(hostID) else { return }
+        guard didStart, supportedHostIDs().contains(hostID) else { return }
         var pipe = pipes[hostID] ?? TokenPipe()
         switch (pipe.pending, job) {
         case (.some(.set), .setPreferences), (.some(.clear), .setPreferences):
@@ -547,7 +557,7 @@ final class HostLiveActivityCoordinator {
             self.writerTasks[hostID] = nil
             // The Host left the catalog while this write was in flight: its
             // pipe stays gone instead of coming back dirty.
-            guard self.knownHostIDs().contains(hostID) else {
+            guard self.supportedHostIDs().contains(hostID) else {
                 self.dropTransientState(for: hostID)
                 return
             }
@@ -601,7 +611,7 @@ final class HostLiveActivityCoordinator {
             // A write that lands after its Host left the catalog records
             // nothing, even when its writer was cancelled and so never
             // reaches the writer's own catalog check.
-            guard knownHostIDs().contains(hostID) else { return true }
+            guard supportedHostIDs().contains(hostID) else { return true }
             switch job {
             case .set(let hex, _): writtenLiveActivityTokens[hostID] = hex
             case .clear: writtenLiveActivityTokens[hostID] = nil
@@ -631,7 +641,7 @@ final class HostLiveActivityCoordinator {
     }
 
     private func retryDirtyPipes(onlyIfConnected: Bool) {
-        let known = knownHostIDs()
+        let known = supportedHostIDs()
         for (hostID, pipe) in pipes where pipe.isDirty {
             guard known.contains(hostID) else {
                 pipes[hostID] = nil

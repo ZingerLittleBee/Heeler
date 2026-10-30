@@ -20,7 +20,7 @@ extension AgentActivityLink.HostReference {
             return id
         case .lookup(let value, let session):
             let socket = session.map(HerdrSocketLocation.namedSession) ?? .defaultSession
-            let onSession = hosts.filter { $0.socketLocation == socket }
+            let onSession = hosts.filter { $0.backend == .herdr && $0.socketLocation == socket }
             let byAddress = onSession.filter { $0.answers(toAddress: value) }
             let found =
                 byAddress.isEmpty ? onSession.filter { Self.matches($0.name, value) } : byAddress

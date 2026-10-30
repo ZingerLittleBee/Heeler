@@ -5,9 +5,10 @@ import Testing
 
 @Suite("SSH channel admission")
 struct SSHChannelAdmissionTests {
-    @Test func windowsExecCategoriesShareNineSessionSlots() async throws {
-        let admission = SSHChannelAdmission()
-        await admission.useWindowsSessionBudget()
+    @Test(arguments: [false, true])
+    func execBackendsShareNineSessionSlots(core: Bool) async throws {
+        let admission = SSHChannelAdmission(execSessionBudget: core)
+        if !core { await admission.useWindowsSessionBudget() }
         var leases: [SSHChannelAdmissionLease] = []
         for _ in 0..<5 { leases.append(try await admission.acquire(.attach)) }
         leases.append(try await admission.acquire(.events))

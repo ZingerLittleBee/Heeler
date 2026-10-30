@@ -131,7 +131,7 @@ print(f"==> Fixture Python: {sys.executable} (Python {sys.version.split()[0]})",
 PYRUNTIME
 
 # Fixture ports are a contiguous block that a run claims at startup rather than
-# thirteen fixed numbers every run shares. Fixed numbers made this script a
+# fourteen fixed numbers every run shares. Fixed numbers made this script a
 # machine-wide mutex: whichever run started second failed its port preflight and
 # could only wait for the first to finish.
 #
@@ -141,7 +141,7 @@ PYRUNTIME
 
 # Must equal the number of ports assign_port_block sets; assign_port_block
 # asserts that itself rather than trusting this comment.
-port_block_size=13
+port_block_size=14
 # The historical block. A run that finds the machine idle still lands exactly
 # here, so the common case is unchanged.
 port_block_base_default=55222
@@ -196,6 +196,7 @@ pairing_mismatched_pid=""
 password_pid=""
 fake_herdr_pid=""
 weak_network_pid=""
+core_fixture_dir=""
 simulator_udid=""
 simulator_destination=""
 simulator_environment_variables=()
@@ -569,7 +570,7 @@ dump_fixture_logs() {
         [[ -s "$log" ]] || continue
         name=$(basename "$log")
         case "$name" in
-            sshd-*.log | weak-network.log | fake-herdr.log | stall-server.log | fixture-readiness.log) ;;
+            sshd-*.log | weak-network.log | fake-herdr.log | herdr-core-sshd.log | stall-server.log | fixture-readiness.log) ;;
             *) continue ;;
         esac
         echo "===== $log (last $fixture_log_tail_lines lines)" >&2
@@ -628,6 +629,9 @@ cleanup() {
 
     cancel_background_build
     clear_simulator_environment || { [[ "$status" != 0 ]] || status=1; }
+    if [[ -n "${core_fixture_dir:-}" ]]; then
+        stop_core_fixture || { [[ "$status" != 0 ]] || status=1; }
+    fi
     if [[ -n "$stall_pid" ]]; then
         kill "$stall_pid" >/dev/null 2>&1
         wait "$stall_pid" 2>/dev/null
@@ -1136,7 +1140,7 @@ start_unprivileged_sshd() {
 }
 
 # The single place fixture ports are named. Every other reference in this
-# script, and every port the tests are handed, comes from these thirteen
+# script, and every port the tests are handed, comes from these fourteen
 # variables, so moving the base moves the whole fixture.
 assign_port_block() {
     local base=$1
@@ -1159,10 +1163,12 @@ assign_port_block() {
     # Post-quantum coverage uses a dedicated endpoint so the established
     # resource and timing suites keep exercising their Curve25519 baseline.
     post_quantum_port=$((base + 12))
+    # Real herdr-core has its own isolated home and sshd.
+    core_port=$((base + 13))
 
     # Adding a port above without widening port_block_size would overlap the
     # next block, which no test could distinguish from a flaky fixture.
-    highest=$post_quantum_port
+    highest=$core_port
     if [[ "$highest" -ne "$((base + port_block_size - 1))" ]]; then
         echo "assign_port_block assigns past port_block_size=$port_block_size" >&2
         exit 1
@@ -2185,6 +2191,71 @@ run_ci_diagnostic() {
     fi
 }
 
+# Exact upstream release archives from https://releases.herdr.dev/core/0.1.13/manifest.json.
+# CI never runs the installer or updates the runner's installed/live core.
+download_core_fixture_binary() {
+    local release_dir="$fixture_dir/herdr-core-0.1.13"
+    local target checksum archive
+    case "$(uname -m)" in
+        arm64 | aarch64)
+            target=macos-aarch64
+            checksum=fc1ffba3820b93b0e2faa5394a64b9ff5528f135611b6034469d81c0fa1c37aa ;;
+        x86_64)
+            target=macos-x86_64
+            checksum=bfb8671d7d40517f8736ec32eb72b823429117db148012a69625afcec582b31d ;;
+        *) echo "No pinned herdr-core fixture for this architecture" >&2; return 1 ;;
+    esac
+    mkdir -p "$release_dir" || return 1
+    archive="$release_dir/core.tar.gz"
+    curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 120 \
+        "https://releases.herdr.dev/core/0.1.13/herdr-core-$target.tar.gz" -o "$archive" || return 1
+    if [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" != "$checksum" ]]; then
+        echo "Pinned herdr-core 0.1.13 archive checksum mismatch" >&2
+        return 1
+    fi
+    # Extract only the named executable, never arbitrary paths from the archive.
+    tar -xzf "$archive" -C "$release_dir" herdr-core || return 1
+    chmod 700 "$release_dir/herdr-core" || return 1
+    [[ "$("$release_dir/herdr-core" --version)" == 'hc 0.1.13' ]] || {
+        echo "Pinned herdr-core fixture version mismatch" >&2; return 1;
+    }
+}
+
+start_core_fixture() {
+    download_core_fixture_binary || return 1
+    core_fixture_dir=$(mktemp -d /tmp/hc-ci.XXXXXX) || return 1
+    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" start \
+        --root "$core_fixture_dir" --port "$core_port" \
+        --core "$fixture_dir/herdr-core-0.1.13/herdr-core" || return 1
+}
+
+stop_core_fixture() {
+    [[ -n "${core_fixture_dir:-}" ]] || return 0
+    if [[ -f "$core_fixture_dir/logs/sshd.log" ]]; then
+        cp "$core_fixture_dir/logs/sshd.log" "$fixture_dir/herdr-core-sshd.log" || return 1
+    fi
+    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" stop \
+        --root "$core_fixture_dir" || {
+        echo "Could not stop isolated herdr-core fixture; preserved $core_fixture_dir" >&2
+        return 1
+    }
+    core_fixture_dir=""
+}
+
+run_core_fixture_suite() {
+    start_core_fixture || return 1
+    # Reuse the scheme's existing private configuration channel. Recovery must
+    # restore this phase's config, not the preceding legacy fixture's.
+    HEELER_SSH_E2E_CONFIG=$(<"$core_fixture_dir/core-test-config")
+    push_simulator_environment HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
+    run_suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests || return $?
+    HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
+    push_simulator_environment HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
+    stop_core_fixture || return 1
+}
+
 # These phases share fixture state only within their worker. DirectStreamLocal
 # must observe the stale socket before TransportBehavior relinks it.
 run_app_fixture_suites() {
@@ -2225,6 +2296,7 @@ run_app_fixture_suites() {
                 ImageStagingE2ETests PairingCeremonyE2ETests; do
                 ln -s SharedFixtureE2ETests.log "$fixture_dir/$suite.log"
             done
+            run_core_fixture_suite || return $?
             ;;
     esac
 }

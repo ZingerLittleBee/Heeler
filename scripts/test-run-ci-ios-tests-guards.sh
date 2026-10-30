@@ -111,11 +111,11 @@ extract_shipped_function release_resource_lock
 extract_shipped_function provisioning_step
 extract_shipped_function redact_secret_in_file
 
-# The all and split layouts share five fixture call sites. Behavioral tests
+# The all and split layouts share six fixture call sites. Behavioral tests
 # in test-ci-simulator-recovery.sh prove which calls each shard executes.
 app_fixture_lane_count=$(grep -cE '^[[:space:]]*run_suite ' "$gate_script")
-[[ "$app_fixture_lane_count" == 5 ]] \
-    || die "gate has $app_fixture_lane_count app fixture call sites, expected 5"
+[[ "$app_fixture_lane_count" == 6 ]] \
+    || die "gate has $app_fixture_lane_count app fixture call sites, expected 6"
 # These are source-code literals. The variable-looking text must not expand.
 # shellcheck disable=SC2016
 grep -qF 'if [[ "$ci_lane" == "package" ]]; then' "$gate_script" \

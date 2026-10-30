@@ -1132,6 +1132,23 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.cwd == nil)
     }
 
+    @Test func coreLaunchNeverDispatchesALegacyWorktreeCreation() async {
+        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.name = "reviewer"
+        await store.discoverAgents()
+        store.startsInNewWorktree = true
+
+        await store.submit()
+
+        #expect(!store.offersWorktree)
+        #expect(recorder.destinations == [.existingWorkspace])
+    }
+
     @Test func worktreeSubmitForwardsTheTrimmedSpec() async {
         let host = Host.fixture()
         let recorder = StartRecorder()

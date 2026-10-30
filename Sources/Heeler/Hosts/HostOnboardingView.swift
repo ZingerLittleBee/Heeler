@@ -128,6 +128,7 @@ struct HostOnboardingView: View {
 
             Section("Host") {
                 LabeledContent("Account", value: store.host.username)
+                LabeledContent("Backend", value: store.host.backend.displayName)
                 LabeledContent("Session", value: sessionLine)
                 herdrEndpointRows
                 LabeledContent(
@@ -147,7 +148,9 @@ struct HostOnboardingView: View {
                     // The notice is advisory and the checks still pass: a Host
                     // newer than this build is usable, just not fully known.
                     Text(
-                        info.exceedsGeneratedProtocol
+                        store.host.backend == .herdrCore
+                            ? "herdr-core \(info.version)"
+                            : info.exceedsGeneratedProtocol
                             ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
                                 + "newer than this app was built against, so features added "
                                 + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "

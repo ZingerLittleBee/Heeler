@@ -102,6 +102,24 @@ struct NotificationPreferencesStoreTests {
 
     // MARK: Reflecting the Host's truth
 
+    @Test func coreNotificationsStayUnavailableWithoutReadingOrWritingLegacyRegistration() async {
+        let core = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let transport = ScriptedTransport()
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(transports: [core.id: transport]),
+            deviceToken: { self.token })
+        store.setHosts([core])
+
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: core)
+
+        #expect(store.states[core.id] == .unavailable(
+            message: NotificationPreferencesStore.coreUnavailableMessage))
+        #expect(await transport.notificationRegistrationReads == 0)
+        #expect(await transport.notificationRegistration == nil)
+        #expect(store.confirmedTriggers(for: core.id) == nil)
+    }
+
     @Test func refreshReflectsAnUnregisteredHost() async throws {
         let store = makeStore(transport: ScriptedTransport())
 

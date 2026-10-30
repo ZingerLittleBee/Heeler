@@ -325,6 +325,8 @@ actor HeelerSSHTransport: Transport {
 
     private let connection: SSHConnection
     nonisolated let routeID: UUID?
+    private let backend: HostBackend
+    private let coreSessionName: String
     private let socketLocation: HerdrSocketLocation
     private let requestTimeout: Duration
     private let gitExecTimeout: Duration
@@ -556,6 +558,8 @@ actor HeelerSSHTransport: Transport {
     ) {
         self.connection = connection
         routeID = nil
+        backend = .herdr
+        coreSessionName = "default"
         socketLocation = .absolutePath(socketPath)
         self.requestTimeout = requestTimeout
         self.gitExecTimeout = gitExecTimeout
@@ -578,6 +582,8 @@ actor HeelerSSHTransport: Transport {
     private init(connection: SSHConnection, settings: SSHTransportSettings, routeID: UUID?) {
         self.connection = connection
         self.routeID = routeID
+        backend = settings.backend
+        coreSessionName = settings.coreSessionName
         socketLocation = settings.socket
         requestTimeout = settings.requestTimeout
         gitExecTimeout = settings.gitExecTimeout
@@ -593,7 +599,7 @@ actor HeelerSSHTransport: Transport {
         pluginListCommand = settings.pluginListCommand
         notificationConfigDirCommand = settings.notificationConfigDirCommand
         herdrLauncher = settings.herdrLauncher
-        channelAdmission = SSHChannelAdmission()
+        channelAdmission = SSHChannelAdmission(execSessionBudget: settings.backend == .herdrCore)
     }
 
     private static func connectDirect(
@@ -713,6 +719,9 @@ actor HeelerSSHTransport: Transport {
     }
 
     func ping() async throws -> ServerInfo {
+        if backend == .herdrCore {
+            return try HerdrCoreWire.serverInfo(from: await coreRequest("hello", params: ["generation": .number(1)]))
+        }
         let pong = try await request(method: "ping", decoding: PongResponse.self)
         return try Self.serverInfo(from: pong)
     }
@@ -730,6 +739,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     func listSessions() async throws -> [HerdrSession] {
+        if backend == .herdrCore { return [] }
         let output = try await runHostCommand(sessionListCommand)
         let sessions: [HerdrSession]
         do {
@@ -796,7 +806,8 @@ actor HeelerSSHTransport: Transport {
     }
 
     func listAgents() async throws -> [Agent] {
-        try await request(method: "agent.list", decoding: AgentListResponse.self)
+        if backend == .herdrCore { return try await sessionSnapshot().agents.map(Agent.init) }
+        return try await request(method: "agent.list", decoding: AgentListResponse.self)
             .agents.map(Agent.init)
     }
 
@@ -962,7 +973,10 @@ actor HeelerSSHTransport: Transport {
     }
 
     func agentInfo(_ target: AgentTarget) async throws -> Agent {
-        Agent(
+        if backend == .herdrCore {
+            return try HerdrCoreWire.agent(from: await coreRequest("terminal.get", target: target.target))
+        }
+        return Agent(
             try await request(method: "agent.get", params: target, decoding: AgentInfoResponse.self)
                 .agent)
     }
@@ -1062,27 +1076,47 @@ actor HeelerSSHTransport: Transport {
     }
 
     func sessionSnapshot() async throws -> SessionSnapshot {
-        try await request(method: "session.snapshot", decoding: SessionSnapshotResponse.self)
+        if backend == .herdrCore {
+            return try HerdrCoreWire.snapshot(from: await coreRequest("terminal.list"))
+        }
+        return try await request(method: "session.snapshot", decoding: SessionSnapshotResponse.self)
             .snapshot
     }
 
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
-        try await request(method: "pane.read", params: params, decoding: PaneReadResponse.self)
+        if backend == .herdrCore {
+            return try await coreRead(target: params.paneID, lines: params.lines, source: params.source, format: params.format)
+        }
+        return try await request(method: "pane.read", params: params, decoding: PaneReadResponse.self)
             .read
     }
 
     func readAgent(_ params: AgentReadParams) async throws -> PaneReadResult {
-        try await request(method: "agent.read", params: params, decoding: PaneReadResponse.self)
+        if backend == .herdrCore {
+            return try await coreRead(target: params.target, lines: params.lines, source: params.source, format: params.format)
+        }
+        return try await request(method: "agent.read", params: params, decoding: PaneReadResponse.self)
             .read
     }
 
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        if backend == .herdrCore {
+            // Read before dispatch: a successful send must never look failed
+            // because a subsequent status lookup lost the connection.
+            let agent = try await agentInfo(AgentTarget(target: params.target))
+            _ = try await coreRequest("terminal.send", target: params.target, params: ["text": .string(params.text)])
+            return agent
+        }
         let response = try await request(
             method: "agent.prompt", params: params, decoding: AgentPromptedResponse.self)
         return Agent(response.agent)
     }
 
     func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        if backend == .herdrCore {
+            _ = try await coreRequest("terminal.keys", target: params.target, params: ["keys": .array(params.keys.map(JSONValue.string))])
+            return
+        }
         _ = try await request(
             method: "agent.send_keys",
             params: params,
@@ -1109,6 +1143,7 @@ actor HeelerSSHTransport: Transport {
     func createShellTerminal(
         _ creation: ShellTerminalCreationRequest
     ) async throws -> ShellTerminalIdentity {
+        if backend == .herdrCore { return try await coreCreateShell(directory: creation.cwd) }
         let created = try await request(
             method: "tab.create",
             params: TabCreateParams(
@@ -1126,6 +1161,7 @@ actor HeelerSSHTransport: Transport {
     func createShellWorkspace(
         _ workspace: NewWorkspaceSpec, tabLabel: String?
     ) async throws -> ShellTerminalIdentity {
+        if backend == .herdrCore { return try await coreCreateShell(directory: workspace.directory) }
         let created = try await request(
             method: "workspace.create",
             params: WorkspaceCreateParams(
@@ -1146,6 +1182,9 @@ actor HeelerSSHTransport: Transport {
     }
 
     func startAgent(_ launch: AgentLaunchRequest) async throws -> Agent {
+        if backend == .herdrCore {
+            return try await coreStartAgent(launch, directory: launch.cwd ?? launch.workspaceID.flatMap(HerdrCoreWire.directory(forWorkspaceID:)))
+        }
         let created = try await request(
             method: "tab.create",
             params: TabCreateParams(
@@ -1198,6 +1237,7 @@ actor HeelerSSHTransport: Transport {
         _ launch: AgentLaunchRequest,
         workspace: NewWorkspaceSpec
     ) async throws -> Agent {
+        if backend == .herdrCore { return try await coreStartAgent(launch, directory: workspace.directory) }
         let created = try await request(
             method: "workspace.create",
             params: WorkspaceCreateParams(
@@ -1303,6 +1343,10 @@ actor HeelerSSHTransport: Transport {
     }
 
     func closePane(_ params: PaneTarget) async throws {
+        if backend == .herdrCore {
+            _ = try await coreRequest("terminal.kill", target: params.paneID)
+            return
+        }
         _ = try await request(
             method: "pane.close",
             params: params,
@@ -1313,6 +1357,10 @@ actor HeelerSSHTransport: Transport {
     /// herdr closes the workspace server-side when this was its last tab; no
     /// compensation call is needed here.
     func closeTab(_ params: TabTarget) async throws {
+        if backend == .herdrCore {
+            _ = try await coreRequest("terminal.kill", target: params.tabID)
+            return
+        }
         _ = try await request(
             method: "tab.close",
             params: params,
@@ -1320,6 +1368,8 @@ actor HeelerSSHTransport: Transport {
     }
 
     func focusAgent(_ target: AgentTarget) async throws {
+        // Core viewers own focus locally; terminal.get has no desktop-focus side effect.
+        if backend == .herdrCore { _ = try await coreRequest("terminal.get", target: target.target); return }
         _ = try await request(
             method: "agent.focus",
             params: target,
@@ -1682,6 +1732,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func notificationPluginConfigDirectory() async throws -> String {
+        if backend == .herdrCore { throw HeelerPluginUnavailableError.herdrCore }
         try await requirePOSIXHost(feature: "Plugin configuration and notification registration")
         return try await notificationConfigDirectory.value {
             try await self.resolveNotificationConfigDirectory()
@@ -1736,6 +1787,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
+        if backend == .herdrCore { throw HeelerPluginUnavailableError.herdrCore }
         try await requirePOSIXHost(feature: "The Heeler plugin")
         // No `plugin_id` filter: one listing covers the current and legacy ids.
         let result = try await request(
@@ -1761,6 +1813,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     func runHeelerPluginStep(_ step: HeelerPluginStep) async throws {
+        if backend == .herdrCore { throw HeelerPluginUnavailableError.herdrCore }
         try await requirePOSIXHost(feature: "Changing the Heeler plugin")
         guard let arguments = step.herdrArguments else {
             if case .enable(let pluginID) = step {
@@ -2304,7 +2357,10 @@ actor HeelerSSHTransport: Transport {
         beforeDispatch: (@Sendable () async throws -> Void)? = nil,
         onDispatched: (@Sendable () async -> Void)? = nil
     ) async throws -> R {
-        try await withColdStartWake {
+        guard backend != .herdrCore else {
+            throw TransportError.hostFeatureUnavailable(feature: "\(method) is not supported on herdr-core")
+        }
+        return try await withColdStartWake {
             try await self.performRequest(
                 method: method,
                 params: params,
@@ -2990,15 +3046,18 @@ actor HeelerSSHTransport: Transport {
         guard connected else {
             throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
         }
-        let socketPath = try await resolvedSocketPath()
+        let isCore = backend == .herdrCore
+        let socketPath = isCore ? "" : try await resolvedSocketPath()
         let requestID = UUID().uuidString
-        let requestLine = try HerdrWire.subscribeRequestLine(
-            id: requestID,
-            subscriptions: subscriptions)
+        let requestLine = isCore
+            ? try HerdrCoreWire.requestLine(id: requestID, method: "events.subscribe", params: .object([:]))
+            : try HerdrWire.subscribeRequestLine(id: requestID, subscriptions: subscriptions)
         let environment = try await apiEnvironment()
         let channel: any HeelerSSHAPIChannel
         do {
-            if environment.isWindows {
+            if isCore {
+                channel = try await openCoreChannel()
+            } else if environment.isWindows {
                 try await checkWindowsBridge()
                 let exec = try await connection.openExec(
                     command: PowerShellCommand.herdr(
@@ -3049,10 +3108,14 @@ actor HeelerSSHTransport: Transport {
                 }
                 return line
             }
-            _ = try HerdrWire.decodeResult(
-                SubscriptionStartedResponse.self,
-                fromResponseLine: ackLine,
-                requestID: requestID)
+            if isCore {
+                _ = try HerdrCoreWire.result(from: ackLine, id: requestID)
+            } else {
+                _ = try HerdrWire.decodeResult(
+                    SubscriptionStartedResponse.self,
+                    fromResponseLine: ackLine,
+                    requestID: requestID)
+            }
         } catch {
             readerTask.cancel()
             await readerTask.value
@@ -3077,6 +3140,7 @@ actor HeelerSSHTransport: Transport {
     ) async {
         var pending = Data()
         var sawAck = false
+        var coreCursor = HerdrCoreEventCursor()
         var streamFailure: TransportError?
         var ackFailure = TransportError.cancelled
 
@@ -3109,10 +3173,17 @@ actor HeelerSSHTransport: Transport {
                 while let line = Self.takeLine(from: &pending) {
                     if !sawAck {
                         sawAck = true
+                        if backend == .herdrCore,
+                           let result = try JSONDecoder().decode(JSONValue.self, from: line)["result"] {
+                            try coreCursor.acknowledge(result)
+                        }
                         ackContinuation.yield(line)
                         ackContinuation.finish()
-                    } else if let event = HerdrWire.decodeEvent(fromLine: line) {
-                        if case .dropped = eventContinuation.yield(event) {
+                    } else {
+                        let event = backend == .herdrCore
+                            ? try coreCursor.decodeEvent(fromLine: line)
+                            : HerdrWire.decodeEvent(fromLine: line)
+                        if let event, case .dropped = eventContinuation.yield(event) {
                             _ = eventContinuation.yield(.eventsDropped)
                         }
                     }
@@ -3175,8 +3246,8 @@ actor HeelerSSHTransport: Transport {
         do {
             let lease = try await channelAdmission.acquire(.attach)
             admissionLease = lease
-            let socketPath = try await resolvedSocketPath()
-            let selectedAttachCommand = Self.attachCommand(
+            let socketPath = backend == .herdrCore ? "" : try await resolvedSocketPath()
+            let selectedAttachCommand = backend == .herdrCore ? "hc attach" : Self.attachCommand(
                 agentAttachCommand: attachCommand,
                 terminalAttachCommand: terminalAttachCommand,
                 target: request.target)
@@ -3187,7 +3258,12 @@ actor HeelerSSHTransport: Transport {
             // PTY attach drops it.
             let dropsStartupProbe: Bool
             do {
-                if environment.isWindows {
+                if backend == .herdrCore {
+                    try await requirePOSIXHost(feature: "herdr-core Hosts")
+                    let command = try HerdrCoreCommand.attach(session: coreSessionName, request: request)
+                    channel = try await connection.openPTY(command: command, columns: request.cols, rows: request.rows, timeout: requestTimeout)
+                    dropsStartupProbe = false
+                } else if environment.isWindows {
                     try await checkWindowsBridge()
                     guard (1...Int(UInt16.max)).contains(request.cols),
                         (1...Int(UInt16.max)).contains(request.rows),
@@ -3546,5 +3622,96 @@ actor HeelerSSHTransport: Transport {
             }
             return try await group.next() ?? true
         }
+    }
+}
+
+
+// MARK: - herdr-core generation-one API over its official SSH exec bridge
+extension HeelerSSHTransport {
+    private func openCoreChannel() async throws -> BootstrappedExecChannel {
+        try await requirePOSIXHost(feature: "herdr-core Hosts")
+        do {
+            let exec = try await connection.openExec(
+                command: HerdrCoreCommand.connect(session: coreSessionName), timeout: requestTimeout)
+            return BootstrappedExecChannel(
+                channel: exec, marker: HerdrCoreCommand.streamMarker,
+                startupFailure: "herdr-core could not start its API bridge. Install hc or herdr-core on the Host and check the selected session.")
+        } catch let error as SSHError {
+            throw await mapOperationError(error)
+        }
+    }
+
+    private func coreRequest(
+        _ method: String, target: String? = nil, params: [String: JSONValue] = [:]
+    ) async throws -> JSONValue {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+        }
+        var fields = params
+        if let target {
+            try HerdrCoreCommand.validateTarget(target)
+            fields["terminal"] = .string(target)
+        }
+        let id = UUID().uuidString
+        let request = Data(try HerdrCoreWire.requestLine(id: id, method: method, params: .object(fields)).utf8)
+        return try await withRequestDeadline {
+            try await self.channelAdmission.withChannel(.ordinarySession) {
+                let channel = try await self.openCoreChannel()
+                do {
+                    try await channel.write(request, timeout: self.requestTimeout)
+                    var pending = Data()
+                    while let chunk = try await channel.read(maximumBytes: 16 * 1024, timeout: self.requestTimeout) {
+                        pending.append(chunk)
+                        guard pending.count <= Self.maximumResponseBytes else {
+                            throw TransportError.malformedResponse("herdr-core response exceeds the size limit")
+                        }
+                        if let line = Self.takeLine(from: &pending) {
+                            let result = try HerdrCoreWire.result(from: line, id: id)
+                            try? await channel.close(timeout: .seconds(2))
+                            return result
+                        }
+                    }
+                    throw TransportError.channelFailed(detail: "herdr-core closed its API bridge before replying")
+                } catch {
+                    try? await channel.close(timeout: .seconds(2))
+                    if error is SSHError { throw await self.mapOperationError(error) }
+                    throw error
+                }
+            }
+        }
+    }
+
+    private func coreRead(target: String, lines: Int?, source: ReadSource, format: ReadFormat?) async throws -> PaneReadResult {
+        guard format == nil || format == .text else {
+            throw TransportError.hostFeatureUnavailable(feature: "ANSI screen reads are not supported on herdr-core; use the live Terminal")
+        }
+        let history = source == .visible || source == .detection ? 0 : max(0, lines ?? 100)
+        let result = try await coreRequest("terminal.read", target: target, params: ["lines": .number(Double(history))])
+        return try HerdrCoreWire.read(from: result, target: target, source: source)
+    }
+
+    private func coreCreateShell(directory: String) async throws -> ShellTerminalIdentity {
+        let terminal = try await coreRequest("terminal.run", params: ["cwd": .string(directory), "no_parent": .bool(true)])
+        guard let address = terminal["address"]?.stringValue else {
+            throw TransportError.malformedResponse("herdr-core started a terminal without an address")
+        }
+        return ShellTerminalIdentity(paneID: address, tabID: address, terminalID: address)
+    }
+
+    private func coreStartAgent(_ launch: AgentLaunchRequest, directory: String?) async throws -> Agent {
+        guard let kind = SupportedAgentKind(rawValue: launch.kind), let directory, !directory.isEmpty else {
+            throw TransportError.hostFeatureUnavailable(feature: "Choose an Agent program and directory for herdr-core")
+        }
+        let probe = try await runHostCommand(HerdrCoreCommand.executableProbe(for: kind))
+        guard let executable = Self.markerValue(in: probe, prefix: HerdrCoreCommand.executableMarker),
+              executable.hasPrefix("/"), !executable.contains("\0") else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: "\(kind.displayName) needs an executable on this Host's SSH PATH")
+        }
+        let terminal = try await coreRequest("terminal.run", params: [
+            "argv": .array(([executable] + launch.arguments).map(JSONValue.string)),
+            "cwd": .string(directory), "name": .string(launch.name), "no_parent": .bool(true)
+        ])
+        return try HerdrCoreWire.agent(from: terminal)
     }
 }

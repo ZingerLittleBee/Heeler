@@ -5,8 +5,12 @@ A native iOS agent console for herdr. One context: the app. Terms owned by herdr
 ## Language
 
 **Host**:
-A remote machine reachable over SSH that runs a herdr server. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them.
+A remote machine reachable over SSH that runs a herdr server or herdr-core. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them.
 _Avoid_: server, machine, connection
+
+**Host Backend**:
+The server a Host addresses: legacy herdr, or herdr-core used by herdr-app. Selection is explicit and persists with the Host; a failure never switches backends. Core terminals are grouped by launch directory and use their opaque addresses as Pane, Tab, and terminal ids. Only terminals local to the authenticated Host are included. See [the core setup guide](docs/guides/herdr-core.md).
+_Avoid_: fallback, desktop session (for the backend choice)
 
 **Route**:
 One way to reach a Host: an address and port, optionally resolved from a Jump
@@ -91,7 +95,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running inside a herdr pane, as reported by herdr's detection. The primary object of the app.
+A coding agent process (claude, codex, ...) running inside a herdr pane or herdr-core terminal, as reported by that backend. The primary object of the app.
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -420,7 +424,7 @@ _Avoid_: subscribe, enable push
 
 **Transport**:
 The app-side abstraction that executes herdr API requests and delivers event streams over SSH. UI code talks to Transport, never to SSH primitives.
-Unix Hosts use direct-streamlocal channels. Native Windows Hosts use herdr's
+Legacy Unix Hosts use direct-streamlocal channels; herdr-core Hosts use its JSON-RPC `hc connect` bridge and `hc attach` PTY over SSH. Native Windows Hosts use herdr's
 official API bridge over SSH exec; their live terminals use its framed terminal
 controller. Both remain behind the same Transport abstraction (ADR 0018).
 _Avoid_: client, bridge, tunnel

@@ -131,6 +131,10 @@ enum AgentActionMenuPolicy {
             actions.showSkills != nil
         case .worktreeDetails:
             actions.showWorktreeDetails != nil
+        case .renameAgent:
+            actions.renameAgent != nil
+        case .renameWorkspace:
+            actions.renameWorkspace != nil
         default:
             true
         }
@@ -178,9 +182,9 @@ enum AgentActionMenuPolicy {
         case .worktreeDetails:
             actions.showWorktreeDetails?()
         case .renameAgent:
-            actions.renameAgent()
+            actions.renameAgent?()
         case .renameWorkspace:
-            actions.renameWorkspace()
+            actions.renameWorkspace?()
         case .closeAgent:
             actions.closeAgent()
         }

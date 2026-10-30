@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
+for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite download_core_fixture_binary assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
     claim_simulator claim_resource_lock release_resource_lock write_lock_owner \
     lock_is_stale acquire_claim_guard release_claim_guard \
     clear_simulator_environment push_simulator_environment; do
@@ -314,6 +314,7 @@ run_shard_case() (
     run_suite() { printf 'suite %s\n' "$*" >> "$fixture_dir/events"; }
     start_password_sshd() { echo start-password >> "$fixture_dir/events"; }
     stop_privileged_sshd() { echo stop-password >> "$fixture_dir/events"; }
+    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests; }
     run_app_fixture_suites
     case "$shard" in
         session-weak)
@@ -329,6 +330,7 @@ EXPECTED
             cat > "$fixture_dir/expected" <<'EXPECTED'
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 118 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
+suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
             ;;
@@ -339,6 +341,7 @@ suite HeelerSSHSessionE2ETests 13 1 0 HeelerSSHSessionE2ETests
 stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 129 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
+suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             ;;
         ordinary)
@@ -351,6 +354,62 @@ EXPECTED
     printf 'PASS shard-%s\n' "$shard"
 )
 for shard in all session-weak transport ordinary; do run_shard_case "$shard"; done
+
+# The core phase must swap the actual Simulator config, restore the legacy
+# config afterwards, and retain ownership for cleanup when native tests fail.
+for result in pass fail; do (
+    fixture_dir="$work/core-$result"
+    mkdir -p "$fixture_dir"
+    fixture_configuration_base64=legacy-config
+    HEELER_SSH_E2E_CONFIG=legacy-config
+    HEELER_SSH_JUMP_E2E_CONFIG=jump-config
+    HEELER_PAIRING_E2E_CONFIG=pairing-config
+    start_core_fixture() {
+        core_fixture_dir="$fixture_dir/core"
+        mkdir -p "$core_fixture_dir"
+        echo core-config > "$core_fixture_dir/core-test-config"
+        echo start >> "$fixture_dir/events"
+    }
+    push_simulator_environment() { echo "config $HEELER_SSH_E2E_CONFIG $*" >> "$fixture_dir/events"; }
+    run_suite() {
+        echo "suite $*" >> "$fixture_dir/events"
+        [[ "$result" == pass ]] || return 65
+    }
+    stop_core_fixture() { echo stop >> "$fixture_dir/events"; core_fixture_dir=""; }
+    status=0
+    run_core_fixture_suite || status=$?
+    cat > "$fixture_dir/expected" <<'EXPECTED'
+start
+config core-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+suite HerdrCoreTransportE2ETests 6 1 0 HerdrCoreTransportE2ETests
+EXPECTED
+    if [[ "$result" == pass ]]; then
+        [[ "$status" == 0 && -z "$core_fixture_dir" ]] || fail 'core success retained fixture ownership'
+        cat >> "$fixture_dir/expected" <<'EXPECTED'
+config legacy-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+stop
+EXPECTED
+    else
+        [[ "$status" == 65 && -n "$core_fixture_dir" ]] || fail 'core failure hid status or lost cleanup ownership'
+    fi
+    diff -u "$fixture_dir/expected" "$fixture_dir/events" || fail 'core phase environment or execution order drifted'
+    printf 'PASS core-phase-%s\n' "$result"
+); done
+
+# A wrong release archive must never be extracted or run, even though the
+# download succeeded. Execute the shipped verifier against hostile bytes.
+(
+    fixture_dir="$work/core-bad-checksum"
+    mkdir -p "$fixture_dir"
+    curl() { local last=""; for last in "$@"; do :; done; echo tampered > "$last"; }
+    tar() { touch "$fixture_dir/extracted"; }
+    if download_core_fixture_binary > "$fixture_dir/output" 2>&1; then
+        fail 'core accepted an archive without its pinned checksum'
+    fi
+    grep -qF 'archive checksum mismatch' "$fixture_dir/output" || fail 'core archive failed for an unrelated reason'
+    [[ ! -e "$fixture_dir/extracted" ]] || fail 'core extracted an unchecked archive'
+    echo 'PASS core-download-checksum'
+)
 
 (
     ci_app_shard=session-weak

@@ -8,10 +8,20 @@ actor BootstrappedExecChannel: WindowsTerminalExecChannel {
     private var pending = Data()
     private var admitted = Data()
     private var ready = false
-    private static let marker = Data((PowerShellCommand.streamMarker + "\r\n").utf8)
-    private static let lfMarker = Data((PowerShellCommand.streamMarker + "\n").utf8)
+    private let marker: Data
+    private let lfMarker: Data
+    private let startupFailure: String
 
-    init(channel: any WindowsTerminalExecChannel) { self.channel = channel }
+    init(
+        channel: any WindowsTerminalExecChannel,
+        marker: String = PowerShellCommand.streamMarker,
+        startupFailure: String = "The Windows herdr command exited before starting its stream"
+    ) {
+        self.channel = channel
+        self.marker = Data((marker + "\r\n").utf8)
+        lfMarker = Data((marker + "\n").utf8)
+        self.startupFailure = startupFailure
+    }
 
     func write(_ data: Data, timeout: Duration) async throws {
         try await channel.write(data, timeout: timeout)
@@ -24,7 +34,7 @@ actor BootstrappedExecChannel: WindowsTerminalExecChannel {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while true {
             try Task.checkCancellation()
-            if let range = pending.range(of: Self.marker) ?? pending.range(of: Self.lfMarker) {
+            if let range = pending.range(of: marker) ?? pending.range(of: lfMarker) {
                 ready = true
                 admitted = Data(pending[range.upperBound...])
                 pending.removeAll()
@@ -37,13 +47,13 @@ actor BootstrappedExecChannel: WindowsTerminalExecChannel {
             }
             guard let bytes = try await channel.read(maximumBytes: maximumBytes, timeout: remaining) else {
                 throw TransportError.channelFailed(
-                    detail: "The Windows herdr command exited before starting its stream")
+                    detail: startupFailure)
             }
             pending.append(bytes)
             // Search before discarding chatter: one real SSH read can contain
             // both the marker and a first JSON frame larger than this tail.
             if pending.count > 8192,
-                pending.range(of: Self.marker) == nil, pending.range(of: Self.lfMarker) == nil
+                pending.range(of: marker) == nil, pending.range(of: lfMarker) == nil
             {
                 pending = Data(pending.suffix(8192))
             }

@@ -292,6 +292,8 @@ final class AgentUsageStore {
     /// over any connection, so its copy does not blame the link.
     nonisolated static func state(for error: any Error) -> State {
         switch error {
+        case HeelerPluginUnavailableError.herdrCore:
+            .requirement("Usage is not supported on herdr-core.")
         case AgentUsageError.unsupportedVersion: .updateRequired
         case TransportError.hostFeatureUnavailable: .unsupportedPlatform
         case TransportError.hostFileTimedOut: .failed(timeoutMessage)

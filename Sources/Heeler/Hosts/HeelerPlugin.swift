@@ -120,11 +120,17 @@ struct HeelerPluginRequirement: Hashable, Sendable {
     let note: String
 }
 
+/// The legacy TUI plugin cannot be installed into the core daemon.
+enum HeelerPluginUnavailableError: Error, Sendable {
+    case herdrCore
+}
+
 /// What one Host's plugin read established.
 enum HeelerPluginStatus: Equatable, Sendable {
     case checking
     /// The plugin does not run on native Windows Hosts.
     case unsupportedPlatform
+    case unsupportedBackend
     /// The Host could not be asked or did not answer usefully; nothing is
     /// known about the plugin, which is not the same as it being absent.
     case unavailable
@@ -136,6 +142,7 @@ enum HeelerPluginStatus: Equatable, Sendable {
         switch result {
         case .success(let installation?): self = .installed(installation)
         case .success(nil): self = .notInstalled
+        case .failure(HeelerPluginUnavailableError.herdrCore): self = .unsupportedBackend
         case .failure(TransportError.hostFeatureUnavailable): self = .unsupportedPlatform
         case .failure: self = .unavailable
         }
@@ -345,6 +352,9 @@ struct HeelerPluginPresentation: Equatable {
             notice = nil
         case .unsupportedPlatform:
             value = "Not supported on Windows"
+            notice = nil
+        case .unsupportedBackend:
+            value = "Not supported on herdr-core"
             notice = nil
         case .unavailable:
             value = "Unknown"
