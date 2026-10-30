@@ -93,7 +93,7 @@ enum HerdrCoreSessionName {
 
 /// Which server a Host's Agents live in (ADR 0031). A Host keeps its kind:
 /// neither a connection nor an edit switches it.
-enum ServerKind: String, Codable, CaseIterable, Hashable, Sendable {
+enum ServerKind: String, Codable, Hashable, Sendable {
     case herdrTUI
     case herdrCore
 
