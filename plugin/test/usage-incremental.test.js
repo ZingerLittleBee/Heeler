@@ -260,15 +260,15 @@ test("an unreadable directory keeps its known Transcripts without a rebuild",asy
   chmodSync(other,0);let hidden;
   try{appendFileSync(path,records([assistant("more",3)]));f.stale();hidden=await f.finish();}finally{chmodSync(other,0o700);}
   assert.equal(tokens(hidden),15);assert.equal(hidden.scan.unreadableFiles,1);assert.equal(generation(f),initial);
-  assert.equal(JSON.stringify(hidden).includes(f.root),false);
+  assert.equal(JSON.stringify(hidden.programs.map(({accounts,...program})=>program)).includes(f.root),false);
   f.stale();const restored=await f.finish();assert.equal(tokens(restored),15);assert.equal(restored.scan.unreadableFiles,0);assert.equal(generation(f),initial);
   rmSync(f.cache(),{recursive:true});assert.deepEqual((await f.finish()).programs,restored.programs);
 });
 
 test("an unreadable Claude root is counted while another root can be listed",{skip:process.getuid?.()===0&&"root ignores directory modes"},async t=>{
   const f=fixture(t);f.transcript("main.jsonl",[assistant("main",5)]);
-  // ~/.claude is the second root beside CLAUDE_CONFIG_DIR.
-  const second=join(f.env.HOME,".claude","projects");mkdirSync(join(second,"-work-two"),{recursive:true});
+  // The legacy XDG directory is the second root beside CLAUDE_CONFIG_DIR.
+  const second=join(f.env.HOME,".config","claude","projects");mkdirSync(join(second,"-work-two"),{recursive:true});
   writeFileSync(join(second,"-work-two","two.jsonl"),records([assistant("two",7)]));
   assert.equal(tokens(await f.finish()),12);const initial=generation(f);
   const main=join(f.env.CLAUDE_CONFIG_DIR,"projects");
@@ -395,6 +395,20 @@ test("a routine incremental run keeps the finished scan state until it finishes"
   assert.ok(finished.scan.coveredThrough>first.scan.coveredThrough);
 });
 
+test("a worker that dies while counting an added Account is restarted by the next query",async t=>{
+  const f=fixture(t);f.transcript("default.jsonl",[assistant("default",10)]);
+  const added=join(f.root,"added");
+  for(let i=0;i<2;i++){const path=join(added,"projects","-work",`added-${i}.jsonl`);mkdirSync(join(path,".."),{recursive:true});writeFileSync(path,records([assistant(`added-${i}`,5)]));}
+  assert.equal(tokens(await f.finish()),10);
+  // Commit after every line and hold the added Account's second Transcript, then end the worker there.
+  writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR,"usage-accounts.json"),JSON.stringify({version:1,claude:{defaultName:null,accounts:[{id:"added-id",directory:added,name:"added"}]}}));
+  writeFileSync(join(f.root,"tick"),"");writeFileSync(join(f.root,"hold"),"1");
+  assert.equal(f.query().refreshing,true);await waitFor(join(f.root,"read-started"));
+  process.kill(JSON.parse(readFileSync(join(f.cache(),"worker.lock"))).pid,"SIGKILL");rmSync(join(f.root,"hold"));
+  // The committed half of the Account is not a finished count: a query starts another worker.
+  assert.equal(tokens(await f.finish()),20);
+});
+
 test("a rebuild keeps the previous snapshot visible until its replacement is complete",async t=>{
   const f=fixture(t);const path=f.transcript("rebuild.jsonl",[assistant("old",10)]);
   assert.equal(tokens(await f.finish()),10);
@@ -503,7 +517,9 @@ test("a worker killed at any cache write recovers the totals of a fresh full sca
   for(const change of ["incremental","prune","rebuild"])for(let lane=0;lane<2;lane++)lanes.push(await killScenario(t,change));
   for(const lane of lanes){
     const twin=lanes.find(other=>other.change===lane.change);
-    assert.equal(lane.writes,twin.writes);assert.deepEqual(lane.expected,twin.expected);assert.ok(lane.writes>=15,`${lane.writes} writes`);
+    // Twins run in their own fixtures, so their Account directories differ.
+    const portable=programs=>programs.map(({accounts,...program})=>({...program,accounts:accounts?.map(({directory,...account})=>account)}));
+    assert.equal(lane.writes,twin.writes);assert.deepEqual(portable(lane.expected),portable(twin.expected));assert.ok(lane.writes>=15,`${lane.writes} writes`);
   }
   t.diagnostic(lanes.filter((_,i)=>i%2===0).map(lane=>`${lane.change}: ${lane.writes} writes`).join(", "));
   await Promise.all(lanes.map(async (lane,index)=>{for(let k=1+index%2;k<=lane.writes;k+=2)await lane.killAt(k);}));

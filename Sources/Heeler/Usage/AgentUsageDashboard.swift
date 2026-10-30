@@ -50,6 +50,8 @@ struct AgentUsageDashboard: View {
     @State private var selectedDay: String?
     @State private var daySheet: AgentUsageDaySelection?
     @State private var isShowingLimits = false
+    /// The Host whose Claude Code Accounts sheet is open.
+    @State private var accountsHostID: Host.ID?
     @State private var breakdown = AgentUsageBreakdown.Kind.models
     @State private var width: CGFloat = 0
     @Environment(\.locale) private var locale
@@ -66,7 +68,9 @@ struct AgentUsageDashboard: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if isWide && showsLimits {
-                    AgentUsageLimitsPage(entries: scopedEntries) { showsLimits = false }
+                    AgentUsageLimitsPage(entries: scopedEntries, showAccounts: { accountsHostID = $0 }) {
+                        showsLimits = false
+                    }
                 } else {
                     if !isWide { controls }
                     content(scope)
@@ -109,6 +113,7 @@ struct AgentUsageDashboard: View {
         .sheet(isPresented: $isShowingLimits) {
             AgentUsageLimitsSheet(entries: scopedEntries)
         }
+        .modifier(ClaudeAccountsSheetPresenter(hostID: $accountsHostID, entries: entries))
         .onChange(of: scopeHostID) { selectedDay = nil }
         // Waits for the first layout: until then the page cannot tell wide
         // from compact.
@@ -173,6 +178,7 @@ struct AgentUsageDashboard: View {
             ForEach(scope.included.filter { $0.refreshFailure != nil }) { host in
                 failureBanner(host, isOnlyHost: scope.included.count == 1)
             }
+            accountsNotice
             if isWide {
                 AgentUsageWideColumns {
                     VStack(alignment: .leading, spacing: 0) {
@@ -425,6 +431,7 @@ struct AgentUsageDashboard: View {
                 ForEach(Array(summaries.enumerated()), id: \.element.program.id) { index, entry in
                     if index > 0 { Divider().padding(.leading, 16) }
                     programRow(entry.program, summary: entry.summary, total: total)
+                    accountRows(scope, program: entry.program, summary: entry.summary)
                 }
             }
             .padding(.top, 16)
@@ -465,6 +472,19 @@ struct AgentUsageDashboard: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// The program's readable Accounts for the range, when its Host has
+    /// several; they add up to the program's figure.
+    private func accountRows(
+        _ scope: AgentUsageScope, program: AgentUsageScope.Program, summary: AgentUsageReport.Summary
+    ) -> some View {
+        let accounts = scope.accounts(of: program.program, range: range)
+        return ForEach(Array(accounts.enumerated()), id: \.element.id) { index, account in
+            if index > 0 { Divider().padding(.leading, 16) }
+            AgentUsageAccountRow(
+                account: account, program: program, programSummary: summary, metric: metric, isWide: isWide)
+        }
+    }
+
     // MARK: Wide layout
 
     private func wideHero(_ scope: AgentUsageScope) -> some View {
@@ -494,6 +514,7 @@ struct AgentUsageDashboard: View {
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(summaries, id: \.program.id) { entry in
                 programRow(entry.program, summary: entry.summary, total: total)
+                accountRows(scope, program: entry.program, summary: entry.summary)
             }
         }
         .padding(.top, 14)
@@ -686,6 +707,18 @@ struct AgentUsageDashboard: View {
         .padding(.top, 18)
     }
 
+    /// One Host's suggested Claude Code directories, under any failure.
+    @ViewBuilder
+    private var accountsNotice: some View {
+        if scopedEntries.count == 1, let entry = scopedEntries.first, entry.isConnected,
+            let title = ClaudeAccountsListing.noticeTitle(
+                state: entry.store.state, supportsAccounts: entry.store.supportsClaudeAccounts)
+        {
+            ClaudeAccountsNotice(title: title) { accountsHostID = entry.id }
+                .padding(.top, 14)
+        }
+    }
+
     private func failureBanner(_ host: AgentUsageScope.IncludedHost, isOnlyHost: Bool) -> some View {
         HStack(alignment: .top, spacing: 11) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -754,6 +787,75 @@ private struct AgentUsageSubtitle: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// One readable Claude Code Account under its program in the Programs card:
+/// its figure, its share of the program and a bar as long as that share.
+struct AgentUsageAccountRow: View {
+    let account: AgentUsageScope.AccountUsage
+    let program: AgentUsageScope.Program
+    /// The program's figures for the same range.
+    let programSummary: AgentUsageReport.Summary
+    let metric: AgentUsageMetric
+    var isWide = false
+    @Environment(\.locale) private var locale
+
+    /// The bar's length at the whole program.
+    private static let barWidth: CGFloat = 132
+
+    var body: some View {
+        let share = account.summary.map { Self.share($0, of: programSummary, metric: metric) } ?? 0
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text(account.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
+                if let summary = account.summary {
+                    Text(AgentUsageStyle.value(summary, metric: metric, locale: locale))
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                }
+            }
+            .font(isWide ? .body : .subheadline)
+            Text(Self.detail(account, programName: program.displayName, programSummary: programSummary,
+                metric: metric, locale: locale))
+                .font(isWide ? .footnote : .caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            AgentUsageStyle.color(for: program.program)
+                .frame(width: max(Self.barWidth * share, 2), height: 2)
+                .clipShape(.capsule)
+                .padding(.top, 4)
+                .accessibilityHidden(true)
+        }
+        .padding(.leading, 16)
+        .padding(.vertical, isWide ? 6 : 9)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The Account's part of its program in the metric, from 0 to 1.
+    static func share(
+        _ summary: AgentUsageReport.Summary, of program: AgentUsageReport.Summary, metric: AgentUsageMetric
+    ) -> Double {
+        let whole = metric.value(of: program)
+        guard whole > 0 else { return 0 }
+        return min(max(metric.value(of: summary) / whole, 0), 1)
+    }
+
+    /// "72% of Claude Code · 211M tokens", the other metric last.
+    static func detail(
+        _ account: AgentUsageScope.AccountUsage, programName: String, programSummary: AgentUsageReport.Summary,
+        metric: AgentUsageMetric, locale: Locale
+    ) -> String {
+        guard let summary = account.summary else { return "Token Usage could not be read." }
+        let share = AgentUsageStyle.share(metric.value(of: summary), of: metric.value(of: programSummary),
+            locale: locale)
+        let other = metric == .cost
+            ? "\(AgentUsageStyle.tokens(summary.tokens.total, locale: locale)) tokens"
+            : AgentUsageStyle.cost(summary.estimatedCostUSD, locale: locale)
+        return "\(share) of \(programName) · \(other)"
     }
 }
 

@@ -7,6 +7,9 @@ import { cacheDirectory, readJSON, writeJSON, activeLock, reserveWorker, release
 import { reportFromSnapshot } from "./usage/buckets.js";
 import { checkpointCurrent } from "./usage/checkpoint.js";
 import { readUsageRuntime } from "./usage-runtime.js";
+import { claudeAccounts, readAccountFile } from "./usage/accounts.js";
+import { accountSuggestions } from "./usage/account-suggestions.js";
+import { agentDirectories } from "./usage/claude-agents.js";
 
 /**
  * Start one detached worker unless another holds the lock; true while one runs.
@@ -53,12 +56,20 @@ try {
     const directory = cacheDirectory(runtime);
     const snapshot = readJSON(join(directory, "buckets.json"));
     const failures = refreshFailures(directory);
-    const stale = !snapshot?.complete || !checkpointCurrent(snapshot?.checkpoint)
+    const accountFile = readAccountFile(process.env.HERDR_PLUGIN_CONFIG_DIR);
+    const accounts = claudeAccounts(runtime, accountFile);
+    const counted = accounts.filter(account => account.state === "ok").map(account => account.id);
+    // An Account added, removed or back since the last run is counted at once.
+    const accountsChanged = !Array.isArray(snapshot?.countedAccounts) || snapshot.countedAccounts.length !== counted.length
+      || !counted.every(id => snapshot.countedAccounts.includes(id));
+    const stale = !snapshot?.complete || !checkpointCurrent(snapshot?.checkpoint) || accountsChanged
       || snapshot?.breakdownsVersion !== 1 || !(Date.now() - Date.parse(snapshot.generatedAt) <= 60_000);
     let refreshing = false;
     let startFailed = false;
     try {
       refreshing = Boolean(activeLock(directory));
+      // Claude Code's next read is the earliest over the Accounts the last run
+      // counted; an Account added since then makes the snapshot stale.
       if (!refreshing && !failures.paused && (stale
           || snapshot.limitsVersion !== 1 || !snapshot.nextLimitsAt || Date.now() >= snapshot.nextLimitsAt
           || (values["claude-limits"] && (!snapshot.nextClaudeLimitsAt || Date.now() >= snapshot.nextClaudeLimitsAt)))) {
@@ -73,8 +84,12 @@ try {
     // a failing refresh instead, keeping a program's own scan error.
     const failed = failures.failing ? "The background refresh failed repeatedly."
       : startFailed && stale ? "The background refresh could not start." : null;
-    const served = failed ? { ...snapshot, errors: { claude: failed, codex: failed, ...snapshot?.errors } } : snapshot;
-    report = reportFromSnapshot(served, timeZone, refreshing, Date.now(), values["claude-limits"]);
+    const served = failed ? { ...snapshot, errors: { claude: failed, codex: failed,
+      ...Object.fromEntries(counted.map(id => [`claude:${id}`, failed])), ...snapshot?.errors } } : snapshot;
+    // Suggestions are checked against the Account file as it is now, not as the last run saw it.
+    const suggestions = accountSuggestions({ agents: agentDirectories(runtime.stateDir), accounts, ignored: accountFile.ignored,
+      candidates: Array.isArray(snapshot?.claudeCandidates) ? snapshot.claudeCandidates : [] });
+    report = reportFromSnapshot(served, timeZone, refreshing, Date.now(), values["claude-limits"], { accounts, suggestions });
   }
   console.log(JSON.stringify(report));
 } catch {

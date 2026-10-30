@@ -302,20 +302,33 @@ on-device cache; and the Heeler plugin on the Host itself, to total Claude Code
 and Codex Token Usage (ADR 0028).
 _Avoid_: log, history file, session file
 
+**Account**:
+One sign-in of Claude Code or Codex on a Host, identified by the config
+directory where that program keeps its sign-in and Transcripts. Each Host has
+one **Default Account** per program: the directory the program uses in herdr's
+own environment. For Claude Code the user may add more Accounts by choosing
+their directories; Heeler may suggest directories that look like one, but
+counts none until the user adds it. A Host's Accounts are shared by every
+device. Two directories signed in to the same login are still two Accounts,
+and switching logins inside one directory stays one Account (ADR 0030).
+_Avoid_: profile, login, user, config dir (the directory identifies an Account;
+it is not its name)
+
 **Usage Limits**:
-The windows a Claude Code or Codex account may use before the service slows
+The windows a Claude Code or Codex Account may use before the service slows
 or stops it, such as five hours or a week, each with the share used and when
-it resets, as the service reports them for the account signed in on a Host.
-They describe the account, not the Host or an Agent. Claude Code's are read
-only when the user turns them on for that Host (ADR 0028).
+it resets, as the service reports them for each Account on a Host. They
+describe the Account, not the Host or an Agent, and are never merged across
+Accounts. Claude Code's are read only when the user turns them on for that
+Host (ADR 0028).
 _Avoid_: quota, rate limit (in copy), plan usage, billing
 
 **Token Usage**:
 The tokens a Host's Claude Code and Codex Transcripts record over at most the
-last 30 days, by program, day, model and working directory, with the
-estimated cost of those tokens at API list prices. It counts only what this
-Host's Transcripts still hold, and is never the account's Usage Limits or a
-bill.
+last 30 days, by program, Account, day, model and working directory, with the
+estimated cost of those tokens at API list prices. It counts only what the
+Transcripts of the Host's Accounts still hold, and is never an Account's Usage
+Limits or a bill.
 _Avoid_: spend, cost (alone), usage (unqualified), credits
 
 **Blocked Card**:

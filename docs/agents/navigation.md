@@ -136,13 +136,33 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   `ConsoleStore.agentUsageStore(for:)` retains an
   [AgentUsageStore](../../Sources/Heeler/Usage/AgentUsageStore.swift) per Host;
   it owns refresh polling and the device's per-Host Claude limits preference.
+  Claude Code Accounts ([ADR 0030](../adr/0030-usage-counts-the-accounts-the-user-adds.md),
+  the design's [Accounts](../design/agent-usage.md#accounts)) arrive as the
+  report's `accounts` and `accountSuggestions` (`ClaudeAccountsReportTests`)
+  and need plugin 0.8.0 (`HeelerPluginFeature.claudeAccounts`).
+  The store's `addAccount`, `renameAccount`, `removeAccount` and
+  `ignoreSuggestion` edit the Host's `usage-accounts.json`, modeled by
+  [UsageAccountFile](../../Sources/Heeler/Usage/UsageAccountFile.swift),
+  through `Transport.readUsageAccountFile()` and `replaceUsageAccountFile(_:)`,
+  one change at a time behind ConsoleStore's `usageAccountFileGate`
+  (focused tests: `UsageAccountFileTests`, `ClaudeAccountsStoreTests`).
+  The [Claude Code Accounts sheet and the Usage notice](../../Sources/Heeler/Usage/ClaudeAccountsSheet.swift)
+  make those changes; `AgentUsageLimitsCard` in the sheets file gives each
+  Account its Usage Limits card (focused tests: `ClaudeAccountsSheetTests`).
+  Its `readings(for:)` also feeds the chips, Host detail's closest Account
+  and the iPad strip, and `AgentUsageScope.accounts(of:range:)` gives the
+  Programs card its Account rows (focused tests: `ClaudeAccountsUsageTests`).
+  Demo mode's Studio Mac keeps Accounts and suggestions in an in-memory file
+  (`DemoUsageSample`, `DemoUsageTests`).
   The Home and Lock Screen widgets read the App Group snapshot that
   [AgentUsageWidgetPublisher](../../Sources/Heeler/Usage/AgentUsageWidgetPublisher.swift)
   writes from those stores, modeled in
   [UsageWidgetSnapshot](../../Sources/HeelerUsageCore/UsageWidgetSnapshot.swift)
-  (shared with the extension, as are the formats in `AgentUsageStyle`).
+  (shared with the extension, as are the formats in `AgentUsageStyle`);
+  its Usage Limits follow `readings(for:)`, one entry per Claude Code Account.
   [UsageWidgetViews](../../Sources/HeelerWidgets/Usage/UsageWidgetViews.swift)
-  draws every size and is compiled into the app for tests;
+  draws every size, with `UsageLimitsLayout` and `UsageLimitsPick` choosing
+  each size's layout and reading, and is compiled into the app for tests;
   [UsageWidgets](../../Sources/HeelerWidgets/Usage/UsageWidgets.swift) holds
   the timelines and configuration. Stale Hosts are re-read for the widgets
   by `ConsoleStore.refreshStaleWidgetUsage()` in the foreground and by
@@ -155,6 +175,12 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   herdr's environment, [usage-query.js](../../plugin/src/usage-query.js)
   reads snapshots, and [usage-worker.js](../../plugin/src/usage-worker.js)
   coordinates [scanners, limit readers, buckets and pricing](../../plugin/src/usage).
+  There, [accounts.js](../../plugin/src/usage/accounts.js) reads the Account
+  file and gives each Account its state,
+  [account-suggestions.js](../../plugin/src/usage/account-suggestions.js)
+  lists home candidates and merges the suggestions, and
+  [claude-agents.js](../../plugin/src/usage/claude-agents.js) records the
+  `CLAUDE_CONFIG_DIR` of running Claude Code Agents from the activity hook.
   Read the [design](../design/agent-usage.md) and
   [ADR 0028](../adr/0028-plugin-collects-agent-usage-on-the-host.md).
   Focused app coverage: `AgentUsageStoreTests` and `ClaudeUsagePreferenceTests`
@@ -169,7 +195,10 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   the shared [usage-v1 vector](../../plugin/test-vectors/usage-v1.json).
   Price-table maintenance is in the [plugin README](../../plugin/README.md#maintaining-the-price-table).
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
-  and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter.
+  and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter. The
+  Claude Code Accounts browser comes from `AgentUsageStore.accountDirectoryBrowser()`
+  and lists through `RemoteDirectoryListing.followingLinks`, which keeps
+  symbolic links to directories.
   [RemoteDirectoryBrowserTests](../../Tests/HeelerTests/RemoteDirectoryBrowserTests.swift)
   cover store behavior; the first-presentation native check is in
   [the UI runbook](simulator-ui.md).

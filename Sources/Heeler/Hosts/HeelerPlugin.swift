@@ -42,7 +42,7 @@ enum HeelerPluginCompatibility {
     /// shared `plugin/test-vectors/plugin-version-v1.json` pins both sides,
     /// so a plugin release must update this constant too. A Host with a newer
     /// plugin (the plugin branch moved ahead of this build) counts as current.
-    static let bundled = PluginVersion(0, 7, 1)
+    static let bundled = PluginVersion(0, 8, 0)
 }
 
 /// An app feature that only works with a recent enough Heeler plugin.
@@ -61,6 +61,9 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
     case sessionScopedNotifications
     /// Host-side Usage Limits and Token Usage.
     case usage
+    /// Usage per Claude Code Account, and the Account file the app edits
+    /// (ADR 0030).
+    case claudeAccounts
 
     var minimumVersion: PluginVersion {
         switch self {
@@ -68,6 +71,7 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
         case .liveActivityRows: PluginVersion(0, 5, 0)
         case .sessionScopedNotifications: PluginVersion(0, 6, 0)
         case .usage: PluginVersion(0, 7, 0)
+        case .claudeAccounts: PluginVersion(0, 8, 0)
         }
     }
 
@@ -80,6 +84,8 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
         switch self {
         case .usage:
             "Usage needs plugin \(minimumVersion) or newer; this Host has \(installed)."
+        case .claudeAccounts:
+            "Claude Code Accounts need plugin \(minimumVersion) or newer; this Host has \(installed)."
         case .sidebarFields:
             "Sync from plugin and herdr's sidebar fields need plugin \(minimumVersion) "
                 + "or newer; this Host has \(installed)."

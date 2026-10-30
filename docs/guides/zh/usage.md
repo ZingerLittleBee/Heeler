@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/usage.md at 72fc7b4e -->
+<!-- Translated from docs/guides/usage.md at 462002aa -->
 # 查看 Usage 与 Usage Limits
 
 Usage 显示你的 Claude Code 和 Codex 账号离 Usage Limits 还有多远，以及每台 Host 上的 Agent 最近 30 天用了多少 token、按 API 标价折算大约值多少钱。小组件把同样的数字放到主屏和锁屏上。
@@ -34,6 +34,26 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ### 打开 Claude Code limits
 
 Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limits** 旁的 **Details**，然后打开 **Claude Code limits**。插件会向那台电脑上的 Claude Code 询问你的套餐额度；Heeler 从不经手你的登录信息。
+
+## 添加 Claude Code Account
+
+如果一台 Host 上同时用着不止一个 Claude Code 订阅，各自从自己的配置目录登录（例如用 `CLAUDE_CONFIG_DIR=~/.claude-2` 启动的 Agent），就把每个目录添加为一个 Account，Usage 会把它们分开统计。Account 需要那台 Host 装有 Heeler 插件 0.8.0 或更新版本；上面的安装命令也能用来更新。
+
+每台 Host 一开始都有 **Default** Account，也就是 herdr 启动 Claude Code 时它使用的目录。你添加的每个 Account 都有自己的 Token Usage，列在 Claude Code 下面。打开 **Claude Code limits** 后，它还有自己的 Usage Limits，并在 Usage Limits 小组件里单独占一行。
+
+1. 在 Usage 中选择一台 Host。如果 Heeler 找到了像是 Claude Code 的目录，会出现 **Found 1 Claude Code directory** 这样的提示，轻点它。否则轻点 **Usage Limits** 旁的 **Details**，再轻点 **Claude Code Accounts**。
+2. 在 **Suggestions** 下，轻点 **Add** 开始统计某个目录，或轻点 **Ignore** 不再建议它。Heeler 建议的是正在运行的 Agent 使用的目录，或你主目录里的目录；在你添加之前，它们都不计入。
+3. 要添加 Heeler 没有建议的目录，轻点 **Choose Another Directory…**，在 Host 上选中它。这个目录里必须有 Claude Code 的登录信息或 Transcript，也就是一个 `.claude.json` 文件或一个 `projects` 文件夹。
+
+新 Account 从下一次刷新开始计入。一台 Host 最多可以有四个 Claude Code Account（包括 Default）；满四个后，要先移除一个才能再添加。
+
+轻点某个 Account 可以重命名。名称会显示在 Usage、Usage Limits 和小组件中，所以同一台 Host 上的 Account 不能重名。清空 Default Account 的名称，它就会重新叫 Default。
+
+要移除你添加的 Account，在它上面向左轻扫或按住它，然后轻点 **Remove** 和 **Remove Account**。它的 Token Usage 和 Usage Limits 不再显示；目录和其中的登录信息仍留在 Host 上。Default Account 可以重命名，但不能移除。
+
+如果 herdr 本身用 `CLAUDE_CONFIG_DIR` 启动 Claude Code，`~/.claude` 就不再计入 Default Account。Heeler 会把它列为建议；如果你还在用它，就把它添加进来。
+
+Account 保存在 Host 上，所以无论从哪台设备连接，看到的都是同一份列表。
 
 ## 添加小组件
 

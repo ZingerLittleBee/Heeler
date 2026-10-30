@@ -24,6 +24,14 @@ Entries reference the pull request that made the change.
 - Give every Host the same Agent row fields: Apply to All Hosts on a Host's
   page in Agent List Fields copies its rows, right sides included, to the
   other Hosts.
+- Count several Claude Code sign-ins on one Host. Usage shows each Claude
+  Code Account, one config directory each, with its own Usage Limits and
+  its share of Token Usage, in the app and in the Usage Limits widgets.
+  Heeler suggests directories that running Agents or your home folder use,
+  and you can choose another; a Host has up to four Accounts. When herdr's
+  environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
+  it until you add it as an Account. Update the Heeler plugin to 0.8.0 on
+  the Host. (#529; PR #533)
 
 ### Changed
 
@@ -48,6 +56,10 @@ Entries reference the pull request that made the change.
 
 - Keep each row's fields in Agent List Fields on their own line. The last
   one, often the add button, could drop below the row onto the next.
+- Keep the paste button on a terminal's keyboard row visible: it could
+  appear as an empty space when the terminal opened. In light mode it is
+  now a plain glyph like the row's other buttons, without a gray backing.
+  (#536)
 - Show a new Claude Code Agent's Chat, such as one started in a new
   worktree, as No Messages Yet until its first message, instead of
   Conversation Not Found. (#530)
