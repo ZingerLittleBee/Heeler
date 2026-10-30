@@ -201,7 +201,7 @@ actor HerdrCoreLink {
                 }
                 let timer = Task { [sleep] in
                     do { try await sleep(deadline) } catch { return }
-                    await self.expireCall(id)
+                    self.expireCall(id)
                 }
                 pending[id] = PendingCall(
                     continuation: continuation, isMutation: isMutation, opensStream: opensStream, timer: timer)

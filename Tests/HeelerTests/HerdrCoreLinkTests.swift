@@ -198,6 +198,14 @@ struct HerdrCoreLinkTests {
         #expect(await !harness.socket.isClosed)
     }
 
+    @Test func aCancelledMutationAlreadyWrittenIsOutcomeUnknown() async throws {
+        let harness = try await Harness()
+        let call = Task { try await harness.link.call("terminal.send", deadline: .seconds(5), isMutation: true) }
+        _ = await harness.socket.nextRequest()
+        call.cancel()
+        await #expect(throws: TransportError.coreMutationOutcomeUnknown) { try await call.value }
+    }
+
     @Test func concurrentSendsNeverInterleaveBytes() async throws {
         let harness = try await Harness()
         let socket = harness.socket

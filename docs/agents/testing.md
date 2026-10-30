@@ -170,6 +170,8 @@ from compilation, an executed suite, or native UI acceptance.
 
 ### herdr-core backend
 
+`HerdrCoreFrameTests`, `HerdrCoreLinkTests`, `HerdrCoreServerInfoTests` and `HerdrCoreEventCursorTests` cover the framed building blocks through `FakeCoreSocket`, a duplex API channel on the manual clock, and `plugin/test-vectors/herdr-core-frames-v1.json`. Those vectors are provisional until a capture replaces them: `scripts/lab/herdr-core-capture.py` connects only to a socket path it is given, starts nothing, and writes scrubbed vectors and event logs from a core you started yourself.
+
 `HerdrCoreWireTests` and `HerdrCoreCommandTests` cover generation-one mapping, sequencing and command validation. `HerdrCoreTransportE2ETests` runs all nine methods against a real core and disposable SSH server in the transport CI shard (and the serial lane); CI downloads the pinned 0.1.13 archive and checks its SHA-256 before extraction. The evidence gate requires those passes before accepting their ordinary-lane skips.
 
 For a local focused run, `scripts/fixtures/herdr-core-ssh.py --help` describes setup, the private Simulator environment configuration and cleanup, using an already installed core. The fixture owns a separate home, runtime directory, state and session; it never updates or stops a user's core. Native fixture success on macOS and a Linux CLI/protocol smoke are separate evidence: neither alone establishes iOS-to-Linux SSH acceptance.

@@ -207,6 +207,22 @@ import Testing
         #expect(missed.terminals.map(\.address) == ["t7", "t8"])
     }
 
+    @Test func onlyTheAddressOfARecordIsRequired() throws {
+        let snapshot = try HerdrCoreSnapshot(result: .object([
+            "seq": .number(1),
+            "terminals": .array([
+                .object([
+                    "address": .string("t1"), "status": .object(["app": .string("pi")]),
+                    "foreground": .object(["name": .string("pi")]),
+                ])
+            ]),
+        ]))
+        let record = try #require(snapshot.terminals.first)
+        #expect(record.argv.isEmpty)
+        #expect(record.status?.app == "pi")
+        #expect(record.foreground == HerdrCoreForeground(pid: nil, name: "pi", argv: [], cwd: ""))
+    }
+
     @Test func aRecordWithoutAnAddressCannotMasqueradeAsAnEmptySnapshot() {
         #expect(throws: TransportError.self) {
             try HerdrCoreSnapshot(result: .object([

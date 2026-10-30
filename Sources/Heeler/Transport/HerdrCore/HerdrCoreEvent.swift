@@ -25,7 +25,7 @@ struct HerdrCoreTerminalStatus: Decodable, Equatable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
-        state = try fields.decode(String.self, forKey: .state)
+        state = try fields.decodeIfPresent(String.self, forKey: .state) ?? ""
         kind = try fields.decodeIfPresent(String.self, forKey: .kind)
         progress = try fields.decodeIfPresent(Int.self, forKey: .progress)
         app = try fields.decodeIfPresent(String.self, forKey: .app) ?? ""
@@ -36,10 +36,29 @@ struct HerdrCoreTerminalStatus: Decodable, Equatable, Sendable {
 
 /// What holds a Terminal's foreground right now.
 struct HerdrCoreForeground: Decodable, Equatable, Sendable {
-    let pid: Int
+    let pid: Int?
     let name: String
     let argv: [String]
     let cwd: String
+
+    init(pid: Int?, name: String, argv: [String], cwd: String) {
+        self.pid = pid
+        self.name = name
+        self.argv = argv
+        self.cwd = cwd
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pid, name, argv, cwd
+    }
+
+    init(from decoder: any Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        pid = try fields.decodeIfPresent(Int.self, forKey: .pid)
+        name = try fields.decodeIfPresent(String.self, forKey: .name) ?? ""
+        argv = try fields.decodeIfPresent([String].self, forKey: .argv) ?? []
+        cwd = try fields.decodeIfPresent(String.self, forKey: .cwd) ?? ""
+    }
 }
 
 /// How a Terminal's program ended, for `lost` and `finished`.
