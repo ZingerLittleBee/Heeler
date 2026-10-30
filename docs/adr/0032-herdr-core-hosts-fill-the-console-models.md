@@ -26,16 +26,17 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   document naming it, is named after its first Terminal's checkout folder, as
   the desktop app names a space it has not been given a name for. Any other
   Terminal joins a derived Workspace of the Terminals launched in its
-  directory, as its own Tab. An unlabeled Terminal started from inside
-  another, such as a subagent, joins that Terminal's Workspace and Tab as
-  another Pane.
+  directory, as its own Tab. A Terminal without desktop labels (no
+  `herdr.*` label; Heeler's own `heeler.*` labels do not count) started from
+  inside another, such as a subagent, joins that Terminal's Workspace and Tab
+  as another Pane.
 - Heeler keeps no organization of its own. Workspaces it creates, and Tabs it
   adds to a desktop space, carry the desktop app's labels, the adoption
   contract herdr-app documents, so a desktop app on that core shows them too.
-  A Terminal opened in a derived Workspace stays unlabeled, so it never
-  appears in the desktop app uninvited. Heeler never writes the `herdr-app`
-  document, which is that app's private model: the core refuses a write
-  against a stale version, and the desktop app answers that conflict by
+  A Terminal opened in a derived Workspace carries no desktop labels, so it
+  never appears in the desktop app uninvited. Heeler never writes the
+  `herdr-app` document, which is that app's private model: the core refuses a
+  write against a stale version, and the desktop app answers that conflict by
   replacing its own layout with the stored document, so a Heeler write would
   rearrange the desktop user's window.
 - Renaming goes through the desktop app. A Workspace the desktop app shows can
@@ -56,17 +57,23 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   argv is the user's interactive shell replacing itself with the agent:
   `$SHELL -ic 'exec "$@"' $SHELL <agent> ...`, or for fish
   `fish -ic 'exec $argv[2..]' fish <agent> ...`, or on Windows PowerShell's
-  `-Command "& '<agent>' ...; exit $LASTEXITCODE"`. The interactive shell
+  `-Command "& '<agent>' ...; exit $LASTEXITCODE"`, which runs the agent as
+  its child and exits with it. The interactive shell
   supplies the user's own PATH and variables, and then no shell stays: the
   Terminal ends when the Agent exits. A kept Terminal whose program is lost
   rather than exited still comes back as a shell, one that has reported
   nothing. The launch request adds no PATH of its own. A Template is launched
   by name, as the core runs it, without the shell or the session flags of
   ADR 0034.
-- Worktrees follow the desktop app's convention: `git worktree add -b
-  worktree/<name> ~/.herdr/worktrees/<repository>/<name> HEAD` in the
-  Checkout, then a labeled new Workspace there. Removing one ends that
-  Workspace's Terminals, then runs `git worktree remove`, keeping the branch.
+- Worktrees follow the desktop app's convention. The user names a branch;
+  the checkout goes to `~/.herdr/worktrees/<repository>/<branch>`, the branch
+  with each run of characters other than letters, digits, `.`, `_` and `-`
+  made one `-`, through `git worktree add <path> <branch>` for a branch that
+  exists and `git worktree add -b <branch> <path> HEAD` otherwise, where
+  `<repository>` is the main checkout's folder name. A labeled new Workspace
+  opens there. Removing one ends that Workspace's Terminals, then runs
+  `git worktree remove`, forced only when the checkout has changes or
+  submodules, keeping the branch.
 - Native Windows herdr-core Hosts get the same Console, with these
   differences. Staged Images and Files are written by the core's
   `terminal.put` into its state directory beside the Terminal, which the core
@@ -121,8 +128,14 @@ with test clients, not the app.
   builds the POSIX and fish wrappers, and
   [programs.rs](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/programs.rs#L268-L287)
   recognizes those and the PowerShell form.
-- [mods/worktree/main.js](https://github.com/herdrdev/herdr-app/blob/v0.1.9/defaults/mods/worktree/main.js#L15-L16)
-  places checkouts under `~/.herdr/worktrees/<repository>/<branch>`.
+- [mods/worktree/main.js](https://github.com/herdrdev/herdr-app/blob/v0.1.9/defaults/mods/worktree/main.js#L15-L22)
+  places checkouts under `~/.herdr/worktrees/<repository>/<branch slug>`,
+  [names the repository](https://github.com/herdrdev/herdr-app/blob/v0.1.9/defaults/mods/worktree/main.js#L98-L104)
+  after the main checkout's folder,
+  [adds](https://github.com/herdrdev/herdr-app/blob/v0.1.9/defaults/mods/worktree/main.js#L182-L192)
+  the branch the user typed, with `-b` only when it is new, and
+  [removes](https://github.com/herdrdev/herdr-app/blob/v0.1.9/defaults/mods/worktree/main.js#L210-L225)
+  a checkout after closing its space, forced for changes or submodules.
 - [api/run.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/api/run.rs#L6-L11)
   runs a Template when `terminal.run`'s first argument names one.
 - [put.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/put.rs#L5-L6)
@@ -166,14 +179,16 @@ with test clients, not the app.
   Terminal launched in and keeps it in the same derived Workspace.
 - When an Agent Heeler started exits, its Pane closes, where a Herdr TUI Pane
   returns to the shell. Its foreground is the agent itself from the moment the
-  shell replaces itself.
+  shell replaces itself. Which process the core reports as the foreground
+  under PowerShell, which does not replace itself, is unverified.
 - Recognizing an Agent works on the foreground's arguments, not the launch
   arguments, and needs a table from reported `app` names (`claude-code`,
   `codex`, `opencode`, `pi`, `omp`, `grok-build`) to Heeler's agent kinds.
-  Under fish the agent runs in the wrapper's process group, so the foreground
-  stays the wrapper and the agent's exit shows only as new arguments on the
-  same pid. Debian's `/bin/sh` runs a Template's command as a child, so a
-  Template Agent's foreground is `sh -c` for its whole life.
+  Under the desktop app's fish wrapper the agent runs in the wrapper's process
+  group, so the foreground stays the wrapper and the agent's exit shows only
+  as new arguments on the same pid. Debian's `/bin/sh` runs a Template's
+  command as a child, so a Template Agent's foreground is `sh -c` for its
+  whole life.
 - An Agent whose `app` Heeler does not know keeps its status when the user
   runs another program in the shell it left, until something reports again.
 - A kept Terminal between losing its program and restarting has no foreground;

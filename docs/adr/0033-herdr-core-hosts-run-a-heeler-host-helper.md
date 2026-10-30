@@ -48,12 +48,13 @@ that Heeler can read from outside the process.
   Notification Registrations live in the Helper's own directory, one entry
   per device for the core session the Host targets, never in the plugin's
   registration file.
-- A turn's end comes from the status word, as in the app: a program that
-  reports done ends a turn when it reports done, and one that never does
-  (OpenCode, or a program whose `app` Heeler does not know) when it goes
-  from Working to Idle. Turn events cannot tell it: the turn count also moves
-  when an Agent enters Blocked or Error, or when Codex passes through Working
-  as it starts, and a move from Blocked straight to Done brings no turn event.
+- A turn's end comes from the status word, as in the app: an Agent ends a
+  turn when it goes from Working to Done, and, unless it is known to report
+  done, also when it goes from Working to Idle. Claude Code, Codex, Pi and Oh
+  My Pi are known to, as is any Terminal that has reported done since its
+  last restart. Turn events cannot tell it: the turn count also moves when an
+  Agent enters Blocked or Error, or when Codex passes through Working as it
+  starts, and a move from Blocked straight to Done brings no turn event.
 - Done is per device there as in the app. When the app opens an Agent, or
   has one open as it ends a turn, it writes a small seen mark (device, core
   id, Terminal address, turn, status word) into the Helper's directory over

@@ -34,12 +34,12 @@ the shell that stays behind, and a retry can deliver it twice.
   can arrive in the middle of the stream.
 - While Agent Status is Blocked, Send only pastes, as on Herdr TUI, and the
   tools keyboard submits or cancels.
-- If the check fails or runs out of time, nothing is submitted. Text the
-  Agent had read goes with it; text it had not read reaches whatever now
-  holds the terminal, usually the shell's line editor as a pending paste.
-  When a shell holds the foreground, Send presses Ctrl+C once, which makes
-  the shell drop that line. The Composer keeps the draft and says whether the
-  text may still be in the terminal.
+- If the check fails or runs out of time, nothing is submitted. Text the Agent
+  had read goes with it; text it had not read reaches whatever now holds the
+  terminal, usually the shell's line editor as a pending paste. When a shell
+  holds the foreground, Send presses Ctrl+C once, which makes the shell drop
+  that text unrun. The Composer keeps the draft and says whether the text may
+  still be in the terminal.
 - A Send whose steps get no answer has an unknown outcome and is never
   repeated. The core holds a viewer's input while it types a note or stitches
   a long read, and writes it once it finishes, so a paste or Enter can still
@@ -55,11 +55,15 @@ the shell that stays behind, and a retry can deliver it twice.
   runs. The terminal's Composer keeps Send for Grok Build, as on Herdr TUI,
   since Esc does not stop its turns.
 - Chat's Send, Stop and Blocked Card answers keep ADR 0024's rules, Stop's
-  per-program keys and screen checks included, and type through a connection
-  of Chat's own. It attaches as a resumed viewer, reports no display facts,
-  and before it types sends the Terminal's latest size as its own, so that
-  sending never resizes the Terminal. A Blocked Card answer is sent only while
-  the dialog it answers is still on screen and the Agent still holds the
+  per-program keys and screen checks included, and type through an attach of
+  Chat's own on the Host's framed connection; the core keeps one viewer per
+  attach. Chat's Send, after its screen checks, takes the Composer's steps
+  above: the paste, the fresh foreground sample, the two-second limit, the
+  submit key and the Ctrl+C. On a Template's Terminal Chat's Stop presses the
+  Template's stop key. Chat's attach is a resumed viewer, reports no display
+  facts, and before it types sends the Terminal's latest size as its own, so
+  that sending never resizes the Terminal. A Blocked Card answer is sent only
+  while the dialog it answers is still on screen and the Agent still holds the
   foreground. A viewer that only observes cannot type.
 - `terminal.send` and `terminal.keys` are not used for authored input.
 
@@ -83,6 +87,9 @@ confirm or refine these points with test clients, not the app.
   write a viewer's held input once the core's own typing or stitching ends.
 - [input.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/input.rs#L262-L278)
   picks `terminal.interrupt`'s key and waits for no quiet period.
+- [viewers.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/viewers.rs#L180-L182)
+  finds a viewer by its connection and channel, so each attach is a viewer
+  of its own.
 - [viewers.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/viewers.rs#L186-L232)
   drops an observing viewer's input and makes the viewer that types, resizes,
   reports display facts or takes focus the size leader.
@@ -111,11 +118,13 @@ confirm or refine these points with test clients, not the app.
 - A person typing into the same Terminal on another client at that moment can
   interleave with the paste, as on Herdr TUI.
 - Typing through a viewer makes it the Terminal's size leader; the viewed
-  Attach leads anyway, and Chat's connection takes the size the Terminal
-  already has. When the last viewer that typed leaves, the Terminal returns
+  Attach leads anyway, and Chat's attach takes the size the Terminal already
+  has. When the last viewer that typed leaves, the Terminal returns
   to the core's headless size.
 - Under bash, bracketed paste is on only at the prompt, so the mode gate never
-  stops a paste into the shell an Agent left behind; only the foreground
-  check does.
+  stops a paste into the shell an Agent left behind; the foreground check
+  keeps it from being submitted there, and Send's Ctrl+C drops it.
+- On Windows, which process the foreground names under PowerShell, and so
+  what the same-pid check compares, is unverified (ADR 0032).
 - A Terminal that has ever reported keeps Esc as its interrupt key after its
   Agent exits, so Stop is offered only while the Agent holds the foreground.

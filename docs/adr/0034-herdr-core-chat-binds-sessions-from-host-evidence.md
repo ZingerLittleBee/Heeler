@@ -42,11 +42,12 @@ never show or send into a conversation it has guessed.
   cannot tell Done or Error from Idle, so it is no Program Status.
 - A `heeler.*` label is a hint. Chat adopts it only when its pid and process
   start match the resolved agent process, and clears it when it can.
-- An Agent Heeler starts carries its session from the start: `--session-id`
-  for Claude Code and Pi, `-s` for Grok Build, `-s ses…` for OpenCode 2.x, and
-  `--no-daemon` for Codex, which cannot be given an id. Oh My Pi relies on its
-  extension. OpenCode 1.x's `-s` only continues an existing session, so an
-  OpenCode 1.x Agent starts without one.
+- An Agent Heeler starts, other than from a Template (ADR 0032), carries its
+  session from the start: `--session-id` for Claude Code and Pi, `-s` for
+  Grok Build, `-s ses…` for OpenCode 2.x, and `--no-daemon` for Codex, which
+  cannot be given an id. Oh My Pi relies on its extension. OpenCode 1.x's `-s`
+  only continues an existing session, so an OpenCode 1.x Agent starts without
+  one, as does a Template Agent, which binds from evidence alone.
 - Some variables break session records or Program Status when the core leaks
   them (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY`,
   `CLAUDECODE`, `HERDR_*`, `TMUX`, `STY`, `ZELLIJ`, `CURSOR_TRACE_ID`,
@@ -83,7 +84,8 @@ never show or send into a conversation it has guessed.
   Transcript; Chat says so instead of waiting for a file. `HERDR_*` in a
   herdr-core Terminal is never trusted.
 - An Agent with no Program Status shows Unknown and says which release
-  reports one ([herdr compatibility](../agents/herdr-compatibility.md)). A
+  reports one where that is known
+  ([herdr compatibility](../agents/herdr-compatibility.md)). A
   Terminal that has reported but holds no state, as Claude Code leaves it
   before sign-in, has none. No status is inferred from the screen.
 - Chat covers the six programs it reads today. On native Windows herdr-core

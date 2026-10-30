@@ -34,10 +34,11 @@ stays as it is.
   app tries the session's default socket path.
 - The app requires `hello`'s generation 1 and the features `framed`, `attach`,
   `events` and `status`. A core without them reads as unsupported and the Host
-  says to run `hc update` on that machine, as does a request answered with
-  `unknown_method`. The version Heeler was tested with is advisory, as for
-  Herdr TUI. The app offers no update of its own. Errors are told apart by
-  `error.data.kind`, since every domain error shares one code.
+  says to update herdr-core on that machine (`herdr-core update`, by the
+  probed path), as does a request answered with `unknown_method`. The version
+  Heeler was tested with is advisory, as for Herdr TUI. The app offers no
+  update of its own. Errors are told apart by `error.data.kind`, since every
+  domain error shares one code.
 - Connecting never starts a core. A Host with no core running reads as not
   running. On Linux the user may start one with a confirmed action that runs
   the probed `herdr-core` by its absolute path through the user's interactive
@@ -150,8 +151,10 @@ confirm or refine these points with test clients, not the app.
   `--version`, read `core.lock`) to tell not installed, not running, and a
   wrong path apart; a refused channel alone cannot. SSH reports a missing
   socket, a refused one and a forbidden path with the same channel error.
-- `core.lock` outlives its core. Its stale path refuses the channel and reads
-  as not running, never as another core.
+- `core.lock` outlives its core. Its stale path refuses the channel while
+  nothing listens there, and reads as not running. A core that does answer
+  there, such as one started under another `XDG_STATE_HOME`, is told apart by
+  the `core.id` in its `hello` reply.
 - A core that dies while it still holds Terminals comes back about three
   seconds later: the core's terminal holder restarts it, with the environment
   of whoever started the first one. The app retries briefly before it shows

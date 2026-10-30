@@ -108,7 +108,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal, when that program is a known agent program or has reported a Program Status of its own. Once a shell or any other program holds the foreground, the Terminal hosts no Agent, whatever was reported last.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last.
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -131,7 +131,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn since this device last opened it and now reports idle or done; opening it clears Done on this device only. A program that reports done finishes a turn by reporting it; one that never does, such as OpenCode, finishes a turn by going from working to idle. Blocked means the agent is waiting for human input; Error, herdr-core only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). Blocked means the agent is waiting for human input; Error, herdr-core only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -153,8 +153,9 @@ _Avoid_: window, tile
 **Tab**:
 An ordered member of a Workspace that holds one or more Panes. On Herdr TUI it
 is herdr's tab. On herdr-core it is a Herdr desktop tab, or, in a derived
-Workspace, one Terminal's own Tab. An unlabeled Terminal started from inside
-another, such as a subagent, joins that Terminal's Tab as another Pane.
+Workspace, one Terminal's own Tab. A Terminal without desktop labels started
+from inside another, such as a subagent, joins that Terminal's Tab as another
+Pane.
 _Avoid_: window, page
 
 **Terminal**:
@@ -167,9 +168,8 @@ it ended. A kept Terminal is one the core restores when its program is lost
 rather than exited, as when the machine restarts: it comes back as a fresh
 shell at the same address, and until then shows as restarting and hosts no
 Agent. Only the Host's own core's Terminals are shown, not those it reaches on
-other machines. Heeler starts an Agent on herdr-core as a kept Terminal whose
-program is the user's interactive shell replacing itself with the agent, so
-the Terminal ends when the Agent exits instead of returning to a shell.
+other machines. An Agent Heeler starts on herdr-core ends its Terminal when it
+exits, instead of leaving a shell (ADR 0032).
 _Avoid_: pane (for the core's record), session
 
 **Template**:
@@ -185,15 +185,15 @@ it is herdr's workspace. herdr-core has none of its own: a Terminal labeled
 into a Herdr desktop space belongs to that space, named and ordered as the
 desktop app shows it, or, before any desktop app has named it, after its first
 Terminal's checkout folder as the desktop app would; any other Terminal belongs
-to a derived Workspace of the Terminals launched in its directory. An unlabeled
-Terminal started from inside another joins that Terminal's Workspace. Heeler
-keeps no organization of its own: a Workspace it creates on herdr-core, and a
-Tab it adds to a desktop space, carry the desktop app's labels, while a
-Terminal it opens in a derived Workspace stays unlabeled there (ADR 0032). On
-herdr-core only a Workspace the desktop app shows can be renamed, and only
-while that app runs on the Host; a derived Workspace has no name of its own. New Agent can start in an existing Workspace,
-a new Worktree of one, or a new Workspace opened at a remote directory. The id
-is an opaque string.
+to a derived Workspace of the Terminals launched in its directory. A Terminal
+without desktop labels started from inside another joins that Terminal's
+Workspace. Heeler keeps no organization of its own: a Workspace it creates on
+herdr-core, and a Tab it adds to a desktop space, carry the desktop app's
+labels, while a Terminal it opens in a derived Workspace carries none (ADR
+0032). On herdr-core only a Workspace the desktop app shows can be renamed, and
+only while that app runs on the Host; a derived Workspace has no name of its
+own. New Agent can start in an existing Workspace, a new Worktree of one, or a
+new Workspace opened at a remote directory. The id is an opaque string.
 _Avoid_: project, folder, window, space (the desktop app's word)
 
 **Worktree**:
@@ -203,10 +203,10 @@ it; the branch defaults to herdr's generated `worktree/<name>` off HEAD;
 removing the Worktree deletes the checkout and closes its workspace, but the
 branch survives. Snapshot worktree metadata also describes the main checkout;
 only `is_linked_worktree` makes a workspace eligible for linked-Worktree
-removal. On herdr-core Heeler creates it where the Herdr desktop app does,
-`~/.herdr/worktrees/<repository>/<name>`, on the same `worktree/<name>`
-branch, and opens a new Workspace there; removing it first ends that
-Workspace's Terminals, and the branch survives.
+removal. On herdr-core Heeler creates it as the Herdr desktop app does, on a
+branch the user names, at `~/.herdr/worktrees/<repository>/<branch>`, and
+opens a new Workspace there; removing it first ends that Workspace's
+Terminals, and the branch survives.
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Checkout**:
@@ -275,23 +275,21 @@ Blocked: Send then inserts the draft into Attach without Enter, and the tools
 keyboard submits or cancels. Delivered means the Host accepted the text into
 the pane — whether the Agent queues or acts on it is the Agent's business,
 and the Composer never claims otherwise.
-On herdr-core, Send pastes the draft into the Attach and submits it only once
-a fresh look at the foreground finds the same Agent process; otherwise nothing
-is submitted, a shell that received the paste discards it, and the Composer
-keeps the draft and says so. While Agent
-Status is Blocked it only pastes, as on Herdr TUI. It pastes only into a
-terminal that accepts a bracketed paste, and otherwise says so. A Send with no
-answer has an unknown outcome and is never repeated (ADR 0035). Stop there is
-the core's interrupt: the Template's stop key, else Esc in a Terminal that has
-had a Program Status and Ctrl+C in one that has not.
+On herdr-core, Send submits only while the same Agent still holds the
+terminal; otherwise it submits nothing, a shell that received the text drops
+it, and the Composer keeps the draft and says so. While Agent Status is
+Blocked it only pastes, as on Herdr TUI. It pastes only into a terminal that
+accepts a bracketed paste, and otherwise says so. A Send with no answer has an
+unknown outcome and is never repeated. Stop there presses the Terminal's own
+stop key (ADR 0035).
 While Agent Status is Working and the draft is blank, Send becomes Stop: the
 program's Stop keys (one Esc; in Chat, two for OpenCode, whose first Esc only
 arms its interrupt, or Ctrl+C in Grok Build, whose turns Esc doesn't stop),
 then a wait of up to three seconds for the status to leave Working rather
 than another press. The wait is per Agent, shared by Chat and the terminal.
-Only Chat presses Ctrl+C, after reading Grok Build's screen; the terminal's
-Composer keeps Send for Grok Build. With text, Send still delivers, so a
-prompt can queue behind the turn.
+On Herdr TUI only Chat's Stop presses Ctrl+C, after reading Grok Build's
+screen; the terminal's Composer keeps Send for Grok Build. With text, Send
+still delivers, so a prompt can queue behind the turn.
 Composer remains the default authored-input path on Agent detail. Direct Input
 is an explicit, opt-in alternative that hides the Composer card without
 clearing or submitting the draft.
@@ -310,10 +308,12 @@ lets the system keyboard type that same Attach PTY.
 Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
 which case Composer Send inserts the draft into Attach without Enter and the
 tools keyboard submits or cancels. On herdr-core, Composer Send writes into the
-Attach itself, in the checked steps the Composer describes. Only Composer's explicit tools-keyboard
-controls and its Stop (and Direct Input's shortcut row / system Return, and on
-herdr-core Send's paste and submit) send terminal control sequences. The directly interactive surface on an ordinary
-shell is the Shell Terminal, never unqualified "Attach".
+Attach itself, in the checked steps the Composer describes. Only Composer's
+explicit tools-keyboard controls and its Stop (and Direct Input's shortcut row
+/ system Return, and on herdr-core Send's paste, its submit, and the Ctrl+C
+that drops text a shell received) send terminal control sequences. The
+directly interactive surface on an ordinary shell is the Shell Terminal, never
+unqualified "Attach".
 Chat holds no Attach: while Chat shows in its place, the Agent's Attach is
 retained like any terminal the user has left, and nothing types into or
 resizes it.
@@ -344,8 +344,8 @@ On herdr-core no server names the conversation. Chat takes it from what the
 Host shows about the Agent's own process, or from the user's one-time choice
 among the candidates it lists, and when it can do neither it says so and how to
 fix it; it never guesses (ADR 0034). There its Send, Stop and Blocked Card
-answers keep the rules above, but type through a terminal connection of
-Chat's own that keeps the Terminal's size (ADR 0035).
+answers keep the rules above, but type through an attach of Chat's own that
+keeps the Terminal's size, with the Composer's checked steps (ADR 0035).
 The choice between Chat and the terminal is app-wide, Terminal by default. Not
 offered on native Windows Herdr TUI Hosts; on native Windows herdr-core Hosts,
 only for the programs tested there.
@@ -400,8 +400,8 @@ _Avoid_: spend, cost (alone), usage (unqualified), credits
 Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
 Composer's place. Its options come from the screen and the request's details
 from the Transcript; answers go through `agent.send_keys` and
-`pane.send_input`, never Attach, and on herdr-core through Chat's own terminal
-connection. A card sends nothing once the dialog has
+`pane.send_input`, never Attach, and on herdr-core through Chat's own
+attach. A card sends nothing once the dialog has
 changed and never resends. A dialog it cannot read gets a generic card with
 the Agent controls. OpenCode Blocked with no dialog on screen gets a card that
 says why instead, since its prompt would act on those keys.
@@ -453,8 +453,9 @@ A Pane listed with its Host, Workspace, Tab title and current directory.
 Includes Agent panes, which open Agent detail, and ordinary panes, which open
 Shell Terminal. The detail drawer includes every Tab in the current Workspace
 with a New Terminal button pinned below them that opens a fresh shell tab in
-the current pane's directory, and its handle, like the message-jump buttons,
-is long-pressed to slide it along the terminal's edge and rests where it was
+the current pane's directory (in a herdr-core derived Workspace, the
+Workspace's own directory, so the new Terminal stays in it), and its handle,
+like the message-jump buttons, is long-pressed to slide it along the terminal's edge and rests where it was
 left;
 the Console's Terminals tab shows the ordinary panes of the same inventory as
 Workspace cards, By Workspace or By Host, with New Terminal on each card.
@@ -534,9 +535,7 @@ controller. Both remain behind the same Transport abstraction (ADR 0018).
 herdr-core Hosts have a Transport of their own in the same role, speaking the
 core's framed protocol: over a direct-streamlocal channel to its socket on
 Unix, and over SSH exec of `herdr-core connect` on native Windows once the
-core's pipe exists. Heeler never starts a core by connecting, except that on
-Windows a core stopping between that check and the exec is started by it
-(ADR 0031).
+core's pipe exists. Heeler never starts a core by connecting (ADR 0031).
 _Avoid_: client, bridge, tunnel
 
 **Host Connection Status**:
