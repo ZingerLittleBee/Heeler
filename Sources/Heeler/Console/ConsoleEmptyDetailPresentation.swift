@@ -39,8 +39,13 @@ struct ConsoleEmptyDetailPresentation: Equatable {
 
     /// Hosts is a tab right above this screen, so it is offered here only
     /// as the way to add a first Host.
-    init(hasHosts: Bool, showsAgentsAction: Bool = true, listsTerminals: Bool = false) {
-        actions = (showsAgentsAction ? [.showAgents] : []) + [.newAgent]
+    /// `offersNewItem` is false when every Host is one that cannot start what
+    /// this tab lists, and the screen then asks only for a choice.
+    init(
+        hasHosts: Bool, showsAgentsAction: Bool = true, listsTerminals: Bool = false,
+        offersNewItem: Bool = true
+    ) {
+        actions = (showsAgentsAction ? [.showAgents] : []) + (offersNewItem ? [.newAgent] : [])
             + (hasHosts ? [] : [.hosts])
         canStartAgent = hasHosts
         self.listsTerminals = listsTerminals
@@ -48,13 +53,15 @@ struct ConsoleEmptyDetailPresentation: Equatable {
             title = "No Terminal Selected"
             systemImage = "terminal"
             message = hasHosts
-                ? "Choose a terminal or open a new one."
+                ? (offersNewItem ? "Choose a terminal or open a new one." : "Choose a terminal.")
                 : "Add a Host to open its terminals."
         } else {
             title = "No Agent Selected"
             systemImage = "rectangle.on.rectangle"
             message = hasHosts
-                ? "Choose an Agent or start a new one to view its live terminal."
+                ? (offersNewItem
+                    ? "Choose an Agent or start a new one to view its live terminal."
+                    : "Choose an Agent to view its live terminal.")
                 : "Add a Host to start an Agent and view its live terminal."
         }
     }

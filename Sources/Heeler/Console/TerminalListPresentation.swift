@@ -125,6 +125,7 @@ struct TerminalRowPresentation: Equatable {
         var parts: [String] = []
         if showsWorkspace { parts.append(terminal.workspaceLabel ?? terminal.hostName) }
         if showsTab, let tab { parts.append(tab) }
+        if terminal.isRestarting { parts.append("Restarting") }
         parts.append(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd)
         subtitle = parts.joined(separator: " · ")
     }

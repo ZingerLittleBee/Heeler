@@ -1,0 +1,86 @@
+import Foundation
+
+/// What this device remembers of each herdr-core Host: the core it last spoke
+/// to and the directory it first saw each Terminal launched in, which decides
+/// that Terminal's derived Workspace (ADR 0032). None of it is a secret or
+/// shared with the Host. It goes with the Host, and starts over when the Host's
+/// core id changes, since addresses belong to one core.
+@MainActor
+final class HerdrCoreHostMemory {
+    private struct Entry: Codable, Equatable {
+        var coreID: String?
+        var directories: [String: String] = [:]
+    }
+
+    private static let defaultsKey = "herdr-core.host-memory"
+
+    private let defaults: UserDefaults?
+    private var entries: [Host.ID: Entry]
+
+    /// With no `defaults` it lasts as long as the object: demo mode and tests
+    /// build Console stores in the app's own container, and their `setHosts`
+    /// would otherwise clear the real one.
+    init(defaults: UserDefaults? = nil) {
+        self.defaults = defaults
+        entries =
+            defaults?.data(forKey: Self.defaultsKey)
+            .flatMap { try? JSONDecoder().decode([Host.ID: Entry].self, from: $0) } ?? [:]
+    }
+
+    func coreID(for hostID: Host.ID) -> String? {
+        entries[hostID]?.coreID
+    }
+
+    func firstSeenDirectories(for hostID: Host.ID) -> [String: String] {
+        entries[hostID]?.directories ?? [:]
+    }
+
+    /// The core a `hello` reported. Another core forgets the old one's Terminals.
+    func noteCore(_ coreID: String, for hostID: Host.ID) {
+        guard entries[hostID]?.coreID != coreID else { return }
+        entries[hostID] = Entry(coreID: coreID)
+        save()
+    }
+
+    /// A snapshot's Terminals: new ones are remembered where they launched, and
+    /// any the core no longer has are forgotten.
+    func noteInventory(_ terminals: [HerdrCoreTerminalRecord], for hostID: Host.ID) {
+        var entry = entries[hostID] ?? Entry()
+        var directories: [String: String] = [:]
+        for terminal in terminals {
+            directories[terminal.address] = entry.directories[terminal.address] ?? terminal.cwd
+        }
+        entry.directories = directories
+        guard entries[hostID] != entry else { return }
+        entries[hostID] = entry
+        save()
+    }
+
+    /// The first directory stays: a kept Terminal restarting elsewhere changes nothing.
+    func noteTerminal(_ terminal: HerdrCoreTerminalRecord, for hostID: Host.ID) {
+        var entry = entries[hostID] ?? Entry()
+        guard entry.directories[terminal.address] == nil else { return }
+        entry.directories[terminal.address] = terminal.cwd
+        entries[hostID] = entry
+        save()
+    }
+
+    func forgetTerminal(_ address: String, for hostID: Host.ID) {
+        guard entries[hostID]?.directories.removeValue(forKey: address) != nil else { return }
+        save()
+    }
+
+    /// Also the launch-time sweep: a Host removed while the app was not running
+    /// leaves memory no one else would delete.
+    func retainHosts(_ hostIDs: Set<Host.ID>) {
+        let retained = entries.filter { hostIDs.contains($0.key) }
+        guard retained != entries else { return }
+        entries = retained
+        save()
+    }
+
+    private func save() {
+        guard let defaults, let data = try? JSONEncoder().encode(entries) else { return }
+        defaults.set(data, forKey: Self.defaultsKey)
+    }
+}

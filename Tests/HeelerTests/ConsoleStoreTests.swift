@@ -64,8 +64,9 @@ struct ConsoleStoreTests {
     }
 
     /// The Herdr TUI projection speaks herdr's API, which a core does not
-    /// serve, and the herdr-core projection does not exist yet (ADR 0032).
-    @Test func aCoreHostGetsNoProjectionAndAddsNothingToTheConsole() async throws {
+    /// serve, so a core Host gets a session of its own and never that one
+    /// (ADR 0032).
+    @Test func aCoreHostNeverGetsAHerdrTUISession() async throws {
         let tui = Host.fixture()
         let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let inventory = SessionSnapshot(
@@ -83,20 +84,28 @@ struct ConsoleStoreTests {
         ]
         let sessionsMade = Mutex<[Host.ID]>([])
         let dials = Mutex<[Host.ID]>([])
-        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
-            sessionsMade.withLock { $0.append(host.id) }
-            return EventsSession(
-                subscriptions: subscriptions,
-                connect: {
-                    dials.withLock { $0.append(host.id) }
-                    guard let transport = scripted[host.id] else {
-                        throw TransportError.sshUnreachable(detail: "unscripted host")
-                    }
-                    return transport
-                },
-                reconnectPolicy: Self.fastPolicy,
-                keepalive: nil)
-        }
+        let coreSessionsMade = Mutex<[Host.ID]>([])
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            makeSession: { host, subscriptions in
+                sessionsMade.withLock { $0.append(host.id) }
+                return EventsSession(
+                    subscriptions: subscriptions,
+                    connect: {
+                        dials.withLock { $0.append(host.id) }
+                        guard let transport = scripted[host.id] else {
+                            throw TransportError.sshUnreachable(detail: "unscripted host")
+                        }
+                        return transport
+                    },
+                    reconnectPolicy: Self.fastPolicy,
+                    keepalive: nil)
+            },
+            makeCoreSession: { host in
+                coreSessionsMade.withLock { $0.append(host.id) }
+                return HerdrCoreHostSession(
+                    connect: { throw TransportError.herdrCoreNotInstalled }, keepalive: nil)
+            })
         defer { store.setHosts([]) }
 
         store.setHosts([core, tui])
@@ -104,15 +113,17 @@ struct ConsoleStoreTests {
         await store.retryHost(core.id)
         await store.reactivate()
         try await waitUntil("the Herdr TUI Host is listed") { store.agents.count == 1 }
+        try await waitUntil("the core Host reads its failure") {
+            store.hostStatuses[core.id] == .failed(.herdrCoreNotInstalled)
+        }
 
         #expect(sessionsMade.withLock { $0 } == [tui.id])
+        #expect(coreSessionsMade.withLock { $0 } == [core.id])
         #expect(dials.withLock { Set($0) } == [tui.id])
         #expect(store.agents.map(\.hostID) == [tui.id])
         #expect(store.terminals.map(\.hostID) == [tui.id])
         #expect(store.workspaces(for: tui.id).map(\.id) == ["w1"])
-        #expect(store.workspacesByHost[core.id] == nil)
-        #expect(store.hostStatuses[core.id] == nil)
-        #expect(!store.hostsAwaitingSnapshot.contains(core.id))
+        #expect(store.workspaces(for: core.id).isEmpty)
     }
 
     /// Nothing half-configured reaches the Console: an unconfirmed Host is not
@@ -162,9 +173,9 @@ struct ConsoleStoreTests {
         #expect(store.agents.map(\.hostID) == [id])
     }
 
-    /// With no projection a core Host has no connection to lend, and its
+    /// A core Host has no plugin to read through its connection, and its
     /// plugin surfaces keep saying why rather than blaming the link.
-    @Test func aCoreHostsUsageStaysUnsupportedWithoutAProjection() async {
+    @Test func aCoreHostsUsageStaysUnsupported() async {
         let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let store = makeStore(transports: [:])
         defer { store.setHosts([]) }
@@ -206,12 +217,12 @@ struct ConsoleStoreTests {
         store.setHosts([tui, core])
 
         #expect(store.capabilities(for: tui.id) == HostCapabilities(
-            renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
+            opensDetail: true, startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
             composerSend: true, chat: true, tabNames: true, closeTab: true,
             syncLayoutFromPlugin: true))
         #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
         #expect(store.capabilities(for: core.id) == HostCapabilities(
-            renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
+            opensDetail: false, startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
             composerSend: false, chat: false, tabNames: false, closeTab: false,
             syncLayoutFromPlugin: false))
         #expect(!store.capabilities(for: core.id).renameWorkspace(id: "w1"))
