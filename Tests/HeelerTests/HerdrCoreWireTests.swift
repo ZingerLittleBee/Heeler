@@ -39,21 +39,18 @@ import Testing
         }
     }
 
-    @Test func handshakeChecksCoreGenerationAndRequiredOperations() throws {
-        var fields: [String: JSONValue] = [
-            "generation": .number(1), "version": .string("0.1.13"),
-            "methods": .array([
-                "terminal.list", "terminal.get", "terminal.read", "terminal.send",
-                "terminal.keys", "events.subscribe", "future.method",
-            ].map(JSONValue.string)),
-            "future": .bool(true),
-        ]
-        #expect(try HerdrCoreWire.serverInfo(from: .object(fields)) == ServerInfo(version: "0.1.13", protocolVersion: 1))
-        fields["generation"] = .number(2)
-        #expect(throws: TransportError.self) { try HerdrCoreWire.serverInfo(from: .object(fields)) }
-        fields["generation"] = .number(1)
-        fields["methods"] = .array([.string("terminal.list")])
-        #expect(throws: TransportError.self) { try HerdrCoreWire.serverInfo(from: .object(fields)) }
+    @Test func replyIDsComeOnlyFromReplies() {
+        #expect(HerdrCoreWire.responseID(from: Data(#"{"jsonrpc":"2.0","id":"7","result":{}}"#.utf8)) == "7")
+        #expect(HerdrCoreWire.responseID(from: Data(#"{"jsonrpc":"2.0","id":"8","error":{"code":-32000,"message":"no"}}"#.utf8)) == "8")
+        for notReply in [
+            #"{"jsonrpc":"2.0","method":"heartbeat","params":{"seq":1}}"#,
+            #"{"jsonrpc":"2.0","id":"9","method":"$/orphaned","params":{}}"#,
+            #"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"parse"}}"#,
+            #"{"jsonrpc":"2.0","id":3,"result":{}}"#,
+            "not JSON",
+        ] {
+            #expect(HerdrCoreWire.responseID(from: Data(notReply.utf8)) == nil, "\(notReply)")
+        }
     }
 
     @Test func desktopAgentsAndShellsShareStableDirectoryInventory() throws {
@@ -266,32 +263,6 @@ import Testing
         let cleared = try HerdrCoreWire.snapshot(from: json(#"{"terminals":[{"address":"t3","cwd":"/work","state":"live","argv":["claude"],"title":"","status":{"app":"claude-code","state":"idle","title":"Status label"}}]}"#))
         #expect(cleared.agents.first?.terminalTitle == "")
         #expect(cleared.panes.first?.terminalTitleStripped == "")
-    }
-
-    @Test func missedSnapshotAdvancesCursorAndRejectsOlderBufferedEvents() throws {
-        var cursor = HerdrCoreEventCursor()
-        try cursor.acknowledge(.object(["seq": .number(10), "terminals": .array([])]))
-        #expect(try cursor.decodeEvent(fromLine: notification(type: "created", target: "t3", sequence: 10)) == nil)
-        #expect(try cursor.decodeEvent(fromLine: notification(type: "created", target: "t3", sequence: 11))?.kind == GlobalEventKind.paneCreated.kind)
-        let missed = Data(#"{"jsonrpc":"2.0","method":"missed","params":{"seq":20,"terminals":[]}}"#.utf8)
-        #expect(try cursor.decodeEvent(fromLine: missed) == .eventsDropped)
-        #expect(try cursor.decodeEvent(fromLine: notification(type: "removed", target: "t3", sequence: 19)) == nil)
-        #expect(try cursor.decodeEvent(fromLine: notification(type: "status", target: "t3", sequence: 21)) != nil)
-        let heartbeat = Data(#"{"jsonrpc":"2.0","method":"heartbeat","params":{"seq":21}}"#.utf8)
-        #expect(try cursor.decodeEvent(fromLine: heartbeat) == nil)
-        #expect(cursor.sequence == 21)
-        #expect(throws: TransportError.self) { try cursor.acknowledge(.object([:])) }
-    }
-
-    @Test func heartbeatDoesNotDiscardEventsStillQueuedForDelivery() throws {
-        var cursor = HerdrCoreEventCursor()
-        try cursor.acknowledge(.object(["seq": .number(10), "terminals": .array([])]))
-        let heartbeat = Data(#"{"jsonrpc":"2.0","method":"heartbeat","params":{"seq":12}}"#.utf8)
-        #expect(try cursor.decodeEvent(fromLine: heartbeat) == nil)
-        #expect(cursor.sequence == 10)
-        #expect(try cursor.decodeEvent(fromLine: notification(type: "created", target: "t3", sequence: 11))?.kind == GlobalEventKind.paneCreated.kind)
-        #expect(try cursor.decodeEvent(fromLine: notification(type: "status", target: "t3", sequence: 12))?.kind == PaneEventKind.agentStatusChanged.kind)
-        #expect(cursor.sequence == 12)
     }
 
     private func json(_ string: String) throws -> JSONValue {

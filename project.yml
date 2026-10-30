@@ -273,6 +273,9 @@ targets:
       # Shared notification session vectors (#412), consumed by Node and Swift.
       - path: plugin/test-vectors/notification-session-v1.json
         buildPhase: resources
+      # Shared herdr-core frame vectors, read by Swift now and the Helper later.
+      - path: plugin/test-vectors/herdr-core-frames-v1.json
+        buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json
         buildPhase: resources

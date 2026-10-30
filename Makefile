@@ -106,6 +106,7 @@ test-tools: check-agent-docs check-test-membership ## Test agent tooling without
 	python3 scripts/test-run-app-simulator-tests.py
 	python3 scripts/test-simulator-ui.py
 	python3 scripts/test-isolated-herdr-backend.py
+	python3 scripts/test-herdr-core-capture.py
 	python3 scripts/test-node-toolchain-probe.py
 	python3 scripts/test-host-process-reader.py
 	sh scripts/test-source-revision.sh
