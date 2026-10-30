@@ -87,6 +87,10 @@ struct SSHTransportSettings: Sendable {
     var hostKeyTrust: HostKeyTrust = .endpoint
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
+    /// Explicit server selection; no fallback from a refused legacy socket.
+    var backend: HostBackend = .herdr
+    /// Core's session name; its default session is named "default".
+    var coreSessionName = "default"
     /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023).
     /// When set, the session list, plugin list, and plugin config-dir
     /// commands are its builders, and the wake and attach execs run it in

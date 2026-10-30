@@ -91,6 +91,9 @@ final class HeelerAppModel {
             relayBaseURL: { [weak relaySettings] in relaySettings?.relayURL },
             ceremony: NotificationRegistrationCeremony(gate: registrationGate))
         self.notificationPreferences = notificationPreferences
+        hostStore.notificationWriteInProgress = { [weak notificationPreferences] id in
+            notificationPreferences?.hasPendingWrite(for: id) ?? false
+        }
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on
@@ -125,6 +128,9 @@ final class HeelerAppModel {
             },
             connectionStatus: { [weak console] id in
                 console?.hostStatuses[id]
+            },
+            supportsHost: { [weak hostStore] id in
+                hostStore?.hosts.first(where: { $0.id == id })?.backend == .herdr
             },
             pinnedPaneIDs: { [weak console] id in
                 console?.pins.pinnedPaneIDs(for: id) ?? []
@@ -248,6 +254,9 @@ final class HeelerAppModel {
             guard let self else { return }
             console.setHosts(hosts)
             notificationPreferences.setHosts(hosts)
+            // A backend edit can make a registered Host unsupported while its
+            // old Notification Key and Live Activity opt-in remain on device.
+            liveActivities.reconcile()
             liveActivities.layoutsDidChange()
         }
         observe({ console.agents }) { [weak self] agents in

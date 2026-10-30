@@ -74,8 +74,8 @@ struct AgentComposerActions {
     /// offering a dead button.
     let showSkills: (() -> Void)?
     let showWorktreeDetails: (() -> Void)?
-    let renameAgent: () -> Void
-    let renameWorkspace: () -> Void
+    let renameAgent: (() -> Void)?
+    let renameWorkspace: (() -> Void)?
     let closeAgent: () -> Void
     /// Leaves the Agent the way its edge swipe does: back to the Console
     /// list, or out to the sidebar beside an iPad's detail column.
@@ -477,7 +477,7 @@ struct AgentComposerView: View {
             }
 
             Spacer(minLength: 0)
-            if store.hasPendingDroppedImages {
+            if store.hasPendingDroppedImages || store.requiresTerminalConfirmation {
                 pendingDropHint
             }
             primaryButton
@@ -486,7 +486,8 @@ struct AgentComposerView: View {
 
     /// Why Send waits; its VoiceOver hint already says so.
     private var pendingDropHint: some View {
-        Text(store.sendAccessibilityHint)
+        Text(store.requiresTerminalConfirmation && !store.hasPendingDroppedImages
+            ? "Insert, then press Enter in Terminal" : store.sendAccessibilityHint)
             .font(.footnote)
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -522,7 +523,8 @@ struct AgentComposerView: View {
         case .send:
             AgentComposerSendButton(
                 isEnabled: store.canSend,
-                accessibilityHint: store.sendAccessibilityHint
+                accessibilityHint: store.sendAccessibilityHint,
+                requiresTerminalConfirmation: store.requiresTerminalConfirmation
             ) {
                 sendDraft()
             }
@@ -801,17 +803,18 @@ private struct AgentComposerSkillSuggestions: View {
 struct AgentComposerSendButton: View {
     let isEnabled: Bool
     var accessibilityHint: String = "Delivers the complete draft to the Agent"
+    var requiresTerminalConfirmation = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "arrow.up")
+            Image(systemName: requiresTerminalConfirmation ? "arrow.down.to.line" : "arrow.up")
                 .font(.system(size: 15, weight: .bold))
                 .frame(width: 18, height: 18)
         }
         .buttonStyle(AgentComposerSendButtonStyle())
         .disabled(!isEnabled)
-        .accessibilityLabel("Send")
+        .accessibilityLabel(requiresTerminalConfirmation ? "Insert into Terminal" : "Send")
         .accessibilityHint(accessibilityHint)
     }
 }

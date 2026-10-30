@@ -147,17 +147,26 @@ port_block_size=13
 port_block_base_default=55222
 # How many disjoint blocks the machine hands out before it refuses to guess.
 port_block_count=8
+# Keep the historical 13-port grid: older runners reserve by its block start.
+# Core uses a separate pool outside both the 13- and former 14-port default grids.
+core_port_base_default=55400
+core_port_count=8
+# Single-port reservations hold aliases for a legacy 14-port block. Spacing
+# candidates by that width keeps separate core runs from sharing aliases.
+core_port_stride=14
 # Pin a block explicitly, for a caller that would rather not negotiate.
 port_block_base_override="${HEELER_CI_PORT_BASE:-}"
 
 # Cross-run coordination lives here: one owned lock per port block, Simulator,
 # or account-allocation critical section. A short-lived atomic claim guard
 # serializes owner publication, stale reclamation, and token-checked release.
-# Ports still decide whether a block is usable; these locks only let a run say
-# what it holds, and let the next run tell "someone is working" apart from
-# "something crashed".
+# Legacy block locks also reserve listeners that have not started yet. Keep
+# every overlapping legacy block name claimed until our fixtures have stopped;
+# listener probes alone cannot establish exclusive ownership.
 lock_root=/tmp/heeler-ci-locks
 run_lock_dir=""
+core_port_lock_dir=""
+port_reservation_locks=()
 device_lock_dir=""
 account_lock_dir=""
 active_claim_guard=""
@@ -196,6 +205,7 @@ pairing_mismatched_pid=""
 password_pid=""
 fake_herdr_pid=""
 weak_network_pid=""
+core_fixture_dir=""
 simulator_udid=""
 simulator_destination=""
 simulator_environment_variables=()
@@ -511,6 +521,7 @@ release_claim_guard() {
 claim_resource_lock() {
     local lock=$1
     local description=$2
+    local records_port=${3:-0}
     local owner
     local claim_status=1
 
@@ -534,6 +545,11 @@ claim_resource_lock() {
             claim_status=0
         fi
     fi
+    # Publish port ownership before dropping the guard/active slot, so a
+    # cancellation cannot land between acquisition and rollback bookkeeping.
+    if [[ "$claim_status" == 0 && "$records_port" == 1 ]]; then
+        port_reservation_locks+=("$lock")
+    fi
     release_claim_guard "$active_claim_guard"
     active_resource_lock=""
     return "$claim_status"
@@ -555,6 +571,55 @@ release_resource_lock() {
     release_claim_guard "$active_claim_guard"
 }
 
+# Release only this attempt's suffix on rollback; successful aliases stay
+# owned until cleanup, just like the primary block. Empty/unset arrays must
+# also work in the extracted guard tests on macOS Bash 3.2.
+release_port_reservations() {
+    local keep=${1:-0}
+    local index
+    [[ -n "${port_reservation_locks+set}" ]] || return 0
+    for ((index = ${#port_reservation_locks[@]} - 1; index >= keep; index -= 1)); do
+        release_resource_lock "${port_reservation_locks[index]}" "fixture port reservation" || return 1
+        unset 'port_reservation_locks[index]'
+    done
+}
+
+# Runners with 13- or 14-port layouts claim only block-<start>. For [low, high],
+# every potentially overlapping old block starts in [low-13, high]. Claim those
+# same names, including off-grid explicit overrides, so either start order and
+# concurrent allocation are safe. This deliberately rejects some adjacent new
+# ranges: they could both intersect one old block's indivisible reservation.
+claim_port_reservation() {
+    local low=$1 count=$2
+    local high=$((low + count - 1))
+    local first=$((low > 13 ? low - 13 : 1))
+    local keep=${#port_reservation_locks[@]}
+    local start port lock
+    local -a locks=()
+    for ((start = first; start <= high; start += 1)); do
+        locks+=("$lock_root/block-$start")
+    done
+    # The intervening runner revision reserved its separate core pool with
+    # these names. Main overrides must exclude those deferred listeners too.
+    for ((port = low; port <= high; port += 1)); do
+        locks+=("$lock_root/core-port-$port")
+    done
+    for lock in "${locks[@]}"; do
+        # Disjoint reservations within this run may share compatibility aliases;
+        # actual port keys remain exclusive, even to a second claim by this run.
+        if [[ "$lock" == "$lock_root/block-"* ]] \
+            && [[ "$(cat "$lock/token" 2>/dev/null)" == "$lock_owner_token" ]]; then
+            continue
+        fi
+        if ! claim_resource_lock "$lock" "fixture reservation ${lock##*/}" 1; then
+            failed_port_lock="$lock"
+            release_port_reservations "$keep" || exit 1
+            return 1
+        fi
+    done
+    return 0
+}
+
 # Last 80 lines of each fixture log. Enough to see an sshd refusal or proxy
 # stall without dumping private keys or a multi-megabyte xcodebuild capture.
 fixture_log_tail_lines=80
@@ -569,7 +634,7 @@ dump_fixture_logs() {
         [[ -s "$log" ]] || continue
         name=$(basename "$log")
         case "$name" in
-            sshd-*.log | weak-network.log | fake-herdr.log | stall-server.log | fixture-readiness.log) ;;
+            sshd-*.log | weak-network.log | fake-herdr.log | herdr-core-sshd.log | stall-server.log | fixture-readiness.log) ;;
             *) continue ;;
         esac
         echo "===== $log (last $fixture_log_tail_lines lines)" >&2
@@ -628,6 +693,9 @@ cleanup() {
 
     cancel_background_build
     clear_simulator_environment || { [[ "$status" != 0 ]] || status=1; }
+    if [[ -n "${core_fixture_dir:-}" ]]; then
+        stop_core_fixture || { [[ "$status" != 0 ]] || status=1; }
+    fi
     if [[ -n "$stall_pid" ]]; then
         kill "$stall_pid" >/dev/null 2>&1
         wait "$stall_pid" 2>/dev/null
@@ -725,6 +793,8 @@ cleanup() {
         release_claim_guard "$active_claim_guard"
     fi
     release_resource_lock "$account_lock_dir" "password account allocation" || status=1
+    release_port_reservations || status=1
+    release_resource_lock "${core_port_lock_dir:-}" "core fixture port" || status=1
     release_resource_lock "$run_lock_dir" "fixture port block" || status=1
     release_resource_lock "$device_lock_dir" "simulator" || status=1
 
@@ -1229,6 +1299,11 @@ claim_port_block() {
     local -a rejections=()
 
     if [[ -n "$port_block_base_override" ]]; then
+        if [[ ! "$port_block_base_override" =~ ^[1-9][0-9]{0,4}$ ]] \
+            || ((port_block_base_override > 65535 - port_block_size + 1)); then
+            echo "HEELER_CI_PORT_BASE must start a valid consecutive TCP port range" >&2
+            return 1
+        fi
         bases=("$port_block_base_override")
     else
         for ((slot = 0; slot < port_block_count; slot += 1)); do
@@ -1258,13 +1333,13 @@ claim_port_block() {
             continue
         fi
 
-        if claim_resource_lock "$lock" "port block $base"; then
+        if claim_port_reservation "$base" "$port_block_size"; then
             run_lock_dir="$lock"
             assign_port_block "$base"
             return 0
         fi
 
-        owner=$(cat "$lock/pid" 2>/dev/null)
+        owner=$(cat "$failed_port_lock/pid" 2>/dev/null)
         rejections+=("$base lock ${owner:-unknown}")
     done
 
@@ -1295,10 +1370,36 @@ claim_port_block() {
     exit 1
 }
 
+# Core shares the same legacy exclusion protocol as a main block. Its own
+# port key also coordinates with the earlier separate-core-pool revision.
+claim_core_port() {
+    local candidate slot lock
+    for ((slot = 0; slot < core_port_count; slot += 1)); do
+        candidate=$((core_port_base_default + slot * core_port_stride))
+        # Explicit main-block overrides can occupy this pool too.
+        if ((candidate >= modern_port && candidate <= post_quantum_port)); then
+            continue
+        fi
+        port_is_busy "$candidate" && continue
+        lock="$lock_root/core-port-$candidate"
+        if claim_port_reservation "$candidate" 1; then
+            core_port_lock_dir="$lock"
+            core_port=$candidate
+            return 0
+        fi
+    done
+    echo "Every separate core fixture port is reserved or listening" >&2
+    return 1
+}
+
 if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
 claim_port_block
 printf 'Claimed fixture port block %s-%s\n' \
     "$modern_port" "$((modern_port + port_block_size - 1))" >&2
+if [[ "$ci_lane" == app && -z "$ci_diagnostic_target" ]] \
+    && [[ "$ci_app_shard" == all || "$ci_app_shard" == transport ]]; then
+    claim_core_port
+fi
 fi
 
 # Claim the simulator before fixture keygen/sshd work so boot overlaps that
@@ -2185,6 +2286,74 @@ run_ci_diagnostic() {
     fi
 }
 
+# Exact upstream release archives from https://releases.herdr.dev/core/0.1.13/manifest.json.
+# CI never runs the installer or updates the runner's installed/live core.
+download_core_fixture_binary() {
+    local release_dir="$fixture_dir/herdr-core-0.1.13"
+    local target checksum archive
+    case "$(uname -m)" in
+        arm64 | aarch64)
+            target=macos-aarch64
+            checksum=fc1ffba3820b93b0e2faa5394a64b9ff5528f135611b6034469d81c0fa1c37aa ;;
+        x86_64)
+            target=macos-x86_64
+            checksum=bfb8671d7d40517f8736ec32eb72b823429117db148012a69625afcec582b31d ;;
+        *) echo "No pinned herdr-core fixture for this architecture" >&2; return 1 ;;
+    esac
+    mkdir -p "$release_dir" || return 1
+    archive="$release_dir/core.tar.gz"
+    curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 120 \
+        "https://releases.herdr.dev/core/0.1.13/herdr-core-$target.tar.gz" -o "$archive" || return 1
+    if [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" != "$checksum" ]]; then
+        echo "Pinned herdr-core 0.1.13 archive checksum mismatch" >&2
+        return 1
+    fi
+    # Extract only the named executable, never arbitrary paths from the archive.
+    tar -xzf "$archive" -C "$release_dir" herdr-core || return 1
+    chmod 700 "$release_dir/herdr-core" || return 1
+    [[ "$("$release_dir/herdr-core" --version)" == 'hc 0.1.13' ]] || {
+        echo "Pinned herdr-core fixture version mismatch" >&2; return 1;
+    }
+}
+
+start_core_fixture() {
+    download_core_fixture_binary || return 1
+    core_fixture_dir=$(mktemp -d /tmp/hc-ci.XXXXXX) || return 1
+    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" start \
+        --root "$core_fixture_dir" --port "$core_port" \
+        --core "$fixture_dir/herdr-core-0.1.13/herdr-core" || return 1
+}
+
+stop_core_fixture() {
+    [[ -n "${core_fixture_dir:-}" ]] || return 0
+    local log_copy_status=0
+    if [[ -f "$core_fixture_dir/logs/sshd.log" ]]; then
+        cp "$core_fixture_dir/logs/sshd.log" "$fixture_dir/herdr-core-sshd.log" || log_copy_status=1
+    fi
+    # Diagnostic preservation cannot short-circuit process shutdown.
+    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" stop \
+        --root "$core_fixture_dir" || {
+        echo "Could not stop isolated herdr-core fixture; preserved $core_fixture_dir" >&2
+        return 1
+    }
+    core_fixture_dir=""
+    return "$log_copy_status"
+}
+
+run_core_fixture_suite() {
+    start_core_fixture || return 1
+    # Reuse the scheme's existing private configuration channel. Recovery must
+    # restore this phase's config, not the preceding legacy fixture's.
+    HEELER_SSH_E2E_CONFIG=$(<"$core_fixture_dir/core-test-config")
+    push_simulator_environment HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
+    run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests || return $?
+    HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
+    push_simulator_environment HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
+    stop_core_fixture || return 1
+}
+
 # These phases share fixture state only within their worker. DirectStreamLocal
 # must observe the stale socket before TransportBehavior relinks it.
 run_app_fixture_suites() {
@@ -2225,6 +2394,7 @@ run_app_fixture_suites() {
                 ImageStagingE2ETests PairingCeremonyE2ETests; do
                 ln -s SharedFixtureE2ETests.log "$fixture_dir/$suite.log"
             done
+            run_core_fixture_suite || return $?
             ;;
     esac
 }

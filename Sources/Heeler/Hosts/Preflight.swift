@@ -160,6 +160,9 @@ struct PreflightReport: Equatable, Sendable {
         case .timedOut:
             check = .connection
             hint = "The Host did not answer in time. Check the connection and try again."
+        case .coreMutationOutcomeUnknown:
+            check = .connection
+            hint = "The Host did not confirm the action. Check its state before trying again."
         case .gitTimedOut:
             // Preflight never reads Changes; keep the closed taxonomy total.
             check = .connection

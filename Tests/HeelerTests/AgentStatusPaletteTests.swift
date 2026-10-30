@@ -29,7 +29,7 @@ struct AgentStatusPaletteTests {
         return [red, green, blue, alpha]
     }
 
-    @Test func everyActionableStatusGetsItsOwnHue() {
+    @Test func distinctAttentionLevelsGetTheirOwnHues() {
         for style in Self.styles {
             for (role, color) in Self.roles {
                 let tints = [AgentStatus.blocked, .done, .working, .idle].map {
@@ -40,6 +40,18 @@ struct AgentStatusPaletteTests {
                         !tints.dropFirst(index + 1).contains(tint),
                         "\(role) \(style)")
                 }
+            }
+        }
+    }
+
+    @Test func reportedErrorUsesAttentionColorsWithoutClaimingBlocked() {
+        #expect(AgentStatus.error.displayTitle == "Error")
+        #expect(AgentStatus.error != .blocked)
+        #expect(AgentStatus.error.consoleSortBucket == AgentStatus.blocked.consoleSortBucket)
+        #expect(AgentStatus.error.consoleSortBucket < AgentStatus.done.consoleSortBucket)
+        for style in Self.styles {
+            for (_, color) in Self.roles {
+                #expect(rgba(color(.error), style) == rgba(color(.blocked), style))
             }
         }
     }

@@ -16,6 +16,32 @@ struct HostDraftTests {
         #expect(rebuilt == host)
     }
 
+    @Test func coreBackendSurvivesEditingAndDuplication() throws {
+        let host = Host(
+            name: "Desktop", address: "box.example", username: "dev",
+            backend: .herdrCore, sessionName: "work")
+        let draft = HostDraft(host: host)
+        #expect(draft.backend == .herdrCore)
+        #expect(try #require(draft.makeHost(id: host.id)) == host)
+
+        let duplicate = HostDraft(duplicating: host, password: nil, existingNames: ["Desktop"])
+        let copied = try #require(duplicate.makeHost())
+        #expect(copied.backend == .herdrCore)
+        #expect(copied.sessionName == "work")
+        #expect(copied.name == "Desktop copy")
+    }
+
+    @Test func anEndpointPairingRemainsOnItsLegacyBackend() throws {
+        let endpoint = try #require(HerdrEndpoint(
+            socketPath: "/srv/app/herdr/herdr.sock", executablePath: "/srv/app/bin/herdr"))
+        var draft = HostDraft(host: Host(
+            address: "box.example", username: "dev", herdrEndpoint: endpoint))
+        draft.backend = .herdrCore
+        let saved = try #require(draft.makeHost())
+        #expect(saved.backend == .herdr)
+        #expect(saved.herdrEndpoint == endpoint)
+    }
+
     @Test func prefillsAndRoundTripsAJumpHost() throws {
         let host = Host(
             id: UUID(), name: "Behind NAT", address: "127.0.0.1", port: 12_222,
@@ -117,6 +143,29 @@ struct HostDraftTests {
 
             #expect(!draft.isValid, "unexpectedly accepted session name: \(sessionName)")
         }
+    }
+
+    @Test(arguments: ["desktop session", "作業", "O'Brien $project `local`", String(repeating: "a", count: 65)])
+    func coreDraftsAcceptTheCoreSessionNameContract(_ name: String) throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        draft.backend = .herdrCore
+        draft.sessionName = name
+        #expect(try #require(draft.makeHost()).sessionName == name)
+        draft.backend = .herdr
+        #expect(!draft.isValid)
+    }
+
+    @Test(arguments: [".", "..", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "a\tb"])
+    func coreDraftsRejectInvalidFolderNames(_ name: String) {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        draft.backend = .herdrCore
+        draft.sessionName = name
+        #expect(!draft.isValid)
+        #expect(draft.makeHost() == nil)
     }
 
     @Test func acceptsHerdrSessionNameCharacterSetAndLengthLimit() {

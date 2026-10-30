@@ -55,7 +55,7 @@ actor SSHChannelAdmission {
     }
 
     private let limits: Limits
-    private var windowsSessionBudget = false
+    private var execSessionBudget: Bool
     private var counts = Snapshot(
         ordinaryForwarding: 0,
         events: 0,
@@ -67,7 +67,8 @@ actor SSHChannelAdmission {
     private var cancelledRequests: Set<UInt64> = []
     private var nextRequestID: UInt64 = 0
 
-    init(limits: Limits = .production) {
+    init(limits: Limits = .production, execSessionBudget: Bool = false) {
+        self.execSessionBudget = execSessionBudget
         precondition(limits.ordinaryForwarding > 0)
         precondition(limits.events > 0)
         precondition(limits.ordinarySession > 0)
@@ -132,7 +133,7 @@ actor SSHChannelAdmission {
     /// Windows RPC and Events are exec sessions as well. Leave one slot of
     /// headroom below OpenSSH's default MaxSessions=10 across all categories.
     func useWindowsSessionBudget() {
-        windowsSessionBudget = true
+        execSessionBudget = true
     }
 
     fileprivate func release(_ channelClass: ChannelClass) {
@@ -159,7 +160,7 @@ actor SSHChannelAdmission {
 
     private func canAcquire(_ channelClass: ChannelClass) -> Bool {
         guard counts.connection < limits.connection else { return false }
-        if windowsSessionBudget, counts.connection >= 9 { return false }
+        if execSessionBudget, counts.connection >= 9 { return false }
         switch channelClass {
         case .ordinaryForwarding:
             return counts.ordinaryForwarding < limits.ordinaryForwarding

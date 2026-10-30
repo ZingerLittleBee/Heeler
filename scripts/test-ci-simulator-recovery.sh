@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
+for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary claim_core_port claim_port_block claim_port_reservation release_port_reservations assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
     claim_simulator claim_resource_lock release_resource_lock write_lock_owner \
     lock_is_stale acquire_claim_guard release_claim_guard \
     clear_simulator_environment push_simulator_environment; do
@@ -109,7 +109,7 @@ export ORIGINAL=AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA
 export REPLACEMENT=BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB
 export OCCUPIED=CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC
 
-fail() { echo "FAIL $SCENARIO: $*" >&2; exit 1; }
+fail() { echo "FAIL ${SCENARIO:-controls}: $*" >&2; exit 1; }
 # Avoid delays in the test; simulator recovery still runs the shipped loop.
 sleep() { :; }
 
@@ -314,6 +314,7 @@ run_shard_case() (
     run_suite() { printf 'suite %s\n' "$*" >> "$fixture_dir/events"; }
     start_password_sshd() { echo start-password >> "$fixture_dir/events"; }
     stop_privileged_sshd() { echo stop-password >> "$fixture_dir/events"; }
+    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests; }
     run_app_fixture_suites
     case "$shard" in
         session-weak)
@@ -329,6 +330,7 @@ EXPECTED
             cat > "$fixture_dir/expected" <<'EXPECTED'
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 118 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
             ;;
@@ -339,6 +341,7 @@ suite HeelerSSHSessionE2ETests 13 1 0 HeelerSSHSessionE2ETests
 stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 129 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             ;;
         ordinary)
@@ -351,6 +354,311 @@ EXPECTED
     printf 'PASS shard-%s\n' "$shard"
 )
 for shard in all session-weak transport ordinary; do run_shard_case "$shard"; done
+
+# Exercise real old/new allocation protocols with independent Bash owners and
+# no listeners. A port probe always says free: only reservations can exclude
+# deferred listeners, including when the older allocator starts second.
+python3 - "$repo_root" "$work" <<'PYPORTS'
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+repo, work = map(Path, sys.argv[1:])
+source = (repo / "scripts/run-ci-ios-tests.sh").read_text()
+
+def function(name):
+    match = re.search(r"^" + name + r"\(\) \{\n.*?^\}", source, re.M | re.S)
+    assert match, name
+    return match.group()
+
+names = ["write_lock_owner", "lock_is_stale", "acquire_claim_guard", "release_claim_guard",
+         "claim_resource_lock", "release_resource_lock", "release_port_reservations",
+         "claim_port_reservation", "claim_port_block", "claim_core_port", "assign_port_block"]
+constants = ["port_block_size", "port_block_base_default", "port_block_count",
+             "core_port_base_default", "core_port_count", "core_port_stride"]
+current = work / "current-port-functions.sh"
+current.write_text("\n".join(re.search(r"^" + name + r"=.+$", source, re.M).group()
+                              for name in constants) + "\n" + "\n\n".join(map(function, names)))
+cleanup = work / "port-cleanup.sh"
+cleanup.write_text(function("release_port_reservations") + "\n" + function("cleanup"))
+legacy = repo / "scripts/testdata/ci-port-reservation-3e4fea1.sh"
+assert legacy.is_file()
+worker = work / "port-worker.sh"
+worker.write_text(r'''#!/bin/bash
+set -euo pipefail
+library=$1 profile=$2 mode=$3 requested=$4 lock_root=$5 case_dir=$6 barrier=$7 pause_at=$8
+source "$library"
+source "$case_dir/../port-cleanup.sh"
+if [[ "$profile" == historical13 ]]; then
+    port_block_size=13
+    assign_port_block() { historical_assign_port_block "$@"; }
+fi
+port_block_base_override=""
+[[ "$requested" == auto ]] || port_block_base_override="$requested"
+port_reservation_locks=()
+run_lock_dir="" core_port_lock_dir="" active_claim_guard="" active_resource_lock=""
+account_lock_dir="" device_lock_dir=""
+lock_owner_token="port-worker-$$-$RANDOM"
+lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
+# Exercise the shipped cleanup while replacing only unrelated fixture work.
+fixture_dir="$case_dir/fixture"
+mkdir -p "$fixture_dir"
+stall_pid="" fake_herdr_pid="" weak_network_pid="" password_pid=""
+unprivileged_sshd_pids=()
+password_log_printed=0 password_log="$fixture_dir/password.log" password_user_cleanup_needed=0
+cancel_background_build() { :; }
+clear_simulator_environment() { :; }
+preserve_failure_diagnostics() { :; }
+port_is_busy() { return 1; }
+describe_port_holder() { return 1; }
+trap cleanup EXIT
+trap 'exit 143' TERM
+# Pause inside owner publication, while its claim guard is still held. The
+# first two aliases have already been recorded; the third is in the active slot.
+if [[ "$pause_at" != 0 ]]; then
+    eval "$(declare -f write_lock_owner | sed '1s/write_lock_owner/write_original_owner/')"
+    owner_writes=0
+    write_lock_owner() {
+        write_original_owner "$@"
+        owner_writes=$((owner_writes + 1))
+        if [[ "$owner_writes" == "$pause_at" ]]; then
+            : > "$case_dir/paused"
+            while :; do /bin/sleep 0.02; done
+        fi
+    }
+fi
+: > "$case_dir/ready"
+while [[ ! -f "$barrier" ]]; do /bin/sleep 0.01; done
+if [[ "$mode" == core ]]; then
+    modern_port=0 post_quantum_port=0
+    claim_core_port
+    low=$core_port high=$core_port
+elif [[ "$mode" == separate-core ]]; then
+    # Revision 360f55a1 only knew this key for its deferred core listener.
+    core_port_lock_dir="$lock_root/core-port-$requested"
+    claim_resource_lock "$core_port_lock_dir" old-separate-core
+    low=$requested high=$requested
+else
+    claim_port_block
+    low=$modern_port high=$((modern_port + port_block_size - 1))
+fi
+printf '%s %s\n' "$low" "$high" > "$case_dir/claimed"
+while [[ ! -f "$case_dir/finish" ]]; do /bin/sleep 0.01; done
+''')
+workers = []
+counter = 0
+
+def until(predicate, description):
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    raise AssertionError(description)
+
+def start(profile, base, locks, *, mode="main", barrier=None, pause=0):
+    global counter
+    counter += 1
+    folder = work / ("port-worker-" + str(counter))
+    folder.mkdir()
+    locks.mkdir(exist_ok=True)
+    barrier = barrier or folder / "go"
+    log = (folder / "output").open("w")
+    proc = subprocess.Popen(["/bin/bash", str(worker), str(current if profile == "current" else legacy),
+                             profile, mode, str(base), str(locks), str(folder), str(barrier), str(pause)],
+                            stdout=log, stderr=subprocess.STDOUT)
+    entry = (proc, folder, log)
+    workers.append(entry)
+    until(lambda: (folder / "ready").exists() or proc.poll() is not None, "worker did not initialize")
+    assert proc.poll() is None, (folder / "output").read_text()
+    return entry, barrier
+
+def outcome(entry):
+    proc, folder, _ = entry
+    until(lambda: (folder / "claimed").exists() or proc.poll() is not None, "allocation did not finish")
+    if (folder / "claimed").exists():
+        assert proc.poll() is None, (folder / "output").read_text()
+        return tuple(map(int, (folder / "claimed").read_text().split()))
+    assert proc.returncode == 1, (folder / "output").read_text()
+    return None
+
+def stop(entry, expected=0):
+    proc, folder, log = entry
+    if proc.poll() is None:
+        (folder / "finish").touch()
+    code = proc.wait(timeout=15)
+    log.flush()
+    assert code == expected, (code, (folder / "output").read_text())
+
+def disjoint(a, b):
+    return a[1] < b[0] or b[1] < a[0]
+
+def clean(locks):
+    assert list(locks.iterdir()) == [], list(locks.iterdir())
+
+try:
+    for profile, size in [("historical13", 13), ("previous14", 14)]:
+        locks = work / ("ports-old-first-" + profile)
+        old, go = start(profile, 55222, locks); go.touch()
+        assert outcome(old) == (55222, 55222 + size - 1)
+        new, go = start("current", "auto", locks); go.touch()
+        assert disjoint(outcome(old), outcome(new)), "a deferred legacy port was reused"
+        stop(new); stop(old); clean(locks)
+        print("PASS port-reservation-old-first-" + profile)
+
+        locks = work / ("ports-new-first-" + profile)
+        new, go = start("current", 55235, locks); go.touch()
+        assert outcome(new) == (55235, 55247)
+        old, go = start(profile, 55222 + size, locks); go.touch()
+        assert outcome(old) is None, "old allocator ignored the new compatibility aliases"
+        stop(old, 1); stop(new); clean(locks)
+        print("PASS port-reservation-new-first-" + profile)
+
+        for iteration in range(3):
+            locks = work / ("ports-race-" + profile + "-" + str(iteration))
+            go = work / (locks.name + "-go")
+            new, _ = start("current", 55235, locks, barrier=go)
+            old, _ = start(profile, 55222 + size, locks, barrier=go)
+            go.touch()  # Both independent owners enter the real allocator together.
+            results = [outcome(new), outcome(old)]
+            assert sum(result is not None for result in results) == 1, results
+            stop(new, 0 if results[0] else 1); stop(old, 0 if results[1] else 1)
+            clean(locks)
+        print("PASS port-reservation-concurrent-race-" + profile)
+
+    locks = work / "ports-partial-rollback"
+    old, go = start("previous14", 55230, locks); go.touch(); assert outcome(old)
+    new, go = start("current", 55235, locks); go.touch(); assert outcome(new) is None
+    assert sorted(p.name for p in locks.iterdir()) == ["block-55230"], "partial claim leaked or erased old ownership"
+    stop(new, 1); stop(old); clean(locks)
+    print("PASS port-reservation-partial-rollback-preserves-foreign-owner")
+
+    for first_mode in ["main", "separate-core"]:
+        locks = work / ("ports-separate-core-" + first_mode)
+        specs = [("current", 55395, "main"), ("previous14", 55400, "separate-core")]
+        if first_mode == "separate-core": specs.reverse()
+        first, go = start(specs[0][0], specs[0][1], locks, mode=specs[0][2]); go.touch(); assert outcome(first)
+        second, go = start(specs[1][0], specs[1][1], locks, mode=specs[1][2]); go.touch(); assert outcome(second) is None
+        stop(second, 1); stop(first); clean(locks)
+    print("PASS port-reservation-main-override-vs-previous-core-both-orders")
+
+    locks = work / "ports-old-override-vs-core"
+    old, go = start("previous14", 55395, locks); go.touch(); assert outcome(old)
+    core, go = start("current", "auto", locks, mode="core"); go.touch()
+    assert outcome(core) == (55414, 55414), "core did not skip the legacy override's aliases"
+    stop(core); stop(old); clean(locks)
+    core, go = start("current", "auto", locks, mode="core"); go.touch(); assert outcome(core) == (55400, 55400)
+    old, go = start("previous14", 55395, locks); go.touch(); assert outcome(old) is None
+    stop(old, 1); stop(core); clean(locks)
+    print("PASS port-reservation-core-vs-legacy-override-both-orders")
+
+    locks = work / "ports-two-cores"
+    first, go = start("current", "auto", locks, mode="core"); go.touch(); assert outcome(first) == (55400, 55400)
+    second, go = start("current", "auto", locks, mode="core"); go.touch(); assert outcome(second) == (55414, 55414)
+    stop(first); stop(second); clean(locks)
+    print("PASS port-reservation-core-pool-retains-concurrency")
+
+    locks = work / "ports-cancel-partial"
+    interrupted, go = start("current", 55235, locks, pause=3); go.touch()
+    proc, folder, _ = interrupted
+    until(lambda: (folder / "paused").exists() or proc.poll() is not None, "partial claim never reached signal barrier")
+    assert (folder / "paused").exists(), (folder / "output").read_text()
+    proc.send_signal(signal.SIGTERM)
+    stop(interrupted, 143); clean(locks)
+    print("PASS port-reservation-cancel-cleans-published-and-active-aliases")
+finally:
+    for proc, folder, log in workers:
+        if proc.poll() is None:
+            proc.terminate()
+            try: proc.wait(timeout=5)
+            except subprocess.TimeoutExpired: proc.kill(); proc.wait(timeout=5)
+        log.close()
+PYPORTS
+
+# Diagnostic I/O is fallible, but must not bypass the actual process owner.
+for stop_result in pass fail; do (
+    fixture_dir="$work/core-logcopy-$stop_result/main"
+    core_fixture_dir="$work/core-logcopy-$stop_result/core"
+    mkdir -p "$fixture_dir" "$core_fixture_dir/logs" "$core_fixture_dir/bin"
+    echo fixture-log > "$core_fixture_dir/logs/sshd.log"
+    echo retained-executable > "$core_fixture_dir/bin/herdr-core"
+    core_log="$work/core-logcopy-$stop_result/called"
+    fixture_python=core_stop_stub
+    core_stop_stub() { echo called > "$core_log"; [[ "$stop_result" == pass ]]; }
+    cp() { return 1; }
+    status=0
+    stop_core_fixture || status=$?
+    [[ -f "$core_log" ]] || fail 'log-copy error skipped core shutdown'
+    [[ "$status" == 1 ]] || fail 'log-copy failure disappeared from final status'
+    if [[ "$stop_result" == pass ]]; then
+        [[ -z "$core_fixture_dir" ]] || fail 'successful shutdown retained ownership'
+    else
+        [[ -n "$core_fixture_dir" ]] || fail 'failed shutdown lost cleanup ownership'
+        rm -rf "$fixture_dir"
+        [[ -f "$core_fixture_dir/bin/herdr-core" ]] || fail 'outer cleanup deleted retry executable'
+    fi
+    echo "PASS core-logcopy-stop-$stop_result"
+); done
+
+# The core phase must swap the actual Simulator config, restore the legacy
+# config afterwards, and retain ownership for cleanup when native tests fail.
+for result in pass fail; do (
+    fixture_dir="$work/core-$result"
+    mkdir -p "$fixture_dir"
+    fixture_configuration_base64=legacy-config
+    HEELER_SSH_E2E_CONFIG=legacy-config
+    HEELER_SSH_JUMP_E2E_CONFIG=jump-config
+    HEELER_PAIRING_E2E_CONFIG=pairing-config
+    start_core_fixture() {
+        core_fixture_dir="$fixture_dir/core"
+        mkdir -p "$core_fixture_dir"
+        echo core-config > "$core_fixture_dir/core-test-config"
+        echo start >> "$fixture_dir/events"
+    }
+    push_simulator_environment() { echo "config $HEELER_SSH_E2E_CONFIG $*" >> "$fixture_dir/events"; }
+    run_suite() {
+        echo "suite $*" >> "$fixture_dir/events"
+        [[ "$result" == pass ]] || return 65
+    }
+    stop_core_fixture() { echo stop >> "$fixture_dir/events"; core_fixture_dir=""; }
+    status=0
+    run_core_fixture_suite || status=$?
+    cat > "$fixture_dir/expected" <<'EXPECTED'
+start
+config core-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+EXPECTED
+    if [[ "$result" == pass ]]; then
+        [[ "$status" == 0 && -z "$core_fixture_dir" ]] || fail 'core success retained fixture ownership'
+        cat >> "$fixture_dir/expected" <<'EXPECTED'
+config legacy-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+stop
+EXPECTED
+    else
+        [[ "$status" == 65 && -n "$core_fixture_dir" ]] || fail 'core failure hid status or lost cleanup ownership'
+    fi
+    diff -u "$fixture_dir/expected" "$fixture_dir/events" || fail 'core phase environment or execution order drifted'
+    printf 'PASS core-phase-%s\n' "$result"
+); done
+
+# A wrong release archive must never be extracted or run, even though the
+# download succeeded. Execute the shipped verifier against hostile bytes.
+(
+    fixture_dir="$work/core-bad-checksum"
+    mkdir -p "$fixture_dir"
+    curl() { local last=""; for last in "$@"; do :; done; echo tampered > "$last"; }
+    tar() { touch "$fixture_dir/extracted"; }
+    if download_core_fixture_binary > "$fixture_dir/output" 2>&1; then
+        fail 'core accepted an archive without its pinned checksum'
+    fi
+    grep -qF 'archive checksum mismatch' "$fixture_dir/output" || fail 'core archive failed for an unrelated reason'
+    [[ ! -e "$fixture_dir/extracted" ]] || fail 'core extracted an unchecked archive'
+    echo 'PASS core-download-checksum'
+)
 
 (
     ci_app_shard=session-weak
@@ -408,7 +716,7 @@ for function in cleanup preserve_failure_diagnostics dump_fixture_logs; do
     [[ -n "$body" ]] || fail "missing cleanup function $function"
     eval "$body"
 done
-for reason in preparation-failure parent-cancellation; do
+for reason in preparation-failure parent-cancellation core-stop-failure; do
     (
         export SCENARIO=background-stall
         export CASE_DIR="$work/$reason"
@@ -434,12 +742,22 @@ for reason in preparation-failure parent-cancellation; do
         password_pid=""
         password_log="$fixture_dir/password.log"
         password_log_printed=0
+        fixture_log_tail_lines=80
         password_user_cleanup_needed=0
         active_claim_guard=""
         active_resource_lock=""
         account_lock_dir=""
         run_lock_dir=""
         device_lock_dir=""
+        core_fixture_dir=""
+        if [[ "$reason" == core-stop-failure ]]; then
+            core_fixture_dir="$CASE_DIR/core"
+            mkdir -p "$core_fixture_dir/bin" "$core_fixture_dir/logs"
+            echo retained-core > "$core_fixture_dir/bin/herdr-core"
+            echo fixture-log > "$core_fixture_dir/logs/sshd.log"
+            fixture_python=core_stop_failure
+            core_stop_failure() { echo called > "$CASE_DIR/core-stop-called"; return 1; }
+        fi
         start_background_build first
         for _ in $(seq 1 100); do
             [[ -s "$CASE_DIR/build-child.pid" ]] && break
@@ -462,11 +780,15 @@ for reason in preparation-failure parent-cancellation; do
     [[ "$reason" != parent-cancellation ]] || expected=143
     [[ "$status" == "$expected" ]] || { cat "$work/$reason.log" >&2; fail "$reason changed parent exit status $status"; }
     [[ "$(cat "$work/$reason/cancel-order")" == fixture-present ]] || fail 'fixture deleted before build reaped'
-    [[ ! -d "$work/$reason/fixture" ]] || fail 'fixture not cleaned after build cancellation'
+    [[ ! -d "$work/$reason/fixture" ]] || { cat "$work/$reason.log" >&2; fail 'fixture not cleaned after build cancellation'; }
     ! kill -0 "$(cat "$work/$reason/build-child.pid")" 2>/dev/null || fail 'owned build child survived cleanup'
+    if [[ "$reason" == core-stop-failure ]]; then
+        [[ -f "$work/$reason/core-stop-called" ]] || fail 'outer cleanup did not attempt core shutdown'
+        [[ -f "$work/$reason/core/bin/herdr-core" ]] || fail 'outer cleanup lost retained core executable'
+    fi
     printf 'PASS overlap-%s\n' "$reason"
 done
-echo 'Passed 2 owned build cleanup scenarios.'
+echo 'Passed 3 owned build cleanup scenarios.'
 
 for scenario in new settings stale-phase stale-worker stale-metrics unexpected symlink; do
     (

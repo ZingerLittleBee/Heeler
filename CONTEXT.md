@@ -1,12 +1,29 @@
 # Heeler
 
-A native iOS agent console for herdr. One context: the app. Terms owned by herdr keep herdr's meaning; this glossary pins how we use them client-side.
+A native iOS agent console for Herdr TUI and herdr-core. One context: the app. Unqualified "herdr" here means Herdr TUI. Terms owned by either server keep that server's meaning; this glossary pins how we use them client-side.
 
 ## Language
 
 **Host**:
-A remote machine reachable over SSH that runs a herdr server. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them.
+A remote machine reachable over SSH, as added for one Server Kind. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. An SSH target running both servers is two Hosts.
 _Avoid_: server, machine, connection
+
+**Server Kind**:
+Which of two servers a Host's Agents live in: Herdr TUI (the original herdr
+server) or herdr-core (the vendor's headless terminal runtime, `hc`). The two
+share no Agents. A herdr-core Host whose core also serves the Herdr desktop
+app is still herdr-core; the app's organization is data the Host carries, not
+another kind. Adding a Host detects it and the user confirms it, except that a
+Pairing Code always adds a Herdr TUI Host. The Host keeps it: neither a
+connection nor an edit switches a Host to the other kind (ADR 0031).
+_Avoid_: backend, server type, flavor
+
+**Herdr desktop app**:
+The vendor's desktop client that runs on herdr-core. It shows a core's
+Terminals in its own spaces, tabs and panes, and shows any Terminal labeled
+into one of them. Not to be confused with a desktop app that bundles its own
+Herdr TUI, which is a Herdr Endpoint.
+_Avoid_: herdr-app (its executable), desktop (alone)
 
 **Route**:
 One way to reach a Host: an address and port, optionally resolved from a Jump
@@ -91,7 +108,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running inside a herdr pane, as reported by herdr's detection. The primary object of the app.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last.
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -114,28 +131,82 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-herdr's detected state of an Agent: Idle, Working, Blocked, Done, or Unknown. Blocked means the agent is waiting for human input and drives sort order and (later) notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). Blocked means the agent is waiting for human input; Error, herdr-core only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
+**Program Status**:
+What a program in a herdr-core Terminal reports about itself through OSC 7501:
+idle, working, done, blocked or error, with optional detail. herdr-core never
+infers it from the screen, and a program that never reports has none. The core
+keeps a program's last report after that program exits, for as long as its
+Terminal runs on.
+_Avoid_: detected status, agent state
+
 **Pane**:
-herdr's unit of terminal real estate. A Pane hosts either an Agent or an
+The unit of terminal real estate in a Tab. A Pane hosts either an Agent or an
 ordinary shell — a workspace's root pane starts as a shell. Used as an address
-(`pane_id`), never as a layout concept in this app.
+(`pane_id`), never as a layout concept in this app. On Herdr TUI it is herdr's
+pane; on herdr-core each Terminal is one Pane, addressed by the Terminal's
+address.
 _Avoid_: window, tile
 
+**Tab**:
+An ordered member of a Workspace that holds one or more Panes. On Herdr TUI it
+is herdr's tab. On herdr-core it is a Herdr desktop tab, or, in a derived
+Workspace, one Terminal's own Tab. A Terminal without desktop labels started
+from inside another, such as a subagent, joins that Terminal's Tab as another
+Pane.
+_Avoid_: window, page
+
+**Terminal**:
+herdr-core's unit: one program the core runs in its own pseudo-terminal and
+keeps alive with or without viewers. The app shows each Terminal as a Pane. A
+Terminal hosts either an Agent or an ordinary program. Its address is an opaque
+string the core never reuses. A Terminal whose program has exited stays in the
+core until removed; the Console hides it, and an Agent detail open on it says
+it ended. A kept Terminal is one the core restores when its program is lost
+rather than exited, as when the machine restarts: it comes back as a fresh
+shell at the same address, and until then shows as restarting and hosts no
+Agent. Only the Host's own core's Terminals are shown, not those it reaches on
+other machines. An Agent Heeler starts on herdr-core ends its Terminal when it
+exits, instead of leaving a shell (ADR 0032).
+_Avoid_: pane (for the core's record), session
+
+**Template**:
+An agent role saved on a herdr-core Host: a command, an optional first
+message, and optionally the keys that submit a message to it and stop it. New
+Agent there offers the Host's Templates beside Heeler's agent list, and a
+Terminal started from a Template keeps its keys.
+_Avoid_: preset, profile
+
 **Workspace**:
-herdr's unit that groups tabs and panes around one working directory. New
-Agent can start in an existing Workspace, a new Worktree of one, or a new
-Workspace opened at a remote directory. The id is an opaque string.
-_Avoid_: project, folder, window
+The unit that groups Tabs and Panes around one working directory. On Herdr TUI
+it is herdr's workspace. herdr-core has none of its own: a Terminal labeled
+into a Herdr desktop space belongs to that space, named and ordered as the
+desktop app shows it, or, before any desktop app has named it, after its first
+Terminal's checkout folder as the desktop app would; any other Terminal belongs
+to a derived Workspace of the Terminals launched in its directory. A Terminal
+without desktop labels started from inside another joins that Terminal's
+Workspace. Heeler keeps no organization of its own: a Workspace it creates on
+herdr-core, and a Tab it adds to a desktop space, carry the desktop app's
+labels, while a Terminal it opens in a derived Workspace carries none (ADR
+0032). On herdr-core only a Workspace the desktop app shows can be renamed, and
+only while that app runs on the Host; a derived Workspace has no name of its
+own. New Agent can start in an existing Workspace, a new Worktree of one, or a
+new Workspace opened at a remote directory. The id is an opaque string.
+_Avoid_: project, folder, window, space (the desktop app's word)
 
 **Worktree**:
-A fresh git checkout of a workspace's repository, created by herdr as its own
-workspace so a new Agent starts on a clean copy of the code. The branch
-defaults to herdr's generated `worktree/<name>` off HEAD; removing the
-Worktree deletes the checkout and closes its workspace, but the branch
-survives. Snapshot worktree metadata also describes the main checkout; only
-`is_linked_worktree` makes a workspace eligible for linked-Worktree removal.
+A fresh git checkout of a workspace's repository, opened as its own workspace
+so a new Agent starts on a clean copy of the code. On Herdr TUI herdr creates
+it; the branch defaults to herdr's generated `worktree/<name>` off HEAD;
+removing the Worktree deletes the checkout and closes its workspace, but the
+branch survives. Snapshot worktree metadata also describes the main checkout;
+only `is_linked_worktree` makes a workspace eligible for linked-Worktree
+removal. On herdr-core Heeler creates it as the Herdr desktop app does, on a
+branch the user names, at `~/.herdr/worktrees/<repository>/<branch>`, and
+opens a new Workspace there; removing it first ends that Workspace's
+Terminals, and the branch survives.
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Checkout**:
@@ -158,9 +229,12 @@ _Avoid_: dashboard, home
 
 **Agent Row Layout**:
 The ordered rows of fields that identify an Agent in the Console and its
-switcher. Each Host follows its herdr plugin's fields until the user saves
-that Host's own layout, which may start from a Sync from plugin copy. There
-is no user-facing default layout. The Console shows at most three rows, as
+switcher. Each Herdr TUI Host follows its herdr plugin's fields until the user
+saves that Host's own layout, which may start from a Sync from plugin copy;
+Herdr TUI has no user-facing default layout. A herdr-core Host has no plugin
+and starts from Heeler's own: the terminal's title, then its directory. Fields
+only herdr's plugin supplies, such as its tokens, do not apply there, and the
+Terminal's labels are offered as fields. The Console shows at most three rows, as
 three fixed Row Slots, and every Agent on a Host shares them: herdr's
 per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
 `state_icon` never appears as a field; the status badge at the end of Row 1
@@ -169,9 +243,10 @@ status as a field repeats it in the row.
 _Avoid_: card template, sidebar format
 
 **Row Slot**:
-One of the three fixed positions in an Agent Row Layout. Row 1 and Row 2 are
-herdr rows: they start from herdr's sidebar fields and are what Sync from
-plugin refills. Row 3 is Heeler's row, which Sync fills only when herdr
+One of the three fixed positions in an Agent Row Layout. On Herdr TUI, Row 1
+and Row 2 are herdr rows: they start from herdr's sidebar fields and are what
+Sync from plugin refills. On herdr-core they start from Heeler's own layout and
+also accept the Terminal's labels. Row 3 is Heeler's row, which Sync fills only when herdr
 defines a third row. Every slot accepts herdr fields and the Heeler-only
 fields herdr does not define (Host name, Agent Status as text, working
 directory). Slots are never added, moved, or deleted; an empty slot renders
@@ -181,8 +256,10 @@ _Avoid_: extra row, custom row
 **Pin**:
 A user-chosen Console marker on an Agent's pane slot (`hostID` + `paneID`).
 Pinned agents float to the top of the Console list and the Live Activity
-by recency. Pins persist locally and are never pruned, so a pane id that
-returns after a herdr restart stays pinned.
+by recency. Pins persist locally. Herdr TUI Pins are never pruned, so a pane
+id that returns after a herdr restart stays pinned. herdr-core addresses are
+never reused, so a Pin goes when its Terminal is removed, and all of a Host's Pins go
+when its core's identity changes.
 _Avoid_: favorite, star, bookmark
 
 **Composer**:
@@ -198,14 +275,21 @@ Blocked: Send then inserts the draft into Attach without Enter, and the tools
 keyboard submits or cancels. Delivered means the Host accepted the text into
 the pane — whether the Agent queues or acts on it is the Agent's business,
 and the Composer never claims otherwise.
+On herdr-core, Send submits only while the same Agent still holds the
+terminal; otherwise it submits nothing, a shell that received the text drops
+it, and the Composer keeps the draft and says so. While Agent Status is
+Blocked it only pastes, as on Herdr TUI. It pastes only into a terminal that
+accepts a bracketed paste, and otherwise says so. A Send with no answer has an
+unknown outcome and is never repeated. Stop there presses the Terminal's own
+stop key (ADR 0035).
 While Agent Status is Working and the draft is blank, Send becomes Stop: the
 program's Stop keys (one Esc; in Chat, two for OpenCode, whose first Esc only
 arms its interrupt, or Ctrl+C in Grok Build, whose turns Esc doesn't stop),
 then a wait of up to three seconds for the status to leave Working rather
 than another press. The wait is per Agent, shared by Chat and the terminal.
-Only Chat presses Ctrl+C, after reading Grok Build's screen; the terminal's
-Composer keeps Send for Grok Build. With text, Send still delivers, so a
-prompt can queue behind the turn.
+On Herdr TUI only Chat's Stop presses Ctrl+C, after reading Grok Build's
+screen; the terminal's Composer keeps Send for Grok Build. With text, Send
+still delivers, so a prompt can queue behind the turn.
 Composer remains the default authored-input path on Agent detail. Direct Input
 is an explicit, opt-in alternative that hides the Composer card without
 clearing or submitting the draft.
@@ -223,10 +307,13 @@ authored input belongs to Composer. Direct Input is the scoped exception that
 lets the system keyboard type that same Attach PTY.
 Delivery is one `agent.prompt` request, except when Agent Status is Blocked, in
 which case Composer Send inserts the draft into Attach without Enter and the
-tools keyboard submits or cancels. Only Composer's explicit tools-keyboard
-controls and its Stop (and Direct Input's shortcut row / system Return) send
-terminal control sequences. The directly interactive surface on an ordinary
-shell is the Shell Terminal, never unqualified "Attach".
+tools keyboard submits or cancels. On herdr-core, Composer Send writes into the
+Attach itself, in the checked steps the Composer describes. Only Composer's
+explicit tools-keyboard controls and its Stop (and Direct Input's shortcut row
+/ system Return, and on herdr-core Send's paste, its submit, and the Ctrl+C
+that drops text a shell received) send terminal control sequences. The
+directly interactive surface on an ordinary shell is the Shell Terminal, never
+unqualified "Attach".
 Chat holds no Attach: while Chat shows in its place, the Agent's Attach is
 retained like any terminal the user has left, and nothing types into or
 resizes it.
@@ -253,8 +340,15 @@ Grok Build, Chat holds a message when the Agent shows another session, and
 marks one Grok Build recorded elsewhere. When OpenCode leaves the
 conversation herdr reported, as after its `/new`, Chat says so and shows no
 conversation.
+On herdr-core no server names the conversation. Chat takes it from what the
+Host shows about the Agent's own process, or from the user's one-time choice
+among the candidates it lists, and when it can do neither it says so and how to
+fix it; it never guesses (ADR 0034). There its Send, Stop and Blocked Card
+answers keep the rules above, but type through an attach of Chat's own that
+keeps the Terminal's size, with the Composer's checked steps (ADR 0035).
 The choice between Chat and the terminal is app-wide, Terminal by default. Not
-offered on native Windows Hosts.
+offered on native Windows Herdr TUI Hosts; on native Windows herdr-core Hosts,
+only for the programs tested there.
 _Avoid_: chat mode, conversation view, Monitor (ADR 0012's removed surface)
 
 **Transcript**:
@@ -267,17 +361,17 @@ database, which Heeler reads with a bounded read-only query on the Host (ADR
 normally names the exact absolute file path; a UUID can also locate a session
 under that program's default sessions directory. For Grok Build, herdr names
 the session id, whose folder Chat finds under `~/.grok/sessions`. The session
-herdr reports names it. Heeler only reads it: the app over SFTP, or for
+herdr reports names it; on herdr-core, the session Chat bound (ADR 0034). Heeler only reads it: the app over SFTP, or for
 OpenCode by that query, keeping decoded entries, never tool output, in an
-on-device cache; and the Heeler plugin on the Host itself, to total Claude Code
-and Codex Token Usage (ADR 0028).
+on-device cache; and the Heeler plugin on the Host itself, or on herdr-core the
+Host Helper, to total Claude Code and Codex Token Usage (ADR 0028).
 _Avoid_: log, history file, session file
 
 **Account**:
 One sign-in of Claude Code or Codex on a Host, identified by the config
 directory where that program keeps its sign-in and Transcripts. Each Host has
 one **Default Account** per program: the directory the program uses in herdr's
-own environment. For Claude Code the user may add more Accounts by choosing
+own environment, or on herdr-core in the core's. For Claude Code the user may add more Accounts by choosing
 their directories; Heeler may suggest directories that look like one, but
 counts none until the user adds it. A Host's Accounts are shared by every
 device. Two directories signed in to the same login are still two Accounts,
@@ -306,7 +400,8 @@ _Avoid_: spend, cost (alone), usage (unqualified), credits
 Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
 Composer's place. Its options come from the screen and the request's details
 from the Transcript; answers go through `agent.send_keys` and
-`pane.send_input`, never Attach. A card sends nothing once the dialog has
+`pane.send_input`, never Attach, and on herdr-core through Chat's own
+attach. A card sends nothing once the dialog has
 changed and never resends. A dialog it cannot read gets a generic card with
 the Agent controls. OpenCode Blocked with no dialog on screen gets a card that
 says why instead, since its prompt would act on those keys.
@@ -333,8 +428,10 @@ The full interactive terminal on an ordinary shell Pane, opened by Agent
 detail's edge-docked Workspace drawer, the Console's Terminals list, or Open
 Terminal. Open Terminal prefers an existing shell in the Workspace and creates
 a tab in the Agent's launch directory only as a fallback or explicit choice.
-Existing shells use direct terminal attach without takeover; Take Over is an
-explicit action when another client owns the terminal. libghostty renders it, and direct keyboard
+On Herdr TUI, existing shells use direct terminal attach without takeover, and
+Take Over is an explicit action when another client owns the terminal.
+herdr-core has no Take Over: any viewer that is not only observing may type,
+and the last one to type, resize or come into focus sets the size. libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. Where the detail is pushed over the
 list (iPhone, or a compact iPad window), Open Terminal pushes it over Agent
@@ -356,8 +453,9 @@ A Pane listed with its Host, Workspace, Tab title and current directory.
 Includes Agent panes, which open Agent detail, and ordinary panes, which open
 Shell Terminal. The detail drawer includes every Tab in the current Workspace
 with a New Terminal button pinned below them that opens a fresh shell tab in
-the current pane's directory, and its handle, like the message-jump buttons,
-is long-pressed to slide it along the terminal's edge and rests where it was
+the current pane's directory (in a herdr-core derived Workspace, the
+Workspace's own directory, so the new Terminal stays in it), and its handle,
+like the message-jump buttons, is long-pressed to slide it along the terminal's edge and rests where it was
 left;
 the Console's Terminals tab shows the ordinary panes of the same inventory as
 Workspace cards, By Workspace or By Host, with New Terminal on each card.
@@ -403,19 +501,30 @@ name the user gives it, shown above its text wherever Snippets are listed.
 _Avoid_: macro, template, shortcut, quick reply, tip
 
 **Agent Notification**:
-A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface.
+A notification telling the user an Agent crossed a notify-worthy status boundary (Blocked, Done, and on herdr-core Error): an APNs push while backgrounded or killed, an in-app banner off the live event stream while foregrounded. Deep-links to the Agent's detail surface.
 _Avoid_: alert, push message, task notification
 
 **Push Relay**:
 The developer-hosted, stateless forwarder that holds the APNs credentials and relays encrypted notification payloads from Hosts to Apple. It sees device tokens and ciphertext, never content.
 _Avoid_: server, backend, push service
 
+**Host Helper**:
+Heeler's own background service on a macOS or Linux herdr-core Host, standing
+in for the Heeler plugin, which herdr-core cannot run. It follows the core's
+events to deliver Agent Notifications and Live Activity updates through the
+Push Relay while the app is not running, and serves Usage reads. It never
+starts a core. The app installs it from its own bundle over SSH, and replaces
+it only with a newer version or when it is missing or damaged. With it come
+Heeler's extensions for Pi and Oh My Pi, which tell Chat their session, placed
+in those programs' own extension folders and removed with it (ADR 0033).
+_Avoid_: daemon, plugin (on herdr-core), agent
+
 **Notification Key**:
 The symmetric key generated on device and stored on a Host during Notification Registration; encrypts Agent Notification content end to end so the Push Relay cannot read it.
 _Avoid_: shared secret, push key
 
 **Notification Registration**:
-The act of writing the device's push token and Notification Key to a Host over SSH, as one entry scoped to the herdr session the Host targets. Per host, repeatable, and independent of Pairing; removing it disables Agent Notifications from that Host. Hosts that resolve to the same remote plugin config directory (one SSH user's config home, whatever the address or herdr session) share one registration file: a Host owns only the entry carrying its own Notification Key, and the plugin delivers an entry only to hooks of that entry's session (session names compare exactly). Two Hosts that target the same herdr session share one entry per device, and the one that registered last receives the notifications.
+The act of writing the device's push token and Notification Key to a Host over SSH, as one entry scoped to the herdr session the Host targets. Per host, repeatable, and independent of Pairing; removing it disables Agent Notifications from that Host. Hosts that resolve to the same remote plugin config directory (one SSH user's config home, whatever the address or herdr session) share one registration file: a Host owns only the entry carrying its own Notification Key, and the plugin delivers an entry only to hooks of that entry's session (session names compare exactly). Two Hosts that target the same herdr session share one entry per device, and the one that registered last receives the notifications. On herdr-core the Host Helper keeps the registrations in its own directory, never in the plugin's, one entry per device for the core session the Host targets.
 _Avoid_: subscribe, enable push
 
 **Transport**:
@@ -423,6 +532,10 @@ The app-side abstraction that executes herdr API requests and delivers event str
 Unix Hosts use direct-streamlocal channels. Native Windows Hosts use herdr's
 official API bridge over SSH exec; their live terminals use its framed terminal
 controller. Both remain behind the same Transport abstraction (ADR 0018).
+herdr-core Hosts have a Transport of their own in the same role, speaking the
+core's framed protocol: over a direct-streamlocal channel to its socket on
+Unix, and over SSH exec of `herdr-core connect` on native Windows once the
+core's pipe exists. Heeler never starts a core by connecting (ADR 0031).
 _Avoid_: client, bridge, tunnel
 
 **Host Connection Status**:

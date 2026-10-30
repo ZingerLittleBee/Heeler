@@ -12,6 +12,7 @@ final class AgentUsageStore {
         case loading
         case requirement(String)
         case unsupportedPlatform
+        case unsupportedBackend
         case runtimeMissing
         case updateRequired
         case available(AgentUsageReport)
@@ -292,6 +293,8 @@ final class AgentUsageStore {
     /// over any connection, so its copy does not blame the link.
     nonisolated static func state(for error: any Error) -> State {
         switch error {
+        case HeelerPluginUnavailableError.herdrCore:
+            .unsupportedBackend
         case AgentUsageError.unsupportedVersion: .updateRequired
         case TransportError.hostFeatureUnavailable: .unsupportedPlatform
         case TransportError.hostFileTimedOut: .failed(timeoutMessage)

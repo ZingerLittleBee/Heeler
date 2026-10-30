@@ -81,6 +81,17 @@ struct AgentLinkHostLookupTests {
                 == AgentNotificationTarget(hostID: Self.studioWork.id, paneID: "w1:p1"))
     }
 
+    @Test func legacyLookupNeverTargetsACoreTerminalWithTheSameAddress() throws {
+        let core = Host(address: "studio.local", username: "dev", backend: .herdrCore)
+        let link = "heeler://agent?host=studio.local&pane=t3"
+        #expect(try opened(link, in: [core]) == nil)
+        #expect(try opened(link, in: [core, Self.studio])
+            == AgentNotificationTarget(hostID: Self.studio.id, paneID: "t3"))
+        let ownLink = try #require(AgentActivityLink.agentURL(hostID: core.id.uuidString, paneID: "t3"))
+        #expect(try opened(ownLink.absoluteString, in: [core])
+            == AgentNotificationTarget(hostID: core.id, paneID: "t3"))
+    }
+
     @Test func addressMatchesIgnoringCase() throws {
         #expect(
             try opened("heeler://agent?host=STUDIO.local&pane=w1%3Ap1")

@@ -71,6 +71,7 @@ struct HostDraft: Equatable, Sendable {
     var name = ""
     var username = ""
     var authMethod: Host.AuthMethod = .deviceKey
+    var backend: HostBackend = .herdr
     /// Blank means "keep the stored password" when editing.
     var password = ""
     var sessionName = ""
@@ -89,6 +90,7 @@ struct HostDraft: Equatable, Sendable {
         name = host.name
         username = host.username
         authMethod = host.authMethod
+        backend = host.backend
         sessionName = host.sessionName
         herdrEndpoint = host.herdrEndpoint
         routes = host.routes.map(HostRouteDraft.init(route:))
@@ -209,11 +211,10 @@ struct HostDraft: Equatable, Sendable {
     }
 
     var isValid: Bool {
-        let trimmedSessionName = sessionName.trimmingCharacters(in: .whitespaces)
         return !routes.isEmpty
             && routes.allSatisfy(\.isValid)
             && !username.trimmingCharacters(in: .whitespaces).isEmpty
-            && (trimmedSessionName.isEmpty || HerdrSessionName.isValid(trimmedSessionName))
+            && (herdrEndpoint == nil ? backend : .herdr).isValidSessionName(sessionName)
     }
 
     /// Form-level validity including credential intent. A blank password can
@@ -238,6 +239,7 @@ struct HostDraft: Equatable, Sendable {
             name: name.trimmingCharacters(in: .whitespaces),
             username: username.trimmingCharacters(in: .whitespaces),
             authMethod: authMethod,
+            backend: backend,
             sessionName: sessionName.trimmingCharacters(in: .whitespaces),
             herdrEndpoint: herdrEndpoint,
             routes: routes)

@@ -8,6 +8,90 @@ import UIKit
 @MainActor
 @Suite("Agent Composer store")
 struct AgentComposerStoreTests {
+    @Test(arguments: [AgentStatus.idle, .blocked, .working])
+    func coreInsertsRawSingleLineAndRequiresASeparateEnter(_ status: AgentStatus) async {
+        let transport = ScriptedTransport()
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(
+            target: "t3", requiresTerminalConfirmation: true, initialStatus: status
+        ) { try await transport.promptAgent($0) }
+        store.bindAttachInput(input)
+        let text = #"  review '$HOME'; $(command) && `name` | cat # raw  "#
+        store.replaceDraft(with: text)
+
+        #expect(await store.send() == .deliveredViaAttach)
+        #expect(store.draft.isEmpty)
+        #expect(store.messages.map(\.text) == [text])
+        #expect(store.messages.map(\.state) == [.delivered(.acknowledged)])
+        #expect(writes == [Data(text.utf8)])
+        #expect(!writes.contains { $0.contains(0x0D) || $0.contains(0x0A) })
+        #expect(input.userMessageIndex.entries.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+        #expect(store.sendAccessibilityHint.contains("without Enter"))
+
+        // A reported status cannot turn an unsubmitted insertion into work.
+        store.agentStatusDidChange(.working)
+        store.agentStatusDidChange(.done)
+        #expect(store.messages.map(\.state) == [.delivered(.acknowledged)])
+        #expect(input.send(Data([0x0D])))
+        #expect(writes == [Data(text.utf8), Data([0x0D])])
+        #expect(input.userMessageIndex.entries.count == 1)
+        #expect(await transport.agentPromptParams.isEmpty)
+    }
+
+    @Test(arguments: [AgentStatus.idle, .blocked])
+    func coreRejectsEveryControlAndLineSeparatorBeforeClearingTheDraft(_ status: AgentStatus) async {
+        let transport = ScriptedTransport()
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        let store = AgentComposerStore(
+            target: "t3", requiresTerminalConfirmation: true, initialStatus: status
+        ) { try await transport.promptAgent($0) }
+        store.bindAttachInput(input)
+        let values: [UInt32] = Array(0...31) + Array(127...159) + [0x2028, 0x2029]
+        for value in values {
+            guard let scalar = Unicode.Scalar(value) else { continue }
+            let draft = "before\(scalar)after"
+            store.replaceDraft(with: draft)
+            let result = await store.send()
+            guard case .refused(.unsafeText) = result else {
+                Issue.record("core accepted control or line separator U+\(String(value, radix: 16))")
+                continue
+            }
+            #expect(store.draft == draft)
+            #expect(store.messages.isEmpty)
+        }
+        #expect(writes.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+    }
+
+    @Test func coreWithoutLiveAttachCanRetryOnlyTheUnwrittenInsertion() async throws {
+        let transport = ScriptedTransport()
+        let store = AgentComposerStore(target: "t3", requiresTerminalConfirmation: true) {
+            try await transport.promptAgent($0)
+        }
+        store.replaceDraft(with: "review this change")
+        #expect(await store.send() == .failed)
+        let message = try #require(store.messages.first)
+        #expect(message.text == "review this change")
+        #expect(message.state == .failed("The message could not be sent. Check the connection and retry."))
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        var writes: [Data] = []
+        let input = TerminalInputController()
+        _ = input.beginSession { writes.append($0) }
+        store.bindAttachInput(input)
+        #expect(await store.retry(message.id) == .deliveredViaAttach)
+        #expect(writes == [Data(message.text.utf8)])
+        #expect(store.messages.map(\.state) == [.delivered(.acknowledged)])
+        #expect(await transport.agentPromptParams.isEmpty)
+        #expect(await store.retry(message.id) == .ignored)
+        #expect(writes.count == 1)
+    }
+
     @Test func typingStaysLocalAndSendUsesOnePromptRPC() async throws {
         let transport = ScriptedTransport()
         let promptGate = ScriptedTransportCallGate()

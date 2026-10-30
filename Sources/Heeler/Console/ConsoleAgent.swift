@@ -120,6 +120,20 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         paneDirectory = nonempty(pane.foregroundCwd) ?? nonempty(pane.cwd)
     }
 
+    /// Updates only the presentation fields carried by a title delta. The
+    /// program, directory, status, transcript and ordering remain unchanged.
+    mutating func updateTerminalTitle(_ title: String) {
+        agent = Agent(
+            terminalID: agent.terminalID, kind: agent.kind,
+            title: TerminalTitleGlyphs.strip(title), status: agent.status,
+            workspaceID: agent.workspaceID, tabID: agent.tabID, paneID: agent.paneID,
+            cwd: agent.cwd, revision: agent.revision, name: agent.name,
+            terminalTitle: title, paneTitle: agent.paneTitle,
+            agentSession: agent.agentSession, tokens: agent.tokens,
+            stateLabels: agent.stateLabels, stateChangeSeq: agent.stateChangeSeq,
+            foregroundCwd: agent.foregroundCwd)
+    }
+
     private func nonempty(_ value: String?) -> String? {
         value.flatMap { $0.isEmpty ? nil : $0 }
     }
@@ -254,16 +268,16 @@ extension AgentStatus {
         self == .unknown ? nil : rawValue.capitalized
     }
 
-    /// Console sort bucket: Blocked > Done > Working > Idle. The order tracks
-    /// how much of the user's attention each status is asking for — Blocked
-    /// has stopped and is waiting on an answer, Done has a result to read,
+    /// Console sort bucket: Blocked/Error > Done > Working > Idle. The order
+    /// tracks how much attention each status asks for: Blocked needs an
+    /// answer, Error reports a failure, Done has a result to read,
     /// Working needs nothing, Idle least of all. Unknown and any status this
     /// build does not recognize (herdr's API has no stability guarantee)
     /// share the bottom bucket — a status we cannot interpret is not
     /// actionable, so it must not outrank one we can.
     var consoleSortBucket: Int {
         switch self {
-        case .blocked: 0
+        case .blocked, .error: 0
         case .done: 1
         case .working: 2
         case .idle: 3

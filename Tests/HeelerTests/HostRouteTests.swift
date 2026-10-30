@@ -128,6 +128,20 @@ struct HostRouteTests {
             ).connectionSummary == "dev · 2 routes")
     }
 
+    @Test(arguments: [("", "default"), ("   ", "default"), (" work ", "work")])
+    func coreTransportSettingsCarryTheSelectedSession(session: String, expected: String) {
+        let host = Host(
+            address: "box.example", username: "dev", backend: .herdrCore, sessionName: session)
+        let policy = HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in false }
+        let settings = SSHTransportSettings(
+            host: host, credentials: .password("x"), hostKeyPolicy: policy)
+
+        #expect(settings.backend == .herdrCore)
+        #expect(settings.coreSessionName == expected)
+        #expect(settings.herdrLauncher == nil)
+        #expect(settings.hostKeyTrust == .host(host.id))
+    }
+
     @Test func transportSettingsOfferEveryRouteAndTrustTheHost() {
         let host = Host(
             username: "dev",
@@ -148,6 +162,7 @@ struct HostRouteTests {
         #expect(settings.routes.map(\.isDirect) == [true, false])
         #expect(settings.routes.map(\.label) == ["192.168.1.5", "127.0.0.1:2222 via vps.example"])
         #expect(settings.hostKeyTrust == .host(host.id))
+        #expect(settings.backend == .herdr)
     }
 }
 

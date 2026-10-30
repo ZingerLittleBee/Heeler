@@ -32,10 +32,55 @@ struct HostTests {
 
         let host = try JSONDecoder().decode(Host.self, from: Data(legacy.utf8))
         #expect(host.address == "old.example")
+        #expect(host.backend == .herdr)
 
         let fields = try #require(
             JSONSerialization.jsonObject(with: try JSONEncoder().encode(host)) as? [String: Any])
         #expect(fields["socatPath"] == nil)
+    }
+
+    @Test func coreBackendPersistsSeparatelyFromTheLegacySession() throws {
+        let host = Host(
+            name: "Desktop", address: "linux.example", username: "dev",
+            backend: .herdrCore, sessionName: "work")
+        let decoded = try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(host))
+
+        #expect(decoded == host)
+        #expect(decoded.backend == .herdrCore)
+        #expect(decoded.sessionName == "work")
+    }
+
+    @Test(arguments: ["desktop session", "作業", "O'Brien $project `local`", String(repeating: "a", count: 65)])
+    func coreSessionNamesRoundTripWithoutTheLegacyWhitelist(_ name: String) throws {
+        let core = Host(address: "box.example", username: "dev", backend: .herdrCore, sessionName: name)
+        #expect(try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(core)) == core)
+        var legacy = core
+        legacy.backend = .herdr
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(legacy))
+        }
+    }
+
+    @Test(arguments: [".", "..", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "a\tb", "a\u{7f}b", "a\u{85}b"])
+    func invalidCoreSessionNamesFailPersistedDecode(_ name: String) throws {
+        let core = Host(address: "box.example", username: "dev", backend: .herdrCore, sessionName: name)
+        let data = try JSONEncoder().encode(core)
+        #expect(throws: DecodingError.self) { try JSONDecoder().decode(Host.self, from: data) }
+    }
+
+    @Test func coreSessionNormalizationMatchesTheServer() {
+        #expect(HerdrCoreSessionName.normalized(" \n\t") == "default")
+        #expect(HerdrCoreSessionName.normalized(" \nTeam space\t ") == "Team space")
+    }
+
+    @Test func anUnknownBackendDoesNotSilentlyConnectToLegacyHerdr() {
+        let json = """
+            {"id":"\(UUID().uuidString)","name":"Desktop","address":"box.example","port":22,
+             "username":"dev","authMethod":"deviceKey","backend":"future-backend"}
+            """
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Host.self, from: Data(json.utf8))
+        }
     }
 
     @Test func displayNameFallsBackToUserAtAddress() {
@@ -270,6 +315,90 @@ struct HostStoreTests {
         #expect(try persistedHostIDs(in: defaults) == [knownID, unknownID])
     }
 
+    @Test func unknownBackendSkipsOnlyThatHostAndSurvivesCatalogEdits() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let known = Host.fixture(name: "Known")
+        let futureID = UUID()
+        let knownJSON = String(decoding: try JSONEncoder().encode(known), as: UTF8.self)
+        let catalog = Data("""
+            {"version":1,"hosts":[\(knownJSON),
+              {"id":"\(futureID.uuidString)","name":"Future","address":"future.example",
+               "port":22,"username":"dev","authMethod":"deviceKey",
+               "backend":"future-core","futureField":"preserve-me"}]}
+            """.utf8)
+        defaults.set(catalog, forKey: "hosts")
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        #expect(store.hosts == [known])
+        #expect(store.catalogLoadError == nil)
+        #expect(defaults.data(forKey: "hosts") == catalog)
+
+        var edited = known
+        edited.name = "Edited"
+        try store.update(edited)
+        let added = Host.fixture(name: "Added")
+        try store.add(added)
+        try store.remove(known.id)
+        let future = try persistedHost(id: futureID, in: defaults)
+        #expect(future["backend"] as? String == "future-core")
+        #expect(future["futureField"] as? String == "preserve-me")
+        #expect(try persistedHostIDs(in: defaults) == [futureID, added.id])
+        #expect(HostStore(defaults: defaults, secrets: InMemorySecretStore()).hosts == [added])
+    }
+
+    @Test func registeredNotificationsPreventBackendChangeWithoutChangingSecretsOrCatalog() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let keys = NotificationKeyStore(secrets: InMemorySecretStore(), mirror: nil)
+        let store = HostStore(defaults: defaults, secrets: secrets, notificationKeys: keys)
+        let host = Host.fixture(name: "Desktop", authMethod: .password)
+        try store.add(host, password: "old password")
+        try keys.save(.init(hostID: host.id, hostName: host.displayName, key: NotificationKeyStore.generateKey()))
+        let saved = defaults.data(forKey: "hosts")
+        var core = host
+        core.backend = .herdrCore
+
+        #expect(throws: HostStoreError.notificationsPreventBackendChange) {
+            try store.update(core, password: "new password")
+        }
+        #expect(store.hosts == [host])
+        #expect(defaults.data(forKey: "hosts") == saved)
+        #expect(try store.password(for: host) == "old password")
+        #expect(try keys.record(forHost: host.id) != nil)
+        // Turning notifications off removes this key after the remote revoke.
+        try keys.removeRecord(forHost: host.id)
+        try store.update(core)
+        #expect(store.hosts == [core])
+    }
+
+    @Test func aPendingNotificationWritePreventsBackendChangeBeforeItCreatesAKey() throws {
+        let store = HostStore(volatileHosts: [Host.fixture(name: "Desktop")])
+        let host = try #require(store.hosts.first)
+        store.notificationWriteInProgress = { $0 == host.id }
+        var core = host
+        core.backend = .herdrCore
+        #expect(throws: HostStoreError.notificationsPreventBackendChange) { try store.update(core) }
+        #expect(store.hosts == [host])
+        store.notificationWriteInProgress = { _ in false }
+        try store.update(core)
+        #expect(store.hosts == [core])
+    }
+
+    @Test(arguments: [false, true])
+    func keyedCoreRemovalExplainsHowToStopTheLegacyRegistration(_ connected: Bool) throws {
+        var host = Host.fixture(name: "Desktop")
+        host.backend = .herdrCore
+        let store = HostStore(volatileHosts: [host])
+        let removal = HostRemovalStore(store: store)
+        removal.requestRemoval([host.id], dependencies: HostRemovalDependencies(
+            isConnected: { _ in connected }, hasNotificationKey: { _ in true }))
+        let request = try #require(removal.pendingRequest)
+        #expect(request.leavesNotificationsBehind)
+        #expect(request.message.contains("Switch the Host back to herdr and turn off notifications"))
+        #expect(!request.message.contains("Connect to it first"))
+    }
+
     @Test func unknownAuthMethodSkipsOnlyThatHost() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -369,8 +498,9 @@ struct HostStoreTests {
         let keys = try Set(persistedHost(id: id, in: defaults).keys)
         #expect(keys == [
             "id", "name", "address", "port", "username", "authMethod", "sessionName",
-            "jumpAddress", "jumpPort", "jumpUsername", "routes",
+            "jumpAddress", "jumpPort", "jumpUsername", "routes", "backend",
         ])
+        #expect(try persistedHost(id: id, in: defaults)["backend"] as? String == "herdr")
         #expect(try persistedCatalogVersion(in: defaults) == 1)
     }
 

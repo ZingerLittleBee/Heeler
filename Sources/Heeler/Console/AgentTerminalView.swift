@@ -948,15 +948,17 @@ struct AgentTerminalView: View {
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
-            showWorktreeDetails: agent.isLinkedWorktree
+            showWorktreeDetails: agent.isLinkedWorktree && console.usesLegacyHerdr(on: agent.hostID)
                 ? {
                     if let checkout = agent.repositoryCheckout {
                         worktreeStore = makeWorktreeStore(checkout: checkout)
                         isShowingWorktree = true
                     }
                 } : nil,
-            renameAgent: { isRenamingAgent = true },
-            renameWorkspace: { isRenamingWorkspace = true },
+            renameAgent: console.usesLegacyHerdr(on: agent.hostID)
+                ? { isRenamingAgent = true } : nil,
+            renameWorkspace: console.usesLegacyHerdr(on: agent.hostID)
+                ? { isRenamingWorkspace = true } : nil,
             closeAgent: { isConfirmingClose = true },
             backToConsole: { backToConsole() },
             showChat: showChat.map { showChat in

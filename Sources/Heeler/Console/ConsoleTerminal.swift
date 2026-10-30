@@ -71,6 +71,20 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
             .contains { $0?.range(of: needle, options: .caseInsensitive) != nil }
     }
 
+    /// A core title notification carries no other pane fields. Copy the
+    /// typed pane rather than dropping its metadata or decoding partial JSON.
+    mutating func updateTerminalTitle(_ title: String) {
+        pane = PaneInfo(
+            agentStatus: pane.agentStatus, focused: pane.focused, paneID: pane.paneID,
+            revision: pane.revision, tabID: pane.tabID, terminalID: pane.terminalID,
+            workspaceID: pane.workspaceID, agent: pane.agent, agentSession: pane.agentSession,
+            cwd: pane.cwd, displayAgent: pane.displayAgent, foregroundCwd: pane.foregroundCwd,
+            label: pane.label, restoreError: pane.restoreError, scroll: pane.scroll,
+            stateLabels: pane.stateLabels, terminalTitle: title,
+            terminalTitleStripped: TerminalTitleGlyphs.strip(title), title: pane.title,
+            tokens: pane.tokens)
+    }
+
     private func nonempty(_ value: String?) -> String? {
         value.flatMap { $0.isEmpty ? nil : $0 }
     }

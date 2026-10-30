@@ -1187,6 +1187,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// link health and must not trigger a redial or an automatic retry: the
     /// exec can remain alive until its remote watchdog ends the process group.
     case gitTimedOut
+    /// A core mutation may already have run. Never automatically replay it.
+    case coreMutationOutcomeUnknown
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1237,7 +1239,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .socketNotFound, .herdrBinaryNotFound, .herdrLauncherNotFound,
             .protocolVersionMismatch,
             .streamLocalOpenFailed, .gitTimedOut, .hostFileTimedOut, .hostFileUnreadable,
-            .hostStoreUnreadable, .hostFeatureUnavailable,
+            .hostStoreUnreadable, .hostFeatureUnavailable, .coreMutationOutcomeUnknown,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

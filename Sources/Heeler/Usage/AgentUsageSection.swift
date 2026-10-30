@@ -17,6 +17,8 @@ struct AgentUsageContent: View {
             }
         case .requirement(let message):
             Text(message).foregroundStyle(.secondary)
+        case .unsupportedBackend:
+            Text("Not supported on herdr-core").foregroundStyle(.secondary)
         case .unsupportedPlatform:
             Text("Not supported on Windows").foregroundStyle(.secondary)
         case .runtimeMissing:

@@ -99,6 +99,9 @@ extension HerdrEventKind {
     /// subscribable (deliberately absent from `known`). Consumers treat it
     /// like a membership event — re-snapshot, because deltas may be missing.
     static let eventsDropped = HerdrEventKind(name: "local.events_dropped")
+    /// A title-only delta from a backend without legacy tab rename semantics.
+    /// It changes presentation locally and does not invalidate inventory.
+    static let terminalTitleChanged = HerdrEventKind(name: "local.terminal_title_changed")
 }
 
 /// One event from the Host's events channel, in canonical naming.

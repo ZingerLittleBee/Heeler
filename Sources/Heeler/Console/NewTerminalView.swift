@@ -70,8 +70,10 @@ struct NewTerminalView: View {
                         onSelectNewWorkspace: store.selectNewWorkspace,
                         onNewWorkspace: openDirectoryBrowser)
                     if store.target == .newWorkspace {
-                        TextField("Workspace name (optional)", text: $store.newWorkspaceLabel)
-                            .autocorrectionDisabled()
+                        if store.offersWorkspaceAndTabNames {
+                            TextField("Workspace name (optional)", text: $store.newWorkspaceLabel)
+                                .autocorrectionDisabled()
+                        }
                         if store.newWorkspaceDirectory.isEmpty {
                             Label("Directory: the Host's home directory", systemImage: "house")
                                 .font(.callout)
@@ -84,21 +86,25 @@ struct NewTerminalView: View {
                 } header: {
                     Text("Workspace")
                 } footer: {
-                    if store.target == .newWorkspace {
+                    if !store.offersWorkspaceAndTabNames {
+                        Text("Starts a shell in this directory. Terminals in the same directory are grouped together.")
+                    } else if store.target == .newWorkspace {
                         Text("Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
                     } else if let selectedWorkspaceTitle {
                         Text("Opens a new shell tab in \(selectedWorkspaceTitle). Choose New Workspace in the menu to start somewhere else.")
                     }
                 }
 
-                Section {
-                    TextField("Tab name (optional)", text: $store.tabLabel)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("Tab")
-                } footer: {
-                    Text("Empty keeps herdr's numbered tab name.")
+                if store.offersWorkspaceAndTabNames {
+                    Section {
+                        TextField("Tab name (optional)", text: $store.tabLabel)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    } header: {
+                        Text("Tab")
+                    } footer: {
+                        Text("Empty keeps herdr's numbered tab name.")
+                    }
                 }
 
                 if case .failed(let message) = store.state {

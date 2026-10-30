@@ -107,7 +107,7 @@ extension UsageWidgetSnapshot.Host {
             } else {
                 self.init(id: reading.id, name: reading.name, report: report, readAt: readAt)
             }
-        case .requirement, .unsupportedPlatform, .runtimeMissing, .updateRequired:
+        case .requirement, .unsupportedPlatform, .unsupportedBackend, .runtimeMissing, .updateRequired:
             self.init(id: reading.id, name: reading.name, excludedReason: AgentUsageScope.reason(for: reading.state))
         case .idle, .loading, .failed:
             if var kept {

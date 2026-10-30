@@ -9,6 +9,8 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Connect to herdr-app / herdr-core Hosts over SSH: list recognized desktop Agents, follow their status, use live terminals, and start or close terminals. Composer inserts one line without Enter so you can check the terminal before submitting; previews do not scroll the remote program. Choose the backend for a manual Host; paired endpoints stay on legacy herdr. (#535; PR #538)
+
 - Pair a herdr that runs with its own config home, such as a per-project
   instance or a profile started by a wrapper script. Its pairing popup now
   shows a Pairing Code v2 that names its socket and a launcher the plugin

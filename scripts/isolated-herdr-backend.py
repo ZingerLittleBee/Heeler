@@ -157,7 +157,8 @@ def force_command_script(root: Path) -> str:
     ])
 
 
-def sshd_config(root: Path, port: int, user: str, sftp_server: str) -> str:
+def sshd_config(root: Path, port: int, user: str, sftp_server: str, *,
+                use_pam: bool = True, log_level: str = "VERBOSE") -> str:
     """sshd settings mirroring write_common_config in scripts/run-ci-ios-tests.sh."""
     ssh = root / "ssh"
     return "\n".join([
@@ -169,14 +170,14 @@ def sshd_config(root: Path, port: int, user: str, sftp_server: str) -> str:
         "KbdInteractiveAuthentication no",
         "PubkeyAuthentication yes",
         f"AuthorizedKeysFile {ssh / 'authorized_keys'}",
-        "UsePAM yes",
+        "UsePAM yes" if use_pam else "UsePAM no",
         "PermitRootLogin no",
         f"AllowUsers {user}",
         "StrictModes no",
         "PerSourcePenalties no",
         "PrintMotd no",
         "PrintLastLog no",
-        "LogLevel VERBOSE",
+        f"LogLevel {log_level}",
         "AllowStreamLocalForwarding yes",
         f"Subsystem sftp {sftp_server}",
         f"SetEnv HOME={root / 'home'}",
@@ -509,7 +510,8 @@ def start_server(state: State, session: str) -> None:
         raise BackendError(f"workspace create failed in session {session!r}: {created.stderr or created.stdout}")
 
 
-def start_sshd(state: State, port: int, extra_keys: List[str]) -> None:
+def start_sshd(state: State, port: int, extra_keys: List[str], *,
+               use_pam: bool = True, log_level: str = "VERBOSE") -> None:
     root = Path(state.root)
     ssh = root / "ssh"
     for name in ("host_ed25519", "client_ed25519"):
@@ -525,7 +527,7 @@ def start_sshd(state: State, port: int, extra_keys: List[str]) -> None:
     sftp = next((candidate for candidate in SFTP_SERVER_CANDIDATES if Path(candidate).exists()),
                 SFTP_SERVER_CANDIDATES[0])
     config = ssh / "sshd.conf"
-    config.write_text(sshd_config(root, port, state.user, sftp))
+    config.write_text(sshd_config(root, port, state.user, sftp, use_pam=use_pam, log_level=log_level))
     sshd = shutil.which("sshd", path="/usr/sbin:/usr/local/sbin:/opt/homebrew/sbin") or "/usr/sbin/sshd"
     checked = subprocess.run([sshd, "-t", "-f", str(config)], capture_output=True, text=True, check=False)
     if checked.returncode:

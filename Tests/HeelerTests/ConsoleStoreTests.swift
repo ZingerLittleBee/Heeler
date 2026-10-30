@@ -63,6 +63,51 @@ struct ConsoleStoreTests {
             tabPaneCount: tabPaneCount)
     }
 
+    @Test(arguments: [HostBackend.herdr, .herdrCore])
+    func composerConfirmationFollowsBackendAndRefreshesOnlyOnBackendChange(_ backend: HostBackend) {
+        var host = Host(address: "box.example", username: "dev", backend: backend)
+        let store = makeStore(transports: [:])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        let agent = consoleAgent(
+            hostID: host.id, hostName: host.displayName, paneID: "opaque-agent", status: .idle)
+        let original = store.composerStore(for: agent)
+        #expect(original.requiresTerminalConfirmation == (backend == .herdrCore))
+        original.replaceDraft(with: "keep this draft across a route edit")
+
+        host.routes[0].address = "new-route.example"
+        store.setHosts([host])
+        let sameBackend = store.composerStore(for: agent)
+        #expect(sameBackend === original)
+        #expect(sameBackend.draft == "keep this draft across a route edit")
+
+        // Pane IDs are opaque: even if both backends use the same ID, the
+        // delivery mode belongs to the new backend, not the cached Composer.
+        host.backend = backend == .herdrCore ? .herdr : .herdrCore
+        store.setHosts([host])
+        let changedBackend = store.composerStore(for: agent)
+        #expect(changedBackend !== original)
+        #expect(changedBackend.requiresTerminalConfirmation == (host.backend == .herdrCore))
+    }
+
+    @Test func coreAgentsOfferNeitherLegacyManagementNorUnidentifiedChat() async throws {
+        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let transport = ScriptedTransport()
+        let info = AgentInfo.fixture(paneID: "t3", kind: "claude")
+        await transport.setSnapshot(.fixture(agents: [info]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        await store.resume()
+        defer { store.setHosts([]) }
+        try await waitUntil("core Agent is in the Console") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+
+        #expect(!store.usesLegacyHerdr(on: host.id))
+        #expect(store.chatProgram(for: agent) == nil)
+        #expect(store.chatStore(for: agent, program: .claude) == nil)
+        #expect(await transport.chatAgentReads.isEmpty)
+    }
+
     @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {
         // (#swipe): the confirmation only stands between the swipe and a
         // close when the tab is the workspace's last one — closing it takes

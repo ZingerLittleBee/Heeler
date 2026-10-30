@@ -50,6 +50,13 @@ final class NotificationPreferencesStore {
 
     private(set) var hosts: [Host] = []
     private(set) var states: [Host.ID: HostState] = [:]
+    /// A catalog edit/removal invalidates every result captured for that Host.
+    private var operations: [Host.ID: UUID] = [:]
+    private var pendingWrites: [Host.ID: Int] = [:]
+
+    func hasPendingWrite(for hostID: Host.ID) -> Bool {
+        pendingWrites[hostID, default: 0] > 0
+    }
 
     private let transports: any NotificationTransportProvider
     private let deviceToken: @MainActor () -> APNSDeviceToken?
@@ -74,11 +81,19 @@ final class NotificationPreferencesStore {
         self.ceremony = ceremony
     }
 
-    /// Aligns with the Host catalog; a removed Host drops its state.
+    /// Only unchanged Hosts keep confirmed state and in-flight operations.
     func setHosts(_ hosts: [Host]) {
+        let unchanged = Set(hosts.filter { self.hosts.contains($0) }.map(\.id))
         self.hosts = hosts
-        let known = Set(hosts.map(\.id))
-        states = states.filter { known.contains($0.key) }
+        states = states.filter { unchanged.contains($0.key) }
+        operations = operations.filter { unchanged.contains($0.key) }
+        for host in hosts where host.backend == .herdrCore {
+            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
+        }
+    }
+
+    private func isCurrent(_ operation: UUID, for host: Host) -> Bool {
+        operations[host.id] == operation && hosts.contains(host) && host.backend == .herdr
     }
 
     /// Re-reads every Host's registration file so the toggles reflect what
@@ -161,7 +176,10 @@ final class NotificationPreferencesStore {
     func revokeRegistration(
         for host: Host, isConnected: Bool, timeout: Duration = .seconds(6)
     ) async {
-        guard isConnected, (try? ceremony.keys.record(forHost: host.id)) != nil else { return }
+        guard host.backend == .herdr, isConnected,
+            (try? ceremony.keys.record(forHost: host.id)) != nil else { return }
+        let operation = UUID()
+        operations[host.id] = operation
         let ceremony = ceremony
         let transports = transports
         do {
@@ -173,6 +191,7 @@ final class NotificationPreferencesStore {
         } catch {
             return
         }
+        guard isCurrent(operation, for: host) else { return }
         markUnregistered(host.id)
     }
 
@@ -193,21 +212,32 @@ final class NotificationPreferencesStore {
             HostSettings(isRegistered: false, notify: NotificationTriggerPreferences()))
     }
 
+    static let coreUnavailableMessage = "Notifications are not supported on herdr-core."
+
     private func load(_ host: Host) async {
+        guard hosts.contains(host) else { return }
+        guard host.backend == .herdr else {
+            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
+            return
+        }
         if case .updating = states[host.id] { return }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
                 message: "Waiting for push registration on this device.")
             return
         }
+        let operation = UUID()
+        operations[host.id] = operation
         states[host.id] = .loading
         do {
             var file = try await readFile(for: host.id)
+            guard isCurrent(operation, for: host) else { return }
             // Only an entry carrying this Host's Notification Key is its own;
             // another Host of the same remote user shares this file (#412).
             let owner = try ceremony.registrationOwner(for: host, deviceToken: token)
             if let owner, file.normalized(for: owner) != file {
                 file = await migrate(host, token: token) ?? file
+                guard isCurrent(operation, for: host) else { return }
             }
             let preferences = owner.flatMap { file.preferences(for: $0) }
             states[host.id] = .idle(
@@ -215,6 +245,7 @@ final class NotificationPreferencesStore {
                     isRegistered: preferences != nil,
                     notify: preferences ?? NotificationTriggerPreferences()))
         } catch {
+            guard isCurrent(operation, for: host) else { return }
             states[host.id] = .unavailable(message: Self.message(for: error))
         }
     }
@@ -243,10 +274,22 @@ final class NotificationPreferencesStore {
             NotificationRegistrationCeremony, APNSDeviceToken, any Transport
         ) async throws -> HostSettings
     ) async {
+        guard hosts.contains(host) else { return }
+        guard host.backend == .herdr else {
+            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
+            return
+        }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
                 message: "Waiting for push registration on this device.")
             return
+        }
+        let operationID = UUID()
+        operations[host.id] = operationID
+        pendingWrites[host.id, default: 0] += 1
+        defer {
+            pendingWrites[host.id, default: 0] -= 1
+            if pendingWrites[host.id] == 0 { pendingWrites[host.id] = nil }
         }
         states[host.id] = .updating(settings)
         do {
@@ -256,12 +299,14 @@ final class NotificationPreferencesStore {
             ) { transport in
                 try await operation(ceremony, token, transport)
             }
+            guard isCurrent(operationID, for: host) else { return }
             states[host.id] = .idle(confirmed)
             if registers {
                 onRegistered?(host.id)
                 await reloadRegisteredHosts(except: host.id)
             }
         } catch {
+            guard isCurrent(operationID, for: host) else { return }
             states[host.id] = .failed(message: Self.message(for: error), settings: settings)
         }
     }
@@ -298,7 +343,8 @@ final class NotificationPreferencesStore {
     }
 
     private func confirmedSettings(for hostID: Host.ID) -> HostSettings? {
-        switch states[hostID] {
+        guard hosts.contains(where: { $0.id == hostID && $0.backend == .herdr }) else { return nil }
+        return switch states[hostID] {
         case .idle(let settings), .failed(_, let settings):
             settings
         case .loading, .unavailable, .updating, nil:
@@ -308,6 +354,8 @@ final class NotificationPreferencesStore {
 
     static func message(for error: any Error) -> String {
         switch error {
+        case HeelerPluginUnavailableError.herdrCore:
+            coreUnavailableMessage
         case NotificationRegistrationError.pluginNotInstalled:
             "The Heeler plugin is missing or turned off on this Host. "
                 + "See this Host's page in Hosts, then check again."

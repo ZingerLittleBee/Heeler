@@ -128,3 +128,7 @@ The port must lead to the OpenSSH server of the machine that runs herdr, because
 Pairing errors appear in the popup or in Heeler, not in herdr's plugin log.
 
 Checked against Heeler plugin 0.6.0 on 2026-10-14.
+
+## herdr-app / herdr-core
+
+The legacy plugin's Pairing Code connects to herdr, not to herdr-core. For Agents started in the desktop client, [add a herdr-core Host with SSH authentication](herdr-core.md).

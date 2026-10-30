@@ -22,6 +22,7 @@ struct HostLiveActivityCoordinatorTests {
     @MainActor
     private final class World {
         var knownHostIDs: Set<UUID> = []
+        var backends: [UUID: HostBackend] = [:]
         var hostNames: [UUID: String] = [:]
         var awaitingSnapshot: Set<UUID> = []
         var statuses: [UUID: EventsSessionStatus] = [:]
@@ -114,6 +115,7 @@ struct HostLiveActivityCoordinatorTests {
             hostDisplayName: { world.hostNames[$0] ?? "" },
             isAwaitingSnapshot: { world.awaitingSnapshot.contains($0) },
             connectionStatus: { world.statuses[$0] },
+            supportsHost: { world.backends[$0] != .herdrCore },
             pinnedPaneIDs: { pinStore?.pinnedPaneIDs(for: $0) ?? [] },
             rowLayout: { _ in world.layout },
             settleDuration: .milliseconds(20))
@@ -201,6 +203,53 @@ struct HostLiveActivityCoordinatorTests {
     }
 
     // MARK: Start / settle / flap
+
+    @Test func changingToCoreEndsAnActivityWithoutWritingToTheNewBackend() async throws {
+        try await withFixture { defaults in
+            let coordinator = makeCoordinator(defaults: defaults)
+            try await registerDevice()
+            armWorld()
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the legacy activity starts") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.activityID(for: host.id))
+            let reads = await transport.notificationRegistrationReads
+
+            world.backends[host.id] = .herdrCore
+            world.awaitingSnapshot.insert(host.id)
+            // The app invokes both on every Host edit, before its new
+            // connection has a snapshot. An old activity must end immediately.
+            coordinator.reconcile()
+            coordinator.layoutsDidChange()
+            coordinator.agentsDidChange([agent("t3", .working)])
+            coordinator.connectionsDidChange()
+            try await Task.sleep(for: .milliseconds(60))
+
+            #expect(controller.ended.contains { $0.id == activityID && $0.immediate })
+            #expect(controller.requestedHandles.count == 1)
+            #expect(await transport.notificationRegistrationReads == reads)
+            #expect(coordinator.isEnabled(for: host.id), "a backend edit preserves the user's opt-in")
+        }
+    }
+
+    @Test func aCoreHostNeverAdoptsAnActivityFromAnEarlierBackend() async throws {
+        try await withFixture { defaults in
+            let coordinator = makeCoordinator(defaults: defaults)
+            try await registerDevice()
+            armWorld()
+            world.backends[host.id] = .herdrCore
+            controller.seed(id: "legacy", hostID: host.id)
+            let reads = await transport.notificationRegistrationReads
+
+            coordinator.start()
+            coordinator.agentsDidChange([agent("t3", .working)])
+            try await Task.sleep(for: .milliseconds(60))
+
+            #expect(controller.ended.contains { $0.id == "legacy" && $0.immediate })
+            #expect(controller.requestedHandles.isEmpty)
+            #expect(await transport.notificationRegistrationReads == reads)
+        }
+    }
 
     @Test func fixtureTeardownReleasesTheCoordinatorAndSubscriptions() async throws {
         weak var owner: HostLiveActivityCoordinator?
