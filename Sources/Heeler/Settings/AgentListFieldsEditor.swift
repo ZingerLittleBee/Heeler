@@ -159,6 +159,40 @@ final class AgentListFieldsEditor {
         return !isEditing
     }
 
+    /// Saves the source Host's layout, as its screen shows it, as each other
+    /// Host's own, right sides included, in one validated step. The source
+    /// keeps where its fields come from, and later edits stay on it. Returns
+    /// how many Hosts changed, zero where each already saved these fields,
+    /// or nil where nothing could be written, keeping the message in
+    /// `errorMessage` as `commit` does. Inside an open draft session the
+    /// copies join it and `save` writes every dirty Host.
+    @discardableResult
+    func applyToOtherHosts(from sourceID: Host.ID, among hostIDs: [Host.ID]) -> Int? {
+        let wasEditing = isEditing
+        if !wasEditing { beginEditing() }
+        let source = layout(for: sourceID)
+        let targets = hostIDs.filter { $0 != sourceID }
+        for hostID in targets {
+            update(hostID) { $0 = source }
+        }
+        if errorMessage != nil {
+            if !wasEditing { discardKeepingError() }
+            return nil
+        }
+        let dirty = dirtyHostIDs
+        let changed = targets.filter(dirty.contains).count
+        guard changed > 0 else {
+            if !wasEditing { cancel() }
+            return 0
+        }
+        save()
+        guard !isEditing else {
+            if !wasEditing { discardKeepingError() }
+            return nil
+        }
+        return changed
+    }
+
     /// Inline Sync from plugin: fills the Host from its plugin snapshot and
     /// saves immediately. The resulting `syncStates` entry survives the save
     /// so the screen can report what happened; the next change clears it.
@@ -180,7 +214,8 @@ final class AgentListFieldsEditor {
     }
 
     /// Fetches the Host's first two plugin rows, row gap, and token styles,
-    /// preserving its Heeler row. A missing snapshot fills fallback fields; a failed
+    /// preserving its Heeler row and every row's right side, which herdr has
+    /// no say in. A missing snapshot fills fallback fields; a failed
     /// read leaves the draft unchanged. Results are dropped once editing
     /// ended or the draft was edited since. Draft-only; the screen uses
     /// `replaceWithPluginFields`.
@@ -192,18 +227,25 @@ final class AgentListFieldsEditor {
         let request = UUID()
         syncRequests[hostID] = request
         syncStates[hostID] = .syncing
-        let thirdRow = AgentRowSlot.slotRows(layout(for: hostID).rows)[AgentRowSlot.herdrRowCount]
+        let current = layout(for: hostID)
+        let thirdRow = AgentRowSlot.slotRows(current.rows)[AgentRowSlot.herdrRowCount]
+        func kept(_ synced: AgentRowLayout) -> AgentRowLayout {
+            var synced = synced
+            synced.rows = AgentLayoutTokensEditing.keepingRightSides(synced.rows, of: current.trailing)
+            synced.trailing = current.trailing
+            return synced
+        }
         let state = await fetch(hostID)
         guard isEditing, syncRequests[hostID] == request else { return }
         syncRequests[hostID] = nil
         switch state {
         case .loaded(let snapshot?):
-            drafts[hostID] = snapshot.layout.withHeelerRow(thirdRow)
+            drafts[hostID] = kept(snapshot.layout.withHeelerRow(thirdRow))
             syncStates[hostID] = .filled(snapshot.diagnostics.isEmpty
                 ? "Replaced with plugin fields."
                 : AgentListFieldsCopy.syncDiagnostics)
         case .loaded(nil):
-            drafts[hostID] = AgentRowLayout.heelerDefault.withHeelerRow(thirdRow)
+            drafts[hostID] = kept(AgentRowLayout.heelerDefault.withHeelerRow(thirdRow))
             syncStates[hostID] = .filled(
                 "This Host has no plugin fields snapshot, so Heeler's fallback fields were used.")
         case .unavailable:

@@ -198,7 +198,10 @@ string entries are still strings and are kept. The field is additive v1
 metadata; unknown sibling keys on `live_activity` must survive a rewrite.
 
 `row_layout` is the app's resolved per-Host Agent List Fields layout: at most
-three rows, at most 16 fields per row, no per-kind overrides. Each field has
+three rows, at most 16 fields per row, no per-kind overrides. It carries only
+each row's left side: the app keeps the rows' right sides and the right-only
+`status_badge` and `changes` fields out of it, because they never reach a Live
+Activity and installed plugins drop a layout with a field they do not know. Each field has
 `token` and optional `fg`, `bold`, and `dim`, matching the Console layout JSON.
 `row_gap` and `rows_by_agent` are accepted for structural compatibility but do
 not change activity rendering. The app writes this layout and optional

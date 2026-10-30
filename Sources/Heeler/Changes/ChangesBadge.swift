@@ -130,8 +130,9 @@ enum ChangesBadgePalette {
 }
 
 /// An Agent's Checkout totals, "+12 −7" in green and red, or, when no line
-/// changed, Tide's file counts in gray, "+1 !2 ?3", at the trailing end of its Agents list row's
-/// last detail line and of Agent detail's status line. Not a control; the row opens the Agent, and the Agent menu
+/// changed, Tide's file counts in gray, "+1 !2 ?3", on the right of the Agents
+/// list row's line whose Row Slot holds `changes` (by default its last detail
+/// line) and at the trailing end of Agent detail's status line. Not a control; the row opens the Agent, and the Agent menu
 /// opens Changes. Exact totals come first; a line without room takes the
 /// shortened form.
 struct ChangesRowTotals: View {
@@ -164,6 +165,10 @@ struct ChangesRowTotals: View {
         self.font = font
         self.identifier = identifier
     }
+
+    /// Whether there is anything to show, for a row that holds only the
+    /// totals.
+    var hasTotals: Bool { badge != nil }
 
     private var badge: ChangesBadge? {
         switch source {

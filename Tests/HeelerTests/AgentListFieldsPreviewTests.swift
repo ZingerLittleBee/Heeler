@@ -67,7 +67,7 @@ struct AgentListFieldsPreviewTests {
         let agent = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac")
         #expect(agent.hostName == "Studio Mac")
         #expect(agent.agent.kind == "claude")
-        #expect(agent.agent.status == .idle)
+        #expect(agent.agent.status == .done)
         #expect(agent.workspaceLabel == "heeler")
         #expect(agent.agent.displayName == "claude")
         #expect(agent.agent.terminalTitle == "fix sidebar sync")
@@ -87,8 +87,8 @@ struct AgentListFieldsPreviewTests {
         ]])
         let rendered = AgentRowRenderer.render(layout: layout, agent: agent)
         let presentation = AgentListFieldsPreview.presentation(layout: layout, hostName: "Studio Mac")
-        #expect(presentation.rows == rendered)
-        #expect(presentation == AgentCardPresentation(agent: agent, layout: layout))
+        #expect(presentation.rows == AgentRowRenderer.render(layout: layout, agent: agent, omittingMarkedKind: true))
+        #expect(presentation == AgentCardPresentation(agent: agent, layout: layout, leadsWithMark: true))
 
         let tokens = rendered.flatMap { $0.compactMap(\.token) }
         #expect(!tokens.contains(.stateIcon) && !tokens.contains(.stateText))
@@ -99,7 +99,37 @@ struct AgentListFieldsPreviewTests {
             == ["heeler · 1 · claude · claude · fix sidebar sync · fix sidebar sync · feat/sidebar"])
         let workspace = try #require(rendered.flatMap { $0 }.first { $0.token == .workspace })
         #expect(workspace.fg == color && workspace.bold == true && workspace.dim == true)
-        #expect(presentation.headline == rendered.first?.map(\.text).joined())
+        // The preview's card leads with Claude's mark, so the field that
+        // only repeats the kind leaves the row.
+        #expect(presentation.rows.flatMap { $0.compactMap(\.token) } == tokens.filter { $0 != .agent })
+        #expect(presentation.headline == "heeler · 1 · claude · fix sidebar sync · fix sidebar sync · feat/sidebar")
+    }
+
+    /// The sample runs the Host's most common program, so a Host of programs
+    /// without a logo previews the Agent field its list keeps.
+    @Test func previewSamplesTheProgramTheHostRunsMost() {
+        let host = UUID(), other = UUID()
+        func agent(_ kind: String, on hostID: UUID) -> ConsoleAgent {
+            ConsoleAgent(
+                hostID: hostID, hostName: "devbox",
+                agent: Agent(
+                    terminalID: "t-\(kind)", kind: kind, title: "", status: .idle,
+                    workspaceID: "w", tabID: "w:t", paneID: "p-\(kind)-\(UUID())", cwd: "/work", revision: 1),
+                workspaceLabel: "proj", repositoryCheckout: nil)
+        }
+        let agents = [
+            agent("claude", on: host), agent("pi", on: host), agent(" pi ", on: host),
+            agent("droid", on: other), agent("droid", on: other), agent("droid", on: other),
+        ]
+        #expect(AgentListFieldsPreview.kind(onHost: host, among: agents) == "pi")
+        #expect(AgentListFieldsPreview.kind(onHost: UUID(), among: agents) == "claude")
+        // A tie goes to the earlier name, so the preview holds still.
+        #expect(AgentListFieldsPreview.kind(onHost: host, among: Array(agents.prefix(2))) == "claude")
+
+        let layout = AgentRowLayout(rows: [[.init(.workspace), .init(.agent)]])
+        #expect(AgentListFieldsPreview.presentation(layout: layout, hostName: "devbox", kind: "pi").headline
+            == "heeler · pi")
+        #expect(AgentListFieldsPreview.presentation(layout: layout, hostName: "devbox").headline == "heeler")
     }
 
     @Test func emptyRowsUseTheConsoleAgentNameFallbackNotAnIllustrativeStatusLabel() {
@@ -110,7 +140,7 @@ struct AgentListFieldsPreviewTests {
         ] {
             #expect(AgentRowRenderer.render(layout: layout, agent: agent).isEmpty)
             let presentation = AgentListFieldsPreview.presentation(layout: layout, hostName: "Studio Mac")
-            #expect(presentation == AgentCardPresentation(agent: agent, layout: layout))
+            #expect(presentation == AgentCardPresentation(agent: agent, layout: layout, leadsWithMark: true))
             #expect(presentation.headline == agent.agent.displayName)
             #expect(presentation.headline == "claude")
             #expect(presentation.headline != "Status only")

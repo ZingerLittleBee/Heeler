@@ -47,6 +47,7 @@ struct AgentRowLayoutTests {
             AgentRowLayoutResolver.resolve(
                 hostLayout: nil, pluginSnapshot: AgentRowLayoutSnapshot(layout: wide)) == console)
         #expect(AgentRowToken(rawValue: "state_icon") == .stateIcon)
+        #expect(AgentRowToken(rawValue: "status_badge") == .statusBadge)
         #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
         #expect(AgentRowToken.herdrBuiltins.contains(.stateText))
     }
@@ -123,8 +124,41 @@ struct AgentRowLayoutTests {
         #expect(snapshot.layout.rows(forAgentKind: "claude").isEmpty)
     }
 
+    /// A layout saves a right side only once the user chooses one, which
+    /// then survives a reload; the Changes totals never reach the left, and
+    /// herdr never brings a right side.
+    @Test func aRightSideIsKeptOnlyWhereChosenAndTheTotalsStayOffTheLeft() throws {
+        func lenient(_ json: String) throws -> AgentRowLayout {
+            try JSONDecoder().decode(AgentRowLayout.Lenient.self, from: Data(json.utf8)).layout
+        }
+        let following = try lenient(#"{"rows":[[{"token":"agent"}]]}"#)
+        #expect(following.trailing == nil)
+        #expect(!String(decoding: try JSONEncoder().encode(following), as: UTF8.self).contains("trailing"))
+
+        let chosen = try lenient(#"""
+            {"rows":[[{"token":"agent"},{"token":"changes"},{"token":"status_badge"}]],
+             "trailing":[[{"token":"status_badge"}],[{"token":"status","dim":true},{"token":"later"}],
+                         [{"token":"changes"},{"token":"state_icon"}],[{"token":"host"}]]}
+            """#)
+        #expect(chosen.trailing?[1] == [.init(.status, dim: true)])
+        #expect(try lenient(String(decoding: JSONEncoder().encode(chosen), as: UTF8.self)) == chosen)
+        #expect(throws: AgentRowLayoutError.tooManyRows) { try chosen.validateForConsole() }
+
+        let console = chosen.normalizedForConsole()
+        #expect(console.rows == [[.init(.agent)]])
+        #expect(console.trailing == [[.init(.statusBadge)], [.init(.status, dim: true)], [.init(.changes)]])
+        #expect(console.normalizedForConsole() == console)
+        try console.validateForConsole()
+
+        let snapshot = try #require(AgentRowLayoutSnapshot.decode(Data(#"""
+            {"v":1,"sidebar":{"agents":{"rows":[[{"token":"agent"}]],"trailing":[[{"token":"host"}]]}}}
+            """#.utf8)))
+        #expect(snapshot.layout.trailing == nil)
+    }
+
     @Test func tokenNamesValidateASCIIAndRetainCustomPrefix() throws {
-        for token in AgentRowToken.builtins + [.custom("pin_icon"), .custom(String(repeating: "a", count: 32))] {
+        let named = AgentRowToken.builtins + AgentRowToken.trailingOnlyBuiltins
+        for token in named + [.custom("pin_icon"), .custom(String(repeating: "a", count: 32))] {
             #expect(AgentRowToken(rawValue: token.rawValue) == token)
             #expect(try JSONDecoder().decode(AgentRowToken.self, from: JSONEncoder().encode(token)) == token)
         }

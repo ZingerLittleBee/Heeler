@@ -128,9 +128,10 @@ targets:
         # paths; iOS asks before the first local-network packet.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby."
         HEELER_SOURCE_REVISION: ""
-        # The catalog holds only the app icon's pre-rendered 1024px images;
-        # space-optimized encoding stays lossless and saves ~0.46 MB per
-        # device. Decoding is the system's, at icon render time.
+        # Beside the vector icons and Agent marks, the catalogs hold the app
+        # icon's pre-rendered 1024px images; space-optimized encoding stays
+        # lossless and saves ~0.46 MB per device. Decoding is the system's,
+        # at icon render time.
         ASSETCATALOG_COMPILER_OPTIMIZATION: space
       configs:
         Release:

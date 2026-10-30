@@ -10,11 +10,10 @@ enum ConsoleWorkspaceCardMetrics {
     /// More room at a card's rounded ends, so the content there clears
     /// the corners' curve.
     static let endPadding: CGFloat = 8
-    /// The icon column at the default text size; it grows with the text.
-    static let iconWidth: CGFloat = 20
-    static let iconSpacing: CGFloat = 10
-    /// From the card's right edge to the end of a rule between Agents.
-    static let ruleTrailing: CGFloat = 16
+    /// The icon column at the default text size, as wide as its Agents'
+    /// avatars; it grows with the text.
+    static let iconWidth: CGFloat = 28
+    static let iconSpacing: CGFloat = 12
     /// Between cards.
     static let gap: CGFloat = 12
 
@@ -31,14 +30,19 @@ extension EnvironmentValues {
     @Entry var workspaceCardMinRowHeight: CGFloat = 44
 }
 
-/// The icon column's width, scaled with the text it sits beside.
-private struct CardIconWidth: DynamicProperty {
-    @ScaledMetric(relativeTo: .subheadline) var value = ConsoleWorkspaceCardMetrics.iconWidth
+/// The icon column's width, scaled with the text it sits beside, and the
+/// gap after it. A view without its own initializer holds it in an
+/// internal property: with Xcode 26's Swift, a private one makes the view's
+/// memberwise initializer private.
+struct CardIconWidth: DynamicProperty {
+    @ScaledMetric(relativeTo: .subheadline) private var iconWidth = ConsoleWorkspaceCardMetrics.iconWidth
+
+    var value: CGFloat { iconWidth }
+
+    var spacing: CGFloat { ConsoleWorkspaceCardMetrics.iconSpacing }
 
     /// From the card's edge to its text, past the icon column.
-    var textInset: CGFloat {
-        ConsoleWorkspaceCardMetrics.padding + value + ConsoleWorkspaceCardMetrics.iconSpacing
-    }
+    var textInset: CGFloat { ConsoleWorkspaceCardMetrics.padding + value + spacing }
 }
 
 /// One row of a card. The list rounds the card's ends and clips a swiped
@@ -48,7 +52,8 @@ struct ConsoleWorkspaceCardRow: ViewModifier {
     enum Indent {
         /// The row starts at the icon column.
         case icon
-        /// An Agent listed under a header starts at the text column.
+        /// The row starts at the text column, as a collapsed card's summary
+        /// does; Agent rows start at the icon column, which holds their mark.
         case text
     }
 
@@ -111,13 +116,10 @@ struct ConsoleWorkspaceCardRow: ViewModifier {
 
     @ViewBuilder
     private var rule: some View {
-        if placed.rule != .none {
-            let isInset = placed.rule == .inset
+        if placed.rule == .full {
             Rectangle()
                 .fill(Color(uiColor: .separator))
                 .frame(height: 1 / displayScale)
-                .padding(.leading, isInset ? iconWidth.textInset : 0)
-                .padding(.trailing, isInset ? Metrics.ruleTrailing : 0)
         }
     }
 }
@@ -226,12 +228,11 @@ struct ConsoleWorkspaceCardHeader: View {
     let subtitle: String
     let checkouts: [ConsoleCheckoutSummary]
     let onToggle: () -> Void
-
-    private typealias Metrics = ConsoleWorkspaceCardMetrics
+    var iconColumn = CardIconWidth()
 
     var body: some View {
         Button(action: onToggle) {
-            HStack(alignment: .firstTextBaseline, spacing: Metrics.iconSpacing) {
+            HStack(alignment: .firstTextBaseline, spacing: iconColumn.spacing) {
                 ConsoleWorkspaceCardIcon(systemName: ConsoleWorkspaceCardIcon.folder)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: title)
@@ -334,6 +335,7 @@ struct ConsoleCheckoutHeader: View {
     let section: ConsoleWorkspaceSection
     let title: ConsoleCheckoutTitle
     let onToggle: (() -> Void)?
+    var iconColumn = CardIconWidth()
 
     var body: some View {
         if let onToggle {
@@ -357,7 +359,7 @@ struct ConsoleCheckoutHeader: View {
     }
 
     private var label: some View {
-        HStack(alignment: .firstTextBaseline, spacing: ConsoleWorkspaceCardMetrics.iconSpacing) {
+        HStack(alignment: .firstTextBaseline, spacing: iconColumn.spacing) {
             ConsoleWorkspaceCardIcon(checkout: section.checkout)
             ConsoleCheckoutTitleText(title: title, font: .subheadline.weight(.semibold))
             Spacer(minLength: 8)

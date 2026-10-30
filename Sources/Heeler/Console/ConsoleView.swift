@@ -1564,17 +1564,13 @@ struct ConsoleView: View {
     @ViewBuilder
     private var agentHostIssueRows: some View {
         if !visibleHostIssues.isEmpty {
-            // On the Agent rows' edges; the list's own separator sets it
-            // apart from the first Agent.
+            // On the Agent rows' edges and, as they are, without rules.
             ConsoleHostIssueList(
                 issues: visibleHostIssues, onOpenHost: { openHostIssue($0) },
                 onShowAll: { isShowingHostIssues = true })
-                .modifier(ListRowVerticalInsetsRemoved())
+                .modifier(ListRowVerticalInsets(0))
                 .listRowBackground(Color.clear)
-                // Under the title nothing needs a rule; below, it runs from
-                // the edge the Agent rows' rules do.
-                .listRowSeparator(.hidden, edges: .top)
-                .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+                .listRowSeparator(.hidden)
         }
     }
 
@@ -1584,15 +1580,7 @@ struct ConsoleView: View {
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
         ForEach(filteredAgents) { @Sendable agent in
-            MainActorContent {
-                agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id])
-                    // Right under an iPad sidebar's bar, a rule over the
-                    // first row would crowd it.
-                    .listRowSeparator(
-                        usesSidebarNavigation && visibleHostIssues.isEmpty
-                            && agent.id == filteredAgents.first?.id ? .hidden : .automatic,
-                        edges: .top)
-            }
+            MainActorContent { agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id]) }
         }
     }
 
@@ -1664,7 +1652,7 @@ struct ConsoleView: View {
             agentLink(
                 agent,
                 background: ConsoleWorkspaceCardRow(
-                    placed: placed, indent: standsAlone ? .icon : .text,
+                    placed: placed, indent: .icon,
                     top: standsAlone ? (placed.followsHeader ? 0 : 6) : 2, bottom: standsAlone ? 6 : 4,
                     isSelected: notificationRouter.path.last == agent.id)
             ) {
@@ -1680,9 +1668,9 @@ struct ConsoleView: View {
         }
     }
 
-    /// An Agent as its card shows it: an Agent that is its checkout's or
-    /// Workspace's only one takes that title and icon; a row leaves to the
-    /// card what the card already says.
+    /// An Agent as its card shows it, its mark in the card's icon column:
+    /// an Agent that is its checkout's or Workspace's only one takes that
+    /// title and icon; a row leaves to the card what the card already says.
     private func cardAgentLabel(
         _ agent: ConsoleAgent, of section: ConsoleWorkspaceSection, standsAlone: Bool,
         in card: ConsoleWorkspaceCard, qualifier: String?, saved: HostReadiness?, readsChanges: Bool
@@ -1691,24 +1679,21 @@ struct ConsoleView: View {
         let heading = standsAlone
             ? AgentCardHeading(
                 title: card.isRepository ? checkoutTitle(section) : ConsoleCheckoutTitle(title: section.title),
-                isProminent: !card.isRepository)
+                isProminent: !card.isRepository,
+                systemImage: ConsoleWorkspaceCardIcon.systemName(for: section.checkout))
             : nil
-        return HStack(alignment: .firstTextBaseline, spacing: ConsoleWorkspaceCardMetrics.iconSpacing) {
-            if standsAlone {
-                ConsoleWorkspaceCardIcon(checkout: section.checkout)
-            }
-            AgentCardView(
-                agent: agent,
-                layout: console.rowLayout(for: agent.hostID),
-                isPinned: console.pins.isPinned(
-                    hostID: agent.hostID, paneID: agent.agent.paneID),
-                changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
-                qualifier: standsAlone ? nil : qualifier,
-                saved: saved,
-                hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: showsHost),
-                heading: heading,
-                showsHost: showsHost)
-        }
+        return AgentCardView(
+            agent: agent,
+            layout: console.rowLayout(for: agent.hostID),
+            isPinned: console.pins.isPinned(
+                hostID: agent.hostID, paneID: agent.agent.paneID),
+            changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
+            qualifier: standsAlone ? nil : qualifier,
+            saved: saved,
+            hiddenTokens: ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: showsHost),
+            heading: heading,
+            showsHost: showsHost,
+            lead: .card)
     }
 
     /// A repository's checkout, titled by the branch its Agents' latest
@@ -1812,6 +1797,7 @@ struct ConsoleView: View {
                         // condition says what it is before any Agents it lists.
                         if let issue = section.statusPresentation {
                             ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
+                                .listRowSeparator(.hidden)
                         }
                         ForEach(section.agents) { @Sendable agent in
                             MainActorContent { agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id]) }
@@ -1834,6 +1820,8 @@ struct ConsoleView: View {
         }
     }
 
+    /// An Agent's row in the plain lists: no rules between rows, and closer
+    /// together than the list would set them, as their marks set them apart.
     private func agentRow(_ agent: ConsoleAgent, qualifier: String?, saved: HostReadiness?) -> some View {
         agentLink(
             agent,
@@ -1857,6 +1845,8 @@ struct ConsoleView: View {
                 qualifier: qualifier,
                 saved: saved)
         }
+        .listRowSeparator(.hidden)
+        .modifier(ListRowVerticalInsets(4))
     }
 
     /// An Agent's row: `label` opens its detail, with the row's pin, close,
@@ -2107,8 +2097,9 @@ struct ConsoleView: View {
             let card = AgentCardPresentation(
                 agent: agent, layout: console.rowLayout(for: agent.hostID),
                 hiding: isByWorkspace
-                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [])
-            return .init(title: card.headline, namesAgent: card.namesAgent(inFirst: card.rows.count))
+                    ? ConsoleWorkspaceCard.hiddenTokens(for: agent, showsHost: false) : [],
+                leadsWithMark: true)
+            return .init(title: card.headline, namesAgent: card.cardNamesAgent)
         }
     }
 
@@ -2475,15 +2466,21 @@ extension View {
     }
 }
 
-/// Drops a row's vertical insets and keeps the list's own side margins, so
-/// the row's edges and chevron meet the Agent rows' at every width: the
+/// Sets a row's vertical insets and keeps the list's own side margins, so
+/// the row's edges and chevron meet the other rows' at every width: the
 /// margins are 20 points on the widest iPhones, not 16.
-private struct ListRowVerticalInsetsRemoved: ViewModifier {
+private struct ListRowVerticalInsets: ViewModifier {
+    let length: CGFloat
+
+    init(_ length: CGFloat) {
+        self.length = length
+    }
+
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.listRowInsets(.vertical, 0)
+            content.listRowInsets(.vertical, length)
         } else {
-            content.listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            content.listRowInsets(EdgeInsets(top: length, leading: 16, bottom: length, trailing: 16))
         }
     }
 }
