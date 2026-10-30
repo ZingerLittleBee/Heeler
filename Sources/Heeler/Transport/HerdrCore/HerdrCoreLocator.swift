@@ -25,6 +25,8 @@ enum HerdrCoreLocator {
             case sessionDefault
         }
 
+        /// As `uname -s` prints it.
+        let kernel: String
         /// Absolute. Nil when neither place holds a program that identifies
         /// itself as the core, which reads as not installed.
         let executablePath: String?
@@ -41,6 +43,9 @@ enum HerdrCoreLocator {
 
         var fitsSocketPathLimit: Bool { socketPath.utf8.count <= socketPathLimit }
         var isStaleLock: Bool { socketSource == .lock && !socketFilePresent }
+        /// Only on Linux can the app start a core: elsewhere one started over
+        /// SSH would run outside the user's desktop login session.
+        var appMayStartCore: Bool { kernel == "Linux" }
     }
 
     /// `sun_path` less its NUL: 107 bytes on Linux, 103 on macOS. A kernel the
@@ -132,6 +137,7 @@ enum HerdrCoreLocator {
             throw MalformedOutput()
         }
         return Location(
+            kernel: kernel,
             executablePath: executable,
             version: fields["version"],
             socketPath: fields["lock"] ?? defaultPath,
@@ -141,7 +147,7 @@ enum HerdrCoreLocator {
             loginShell: fields["shell"])
     }
 
-    private static func quoted(_ value: String) -> String {
+    static func quoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

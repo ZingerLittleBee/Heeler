@@ -10,6 +10,13 @@ protocol HerdrCoreTransport: Sendable {
     /// Runs the read-only locator once. Its facts are also what `hello` acts on.
     func locate() async throws -> HerdrCoreLocator.Location
 
+    /// What the last locator run found, for a caller that reads why `hello` failed.
+    func lastLocation() async -> HerdrCoreLocator.Location?
+
+    /// Starts the Host's own core session. Only the user's confirmed action
+    /// calls this; connecting, preflight and retries never do (ADR 0031).
+    func startCore() async throws -> HerdrCoreStart.Outcome
+
     /// Locates the core, opens the framed link and checks the core's `hello`.
     /// A later call reuses the open link.
     func hello() async throws -> HerdrCoreServerInfo
@@ -28,6 +35,9 @@ protocol HerdrCoreHostConnection: Sendable {
 
     /// Runs the locator's script in one bounded exec.
     func runCoreLocator(_ script: Data) async throws -> GitExecResult
+
+    /// Runs the confirmed Start's script in one bounded exec.
+    func runCoreStart(_ script: Data) async throws -> GitExecResult
 
     /// Opens a direct-streamlocal channel under the long-lived events slot.
     /// A channel nobody answers throws `TransportError.streamLocalOpenFailed`.
@@ -48,6 +58,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     /// Callers that race share one opening. A failed one is not kept, so the
     /// next call looks at the Host again.
     private var opening: Task<Opened, any Error>?
+    private var located: HerdrCoreLocator.Location?
 
     private struct Opened {
         let link: HerdrCoreLink
@@ -81,10 +92,36 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
                 "herdr-core: The locator exited with status \(result.exitStatus).")
         }
         do {
-            return try HerdrCoreLocator.parse(stdout: result.stdout, nonce: nonce)
+            let location = try HerdrCoreLocator.parse(stdout: result.stdout, nonce: nonce)
+            located = location
+            return location
         } catch {
             throw TransportError.malformedResponse("herdr-core: The locator's output is unreadable.")
         }
+    }
+
+    func lastLocation() async -> HerdrCoreLocator.Location? {
+        located
+    }
+
+    /// The core's own clock says how long it has been up, so the elapsed time is
+    /// measured here and needs no agreement between the two machines' clocks.
+    func startCore() async throws -> HerdrCoreStart.Outcome {
+        let location = try await locate()
+        guard let executablePath = location.executablePath else {
+            throw TransportError.herdrCoreNotInstalled
+        }
+        guard location.appMayStartCore else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: "Starting herdr-core on \(location.kernel)")
+        }
+        let script = try HerdrCoreStart.script(executablePath: executablePath, session: session)
+        let clock = ContinuousClock()
+        let sent = clock.now
+        let result = try await connection.runCoreStart(script)
+        return HerdrCoreStart.outcome(
+            stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus,
+            elapsed: sent.duration(to: clock.now))
     }
 
     func hello() async throws -> HerdrCoreServerInfo {

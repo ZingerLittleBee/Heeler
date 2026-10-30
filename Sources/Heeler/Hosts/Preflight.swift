@@ -168,7 +168,7 @@ struct PreflightReport: Equatable, Sendable {
         case .herdrCoreNotInstalled:
             check = .herdrInstalled
             hint = error.presentation.message
-        case .herdrCoreNotRunning, .herdrCoreSocketPathTooLong:
+        case .herdrCoreNotRunning, .herdrCoreSocketPathTooLong, .herdrCoreForwardingRefused:
             check = .serverRunning
             hint = error.presentation.message
         case .herdrCoreUpdateRequired:

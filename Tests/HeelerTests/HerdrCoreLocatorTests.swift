@@ -5,7 +5,7 @@ import Testing
 
 /// The shared core session name cases from `plugin/test-vectors/`, which the
 /// Helper reads too.
-private struct SessionNameVectors: Decodable {
+struct SessionNameVectors: Decodable {
     struct Case: Decodable {
         let name: String
         let raw: String
@@ -97,6 +97,16 @@ private struct SessionNameVectors: Decodable {
     }
 
     // MARK: What the output says
+
+    @Test func onlyALinuxHostLetsTheAppStartACore() throws {
+        let linux = try parse(["kernel Linux", "default /s", "socket-file 0"])
+        #expect(linux.kernel == "Linux")
+        #expect(linux.appMayStartCore)
+        for kernel in ["Darwin", "FreeBSD", ""] {
+            let other = try parse(["kernel \(kernel)", "default /s", "socket-file 0"])
+            #expect(!other.appMayStartCore, "\(kernel)")
+        }
+    }
 
     @Test func noProgramReadsAsNotInstalled() throws {
         let location = try parse([
