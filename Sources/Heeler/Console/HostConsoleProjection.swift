@@ -852,57 +852,15 @@ final class HostConsoleProjection: ConsoleHostProjection {
         requestGeneration: UInt64
     ) {
         sidebarRevision &+= 1
-        let paneByID = Dictionary(snapshot.panes.map { ($0.paneID, $0) }) { first, _ in first }
-        let workspaceByID = Dictionary(
-            snapshot.workspaces.map { ($0.workspaceID, $0) }) { first, _ in first }
-        let tabByID = Dictionary(
-            snapshot.tabs.map { ($0.tabID, $0) }) { first, _ in first }
-        var tabCounts: [String: Int] = [:]
-        var tabPositions: [String: Int] = [:]
-        for tab in snapshot.tabs where tabPositions[tab.tabID] == nil {
-            tabCounts[tab.workspaceID, default: 0] += 1
-            tabPositions[tab.tabID] = tabCounts[tab.workspaceID]
+        let builder = ConsolePaneRowBuilder(host: host, inventory: snapshot)
+        let liveChange: (String) -> PaneInfo? = { [latestPaneChanges] paneID in
+            guard let change = latestPaneChanges[paneID], change.revision > paneStartRevision
+            else { return nil }
+            return change.pane
         }
-        var tabPaneIDs: [String: Set<String>] = [:]
-        for pane in snapshot.panes {
-            tabPaneIDs[pane.tabID, default: []].insert(pane.paneID)
-        }
-        for agent in snapshot.agents {
-            tabPaneIDs[agent.tabID, default: []].insert(agent.paneID)
-        }
-        var nextAgents: [String: ConsoleAgent] = [:]
-        for (snapshotOrder, info) in snapshot.agents.enumerated() {
-            let agent = Agent(info)
-            let workspace = workspaceByID[agent.workspaceID]
-            let tab = tabByID[agent.tabID].flatMap {
-                $0.workspaceID == agent.workspaceID ? $0 : nil
-            }
-            var row = ConsoleAgent(
-                hostID: host.id,
-                hostName: host.displayName,
-                agent: agent,
-                workspaceLabel: workspace?.label,
-                repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
-                lastOutputSnippet: agentsByPane[agent.paneID]?.lastOutputSnippet,
-                hostUsername: host.username,
-                tabLabel: tab?.label,
-                tabPosition: tab.flatMap { tabPositions[$0.tabID] },
-                workspaceTabCount: max(workspace?.tabCount ?? 0, tabCounts[agent.workspaceID] ?? 0),
-                tabPaneCount: max(tab?.paneCount ?? 0, tabPaneIDs[agent.tabID]?.count ?? 0),
-                snapshotOrder: snapshotOrder,
-                paneLabel: paneByID[agent.paneID].flatMap {
-                    $0.tabID == agent.tabID && $0.workspaceID == agent.workspaceID ? $0.label : nil
-                })
-            if let pane = paneByID[agent.paneID] {
-                row.updateDirectory(from: pane)
-            }
-            // A live directory observed during this request is newer than
-            // its response, even when the snapshot has no terminal entry.
-            if let change = latestPaneChanges[agent.paneID], change.revision > paneStartRevision {
-                row.updateDirectory(from: change.pane)
-            }
-            nextAgents[agent.paneID] = row
-        }
+        var nextAgents = builder.agentRows(
+            lastOutputSnippet: { agentsByPane[$0]?.lastOutputSnippet },
+            liveChange: liveChange)
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {
             guard var row = nextAgents[paneID] else { continue }
@@ -912,43 +870,10 @@ final class HostConsoleProjection: ConsoleHostProjection {
         latestStatusChanges.removeAll(keepingCapacity: true)
         isAwaitingSnapshot = false
         agentsByPane = nextAgents
-        let workspacePositions = Dictionary(
-            snapshot.workspaces.enumerated().map { ($0.element.workspaceID, $0.offset) }
-        ) { first, _ in first }
-        var nextTerminals: [String: ConsoleTerminal] = [:]
-        for (order, snapshotPane) in snapshot.panes.enumerated() {
-            let pane: PaneInfo
-            if let change = latestPaneChanges[snapshotPane.paneID],
-                change.revision > paneStartRevision,
-                change.pane.terminalID == snapshotPane.terminalID,
-                change.pane.workspaceID == snapshotPane.workspaceID,
-                change.pane.tabID == snapshotPane.tabID
-            {
-                pane = change.pane
-            } else {
-                pane = snapshotPane
-            }
-            let tab = tabByID[pane.tabID].flatMap {
-                $0.workspaceID == pane.workspaceID ? $0 : nil
-            }
-            nextTerminals[pane.paneID] = ConsoleTerminal(
-                hostID: host.id, hostName: host.displayName, hostUsername: host.username,
-                pane: pane, workspaceLabel: workspaceByID[pane.workspaceID]?.label,
-                tabLabel: tab?.label,
-                workspaceOrder: workspacePositions[pane.workspaceID] ?? Int.max,
-                tabPosition: tab.flatMap { tabPositions[$0.tabID] }, snapshotOrder: order,
-                snapshotAgentKind: nextAgents[pane.paneID]?.agent.kind)
-        }
+        terminalsByPane = builder.terminalRows(agents: nextAgents, liveChange: liveChange)
         latestPaneChanges.removeAll(keepingCapacity: true)
-        terminalsByPane = nextTerminals
-        workspacesByID = workspaceByID
-        workspaces = snapshot.workspaces.enumerated()
-            .map { order, workspace in
-                ConsoleWorkspace(
-                    id: workspace.workspaceID, label: workspace.label, order: order,
-                    checkoutPath: workspace.worktree?.checkoutPath)
-            }
-            .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+        workspacesByID = builder.workspaceByID
+        workspaces = builder.workspaceRows()
         pruneReceiptsReintroducedByCurrentSnapshot(
             requestGeneration: requestGeneration)
         reconcileUnconfirmedWorktreeRemovals(requestGeneration: requestGeneration)
