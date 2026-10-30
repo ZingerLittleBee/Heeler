@@ -173,8 +173,10 @@ final class ConsoleStore {
     }
 
     /// Aligns Host projections with the catalog. Editing a Host replaces its
-    /// projection because its connection coordinates may have changed.
-    func setHosts(_ hosts: [Host]) {
+    /// projection because its connection coordinates may have changed. A Host
+    /// waiting for its Server Kind is not the Console's yet.
+    func setHosts(_ catalogHosts: [Host]) {
+        let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         // With no projection to end, a core Host's reads go with its entry.
         for host in catalog where host.serverKind == .herdrCore && incoming[host.id] != host {

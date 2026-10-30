@@ -115,6 +115,53 @@ struct ConsoleStoreTests {
         #expect(!store.hostsAwaitingSnapshot.contains(core.id))
     }
 
+    /// Nothing half-configured reaches the Console: an unconfirmed Host is not
+    /// dialed, and confirming it as Herdr TUI brings it in as any other Host.
+    @Test func anUnconfirmedHostStaysOutUntilConfirmedAsHerdrTUI() async throws {
+        let catalog = HostStore(volatileHosts: [
+            Host(address: "box.example", username: "dev", serverKind: .unconfirmed)
+        ])
+        let id = try #require(catalog.hosts.first?.id)
+        let transport = ScriptedTransport(snapshot: SessionSnapshot(
+            agents: [.fixture(paneID: "w1:p1")], layouts: [],
+            panes: [
+                PaneInfo(
+                    agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+                    tabID: "w1:t1", terminalID: "term", workspaceID: "w1")
+            ],
+            protocolVersion: 17, tabs: [], version: "0.7.5-fake",
+            workspaces: [.fixture(workspaceID: "w1", label: "Proj")]))
+        let dials = Mutex<[Host.ID]>([])
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    dials.withLock { $0.append(host.id) }
+                    return transport
+                },
+                reconnectPolicy: Self.fastPolicy,
+                keepalive: nil)
+        }
+        defer { store.setHosts([]) }
+
+        store.setHosts(catalog.hosts)
+        await store.resume()
+        await store.retryHost(id)
+        await store.reactivate()
+
+        #expect(dials.withLock { $0 }.isEmpty)
+        #expect(store.agents.isEmpty)
+        #expect(store.hostStatuses[id] == nil)
+
+        try catalog.confirmServerKind(.herdrTUI, for: id)
+        store.setHosts(catalog.hosts)
+        await store.resume()
+        try await waitUntil("the confirmed Host is listed") { store.agents.count == 1 }
+
+        #expect(dials.withLock { Set($0) } == [id])
+        #expect(store.agents.map(\.hostID) == [id])
+    }
+
     /// With no projection a core Host has no connection to lend, and its
     /// plugin surfaces keep saying why rather than blaming the link.
     @Test func aCoreHostsUsageStaysUnsupportedWithoutAProjection() async {

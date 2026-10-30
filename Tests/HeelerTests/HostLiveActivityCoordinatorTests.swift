@@ -93,7 +93,8 @@ struct HostLiveActivityCoordinatorTests {
         enable: Bool = true,
         pins: PinnedAgentsStore? = nil,
         otherHosts: [Host] = [],
-        gate: GitExecGate? = nil
+        gate: GitExecGate? = nil,
+        supportsHost: @escaping @MainActor (Host.ID) -> Bool = { _ in true }
     ) -> HostLiveActivityCoordinator {
         let keys = NotificationKeyStore(secrets: secrets)
         let world = world
@@ -114,6 +115,7 @@ struct HostLiveActivityCoordinatorTests {
             hostDisplayName: { world.hostNames[$0] ?? "" },
             isAwaitingSnapshot: { world.awaitingSnapshot.contains($0) },
             connectionStatus: { world.statuses[$0] },
+            supportsHost: supportsHost,
             pinnedPaneIDs: { pinStore?.pinnedPaneIDs(for: $0) ?? [] },
             rowLayout: { _ in world.layout },
             settleDuration: .milliseconds(20))
@@ -264,6 +266,30 @@ struct HostLiveActivityCoordinatorTests {
             #expect(await transport.replacedNotificationRegistrations.count == writes)
             #expect(try await liveActivityToken() == nil)
             await gate.release()
+        }
+    }
+
+    @Test func anUnconfirmedHostStartsNoActivityUntilConfirmedAsHerdrTUI() async throws {
+        try await withFixture { defaults in
+            let catalog = HostStore(volatileHosts: [
+                Host(id: host.id, address: "box.example", username: "dev", serverKind: .unconfirmed)
+            ])
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(
+                defaults: defaults, supportsHost: { catalog.supportsLiveActivities(for: $0) })
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            // Well past the 20 ms settle that starts an activity.
+            try await Task.sleep(for: .milliseconds(150))
+            #expect(controller.requestedHandles.isEmpty)
+
+            try catalog.confirmServerKind(.herdrTUI, for: host.id)
+            coordinator.layoutsDidChange()
+            coordinator.connectionsDidChange()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
         }
     }
 

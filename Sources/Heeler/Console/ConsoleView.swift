@@ -206,7 +206,7 @@ struct ConsoleView: View {
         .sheet(isPresented: $isStartingAgent) {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
-                StartAgentView(hosts: hosts.hosts, console: console) { id in
+                StartAgentView(hosts: hosts.consoleHosts, console: console) { id in
                     // A fresh launch lands in its own terminal, exactly
                     // as tapping the new row would, on the list that has it.
                     if currentTab != .agents { selectedTab.wrappedValue = .agents }
@@ -233,7 +233,7 @@ struct ConsoleView: View {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // NewTerminalView brings its own NavigationStack.
                 NewTerminalView(
-                    hosts: hosts.hosts, console: console, initialHostID: hostFilter
+                    hosts: hosts.consoleHosts, console: console, initialHostID: hostFilter
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
@@ -245,7 +245,7 @@ struct ConsoleView: View {
         }
         .sheet(item: $connectionDetailRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
-                if let host = hosts.hosts.first(where: { $0.id == request.id }),
+                if let host = hosts.consoleHosts.first(where: { $0.id == request.id }),
                     let detail = connectionDetail(for: request)
                 {
                     HostConnectionDetailView(
@@ -353,7 +353,7 @@ struct ConsoleView: View {
         }
         // A filter pointing at a removed Host would silently hide every
         // Agent; fall back to All Hosts instead.
-        .onChange(of: hosts.hosts) { _, hosts in
+        .onChange(of: hosts.consoleHosts) { _, hosts in
             if let hostFilter, !hosts.contains(where: { $0.id == hostFilter }) {
                 self.hostFilter = nil
             }
@@ -446,7 +446,7 @@ struct ConsoleView: View {
             relaySettings: relaySettings,
             liveActivities: liveActivities,
             console: console,
-            hosts: hosts.hosts,
+            hosts: hosts.consoleHosts,
             onHostAdded: { id in
                 if isShowingSettingsSheet {
                     pendingSettingsHostID = id
@@ -463,7 +463,7 @@ struct ConsoleView: View {
 
     /// Every Host the Usage tab can read, in catalog order.
     private var usageEntries: [AgentUsageHostEntry] {
-        hosts.hosts.map { host in
+        hosts.consoleHosts.map { host in
             AgentUsageHostEntry(
                 id: host.id, name: host.displayName, store: console.agentUsageStore(for: host.id),
                 isConnected: console.hostStatuses[host.id] == .connected)
@@ -514,7 +514,7 @@ struct ConsoleView: View {
                         showsLimits: $usageShowsLimits, limitsRequested: $usageLimitsRequested,
                         allowsColumns: true)
                         .navigationTitle(
-                            usageScopeHostID.flatMap { id in hosts.hosts.first { $0.id == id }?.displayName }
+                            usageScopeHostID.flatMap { id in hosts.consoleHosts.first { $0.id == id }?.displayName }
                                 ?? "All Hosts")
                         .toolbarTitleDisplayMode(.inlineLarge)
                 }
@@ -553,7 +553,7 @@ struct ConsoleView: View {
     /// A Usage widget's tap: the tab on the widget's scope, and for Usage
     /// Limits, that Host's limits. A Host since removed opens All Hosts.
     private func openUsage(_ link: UsageWidgetLink.Target) {
-        let hostID = link.hostID.flatMap { id in hosts.hosts.contains { $0.id == id } ? id : nil }
+        let hostID = link.hostID.flatMap { id in hosts.consoleHosts.contains { $0.id == id } ? id : nil }
         usageScopeHostID = hostID
         isShowingHostsSheet = false
         isShowingSettingsSheet = false
@@ -910,11 +910,11 @@ struct ConsoleView: View {
                     focus: $focusedSearch, tab: .agents,
                     prompt: "Search Agents", showsField: !usesSidebarNavigation))
         case .terminals:
-            if hosts.hosts.isEmpty {
+            if hosts.consoleHosts.isEmpty {
                 noHostsView
             } else {
                 TerminalListView(
-                    hosts: hosts.hosts,
+                    hosts: hosts.consoleHosts,
                     console: console,
                     presentation: terminalPresentation,
                     filteredHostID: hostFilter,
@@ -936,7 +936,7 @@ struct ConsoleView: View {
     }
 
     /// A filter is meaningless with a single Host.
-    private var filtersByHost: Bool { hosts.hosts.count > 1 }
+    private var filtersByHost: Bool { hosts.consoleHosts.count > 1 }
 
     /// At the largest text sizes a bar cannot fit its title beside three
     /// buttons, so the Host filter joins the presentation menu. An iPad
@@ -948,7 +948,7 @@ struct ConsoleView: View {
     private var hostFilterPicker: some View {
         Picker("Host", selection: $hostFilter) {
             Text("All Hosts").tag(Host.ID?.none)
-            ForEach(hosts.hosts) { @Sendable host in
+            ForEach(hosts.consoleHosts) { @Sendable host in
                 Text(host.displayName).tag(Host.ID?.some(host.id))
             }
         }
@@ -1025,7 +1025,7 @@ struct ConsoleView: View {
                 hostFilterMenu.hoverEffect(.highlight)
             }
         }
-        if !usesSidebarNavigation, horizontalSizeClass != .regular, !hosts.hosts.isEmpty {
+        if !usesSidebarNavigation, horizontalSizeClass != .regular, !hosts.consoleHosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 presentationMenu(for: tab).hoverEffect(.highlight)
             }
@@ -1037,7 +1037,7 @@ struct ConsoleView: View {
             // only this way.
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 0) {
-                    if !hosts.hosts.isEmpty { newItemButton(for: tab) }
+                    if !hosts.consoleHosts.isEmpty { newItemButton(for: tab) }
                     Button("Hide Sidebar", systemImage: "sidebar.left") {
                         withAnimation(reduceMotion ? nil : .snappy) {
                             splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
@@ -1048,7 +1048,7 @@ struct ConsoleView: View {
                 .buttonStyle(SidebarIconButtonStyle())
             }
             .toolbarItemBackground(.hidden)
-        } else if horizontalSizeClass != .regular, !hosts.hosts.isEmpty {
+        } else if horizontalSizeClass != .regular, !hosts.consoleHosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 newItemButton(for: tab).hoverEffect(.highlight)
             }
@@ -1063,7 +1063,7 @@ struct ConsoleView: View {
             if filtersByHost, !foldsHostFilter {
                 hostFilterMenu.roundPointerHighlight()
             }
-            if !hosts.hosts.isEmpty {
+            if !hosts.consoleHosts.isEmpty {
                 presentationMenu(for: tab).roundPointerHighlight()
                 newItemButton(for: tab)
             }
@@ -1095,7 +1095,7 @@ struct ConsoleView: View {
             if filtersByHost, !foldsHostFilter {
                 hostFilterMenu.roundPointerHighlight()
             }
-            if !hosts.hosts.isEmpty {
+            if !hosts.consoleHosts.isEmpty {
                 presentationMenu(for: tab).roundPointerHighlight()
             }
         }
@@ -1370,7 +1370,7 @@ struct ConsoleView: View {
                     terminal: terminal,
                     inputMode: inputMode,
                     detailSurface: detailSurface,
-                    hosts: hosts.hosts,
+                    hosts: hosts.consoleHosts,
                     activity: activity,
                     keyboardHandoff: keyboardHandoff,
                     keyboardInset: keyboardInset,
@@ -1444,7 +1444,7 @@ struct ConsoleView: View {
         } else {
             ConsoleEmptyDetailView(
                 presentation: ConsoleEmptyDetailPresentation(
-                    hasHosts: !hosts.hosts.isEmpty,
+                    hasHosts: !hosts.consoleHosts.isEmpty,
                     showsAgentsAction: splitVisibility(for: tab).showsAgentsAction,
                     listsTerminals: tab == .terminals)
             ) { action in
@@ -2032,7 +2032,7 @@ struct ConsoleView: View {
 
     private var agentsSurface: ConsoleAgentsSurface {
         ConsoleAgentsSurface(
-            hostCount: hosts.hosts.count,
+            hostCount: hosts.consoleHosts.count,
             filteredHostName: hostFilter == nil ? nil : filteredHostName,
             filteredAgentCount: filteredAgents.count,
             visibleIssueCount: visibleHostIssues.count,
@@ -2043,7 +2043,7 @@ struct ConsoleView: View {
 
     private var hostSections: [ConsoleHostSection] {
         listPresentation.sections(
-            hosts: hosts.hosts,
+            hosts: hosts.consoleHosts,
             console: console,
             filteredHostID: hostFilter,
             searchQuery: agentSearchText)
@@ -2052,7 +2052,7 @@ struct ConsoleView: View {
     private var workspaceCards: [ConsoleWorkspaceCard] {
         ConsoleWorkspaceCard.cards(
             listPresentation.workspaceSections(
-                hosts: hosts.hosts, console: console,
+                hosts: hosts.consoleHosts, console: console,
                 filteredHostID: hostFilter, searchQuery: agentSearchText))
     }
 
@@ -2130,7 +2130,7 @@ struct ConsoleView: View {
     }
 
     private var filteredHostName: String {
-        hosts.hosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
+        hosts.consoleHosts.first(where: { $0.id == hostFilter })?.displayName ?? "this Host"
     }
 
     private struct HostsTabRequest {
@@ -2146,7 +2146,7 @@ struct ConsoleView: View {
     /// One actionable status per Host. A disconnected session takes priority;
     /// otherwise a connected Host can still have a failing snapshot RPC.
     private var hostIssues: [ConsoleHostStatusPresentation] {
-        hosts.hosts.compactMap { host in
+        hosts.consoleHosts.compactMap { host in
             ConsoleHostStatusPresentation(
                 host: host,
                 status: console.hostStatuses[host.id],
@@ -2173,7 +2173,7 @@ struct ConsoleView: View {
                 presentHosts(id)
             }
         ) { id in
-            if let host = hosts.hosts.first(where: { $0.id == id }),
+            if let host = hosts.consoleHosts.first(where: { $0.id == id }),
                 let detail = hostIssuesSheetDetail(for: id)
             {
                 HostConnectionDetailContent(
@@ -2214,7 +2214,7 @@ struct ConsoleView: View {
     private func connectionDetail(
         for request: ConnectionDetailRequest
     ) -> HostConnectionDetailPresentation? {
-        guard let host = hosts.hosts.first(where: { $0.id == request.id }) else { return nil }
+        guard let host = hosts.consoleHosts.first(where: { $0.id == request.id }) else { return nil }
         return HostConnectionDetailPresentation(
             host: host,
             status: console.hostStatuses[request.id],
@@ -2659,7 +2659,7 @@ struct MissingAgentPresentation: Equatable {
         self.init(
             agentID: agentID,
             hostStatuses: console.hostStatuses,
-            hosts: hosts.hosts,
+            hosts: hosts.consoleHosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostStandingFailures: console.hostStandingFailures)
     }

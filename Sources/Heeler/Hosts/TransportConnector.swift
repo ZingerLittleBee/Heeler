@@ -25,9 +25,11 @@ extension TransportConnector {
 struct SSHTransportConnector: TransportConnector {
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
         // No Herdr TUI request ever goes to a herdr-core Host, whose core is
-        // not the server this transport speaks to.
-        guard settings.serverKind != .herdrCore else {
-            throw TransportError.hostFeatureUnavailable(feature: "Herdr TUI on a herdr-core Host")
+        // not the server this transport speaks to, or to a Host whose kind is
+        // not confirmed yet.
+        guard settings.serverKind == .herdrTUI else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: "Herdr TUI on a \(settings.serverKind.displayName) Host")
         }
         return try await HeelerSSHTransport.connect(settings: settings)
     }
