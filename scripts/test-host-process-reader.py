@@ -292,6 +292,68 @@ class NamedValueTests(ReaderTestCase):
         self.for_each_shell(check)
 
 
+class NamesOnlyTests(ReaderTestCase):
+    ENVIRON = (
+        b"PATH=/usr/bin\0"
+        b"TMUX=/tmp/tmux-sock,1,0\0"
+        b"STY=\0"
+        b"ZELLIJ=0\0"
+        b"HERDR_SOCKET_PATH=/run/herdr.sock\0"
+        b"HERDR_BLANK=\0"
+        b"HERDR_=only-the-prefix\0"
+        b"HERDR_ODD-NAME=dash\0"
+        b"NOT_HERDR_X=near-miss\0"
+        b"TMUX_PANE=near-miss\0"
+        b"OTHER=x\nTMUX_FORGED=y\0"
+        b"OTHER2=x\nCODEX_THREAD_ID=forged\0"
+    )
+    REQUEST = {"names": ["TMUX", "STY", "ZELLIJ", "CODEX_THREAD_ID"], "prefixes": ["HERDR_"]}
+
+    def test_reports_only_names_of_non_empty_listed_variables(self) -> None:
+        (self.process(77) / "environ").write_bytes(self.ENVIRON)
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["77"], **self.REQUEST)
+            self.assertEqual(facts["77"]["names"], [
+                "HERDR_", "HERDR_SOCKET_PATH", "TMUX", "ZELLIJ"])
+        self.for_each_shell(check)
+
+    def test_never_prints_an_equals_sign_or_a_value(self) -> None:
+        (self.process(77) / "environ").write_bytes(self.ENVIRON)
+        values = [b"/tmp/tmux-sock", b"/run/herdr.sock", b"only-the-prefix", b"near-miss", b"forged",
+                  b"/usr/bin"]
+
+        def check(shell: list[str]) -> None:
+            raw = self.run_script(shell, pids=["77"], **self.REQUEST)
+            self.assertEqual(raw.count("="), 0, raw)
+            lines = [line for line in raw.splitlines() if line and not line.startswith("__HEELER")]
+            self.assertEqual(sorted(lines), sorted([
+                "N 77 TMUX", "N 77 ZELLIJ", "N 77 HERDR_SOCKET_PATH", "N 77 HERDR_", "E 77 ok"]))
+            for value in values:
+                self.assertNotIn(value, raw.encode())
+                self.assertNotIn(value.hex().encode(), raw.encode())
+        self.for_each_shell(check)
+
+    def test_a_process_whose_entries_cannot_be_read_is_not_a_clean_one(self) -> None:
+        self.process(12)
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["12", "404"], **self.REQUEST)
+            self.assertEqual(facts["12"]["names"], "unavailable")
+            self.assertEqual(facts["404"]["names"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_values_and_names_come_from_one_read(self) -> None:
+        (self.process(77) / "environ").write_bytes(self.ENVIRON)
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["77"], values=["ZELLIJ", "PATH"], names=["TMUX"])["77"]
+            self.assertEqual(facts["names"], ["TMUX"])
+            self.assertEqual(facts["variables"], {
+                "ZELLIJ": {"value": "0"}, "PATH": {"value": "/usr/bin"}})
+        self.for_each_shell(check)
+
+
 if __name__ == "__main__":
     if not shutil.which("swiftc"):
         sys.exit("swiftc is required")

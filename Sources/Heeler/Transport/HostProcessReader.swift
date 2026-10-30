@@ -74,7 +74,8 @@ enum HostProcessReader {
         for pid in request.pids where !isProcessID(pid) {
             throw Refusal.pid(pid)
         }
-        for name in request.valuesOf where !isVariableName(name) {
+        for name in request.valuesOf + request.namesOf + request.namesWithPrefix
+        where !isVariableName(name) {
             throw Refusal.variableName(name)
         }
         var lines = [
@@ -122,16 +123,18 @@ enum HostProcessReader {
             "function d(x,i,s,c){for(i=1;i<length(x);i+=2){c=T[substr(x,i,2)];"
                 + "if(c==\"\")return \"\";s=s c}return s}",
             "function f(){if(m!=\"\"&&!(m in G)){G[m]=1;"
-                + "if(m in W)o=o \"V \" p \" \" m \" \" (v==\"\"?\"-\":v) \"\\n\"}"
-                + "c++;n=\"\";v=\"\";e=0;m=\"\"}",
+                + "if(m in W)o=o \"V \" p \" \" m \" \" (v==\"\"?\"-\":v) \"\\n\";"
+                + "if(z&&((m in N)||\(prefixTest(request))))o=o \"N \" p \" \" m \"\\n\"}"
+                + "c++;n=\"\";v=\"\";e=0;z=0;m=\"\"}",
             "BEGIN{x=\"\(nameBytesHex)\";y=\"\(nameBytes)\";"
                 + "for(i=1;i<=length(y);i++)T[substr(x,2*i-1,2)]=substr(y,i,1)",
-            request.valuesOf.map { "W[\"\($0)\"]=1" }.joined(separator: ";"),
+            (request.valuesOf.map { "W[\"\($0)\"]=1" } + request.namesOf.map { "N[\"\($0)\"]=1" })
+                .joined(separator: ";"),
             "}",
             "$1==\"ok\"{k=1;next}",
             "{for(i=1;i<=NF;i++){b=$i",
             "if(b==\"00\")f()",
-            "else if(e){if(m in W)v=v b}",
+            "else if(e){z=1;if(m in W)v=v b}",
             "else if(b==\"3d\"){e=1;m=d(n)}",
             "else n=n b}}",
             "END{if(n!=\"\"||e)f();if(k&&c>0){printf \"%s\",o;print \"E\",p,\"ok\"}"
@@ -152,6 +155,11 @@ enum HostProcessReader {
             "  printf 'S %s %s\\n' \"$p\" \"$v\"",
             "}",
         ]
+    }
+
+    private static func prefixTest(_ request: Request) -> String {
+        guard !request.namesWithPrefix.isEmpty else { return "0" }
+        return request.namesWithPrefix.map { "index(m,\"\($0)\")==1" }.joined(separator: "||")
     }
 
     private static func unavailableReads() -> [String] {
@@ -209,6 +217,7 @@ enum HostProcessReader {
         var answered: Set<String> = []
         var readable: Set<String> = []
         var values: [String: [String: Variable]] = [:]
+        var names: [String: Set<String>] = [:]
         for line in lines[(begin + 1)..<end] where !line.isEmpty {
             let fields = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
                 .map(String.init)
@@ -228,6 +237,11 @@ enum HostProcessReader {
                 else { throw MalformedOutput() }
                 values[pid, default: [:]][String(parts[0])] =
                     String(data: bytes, encoding: .utf8).map(Variable.value) ?? .unavailable
+            case "N":
+                guard request.namesOf.contains(fields[2])
+                    || request.namesWithPrefix.contains(where: fields[2].hasPrefix)
+                else { throw MalformedOutput() }
+                names[pid, default: []].insert(fields[2])
             case "E":
                 guard fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
                 if fields[2] == "ok" { readable.insert(pid) }
@@ -243,6 +257,9 @@ enum HostProcessReader {
             let isReadable = readable.contains(pid)
             for name in request.valuesOf {
                 fact.variables[name] = isReadable ? values[pid]?[name] ?? .unset : .unavailable
+            }
+            if isReadable, !request.namesOf.isEmpty || !request.namesWithPrefix.isEmpty {
+                fact.nonEmptyNames = .value(names[pid] ?? [])
             }
             facts[pid] = fact
         }
