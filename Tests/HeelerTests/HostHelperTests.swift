@@ -496,6 +496,21 @@ struct HostHelperRemovalTests {
         #expect(folders["/home/me/.config"] != nil)
     }
 
+    @Test func theRecordDecidesWhichFilesGo() async throws {
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+        let recorded = "/home/me/.config/heeler-extension.conf"
+        await host.seedFile(recorded, Data("recorded".utf8))
+        let record = HostHelperInstallRecord(files: [recorded], folders: [])
+        await host.seedFile("\(directory)/installed.json", try JSONEncoder().encode(record))
+
+        try await installer.remove(over: try await installer.read())
+
+        let left = await host.filePaths()
+        #expect(!left.contains(recorded))
+        // The record does not list it, so it is not removal's to delete.
+        #expect(left.contains(ScriptedHelperHost.unit))
+    }
+
     @Test func aFolderTheInstallDidNotCreateStaysEvenWhenEmpty() async throws {
         let existing = "/home/me/.config/systemd/user"
         await host.seedFolder(existing)
