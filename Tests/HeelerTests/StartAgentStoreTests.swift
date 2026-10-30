@@ -1132,6 +1132,39 @@ struct StartAgentStoreTests {
         #expect(recorder.params.first?.cwd == nil)
     }
 
+    @Test(arguments: [false, true])
+    func coreLaunchDropsHiddenLabelsButKeepsAgentNameAndArguments(newWorkspace: Bool) async {
+        let legacy = Host.fixture()
+        let core = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let recorder = StartRecorder()
+        let store = makeStore(
+            hosts: [legacy, core],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recorder: recorder)
+        store.selectedHostID = legacy.id
+        #expect(store.offersWorkspaceAndTabNames)
+        store.tabLabel = "legacy tab"
+        store.selectedHostID = core.id
+        #expect(!store.offersWorkspaceAndTabNames)
+        store.name = "reviewer"
+        store.arguments = "--model test-model"
+        if newWorkspace {
+            store.applyBrowsedDirectory("/srv/project")
+            store.newWorkspaceLabel = "hidden workspace"
+        }
+        await store.discoverAgents()
+
+        await store.submit()
+
+        #expect(recorder.params.count == 1)
+        #expect(recorder.params.first?.tabLabel == nil)
+        #expect(recorder.params.first?.name == "reviewer")
+        #expect(recorder.params.first?.arguments == ["--model", "test-model"])
+        #expect(recorder.destinations == (newWorkspace
+            ? [.newWorkspace(NewWorkspaceSpec(directory: "/srv/project", label: nil))]
+            : [.existingWorkspace]))
+    }
+
     @Test func coreLaunchNeverDispatchesALegacyWorktreeCreation() async {
         let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
         let recorder = StartRecorder()

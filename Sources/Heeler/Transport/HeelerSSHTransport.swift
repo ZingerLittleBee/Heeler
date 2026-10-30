@@ -1104,7 +1104,14 @@ actor HeelerSSHTransport: Transport {
             // Read before dispatch: a successful send must never look failed
             // because a subsequent status lookup lost the connection.
             let agent = try await agentInfo(AgentTarget(target: params.target))
-            _ = try await coreRequest("terminal.send", target: params.target, params: ["text": .string(params.text)])
+            do {
+                _ = try await coreRequest(
+                    "terminal.send", target: params.target, params: ["text": .string(params.text)])
+            } catch let error as HerdrAPIError where error.code == "blocked" {
+                // Preserve Composer's stale-status fallback: insert the draft
+                // into its live Attach without Enter; never force a core send.
+                throw HerdrAPIError(code: "agent_blocked", message: error.message)
+            }
             return agent
         }
         let response = try await request(

@@ -287,6 +287,112 @@ struct ConsoleTerminalInventoryTests {
         #expect(await transport.snapshotFetchCount == count)
     }
 
+    @Test func coreTitleUpdatesRefreshAgentAndShellWithoutSnapshotOrSnippetReads() async throws {
+        var host = Host.fixture()
+        host.backend = .herdrCore
+        let transport = ScriptedTransport(snapshot: snapshot(
+            panes: [pane("agent", agent: "claude"), pane("shell")], agents: [agent()]))
+        let store = makeStore([host.id: transport])
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil { store.agents.count == 1 && store.terminals.count == 2 }
+        await transport.setPaneText("baseline ready", paneID: "agent")
+        await store.refreshSidebarLayouts()
+        try await waitUntil { store.agents.first?.lastOutputSnippet == "baseline ready" }
+        let snapshots = await transport.snapshotFetchCount
+        let reads = await transport.paneReadParams.count
+        let before = try #require(store.agents.first)
+        for index in 0..<20 {
+            #expect(await transport.emit(title("agent", "Agent \(index)")))
+            #expect(await transport.emit(title("shell", "Shell \(index)")))
+        }
+        try await waitUntil {
+            store.agents.first?.agent.title == "Agent 19"
+                && store.terminals.first { $0.paneID == "shell" }?.displayTitle == "Shell 19"
+        }
+        let after = try #require(store.agents.first)
+        #expect(after.agent.terminalTitle == "Agent 19")
+        #expect(after.agent.terminalTitleStripped == "Agent 19")
+        #expect(after.agent.kind == before.agent.kind && after.agent.status == before.agent.status)
+        #expect(after.agent.cwd == before.agent.cwd && after.directory == before.directory)
+        #expect(after.lastOutputSnippet == "baseline ready")
+        #expect(await transport.snapshotFetchCount == snapshots)
+        #expect(await transport.paneReadParams.count == reads)
+
+        #expect(await transport.emit(title("agent", "")))
+        #expect(await transport.emit(title("shell", "")))
+        try await waitUntil {
+            store.agents.first?.agent.terminalTitle == ""
+                && store.terminals.first { $0.paneID == "shell" }?.pane.terminalTitle == ""
+        }
+        #expect(store.terminals.first { $0.paneID == "shell" }?.displayTitle == "Main")
+        #expect(await transport.snapshotFetchCount == snapshots)
+        #expect(await transport.paneReadParams.count == reads)
+    }
+
+    @Test func coreTitlesObservedDuringSnapshotSurviveTheOlderResponse() async throws {
+        var host = Host.fixture()
+        host.backend = .herdrCore
+        let panes = [pane("agent", agent: "claude", title: "Old agent"), pane("shell", title: "Old shell")]
+        let transport = ScriptedTransport(snapshot: snapshot(panes: panes, agents: [agent()]))
+        let store = makeStore([host.id: transport])
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil { store.terminals.count == 2 }
+        await store.refreshSidebarLayouts()
+        let count = await transport.snapshotFetchCount
+        let gate = ScriptedTransportCallGate()
+        defer { Task { await gate.open() } }
+        await transport.setSnapshot(snapshot(panes: panes, agents: [agent()], workspaceLabel: "Renamed"))
+        await transport.gateNextSnapshot(using: gate)
+        #expect(await transport.emit(HerdrEvent(kind: GlobalEventKind.workspaceRenamed.kind, data: .object([:]))))
+        try await waitUntil { await gate.entryCount == 1 }
+        #expect(await transport.emit(title("agent", "New agent")))
+        #expect(await transport.emit(title("shell", "New shell")))
+        try await waitUntil { store.agents.first?.agent.title == "New agent" }
+        await gate.open()
+        try await waitUntil { store.terminals.first?.workspaceLabel == "Renamed" }
+        #expect(store.agents.first?.agent.title == "New agent")
+        #expect(store.terminals.first { $0.paneID == "agent" }?.displayTitle == "New agent")
+        #expect(store.terminals.first { $0.paneID == "shell" }?.displayTitle == "New shell")
+        #expect(await transport.snapshotFetchCount == count + 1)
+    }
+
+    @Test func unknownCoreTitleTargetsCoalesceInventoryRecovery() async throws {
+        var host = Host.fixture()
+        host.backend = .herdrCore
+        let transport = ScriptedTransport(snapshot: snapshot(panes: [pane("shell")]))
+        let store = makeStore([host.id: transport])
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil { store.terminals.count == 1 }
+        await store.refreshSidebarLayouts()
+        let count = await transport.snapshotFetchCount
+        let gate = ScriptedTransportCallGate()
+        defer { Task { await gate.open() } }
+        await transport.gateNextSnapshot(using: gate)
+        #expect(await transport.emit(title("new", "Starting")))
+        try await waitUntil { await gate.entryCount == 1 }
+        for index in 0..<20 { #expect(await transport.emit(title("new", "New \(index)"))) }
+        // The known target's update is an ordered consumption barrier.
+        #expect(await transport.emit(title("shell", "All received")))
+        try await waitUntil { store.terminals.first?.displayTitle == "All received" }
+        #expect(await transport.snapshotFetchCount == count + 1)
+        await transport.setSnapshot(snapshot(panes: [pane("shell"), pane("new", title: "New 19")]))
+        await gate.open()
+        try await waitUntil { store.terminals.first { $0.paneID == "new" }?.displayTitle == "New 19" }
+        #expect(await transport.snapshotFetchCount == count + 2)
+    }
+
+    private func title(_ paneID: String, _ value: String) -> HerdrEvent {
+        HerdrEvent(kind: .terminalTitleChanged, data: .object([
+            "pane_id": .string(paneID), "title": .string(value),
+        ]))
+    }
+
     @Test func paneUpdateDuringSnapshotSurvivesItsOlderResponse() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: snapshot(panes: [pane("shell")]))

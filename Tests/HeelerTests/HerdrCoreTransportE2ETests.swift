@@ -39,6 +39,16 @@ struct HerdrCoreTransportE2ETests {
                 try await fixture.waitForRead(transport, agent: agent, containing: "INPUT:phone-message")
                 try await transport.sendAgentKeys(AgentSendKeysParams(keys: ["x", "Enter"], target: agent))
                 try await fixture.waitForRead(transport, agent: agent, containing: "INPUT:x")
+                _ = try await fixture.command(["send", agent, "block"])
+                try await eventually { try await fixture.command(["get", agent])["status"]?["state"] == .string("blocked") }
+                do {
+                    _ = try await transport.promptAgent(AgentPromptParams(target: agent, text: "blocked-reply"))
+                    Issue.record("A blocked core Agent must refuse prompt submission")
+                } catch let error as HerdrAPIError {
+                    #expect(error.code == "agent_blocked", "Composer recognizes this code and inserts into Attach without Enter")
+                }
+                let afterRefusal = try await transport.readAgent(AgentReadParams(source: .visible, target: agent))
+                #expect(!afterRefusal.text.contains("INPUT:blocked-reply"))
                 try await transport.close()
             } catch { try? await transport.close(); throw error }
         }
@@ -59,6 +69,8 @@ struct HerdrCoreTransportE2ETests {
             do {
                 let agent = try await fixture.startProgram()
                 try await eventually { await observed.has(.paneCreated, target: agent) }
+                _ = try await fixture.command(["send", agent, "title:phone-title"])
+                try await eventually { await observed.hasTitle(target: agent, title: "phone-title") }
                 _ = try await fixture.command(["send", agent, "work"])
                 try await eventually { await observed.hasStatus(target: agent, status: "working") }
                 await stream.end()
@@ -201,6 +213,10 @@ private actor CoreSSHObservations {
     func has(_ kind: GlobalEventKind, target: String) -> Bool {
         events.contains { $0.kind == kind.kind && $0.data["pane_id"] == .string(target) }
     }
+    func hasTitle(target: String, title: String) -> Bool {
+        events.contains { $0.kind == .terminalTitleChanged
+            && $0.data["pane_id"] == .string(target) && $0.data["title"] == .string(title) }
+    }
     func hasEnded(target: String) -> Bool { has(.paneExited, target: target) || has(.paneClosed, target: target) }
     func hasStatus(target: String, status: String) -> Bool {
         events.contains { $0.kind == PaneEventKind.agentStatusChanged.kind
@@ -285,7 +301,9 @@ private struct CoreSSHFixture: Sendable {
                 print('INPUT:'+text, flush=True)
                 size = os.get_terminal_size(0)
                 print('SIZE:'+str(size.columns)+'x'+str(size.lines), flush=True)
-                status('working' if text == 'work' else 'idle')
+                if text.startswith('title:'):
+                    print('\033]2;'+text[6:]+'\007', flush=True)
+                status('blocked' if text == 'block' else 'working' if text == 'work' else 'idle')
                 pending.clear()
         """#
         let sftp = try await connection.openSFTP(timeout: .seconds(10))

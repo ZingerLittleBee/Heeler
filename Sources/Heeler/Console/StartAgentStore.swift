@@ -265,8 +265,13 @@ final class StartAgentStore {
     /// ignoring the requested directory. New Workspace likewise has no
     /// source Workspace to branch from.
     var offersWorktree: Bool {
-        origin == nil && launchTarget == .existingWorkspace
-            && hosts.first(where: { $0.id == selectedHostID })?.backend != .herdrCore
+        origin == nil && launchTarget == .existingWorkspace && offersWorkspaceAndTabNames
+    }
+
+    /// Core groups terminals by directory, without separately named tabs or
+    /// Workspaces. Its Agent name remains independently supported.
+    var offersWorkspaceAndTabNames: Bool {
+        hosts.first(where: { $0.id == selectedHostID })?.backend != .herdrCore
     }
 
     /// Whether the form offers Existing vs New Workspace. Origin launches
@@ -436,7 +441,7 @@ final class StartAgentStore {
             arguments: arguments,
             workspaceID: workspaceID,
             cwd: origin?.cwd,
-            tabLabel: Self.nonEmptyTrimmed(tabLabel))
+            tabLabel: offersWorkspaceAndTabNames ? Self.nonEmptyTrimmed(tabLabel) : nil)
         do {
             let agent = try await start(request, destination, hostID)
             if case .newWorkspace = destination {
@@ -479,7 +484,7 @@ final class StartAgentStore {
             return .newWorkspace(
                 NewWorkspaceSpec(
                     directory: directory,
-                    label: Self.nonEmptyTrimmed(newWorkspaceLabel)))
+                    label: offersWorkspaceAndTabNames ? Self.nonEmptyTrimmed(newWorkspaceLabel) : nil))
         }
     }
 

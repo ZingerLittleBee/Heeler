@@ -75,6 +75,8 @@ final class HostConsoleProjection {
         [:]
     private var paneChangeRevision: UInt64 = 0
     private var latestPaneChanges: [String: (revision: UInt64, pane: PaneInfo)] = [:]
+    private var titleChangeRevision: UInt64 = 0
+    private var latestTitleChanges: [String: (revision: UInt64, title: String)] = [:]
     private var statusChangeRevision: UInt64 = 0
     private var latestStatusChanges: [
         String: (revision: UInt64, status: AgentStatus)
@@ -672,6 +674,8 @@ final class HostConsoleProjection {
                     // Unknown can additionally mean the Agent left its Pane.
                     scheduleResync()
                 }
+            } else if event.kind == .terminalTitleChanged {
+                applyTerminalTitleChange(event.data)
             } else if event.kind == GlobalEventKind.paneUpdated.kind {
                 applyPaneChange(event.data)
             } else if Self.resyncEventKinds.contains(event.kind) {
@@ -715,6 +719,7 @@ final class HostConsoleProjection {
         let epochBeforeSnapshot = snapshotEpoch
         let statusRevisionBeforeSnapshot = statusChangeRevision
         let paneRevisionBeforeSnapshot = paneChangeRevision
+        let titleRevisionBeforeSnapshot = titleChangeRevision
         do {
             let snapshot = try await session.withTransport { transport in
                 try await transport.sessionSnapshot()
@@ -731,6 +736,7 @@ final class HostConsoleProjection {
                 snapshot,
                 preservingStatusChangesAfter: statusRevisionBeforeSnapshot,
                 preservingPaneChangesAfter: paneRevisionBeforeSnapshot,
+                preservingTitleChangesAfter: titleRevisionBeforeSnapshot,
                 requestGeneration: requestGeneration)
             await session.updateSubscriptions(
                 Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
@@ -771,6 +777,7 @@ final class HostConsoleProjection {
         syncError = nil
         latestStatusChanges.removeAll(keepingCapacity: true)
         latestPaneChanges.removeAll(keepingCapacity: true)
+        latestTitleChanges.removeAll(keepingCapacity: true)
         terminalsByPane.removeAll(keepingCapacity: true)
         pendingSnippetRefreshes.removeAll(keepingCapacity: true)
         agentsByPane.removeAll(keepingCapacity: true)
@@ -782,6 +789,7 @@ final class HostConsoleProjection {
         _ snapshot: SessionSnapshot,
         preservingStatusChangesAfter snapshotStartRevision: UInt64,
         preservingPaneChangesAfter paneStartRevision: UInt64,
+        preservingTitleChangesAfter titleStartRevision: UInt64,
         requestGeneration: UInt64
     ) {
         sidebarRevision &+= 1
@@ -834,6 +842,9 @@ final class HostConsoleProjection {
             if let change = latestPaneChanges[agent.paneID], change.revision > paneStartRevision {
                 row.updateDirectory(from: change.pane)
             }
+            if let change = latestTitleChanges[agent.paneID], change.revision > titleStartRevision {
+                row.updateTerminalTitle(change.title)
+            }
             nextAgents[agent.paneID] = row
         }
         for (paneID, change) in latestStatusChanges
@@ -864,15 +875,20 @@ final class HostConsoleProjection {
             let tab = tabByID[pane.tabID].flatMap {
                 $0.workspaceID == pane.workspaceID ? $0 : nil
             }
-            nextTerminals[pane.paneID] = ConsoleTerminal(
+            var terminal = ConsoleTerminal(
                 hostID: host.id, hostName: host.displayName, hostUsername: host.username,
                 pane: pane, workspaceLabel: workspaceByID[pane.workspaceID]?.label,
                 tabLabel: tab?.label,
                 workspaceOrder: workspacePositions[pane.workspaceID] ?? Int.max,
                 tabPosition: tab.flatMap { tabPositions[$0.tabID] }, snapshotOrder: order,
                 snapshotAgentKind: nextAgents[pane.paneID]?.agent.kind)
+            if let change = latestTitleChanges[pane.paneID], change.revision > titleStartRevision {
+                terminal.updateTerminalTitle(change.title)
+            }
+            nextTerminals[pane.paneID] = terminal
         }
         latestPaneChanges.removeAll(keepingCapacity: true)
+        latestTitleChanges.removeAll(keepingCapacity: true)
         terminalsByPane = nextTerminals
         workspacesByID = workspaceByID
         workspaces = snapshot.workspaces.enumerated()
@@ -956,6 +972,40 @@ final class HostConsoleProjection {
             terminal.pane = pane
             if terminal != terminalsByPane[pane.paneID] {
                 terminalsByPane[pane.paneID] = terminal
+                changed = true
+            }
+        }
+        if changed { publish() }
+    }
+
+    private func applyTerminalTitleChange(_ data: JSONValue) {
+        guard status == .connected,
+            let paneID = data["pane_id"]?.stringValue,
+            let title = data["title"]?.stringValue
+        else { return }
+        titleChangeRevision &+= 1
+        if resyncTask != nil {
+            latestTitleChanges[paneID] = (titleChangeRevision, title)
+        }
+        let isKnown = agentsByPane[paneID] != nil || terminalsByPane[paneID] != nil
+        guard isKnown else {
+            // Membership may have changed while the snapshot was in flight.
+            // Use the existing single-flight/coalesced inventory recovery.
+            scheduleResync()
+            return
+        }
+        var changed = false
+        if var row = agentsByPane[paneID] {
+            row.updateTerminalTitle(title)
+            if row != agentsByPane[paneID] {
+                agentsByPane[paneID] = row
+                changed = true
+            }
+        }
+        if var terminal = terminalsByPane[paneID] {
+            terminal.updateTerminalTitle(title)
+            if terminal != terminalsByPane[paneID] {
+                terminalsByPane[paneID] = terminal
                 changed = true
             }
         }

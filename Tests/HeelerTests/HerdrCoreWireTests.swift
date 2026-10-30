@@ -203,7 +203,7 @@ import Testing
         for (type, kind) in [
             ("created", GlobalEventKind.paneCreated), ("restarted", .paneCreated),
             ("removed", .paneClosed), ("finished", .paneExited),
-            ("foreground", .paneAgentDetected), ("title", .tabRenamed),
+            ("foreground", .paneAgentDetected),
         ] {
             let line = try notification(type: type, target: "t3", sequence: 3)
             #expect(try HerdrCoreWire.decodeEvent(fromLine: line)?.kind == kind.kind)
@@ -211,6 +211,21 @@ import Testing
         #expect(try HerdrCoreWire.decodeEvent(fromLine: notification(type: "status", target: "remote/t3", sequence: 3)) == nil)
         let clear = try HerdrCoreWire.decodeEvent(fromLine: notification(type: "status", target: "t3", sequence: 3))
         #expect(clear?.data["agent_status"] == .string("unknown"))
+    }
+
+    @Test func titleNotificationsAreLocalPresentationDeltas() throws {
+        let line = Data(#"{"jsonrpc":"2.0","method":"event","params":{"seq":5,"type":"title","terminal":"t3","data":{"title":"Working"}}}"#.utf8)
+        let event = try #require(try HerdrCoreWire.decodeEvent(fromLine: line))
+        #expect(event.kind == .terminalTitleChanged)
+        #expect(event.data == .object(["pane_id": .string("t3"), "title": .string("Working")]))
+        let snapshot = try HerdrCoreWire.snapshot(from: json(Self.inventory))
+        #expect(snapshot.tabs.first?.label == "review")
+        #expect(snapshot.tabs[1].label == "t9")
+        #expect(snapshot.panes.first?.terminalTitleStripped == "Reviewing")
+        // An explicit empty terminal title stays cleared on the next snapshot.
+        let cleared = try HerdrCoreWire.snapshot(from: json(#"{"terminals":[{"address":"t3","cwd":"/work","state":"live","argv":["claude"],"title":"","status":{"app":"claude-code","state":"idle","title":"Status label"}}]}"#))
+        #expect(cleared.agents.first?.terminalTitle == "")
+        #expect(cleared.panes.first?.terminalTitleStripped == "")
     }
 
     @Test func missedSnapshotAdvancesCursorAndRejectsOlderBufferedEvents() throws {

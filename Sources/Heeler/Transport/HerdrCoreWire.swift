@@ -100,7 +100,7 @@ enum HerdrCoreWire {
             tabs: terminals.enumerated().map { index, terminal in
                 TabInfo(
                     agentStatus: terminal.status, focused: false,
-                    label: terminal.name ?? nonEmpty(terminal.title) ?? terminal.address,
+                    label: terminal.name ?? terminal.address,
                     number: index + 1, paneCount: 1, tabID: terminal.address,
                     workspaceID: workspaceID(for: terminal.cwd))
             },
@@ -154,12 +154,19 @@ enum HerdrCoreWire {
                     "agent_status": .string(status(from: params["data"]?["status"]).rawValue),
                 ]))
         }
+        if type == "title" {
+            guard let title = params["data"]?["title"]?.stringValue else {
+                throw malformed("A title event has no title.")
+            }
+            return HerdrEvent(kind: .terminalTitleChanged, data: .object([
+                "pane_id": .string(target), "title": .string(title),
+            ]))
+        }
         let kind: GlobalEventKind
         switch type {
         case "created", "restarted": kind = .paneCreated
         case "removed": kind = .paneClosed
         case "finished", "lost": kind = .paneExited
-        case "title": kind = .tabRenamed
         case "foreground", "labels", "turn", "keep": kind = .paneAgentDetected
         case "size": return nil
         default: return .eventsDropped
@@ -298,7 +305,7 @@ enum HerdrCoreWire {
             self.cwd = cwd
             foregroundCwd = nonEmpty(record["foreground"]?["cwd"]?.stringValue)
             name = nonEmpty(record["name"]?.stringValue)
-            title = nonEmpty(record["title"]?.stringValue)
+            title = record["title"]?.stringValue
                 ?? record["status"]?["title"]?.stringValue ?? ""
             status = HerdrCoreWire.status(from: record["status"])
             turn = integer(record["turn"]) ?? 0
@@ -331,7 +338,8 @@ enum HerdrCoreWire {
             PaneInfo(
                 agentStatus: status, focused: false, paneID: address, revision: turn,
                 tabID: address, terminalID: address, workspaceID: workspaceID(for: cwd),
-                agent: kind, cwd: cwd, foregroundCwd: foregroundCwd, terminalTitle: title)
+                agent: kind, cwd: cwd, foregroundCwd: foregroundCwd,
+                terminalTitle: title, terminalTitleStripped: TerminalTitleGlyphs.strip(title))
         }
     }
 }

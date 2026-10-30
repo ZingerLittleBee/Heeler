@@ -60,7 +60,9 @@ struct StartAgentView: View {
                     } header: {
                         Text("Directory")
                     } footer: {
-                        Text("The Agent starts in a new tab here, next to the one you opened this from.")
+                        Text(store.offersWorkspaceAndTabNames
+                            ? "The Agent starts in a new tab here, next to the one you opened this from."
+                            : "The Agent starts in this directory.")
                     }
                 } else {
                     Section("Host") {
@@ -87,10 +89,12 @@ struct StartAgentView: View {
                             onSelectNewWorkspace: store.selectNewWorkspace,
                             onNewWorkspace: openDirectoryBrowser)
                         if store.launchTarget == .newWorkspace {
-                            TextField(
-                                "Workspace name (optional)",
-                                text: $store.newWorkspaceLabel)
-                                .autocorrectionDisabled()
+                            if store.offersWorkspaceAndTabNames {
+                                TextField(
+                                    "Workspace name (optional)",
+                                    text: $store.newWorkspaceLabel)
+                                    .autocorrectionDisabled()
+                            }
                             if store.newWorkspaceDirectory.isEmpty {
                                 Label(
                                     "Directory: the Host's home directory",
@@ -111,9 +115,9 @@ struct StartAgentView: View {
                         Text("Workspace")
                     } footer: {
                         if store.launchTarget == .newWorkspace {
-                            Text(
-                                "Creates a fresh Workspace on the Host. An empty name uses the directory's name."
-                            )
+                            Text(store.offersWorkspaceAndTabNames
+                                ? "Creates a fresh Workspace on the Host. An empty name uses the directory's name."
+                                : "Starts the Agent in this directory. Terminals in the same directory are grouped together.")
                         }
                     }
                 }
@@ -209,13 +213,15 @@ struct StartAgentView: View {
                     }
                 }
 
-                Section {
-                    TextField("Tab name (optional)", text: $store.tabLabel)
-                        .autocorrectionDisabled()
-                } header: {
-                    Text("Tab Name")
-                } footer: {
-                    Text("Empty lets herdr or a title plugin name the tab.")
+                if store.offersWorkspaceAndTabNames {
+                    Section {
+                        TextField("Tab name (optional)", text: $store.tabLabel)
+                            .autocorrectionDisabled()
+                    } header: {
+                        Text("Tab Name")
+                    } footer: {
+                        Text("Empty lets herdr or a title plugin name the tab.")
+                    }
                 }
 
                 Section {

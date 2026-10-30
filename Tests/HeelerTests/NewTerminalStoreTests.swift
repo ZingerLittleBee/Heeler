@@ -80,6 +80,28 @@ struct NewTerminalStoreTests {
         #expect(store.state == .created(terminal(for: host).id))
     }
 
+    @Test(arguments: [false, true])
+    func coreCreationDropsLabelsRetainedAfterSwitchingHosts(newWorkspace: Bool) async {
+        let core = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let recorder = Recorder()
+        let store = makeStore(hosts: [host, core], recorder: recorder)
+        store.selectedHostID = host.id
+        #expect(store.offersWorkspaceAndTabNames)
+        store.tabLabel = "legacy tab"
+        store.selectedHostID = core.id
+        #expect(!store.offersWorkspaceAndTabNames)
+        if newWorkspace {
+            store.applyBrowsedDirectory("/srv/new")
+            store.newWorkspaceLabel = "hidden workspace"
+        }
+
+        await store.submit()
+
+        #expect(recorder.destinations == (newWorkspace
+            ? [.newWorkspace(NewWorkspaceSpec(directory: "/srv/new", label: nil), tabLabel: nil)]
+            : [.existing(ShellTerminalCreationRequest(workspaceID: "w1", cwd: "/srv/api", label: nil))]))
+    }
+
     @Test func workspaceWithoutADirectoryFallsBackToHome() async {
         let recorder = Recorder()
         let store = makeStore(recorder: recorder)
