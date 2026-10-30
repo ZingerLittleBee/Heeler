@@ -130,6 +130,13 @@ herdr-core Hosts only.
   Pi's session files and Grok Build's `active_sessions.json` rows, all of which
   need a signed-in model; Grok Build's `pid_start` encoding and its leader
   mode; whether Oh My Pi's security scan rewrites the breadcrumb; OpenCode
-  2.x at runtime, read only from source; Claude Code's process start on
-  macOS; `HC_TERMINAL_SOCKET`'s form on Windows; and whether Windows
-  Transcripts are read over SFTP or the core's `file.read`.
+  2.x at runtime, read only from source; whether Claude Code's `procStart` on
+  macOS equals the start `ps -o lstart=` prints; `HC_TERMINAL_SOCKET`'s form on
+  Windows; and whether Windows Transcripts are read over SFTP or the core's
+  `file.read`.
+- Confirmed on macOS 27.0.1, against processes the spike started
+  ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
+  `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from
+  `lsof`. macOS withholds an Apple platform binary's environment, which reads
+  as unavailable. Any of these that fails leaves the program to its candidate
+  list and the leak notice to show nothing.

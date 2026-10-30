@@ -4,13 +4,20 @@ import Foundation
 /// environment: when each started, named environment variables, and the files
 /// it holds open. Pure: it builds one bounded script, which a caller runs in
 /// one exec, and parses what the script prints (ADR 0034).
+///
+/// Only pids, variable names and the nonce reach the script, each validated,
+/// so nothing from a Terminal becomes a shell word, and it takes no file path.
+/// The script filters on the Host: no other variable's name or value leaves it.
 enum HostProcessReader {
     struct Request: Equatable, Sendable {
         /// Decimal process ids. Anything else is refused before a script exists.
         var pids: [String]
         var readsStart = false
+        /// Exact names whose values are read.
         var valuesOf: [String] = []
+        /// Names reported only when non-empty, never with a value or `=`.
         var namesOf: [String] = []
+        /// As ``namesOf``, for any name starting with one of these.
         var namesWithPrefix: [String] = []
         var readsOpenFiles = false
 
@@ -128,9 +135,9 @@ enum HostProcessReader {
         [
             "R=\(root)",
             // `od` keeps the environment's NUL framing exact whatever a value
-            // holds, and a program that cannot hold a value it does not want
-            // cannot print it. `ok` follows only a whole read, and an empty
-            // read (a zombie, a kernel thread) says nothing about any name.
+            // holds, and awk keeps a value only for an exact name asked for.
+            // `ok` follows only a whole read, and an empty read (a zombie, a
+            // kernel thread) says nothing about any name.
             "e() {",
             "  { od -An -v -tx1 <\"$R/$1/environ\" && echo ok; } | awk -v p=\"$1\" '",
             "function d(x,i,s,c){for(i=1;i<length(x);i+=2){c=T[substr(x,i,2)];"
