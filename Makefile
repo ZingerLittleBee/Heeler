@@ -112,6 +112,7 @@ test-tools: check-agent-docs check-test-membership ## Test agent tooling without
 	python3 scripts/test-herdr-core-lab-check.py
 	python3 scripts/test-node-toolchain-probe.py
 	python3 scripts/test-host-process-reader.py
+	python3 scripts/test-host-helper-manifest.py
 	sh scripts/test-source-revision.sh
 	bash scripts/test-publish-plugin.sh
 	$(MAKE) test-ci-evidence

@@ -1,0 +1,17 @@
+{
+  "version": "0.1.0",
+  "files": [
+    {
+      "path": "main.js",
+      "sha256": "aa73a49f572da24a19b654dbe3b01703ac59bc57f82496a0aa1e4f71baea2833"
+    },
+    {
+      "path": "package.json",
+      "sha256": "1ddf832cd627a5c8a58aaee4a2788a2b3a9f23d86d6c3183d56d1c34f7955930"
+    },
+    {
+      "path": "version.json",
+      "sha256": "3b5777d9f33a93723a17a18659df4b19ba174ba7673b693266329d5d16ffcc3b"
+    }
+  ]
+}

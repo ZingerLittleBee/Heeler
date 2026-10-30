@@ -1,0 +1,6 @@
+{
+  "name": "heeler-host-helper",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module"
+}
