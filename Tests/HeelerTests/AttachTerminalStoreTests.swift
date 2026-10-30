@@ -605,6 +605,210 @@ struct AttachTerminalStoreTests {
 
         await store.stop()
     }
+
+    // MARK: Terminal modes
+
+    private static let everyMode = Data(
+        "\u{1B}[?2004h\u{1B}[?1h\u{1B}[?1000h\u{1B}[?1049h\u{1B}[>9u".utf8)
+
+    private func makeSurface() -> HeelerTerminalView {
+        TerminalScreenView.makeConfiguredTerminal(notificationCenter: NotificationCenter())
+    }
+
+    private func expectEveryModeOn(
+        _ surface: HeelerTerminalView, sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        #expect(surface.usesBracketedPaste, sourceLocation: sourceLocation)
+        #expect(surface.usesApplicationCursorKeys, sourceLocation: sourceLocation)
+        #expect(surface.remoteTracksMouse, sourceLocation: sourceLocation)
+        #expect(surface.isAlternateScreen, sourceLocation: sourceLocation)
+    }
+
+    @Test func modesSurviveAViewRemount() async throws {
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+        try await goLive(store, transport)
+        let first = makeSurface()
+        store.feed.attach(first)
+
+        #expect(await transport.emitAttachOutput(Self.everyMode))
+        try await waitUntil("the modes should arrive") { store.modes.usesBracketedPaste }
+        expectEveryModeOn(first)
+
+        // The remounted view has seen none of that output.
+        let second = makeSurface()
+        store.feed.attach(second)
+        expectEveryModeOn(second)
+        #expect(store.modes.kittyKeyboardFlags == 9)
+
+        await store.stop()
+    }
+
+    @Test func modesKeepFollowingOutputWhileNoViewIsAttached() async throws {
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+        try await goLive(store, transport)
+        do {
+            let gone = Captured()
+            store.feed.attach(gone)
+        }
+
+        #expect(await transport.emitAttachOutput(Self.everyMode))
+        try await waitUntil("the modes should arrive") { store.modes.usesBracketedPaste }
+
+        let returned = makeSurface()
+        store.feed.attach(returned)
+        expectEveryModeOn(returned)
+
+        await store.stop()
+    }
+
+    @Test func aRemountedViewTellsItsScrollControlWhatSurvived() async throws {
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+        try await goLive(store, transport)
+        #expect(await transport.emitAttachOutput(Self.everyMode))
+        try await waitUntil("the modes should arrive") { store.modes.usesBracketedPaste }
+
+        // `makeUIView` hands the control the surface before attaching the feed.
+        let control = TerminalScrollControl()
+        let surface = makeSurface()
+        control.terminal = surface
+        #expect(!control.isAlternateScreen)
+        store.feed.attach(surface)
+        #expect(control.isAlternateScreen)
+        #expect(control.canScrollRemoteContent)
+
+        await store.stop()
+    }
+
+    @Test func modesResetWhenANewAttachSessionBegins() async throws {
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+        try await goLive(store, transport)
+        let surface = makeSurface()
+        let control = TerminalScrollControl()
+        control.terminal = surface
+        store.feed.attach(surface)
+        #expect(await transport.emitAttachOutput(Self.everyMode))
+        try await waitUntil("the modes should arrive") { store.modes.usesBracketedPaste }
+        #expect(control.isAlternateScreen)
+
+        // Ending a session is not beginning one: the modes wait for the next.
+        await transport.endAttachFromRemote()
+        try await waitUntil("the remote end should surface") {
+            if case .ended = store.status { return true }
+            return false
+        }
+        expectEveryModeOn(surface)
+        #expect(store.modes.kittyKeyboardFlags == 9)
+
+        store.retry()
+        try await waitUntil("the new session should begin") { !surface.usesBracketedPaste }
+        #expect(store.status == .connecting)
+        #expect(!surface.usesApplicationCursorKeys)
+        #expect(!surface.remoteTracksMouse)
+        #expect(!surface.isAlternateScreen)
+        #expect(store.modes.kittyKeyboardFlags == 0)
+        #expect(!control.isAlternateScreen)
+        #expect(!control.canScrollRemoteContent)
+
+        try await paint(transport, Self.everyMode)
+        try await waitUntil("store should go live") { store.status == .live }
+        expectEveryModeOn(surface)
+        #expect(control.isAlternateScreen)
+
+        await store.stop()
+    }
+
+    @Test func aReattachAfterAConnectionLossBeginsAfreshToo() async throws {
+        let first = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        let transports = InstalledTransports()
+        await transports.install(first, generation: 0)
+        let store = makeStore(transports: transports)
+        try await goLive(store, first, firstPaint: Self.everyMode)
+        #expect(store.modes.usesBracketedPaste)
+
+        await first.failAttachStream(
+            .sshUnreachable(detail: "The SSH connection is no longer reusable."))
+        try await waitUntil("the loss should wait for the next Transport") {
+            await transports.waits == 2
+        }
+        #expect(store.status == .reconnecting)
+        #expect(store.modes.usesBracketedPaste)
+
+        await transports.install(replacement, generation: 1)
+        try await waitUntil("the reattach should begin afresh") {
+            !store.modes.usesBracketedPaste
+        }
+        #expect(store.modes.kittyKeyboardFlags == 0)
+
+        try await paint(replacement, Self.everyMode)
+        try await waitUntil("the new session should set its own modes") {
+            store.modes.usesBracketedPaste
+        }
+
+        await store.stop()
+    }
+
+    /// The surface reads the pipeline's modes as each chunk reaches it.
+    @MainActor
+    private final class ModeReadingSurface: TerminalByteSink {
+        var read: () -> Bool = { false }
+        private(set) var seen: [Bool] = []
+
+        func receive(_ data: Data) {
+            seen.append(read())
+        }
+    }
+
+    @Test func aViewReadsModesAfterTheOutputItIsHanded() async throws {
+        let transport = ScriptedTransport()
+        let (store, _) = makeStore(transport: transport)
+        try await goLive(store, transport)
+        let surface = ModeReadingSurface()
+        surface.read = { store.modes.usesBracketedPaste }
+        store.feed.attach(surface)
+
+        // A repaint turns a mode off and on again, and can straddle chunks.
+        for chunk in ["\u{1B}[?2004h", "\u{1B}[?2004l", "\u{1B}[?20", "04hdrawn"] {
+            #expect(await transport.emitAttachOutput(Data(chunk.utf8)))
+        }
+        try await waitUntil("every chunk should arrive") { surface.seen.count == 4 }
+        #expect(surface.seen == [true, false, false, true])
+
+        await store.stop()
+    }
+
+    @Test func aHostedSurfaceDoesNotCountOutputTwice() {
+        let feed = TerminalByteFeed()
+        let surface = makeSurface()
+        feed.attach(surface)
+
+        // A second count of each would overflow the stack and pop it empty.
+        for flags in 1...5 {
+            feed.write(Data("\u{1B}[>\(flags)u".utf8))
+        }
+        feed.write(Data("\u{1B}[<4u".utf8))
+
+        #expect(feed.modes.tracker.kittyKeyboardFlags == 1)
+    }
+
+    @Test func outputBufferedForTheFirstViewCountsOnce() {
+        let feed = TerminalByteFeed()
+        for flags in 1...5 {
+            feed.write(Data("\u{1B}[>\(flags)u".utf8))
+        }
+        feed.write(Data("\u{1B}[<4u".utf8))
+        feed.write(Data("\u{1B}[?2004h".utf8))
+
+        let surface = makeSurface()
+        feed.attach(surface)
+
+        #expect(surface.usesBracketedPaste)
+        #expect(feed.modes.tracker.kittyKeyboardFlags == 1)
+    }
 }
 
 @MainActor
