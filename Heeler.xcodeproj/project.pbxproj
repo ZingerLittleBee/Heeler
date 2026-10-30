@@ -412,6 +412,7 @@
 		80E28FB88E27A5A8FA516BAA /* IBMPlexMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 48F025CF6E2C3068BF911290 /* IBMPlexMono-Regular.ttf */; };
 		81129F8952AA54C9B1B205C1 /* GitProbe+Changes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4E53E3D3855055D7DF04AA /* GitProbe+Changes.swift */; };
 		815BA6026CCD7AD9B4DA496C /* ChatTimelineGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54B6A3DF0F7CCF7FD5A14805 /* ChatTimelineGeometry.swift */; };
+		81A789B0D295035EC13B6D68 /* CoreMutationDispatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D546B3D8F3F96725D6F0B170 /* CoreMutationDispatch.swift */; };
 		81C8DD4AB0B96F366DDDA096 /* ConsoleTerminalInventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67C65FCE91D863F4028B886 /* ConsoleTerminalInventoryTests.swift */; };
 		81DA9F136FCE696ACD0632DF /* InteractivePopGesture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46DEE9ECECAF179DB591F32 /* InteractivePopGesture.swift */; };
 		81E0207D8AA28513FEA755B0 /* SkillsPaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9156B9BB51E7A5AD1792D9 /* SkillsPaneStore.swift */; };
@@ -1601,6 +1602,7 @@
 		D43AE8B2A62473EBA9EA090E /* SSHTransportSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransportSettings.swift; sourceTree = "<group>"; };
 		D46DEE9ECECAF179DB591F32 /* InteractivePopGesture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractivePopGesture.swift; sourceTree = "<group>"; };
 		D4CA687285B470E3968D1DB6 /* PairingCeremony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCeremony.swift; sourceTree = "<group>"; };
+		D546B3D8F3F96725D6F0B170 /* CoreMutationDispatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreMutationDispatch.swift; sourceTree = "<group>"; };
 		D588CA22544907E638437FEA /* AgentInputModeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInputModeSettingsTests.swift; sourceTree = "<group>"; };
 		D5C058D102046A707547A0FD /* GeneratedWireTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWireTypesTests.swift; sourceTree = "<group>"; };
 		D663C74D9F4453BB34CA7A36 /* ComposerDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerDrop.swift; sourceTree = "<group>"; };
@@ -2767,6 +2769,7 @@
 				8133B7654CEFC5533DCDCC5A /* TransportError+Presentation.swift */,
 				4E2DA4B6414E0BC627326AE1 /* WindowsTerminalChannel.swift */,
 				EF8998AE7ED8477BE97A2919 /* Generated */,
+				C5EF1A08C1476ABAC82E9434 /* HerdrCore */,
 			);
 			path = Transport;
 			sourceTree = "<group>";
@@ -2828,6 +2831,14 @@
 				88062AE11DDF93EB77A63D6B /* SSHPairingConnector.swift */,
 			);
 			path = Pairing;
+			sourceTree = "<group>";
+		};
+		C5EF1A08C1476ABAC82E9434 /* HerdrCore */ = {
+			isa = PBXGroup;
+			children = (
+				D546B3D8F3F96725D6F0B170 /* CoreMutationDispatch.swift */,
+			);
+			path = HerdrCore;
 			sourceTree = "<group>";
 		};
 		C5F179F7F5B6949203D7A806 /* Source */ = {
@@ -3392,6 +3403,7 @@
 				A7DC2698D649E2E1571BFB7F /* ConsoleWorkspaceCards.swift in Sources */,
 				F71F183E690597E106438E55 /* ContentView.swift in Sources */,
 				E19270A695B322233CEEBB35 /* ConversationReference.swift in Sources */,
+				81A789B0D295035EC13B6D68 /* CoreMutationDispatch.swift in Sources */,
 				0272B09CE3B0F295EAD8FC32 /* DemoChatSample.swift in Sources */,
 				5AE19E756AC8746C068E5D59 /* DemoOpenCodeChatSample.swift in Sources */,
 				B84C00DC58157648A390407D /* DemoPiChatSample.swift in Sources */,

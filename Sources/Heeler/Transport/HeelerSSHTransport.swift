@@ -1109,8 +1109,7 @@ actor HeelerSSHTransport: Transport {
             // Generation one queues terminal.send without binding it to an
             // Agent process or cancelling it when the client disconnects.
             // Even a fresh agentInfo preflight can become stale in that queue.
-            throw TransportError.hostFeatureUnavailable(
-                feature: "Insert the draft into the live Terminal and confirm it with Enter")
+            throw TransportError.hostFeatureUnavailable(feature: "Sending from the Composer")
         }
         let response = try await request(
             method: "agent.prompt", params: params, decoding: AgentPromptedResponse.self)
@@ -3767,25 +3766,5 @@ extension HeelerSSHTransport {
             "env": .object(["PATH": .string(path)])
         ])
         return try HerdrCoreWire.agent(from: terminal)
-    }
-}
-
-/// The deadline's operation can outlive its caller; actor ownership keeps
-/// partial-write evidence visible to the timeout path without a data race.
-actor CoreMutationDispatch {
-    private var wasAttempted = false
-    private var sealed = false
-
-    func begin() throws {
-        try Task.checkCancellation()
-        guard !sealed else { throw TransportError.cancelled }
-        wasAttempted = true
-    }
-
-    /// Atomically prevents a timed-out pre-dispatch continuation from writing
-    /// later, while preserving uncertainty if a write already began.
-    func seal() -> Bool {
-        sealed = true
-        return wasAttempted
     }
 }
