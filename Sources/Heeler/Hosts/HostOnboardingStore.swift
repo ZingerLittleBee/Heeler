@@ -199,7 +199,7 @@ final class HostOnboardingStore {
                 return
             }
             let launcherFailure: PreflightReport?
-            if host.backend == .herdrCore {
+            if host.serverKind == .herdrCore {
                 // Core sessions belong to a different server. A legacy CLI
                 // discovery must not advertise unrelated TUI sessions.
                 launcherFailure = nil

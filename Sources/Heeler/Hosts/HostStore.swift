@@ -21,7 +21,7 @@ final class HostStore {
     private static let catalogVersion = 1
 
     /// Decodes each Host through its own decoder so a future authentication
-    /// method, backend, or herdr endpoint this build cannot read hides only that
+    /// method, Server Kind, or herdr endpoint this build cannot read hides only that
     /// Host from an older build. Other malformed Host data still fails the
     /// catalog instead of being discarded silently. The unrecognized future
     /// entries survive later writes from this build.
@@ -57,8 +57,8 @@ final class HostStore {
                     entries.append(.unknown(rawHost))
                     continue
                 }
-                if let backend = rawHost["backend"]?.stringValue,
-                    HostBackend(rawValue: backend) == nil
+                if let serverKind = rawHost["serverKind"]?.stringValue,
+                    ServerKind(rawValue: serverKind) == nil
                 {
                     entries.append(.unknown(rawHost))
                     continue
@@ -178,7 +178,7 @@ final class HostStore {
         guard let index = hosts.firstIndex(where: { $0.id == host.id }) else {
             throw HostStoreError.unknownHost
         }
-        if hosts[index].backend == .herdr, host.backend == .herdrCore {
+        if hosts[index].serverKind == .herdrTUI, host.serverKind == .herdrCore {
             // An unreadable Keychain is not proof that no registration remains.
             let hasKey = (try? notificationKeys.record(forHost: host.id) == nil) != true
             guard !hasKey, !notificationWriteInProgress(host.id) else {

@@ -103,7 +103,7 @@ struct NotificationPreferencesStoreTests {
     // MARK: Reflecting the Host's truth
 
     @Test func coreNotificationsStayUnavailableWithoutReadingOrWritingLegacyRegistration() async {
-        let core = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let transport = ScriptedTransport()
         let store = NotificationPreferencesStore(
             transports: ScriptedTransportProvider(transports: [core.id: transport]),
@@ -136,7 +136,7 @@ struct NotificationPreferencesStoreTests {
         let refresh = Task { await store.refresh() }
         try await hold.waitUntilEntered()
         var core = host
-        core.backend = .herdrCore
+        core.serverKind = .herdrCore
         store.setHosts([core])
         await hold.release()
         await refresh.value
@@ -169,7 +169,7 @@ struct NotificationPreferencesStoreTests {
         try await hold.waitUntilEntered()
         #expect(store.hasPendingWrite(for: host.id))
         var core = host
-        core.backend = .herdrCore
+        core.serverKind = .herdrCore
         store.setHosts([core])
         await hold.release()
         await write.value

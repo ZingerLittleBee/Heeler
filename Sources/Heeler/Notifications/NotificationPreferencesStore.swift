@@ -87,13 +87,13 @@ final class NotificationPreferencesStore {
         self.hosts = hosts
         states = states.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
-        for host in hosts where host.backend == .herdrCore {
+        for host in hosts where host.serverKind == .herdrCore {
             states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
         }
     }
 
     private func isCurrent(_ operation: UUID, for host: Host) -> Bool {
-        operations[host.id] == operation && hosts.contains(host) && host.backend == .herdr
+        operations[host.id] == operation && hosts.contains(host) && host.serverKind == .herdrTUI
     }
 
     /// Re-reads every Host's registration file so the toggles reflect what
@@ -176,7 +176,7 @@ final class NotificationPreferencesStore {
     func revokeRegistration(
         for host: Host, isConnected: Bool, timeout: Duration = .seconds(6)
     ) async {
-        guard host.backend == .herdr, isConnected,
+        guard host.serverKind == .herdrTUI, isConnected,
             (try? ceremony.keys.record(forHost: host.id)) != nil else { return }
         let operation = UUID()
         operations[host.id] = operation
@@ -216,7 +216,7 @@ final class NotificationPreferencesStore {
 
     private func load(_ host: Host) async {
         guard hosts.contains(host) else { return }
-        guard host.backend == .herdr else {
+        guard host.serverKind == .herdrTUI else {
             states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
             return
         }
@@ -275,7 +275,7 @@ final class NotificationPreferencesStore {
         ) async throws -> HostSettings
     ) async {
         guard hosts.contains(host) else { return }
-        guard host.backend == .herdr else {
+        guard host.serverKind == .herdrTUI else {
             states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
             return
         }
@@ -343,7 +343,7 @@ final class NotificationPreferencesStore {
     }
 
     private func confirmedSettings(for hostID: Host.ID) -> HostSettings? {
-        guard hosts.contains(where: { $0.id == hostID && $0.backend == .herdr }) else { return nil }
+        guard hosts.contains(where: { $0.id == hostID && $0.serverKind == .herdrTUI }) else { return nil }
         return switch states[hostID] {
         case .idle(let settings), .failed(_, let settings):
             settings

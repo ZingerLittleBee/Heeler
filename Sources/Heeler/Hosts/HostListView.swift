@@ -163,9 +163,9 @@ final class HostRemovalStore {
             hosts: hosts,
             deletesNotificationKey: !keyed.isEmpty,
             leavesNotificationsBehind: keyed.contains {
-                $0.backend == .herdrCore || !dependencies.isConnected($0.id)
+                $0.serverKind == .herdrCore || !dependencies.isConnected($0.id)
             },
-            leavesLegacyNotificationsBehind: keyed.contains { $0.backend == .herdrCore })
+            leavesLegacyNotificationsBehind: keyed.contains { $0.serverKind == .herdrCore })
     }
 
     func cancelRemoval() {

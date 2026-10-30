@@ -32,30 +32,30 @@ struct HostTests {
 
         let host = try JSONDecoder().decode(Host.self, from: Data(legacy.utf8))
         #expect(host.address == "old.example")
-        #expect(host.backend == .herdr)
+        #expect(host.serverKind == .herdrTUI)
 
         let fields = try #require(
             JSONSerialization.jsonObject(with: try JSONEncoder().encode(host)) as? [String: Any])
         #expect(fields["socatPath"] == nil)
     }
 
-    @Test func coreBackendPersistsSeparatelyFromTheLegacySession() throws {
+    @Test func coreKindPersistsSeparatelyFromTheTUISession() throws {
         let host = Host(
             name: "Desktop", address: "linux.example", username: "dev",
-            backend: .herdrCore, sessionName: "work")
+            serverKind: .herdrCore, sessionName: "work")
         let decoded = try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(host))
 
         #expect(decoded == host)
-        #expect(decoded.backend == .herdrCore)
+        #expect(decoded.serverKind == .herdrCore)
         #expect(decoded.sessionName == "work")
     }
 
     @Test(arguments: ["desktop session", "作業", "O'Brien $project `local`", String(repeating: "a", count: 65)])
     func coreSessionNamesRoundTripWithoutTheLegacyWhitelist(_ name: String) throws {
-        let core = Host(address: "box.example", username: "dev", backend: .herdrCore, sessionName: name)
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore, sessionName: name)
         #expect(try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(core)) == core)
         var legacy = core
-        legacy.backend = .herdr
+        legacy.serverKind = .herdrTUI
         #expect(throws: DecodingError.self) {
             try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(legacy))
         }
@@ -63,7 +63,7 @@ struct HostTests {
 
     @Test(arguments: [".", "..", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "a\tb", "a\u{7f}b", "a\u{85}b"])
     func invalidCoreSessionNamesFailPersistedDecode(_ name: String) throws {
-        let core = Host(address: "box.example", username: "dev", backend: .herdrCore, sessionName: name)
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore, sessionName: name)
         let data = try JSONEncoder().encode(core)
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(Host.self, from: data) }
     }
@@ -73,10 +73,10 @@ struct HostTests {
         #expect(HerdrCoreSessionName.normalized(" \nTeam space\t ") == "Team space")
     }
 
-    @Test func anUnknownBackendDoesNotSilentlyConnectToLegacyHerdr() {
+    @Test func anUnknownKindDoesNotSilentlyConnectToHerdrTUI() {
         let json = """
             {"id":"\(UUID().uuidString)","name":"Desktop","address":"box.example","port":22,
-             "username":"dev","authMethod":"deviceKey","backend":"future-backend"}
+             "username":"dev","authMethod":"deviceKey","serverKind":"future-kind"}
             """
         #expect(throws: DecodingError.self) {
             try JSONDecoder().decode(Host.self, from: Data(json.utf8))
@@ -315,7 +315,7 @@ struct HostStoreTests {
         #expect(try persistedHostIDs(in: defaults) == [knownID, unknownID])
     }
 
-    @Test func unknownBackendSkipsOnlyThatHostAndSurvivesCatalogEdits() throws {
+    @Test func unknownKindSkipsOnlyThatHostAndSurvivesCatalogEdits() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let known = Host.fixture(name: "Known")
@@ -325,7 +325,7 @@ struct HostStoreTests {
             {"version":1,"hosts":[\(knownJSON),
               {"id":"\(futureID.uuidString)","name":"Future","address":"future.example",
                "port":22,"username":"dev","authMethod":"deviceKey",
-               "backend":"future-core","futureField":"preserve-me"}]}
+               "serverKind":"future-core","futureField":"preserve-me"}]}
             """.utf8)
         defaults.set(catalog, forKey: "hosts")
         let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
@@ -340,7 +340,7 @@ struct HostStoreTests {
         try store.add(added)
         try store.remove(known.id)
         let future = try persistedHost(id: futureID, in: defaults)
-        #expect(future["backend"] as? String == "future-core")
+        #expect(future["serverKind"] as? String == "future-core")
         #expect(future["futureField"] as? String == "preserve-me")
         #expect(try persistedHostIDs(in: defaults) == [futureID, added.id])
         #expect(HostStore(defaults: defaults, secrets: InMemorySecretStore()).hosts == [added])
@@ -357,7 +357,7 @@ struct HostStoreTests {
         try keys.save(.init(hostID: host.id, hostName: host.displayName, key: NotificationKeyStore.generateKey()))
         let saved = defaults.data(forKey: "hosts")
         var core = host
-        core.backend = .herdrCore
+        core.serverKind = .herdrCore
 
         #expect(throws: HostStoreError.notificationsPreventBackendChange) {
             try store.update(core, password: "new password")
@@ -377,7 +377,7 @@ struct HostStoreTests {
         let host = try #require(store.hosts.first)
         store.notificationWriteInProgress = { $0 == host.id }
         var core = host
-        core.backend = .herdrCore
+        core.serverKind = .herdrCore
         #expect(throws: HostStoreError.notificationsPreventBackendChange) { try store.update(core) }
         #expect(store.hosts == [host])
         store.notificationWriteInProgress = { _ in false }
@@ -388,7 +388,7 @@ struct HostStoreTests {
     @Test(arguments: [false, true])
     func keyedCoreRemovalExplainsHowToStopTheLegacyRegistration(_ connected: Bool) throws {
         var host = Host.fixture(name: "Desktop")
-        host.backend = .herdrCore
+        host.serverKind = .herdrCore
         let store = HostStore(volatileHosts: [host])
         let removal = HostRemovalStore(store: store)
         removal.requestRemoval([host.id], dependencies: HostRemovalDependencies(
@@ -498,9 +498,9 @@ struct HostStoreTests {
         let keys = try Set(persistedHost(id: id, in: defaults).keys)
         #expect(keys == [
             "id", "name", "address", "port", "username", "authMethod", "sessionName",
-            "jumpAddress", "jumpPort", "jumpUsername", "routes", "backend",
+            "jumpAddress", "jumpPort", "jumpUsername", "routes", "serverKind",
         ])
-        #expect(try persistedHost(id: id, in: defaults)["backend"] as? String == "herdr")
+        #expect(try persistedHost(id: id, in: defaults)["serverKind"] as? String == "herdrTUI")
         #expect(try persistedCatalogVersion(in: defaults) == 1)
     }
 

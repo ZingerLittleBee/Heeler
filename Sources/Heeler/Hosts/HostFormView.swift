@@ -173,9 +173,9 @@ struct HostFormView: View {
             }
         } else {
             Section {
-                Picker("Backend", selection: $draft.backend) {
-                    ForEach(HostBackend.allCases, id: \.self) { backend in
-                        Text(backend.displayName).tag(backend)
+                Picker("Backend", selection: $draft.serverKind) {
+                    ForEach(ServerKind.allCases, id: \.self) { kind in
+                        Text(kind.displayName).tag(kind)
                     }
                 }
                 TextField("Session name", text: $draft.sessionName)
@@ -184,7 +184,7 @@ struct HostFormView: View {
             } header: {
                 Text("Backend and Session")
             } footer: {
-                Text(draft.backend == .herdrCore
+                Text(draft.serverKind == .herdrCore
                     ? "Choose herdr-app / herdr-core for desktop agents. Leave the session blank for default. Add this Host with an SSH key or password; TUI Pairing Codes select herdr."
                     : "Leave blank for the default herdr session.")
             }

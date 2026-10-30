@@ -22,7 +22,7 @@ struct HostLiveActivityCoordinatorTests {
     @MainActor
     private final class World {
         var knownHostIDs: Set<UUID> = []
-        var backends: [UUID: HostBackend] = [:]
+        var backends: [UUID: ServerKind] = [:]
         var hostNames: [UUID: String] = [:]
         var awaitingSnapshot: Set<UUID> = []
         var statuses: [UUID: EventsSessionStatus] = [:]

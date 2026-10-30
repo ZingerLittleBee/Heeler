@@ -130,7 +130,7 @@ final class HeelerAppModel {
                 console?.hostStatuses[id]
             },
             supportsHost: { [weak hostStore] id in
-                hostStore?.hosts.first(where: { $0.id == id })?.backend == .herdr
+                hostStore?.hosts.first(where: { $0.id == id })?.serverKind == .herdrTUI
             },
             pinnedPaneIDs: { [weak console] id in
                 console?.pins.pinnedPaneIDs(for: id) ?? []

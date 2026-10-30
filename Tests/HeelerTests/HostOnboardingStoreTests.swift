@@ -421,7 +421,7 @@ struct HostOnboardingStoreTests {
     }
 
     @Test func corePreflightDoesNotDiscoverLegacySessions() async throws {
-        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let (store, _) = try makeStore(
             host: host,
             sessions: [HerdrSession(name: "tui-only", isDefault: false, isRunning: true)])
@@ -434,8 +434,8 @@ struct HostOnboardingStoreTests {
         #expect(store.sessionDiscoveryError == nil)
     }
 
-    @Test func corePreflightStillRequiresAHealthyBackend() async throws {
-        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+    @Test func corePreflightStillRequiresAHealthyServer() async throws {
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let (store, _) = try makeStore(
             host: host, outcome: .connects(pingResult: .failure(.timedOut)))
 

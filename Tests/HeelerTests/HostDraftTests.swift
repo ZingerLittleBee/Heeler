@@ -16,29 +16,29 @@ struct HostDraftTests {
         #expect(rebuilt == host)
     }
 
-    @Test func coreBackendSurvivesEditingAndDuplication() throws {
+    @Test func coreKindSurvivesEditingAndDuplication() throws {
         let host = Host(
             name: "Desktop", address: "box.example", username: "dev",
-            backend: .herdrCore, sessionName: "work")
+            serverKind: .herdrCore, sessionName: "work")
         let draft = HostDraft(host: host)
-        #expect(draft.backend == .herdrCore)
+        #expect(draft.serverKind == .herdrCore)
         #expect(try #require(draft.makeHost(id: host.id)) == host)
 
         let duplicate = HostDraft(duplicating: host, password: nil, existingNames: ["Desktop"])
         let copied = try #require(duplicate.makeHost())
-        #expect(copied.backend == .herdrCore)
+        #expect(copied.serverKind == .herdrCore)
         #expect(copied.sessionName == "work")
         #expect(copied.name == "Desktop copy")
     }
 
-    @Test func anEndpointPairingRemainsOnItsLegacyBackend() throws {
+    @Test func anEndpointPairingStaysHerdrTUI() throws {
         let endpoint = try #require(HerdrEndpoint(
             socketPath: "/srv/app/herdr/herdr.sock", executablePath: "/srv/app/bin/herdr"))
         var draft = HostDraft(host: Host(
             address: "box.example", username: "dev", herdrEndpoint: endpoint))
-        draft.backend = .herdrCore
+        draft.serverKind = .herdrCore
         let saved = try #require(draft.makeHost())
-        #expect(saved.backend == .herdr)
+        #expect(saved.serverKind == .herdrTUI)
         #expect(saved.herdrEndpoint == endpoint)
     }
 
@@ -150,10 +150,10 @@ struct HostDraftTests {
         var draft = HostDraft()
         draft.address = "box.example"
         draft.username = "dev"
-        draft.backend = .herdrCore
+        draft.serverKind = .herdrCore
         draft.sessionName = name
         #expect(try #require(draft.makeHost()).sessionName == name)
-        draft.backend = .herdr
+        draft.serverKind = .herdrTUI
         #expect(!draft.isValid)
     }
 
@@ -162,7 +162,7 @@ struct HostDraftTests {
         var draft = HostDraft()
         draft.address = "box.example"
         draft.username = "dev"
-        draft.backend = .herdrCore
+        draft.serverKind = .herdrCore
         draft.sessionName = name
         #expect(!draft.isValid)
         #expect(draft.makeHost() == nil)

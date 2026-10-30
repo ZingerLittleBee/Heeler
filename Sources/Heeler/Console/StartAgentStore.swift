@@ -271,7 +271,7 @@ final class StartAgentStore {
     /// Core groups terminals by directory, without separately named tabs or
     /// Workspaces. Its Agent name remains independently supported.
     var offersWorkspaceAndTabNames: Bool {
-        hosts.first(where: { $0.id == selectedHostID })?.backend != .herdrCore
+        hosts.first(where: { $0.id == selectedHostID })?.serverKind != .herdrCore
     }
 
     /// Whether the form offers Existing vs New Workspace. Origin launches

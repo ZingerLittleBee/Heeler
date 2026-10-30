@@ -63,9 +63,9 @@ struct ConsoleStoreTests {
             tabPaneCount: tabPaneCount)
     }
 
-    @Test(arguments: [HostBackend.herdr, .herdrCore])
-    func composerConfirmationFollowsBackendAndRefreshesOnlyOnBackendChange(_ backend: HostBackend) {
-        var host = Host(address: "box.example", username: "dev", backend: backend)
+    @Test(arguments: [ServerKind.herdrTUI, .herdrCore])
+    func composerConfirmationFollowsBackendAndRefreshesOnlyOnBackendChange(_ backend: ServerKind) {
+        var host = Host(address: "box.example", username: "dev", serverKind: backend)
         let store = makeStore(transports: [:])
         store.setHosts([host])
         defer { store.setHosts([]) }
@@ -83,15 +83,15 @@ struct ConsoleStoreTests {
 
         // Pane IDs are opaque: even if both backends use the same ID, the
         // delivery mode belongs to the new backend, not the cached Composer.
-        host.backend = backend == .herdrCore ? .herdr : .herdrCore
+        host.serverKind = backend == .herdrCore ? .herdrTUI : .herdrCore
         store.setHosts([host])
         let changedBackend = store.composerStore(for: agent)
         #expect(changedBackend !== original)
-        #expect(changedBackend.requiresTerminalConfirmation == (host.backend == .herdrCore))
+        #expect(changedBackend.requiresTerminalConfirmation == (host.serverKind == .herdrCore))
     }
 
     @Test func coreAgentsOfferNeitherLegacyManagementNorUnidentifiedChat() async throws {
-        let host = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let transport = ScriptedTransport()
         let info = AgentInfo.fixture(paneID: "t3", kind: "claude")
         await transport.setSnapshot(.fixture(agents: [info]))

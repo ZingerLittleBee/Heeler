@@ -682,7 +682,7 @@ final class HostConsoleProjection {
             } else if event.kind == GlobalEventKind.paneUpdated.kind {
                 applyPaneChange(event.data)
             } else if Self.resyncEventKinds.contains(event.kind) {
-                if host.backend == .herdrCore {
+                if host.serverKind == .herdrCore {
                     if let paneID = event.data["pane_id"]?.stringValue {
                         coreStatusPresentations.removeValue(forKey: paneID)
                     } else {
@@ -750,7 +750,7 @@ final class HostConsoleProjection {
                 requestGeneration: requestGeneration)
             // Core's one stream already includes every terminal. Replacing a
             // legacy per-Agent subscription list only recycles that stream.
-            if host.backend != .herdrCore {
+            if host.serverKind != .herdrCore {
                 await session.updateSubscriptions(
                     Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
             }
@@ -1034,7 +1034,7 @@ final class HostConsoleProjection {
             let rawStatus = data["agent_status"]?.stringValue
         else { return nil }
         let status = AgentStatus(rawValue: rawStatus)
-        if host.backend == .herdrCore, let report = data["core_status"] {
+        if host.serverKind == .herdrCore, let report = data["core_status"] {
             let presentation = JSONValue.object([
                 "state": .string(rawStatus), "app": report["app"] ?? .null,
                 "title": report["title"] ?? .null,
