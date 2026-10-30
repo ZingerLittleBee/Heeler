@@ -159,6 +159,40 @@ final class AgentListFieldsEditor {
         return !isEditing
     }
 
+    /// Saves the source Host's layout, as its screen shows it, as each other
+    /// Host's own, right sides included, in one validated step. The source
+    /// keeps where its fields come from, and later edits stay on it. Returns
+    /// how many Hosts changed, zero where each already saved these fields,
+    /// or nil where nothing could be written, keeping the message in
+    /// `errorMessage` as `commit` does. Inside an open draft session the
+    /// copies join it and `save` writes every dirty Host.
+    @discardableResult
+    func applyToOtherHosts(from sourceID: Host.ID, among hostIDs: [Host.ID]) -> Int? {
+        let wasEditing = isEditing
+        if !wasEditing { beginEditing() }
+        let source = layout(for: sourceID)
+        let targets = hostIDs.filter { $0 != sourceID }
+        for hostID in targets {
+            update(hostID) { $0 = source }
+        }
+        if errorMessage != nil {
+            if !wasEditing { discardKeepingError() }
+            return nil
+        }
+        let dirty = dirtyHostIDs
+        let changed = targets.filter(dirty.contains).count
+        guard changed > 0 else {
+            if !wasEditing { cancel() }
+            return 0
+        }
+        save()
+        guard !isEditing else {
+            if !wasEditing { discardKeepingError() }
+            return nil
+        }
+        return changed
+    }
+
     /// Inline Sync from plugin: fills the Host from its plugin snapshot and
     /// saves immediately. The resulting `syncStates` entry survives the save
     /// so the screen can report what happened; the next change clears it.

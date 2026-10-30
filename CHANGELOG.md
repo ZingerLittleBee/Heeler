@@ -21,6 +21,9 @@ Entries reference the pull request that made the change.
 - Choose what ends each Agent row on the right in Agent List Fields: any
   field, the Host name, the status capsule (`status_badge`), or the
   Checkout's Changes totals, per Host. Sync from plugin keeps them.
+- Give every Host the same Agent row fields: Apply to All Hosts on a Host's
+  page in Agent List Fields copies its rows, right sides included, to the
+  other Hosts.
 
 ### Changed
 

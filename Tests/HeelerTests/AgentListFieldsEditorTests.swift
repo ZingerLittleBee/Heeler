@@ -509,6 +509,47 @@ struct AgentListFieldsInlineEditingTests {
         #expect(synced.trailing?[1] == [.init(.custom("branch")), .init(.host)])
     }
 
+    /// Apply to All Hosts saves one Host's fields, right sides included, as
+    /// every other Host's own in one step and counts the Hosts it changed.
+    /// The source keeps where its fields come from.
+    @Test func applyToOtherHostsSavesOneHostsFieldsOnEveryOther() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in nil })
+        let (source, customized, following) = (UUID(), UUID(), UUID())
+        let fields = AgentRowLayout(
+            rows: [[.init(.agent)], [], [.init(.directory)]], rowGap: 1,
+            trailing: [[.init(.statusBadge)], [], [.init(.changes)]])
+        #expect(editor.commit(source) { $0 = fields })
+        #expect(editor.commit(customized) { $0.rows = [[.init(.pane)]] })
+
+        #expect(editor.applyToOtherHosts(from: source, among: [source, customized, following]) == 2)
+        #expect(layouts.hostLayouts == [source: fields, customized: fields, following: fields])
+        #expect(!editor.isEditing && editor.drafts.isEmpty && editor.errorMessage == nil)
+
+        // Once every Host has them, applying again writes nothing.
+        #expect(editor.applyToOtherHosts(from: source, among: [source, customized, following]) == 0)
+        #expect(!editor.isEditing)
+
+        // A source still on its herdr fields hands those over and stays on them.
+        let unsaved = UUID()
+        #expect(editor.applyToOtherHosts(from: unsaved, among: [unsaved, source]) == 1)
+        #expect(layouts.hostLayouts[unsaved] == nil)
+        #expect(layouts.hostLayouts[source] == .consoleDefault)
+
+        // An unreadable catalog takes nothing and says why.
+        defaults.set(Data("not json".utf8), forKey: "agent-row-layouts")
+        let broken = AgentListFieldsEditor(
+            layouts: AgentRowLayoutStore(defaults: defaults), snapshots: HerdrSidebarSnapshotStore(),
+            fetch: { _ in nil })
+        #expect(broken.applyToOtherHosts(from: source, among: [source, following]) == nil)
+        #expect(broken.errorMessage == AgentListFieldsCopy.unreadableCatalogEdit)
+        #expect(!broken.isEditing && broken.drafts.isEmpty)
+        #expect(defaults.data(forKey: "agent-row-layouts") == Data("not json".utf8))
+    }
+
     private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
         let suite = "fields-inline-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

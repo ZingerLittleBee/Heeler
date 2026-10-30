@@ -93,6 +93,9 @@ struct AgentListFieldsHostDetailView: View {
     var editor: AgentListFieldsEditor
     @State private var addingField: AgentListFieldsEditorDestination?
     @State private var confirmingSync = false
+    @State private var confirmingApply = false
+    /// Apply to All Hosts' result, until this Host's fields change.
+    @State private var appliedMessage: String?
 
     var body: some View {
         hostList
@@ -111,6 +114,7 @@ struct AgentListFieldsHostDetailView: View {
                     editor: editor, destination: destination, hostName: host.displayName)
             }
             .task { await console.refreshPluginStatuses(for: [host.id]) }
+            .onChange(of: layout) { appliedMessage = nil }
     }
 
     private var layout: AgentRowLayout { editor.layout(for: host.id) }
@@ -273,6 +277,12 @@ struct AgentListFieldsHostDetailView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if hosts.count > 1 {
+                Rectangle()
+                    .fill(Color(uiColor: .separator))
+                    .frame(height: 0.5)
+                applyRow
+            }
         }
         .disabled(editor.isCatalogUnreadable)
         .listRowInsets(AgentListFieldsChrome.syncInsets)
@@ -303,6 +313,52 @@ struct AgentListFieldsHostDetailView: View {
 
     private func sync() async {
         await editor.replaceWithPluginFields(host.id, hostName: host.displayName)
+    }
+
+    /// Copies this Host's fields to every other Host, after a confirmation
+    /// anchored to the button, and says how many changed.
+    private var applyRow: some View {
+        let others = hosts.count - 1
+        let isDisabled = isSyncing || editor.isCatalogUnreadable
+        return VStack(alignment: .leading, spacing: 5) {
+            if let appliedMessage {
+                Text(verbatim: appliedMessage)
+                    .font(.footnote)
+                    .foregroundStyle(AgentListFieldsChrome.success)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("settings.agentList.appliedTip.\(host.id.uuidString)")
+            }
+            Button {
+                confirmingApply = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.on.square")
+                        .font(.subheadline.weight(.medium))
+                    Text("Apply to All Hosts")
+                }
+                // Dimmed by hand, as Sync from plugin's: an explicit tint
+                // overrides a disabled button's own dimming.
+                .foregroundStyle(isDisabled ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.tint))
+            }
+            .buttonStyle(.borderless)
+            .disabled(isDisabled)
+            .accessibilityIdentifier("settings.agentList.applyToAll.\(host.id.uuidString)")
+            .confirmationDialog(
+                "Apply these fields to all Hosts?", isPresented: $confirmingApply, titleVisibility: .visible
+            ) {
+                Button(others == 1 ? "Apply to 1 Host" : "Apply to \(others) Hosts") { applyToAllHosts() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(verbatim: AgentListFieldsCopy.applyConfirmation(
+                    hostName: host.displayName, otherHosts: others))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func applyToAllHosts() {
+        appliedMessage = editor.applyToOtherHosts(from: host.id, among: hosts.map(\.id))
+            .map(AgentListFieldsCopy.applied)
     }
 
     private func toggleStyle(_ fieldIndex: Int, rowIndex: Int, side: AgentRowSide) {
@@ -540,6 +596,21 @@ enum AgentListFieldsCopy {
     static let syncConfirmation =
         "Row 1 and Row 2 are replaced with this Host's herdr fields and saved right away. "
         + "Row 3 and every row's right side stay as they are."
+    static func applyConfirmation(hostName: String, otherHosts: Int) -> String {
+        let others = otherHosts == 1 ? "The other Host's rows" : "The other \(otherHosts) Hosts' rows"
+        return "\(others), right sides included, are replaced with \(hostName)'s and saved right away. "
+            + "Changes you make here later stay on \(hostName)."
+    }
+
+    /// Apply to All Hosts' result: how many Hosts it changed.
+    static func applied(_ changed: Int) -> String {
+        switch changed {
+        case 0: "Every other Host already uses these fields."
+        case 1: "Applied to 1 other Host."
+        default: "Applied to \(changed) other Hosts."
+        }
+    }
+
     /// Sync's result when the plugin snapshot carries diagnostics.
     static let syncDiagnostics =
         "The Heeler plugin couldn't read this Host's herdr sidebar settings, so herdr's "

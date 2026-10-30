@@ -166,7 +166,8 @@ _Avoid_: dashboard, home
 **Agent Row Layout**:
 The ordered rows of fields that identify an Agent in the Console and its
 switcher. Each Host follows its herdr plugin's fields until the user saves
-that Host's own layout, which may start from a Sync from plugin copy. There
+that Host's own layout, which may start from a Sync from plugin copy or
+from another Host's layout, applied to every Host from that Host's page. There
 is no user-facing default layout. The Console shows at most three rows, as
 three fixed Row Slots, and every Agent on a Host shares them: herdr's
 per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
