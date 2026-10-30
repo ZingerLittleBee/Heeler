@@ -652,6 +652,7 @@ struct ShellTerminalInputRow: View {
     static let glyphPointSize: CGFloat = 12
     @Environment(\.displayScale) private var displayScale
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
 
     private var sizeClass: InputShortcutStripPresentation.SizeClass {
         horizontalSizeClass == .regular ? .regular : .compact
@@ -663,20 +664,15 @@ struct ShellTerminalInputRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            PasteButton(payloadType: String.self) { strings in
-                guard let text = strings.first else { return }
-                paste(text)
-            }
-            .labelStyle(.iconOnly)
-            .buttonBorderShape(.capsule)
-            // The system default is an accent-tinted tile, which shouts next
-            // to the mode control. Painting the fill with the row's own
-            // background leaves the glyph reading as a bare icon.
-            .tint(Color(uiColor: .secondarySystemBackground))
-            .frame(
-                width: InputChromeLayout.shellAccessoryButtonWidth,
-                height: InputChromeLayout.shortcutRowHeight)
-            .frame(width: Self.sideWidth, alignment: .leading)
+            // Painting the fill with the row's own background leaves the
+            // glyph reading as a bare icon, like the row's other buttons.
+            PinnedPasteControl(backgroundColor: .secondarySystemBackground, paste: paste)
+                .id(colorScheme)
+                .accessibilityHint("Pastes the clipboard into the terminal")
+                .frame(
+                    width: InputChromeLayout.shellAccessoryButtonWidth,
+                    height: InputChromeLayout.shortcutRowHeight)
+                .frame(width: Self.sideWidth, alignment: .leading)
 
             Spacer(minLength: 4)
 

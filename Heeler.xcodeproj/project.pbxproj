@@ -323,6 +323,7 @@
 		640128C8D69F74ECF51FF452 /* DiffLayoutSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7C4030E0C3CCF493C11B0DE /* DiffLayoutSettingsTests.swift */; };
 		6460096A5B757E1D3B5A44F3 /* ChangesFreshnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0081CF87748BCA49AA6AA0A2 /* ChangesFreshnessTests.swift */; };
 		64D08D7EF9A513EB13DD2A35 /* CodexLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5AACADE3810ECCD0FD576A /* CodexLaunch.swift */; };
+		64D91ACB50E384E17AE3D32D /* PinnedPasteControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A44408BB54B5BE039E49A39 /* PinnedPasteControl.swift */; };
 		669AB42912D20722F9C3CD66 /* ChangesGitExecGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C95D54E57FAA5D28C8899229 /* ChangesGitExecGateTests.swift */; };
 		67486EFA58929515182AD527 /* ChangesBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5100F5DD911C674B737B0C3C /* ChangesBadge.swift */; };
 		679567AC2DC9AB289ECC94C2 /* ClaudeTextClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8B84917BD7C10317B2E308 /* ClaudeTextClassifierTests.swift */; };
@@ -988,6 +989,7 @@
 		19BD559AF84107DD92237507 /* GrokInputBoxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokInputBoxDetector.swift; sourceTree = "<group>"; };
 		19FF62E7BD9DC71E1172A472 /* TerminalTextSelectionPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextSelectionPresenter.swift; sourceTree = "<group>"; };
 		1A3BD235B5209892137FCAF9 /* PhotosPickerImageSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosPickerImageSelection.swift; sourceTree = "<group>"; };
+		1A44408BB54B5BE039E49A39 /* PinnedPasteControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedPasteControl.swift; sourceTree = "<group>"; };
 		1AA041A7CC65C8E15662CF29 /* CodexRolloutFileNameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutFileNameTests.swift; sourceTree = "<group>"; };
 		1ADBC931C815068BD91E9850 /* GitProbePatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitProbePatchTests.swift; sourceTree = "<group>"; };
 		1B99CB61015DC220A2D9306A /* TerminalKeyModifiersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyModifiersTests.swift; sourceTree = "<group>"; };
@@ -2460,6 +2462,7 @@
 				ADA42EBE95B7E6452127AD5C /* NewTerminalStore.swift */,
 				6CA18FC9DB67FF92D19A1C29 /* NewTerminalView.swift */,
 				B2437B1D6B97638031514C0F /* PinnedAgentsStore.swift */,
+				1A44408BB54B5BE039E49A39 /* PinnedPasteControl.swift */,
 				C7BD377C8BB7AA8205DD8AFC /* RecentWorkspaceStore.swift */,
 				F0D5F47AF6EF0F3C7F789894 /* RemoteDirectoryBrowser.swift */,
 				0CF5CC35768C765BC278C61E /* RemoteDirectoryBrowserView.swift */,
@@ -3528,6 +3531,7 @@
 				977353630D3F6AB17896900B /* PiTranscriptLocator.swift in Sources */,
 				D502F4B422F9E83DA1CD8573 /* PiTranscriptReducer.swift in Sources */,
 				DDD5A27BA1126296E5AF7EAA /* PinnedAgentsStore.swift in Sources */,
+				64D91ACB50E384E17AE3D32D /* PinnedPasteControl.swift in Sources */,
 				19E4B497AFAD439F4BC78884 /* PreSendGate.swift in Sources */,
 				2292C89F605CE42073D49B11 /* Preflight.swift in Sources */,
 				F1896998EA513073CF4EE713 /* PushRegistrationStore.swift in Sources */,
