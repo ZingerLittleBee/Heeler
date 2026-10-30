@@ -110,6 +110,38 @@ struct HostHelperStoreTests {
         #expect(store.offersLinger)
     }
 
+    @Test func aNewCheckClearsTheLastActionsFailure() async throws {
+        await helper.configure {
+            $0.lingerOn = false
+            $0.lingerRefusal = "Interactive authentication required."
+        }
+        let store = await refreshed()
+        await store.turnOnLinger()
+        #expect(store.failure != nil)
+
+        // An administrator turned it on at the Host, and the user checks again.
+        await helper.configure { $0.lingerOn = true }
+        await store.refresh()
+        #expect(store.failure == nil)
+        #expect(!store.offersLinger)
+    }
+
+    @Test func aCheckOverTheCallersConnectionClearsItToo() async throws {
+        await helper.configure {
+            $0.lingerOn = false
+            $0.lingerRefusal = "Interactive authentication required."
+        }
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let bundle = bundle
+        let store = HostHelperStore(connect: { core.transport() }, bundle: { bundle })
+        await store.refresh()
+        await store.turnOnLinger()
+        #expect(store.failure != nil)
+
+        await store.refresh(over: core.transport())
+        #expect(store.failure == nil)
+    }
+
     @Test func aRefusedConnectionChangesNothingAndSaysSo() async throws {
         let store = HostHelperStore(connect: { throw TransportError.authenticationFailed }, bundle: { [bundle] in bundle })
         await store.install()

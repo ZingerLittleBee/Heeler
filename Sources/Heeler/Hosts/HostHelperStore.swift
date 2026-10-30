@@ -82,21 +82,20 @@ final class HostHelperStore {
         if case .read(let reading) = reading { reading.offersLinger } else { false }
     }
 
-    /// Reads the Host over a connection the caller owns, such as the preflight's.
+    /// Checks the Host over a connection the caller owns, such as the preflight's.
+    /// A new check answers for the Host as it is now, so the last action's failure
+    /// goes, unless that action is still running and has yet to report.
     func refresh(over transport: any HerdrCoreTransport) async {
-        do {
-            let read = try await installer(transport).read()
-            if !Task.isCancelled { adopt(read) }
-        } catch {
-            if !Task.isCancelled { reading = .unavailable(message: Self.message(for: error)) }
-        }
+        if running == nil { failure = nil }
+        await read(over: transport)
     }
 
-    /// Reads the Host over a connection of its own.
+    /// Checks the Host over a connection of its own.
     func refresh() async {
+        if running == nil { failure = nil }
         do {
             let transport = try await connect()
-            await refresh(over: transport)
+            await read(over: transport)
             try? await transport.close()
         } catch {
             if !Task.isCancelled { reading = .unavailable(message: Self.message(for: error)) }
@@ -118,6 +117,15 @@ final class HostHelperStore {
     func turnOnLinger() async {
         await perform(.turnOnLinger) { installer, reading, _ in
             try await installer.turnOnLinger(over: reading)
+        }
+    }
+
+    private func read(over transport: any HerdrCoreTransport) async {
+        do {
+            let read = try await installer(transport).read()
+            if !Task.isCancelled { adopt(read) }
+        } catch {
+            if !Task.isCancelled { reading = .unavailable(message: Self.message(for: error)) }
         }
     }
 
@@ -153,7 +161,7 @@ final class HostHelperStore {
         } catch {
             failure = Self.message(for: error)
         }
-        await refresh(over: transport)
+        await read(over: transport)
         try? await transport.close()
     }
 
