@@ -35,6 +35,22 @@ enum HerdrCoreWire {
         return result
     }
 
+    /// The id of a channel-0 reply, or nil for anything that is not a reply
+    /// to one of this client's string-id requests.
+    static func responseID(from data: Data) -> String? {
+        guard let envelope = try? decodeLine(data), envelope["method"] == nil else { return nil }
+        return envelope["id"]?.stringValue
+    }
+
+    /// A typed view of a decoded JSON value. Unknown fields are ignored.
+    static func typed<Value: Decodable>(_ value: JSONValue) throws -> Value {
+        do {
+            return try JSONDecoder().decode(Value.self, from: JSONEncoder().encode(value))
+        } catch {
+            throw malformed("Invalid \(Value.self).")
+        }
+    }
+
     static func serverInfo(from hello: JSONValue) throws -> ServerInfo {
         guard let protocolGeneration = integer(hello["generation"]),
             let version = nonEmpty(hello["version"]?.stringValue)
@@ -180,7 +196,7 @@ enum HerdrCoreWire {
         catch { throw malformed("Invalid JSON response.") }
     }
 
-    fileprivate static func integer(_ value: JSONValue?) -> Int? {
+    static func integer(_ value: JSONValue?) -> Int? {
         guard case .number(let number) = value, number.isFinite,
             number.rounded(.towardZero) == number,
             number >= Double(Int.min), number < Double(Int.max)

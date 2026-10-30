@@ -35,7 +35,7 @@ extension HeelerSSHAttachChannel {
 
 extension SSHPTYChannel: HeelerSSHAttachChannel {}
 
-private protocol HeelerSSHAPIChannel: Sendable {
+protocol HeelerSSHAPIChannel: Sendable {
     func write(_ data: Data, timeout: Duration) async throws
     func read(maximumBytes: Int, timeout: Duration) async throws -> Data?
     func close(timeout: Duration) async throws
