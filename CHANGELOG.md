@@ -44,6 +44,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep each row's fields in Agent List Fields on their own line. The last
+  one, often the add button, could drop below the row onto the next.
 - Show a new Claude Code Agent's Chat, such as one started in a new
   worktree, as No Messages Yet until its first message, instead of
   Conversation Not Found. (#530)

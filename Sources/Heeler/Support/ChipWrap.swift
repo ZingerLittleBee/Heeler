@@ -40,9 +40,13 @@ struct ChipWrap: Layout {
                 rowHeight = 0
             }
             frames.append((offset, CGRect(origin: CGPoint(x: x, y: y), size: size)))
-            x += size.width + spacing
+            // The width reported is the sum the check above makes, bit for
+            // bit: `(x + w + spacing) - spacing` can round below `x + w`, and
+            // placing at the reported width would then wrap the last chip.
+            let right = x + size.width
+            x = right + spacing
             rowHeight = max(rowHeight, size.height)
-            usedWidth = max(usedWidth, x - spacing)
+            usedWidth = max(usedWidth, right)
         }
         let height = subviews.isEmpty ? 0 : y + rowHeight
         let width = maxWidth.isFinite ? maxWidth : usedWidth
