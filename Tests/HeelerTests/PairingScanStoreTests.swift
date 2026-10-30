@@ -288,6 +288,20 @@ struct PairingScanStoreTests {
         }
     }
 
+    @Test func aPairedHostIsAlreadyConfirmed() async throws {
+        let env = try makeEnv()
+        defer { env.cleanup() }
+        env.store.submit(scannedCode: Self.bootstrapVector.code)
+
+        await env.store.pair()
+
+        let paired = try #require(env.store.pairedHost)
+        #expect(env.catalog.consoleHosts == [paired])
+        #expect(throws: HostStoreError.serverKindAlreadyConfirmed) {
+            try env.catalog.confirmServerKind(.herdrCore, for: paired.id)
+        }
+    }
+
     @Test func pairingAgainAfterSuccessIsIgnored() async throws {
         let env = try makeEnv()
         defer { env.cleanup() }
