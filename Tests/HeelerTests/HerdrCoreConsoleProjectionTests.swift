@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -500,5 +502,93 @@ extension HeelerPluginUnavailableError: Equatable {}
             hasHosts: true, listsTerminals: true, offersNewItem: false)
         #expect(!notOffered.actions.contains(.newAgent))
         #expect(notOffered.message == "Choose a terminal.")
+    }
+
+    @Test func aListOffersNewUnlessEveryHostCannotStartIt() {
+        for listsTerminals in [false, true] {
+            #expect([Host]().offersNewItem(listsTerminals: listsTerminals))
+            #expect([tui].offersNewItem(listsTerminals: listsTerminals))
+            #expect([core, tui].offersNewItem(listsTerminals: listsTerminals))
+            #expect(![core].offersNewItem(listsTerminals: listsTerminals))
+        }
+    }
+
+    @Test func theNewCommandNeitherEnablesNorRunsWhenNotOffered() {
+        var started = 0
+        func commands(offersNewItem: Bool) -> ConsoleCommandTarget {
+            ConsoleCommandTarget(
+                registry: ConsoleCommandRegistry(),
+                context: {
+                    .init(
+                        selection: nil, agents: [], isSearchFocused: false, isCovered: false,
+                        inputMode: .composer, offersNewItem: offersNewItem)
+                },
+                navigate: { _ in }, focusSearch: {}, newAgent: { started += 1 }, settings: {},
+                hosts: {}, closeAgent: {})
+        }
+        let notOffered = commands(offersNewItem: false)
+        #expect(!notOffered.allows(.newAgent))
+        notOffered.perform(.newAgent)
+        #expect(started == 0)
+        for action: ConsoleCommandAction in [.focusSearch, .settings, .hosts] {
+            #expect(notOffered.allows(action))
+        }
+        let offered = commands(offersNewItem: true)
+        #expect(offered.allows(.newAgent))
+        offered.perform(.newAgent)
+        #expect(started == 1)
+    }
+
+    /// The File menu and ⌘N read this target, so a mounted Console is what
+    /// decides whether New Agent or New Terminal is enabled.
+    @Test(arguments: [(ServerKind.herdrCore, false), (ServerKind.herdrTUI, true)])
+    func aMountedConsoleOffersTheNewCommandByItsHosts(
+        kind: ServerKind, enabled: Bool
+    ) async throws {
+        let composition = DemoScreenshotComposition.make()
+        let catalog = HostStore(
+            volatileHosts: [Host(address: "box.example", username: "dev", serverKind: kind)])
+        let probe = ConsoleCommandTargetProbe()
+        let view = ConsoleView(
+            hosts: catalog, console: composition.console,
+            terminal: TerminalSettings(
+                themes: composition.terminalThemes, zoom: composition.terminalZoom,
+                fonts: composition.terminalFonts, snippets: composition.snippets),
+            inputMode: composition.inputMode, detailSurface: composition.detailSurface,
+            appearance: composition.appearance,
+            pushRegistration: composition.pushRegistration,
+            notificationPreferences: composition.notificationPreferences,
+            relaySettings: composition.relaySettings,
+            notificationRouter: composition.notificationRouter,
+            bannerStore: composition.bannerStore, liveActivities: composition.liveActivities,
+            activity: composition.activity)
+        let controller = UIHostingController(
+            rootView: ZStack { view; ConsoleCommandTargetProbeView(probe: probe) })
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while probe.target == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+            controller.view.layoutIfNeeded()
+        }
+        let target = try #require(probe.target)
+        #expect(target.allows(.newAgent) == enabled)
+    }
+}
+
+@MainActor
+private final class ConsoleCommandTargetProbe {
+    var target: ConsoleCommandTarget?
+}
+
+/// Reads the target the way `ConsoleCommands` does, beside the Console.
+private struct ConsoleCommandTargetProbeView: View {
+    let probe: ConsoleCommandTargetProbe
+    @FocusedValue(\.consoleCommandTarget) private var target
+
+    var body: some View {
+        let _ = probe.target = target
+        Color.clear.allowsHitTesting(false)
     }
 }

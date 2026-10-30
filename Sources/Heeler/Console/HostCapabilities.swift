@@ -42,4 +42,10 @@ extension Collection<Host> {
     func offeringNewItem(listsTerminals: Bool) -> [Host] {
         filter { listsTerminals ? $0.capabilities.startsTerminals : $0.capabilities.startsAgents }
     }
+
+    /// Whether a list offers New at all: it does with no Hosts, and stops only
+    /// when every Host it has cannot start the item.
+    func offersNewItem(listsTerminals: Bool) -> Bool {
+        isEmpty || !offeringNewItem(listsTerminals: listsTerminals).isEmpty
+    }
 }

@@ -1090,8 +1090,7 @@ struct ConsoleView: View {
     }
 
     private func offersNewItem(on tab: ConsoleTab) -> Bool {
-        hosts.consoleHosts.isEmpty
-            || !hosts.consoleHosts.offeringNewItem(listsTerminals: tab == .terminals).isEmpty
+        hosts.consoleHosts.offersNewItem(listsTerminals: tab == .terminals)
     }
 
     /// An iPad sidebar's foot, standing in for the tab bar: Hosts and
@@ -1146,7 +1145,8 @@ struct ConsoleView: View {
                         || isShowingHostsSheet || isShowingSettingsSheet
                         || isPresentingOverConsole,
                     inputMode: inputMode.mode,
-                    navigationAnchor: agentsListAnchor)
+                    navigationAnchor: agentsListAnchor,
+                    offersNewItem: offersNewItem(on: currentTab))
             },
             titles: ConsoleCommandTitles(
                 listsTerminals: currentTab == .terminals,
@@ -1180,7 +1180,6 @@ struct ConsoleView: View {
             },
             // ⌘N creates what the list on screen holds.
             newAgent: {
-                guard offersNewItem(on: currentTab) else { return }
                 if currentTab == .terminals {
                     isStartingTerminal = true
                 } else {
