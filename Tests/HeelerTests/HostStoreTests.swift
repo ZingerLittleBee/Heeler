@@ -256,15 +256,19 @@ struct HostStoreTests {
         })
     }
 
-    private func persistedHosts(in defaults: UserDefaults) throws -> [[String: Any]] {
-        let data = try #require(defaults.data(forKey: "hosts"))
+    private func persistedHosts(
+        in defaults: UserDefaults, key: String = "hosts"
+    ) throws -> [[String: Any]] {
+        let data = try #require(defaults.data(forKey: key))
         let catalog = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: Any])
         return try #require(catalog["hosts"] as? [[String: Any]])
     }
 
-    private func persistedHostIDs(in defaults: UserDefaults) throws -> [UUID] {
-        try persistedHosts(in: defaults).map { host in
+    private func persistedHostIDs(
+        in defaults: UserDefaults, key: String = "hosts"
+    ) throws -> [UUID] {
+        try persistedHosts(in: defaults, key: key).map { host in
             let id = try #require(host["id"] as? String)
             return try #require(UUID(uuidString: id))
         }
@@ -275,6 +279,282 @@ struct HostStoreTests {
         let catalog = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: Any])
         return catalog["version"] as? Int
+    }
+
+    private static let coreKey = "herdrCoreHosts"
+
+    private func coreHost(name: String = "Core", authMethod: Host.AuthMethod = .deviceKey) -> Host {
+        Host(
+            name: name, address: "core.example", username: "dev", authMethod: authMethod,
+            serverKind: .herdrCore, sessionName: "work")
+    }
+
+    /// A Host the way builds before Server Kinds encode it: every field but
+    /// the kind.
+    private func olderBuildJSON(id: UUID, name: String) -> String {
+        """
+        {"id":"\(id.uuidString)","name":"\(name)","username":"dev","authMethod":"deviceKey",
+         "sessionName":"","routes":[{"id":"\(id.uuidString)","address":"\(name).example","port":22,
+         "jumpAddress":"","jumpPort":22,"jumpUsername":""}],"address":"\(name).example","port":22,
+         "jumpAddress":"","jumpPort":22,"jumpUsername":""}
+        """
+    }
+
+    /// What such a build leaves in the shared catalog after it saves `hosts`.
+    private func writeOlderBuildCatalog(_ hosts: [(id: UUID, name: String)], to defaults: UserDefaults) {
+        let entries = hosts.map { olderBuildJSON(id: $0.id, name: $0.name) }.joined(separator: ",")
+        defaults.set(Data(#"{"version":1,"hosts":[\#(entries)]}"#.utf8), forKey: "hosts")
+    }
+
+    @Test func coreHostsNeverEnterTheSharedCatalog() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        let tui = Host.fixture(name: "TUI")
+        var core = coreHost()
+        let second = coreHost(name: "Second")
+
+        try store.add(tui)
+        try store.add(core)
+        core.name = "Edited core"
+        try store.update(core)
+        try store.add(second)
+
+        #expect(store.hosts == [tui, core, second])
+        #expect(try persistedHostIDs(in: defaults) == [tui.id])
+        #expect(try persistedHostIDs(in: defaults, key: Self.coreKey) == [core.id, second.id])
+        let shared = String(decoding: try #require(defaults.data(forKey: "hosts")), as: UTF8.self)
+        #expect(!shared.contains(core.id.uuidString) && !shared.contains("Edited core"))
+        #expect(!shared.contains("herdrCore"))
+    }
+
+    @Test func aHerdrTUIUserNeverGetsACoreCatalog() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        var host = Host.fixture(name: "TUI")
+
+        try store.add(host)
+        host.name = "Edited"
+        try store.update(host)
+        let other = Host.fixture(name: "Other")
+        try store.add(other)
+        try store.remove(other.id)
+
+        #expect(defaults.object(forKey: Self.coreKey) == nil)
+        #expect(HostStore(defaults: defaults, secrets: InMemorySecretStore()).hosts == [host])
+    }
+
+    /// Each edit rewrites only the catalog that holds its Host, so a future
+    /// entry the other catalog preserves is not disturbed by it.
+    @Test func editsWriteTheCatalogThatHoldsTheHost() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        var tui = Host.fixture(name: "TUI")
+        var core = coreHost(authMethod: .password)
+        try store.add(tui)
+        try store.add(core, password: "hunter2")
+
+        let shared = defaults.data(forKey: "hosts")
+        core.routes[0].port = 2222
+        try store.update(core)
+        #expect(defaults.data(forKey: "hosts") == shared)
+        #expect(try store.password(for: core) == "hunter2")
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts == [tui, core])
+
+        let coreCatalog = defaults.data(forKey: Self.coreKey)
+        tui.name = "Edited"
+        try store.update(tui)
+        #expect(defaults.data(forKey: Self.coreKey) == coreCatalog)
+
+        let beforeRemoval = defaults.data(forKey: "hosts")
+        try store.remove(core.id)
+        #expect(defaults.data(forKey: "hosts") == beforeRemoval)
+        #expect(try persistedHostIDs(in: defaults, key: Self.coreKey).isEmpty)
+        #expect(try store.password(for: core) == nil)
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts == [tui])
+
+        try store.remove(tui.id)
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts.isEmpty)
+    }
+
+    /// A build before Server Kinds can only rewrite the shared catalog: it
+    /// drops the key from what it read, keeps its own Hosts, and adds new ones.
+    @Test func coreHostsSurviveAnOlderBuildsCatalogWrite() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        let tui = Host.fixture(name: "TUI")
+        let core = coreHost()
+        try store.add(tui)
+        try store.add(core)
+        let coreCatalog = defaults.data(forKey: Self.coreKey)
+
+        let addedByOlderBuild = UUID()
+        writeOlderBuildCatalog(
+            [(tui.id, "TUI"), (addedByOlderBuild, "Older")], to: defaults)
+
+        let reloaded = HostStore(defaults: defaults, secrets: secrets)
+        #expect(reloaded.catalogLoadError == nil)
+        #expect(reloaded.hosts.map(\.id) == [tui.id, core.id, addedByOlderBuild])
+        #expect(reloaded.hosts.first { $0.id == core.id } == core)
+        #expect(reloaded.hosts.map(\.serverKind) == [.herdrTUI, .herdrCore, .herdrTUI])
+        #expect(defaults.data(forKey: Self.coreKey) == coreCatalog)
+    }
+
+    @Test func aHostInBothCatalogsLoadsAsCore() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let core = coreHost()
+        let tui = Host.fixture(name: "TUI")
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        try store.add(tui)
+        try store.add(core)
+        writeOlderBuildCatalog([(tui.id, "TUI"), (core.id, "Stale")], to: defaults)
+
+        let reloaded = HostStore(defaults: defaults, secrets: secrets)
+
+        #expect(reloaded.hosts.map(\.id) == [tui.id, core.id])
+        #expect(reloaded.hosts.last == core)
+        #expect(reloaded.hosts.last?.serverKind == .herdrCore)
+        // The shared copy goes at once, so an older build cannot show it, and
+        // removing the Host cannot bring it back as Herdr TUI.
+        #expect(try persistedHostIDs(in: defaults) == [tui.id])
+        try reloaded.remove(core.id)
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts.map(\.id) == [tui.id])
+    }
+
+    @Test func theMergedOrderSurvivesAReload() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        let first = Host.fixture(name: "First")
+        let core = coreHost(name: "Core")
+        let second = Host.fixture(name: "Second")
+        let lastCore = coreHost(name: "Last core")
+        for host in [first, core, second, lastCore] { try store.add(host) }
+
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts == [first, core, second, lastCore])
+
+        // A Herdr TUI Host added since the order was written follows it.
+        let third = Host.fixture(name: "Third")
+        try store.add(third)
+        #expect(store.hosts == [first, core, second, lastCore, third])
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts == store.hosts)
+
+        // The order only names Hosts that still exist.
+        try store.remove(second.id)
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts == [first, core, lastCore, third])
+    }
+
+    /// Ids the order lacks follow in the shared catalog's order: an older
+    /// build reordered nothing, but it added and removed Hosts behind it.
+    @Test func idsTheOrderLacksFollowInTheSharedCatalogsOrder() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        let removedByOlderBuild = Host.fixture(name: "Removed")
+        let core = coreHost()
+        try store.add(removedByOlderBuild)
+        try store.add(core)
+        let (a, b) = (UUID(), UUID())
+
+        writeOlderBuildCatalog([(b, "B"), (a, "A")], to: defaults)
+
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts.map(\.id) == [core.id, b, a])
+    }
+
+    @Test func aHostWithoutAKindInTheSharedCatalogLoadsAsHerdrTUI() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let id = UUID()
+        writeOlderBuildCatalog([(id, "Old")], to: defaults)
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(store.hosts.map(\.id) == [id])
+        #expect(store.hosts.first?.serverKind == .herdrTUI)
+    }
+
+    @Test func aHostWithAnEndpointStaysHerdrTUIInTheSharedCatalog() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let endpoint = try #require(HerdrEndpoint(
+            socketPath: "/srv/app/herdr/herdr.sock", executablePath: "/srv/app/bin/herdr"))
+        let host = Host(
+            address: "box.example", username: "dev", serverKind: .herdrCore, herdrEndpoint: endpoint)
+
+        try HostStore(defaults: defaults, secrets: secrets).add(host)
+
+        #expect(try persistedHostIDs(in: defaults) == [host.id])
+        #expect(defaults.data(forKey: Self.coreKey) == nil)
+        let reloaded = HostStore(defaults: defaults, secrets: secrets)
+        #expect(reloaded.hosts == [host])
+        #expect(reloaded.hosts.first?.serverKind == .herdrTUI)
+    }
+
+    @Test func unknownKindInTheCoreCatalogSkipsOnlyThatHostAndSurvivesCatalogEdits() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let known = coreHost(name: "Known")
+        let futureID = UUID()
+        let knownJSON = String(decoding: try JSONEncoder().encode(known), as: UTF8.self)
+        let catalog = Data("""
+            {"version":1,"order":["\(known.id.uuidString)"],"hosts":[\(knownJSON),
+              {"id":"\(futureID.uuidString)","name":"Future","address":"future.example",
+               "port":22,"username":"dev","authMethod":"deviceKey",
+               "serverKind":"future-core","futureField":"preserve-me"}]}
+            """.utf8)
+        defaults.set(catalog, forKey: Self.coreKey)
+
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        #expect(store.hosts == [known])
+        #expect(store.catalogLoadError == nil)
+        #expect(defaults.data(forKey: Self.coreKey) == catalog)
+
+        var edited = known
+        edited.name = "Edited"
+        try store.update(edited)
+        let added = coreHost(name: "Added")
+        try store.add(added)
+        try store.remove(known.id)
+
+        let future = try #require(persistedHosts(in: defaults, key: Self.coreKey).first {
+            $0["id"] as? String == futureID.uuidString
+        })
+        #expect(future["serverKind"] as? String == "future-core")
+        #expect(future["futureField"] as? String == "preserve-me")
+        #expect(try persistedHostIDs(in: defaults, key: Self.coreKey) == [futureID, added.id])
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts == [added])
+    }
+
+    @Test(arguments: [
+        "not-json", #"{"version":2,"hosts":[]}"#, #"[{"authMethod":"deviceKey"}]"#,
+    ])
+    func anUnreadableCoreCatalogCannotBeSilentlyOverwritten(_ corrupt: String) throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let tui = Host.fixture(name: "TUI")
+        try HostStore(defaults: defaults, secrets: secrets).add(tui)
+        let shared = defaults.data(forKey: "hosts")
+        defaults.set(Data(corrupt.utf8), forKey: Self.coreKey)
+
+        let store = HostStore(defaults: defaults, secrets: secrets)
+
+        #expect(store.catalogLoadError == .catalogUnreadable)
+        #expect(store.hosts.isEmpty)
+        #expect(throws: HostStoreError.catalogUnreadable) { try store.add(coreHost()) }
+        #expect(defaults.data(forKey: Self.coreKey) == Data(corrupt.utf8))
+        #expect(defaults.data(forKey: "hosts") == shared)
     }
 
     @Test func addPersistsAcrossInstances() throws {
