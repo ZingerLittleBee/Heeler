@@ -1420,8 +1420,8 @@ struct AgentCardChangesTotalsTests {
         return node.value(forKey: "accessibilityIdentifier") as? String
     }
 
-    /// Row 1 ends in the status. With one row after it, as here, the totals
-    /// end that row just after the Host, on the Host's line.
+    /// With one row after Row 1, as here, the totals end that row just after
+    /// the Host, on the Host's line.
     @Test func theTotalsFollowTheHostOnItsLine() async throws {
         let store = try await Self.store(added: 12, removed: 7)
         let (controller, window) = try await Self.host(store, width: 402)
@@ -1430,11 +1430,11 @@ struct AgentCardChangesTotalsTests {
         let label = "Changes: 12 lines added, 7 lines removed"
         let totals = try #require(AccessibilityProbe.frame(labeled: label, in: root))
         let host = try #require(AccessibilityProbe.frame(labeled: "devbox", in: root))
-        let status = try #require(AccessibilityProbe.frame(labeled: "Idle", in: root))
+        let rowOne = try #require(AccessibilityProbe.frame(labeled: "proj", in: root))
         #expect(abs(totals.midY - host.midY) <= 1, "\(totals) and \(host) sit on different lines")
         #expect(host.maxX <= totals.minX, "\(totals) overlaps \(host)")
         #expect(totals.minX - host.maxX <= 8.5, "\(totals) sits apart from \(host)")
-        #expect(totals.minY >= status.maxY - 0.5, "\(totals) overlaps \(status)")
+        #expect(totals.minY >= rowOne.maxY - 0.5, "\(totals) overlaps \(rowOne)")
         let element = try #require(AccessibilityProbe.elements(labeled: label, in: root).first)
         #expect(Self.identifier(of: element) == "agent-row-changes.exact")
     }
@@ -1488,10 +1488,9 @@ struct AgentCardChangesTotalsTests {
             == [.init(leading: titleOnly.rows[0], trailing: [.host, .changes])])
     }
 
-    /// The status badge ends the title's line where the list places the
-    /// right side, and wherever a layout puts it otherwise; under a heading,
-    /// Row 1's badge ends the heading's line. A row without a status shows
-    /// none.
+    /// The status badge ends the line a layout puts it on; under a heading,
+    /// Row 1's badge ends the heading's line. The list places none of its
+    /// own, and a row without a status shows none.
     @Test func theStatusBadgeEndsTheLineItIsPlacedOn() {
         func lines(_ presentation: AgentCardPresentation, heading: Bool = false, badge: Bool = true) -> AgentCardLines {
             AgentCardLines(
@@ -1499,9 +1498,8 @@ struct AgentCardChangesTotalsTests {
                 showsStatusBadge: badge)
         }
         let listPlaced = AgentCardPresentation(agent: Self.agent, layout: .consoleDefault)
-        #expect(lines(listPlaced).title == [.statusBadge])
-        #expect(lines(listPlaced, heading: true).title == [.statusBadge])
-        #expect(!lines(listPlaced, badge: false).places(.statusBadge))
+        #expect(!lines(listPlaced).places(.statusBadge))
+        #expect(!lines(listPlaced, heading: true).places(.statusBadge))
 
         let rows: [AgentRow] = [[.init(.workspace)], [.init(.agent)]]
         let rowOne = AgentCardPresentation(
@@ -1609,14 +1607,14 @@ struct AgentCardChangesTotalsTests {
         let totals = try #require(AccessibilityProbe.frame(
             labeled: "Changes: 12 lines added, 7 lines removed", in: root))
         let host = try #require(AccessibilityProbe.frame(labeled: "devbox", in: root))
-        let status = try #require(AccessibilityProbe.frame(labeled: "Idle", in: root))
-        #expect(host.minY >= status.maxY - 0.5, "\(host) does not sit below \(status)")
+        let rowOne = try #require(AccessibilityProbe.frame(labeled: "proj", in: root))
+        #expect(host.minY >= rowOne.maxY - 0.5, "\(host) does not sit below \(rowOne)")
         #expect(totals.minY >= host.maxY - 0.5, "\(totals) does not sit below \(host)")
     }
 
     /// A card too narrow for the exact totals shows the shortened ones, and
-    /// VoiceOver still hears them exactly. The narrow card's text is 170
-    /// points wide, past its 30-point tile and the 12-point gap.
+    /// VoiceOver still hears them exactly. The narrow card's text is 166
+    /// points wide, past its 34-point avatar and the 12-point gap.
     @Test(arguments: [(CGFloat(402), "agent-row-changes.exact"), (212, "agent-row-changes.compact")])
     func largeTotalsShortenOnlyWhereTheExactOnesDoNotFit(width: CGFloat, form: String) async throws {
         let store = try await Self.store(added: 1_234_567, removed: 1_234_567)

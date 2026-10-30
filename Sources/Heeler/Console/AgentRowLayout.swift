@@ -176,14 +176,13 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     /// The fields that end each Console row slot on the right, index-aligned
     /// with the slots. Heeler's own: herdr never sends them, and Sync from
     /// plugin keeps them. Nil leaves the right side to the list
-    /// (`AgentCardLines`), which ends the title's line with the status
-    /// badge, the first line under it with the Host, and the last with the
-    /// Checkout's Changes totals.
+    /// (`AgentCardLines`), which ends the first line under the title with
+    /// the Host and the last with the Checkout's Changes totals.
     var trailing: [AgentRow]?
 
     /// What the editor shows, and starts from, for a layout whose right
     /// side the list places.
-    static let defaultTrailing: [AgentRow] = [[.init(.statusBadge)], [.init(.host)], [.init(.changes)]]
+    static let defaultTrailing: [AgentRow] = [[], [.init(.host)], [.init(.changes)]]
 
     init(
         rows: [AgentRow], rowGap: Int = 0, rowsByAgent: [String: [AgentRow]] = [:],

@@ -2,12 +2,11 @@ import SwiftUI
 import UIKit
 
 /// The shared Agent Row Layout leads each card, after the Agent's program
-/// mark in the list's row style; Heeler Pin follows Row 1, and each row's
-/// right side ends its line (`AgentCardLines`): by default the status badge
-/// ends Row 1, the Host name the first additional row, and the Checkout's
-/// Changes totals the last. The Status Ring style's ring also shows the
-/// status. Fields retain their emphasis using accessible semantic colors;
-/// plugin colors and weights do not replace app typography.
+/// mark inside a ring that shows its status; Heeler Pin follows Row 1, and
+/// each row's right side ends its line (`AgentCardLines`): by default the
+/// Host name ends the first additional row and the Checkout's Changes
+/// totals the last. Fields retain their emphasis using accessible semantic
+/// colors; plugin colors and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var layout: AgentRowLayout = .heelerDefault
@@ -33,11 +32,9 @@ struct AgentCardView: View {
     /// Where the Agent's mark goes.
     var lead = AgentCardLead.row
 
-    @Environment(\.agentListRowStyle) private var style
     private var cardColumn = CardIconWidth()
 
-    /// A list row's lead and the gap after it, as a Terminals row's tile.
-    private static let rowTileSide: CGFloat = 30
+    /// A list row's avatar and the gap after it.
     private static let rowAvatarDiameter: CGFloat = 34
     private static let rowLeadSpacing: CGFloat = 12
 
@@ -55,10 +52,6 @@ struct AgentCardView: View {
     /// has no capsule.
     private var showsStatusBadge: Bool { saved == nil && agent.agent.status.displayTitle != nil }
 
-    /// The Tile style centers its tile on the title's line; the ring style,
-    /// its avatar on the rows beside it.
-    private var markAlignment: VerticalAlignment { style == .tile ? .agentMarkLine : .center }
-
     var body: some View {
         let presentation = presentation
         let lines = AgentCardLines(
@@ -66,7 +59,7 @@ struct AgentCardView: View {
             showsHost: showsHostText, showsTotals: showsTotals, showsStatusBadge: showsStatusBadge,
             requiresHost: saved != nil)
         // The ring says the status unless the row's capsule does.
-        let speaksStatus = style == .statusRing && !lines.places(.statusBadge)
+        let speaksStatus = !lines.places(.statusBadge)
         Group {
             if let heading, lead == .card {
                 // A card of its own: its checkout's symbol on the heading's
@@ -76,19 +69,18 @@ struct AgentCardView: View {
                         ConsoleWorkspaceCardIcon(systemName: heading.systemImage)
                         titleLine(presentation, trailing: lines.title)
                     }
-                    HStack(alignment: markAlignment, spacing: cardColumn.spacing) {
+                    HStack(alignment: .center, spacing: cardColumn.spacing) {
                         markView(side: cardColumn.value, speaksStatus: speaksStatus)
                         VStack(alignment: .leading, spacing: 6) {
-                            detailLineViews(lines.details, marksFirstRow: true)
+                            detailLineViews(lines.details)
                         }
                     }
                 }
             } else {
-                HStack(alignment: markAlignment, spacing: lead == .card ? cardColumn.spacing : Self.rowLeadSpacing) {
+                HStack(alignment: .center, spacing: lead == .card ? cardColumn.spacing : Self.rowLeadSpacing) {
                     markView(side: leadSide, speaksStatus: speaksStatus)
                     VStack(alignment: .leading, spacing: 6) {
                         titleLine(presentation, trailing: lines.title)
-                            .alignmentGuide(.agentMarkLine) { $0[VerticalAlignment.center] }
                         detailLineViews(lines.details)
                     }
                 }
@@ -101,25 +93,20 @@ struct AgentCardView: View {
 
     private var leadSide: CGFloat {
         switch lead {
-        case .row: style == .tile ? Self.rowTileSide : Self.rowAvatarDiameter
+        case .row: Self.rowAvatarDiameter
         case .card: cardColumn.value
         }
     }
 
-    /// The tile or avatar, which VoiceOver reads first as the program and,
-    /// where `speaksStatus`, the status.
+    /// The avatar, which VoiceOver reads first as the program and, where
+    /// `speaksStatus`, the status.
     private func markView(side: CGFloat, speaksStatus: Bool) -> some View {
         let mark = mark
         let status = saved == nil ? agent.agent.status : .unknown
         let spoken = speaksStatus ? status.displayTitle : nil
-        return Group {
-            switch style {
-            case .tile: AgentKindTile(mark: mark, side: side)
-            case .statusRing: AgentStatusAvatar(mark: mark, status: status, diameter: side)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: [mark.label, spoken].compactMap { $0 }.joined(separator: ", ")))
+        return AgentStatusAvatar(mark: mark, status: status, diameter: side)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: [mark.label, spoken].compactMap { $0 }.joined(separator: ", ")))
     }
 
     /// Row 1, or the heading in its place, with the pin, its right side,
@@ -159,17 +146,15 @@ struct AgentCardView: View {
         totalsSource.map { ChangesRowTotals(source: $0).hasTotals } ?? false
     }
 
-    /// The lines under the title. `marksFirstRow` centers the Tile style's
-    /// tile on the first, as a card of its own shows it beside the Agent's
-    /// own title.
+    /// The lines under the title.
     ///
     /// SwiftUI can build these lines on its async render thread, as it built
     /// the file counts in `ChangesRowTotals.fileCounts(_:style:)` (#471), so
     /// the content is `@Sendable` and builds each line in `MainActorContent`.
     func detailLineViews(
-        _ lines: [AgentCardLines.Line], marksFirstRow: Bool = false
+        _ lines: [AgentCardLines.Line]
     ) -> ForEach<[(offset: Int, element: AgentCardLines.Line)], Int, some View> {
-        ForEach(Array(lines.enumerated()), id: \.offset) { @Sendable index, line in
+        ForEach(Array(lines.enumerated()), id: \.offset) { @Sendable _, line in
             MainActorContent {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     if !line.leading.isEmpty {
@@ -183,7 +168,6 @@ struct AgentCardView: View {
                         trailingView(line.trailing, isOwnLine: line.leading.isEmpty)
                     }
                 }
-                .modifier(AgentMarkLine(isMarked: marksFirstRow && index == 0))
             }
         }
     }
@@ -342,30 +326,6 @@ enum AgentCardLead: Equatable {
     case card
 }
 
-extension VerticalAlignment {
-    private enum AgentMarkLineID: AlignmentID {
-        static func defaultValue(in context: ViewDimensions) -> CGFloat {
-            context[VerticalAlignment.center]
-        }
-    }
-
-    /// The line the Tile style centers an Agent's tile on: the title's.
-    static let agentMarkLine = VerticalAlignment(AgentMarkLineID.self)
-}
-
-/// Marks the row the Tile style's tile centers on, when it is not Row 1.
-private struct AgentMarkLine: ViewModifier {
-    let isMarked: Bool
-
-    func body(content: Content) -> some View {
-        if isMarked {
-            content.alignmentGuide(.agentMarkLine) { $0[VerticalAlignment.center] }
-        } else {
-            content
-        }
-    }
-}
-
 struct AgentCardPresentation: Equatable, Sendable {
     /// The rows' left sides that render, which titles read.
     let rows: [[RenderedToken]]
@@ -469,10 +429,9 @@ enum AgentCardTrailing: Equatable, Sendable {
 /// slots up to the one it shows, then one line per later slot that shows
 /// anything, on either side. Under a heading, Row 1's status badge ends the
 /// heading's line, which names the Agent as Row 1 would. A layout that
-/// leaves its right side to the list gets today's places: the status badge
-/// ends the title's line, the Host the first line under it, the totals the
-/// last, and the Host and the totals share a line of their own when there is
-/// none. A saved entry always shows its Host, whose tone stands in for a
+/// leaves its right side to the list gets today's places: the Host ends the
+/// first line under the title, the totals the last, and the Host and the
+/// totals share a line of their own when there is none. A saved entry always shows its Host, whose tone stands in for a
 /// status.
 struct AgentCardLines: Equatable, Sendable {
     struct Line: Equatable, Sendable {
@@ -518,7 +477,6 @@ struct AgentCardLines: Equatable, Sendable {
                 return line.leading.isEmpty && line.trailing.isEmpty ? nil : line
             }
         } else {
-            if showsStatusBadge { title = [.statusBadge] }
             details = (headingTakesTitle ? presentation.rows : Array(presentation.rows.dropFirst()))
                 .map { Line(leading: $0, trailing: []) }
             if details.isEmpty, showsHost || showsTotals {

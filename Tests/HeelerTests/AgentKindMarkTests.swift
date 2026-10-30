@@ -59,97 +59,15 @@ struct AgentKindMarkTests {
     }
 }
 
+/// Where an Agent card puts its mark, text, and status.
 @MainActor
-@Suite("Agent list row style settings")
-struct AgentListRowStyleSettingsTests {
-    private static let key = "console-list.row-style"
-
-    private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
-        let suiteName = "hm-agent-row-style-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
-    }
-
-    @Test func defaultsToTiles() throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-
-        #expect(AgentListRowStyleSettings(defaults: defaults).style == .tile)
-        #expect(EnvironmentValues().agentListRowStyle == .tile)
-    }
-
-    @Test func chosenStyleIsRememberedAcrossLaunches() throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        let settings = AgentListRowStyleSettings(defaults: defaults)
-
-        settings.select(.statusRing)
-
-        #expect(settings.style == .statusRing)
-        #expect(AgentListRowStyleSettings(defaults: defaults).style == .statusRing)
-
-        settings.select(.tile)
-
-        #expect(AgentListRowStyleSettings(defaults: defaults).style == .tile)
-    }
-
-    @Test func unknownStoredStyleFallsBackToTiles() throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        defaults.set("compact", forKey: Self.key)
-
-        #expect(AgentListRowStyleSettings(defaults: defaults).style == .tile)
-    }
-
-    @Test func reselectingTheCurrentStyleWritesNothing() throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-
-        AgentListRowStyleSettings(defaults: defaults).select(.tile)
-
-        #expect(defaults.object(forKey: Self.key) == nil)
-    }
-
-    /// Agent List Fields leads with one sample per style, side by side, the
-    /// chosen one marked; tapping the other chooses it.
-    @Test func tappingAStylesSampleChoosesIt() async throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        let settings = AgentListRowStyleSettings(defaults: defaults)
-        let controller = UIHostingController(
-            rootView: AgentListRowStylePicker(settings: settings)
-                .frame(width: 370)
-                .fixedSize(horizontal: false, vertical: true))
-        controller.safeAreaRegions = []
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 400), rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        let root: UIView = controller.view
-
-        let tile = try #require(AccessibilityProbe.elements(labeled: "Tile", in: root).first)
-        let ring = try #require(AccessibilityProbe.elements(labeled: "Status Ring", in: root).first)
-        #expect(tile.accessibilityTraits.contains(.selected))
-        #expect(!ring.accessibilityTraits.contains(.selected))
-        let tileFrame = AccessibilityProbe.frame(of: tile, in: root)
-        let ringFrame = AccessibilityProbe.frame(of: ring, in: root)
-        #expect(tileFrame.maxX <= ringFrame.minX && abs(tileFrame.minY - ringFrame.minY) <= 0.5)
-
-        #expect(ring.accessibilityActivate())
-        #expect(settings.style == .statusRing)
-        #expect(AgentListRowStyleSettings(defaults: defaults).style == .statusRing)
-    }
-}
-
-/// Where each row style puts an Agent card's mark, text, and status.
-@MainActor
-@Suite("Agent card row style", .timeLimit(.minutes(1)))
-struct AgentCardRowStyleTests {
+@Suite("Agent card status ring", .timeLimit(.minutes(1)))
+struct AgentCardStatusRingTests {
     private static let layout = AgentRowLayout(rows: [
         [.init(.terminalTitleStripped)], [.init(.workspace), .init(.agent)],
     ])
-    /// `layout` with every right side chosen empty: no capsule.
-    private static let unbadgedLayout = AgentRowLayout(rows: layout.rows, trailing: [[], [], []])
+    /// `layout` with the status capsule ending Row 1.
+    private static let badgedLayout = AgentRowLayout(rows: layout.rows, trailing: [[.init(.statusBadge)], [], []])
 
     private static func agent(kind: String = "claude", status: AgentStatus = .working) -> ConsoleAgent {
         ConsoleAgent(
@@ -163,15 +81,11 @@ struct AgentCardRowStyleTests {
             repositoryCheckout: nil)
     }
 
-    private static func host(
-        _ card: AgentCardView, style: AgentListRowStyle
-    ) async throws -> (UIView, UIWindow) {
+    private static func host(_ card: AgentCardView) async throws -> (UIView, UIWindow) {
         let controller = UIHostingController(
-            rootView: AnyView(
-                card
-                    .environment(\.agentListRowStyle, style)
-                    .frame(width: 402)
-                    .fixedSize(horizontal: false, vertical: true)))
+            rootView: card
+                .frame(width: 402)
+                .fixedSize(horizontal: false, vertical: true))
         controller.safeAreaRegions = []
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 400), rootViewController: controller)
@@ -179,27 +93,11 @@ struct AgentCardRowStyleTests {
         return (controller.view, window)
     }
 
-    /// A list row leads with a 30-point tile, its text 12 points past it,
-    /// and keeps the status capsule; the kind word the tile names is gone.
-    @Test func aTileLeadsTheRowAndTheCapsuleStays() async throws {
-        let (root, window) = try await Self.host(
-            AgentCardView(agent: Self.agent(), layout: Self.layout), style: .tile)
-        defer { window.isHidden = true }
-        let tile = try #require(AccessibilityProbe.frame(labeled: "Claude", in: root))
-        let title = try #require(AccessibilityProbe.frame(labeled: "Fix the flaky test", in: root))
-        #expect(abs(tile.minX) <= 0.5 && abs(tile.width - 30) <= 0.5, "\(tile)")
-        #expect(abs(title.minX - 42) <= 0.5, "\(title)")
-        #expect(abs(tile.midY - title.midY) <= 1, "\(tile) is not centered on \(title)")
-        #expect(AccessibilityProbe.frame(labeled: "Working", in: root) != nil)
-        let labels = AccessibilityProbe.labels(in: root)
-        #expect(labels.contains("proj") && !labels.contains("proj · claude"), "\(labels)")
-    }
-
-    /// Without the capsule, the ring alone shows the status, so VoiceOver
-    /// hears it with the program.
-    @Test func aRingWithoutTheCapsuleCarriesTheStatus() async throws {
-        let (root, window) = try await Self.host(
-            AgentCardView(agent: Self.agent(), layout: Self.unbadgedLayout), style: .statusRing)
+    /// A list row leads with a 34-point avatar whose ring alone shows the
+    /// status, so VoiceOver hears it with the program; the kind word the
+    /// mark names is gone.
+    @Test func theRingCarriesTheStatusByDefault() async throws {
+        let (root, window) = try await Self.host(AgentCardView(agent: Self.agent(), layout: Self.layout))
         defer { window.isHidden = true }
         let avatar = try #require(AccessibilityProbe.frame(labeled: "Claude, Working", in: root))
         let title = try #require(AccessibilityProbe.frame(labeled: "Fix the flaky test", in: root))
@@ -207,45 +105,36 @@ struct AgentCardRowStyleTests {
         #expect(avatar.minX >= -0.5 && avatar.maxX <= 34.5, "\(avatar)")
         #expect(abs(title.minX - 46) <= 0.5, "\(title)")
         #expect(AccessibilityProbe.frame(labeled: "Working", in: root) == nil)
+        let labels = AccessibilityProbe.labels(in: root)
+        #expect(labels.contains("proj") && !labels.contains("proj · claude"), "\(labels)")
     }
 
     /// A status the ring has no shape for still shows no text; VoiceOver
     /// reads it with the program.
     @Test func aStatusWithoutItsOwnRingStillShowsNoText() async throws {
         let (root, window) = try await Self.host(
-            AgentCardView(agent: Self.agent(status: AgentStatus(rawValue: "paused")), layout: Self.unbadgedLayout),
-            style: .statusRing)
+            AgentCardView(agent: Self.agent(status: AgentStatus(rawValue: "paused")), layout: Self.layout))
         defer { window.isHidden = true }
         #expect(AccessibilityProbe.frame(labeled: "Claude, Paused", in: root) != nil)
         #expect(AccessibilityProbe.frame(labeled: "Paused", in: root) == nil)
     }
 
-    /// The capsule is a field: either style shows it where the layout puts
-    /// it, Row 1's end by default, and neither where the layout leaves it
-    /// out. The ring leaves the status to a capsule beside it.
-    @Test(arguments: [AgentListRowStyle.tile, .statusRing])
-    func theStatusBadgeFollowsTheFields(style: AgentListRowStyle) async throws {
-        let (shown, shownWindow) = try await Self.host(
-            AgentCardView(agent: Self.agent(), layout: Self.layout), style: style)
-        defer { shownWindow.isHidden = true }
-        let badge = try #require(AccessibilityProbe.frame(labeled: "Working", in: shown))
-        let title = try #require(AccessibilityProbe.frame(labeled: "Fix the flaky test", in: shown))
+    /// The capsule is a field: a row shows it where the layout puts it, and
+    /// the ring then leaves the status to it.
+    @Test func theStatusBadgeFollowsTheFields() async throws {
+        let (root, window) = try await Self.host(AgentCardView(agent: Self.agent(), layout: Self.badgedLayout))
+        defer { window.isHidden = true }
+        let badge = try #require(AccessibilityProbe.frame(labeled: "Working", in: root))
+        let title = try #require(AccessibilityProbe.frame(labeled: "Fix the flaky test", in: root))
         #expect(abs(badge.midY - title.midY) <= 1, "\(badge) does not end \(title)'s line")
-        #expect(AccessibilityProbe.frame(labeled: "Claude", in: shown) != nil)
-
-        let (removed, removedWindow) = try await Self.host(
-            AgentCardView(agent: Self.agent(), layout: Self.unbadgedLayout), style: style)
-        defer { removedWindow.isHidden = true }
-        #expect(AccessibilityProbe.frame(labeled: "Working", in: removed) == nil)
+        #expect(AccessibilityProbe.frame(labeled: "Claude", in: root) != nil)
     }
 
-    /// A status field the Agent List Fields choose shows as text in either
-    /// style; leaving it out is the way to hide it.
-    @Test(arguments: [AgentListRowStyle.tile, .statusRing])
-    func aChosenStatusFieldShowsInEitherStyle(style: AgentListRowStyle) async throws {
+    /// A status field the Agent List Fields choose shows as text beside the
+    /// ring; leaving it out is the way to hide it.
+    @Test func aChosenStatusFieldShowsAsText() async throws {
         let layout = AgentRowLayout(rows: [[.init(.terminalTitleStripped)], [.init(.workspace), .init(.status)]])
-        let (root, window) = try await Self.host(
-            AgentCardView(agent: Self.agent(), layout: layout), style: style)
+        let (root, window) = try await Self.host(AgentCardView(agent: Self.agent(), layout: layout))
         defer { window.isHidden = true }
         let labels = AccessibilityProbe.labels(in: root)
         #expect(labels.contains("proj · Working"), "\(labels)")
@@ -263,20 +152,15 @@ struct AgentCardRowStyleTests {
         #expect(rings(true) == [.turning, .closed, .dashed, .hairline, .hairline, .hairline])
     }
 
-    /// In a Workspace card the mark fills the card's icon column, which the
-    /// Status Ring style widens to its avatar.
-    @Test(arguments: [(AgentListRowStyle.tile, CGFloat(20), CGFloat(30)), (.statusRing, 28, 40)])
-    func aCardRowsMarkFillsTheIconColumn(style: AgentListRowStyle, column: CGFloat, text: CGFloat)
-        async throws
-    {
+    /// In a Workspace card the avatar fills the card's icon column.
+    @Test func aCardRowsMarkFillsTheIconColumn() async throws {
         let (root, window) = try await Self.host(
-            AgentCardView(agent: Self.agent(kind: "droid"), layout: Self.layout, lead: .card), style: style)
+            AgentCardView(agent: Self.agent(kind: "droid"), layout: Self.layout, lead: .card))
         defer { window.isHidden = true }
-        // The row's capsule says the status, so the ring does not.
-        let mark = try #require(AccessibilityProbe.frame(labeled: "Droid", in: root))
+        let mark = try #require(AccessibilityProbe.frame(labeled: "Droid, Working", in: root))
         let title = try #require(AccessibilityProbe.frame(labeled: "Fix the flaky test", in: root))
-        #expect(mark.minX >= -0.5 && mark.maxX <= column + 0.5, "\(mark)")
-        #expect(abs(title.minX - text) <= 0.5, "\(title)")
+        #expect(mark.minX >= -0.5 && mark.maxX <= 28.5, "\(mark)")
+        #expect(abs(title.minX - 40) <= 0.5, "\(title)")
         // Droid has no mark, so its row still names it.
         #expect(AccessibilityProbe.labels(in: root).contains("proj · droid"))
     }

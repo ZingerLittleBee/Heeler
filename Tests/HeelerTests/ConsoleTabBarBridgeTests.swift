@@ -35,7 +35,6 @@
                     fonts: composition.terminalFonts, snippets: composition.snippets),
                 inputMode: composition.inputMode, detailSurface: composition.detailSurface,
                 appearance: composition.appearance,
-                agentRowStyle: composition.agentRowStyle,
                 pushRegistration: composition.pushRegistration,
                 notificationPreferences: composition.notificationPreferences,
                 relaySettings: composition.relaySettings,

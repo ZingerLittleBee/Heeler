@@ -17,7 +17,6 @@ struct ConsoleView: View {
     let inputMode: AgentInputModeSettings
     let detailSurface: AgentDetailSurfaceSettings
     let appearance: AppAppearanceSettings
-    let agentRowStyle: AgentListRowStyleSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
@@ -360,9 +359,6 @@ struct ConsoleView: View {
             }
         }
         .environment(\.consoleCommandRegistry, commandRegistry)
-        // Over every tab and sheet: the Agents list and the Agent List
-        // Fields preview draw the same row style.
-        .environment(\.agentListRowStyle, agentRowStyle.style)
         .focusedSceneValue(\.consoleCommandTarget, commandTarget)
     }
 
@@ -445,7 +441,6 @@ struct ConsoleView: View {
         SettingsView(
             terminal: terminal,
             appearance: appearance,
-            agentRowStyle: agentRowStyle,
             pushRegistration: pushRegistration,
             notificationPreferences: notificationPreferences,
             relaySettings: relaySettings,

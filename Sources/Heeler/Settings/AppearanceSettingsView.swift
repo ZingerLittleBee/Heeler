@@ -2,8 +2,7 @@ import SwiftUI
 
 /// Settings › Appearance: the app's light or dark theme, then the
 /// terminal's and Chat's own font and text size, each surface in its
-/// section. The Agents list's row style is chosen in Agent List Fields.
-/// Pushed from the settings root, which owns the NavigationStack.
+/// section. Pushed from the settings root, which owns the NavigationStack.
 struct AppearanceSettingsView: View {
     let terminal: TerminalSettings
     let appearance: AppAppearanceSettings

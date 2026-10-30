@@ -18,20 +18,19 @@ Entries reference the pull request that made the change.
   on the Host. (#521)
 - Check a changed host key before trusting it: the Host's page shows the new
   key and a command to copy that prints it on the Host or Jump Host. (#531)
-- Choose the Agents list's row style at the top of Agent List Fields, each
-  shown on a sample row: Status Ring shows each Agent's program mark inside
-  a ring that carries its status, the Working ring turning.
 - Choose what ends each Agent row on the right in Agent List Fields: any
   field, the Host name, the status capsule (`status_badge`), or the
-  Checkout's Changes totals, per Host. The capsule ends Row 1 until you move
-  or remove it, and Sync from plugin keeps them.
+  Checkout's Changes totals, per Host. Sync from plugin keeps them.
 
 ### Changed
 
 - Lead each Agents list row with its program's mark, such as Claude Code's
-  or Codex's, on a tile. A row no longer repeats the program's name beside
-  other fields, or after a title it shares with another Agent's; programs
-  without a mark show their initial and keep their name.
+  or Codex's, inside a ring that shows its status, the Working ring turning,
+  in place of the status capsule; add `status_badge` to a row's right side
+  in Agent List Fields to bring the capsule back. A row no longer repeats
+  the program's name beside other fields, or after a title it shares with
+  another Agent's; programs without a mark show their initial and keep
+  their name.
 - Set the Agents list's rows closer together, without rules between them;
   By Workspace cards keep only the rules between checkouts.
 - Show the Agents list By Workspace as cards, with Workspaces on a linked

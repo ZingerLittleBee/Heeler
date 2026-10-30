@@ -43,7 +43,7 @@ struct AgentListFieldsPreview: View {
     }
 
     /// Deterministic sample values for built-in and custom tokens; not a live
-    /// Agent. Done, so either row style shows where the status goes.
+    /// Agent. Done, so the ring and any status field show a settled status.
     static func sampleAgent(hostName: String, kind: String = sampleKind) -> ConsoleAgent {
         ConsoleAgent(
             hostID: sampleHostID,

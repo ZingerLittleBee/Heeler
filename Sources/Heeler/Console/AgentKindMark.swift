@@ -111,25 +111,10 @@ private struct AgentKindMarkImage: View {
     }
 }
 
-/// The Tile row style's lead: the mark on a rounded square, as a Terminals
-/// row's tile.
-struct AgentKindTile: View {
-    let mark: AgentKindMark
-    /// 30 points in a list row, the icon column's width in a card.
-    let side: CGFloat
-
-    var body: some View {
-        AgentKindMarkImage(mark: mark, size: (side * 0.68).rounded(), monogramSize: side / 2)
-            .frame(width: side, height: side)
-            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: side * 0.27, style: .continuous))
-    }
-}
-
-/// The Status Ring row style's lead: the mark on a disc, inside a ring that
-/// is the Agent's status, with no status text beside it. Working's ring is
-/// an open arc that turns; Done and Blocked close it in their colors, and
-/// Blocked's breaks into dashes where color must not carry it alone; Idle
-/// and any other status keep a hairline.
+/// An Agents list row's lead: the mark on a disc, inside a ring that is the
+/// Agent's status. Working's ring is an open arc that turns; Done and
+/// Blocked close it in their colors, and Blocked's breaks into dashes where
+/// color must not carry it alone; Idle and any other status keep a hairline.
 struct AgentStatusAvatar: View {
     let mark: AgentKindMark
     let status: AgentStatus

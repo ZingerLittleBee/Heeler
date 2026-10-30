@@ -40,10 +40,8 @@ enum SettingsAgentListDestination: String, Sendable {
     var destinationTypeName: String { String(reflecting: AgentListFieldsSettingsView.self) }
 
     @MainActor
-    func destinationView(
-        console: ConsoleStore, hosts: [Host], rowStyle: AgentListRowStyleSettings
-    ) -> AgentListFieldsSettingsView {
-        AgentListFieldsSettingsView(console: console, hosts: hosts, rowStyle: rowStyle)
+    func destinationView(console: ConsoleStore, hosts: [Host]) -> AgentListFieldsSettingsView {
+        AgentListFieldsSettingsView(console: console, hosts: hosts)
     }
 }
 
@@ -69,7 +67,6 @@ enum SettingsOverlayNetworksDestination: String, Sendable {
 struct SettingsView: View {
     let terminal: TerminalSettings
     let appearance: AppAppearanceSettings
-    let agentRowStyle: AgentListRowStyleSettings
     let pushRegistration: PushRegistrationStore
     let notificationPreferences: NotificationPreferencesStore
     let relaySettings: NotificationRelaySettings
@@ -150,8 +147,7 @@ struct SettingsView: View {
             Form {
                 Section {
                     NavigationLink {
-                        Self.agentListDestination.destinationView(
-                            console: console, hosts: hosts, rowStyle: agentRowStyle)
+                        Self.agentListDestination.destinationView(console: console, hosts: hosts)
                     } label: {
                         Label("Agent List Fields", systemImage: "list.bullet.rectangle")
                     }

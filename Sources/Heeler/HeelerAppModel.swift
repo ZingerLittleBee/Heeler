@@ -35,7 +35,6 @@ final class HeelerAppModel {
     let terminalEdgeDock: EdgeDockSettings
     let snippets: SnippetStore
     let appearance: AppAppearanceSettings
-    let agentRowStyle: AgentListRowStyleSettings
     let inputMode: AgentInputModeSettings
     let detailSurface: AgentDetailSurfaceSettings
     let relaySettings: NotificationRelaySettings
@@ -76,7 +75,6 @@ final class HeelerAppModel {
         terminalEdgeDock = EdgeDockSettings()
         snippets = SnippetStore()
         appearance = AppAppearanceSettings()
-        agentRowStyle = AgentListRowStyleSettings()
         inputMode = AgentInputModeSettings()
         detailSurface = AgentDetailSurfaceSettings()
         let relaySettings = NotificationRelaySettings()

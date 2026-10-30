@@ -114,14 +114,14 @@ struct AgentLayoutTokensEditingTests {
 
         #expect(AgentLayoutTokensEditing.add(
             .changes, editor: editor, hostID: hostID, rowIndex: 0, side: .trailing))
-        #expect(saved()?.trailing == [[.init(.statusBadge), .init(.changes)], [.init(.host)], [.init(.changes)]])
+        #expect(saved()?.trailing == [[.init(.changes)], [.init(.host)], [.init(.changes)]])
 
         // Across the gap: the field keeps its style and lands beside it.
         #expect(AgentLayoutTokensEditing.setStyle(
             .secondary, at: 2, editor: editor, hostID: hostID, rowIndex: 0))
         #expect(AgentLayoutTokensEditing.moveAcross(2, editor: editor, hostID: hostID, rowIndex: 0, from: .leading))
         #expect(saved()?.rows[0] == [.init(.workspace), .init(.tab)])
-        #expect(saved()?.trailing?[0] == [.init(.status, dim: true), .init(.statusBadge), .init(.changes)])
+        #expect(saved()?.trailing?[0] == [.init(.status, dim: true), .init(.changes)])
         #expect(!AgentLayoutTokensEditing.moveAcross(1, editor: editor, hostID: hostID, rowIndex: 0, from: .trailing))
         #expect(AgentLayoutTokensEditing.moveAcross(0, editor: editor, hostID: hostID, rowIndex: 1, from: .trailing))
         #expect(saved()?.rows[1] == [.init(.agent), .init(.host)])
@@ -157,7 +157,7 @@ struct AgentLayoutTokensEditingTests {
     /// on the left, so the first right-side change saves no field twice.
     @Test func rightSideDefaultsSkipAFieldTheLeftAlreadyShows() {
         let layout = AgentRowLayout(rows: [[.init(.workspace)], [.init(.agent), .init(.host)], [.init(.directory)]])
-        #expect(AgentLayoutTokensEditing.rows(.trailing, of: layout) == [[.init(.statusBadge)], [], [.init(.changes)]])
+        #expect(AgentLayoutTokensEditing.rows(.trailing, of: layout) == [[], [], [.init(.changes)]])
         #expect(AgentLayoutTokensEditing.rows(.trailing, of: AgentRowLayout(rows: [])) == AgentRowLayout.defaultTrailing)
         #expect(AgentLayoutTokensEditing.keepingRightSides(
             [[.init(.workspace), .init(.tab)], [.init(.agent)]], of: [[.init(.workspace)], [], []])

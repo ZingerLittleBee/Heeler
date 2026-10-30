@@ -10,12 +10,10 @@ enum ConsoleWorkspaceCardMetrics {
     /// More room at a card's rounded ends, so the content there clears
     /// the corners' curve.
     static let endPadding: CGFloat = 8
-    /// The icon column at the default text size; it grows with the text.
-    static let iconWidth: CGFloat = 20
-    static let iconSpacing: CGFloat = 10
-    /// The Status Ring style's column, as wide as its Agents' avatars.
-    static let avatarWidth: CGFloat = 28
-    static let avatarSpacing: CGFloat = 12
+    /// The icon column at the default text size, as wide as its Agents'
+    /// avatars; it grows with the text.
+    static let iconWidth: CGFloat = 28
+    static let iconSpacing: CGFloat = 12
     /// Between cards.
     static let gap: CGFloat = 12
 
@@ -33,17 +31,13 @@ extension EnvironmentValues {
 }
 
 /// The icon column's width, scaled with the text it sits beside, and the
-/// gap after it. The Status Ring style widens it to its avatars.
+/// gap after it.
 struct CardIconWidth: DynamicProperty {
     @ScaledMetric(relativeTo: .subheadline) private var iconWidth = ConsoleWorkspaceCardMetrics.iconWidth
-    @ScaledMetric(relativeTo: .subheadline) private var avatarWidth = ConsoleWorkspaceCardMetrics.avatarWidth
-    @Environment(\.agentListRowStyle) private var style
 
-    var value: CGFloat { style == .statusRing ? avatarWidth : iconWidth }
+    var value: CGFloat { iconWidth }
 
-    var spacing: CGFloat {
-        style == .statusRing ? ConsoleWorkspaceCardMetrics.avatarSpacing : ConsoleWorkspaceCardMetrics.iconSpacing
-    }
+    var spacing: CGFloat { ConsoleWorkspaceCardMetrics.iconSpacing }
 
     /// From the card's edge to its text, past the icon column.
     var textInset: CGFloat { ConsoleWorkspaceCardMetrics.padding + value + spacing }

@@ -119,7 +119,8 @@ _Avoid_: agent state, activity
 
 **Status Badge**:
 The Agent Status in its colored capsule, a field (`status_badge`) only a Row
-Slot's right side holds; by default it ends Row 1. The `status` field is the
+Slot's right side holds. The Status Ring already shows the status, so a row
+shows the capsule only where its layout adds it. The `status` field is the
 same status as plain text.
 _Avoid_: status chip, status pill
 
@@ -183,12 +184,12 @@ title get no program name after it; an initial does neither. A renamed Agent
 keeps its name.
 _Avoid_: harness icon, avatar, logo
 
-**Agent Row Style**:
-The app-wide choice, at the top of Agent List Fields, of how the Console draws
-an Agent's mark: Tile, the default, puts the Agent Mark on a tile; Status Ring
-puts it in a circle whose ring is the status. Either style shows the Status
-Badge and status text only where the Agent List Fields place them.
-_Avoid_: list theme, row skin
+**Status Ring**:
+The ring around every Agent Mark in the Console, which is the Agent Status:
+Working's open arc turns, Done and Blocked close it in their colors, and Idle
+keeps a hairline. The Status Badge and the `status` field add the status in
+words only where the Agent List Fields place them.
+_Avoid_: row style, status avatar
 
 **Row Slot**:
 One of the three fixed positions in an Agent Row Layout. Row 1 and Row 2 are
@@ -199,8 +200,8 @@ Agent Status as text, working directory). Each slot also has a right side
 that ends its line, Heeler's own, which Sync keeps and which alone can hold
 the Status Badge and the Checkout's Changes totals; a field sits on one side
 of a slot at most. Until a Host's layout chooses its right sides, the Console
-places them: the Status Badge ends the title's line, the Host name the first
-line under it, and the totals the last.
+places them: the Host name ends the first line under the title, and the
+totals the last.
 Titles, the switcher, and Live Activities read only the left sides. Slots are
 never added, moved, or deleted; an empty slot renders nothing.
 _Avoid_: extra row, custom row
