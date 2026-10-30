@@ -11,6 +11,40 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         case refused
         /// Answers the plain `hello` line with these bytes.
         case answersHello(Data)
+        /// A core that answers `hello`, `events.subscribe` and `server.status`,
+        /// as `ScriptedCoreHost.Core` scripts them.
+        case core(Core)
+    }
+
+    /// A running core's answers, for the Host session above the real link.
+    struct Core: Sendable {
+        var id = "c1"
+        var sequence = 0
+        var terminals: [JSONValue] = []
+        static let eventsChannel: UInt32 = 1
+
+        var helloReply: Data {
+            ScriptedCoreHost.helloReply(result: .object([
+                "generation": .number(1), "version": .string("0.1.13"),
+                "core": .object(["id": .string(id), "name": .string("lab")]),
+                "framed": .bool(true), "methods": .array([]),
+                "features": .array(["framed", "attach", "events", "status", "shell"].map(JSONValue.string)),
+            ]))
+        }
+
+        var subscribeResult: JSONValue {
+            .object([
+                "seq": .number(Double(sequence)), "terminals": .array(terminals),
+                "channel": .number(Double(Self.eventsChannel)),
+            ])
+        }
+
+        var statusResult: JSONValue {
+            .object([
+                "core": .object(["id": .string(id)]), "pid": .number(4242), "uptime_ms": .number(1000),
+                "version": .string("0.1.13"),
+            ])
+        }
     }
 
     /// What `herdr session list --json` does in the detection exec.
@@ -86,7 +120,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private let locator: [String]
     private let locatorStatus: Int32
     private let shellBanner: Data
-    private let channel: Channel
+    private var channel: Channel
+    private var connected = true
     private let herdrRead: HerdrRead
     private let detectionFailure: TransportError?
 
@@ -94,6 +129,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private(set) var log: [String] = []
     private(set) var scripts: [String] = []
     private(set) var socket: FakeCoreSocket?
+    /// Every channel a core answered, oldest first.
+    private(set) var sockets: [FakeCoreSocket] = []
+    /// Every channel-0 method the core received, oldest first.
+    private(set) var methods: [String] = []
+    private var methodWaiters: [(method: String, count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
@@ -157,11 +197,80 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 await socket.deliver(reply)
             }
             return socket
+        case .core(let core):
+            let socket = FakeCoreSocket()
+            self.socket = socket
+            sockets.append(socket)
+            Task {
+                _ = await socket.nextWrittenLine()
+                await socket.deliver(core.helloReply)
+                await self.answer(on: socket, core: core)
+            }
+            return socket
         }
     }
 
+    private func answer(on socket: FakeCoreSocket, core: Core) async {
+        while !Task.isCancelled {
+            let request = await socket.nextRequest()
+            methods.append(request.method)
+            resumeMethodWaiters()
+            switch request.method {
+            case "events.subscribe": try? await socket.reply(to: request.id, result: core.subscribeResult)
+            case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
+            case "terminal.read":
+                try? await socket.reply(
+                    to: request.id,
+                    result: .object([
+                        "text": .string("screen"), "complete": .bool(true), "how": .string("screen"),
+                    ]))
+            default: break
+            }
+        }
+    }
+
+    private func resumeMethodWaiters() {
+        let met = methodWaiters.filter { waiter in
+            methods.filter { $0 == waiter.method }.count >= waiter.count
+        }
+        methodWaiters.removeAll { waiter in
+            methods.filter { $0 == waiter.method }.count >= waiter.count
+        }
+        for waiter in met { waiter.continuation.resume() }
+    }
+
+    // MARK: Changing the Host under a session
+
+    /// What the next channel opened to the socket finds.
+    func setChannel(_ channel: Channel) {
+        self.channel = channel
+    }
+
+    /// Whether the SSH connection is up.
+    func setConnected(_ connected: Bool) {
+        self.connected = connected
+    }
+
+    /// Returns once the core has received `method` this many times in all.
+    func waitForMethod(_ method: String, count: Int = 1) async {
+        if methods.filter({ $0 == method }).count >= count { return }
+        await withCheckedContinuation { continuation in
+            methodWaiters.append((method, count, continuation))
+        }
+    }
+
+    /// One line of the events channel, from the core.
+    func deliverEvent(_ line: Data, on socket: FakeCoreSocket? = nil) async throws {
+        guard let target = socket ?? self.socket else { return }
+        try await target.deliver(
+            HerdrCoreFrame(channel: Core.eventsChannel, kind: .data, payload: line + Data([0x0A])))
+    }
+
+    var isConnected: Bool { connected }
+
     func close() async throws {
         log.append("close")
+        connected = false
     }
 
     /// The transport the app gets for this Host, with a nonce the script knows.

@@ -112,6 +112,9 @@ actor HerdrCoreLink {
         }
     }
 
+    /// False once the link ended, on its own or by `close()`. It never reopens.
+    var isOpen: Bool { ending == nil }
+
     // MARK: Calls
 
     /// One channel-0 call. Its reply is matched by id in any order. Past its
@@ -555,7 +558,7 @@ actor HerdrCoreLink {
 /// A stream channel on a link. One task reads it. Reading returns CREDIT for
 /// the bytes it hands out, never earlier, so the core stops sending to a
 /// consumer that stops reading. A cancelled read closes the channel.
-struct HerdrCoreLinkStream: Sendable {
+struct HerdrCoreLinkStream: HerdrCoreEventBytes {
     let channel: UInt32
     private let link: HerdrCoreLink
 
