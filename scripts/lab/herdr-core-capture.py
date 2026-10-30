@@ -11,12 +11,13 @@ the core yourself first, on a lab machine.
 
 The vectors have the shape of plugin/test-vectors/herdr-core-frames-v1.json.
 Everything written is rebuilt from scrubbed JSON: the core's name and id, user
-paths, the user and host names, and environment assignments never reach a file.
-An assignment takes the rest of its string with it, because a command line in
-argv can quote its value in ways that only a shell can parse. A secret passed as
-a separate argument (`--token abc`) is not an assignment and is not recognized,
-so read the output before committing it. The script never attaches to a Terminal,
-whose screen bytes cannot be scrubbed.
+paths, and the user and host names never reach a file. Environment values are
+removed by shape, because no list of shell forms is complete: an argv keeps only
+its program, any other string with whitespace in it is replaced whole, and a
+single word loses what follows its first equals sign. Vectors need only the shape
+of these strings. A one-word label or name that is itself a secret is not
+recognized, so read the output before committing it. The script never attaches to
+a Terminal, whose screen bytes cannot be scrubbed.
 """
 
 from __future__ import annotations
@@ -40,10 +41,8 @@ MAX_HELLO_LINE = 1024 * 1024
 # Keys whose whole value is an environment, wherever they appear.
 ENVIRONMENT_KEYS = {"env", "environment", "restart_env"}
 SCRUBBED_CORE = {"id": "scrubbed-core-id", "name": "lab-core"}
-# POSIX, PowerShell and flag assignments, in any case, through the end of the string.
-ASSIGNMENT = re.compile(r"\b(\w+)[ \t]*(\+?=).*", re.DOTALL)
-# csh, fish and Windows forms, which set a variable with no equals sign.
-ENVIRONMENT_COMMAND = re.compile(r"\b((?:setenv|setx|set(?:[ \t]+-\w+)+)[ \t]+\w+[ \t]+).*", re.DOTALL)
+SCRUBBED = "<scrubbed>"
+WHITESPACE = re.compile(r"\s")
 # The name after a home root, and the directory the core keeps per-user sockets in.
 USER_PATHS = (
     (re.compile(r"/home/[^/\s\"']+"), "/home/user"),
@@ -65,10 +64,13 @@ class Scrubber:
         self.names = [re.compile(rf"\b{re.escape(name)}\b") for name in names if len(name) > 1]
 
     def text(self, value: str) -> str:
+        if WHITESPACE.search(value):
+            return SCRUBBED
+        head, equals, _ = value.partition("=")
+        if equals:
+            value = f"{head}={SCRUBBED}"
         for pattern, replacement in USER_PATHS:
             value = pattern.sub(replacement, value)
-        value = ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}<scrubbed>", value)
-        value = ENVIRONMENT_COMMAND.sub(lambda match: f"{match.group(1)}<scrubbed>", value)
         for name in self.names:
             value = name.sub("scrubbed", value)
         return value
@@ -76,6 +78,8 @@ class Scrubber:
     def value(self, value: Any, key: str | None = None) -> Any:
         if key == "core" and isinstance(value, dict):
             return dict(SCRUBBED_CORE)
+        if key == "argv" and isinstance(value, list):
+            return [self.value(item) if index == 0 else SCRUBBED for index, item in enumerate(value)]
         if isinstance(value, dict):
             return {
                 self.text(name): self.value(item, name)

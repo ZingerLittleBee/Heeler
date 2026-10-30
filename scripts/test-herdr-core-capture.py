@@ -29,23 +29,34 @@ SECRET_VALUE = "hunter2-secret-value"
 FLAG_VALUE = "flag-secret-value"
 URL_PASSWORD = "url-secret-value"
 QUOTED_VALUE = "quoted-secret-value"
+EXPORTED_VALUE = "exported-secret-value"
+SPLIT_VALUE = "split-secret-value"
 USER = "alice"
 HOST = "alices-laptop"
 
 RECORD = {
     "address": "t1",
-    "argv": [f"/home/{USER}/.local/bin/claude", f"--token={FLAG_VALUE}", f"API_KEY={SECRET_VALUE}"],
+    "name": f"{USER}-review",
+    "argv": [
+        f"/home/{USER}/.local/bin/claude", f"--token={FLAG_VALUE}", f"API_KEY={SECRET_VALUE}",
+        "--api-key", SPLIT_VALUE,
+    ],
     "cwd": f"/Users/{USER}/work/project",
-    "title": f"{USER}@{HOST}: ~/work",
-    "labels": {"workspace": f"/home/{USER}/w"},
+    # A shell's title is often the command line it is running.
+    "title": f"set --export API_KEY {EXPORTED_VALUE}",
+    "labels": {"workspace": f"/home/{USER}/w", "note": f"LABEL_KEY={SECRET_VALUE}"},
     "restart_env": {"API_KEY": SECRET_VALUE},
     "env": {"PATH": f"/home/{USER}/bin", "SECRET": SECRET_VALUE},
-    "status": {"state": "idle", "msg": f"see C:\\Users\\{USER}\\notes"},
+    "status": {"state": "idle", "msg": f"SETX API_KEY {EXPORTED_VALUE}", "title": f"see C:\\Users\\{USER}\\notes"},
     "state": "live",
     # A Template's foreground is `sh -c <line>`, so a whole command line lands in argv.
     "foreground": {
-        "name": "sh",
-        "argv": ["sh", "-c", f'http_proxy=http://u:{URL_PASSWORD}@proxy LABEL="quoted {QUOTED_VALUE}" claude'],
+        "name": "fish",
+        "argv": [
+            "fish", "-c",
+            f'http_proxy=http://u:{URL_PASSWORD}@proxy LABEL="quoted {QUOTED_VALUE}" claude; '
+            f"set --export API_KEY {EXPORTED_VALUE}",
+        ],
     },
 }
 
@@ -150,14 +161,20 @@ class CaptureTests(unittest.TestCase):
         )
         for output in (text, decoded):
             for forbidden in (
-                SECRET_VALUE, FLAG_VALUE, URL_PASSWORD, QUOTED_VALUE,
+                SECRET_VALUE, FLAG_VALUE, URL_PASSWORD, QUOTED_VALUE, EXPORTED_VALUE, SPLIT_VALUE,
                 USER, HOST, "real-core-id", "restart_env", '"env"', "/run/user/501",
             ):
                 self.assertNotIn(forbidden, output)
-        self.assertIn("API_KEY=<scrubbed>", text)
-        self.assertIn("--token=<scrubbed>", text)
-        self.assertIn("http_proxy=<scrubbed>", text)
-        self.assertIn("/home/user/.local/bin/claude", text)
+        self.assertIn("LABEL_KEY=<scrubbed>", text)
+        self.assertIn("scrubbed-review", text)
+
+    def test_argv_keeps_only_its_program_on_every_record_shape(self) -> None:
+        vectors, lines = self.run_capture()
+        records = [json.loads(lines[0])["params"]["data"], vectors["exchanges"][1]["result"]["terminals"][0]]
+        for record in records:
+            self.assertEqual(record["argv"], ["/home/user/.local/bin/claude", *["<scrubbed>"] * 4])
+            self.assertEqual(record["foreground"]["argv"], ["fish", "<scrubbed>", "<scrubbed>"])
+            self.assertEqual(record["title"], "<scrubbed>")
 
     def test_events_reassemble_across_frames_and_credit_comes_back(self) -> None:
         vectors, lines = self.run_capture()
@@ -227,54 +244,77 @@ class ScrubberTests(unittest.TestCase):
     def test_scrubbing_covers_each_home_form(self) -> None:
         scrubber = capture.Scrubber([])
         self.assertEqual(scrubber.text("/home/bob/x"), "/home/user/x")
-        self.assertEqual(scrubber.text("/Users/bob/x y"), "/Users/user/x y")
+        self.assertEqual(scrubber.text("/Users/bob/x"), "/Users/user/x")
         self.assertEqual(scrubber.text("/root/x"), "/home/user/x")
         self.assertEqual(scrubber.text("/rootless"), "/rootless")
         self.assertEqual(scrubber.text("/run/user/501/herdr-core/default.sock"), "/run/user/1000/herdr-core/default.sock")
         self.assertEqual(scrubber.text(r"C:\Users\bob\x"), r"C:\Users\user\x")
 
-    def test_an_assignment_takes_the_rest_of_its_string_with_it(self) -> None:
+    def test_a_value_after_an_equals_sign_never_survives(self) -> None:
         scrubber = capture.Scrubber([])
         cases = {
-            "TOKEN=abc def": "TOKEN=<scrubbed>",
-            "http_proxy=http://u:pw@h claude": "http_proxy=<scrubbed>",
+            "TOKEN=abc": "TOKEN=<scrubbed>",
             "aws_secret_access_key=zz": "aws_secret_access_key=<scrubbed>",
-            'KEY="a secret" claude': "KEY=<scrubbed>",
-            "KEY='a secret' claude": "KEY=<scrubbed>",
-            'KEY="unterminated secret': "KEY=<scrubbed>",
-            r"KEY=a\ secret claude": "KEY=<scrubbed>",
-            "KEY=$(print a secret) claude": "KEY=<scrubbed>",
-            "KEY=`print a secret` claude": "KEY=<scrubbed>",
-            "KEY=first\nsecond line": "KEY=<scrubbed>",
-            "A=1 B=secret claude": "A=<scrubbed>",
-            "export Mixed_Case=secret": "export Mixed_Case=<scrubbed>",
+            "http_proxy=http://u:pw@h": "http_proxy=<scrubbed>",
+            "Mixed_Case=secret": "Mixed_Case=<scrubbed>",
             "PATH+=:/opt/secret": "PATH+=<scrubbed>",
-            "--token=abc --next": "--token=<scrubbed>",
+            "PATH:=secret": "PATH:=<scrubbed>",
+            '"KEY"=secret': '"KEY"=<scrubbed>',
+            "--token=abc": "--token=<scrubbed>",
             "p\u00e4sswort=secret": "p\u00e4sswort=<scrubbed>",
-            "cd /tmp && KEY=secret claude": "cd /tmp && KEY=<scrubbed>",
-            '$env:API_KEY = "a secret"; claude': "$env:API_KEY=<scrubbed>",
         }
         for given, expected in cases.items():
             with self.subTest(given=given):
                 self.assertEqual(scrubber.text(given), expected)
 
-    def test_an_environment_command_loses_its_value(self) -> None:
+    def test_a_string_of_several_words_is_replaced_whole(self) -> None:
+        # Each of these could set a variable in some shell, and no list of forms is complete.
         scrubber = capture.Scrubber([])
-        cases = {
-            "setenv API_KEY a secret": "setenv API_KEY <scrubbed>",
-            "set -gx API_KEY a secret": "set -gx API_KEY <scrubbed>",
-            "set -g -x API_KEY a secret": "set -g -x API_KEY <scrubbed>",
-            "setx API_KEY secret": "setx API_KEY <scrubbed>",
-        }
-        for given, expected in cases.items():
+        for given in (
+            "setenv API_KEY zz-secret",
+            "set -gx API_KEY zz-secret",
+            "set --export API_KEY zz-secret",
+            "set --global --export API_KEY zz-secret; claude",
+            "SETX API_KEY zz-secret",
+            "setx /M API_KEY zz-secret",
+            "Set-Item Env:API_KEY zz-secret",
+            "New-Item -Path Env:API_KEY -Value zz-secret",
+            "export API_KEY=zz-secret",
+            '$env:API_KEY = "zz-secret"; claude',
+            'KEY="zz-secret" claude',
+            "cd /tmp && KEY=zz-secret claude",
+            "claude --token zz-secret",
+            "two\twords",
+            "two\nlines",
+            "KEY=first\nsecond",
+            "non\u00a0breaking",
+        ):
             with self.subTest(given=given):
-                self.assertEqual(scrubber.text(given), expected)
+                self.assertEqual(scrubber.text(given), "<scrubbed>")
 
-    def test_text_without_an_assignment_is_left_alone(self) -> None:
+    def test_argv_keeps_its_program_alone(self) -> None:
         scrubber = capture.Scrubber([])
-        for given in ("claude --resume", "set up the box", "Reviewing a to b", "sh -c claude"):
+        cases = (
+            (["fish", "-c", "set --export API_KEY zz-secret; claude"], ["fish", "<scrubbed>", "<scrubbed>"]),
+            (["env", "API_KEY", "zz-secret"], ["env", "<scrubbed>", "<scrubbed>"]),
+            (["claude", "--token", "zz-secret"], ["claude", "<scrubbed>", "<scrubbed>"]),
+            (["/home/bob/bin/claude"], ["/home/user/bin/claude"]),
+            (["KEY=zz-secret", "claude"], ["KEY=<scrubbed>", "<scrubbed>"]),
+            ([], []),
+        )
+        for given, expected in cases:
+            with self.subTest(given=given):
+                self.assertEqual(scrubber.value({"argv": given}), {"argv": expected})
+                self.assertEqual(scrubber.value({"foreground": {"argv": given}}), {"foreground": {"argv": expected}})
+
+    def test_a_single_word_stays_readable(self) -> None:
+        scrubber = capture.Scrubber([])
+        for given in ("claude", "--resume", "working", "/usr/local/bin/claude", "0.1.13", "heeler.workspace"):
             with self.subTest(given=given):
                 self.assertEqual(scrubber.text(given), given)
+
+    def test_names_are_replaced_inside_a_single_word(self) -> None:
+        self.assertEqual(capture.Scrubber(["alice"]).text("alice@laptop"), "scrubbed@laptop")
 
 
 if __name__ == "__main__":
