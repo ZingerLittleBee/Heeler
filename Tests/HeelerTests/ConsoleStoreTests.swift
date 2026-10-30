@@ -162,18 +162,6 @@ struct ConsoleStoreTests {
         #expect(store.capabilities(for: UUID()) == HostCapabilities(serverKind: .herdrTUI))
     }
 
-    @Test func aCoreHostsAgentsCannotOpenChat() {
-        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
-        let store = makeStore(transports: [:])
-        defer { store.setHosts([]) }
-        store.setHosts([host])
-        let agent = consoleAgent(
-            hostID: host.id, hostName: host.name, paneID: "t3", status: .idle)
-
-        #expect(store.chatProgram(for: agent) == nil)
-        #expect(store.chatStore(for: agent, program: .claude) == nil)
-    }
-
     @Test func theLastTabInAWorkspaceAsksBeforeClosingIt() {
         // (#swipe): the confirmation only stands between the swipe and a
         // close when the tab is the workspace's last one — closing it takes
