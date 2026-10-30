@@ -16,10 +16,15 @@ its contract.
   [ConsoleListPresentationStore](../../Sources/Heeler/Console/ConsoleListPresentationStore.swift),
   [TerminalListView](../../Sources/Heeler/Console/TerminalListView.swift), and
   [ConsoleStore](../../Sources/Heeler/Console/ConsoleStore.swift).
+  `ConsoleStore` holds each Host behind
+  [ConsoleHostProjection](../../Sources/Heeler/Console/ConsoleHostProjection.swift)
+  and asks [HostCapabilities](../../Sources/Heeler/Console/HostCapabilities.swift)
+  which actions it offers. A herdr-core Host has no projection yet.
   [HostConsoleProjection](../../Sources/Heeler/Console/HostConsoleProjection.swift)
-  owns each Host's snapshot/delta convergence; start there for missing, stale,
-  or resurrected inventory. Focused coverage:
-  [ConsoleStoreTests](../../Tests/HeelerTests/ConsoleStoreTests.swift).
+  owns each Herdr TUI Host's snapshot/delta convergence; start there for missing,
+  stale, or resurrected inventory. It builds rows with
+  [ConsolePaneRowBuilder](../../Sources/Heeler/Console/ConsolePaneRowBuilder.swift).
+  Focused coverage: [ConsoleStoreTests](../../Tests/HeelerTests/ConsoleStoreTests.swift).
 - **Agent row fields:** [AgentRowRenderer](../../Sources/Heeler/Console/AgentRowRenderer.swift)
   consumes [AgentRowLayoutStore](../../Sources/Heeler/Console/AgentRowLayoutStore.swift)
   and [AgentRowLayoutResolver](../../Sources/Heeler/Console/AgentRowLayoutResolver.swift).

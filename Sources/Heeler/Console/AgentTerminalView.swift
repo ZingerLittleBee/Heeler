@@ -932,7 +932,8 @@ struct AgentTerminalView: View {
     /// `anchorsClose` is true for the one input chrome on screen; during the
     /// Direct-to-Composer handoff both are mounted and Direct Input shows.
     private func composerActions(anchorsClose: Bool) -> AgentComposerActions {
-        AgentComposerActions(
+        let capabilities = console.capabilities(for: agent.hostID)
+        return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
             addImage: { isSelectingPhoto = true },
@@ -948,16 +949,16 @@ struct AgentTerminalView: View {
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
-            showWorktreeDetails: agent.isLinkedWorktree && console.usesLegacyHerdr(on: agent.hostID)
+            showWorktreeDetails: agent.isLinkedWorktree && capabilities.worktrees
                 ? {
                     if let checkout = agent.repositoryCheckout {
                         worktreeStore = makeWorktreeStore(checkout: checkout)
                         isShowingWorktree = true
                     }
                 } : nil,
-            renameAgent: console.usesLegacyHerdr(on: agent.hostID)
+            renameAgent: capabilities.renameAgent
                 ? { isRenamingAgent = true } : nil,
-            renameWorkspace: console.usesLegacyHerdr(on: agent.hostID)
+            renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
                 ? { isRenamingWorkspace = true } : nil,
             closeAgent: { isConfirmingClose = true },
             backToConsole: { backToConsole() },

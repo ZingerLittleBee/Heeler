@@ -16,6 +16,7 @@
 		03970FA28B8C09C524AF435E /* NotificationPrivacyCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943C187E6425414801A4734E /* NotificationPrivacyCopyTests.swift */; };
 		03A4895D457152CA4D31FC5A /* WorktreeDetailStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 442A5127B47FF6FF8840B0B9 /* WorktreeDetailStoreTests.swift */; };
 		03D51D76D290B174CD1835CD /* AgentSceneDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350E9BC30923D39BA3180FF6 /* AgentSceneDirectory.swift */; };
+		0464D8648C453B67924B352A /* ConsoleHostProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A53DB7ACA079F591F1ADEE /* ConsoleHostProjection.swift */; };
 		04A1AB55679831E97F6944DC /* WorkspaceTerminalDrawer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41234EB3A4D26FF87A07F9D3 /* WorkspaceTerminalDrawer.swift */; };
 		04BFBEABB74E72525A65DDDC /* DialogActionPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51326DED49E0BABEFF681B04 /* DialogActionPlanner.swift */; };
 		0507BD8B4201DB778E11B712 /* GhosttyContentLayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 190CD80AFC8069AB4ECE7781 /* GhosttyContentLayers.swift */; };
@@ -474,6 +475,7 @@
 		8D9ED28E1DB5A72B471CBD45 /* AppAppearanceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAEAF21DF91A1BCE4C9F79A3 /* AppAppearanceSettings.swift */; };
 		8DE4A57F48CA21DE7DC70868 /* OpenCodeRecordSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FD2219A8AED3A836669619 /* OpenCodeRecordSourceTests.swift */; };
 		8DF7095F918DBDA5B76F24F1 /* HeelerSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 13CFA5F5C15E83F411CC03BA /* HeelerSSH */; };
+		8E01A03CB8D7DFDD6BCE08A7 /* HostCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D78C747C818346BDFE22ECC /* HostCapabilities.swift */; };
 		8E205B2A9767D2C9538C6D39 /* HerdrHostPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7D28071688F3A69201EEE7 /* HerdrHostPath.swift */; };
 		8E236CBD551AF9130B943B01 /* HostConnectionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39FDAE57C6482EB8A38B46FA /* HostConnectionDetailView.swift */; };
 		8E440AFCE2BF426ECD8E0A86 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D2BCB4E4038F510852F71C /* SecretStore.swift */; };
@@ -656,6 +658,7 @@
 		C4535D59E7CA421C5204265E /* ChatMarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD50043422BE4A7863C21F2B /* ChatMarkdownView.swift */; };
 		C4EB676FF7F35C130E0808F5 /* NewTerminalStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C872F1F1C02B1E6609EA94A3 /* NewTerminalStoreTests.swift */; };
 		C56F5A20CB02597213EE1210 /* AgentUsagePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E6F1DD7869853EF91C15A0 /* AgentUsagePresentationTests.swift */; };
+		C577E6F7D424D0B645504650 /* ConsolePaneRowBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2787D9F2267D26DD4012008E /* ConsolePaneRowBuilder.swift */; };
 		C57F86EB262BAC6ABE017179 /* CodexJSONPrefix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BC98C804D7AC9D39D249B99 /* CodexJSONPrefix.swift */; };
 		C626797B247A8ED6513D2EBB /* HeelerSSHSessionE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */; };
 		C6E6E92365F39EDDD50CDE49 /* WeakNetworkE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB8C5EA497D1094E86F69C4 /* WeakNetworkE2ETests.swift */; };
@@ -1024,6 +1027,7 @@
 		1CCEB9B1072B8C63C413A4B0 /* HeelerSSHTransportBehaviorE2ETests+LineCounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+LineCounts.swift"; sourceTree = "<group>"; };
 		1D360A3ADB8506B9ECC7D059 /* AgentRowLayoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRowLayoutStore.swift; sourceTree = "<group>"; };
 		1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosePaneStore.swift; sourceTree = "<group>"; };
+		1D78C747C818346BDFE22ECC /* HostCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostCapabilities.swift; sourceTree = "<group>"; };
 		1E837D3F626BEEEB797F8C92 /* TerminalConnectionPoolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalConnectionPoolTests.swift; sourceTree = "<group>"; };
 		1E972E086FBBB04B92FF95B2 /* BlockedRequestMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedRequestMatch.swift; sourceTree = "<group>"; };
 		1E9D993852C5C7BFE8515A46 /* HostOnboardingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingStore.swift; sourceTree = "<group>"; };
@@ -1054,6 +1058,7 @@
 		276B4E744F8A3BF386189D8A /* AgentComposerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentComposerStore.swift; sourceTree = "<group>"; };
 		277D66B22B73144FF5ADAED0 /* NotificationSessionVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSessionVectorFile.swift; sourceTree = "<group>"; };
 		2782D0CCB8DD0CC97AF6932C /* AcknowledgementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcknowledgementsView.swift; sourceTree = "<group>"; };
+		2787D9F2267D26DD4012008E /* ConsolePaneRowBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsolePaneRowBuilder.swift; sourceTree = "<group>"; };
 		281FC10F8501F05C6D4D3C8D /* SideBySideDiffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideBySideDiffTests.swift; sourceTree = "<group>"; };
 		28519EE07E39CB6F31419312 /* HostServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostServices.swift; sourceTree = "<group>"; };
 		2853DC5E61CF2FC065B82335 /* OverlayPeerChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayPeerChoiceTests.swift; sourceTree = "<group>"; };
@@ -1327,6 +1332,7 @@
 		7780BE78D868DB0A8275E6FB /* Heeler.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Heeler.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		77DB1F6C018F79AFBFCCD8F5 /* GrokCardBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCardBuilder.swift; sourceTree = "<group>"; };
 		7859F47BE902D8B547E59220 /* UntrackedDirectoryListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UntrackedDirectoryListing.swift; sourceTree = "<group>"; };
+		78A53DB7ACA079F591F1ADEE /* ConsoleHostProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleHostProjection.swift; sourceTree = "<group>"; };
 		78F85C588963C3CE948AA9E4 /* AgentNotificationBannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStore.swift; sourceTree = "<group>"; };
 		791A29C99001477839E4C3E5 /* pairing-code-v2.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pairing-code-v2.json"; sourceTree = "<group>"; };
 		794BADD20F0A9DF42D4916C0 /* ConsoleSplitPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleSplitPresentation.swift; sourceTree = "<group>"; };
@@ -2489,9 +2495,11 @@
 				5E8A1BCBBB2322E297472810 /* ConsoleCommands.swift */,
 				0014CA92DE868782F085801C /* ConsoleEmptyDetailPresentation.swift */,
 				0735F123FB93D94251790AEE /* ConsoleHostIssueRow.swift */,
+				78A53DB7ACA079F591F1ADEE /* ConsoleHostProjection.swift */,
 				C85214981DECFA178F08F06F /* ConsoleHostSectionHeaderPresentation.swift */,
 				530D32C2D59D0DD128053804 /* ConsoleHostStatusPresentation.swift */,
 				76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */,
+				2787D9F2267D26DD4012008E /* ConsolePaneRowBuilder.swift */,
 				056F5FA6BE5B82D9729231A0 /* ConsoleRowSelection.swift */,
 				13300392C48361465F32D1C9 /* ConsoleSheetPresentation.swift */,
 				794BADD20F0A9DF42D4916C0 /* ConsoleSplitPresentation.swift */,
@@ -2505,6 +2513,7 @@
 				2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */,
 				2086C471788D2E7193FA9CBE /* HeelerPluginStatusStore.swift */,
 				9517F69576219D0D12778081 /* HerdrSidebarSnapshotStore.swift */,
+				1D78C747C818346BDFE22ECC /* HostCapabilities.swift */,
 				39FDAE57C6482EB8A38B46FA /* HostConnectionDetailView.swift */,
 				88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */,
 				6CAC72199BF308E484F37439 /* HostTelemetryPresentation.swift */,
@@ -3442,9 +3451,11 @@
 				5B37D1E817912A0327B2C7D1 /* ConsoleCommands.swift in Sources */,
 				07CBD5263A4A6B8912B86673 /* ConsoleEmptyDetailPresentation.swift in Sources */,
 				4B4AE725A29A4F1E3AA0B29D /* ConsoleHostIssueRow.swift in Sources */,
+				0464D8648C453B67924B352A /* ConsoleHostProjection.swift in Sources */,
 				ED78C30BC1FC7F679D392EDF /* ConsoleHostSectionHeaderPresentation.swift in Sources */,
 				7B1292E9A9C6175D1272755D /* ConsoleHostStatusPresentation.swift in Sources */,
 				E118CE5CB81C21030F23BC84 /* ConsoleListPresentationStore.swift in Sources */,
+				C577E6F7D424D0B645504650 /* ConsolePaneRowBuilder.swift in Sources */,
 				85F521BE7B229FB4AC822DCE /* ConsoleRowSelection.swift in Sources */,
 				F13FEAFA65C75F4341F54D20 /* ConsoleSheetPresentation.swift in Sources */,
 				DB973FFFAD75EE7D1F0A6C66 /* ConsoleSplitPresentation.swift in Sources */,
@@ -3529,6 +3540,7 @@
 				C7453CB760A1AFD53C7BA595 /* HerdrSidebarSnapshotStore.swift in Sources */,
 				BB26A50348D73A7852417D5B /* HerdrWire.swift in Sources */,
 				E89FDBBF01AA72A922ED0F03 /* Host.swift in Sources */,
+				8E01A03CB8D7DFDD6BCE08A7 /* HostCapabilities.swift in Sources */,
 				8E236CBD551AF9130B943B01 /* HostConnectionDetailView.swift in Sources */,
 				5BFCE188EA8080664FE28D77 /* HostConnectionTone.swift in Sources */,
 				91BF879F537B1B0DD0B5E78B /* HostConsoleProjection.swift in Sources */,
