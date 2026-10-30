@@ -744,6 +744,8 @@ private struct HostGroupHeader: View {
 /// One Hosts list row. A problem is named by its Summary alone; Host
 /// detail, a tap away, shows the whole Transport Error Presentation.
 struct HostRowPresentation: Equatable {
+    /// Beside the name: which server the Host is for.
+    let serverKind: String
     let group: HostHealthGroup
     let tone: HostConnectionTone
     /// Under the name: the address while connected and in sync, otherwise
@@ -766,6 +768,17 @@ struct HostRowPresentation: Equatable {
         syncIssue: String? = nil,
         canRetry: Bool = true
     ) {
+        serverKind = host.serverKind.displayName
+        guard host.serverKind.isConfirmed else {
+            group = .notConnected
+            tone = .paused
+            detail = "Confirm its Server Kind"
+            isProblem = false
+            trailing = nil
+            offersRetry = false
+            isDialing = false
+            return
+        }
         let problem = HostConnectionDetailPresentation(
             host: host, status: status, standingFailure: standingFailure)
         let chip = HostConnectionPresentation(
@@ -826,9 +839,16 @@ private struct HostRowLabel: View {
         HStack(spacing: 12) {
             HostStatusGlyph(tone: presentation.tone)
             VStack(alignment: .leading, spacing: 2) {
-                Text(host.displayName)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(host.displayName)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(presentation.serverKind)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
                 Text(presentation.detail)
                     .font(.subheadline)
                     .foregroundStyle(presentation.isProblem ? Color.red : Color.secondary)

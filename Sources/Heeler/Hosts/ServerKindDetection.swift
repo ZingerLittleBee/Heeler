@@ -116,6 +116,27 @@ struct ServerKindDetection: Equatable, Sendable {
     }
 }
 
+extension ServerKindDetection.HerdrTUIFinding {
+    var summary: String {
+        switch self {
+        case .found: "Found"
+        case .notFound: "Not found"
+        }
+    }
+}
+
+extension ServerKindDetection.CoreFinding {
+    var summary: String {
+        switch self {
+        case .sessionRefused: "Session name refused"
+        case .notInstalled: "Not installed"
+        case .notRunning(let version, _): "\(version), not running"
+        case .socketFilePresent(let version, _): "\(version), socket found"
+        case .socketPathTooLong(let version, _, _): "\(version), socket path too long"
+        }
+    }
+}
+
 extension ServerKind {
     /// Offers herdr-core when adding a Host, for lab and Simulator work.
     static let offerCoreHostsArgument = "--offer-herdr-core-hosts"

@@ -207,6 +207,23 @@ struct ServerKindDetectionTests {
         }
     }
 
+    // MARK: What the user reads
+
+    @Test func eachFindingSaysWhatWasFound() {
+        let cases: [(ServerKindDetection.CoreFinding, String)] = [
+            (.notInstalled, "Not installed"),
+            (.notRunning(version: "0.1.13", socketPath: "/s"), "0.1.13, not running"),
+            (.socketFilePresent(version: "0.1.13", socketPath: "/s"), "0.1.13, socket found"),
+            (.socketPathTooLong(version: "0.1.13", socketPath: "/s", limit: 103), "0.1.13, socket path too long"),
+            (.sessionRefused(reason: "why"), "Session name refused"),
+        ]
+        for (finding, summary) in cases {
+            #expect(finding.summary == summary)
+        }
+        #expect(ServerKindDetection.HerdrTUIFinding.found(sessions: []).summary == "Found")
+        #expect(ServerKindDetection.HerdrTUIFinding.notFound.summary == "Not found")
+    }
+
     // MARK: What is offered
 
     @Test func withoutTheLaunchArgumentOnlyHerdrTUIIsOffered() async throws {

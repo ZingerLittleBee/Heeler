@@ -82,7 +82,8 @@ struct HostOnboardingView: View {
             host: host,
             connector: dependencies.connector,
             knownHosts: dependencies.knownHosts,
-            credentials: dependencies.credentials)
+            credentials: dependencies.credentials,
+            offersHerdrCore: dependencies.offersHerdrCore)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which
@@ -102,6 +103,11 @@ struct HostOnboardingView: View {
                 guard phase == .finished, offersHostKeyReplacement else { return }
                 offersHostKeyReplacement = false
                 isConfirmingHostKeyReplacement = store.pendingHostKeyReplacement != nil
+            }
+            .alert("Could Not Confirm", isPresented: confirmationRefusalPresented) {
+                Button("OK", role: .cancel) { store.dismissConfirmationRefusal() }
+            } message: {
+                Text(store.confirmationRefusal ?? "")
             }
     }
 
@@ -128,41 +134,23 @@ struct HostOnboardingView: View {
 
             Section("Host") {
                 LabeledContent("Account", value: store.host.username)
-                LabeledContent("Server Kind", value: store.host.serverKind.displayName)
+                LabeledContent("Server Kind", value: store.serverKindSummary)
+                    .accessibilityIdentifier("hosts.detail.serverKind")
                 LabeledContent("Session", value: sessionLine)
                 herdrEndpointRows
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
-                pluginRow
+                if store.host.serverKind.isConfirmed { pluginRow }
             }
 
-            Section {
-                ForEach(PreflightCheck.allCases, id: \.self) { @Sendable check in
-                    MainActorContent {
-                        PreflightCheckRow(
-                            title: check.title(for: store.host.serverKind), status: status(for: check))
-                    }
-                }
-            } header: {
-                preflightHeader
-            } footer: {
-                if let info = store.serverInfo {
-                    // The notice is advisory and the checks still pass: a Host
-                    // newer than this build is usable, just not fully known.
-                    Text(
-                        store.host.serverKind == .herdrCore
-                            ? "herdr-core \(info.version)"
-                            : info.exceedsGeneratedProtocol
-                            ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
-                                + "newer than this app was built against, so features added "
-                                + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
-                                + "may be unavailable."
-                            : "herdr \(info.version) · protocol \(info.protocolVersion)")
-                }
+            if store.host.serverKind.isConfirmed {
+                preflightSection
+            } else {
+                serverKindSection
             }
 
-            if let usage {
+            if let usage, store.host.serverKind.isConfirmed {
                 AgentUsageSection(
                     hostID: store.host.id, hostName: store.host.displayName, store: usage,
                     openUsage: openUsage)
@@ -246,6 +234,80 @@ struct HostOnboardingView: View {
                 retry()
             }
         }
+    }
+
+    /// The checklist of a Host whose kind is confirmed. A core's version is on
+    /// the Server Kind row.
+    private var preflightSection: some View {
+        Section {
+            ForEach(PreflightCheck.allCases, id: \.self) { @Sendable check in
+                MainActorContent {
+                    PreflightCheckRow(
+                        title: check.title(for: store.host.serverKind), status: status(for: check))
+                }
+            }
+        } header: {
+            preflightHeader
+        } footer: {
+            if let info = store.serverInfo, store.host.serverKind == .herdrTUI {
+                // The notice is advisory and the checks still pass: a Host
+                // newer than this build is usable, just not fully known.
+                Text(
+                    info.exceedsGeneratedProtocol
+                        ? "herdr \(info.version) · protocol \(info.protocolVersion) — "
+                            + "newer than this app was built against, so features added "
+                            + "after protocol \(HeelerSSHTransport.generatedProtocolVersion) "
+                            + "may be unavailable."
+                        : "herdr \(info.version) · protocol \(info.protocolVersion)")
+            }
+        }
+    }
+
+    /// What detection found on a Host added unconfirmed, and the kinds it may
+    /// be confirmed as (ADR 0031). herdr-core stays out of it until it is on offer.
+    private var serverKindSection: some View {
+        Section {
+            PreflightCheckRow(title: PreflightCheck.connection.title(for: .unconfirmed), status: reachStatus)
+            if let detection = store.detection {
+                LabeledContent(ServerKind.herdrTUI.displayName, value: detection.herdrTUI.summary)
+                    .accessibilityIdentifier("hosts.detail.detection.herdrTUI")
+                if store.offersHerdrCore {
+                    LabeledContent(ServerKind.herdrCore.displayName, value: detection.herdrCore.summary)
+                        .accessibilityIdentifier("hosts.detail.detection.herdrCore")
+                }
+            }
+            ForEach(store.offeredKinds, id: \.self) { @Sendable kind in
+                MainActorContent {
+                    Button("Use \(kind.displayName)") {
+                        Task { await store.confirmServerKind(kind, in: catalog) }
+                    }
+                    .accessibilityIdentifier("hosts.detail.confirm.\(kind.rawValue)")
+                }
+            }
+        } header: {
+            preflightHeader
+        } footer: {
+            if let note = store.confirmationNote {
+                Text(note)
+            }
+        }
+    }
+
+    /// Whether detection reached the Host: nil while it is still trying.
+    private var reachStatus: PreflightCheckStatus? {
+        if store.detection != nil || store.detectionFailure != nil { return .passed }
+        guard let report = store.report else { return nil }
+        return PreflightCheck.allCases.lazy.map { report[$0] }.first {
+            if case .failed = $0 { true } else { false }
+        }
+    }
+
+    private var confirmationRefusalPresented: Binding<Bool> {
+        Binding(
+            get: { store.confirmationRefusal != nil },
+            set: { isPresented in
+                if !isPresented { store.dismissConfirmationRefusal() }
+            })
     }
 
     private var consoleRecoveryInput: HostOnboardingConsoleRecovery.Input {
@@ -348,7 +410,7 @@ struct HostOnboardingView: View {
     /// as footer.
     @ViewBuilder
     private var connectionSection: some View {
-        if connectionStatus != nil || retryConnection != nil {
+        if store.host.serverKind.isConfirmed, connectionStatus != nil || retryConnection != nil {
             let status = routeStatus
             Section {
                 HostConnectionStatusCard(presentation: status) {
@@ -485,7 +547,7 @@ struct HostOnboardingView: View {
     /// limit.
     private var preflightHeader: some View {
         HStack {
-            Text("Preflight")
+            Text(store.host.serverKind.isConfirmed ? "Preflight" : "Server Kind")
             if store.phase == .running {
                 ProgressView()
                     .controlSize(.mini)

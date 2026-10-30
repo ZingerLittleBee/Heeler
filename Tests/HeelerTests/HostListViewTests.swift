@@ -117,6 +117,33 @@ struct HostRowPresentationTests {
             latency: .milliseconds(148), syncIssue: syncIssue, canRetry: canRetry)
     }
 
+    @Test func theRowNamesTheServerKind() {
+        for (kind, label) in [
+            (ServerKind.herdrTUI, "Herdr TUI"), (.herdrCore, "herdr-core"), (.unconfirmed, "Not confirmed"),
+        ] {
+            let presentation = HostRowPresentation(
+                host: Host(address: "box.example", username: "dev", serverKind: kind),
+                status: .connected, standingFailure: nil, latency: nil)
+            #expect(presentation.serverKind == label)
+        }
+    }
+
+    /// Nothing dials an unconfirmed Host, so its row asks for what it needs
+    /// rather than reading as connecting.
+    @Test func anUnconfirmedHostAsksToBeConfirmed() {
+        let presentation = HostRowPresentation(
+            host: Host(address: "box.example", username: "dev", serverKind: .unconfirmed),
+            status: nil, standingFailure: nil, latency: nil)
+
+        #expect(presentation.group == .notConnected)
+        #expect(presentation.tone == .paused)
+        #expect(presentation.detail == "Confirm its Server Kind")
+        #expect(!presentation.isProblem)
+        #expect(!presentation.offersRetry)
+        #expect(!presentation.isDialing)
+        #expect(presentation.trailing == nil)
+    }
+
     @Test func hostsGroupByWhatTheyNeedFromTheUser() {
         #expect(row(.failed(.timedOut)).group == .cannotConnect)
         #expect(row(.connecting, standingFailure: .timedOut).group == .cannotConnect)
