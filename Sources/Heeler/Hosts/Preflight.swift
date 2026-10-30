@@ -20,9 +20,9 @@ enum PreflightCheck: CaseIterable, Sendable {
         switch (self, serverKind) {
         case (.connection, _): "SSH connection"
         case (.remoteEnvironment, _): "remote environment"
-        case (.herdrInstalled, .herdrTUI): "herdr installed"
+        case (.herdrInstalled, .herdrTUI), (.herdrInstalled, .unconfirmed): "herdr installed"
         case (.herdrInstalled, .herdrCore): "herdr-core installed"
-        case (.serverRunning, .herdrTUI): "herdr server running"
+        case (.serverRunning, .herdrTUI), (.serverRunning, .unconfirmed): "herdr server running"
         case (.serverRunning, .herdrCore): "herdr-core running"
         case (.protocolCompatible, _): "protocol compatible"
         }

@@ -4,8 +4,13 @@ import Observation
 enum HostStoreError: Error, Equatable {
     /// `update`/`remove` addressed a Host id the catalog does not contain.
     case unknownHost
-    /// `update` was handed a Host of another Server Kind (ADR 0031).
+    /// `update` was handed a Host of another Server Kind, or a confirmation
+    /// named no kind (ADR 0031).
     case serverKindChanged
+    /// The Host's Server Kind is already confirmed, and stays as it is.
+    case serverKindAlreadyConfirmed
+    /// The kind's server would refuse the Host's session name, for this reason.
+    case sessionNameRefused(reason: String)
     /// Persisted bytes could not be decoded. They are deliberately left
     /// untouched so a later write cannot turn a recoverable catalog into loss.
     case catalogUnreadable
@@ -15,10 +20,11 @@ enum HostStoreError: Error, Equatable {
 /// to UserDefaults (no secrets in them); passwords go straight to the
 /// injected `SecretStore` (the Keychain in the app), keyed by Host id.
 ///
-/// The catalog is stored in two parts of one shape. Herdr TUI Hosts stay in the
-/// shared one every build reads. herdr-core Hosts live in a second one, with the
-/// merged Host order, that builds before Server Kinds never read, so such a
-/// build can neither show one nor re-save it as Herdr TUI (ADR 0031).
+/// The catalog is stored in two parts of one shape. Herdr TUI Hosts and Hosts
+/// not yet confirmed stay in the shared one every build reads. herdr-core Hosts
+/// live in a second one, with the merged Host order, that builds before Server
+/// Kinds never read, so such a build can neither show one nor re-save it as
+/// Herdr TUI (ADR 0031).
 @MainActor
 @Observable
 final class HostStore {
@@ -236,6 +242,53 @@ final class HostStore {
         } else {
             throw HostStoreError.catalogUnreadable
         }
+    }
+
+    /// Confirms a Host added unconfirmed, once. A herdr-core Host's catalog
+    /// entry is written before the shared one goes: a Host found in both loads
+    /// as herdr-core, so an interrupted confirmation is still a confirmation.
+    @discardableResult
+    func confirmServerKind(_ kind: ServerKind, for id: Host.ID) throws -> Host {
+        try ensureCatalogIsWritable()
+        guard let index = hosts.firstIndex(where: { $0.id == id }) else {
+            throw HostStoreError.unknownHost
+        }
+        guard hosts[index].serverKind == .unconfirmed else {
+            throw HostStoreError.serverKindAlreadyConfirmed
+        }
+        guard kind.isConfirmed else {
+            throw HostStoreError.serverKindChanged
+        }
+        if let reason = kind.sessionNameRefusal(hosts[index].sessionName) {
+            throw HostStoreError.sessionNameRefused(reason: reason)
+        }
+        guard let entryIndex = catalogEntries.firstIndex(where: { $0.knownHostID == id }) else {
+            throw HostStoreError.catalogUnreadable
+        }
+        var confirmed = hosts[index]
+        confirmed.serverKind = kind
+        confirmed.sessionName = kind.storedSessionName(confirmed.sessionName)
+        hosts[index] = confirmed
+        if kind == .herdrCore {
+            coreCatalogEntries.append(.known(confirmed))
+            try persistCoreCatalog()
+            catalogEntries.remove(at: entryIndex)
+        } else {
+            catalogEntries[entryIndex] = .known(confirmed)
+        }
+        try persistSharedCatalog()
+        return confirmed
+    }
+
+    /// The Hosts the Console, Usage and its pickers show. A Host waiting for its
+    /// Server Kind is only in the Hosts list.
+    var consoleHosts: [Host] {
+        hosts.filter(\.serverKind.isConfirmed)
+    }
+
+    /// Only a Herdr TUI Host has a plugin to receive Live Activity updates.
+    func supportsLiveActivities(for id: Host.ID) -> Bool {
+        hosts.first(where: { $0.id == id })?.serverKind == .herdrTUI
     }
 
     /// Removes the Host, its stored password, and the device's consent to

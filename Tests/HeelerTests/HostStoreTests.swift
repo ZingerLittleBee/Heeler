@@ -306,6 +306,218 @@ struct HostStoreTests {
         defaults.set(Data(#"{"version":1,"hosts":[\#(entries)]}"#.utf8), forKey: "hosts")
     }
 
+    // MARK: The unconfirmed state (ADR 0031)
+
+    private func unconfirmedHost(session: String = "") -> Host {
+        Host(
+            name: "New", address: "new.example", username: "dev", serverKind: .unconfirmed,
+            sessionName: session)
+    }
+
+    @Test func aManuallyAddedHostIsSavedUnconfirmedInTheSharedCatalog() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        var draft = HostDraft()
+        draft.address = "new.example"
+        draft.username = "dev"
+        let host = try #require(draft.makeHost())
+
+        try HostStore(defaults: defaults, secrets: secrets).add(host)
+
+        #expect(host.serverKind == .unconfirmed)
+        #expect(try persistedHostIDs(in: defaults) == [host.id])
+        #expect(try persistedHost(id: host.id, in: defaults)["serverKind"] as? String == "unconfirmed")
+        #expect(defaults.data(forKey: Self.coreKey) == nil)
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts == [host])
+    }
+
+    @Test func aHostConfirmsOnceAndASecondConfirmationThrows() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        let tui = unconfirmedHost(session: "work")
+        let core = unconfirmedHost(session: "work")
+        try store.add(tui)
+        try store.add(core)
+
+        let confirmedTUI = try store.confirmServerKind(.herdrTUI, for: tui.id)
+        let confirmedCore = try store.confirmServerKind(.herdrCore, for: core.id)
+
+        #expect(confirmedTUI.serverKind == .herdrTUI)
+        #expect(confirmedCore.serverKind == .herdrCore)
+        #expect(store.hosts == [confirmedTUI, confirmedCore])
+        for (id, other) in [(tui.id, ServerKind.herdrCore), (core.id, .herdrTUI)] {
+            #expect(throws: HostStoreError.serverKindAlreadyConfirmed) {
+                try store.confirmServerKind(other, for: id)
+            }
+        }
+        #expect(store.hosts == [confirmedTUI, confirmedCore])
+        #expect(try persistedHostIDs(in: defaults) == [tui.id])
+        #expect(try persistedHostIDs(in: defaults, key: Self.coreKey) == [core.id])
+        let reloaded = HostStore(defaults: defaults, secrets: secrets)
+        #expect(reloaded.hosts == [confirmedTUI, confirmedCore])
+        #expect(throws: HostStoreError.serverKindAlreadyConfirmed) {
+            try reloaded.confirmServerKind(.herdrCore, for: tui.id)
+        }
+    }
+
+    @Test func aHostWithoutTheKeyIsAlreadyConfirmed() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let id = UUID()
+        writeOlderBuildCatalog([(id, "Old")], to: defaults)
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(throws: HostStoreError.serverKindAlreadyConfirmed) {
+            try store.confirmServerKind(.herdrCore, for: id)
+        }
+    }
+
+    @Test func confirmingAnUnknownHostOrNoKindThrows() throws {
+        let store = HostStore(volatileHosts: [unconfirmedHost()])
+        let id = try #require(store.hosts.first?.id)
+        #expect(throws: HostStoreError.unknownHost) {
+            try store.confirmServerKind(.herdrTUI, for: UUID())
+        }
+        #expect(throws: HostStoreError.serverKindChanged) {
+            try store.confirmServerKind(.unconfirmed, for: id)
+        }
+    }
+
+    @Test func confirmingCoreWritesItsCatalogBeforeRemovingTheSharedEntry() throws {
+        let suite = "host-store-writes-\(UUID().uuidString)"
+        let defaults = try #require(CatalogWriteRecorder(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        let host = unconfirmedHost(session: "work")
+        try store.add(host)
+        defaults.startRecording()
+
+        let confirmed = try store.confirmServerKind(.herdrCore, for: host.id)
+
+        #expect(defaults.writes == [Self.coreKey, "hosts"])
+        #expect(try persistedHostIDs(in: defaults).isEmpty)
+        #expect(try persistedHostIDs(in: defaults, key: Self.coreKey) == [host.id])
+
+        // The device as the first write left it: both catalogs name the Host.
+        let (interrupted, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        interrupted.set(defaults.sharedAtFirstWrite, forKey: "hosts")
+        interrupted.set(defaults.coreAtFirstWrite, forKey: Self.coreKey)
+        #expect(try persistedHostIDs(in: interrupted) == [host.id])
+        #expect(try persistedHostIDs(in: interrupted, key: Self.coreKey) == [host.id])
+
+        let reloaded = HostStore(defaults: interrupted, secrets: InMemorySecretStore())
+
+        #expect(reloaded.hosts == [confirmed])
+        #expect(reloaded.hosts.first?.serverKind == .herdrCore)
+        #expect(try persistedHostIDs(in: interrupted).isEmpty)
+    }
+
+    @Test func confirmingCoreKeepsTheHostsPlaceInTheList() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        let first = Host.fixture(name: "First")
+        let added = unconfirmedHost()
+        let last = Host.fixture(name: "Last")
+        for host in [first, added, last] { try store.add(host) }
+
+        try store.confirmServerKind(.herdrCore, for: added.id)
+
+        #expect(store.hosts.map(\.id) == [first.id, added.id, last.id])
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts.map(\.id) == [first.id, added.id, last.id])
+    }
+
+    @Test(arguments: ["a/b", "a\\b", "a:b", ".", "..", "a|b", "a\tb"])
+    func confirmingCoreRefusesASessionNameHCRefuses(_ name: String) throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        let host = unconfirmedHost(session: name)
+        try store.add(host)
+
+        do {
+            try store.confirmServerKind(.herdrCore, for: host.id)
+            Issue.record("\(name) should be refused")
+        } catch HostStoreError.sessionNameRefused(let reason) {
+            #expect(reason.contains("herdr-core"))
+            #expect(reason.contains(name))
+        }
+
+        #expect(store.hosts == [host])
+        #expect(defaults.data(forKey: Self.coreKey) == nil)
+        #expect(try persistedHostIDs(in: defaults) == [host.id])
+    }
+
+    @Test func confirmingHerdrTUIRefusesASessionNameHerdrRefuses() throws {
+        let store = HostStore(volatileHosts: [unconfirmedHost(session: "desktop session")])
+        let id = try #require(store.hosts.first?.id)
+
+        do {
+            try store.confirmServerKind(.herdrTUI, for: id)
+            Issue.record("herdr refuses a name with a space")
+        } catch HostStoreError.sessionNameRefused(let reason) {
+            #expect(reason.contains("herdr refuses"))
+            #expect(reason.contains("desktop session"))
+        }
+        #expect(store.hosts.first?.serverKind == .unconfirmed)
+        // The name herdr refuses is one hc accepts.
+        #expect(try store.confirmServerKind(.herdrCore, for: id).sessionName == "desktop session")
+    }
+
+    @Test(arguments: [(" work ", "work", "work"), ("", "default", "")])
+    func confirmingStoresTheNameAsThatKindReadsIt(
+        typed: String, core: String, tui: String
+    ) throws {
+        let store = HostStore(volatileHosts: [unconfirmedHost(session: typed), unconfirmedHost(session: typed)])
+        #expect(try store.confirmServerKind(.herdrCore, for: store.hosts[0].id).sessionName == core)
+        #expect(try store.confirmServerKind(.herdrTUI, for: store.hosts[1].id).sessionName == tui)
+    }
+
+    /// A build before Server Kinds ignores the key and fails its whole catalog
+    /// on a session name herdr refuses, so the shared entry keeps such a name
+    /// where that build does not look.
+    @Test func aSharedEntryOnlyEverNamesASessionOlderBuildsAccept() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let refused = unconfirmedHost(session: "desktop session")
+        let accepted = unconfirmedHost(session: "work")
+        let store = HostStore(defaults: defaults, secrets: secrets)
+        try store.add(refused)
+        try store.add(accepted)
+
+        let raw = try persistedHost(id: refused.id, in: defaults)
+        #expect(raw["sessionName"] as? String == "")
+        let plain = try persistedHost(id: accepted.id, in: defaults)
+        #expect(plain["sessionName"] as? String == "work")
+        #expect(plain["unconfirmedSessionName"] == nil)
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts == [refused, accepted])
+    }
+
+    @Test func anUnconfirmedHostStaysOutOfTheConsoleCatalog() throws {
+        let tui = Host.fixture(name: "TUI")
+        let core = coreHost()
+        let unconfirmed = unconfirmedHost()
+        let store = HostStore(volatileHosts: [tui, unconfirmed, core])
+
+        #expect(store.consoleHosts == [tui, core])
+        #expect(store.supportsLiveActivities(for: tui.id))
+        #expect(!store.supportsLiveActivities(for: unconfirmed.id))
+        #expect(!store.supportsLiveActivities(for: core.id))
+        #expect(!store.supportsLiveActivities(for: UUID()))
+
+        let confirmed = try store.confirmServerKind(.herdrTUI, for: unconfirmed.id)
+
+        #expect(store.consoleHosts == [tui, confirmed, core])
+        #expect(store.supportsLiveActivities(for: unconfirmed.id))
+    }
+
     @Test func coreHostsNeverEnterTheSharedCatalog() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -1302,5 +1514,28 @@ extension Host {
         authMethod: AuthMethod = .deviceKey
     ) -> Host {
         Host(id: id, name: name, address: address, username: username, authMethod: authMethod)
+    }
+}
+
+/// Notes which catalog each write touched, and both catalogs as the first write
+/// left them.
+private final class CatalogWriteRecorder: UserDefaults, @unchecked Sendable {
+    private(set) var writes: [String] = []
+    private(set) var sharedAtFirstWrite: Data?
+    private(set) var coreAtFirstWrite: Data?
+    private var isRecording = false
+
+    func startRecording() {
+        isRecording = true
+    }
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        super.set(value, forKey: defaultName)
+        guard isRecording else { return }
+        writes.append(defaultName)
+        if writes.count == 1 {
+            sharedAtFirstWrite = data(forKey: "hosts")
+            coreAtFirstWrite = data(forKey: "herdrCoreHosts")
+        }
     }
 }
