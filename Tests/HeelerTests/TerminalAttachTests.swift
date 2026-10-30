@@ -2971,6 +2971,28 @@ struct TerminalAttachTests {
         #expect(TerminalKeyboardInset.insetHeight(covered: 20, bottomSafeArea: 34) == 0)
     }
 
+    /// A tab bar kept below a terminal (an unfolded iPhone's regular-width
+    /// Console) raises the terminal's bottom edge above the home indicator.
+    /// Measured from the window's safe area, the keyboard left a gap of the
+    /// difference above it.
+    @MainActor
+    @Test func theKeyboardInsetMeasuresFromTheTerminalsHostBottomEdge() async throws {
+        let controller = UIViewController()
+        controller.additionalSafeAreaInsets.bottom = 49
+        let anchor = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
+        controller.view.addSubview(anchor)
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 669, height: 951), rootViewController: controller)
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+
+        let inset = try #require(
+            TerminalKeyboardInset.contentBottomInset(of: anchor, in: window))
+        #expect(abs(inset - (window.safeAreaInsets.bottom + 49)) <= 0.5)
+        #expect(TerminalKeyboardInset.contentBottomInset(of: nil, in: window) == nil)
+        #expect(TerminalKeyboardInset.contentBottomInset(of: UIView(), in: window) == nil)
+    }
+
     @MainActor
     private static func host(_ terminal: HeelerTerminalView) async throws -> UIWindow {
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 720)

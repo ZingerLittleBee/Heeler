@@ -57,6 +57,10 @@ Entries reference the pull request that made the change.
 - Keep each row's fields in Agent List Fields on their own line. The last
   one, often the add button, could drop below the row onto the next.
   (#591)
+- Keep the Composer, Direct Input and Shell Terminal input rows on top of
+  the keyboard on an iPhone Duo's inner display, where the Console's tab
+  bar stays below them. A gap the height of the tab bar opened between
+  them. (#534)
 - Keep the paste button on a terminal's keyboard row visible: it could
   appear as an empty space when the terminal opened. In light mode it is
   now a plain glyph like the row's other buttons, without a gray backing.

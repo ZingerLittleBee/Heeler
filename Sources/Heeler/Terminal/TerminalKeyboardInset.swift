@@ -54,6 +54,10 @@ final class TerminalKeyboardInset {
     /// process-wide; with two windows on iPad only the terminal's own window
     /// can say how much of it the keyboard covers.
     @ObservationIgnored private weak var window: UIWindow?
+    /// A view inside the terminal's screen, when the terminal can rest above
+    /// a bar rather than on the home indicator; see
+    /// ``contentBottomInset(of:in:)``.
+    @ObservationIgnored private weak var contentAnchor: UIView?
     @ObservationIgnored private var capturesPresentedHeight = true
     /// Composer-to-terminal responder handoff can publish transient show,
     /// change-frame, and even hide notifications while the software keyboard
@@ -118,8 +122,9 @@ final class TerminalKeyboardInset {
 
     /// Measures against the window the terminal is mounted in, which its view
     /// reports from a `WindowReader` in its background. Idempotent; the inset
-    /// keeps the last window it was given.
-    func attach(to window: UIWindow) {
+    /// keeps the last window it was given, and the last `contentAnchor`.
+    func attach(to window: UIWindow, contentAnchor: UIView? = nil) {
+        if let contentAnchor { self.contentAnchor = contentAnchor }
         guard self.window !== window else { return }
         self.window = window
     }
@@ -129,7 +134,9 @@ final class TerminalKeyboardInset {
             return measureOverride(endFrame)
         }
         guard let window else { return nil }
-        return Self.coveredHeight(of: endFrame, in: window)
+        return Self.coveredHeight(
+            of: endFrame, in: window,
+            contentBottomInset: Self.contentBottomInset(of: contentAnchor, in: window))
     }
 
     private func measureWindowKeyboard() -> CGFloat? {
@@ -137,7 +144,16 @@ final class TerminalKeyboardInset {
             return measureWindowKeyboardOverride()
         }
         guard let window else { return nil }
-        return Self.layoutGuideHeight(in: window)
+        return keyboardHeight(in: window)
+    }
+
+    /// The keyboard's reach above the terminal's bottom edge in `window`, as
+    /// the layout guide tracks it, measured the way this inset measures:
+    /// against ``contentBottomInset(of:in:)`` for its content anchor.
+    func keyboardHeight(in window: UIWindow) -> CGFloat? {
+        Self.layoutGuideHeight(
+            in: window,
+            contentBottomInset: Self.contentBottomInset(of: contentAnchor, in: window))
     }
 
     private func keyboardWillPresent(endFrame: CGRect?) {
@@ -432,7 +448,12 @@ final class TerminalKeyboardInset {
     /// while that window owns the keyboard (see `windowOwnsKeyboard`): the
     /// notification is process-wide, and on iPad another window of the app
     /// can be the one typing (#157).
-    static func coveredHeight(of endFrame: CGRect, in window: UIWindow) -> CGFloat? {
+    ///
+    /// `contentBottomInset` is how far above the window's bottom edge the
+    /// terminal stops; nil means the home indicator's safe area.
+    static func coveredHeight(
+        of endFrame: CGRect, in window: UIWindow, contentBottomInset: CGFloat? = nil
+    ) -> CGFloat? {
         guard let scene = window.windowScene,
             windowOwnsKeyboard(
                 isKeyWindow: window.isKeyWindow,
@@ -442,14 +463,16 @@ final class TerminalKeyboardInset {
         let frameInWindow = window.convert(endFrame, from: window.screen.coordinateSpace)
         return insetHeight(
             covered: window.bounds.intersection(frameInWindow).height,
-            bottomSafeArea: window.safeAreaInsets.bottom)
+            bottomSafeArea: contentBottomInset ?? window.safeAreaInsets.bottom)
     }
 
     /// How far the keyboard reaches above the terminal's bottom edge as the
     /// keyboard layout guide tracks it, under the same ownership rule as
-    /// `coveredHeight(of:in:)`. The guide rests on the bottom safe area while
-    /// no keyboard is docked, which measures zero.
-    static func layoutGuideHeight(in window: UIWindow) -> CGFloat? {
+    /// `coveredHeight(of:in:contentBottomInset:)`. The guide rests on the
+    /// bottom safe area while no keyboard is docked, which measures zero.
+    static func layoutGuideHeight(
+        in window: UIWindow, contentBottomInset: CGFloat? = nil
+    ) -> CGFloat? {
         guard let scene = window.windowScene,
             windowOwnsKeyboard(
                 isKeyWindow: window.isKeyWindow,
@@ -461,7 +484,27 @@ final class TerminalKeyboardInset {
         let includesBottomSafeArea = abs(frame.maxY - window.bounds.maxY) <= 1
         return insetHeight(
             covered: frame.height,
-            bottomSafeArea: includesBottomSafeArea ? window.safeAreaInsets.bottom : 0)
+            bottomSafeArea: includesBottomSafeArea
+                ? contentBottomInset ?? window.safeAreaInsets.bottom : 0)
+    }
+
+    /// How far above `window`'s bottom edge a terminal containing `anchor`
+    /// stops: the bottom safe area of the view controller hosting it. That is
+    /// the home indicator's, unless a bar stays below the terminal, as the
+    /// Console's tab bar does beside a selection in a regular-width iPhone
+    /// window (an unfolded iPhone). Measured from the window's edge, the
+    /// keyboard then left a bar's height of gap above it. UIKit's safe area
+    /// never includes the keyboard, so this holds while it moves. Nil without
+    /// an anchor in `window`, which measures the window's own safe area.
+    static func contentBottomInset(of anchor: UIView?, in window: UIWindow) -> CGFloat? {
+        guard let anchor, anchor.window === window else { return nil }
+        var responder: UIResponder? = anchor
+        while let current = responder, !(current is UIViewController) {
+            responder = current.next
+        }
+        guard let host = (responder as? UIViewController)?.view else { return nil }
+        let safeFrame = host.convert(host.safeAreaLayoutGuide.layoutFrame, to: window)
+        return max(0, window.bounds.maxY - safeFrame.maxY)
     }
 
     /// The keyboard layout guide's frame in `window`'s coordinates, or nil
