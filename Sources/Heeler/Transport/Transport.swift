@@ -961,6 +961,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// A socket file left behind has two causes that SSH cannot tell apart: a
     /// stopped or crashed core, or an SSH server refusing socket forwarding.
     case herdrCoreNotRunning(socketPath: String, socketFilePresent: Bool)
+    /// The core just reported itself running and SSH still refuses its socket,
+    /// which leaves one cause of the two `herdrCoreNotRunning` cannot tell apart.
+    case herdrCoreForwardingRefused(socketPath: String)
     /// The core cannot serve this app. `command` is `herdr-core update` by the
     /// probed path. Never retried: the same core gives the same answer.
     case herdrCoreUpdateRequired(command: String)
@@ -1019,6 +1022,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .streamLocalOpenFailed, .gitTimedOut, .hostFileTimedOut, .hostFileUnreadable,
             .hostStoreUnreadable, .hostFeatureUnavailable, .coreMutationOutcomeUnknown,
             .herdrCoreNotInstalled, .herdrCoreUpdateRequired, .herdrCoreSocketPathTooLong,
+            .herdrCoreForwardingRefused,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

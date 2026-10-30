@@ -75,6 +75,24 @@ in its detail, and run its checks in each state.
 Each check run must leave the Host as it found it: no core started, and no process
 or file added.
 
+## Start
+
+Launch with `--offer-herdr-core-hosts`, and give the Host a unique non-default core
+session. The session is yours to start and stop; no other is. Record the session and
+`loginctl show-user <user> -p Linger` before you begin. To see the linger step change
+something, turn it off first with `loginctl disable-linger`, and put it back afterwards
+if it was on.
+
+| Step | What to do | What to check |
+| --- | --- | --- |
+| Offer | Open the Host with its core stopped | **herdr-core is not running**, with **Start herdr-core** below the checks. Rerun the checks a few times: `ls ~/.local/state/herdr-core` gains nothing |
+| Confirmation | Tap **Start herdr-core** | It names the session, the interactive login shell and systemd linger. **Cancel** starts nothing |
+| Fresh start | Tap **Start herdr-core**, then **Start** | The checks run again and pass, and the note says the session started. `<s>/core.lock` exists and no `default` directory appeared. `Linger=yes`. A Terminal started afterwards has the `PATH` the account's rc files set, not the SSH exec's |
+| Linger note | Read the state you recorded against the one you read now | Off before and on now, or on both times |
+| Already running | Stop the core and rerun the checks so **Start herdr-core** shows, then start the core on the box with `HC_SESSION=<s> ~/.local/bin/herdr-core server start` and tap **Start** in the app | **herdr-core was already running**, **Start changed nothing**, and no word about your environment. `server.status` shows the same `pid` as before the tap |
+
+Stop the session by absolute path when you finish, as the safety rules say.
+
 ## Console
 
 With a core running in your unique session and the Host connected, open the

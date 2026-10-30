@@ -61,6 +61,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         throw TransportError.hostFeatureUnavailable(feature: "locate")
     }
 
+    func lastLocation() async -> HerdrCoreLocator.Location? { nil }
+
+    func startCore() async throws -> HerdrCoreStart.Outcome {
+        throw TransportError.hostFeatureUnavailable(feature: "startCore")
+    }
+
     func hello() async throws -> HerdrCoreServerInfo {
         try await helloAtLastLocation()
     }

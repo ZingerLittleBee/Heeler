@@ -43,8 +43,10 @@ stays as it is.
   running. On Linux the user may start one with a confirmed action that runs
   the probed `herdr-core` by its absolute path through the user's interactive
   login shell (`$SHELL -lic`), so the core and every Terminal it starts get the
-  environment of the user's own terminal; the confirmation says that the start
-  also tries to turn on systemd linger for the user when it is off. macOS and
+  environment of the user's own terminal. `HC_SESSION` is set inside the command,
+  after the rc files run, so an rc file cannot send the start to another session.
+  The confirmation says that the start also tries to turn on systemd linger for
+  the user when it is off. macOS and
   Windows Hosts only say how to start it on that machine: a core started over
   SSH runs outside the user's desktop login session.
 - The app never runs `hc` by that name. The installer links `hc` only when no
@@ -178,8 +180,12 @@ confirm or refine these points with test clients, not the app.
 - A start through an interactive shell over an exec without a terminal writes
   job-control warnings, and the user's rc files may print, so the action
   judges by exit status and the last line of output. `server start` against a
-  running core changes nothing, which the reported uptime shows; the action
-  promises the user's environment only for a fresh start.
+  running core changes nothing, which the reported uptime shows: it is compared
+  with the time since the app sent the exec, so the two machines' clocks need not
+  agree. The action promises the user's environment only for a fresh start. A
+  core that has just reported itself running while its channel is still refused
+  leaves one of the two causes a socket file names, so the Host says only that the
+  SSH server refuses socket forwarding, until the next run of its checks.
 - One SSH session's forwarding survives core restarts: each connection is a
   new channel.
 - On Windows a core that stops between the pipe check and `connect` is

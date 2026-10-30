@@ -63,6 +63,23 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         }
     }
 
+    /// What the confirmed Start's exec does.
+    enum StartResponse: Sendable {
+        case exits(status: Int32, stdout: String, stderr: String)
+        case throwsError(TransportError)
+
+        /// A core this Start brought up, under an rc file's banner and the
+        /// shell's job-control warning. A real exec takes longer than the
+        /// scripted one, so its uptime is zero here.
+        static let fresh = exits(
+            status: 0, stdout: "Welcome to box\n{\"pid\":7,\"uptime_ms\":0}\n",
+            stderr: "bash: no job control in this shell\n")
+        /// A core up for an hour.
+        static let alreadyRunning = exits(
+            status: 0, stdout: "{\"pid\":7,\"uptime_ms\":3600000}\n",
+            stderr: "bash: no job control in this shell\n")
+    }
+
     static let nonce = "scripted-core-host-nonce"
     static let installedPath = "/home/me/.local/bin/herdr-core"
     static let socketPath = "/run/user/1000/herdr-core/work.sock"
@@ -122,6 +139,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private let shellBanner: Data
     private var channel: Channel
     private var connected = true
+    private let start: StartResponse
+    private let channelAfterStart: Channel?
     private let herdrRead: HerdrRead
     private let detectionFailure: TransportError?
 
@@ -139,8 +158,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     init(
         locator: [String] = locatorLines(), locatorStatus: Int32 = 0, shellBanner: Data = Data(),
         herdrRead: HerdrRead = .notInstalled, detectionFailure: TransportError? = nil,
+        start: StartResponse = .fresh, channelAfterStart: Channel? = nil,
         channel: Channel
     ) {
+        self.start = start
+        self.channelAfterStart = channelAfterStart
         self.herdrRead = herdrRead
         self.detectionFailure = detectionFailure
         self.locator = locator
@@ -154,6 +176,18 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         scripts.append(String(decoding: script, as: UTF8.self))
         let output = (["\(Self.nonce) begin"] + locator + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: locatorStatus)
+    }
+
+    func runCoreStart(_ script: Data) async throws -> GitExecResult {
+        log.append("start")
+        scripts.append(String(decoding: script, as: UTF8.self))
+        if let channelAfterStart { channel = channelAfterStart }
+        switch start {
+        case .exits(let status, let stdout, let stderr):
+            return GitExecResult(stdout: Data(stdout.utf8), stderr: Data(stderr.utf8), exitStatus: status)
+        case .throwsError(let error):
+            throw error
+        }
     }
 
     /// Prints what the script asked for, framed by the nonce the script carries.

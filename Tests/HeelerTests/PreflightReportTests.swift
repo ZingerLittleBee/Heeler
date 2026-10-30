@@ -251,6 +251,7 @@ struct PreflightReportTests {
             (.herdrCoreNotRunning(socketPath: "/s", socketFilePresent: false), .serverRunning),
             (.herdrCoreNotRunning(socketPath: "/s", socketFilePresent: true), .serverRunning),
             (.herdrCoreSocketPathTooLong(path: "/s", limit: 103), .serverRunning),
+            (.herdrCoreForwardingRefused(socketPath: "/s"), .serverRunning),
             (.herdrCoreUpdateRequired(command: "/opt/herdr-core update"), .protocolCompatible),
         ]
         for (error, check) in cases {
