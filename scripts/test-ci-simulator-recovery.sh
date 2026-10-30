@@ -36,6 +36,8 @@ for constant in port_block_size port_block_base_default port_block_count core_po
     printf -v "$constant" '%s' "$value"
 done
 
+core_archive_cache_dir="$work/core-archive-cache"
+
 mkdir -p "$work/bin"
 cat > "$work/bin/xcodebuild" <<'STUB'
 #!/usr/bin/env bash
@@ -319,7 +321,7 @@ run_shard_case() (
     run_suite() { printf 'suite %s\n' "$*" >> "$fixture_dir/events"; }
     start_password_sshd() { echo start-password >> "$fixture_dir/events"; }
     stop_privileged_sshd() { echo stop-password >> "$fixture_dir/events"; }
-    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests; }
+    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 3 1 0 HerdrCoreTransportE2ETests; }
     run_app_fixture_suites
     case "$shard" in
         session-weak)
@@ -335,7 +337,7 @@ EXPECTED
             cat > "$fixture_dir/expected" <<'EXPECTED'
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 118 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
-suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 3 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
             ;;
@@ -346,7 +348,7 @@ suite HeelerSSHSessionE2ETests 13 1 0 HeelerSSHSessionE2ETests
 stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 129 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
-suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 3 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             ;;
         ordinary)
@@ -484,7 +486,7 @@ for result in pass fail; do (
     cat > "$fixture_dir/expected" <<'EXPECTED'
 start
 config core-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
-suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 3 1 0 HerdrCoreTransportE2ETests
 EXPECTED
     if [[ "$result" == pass ]]; then
         [[ "$status" == 0 && -z "$core_fixture_dir" ]] || fail 'core success retained fixture ownership'
@@ -512,6 +514,60 @@ EXPECTED
     grep -qF 'archive checksum mismatch' "$fixture_dir/output" || fail 'core archive failed for an unrelated reason'
     [[ ! -e "$fixture_dir/extracted" ]] || fail 'core extracted an unchecked archive'
     echo 'PASS core-download-checksum'
+)
+
+# The archive cache: what is restored is verified before extraction, a bad one
+# is replaced by a checked download, and a download fills the cache.
+core_archive_pin() {
+    local target=macos-aarch64
+    [[ "$(uname -m)" == x86_64 ]] && target=macos-x86_64
+    awk -v target="$target" '$2 == target { print $1 }' "$repo_root/scripts/fixtures/herdr-core-archive.sha256"
+}
+(
+    fixture_dir="$work/core-cache-hit"
+    core_archive_cache_dir="$fixture_dir/cache"
+    mkdir -p "$core_archive_cache_dir"
+    pin=$(core_archive_pin)
+    echo good > "$core_archive_cache_dir/herdr-core-$pin.tar.gz"
+    shasum() { [[ "$(cat "$3")" == good ]] && echo "$pin  $3" || echo "bad  $3"; }
+    curl() { touch "$fixture_dir/downloaded"; return 1; }
+    tar() { printf '#!/bin/sh\necho "hc 0.1.13"\n' > "$fixture_dir/herdr-core-0.1.13/herdr-core"; touch "$fixture_dir/extracted"; }
+    download_core_fixture_binary > "$fixture_dir/output" 2>&1 || fail 'core refused a good cached archive'
+    [[ ! -e "$fixture_dir/downloaded" ]] || fail 'core downloaded past a good cached archive'
+    [[ -e "$fixture_dir/extracted" ]] || fail 'core did not extract a good cached archive'
+    echo 'PASS core-cache-hit'
+)
+(
+    fixture_dir="$work/core-cache-tampered"
+    core_archive_cache_dir="$fixture_dir/cache"
+    mkdir -p "$core_archive_cache_dir"
+    pin=$(core_archive_pin)
+    echo tampered > "$core_archive_cache_dir/herdr-core-$pin.tar.gz"
+    shasum() { [[ "$(cat "$3")" == good ]] && echo "$pin  $3" || echo "bad  $3"; }
+    curl() { local last=""; for last in "$@"; do :; done; echo good > "$last"; }
+    tar() {
+        [[ "$(cat "$fixture_dir/herdr-core-0.1.13/core.tar.gz")" == good ]] || fail 'core extracted a tampered cached archive'
+        printf '#!/bin/sh\necho "hc 0.1.13"\n' > "$fixture_dir/herdr-core-0.1.13/herdr-core"
+        touch "$fixture_dir/extracted"
+    }
+    download_core_fixture_binary > "$fixture_dir/output" 2>&1 || fail 'core did not recover from a tampered cached archive'
+    grep -qF 'Discarding a cached' "$fixture_dir/output" || fail 'core kept a tampered cached archive silently'
+    [[ -e "$fixture_dir/extracted" ]] || fail 'core did not extract the checked download'
+    [[ "$(cat "$core_archive_cache_dir/herdr-core-$pin.tar.gz")" == good ]] || fail 'core left a tampered archive in the cache'
+    echo 'PASS core-cache-tampered'
+)
+(
+    fixture_dir="$work/core-cache-bad-download"
+    core_archive_cache_dir="$fixture_dir/cache"
+    mkdir -p "$fixture_dir"
+    curl() { local last=""; for last in "$@"; do :; done; echo tampered > "$last"; }
+    tar() { touch "$fixture_dir/extracted"; }
+    if download_core_fixture_binary > "$fixture_dir/output" 2>&1; then
+        fail 'core accepted an unchecked download into the cache'
+    fi
+    [[ ! -e "$fixture_dir/extracted" ]] || fail 'core extracted an unchecked download'
+    [[ -z "$(ls -A "$core_archive_cache_dir" 2>/dev/null)" ]] || fail 'core cached an unchecked download'
+    echo 'PASS core-cache-bad-download'
 )
 
 (

@@ -5,10 +5,9 @@ import Testing
 
 @Suite("SSH channel admission")
 struct SSHChannelAdmissionTests {
-    @Test(arguments: [false, true])
-    func execBackendsShareNineSessionSlots(core: Bool) async throws {
-        let admission = SSHChannelAdmission(execSessionBudget: core)
-        if !core { await admission.useWindowsSessionBudget() }
+    @Test func windowsExecBackendsShareNineSessionSlots() async throws {
+        let admission = SSHChannelAdmission()
+        await admission.useWindowsSessionBudget()
         var leases: [SSHChannelAdmissionLease] = []
         for _ in 0..<5 { leases.append(try await admission.acquire(.attach)) }
         leases.append(try await admission.acquire(.events))
@@ -24,6 +23,34 @@ struct SSHChannelAdmissionTests {
         for lease in leases { await lease.release() }
         #expect(await admission.snapshot().connection == 0)
     }
+
+    /// A forwarded channel takes no SSH session slot, so a core link has no
+    /// exec budget: it is the one long-lived channel, as Herdr TUI's events are.
+    @Test func aCoreLinkHoldsTheEventsSlotUntilItsChannelCloses() async throws {
+        let admission = SSHChannelAdmission()
+        let channel = try await admission.admitCoreLink { FakeCoreSocket() }
+        #expect(await admission.snapshot() == .init(
+            ordinaryForwarding: 0, events: 1, ordinarySession: 0, attach: 0, connection: 1))
+
+        let next = Task { try await admission.admitCoreLink { FakeCoreSocket() } }
+        await Task.yield()
+        #expect(await admission.snapshot().events == 1)
+
+        try await channel.close(timeout: .seconds(1))
+        let second = try await next.value
+        #expect(await admission.snapshot().events == 1)
+        try await second.close(timeout: .seconds(1))
+        #expect(await admission.snapshot().connection == 0)
+    }
+
+    @Test func aCoreLinkThatCannotOpenGivesItsSlotBack() async {
+        let admission = SSHChannelAdmission()
+        await #expect(throws: TransportError.streamLocalOpenFailed(path: "/s")) {
+            try await admission.admitCoreLink { throw TransportError.streamLocalOpenFailed(path: "/s") }
+        }
+        #expect(await admission.snapshot().connection == 0)
+    }
+
     @Test func productionLimitsReserveEventsAndAttachWithinTheConnectionCeiling() async throws {
         let limits = SSHChannelAdmission.Limits.production
         #expect(limits.ordinaryForwarding == 8)

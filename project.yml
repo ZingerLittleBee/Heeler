@@ -276,6 +276,8 @@ targets:
       # Shared herdr-core frame vectors, read by Swift now and the Helper later.
       - path: plugin/test-vectors/herdr-core-frames-v1.json
         buildPhase: resources
+      - path: plugin/test-vectors/herdr-core-session-names-v1.json
+        buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json
         buildPhase: resources

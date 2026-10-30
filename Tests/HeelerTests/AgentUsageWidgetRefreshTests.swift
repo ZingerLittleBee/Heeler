@@ -162,6 +162,24 @@ struct AgentUsageWidgetRefreshTests {
         #expect(connector.connects.withLock { $0 } == 1)
     }
 
+    /// The background read asks by Server Kind: it never dials a core Host.
+    @Test func aCoreHostsBackgroundReadIsUnsupportedWithoutConnecting() async {
+        let transport = ScriptedTransport()
+        let connector = RecordingConnector(transport: transport)
+        let refresh = AgentUsageBackgroundRefresh.live(
+            connector: connector, knownHosts: InMemoryKnownHostsStore(),
+            credentials: HostCredentialsProvider(
+                deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+                rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+                secrets: InMemorySecretStore()),
+            sleep: { _ in })
+        var core = Self.host("Core Mac")
+        core.serverKind = .herdrCore
+
+        #expect(await refresh.read(core, false) == .unsupportedBackend)
+        #expect(connector.connects.withLock { $0 } == 0)
+    }
+
     @Test func connectingReadsAStaleHostForTheWidgetsOnce() async throws {
         let (publisher, directory) = try Self.publisher()
         defer { try? FileManager.default.removeItem(at: directory) }

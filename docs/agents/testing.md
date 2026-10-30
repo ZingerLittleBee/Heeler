@@ -170,11 +170,25 @@ from compilation, an executed suite, or native UI acceptance.
 
 ### herdr-core backend
 
-`HerdrCoreFrameTests`, `HerdrCoreLinkTests`, `HerdrCoreServerInfoTests` and `HerdrCoreEventCursorTests` cover the framed building blocks through `FakeCoreSocket`, a duplex API channel on the manual clock, and `plugin/test-vectors/herdr-core-frames-v1.json`. Those vectors are provisional until a capture replaces them: `scripts/lab/herdr-core-capture.py` connects only to a socket path it is given, starts nothing, and writes scrubbed vectors and event logs from a core you started yourself.
+A herdr-core Host connects over one framed link: a read-only locator exec, then a direct-streamlocal channel under the events slot. Nothing starts a core (ADR 0031).
 
-`HerdrCoreWireTests` and `HerdrCoreCommandTests` cover generation-one mapping, sequencing and command validation. `HerdrCoreTransportE2ETests` runs all nine methods against a real core and disposable SSH server in the transport CI shard (and the serial lane); CI downloads the pinned 0.1.13 archive and checks its SHA-256 before extraction. The evidence gate requires those passes before accepting their ordinary-lane skips.
+`HerdrCoreFrameTests`, `HerdrCoreLinkTests`, `HerdrCoreServerInfoTests` and `HerdrCoreEventCursorTests` cover the framed building blocks through `FakeCoreSocket`, a duplex API channel on the manual clock, and `plugin/test-vectors/herdr-core-frames-v1.json`. `HerdrCoreLocatorTests` covers the locator's script and output and reads the core-session vector, `plugin/test-vectors/herdr-core-session-names-v1.json`; `scripts/test-herdr-core-locator.py` runs the real script in each POSIX shell against a fake home. `HerdrCoreSSHTransportTests` and the core cases of `HostOnboardingStoreTests` run the real transport over `ScriptedCoreHost`, a scripted locator exec and fake socket.
 
-For a local focused run, `scripts/fixtures/herdr-core-ssh.py --help` describes setup, the private Simulator environment configuration and cleanup, using an already installed core. The fixture owns a separate home, runtime directory, state and session; it never updates or stops a user's core. Native fixture success on macOS and a Linux CLI/protocol smoke are separate evidence: neither alone establishes iOS-to-Linux SSH acceptance.
+The frame vectors are captured: with a fixture started, `scripts/fixtures/herdr-core-capture-scenario.py` drives inert Terminals, and rewrites the file with scrubbed bytes. Every case names its capture, and a case the run did not capture refuses the whole file, so delete a retired case first. Read the output before committing it. `scripts/lab/herdr-core-capture.py` listens on a socket path it is given, starts nothing and never attaches, for a core you started yourself.
+
+`HerdrCoreTransportE2ETests` runs three methods against a real core and disposable SSH server in the transport CI shard (and the serial lane): `neverStartsACoreAndReadsNotRunning`, `helloFeaturesCoreIDAndNoHC` and `noLegacyFallback`. CI restores the pinned 0.1.13 archive from a cache keyed by its SHA-256 and verifies it again before extraction. The evidence gate requires those passes before accepting their ordinary-lane skips.
+
+The fixture, `scripts/fixtures/herdr-core-ssh.py`, owns a separate home and session and never updates or stops a user's core. It installs `herdr-core` only at `~/.local/bin`, off the exec's PATH. A core starts only by absolute path in the fixture's explicit environment, and `scripts/fixtures/herdr-core-rpc.py` drives it instead of `hc`. `hc` and `herdr` there are tripwires that log every call. For a local focused run, its `--help` describes setup, the private Simulator configuration and cleanup, from an already installed core:
+
+```bash
+python3 scripts/fixtures/herdr-core-ssh.py start --root /tmp/hc-heeler --core ~/.local/bin/herdr-core
+xcrun simctl spawn <UDID> launchctl setenv HEELER_SSH_E2E_CONFIG "$(cat /tmp/hc-heeler/core-test-config)"
+make test-app SIM_DESTINATION="platform=iOS Simulator,id=<UDID>" TEST_SELECTOR='HeelerTests/HerdrCoreTransportE2ETests'
+xcrun simctl spawn <UDID> launchctl unsetenv HEELER_SSH_E2E_CONFIG
+python3 scripts/fixtures/herdr-core-ssh.py stop --root /tmp/hc-heeler
+```
+
+Native fixture success on macOS and the Linux lab check are separate evidence. `make verify-core-linux-host` runs the same three methods on hc-lab; [the lab checklist](../guides/herdr-core-testing.md) has its setup and safety rules.
 
 ## Host and platform acceptance
 

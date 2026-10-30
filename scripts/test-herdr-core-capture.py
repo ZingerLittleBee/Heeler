@@ -317,5 +317,74 @@ class ScrubberTests(unittest.TestCase):
         self.assertEqual(capture.Scrubber(["alice"]).text("alice@laptop"), "scrubbed@laptop")
 
 
+class ScenarioMergeTests(unittest.TestCase):
+    """The fixture scenario's rewrite of the vector file. Its capture runs against a real core."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        path = ROOT / "scripts" / "fixtures" / "herdr-core-capture-scenario.py"
+        scenario_spec = importlib.util.spec_from_file_location("herdr_core_capture_scenario", path)
+        assert scenario_spec and scenario_spec.loader
+        cls.scenario = importlib.util.module_from_spec(scenario_spec)
+        sys.modules["herdr_core_capture_scenario"] = cls.scenario
+        scenario_spec.loader.exec_module(cls.scenario)
+
+    def old(self) -> dict:
+        return {
+            "description": "old", "provisional": True, "coreVersion": "0.1.13", "coreCommit": "abc",
+            "hello": {"name": "hello", "source": "source review", "reply": "old"},
+            "frames": [{"name": "new-frame", "source": "x.rs", "bytes": "00"}],
+            "exchanges": [], "errors": [], "events": [], "eventFrames": [],
+        }
+
+    def captured(self) -> dict:
+        return {
+            "hello": {"name": "hello", "source": "captured", "reply": "new"},
+            "frames": [{"name": "new-frame", "source": "captured", "bytes": "01"}],
+            "exchanges": [], "errors": [], "events": [{"name": "added", "source": "captured", "line": "l"}], "eventFrames": [],
+        }
+
+    def test_captured_cases_replace_those_of_their_name(self) -> None:
+        merged = self.scenario.merge(self.old(), self.captured(), "0.1.13")
+        self.assertFalse(merged["provisional"])
+        self.assertNotIn("notCaptured", merged)
+        self.assertEqual(merged["hello"]["reply"], "new")
+        self.assertEqual([case["bytes"] for case in merged["frames"]], ["01"])
+        self.assertEqual([case["name"] for case in merged["events"]], ["added"])
+        self.assertEqual(merged["coreCommit"], "abc")
+
+    def test_a_case_the_run_did_not_capture_refuses_the_whole_file(self) -> None:
+        old = self.old()
+        old["events"] = [{"name": "only-by-hand", "source": "y.rs", "line": "old"}]
+        old["frames"].append({"name": "kept-frame", "source": "x.rs", "bytes": "00"})
+        with self.assertRaises(self.scenario.ScenarioError) as refused:
+            self.scenario.merge(old, self.captured(), "0.1.13")
+        self.assertIn("kept-frame", str(refused.exception))
+        self.assertIn("only-by-hand", str(refused.exception))
+
+    def test_an_event_the_run_never_saw_is_an_error_not_a_gap(self) -> None:
+        with self.assertRaises(self.scenario.ScenarioError) as refused:
+            self.scenario.selected("resize", "a RESIZE frame", None)
+        self.assertIn("resize", str(refused.exception))
+        self.assertEqual(self.scenario.selected("resize", "a RESIZE frame", {"a": 1}), ("resize", "a RESIZE frame", {"a": 1}))
+
+    def test_every_case_in_the_vector_file_names_its_capture(self) -> None:
+        vectors = json.loads((ROOT / "plugin/test-vectors/herdr-core-frames-v1.json").read_text())
+        self.assertFalse(vectors["provisional"])
+        self.assertNotIn("notCaptured", vectors)
+        cases = [vectors["hello"]]
+        for section in ("frames", "exchanges", "errors", "events", "eventFrames"):
+            cases += vectors[section]
+        prefix = f"captured from herdr-core {vectors['coreVersion']} by scripts/fixtures/herdr-core-capture-scenario.py: "
+        for case in cases:
+            self.assertTrue(case["source"].startswith(prefix), case["name"])
+
+    def test_the_scenario_runs_no_hc_and_starts_only_through_the_fixture(self) -> None:
+        source = (ROOT / "scripts" / "fixtures" / "herdr-core-capture-scenario.py").read_text()
+        self.assertEqual(ast.parse(source).__class__, ast.Module)
+        self.assertNotIn("subprocess", source)
+        self.assertIn("fixture.start_core(root, SESSION", source)
+
+
 if __name__ == "__main__":
     unittest.main()

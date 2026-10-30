@@ -55,7 +55,7 @@ actor SSHChannelAdmission {
     }
 
     private let limits: Limits
-    private var execSessionBudget: Bool
+    private var windowsSessionBudget = false
     private var counts = Snapshot(
         ordinaryForwarding: 0,
         events: 0,
@@ -67,8 +67,7 @@ actor SSHChannelAdmission {
     private var cancelledRequests: Set<UInt64> = []
     private var nextRequestID: UInt64 = 0
 
-    init(limits: Limits = .production, execSessionBudget: Bool = false) {
-        self.execSessionBudget = execSessionBudget
+    init(limits: Limits = .production) {
         precondition(limits.ordinaryForwarding > 0)
         precondition(limits.events > 0)
         precondition(limits.ordinarySession > 0)
@@ -130,10 +129,24 @@ actor SSHChannelAdmission {
 
     func snapshot() -> Snapshot { counts }
 
+    /// Opens a herdr-core link's channel under the long-lived events slot, one
+    /// per connection. The slot stays taken until the channel closes.
+    func admitCoreLink(
+        open: @escaping @Sendable () async throws -> any HeelerSSHAPIChannel
+    ) async throws -> any HeelerSSHAPIChannel {
+        let lease = try await acquire(.events)
+        do {
+            return AdmittedCoreLinkChannel(channel: try await open(), lease: lease)
+        } catch {
+            await lease.release()
+            throw error
+        }
+    }
+
     /// Windows RPC and Events are exec sessions as well. Leave one slot of
     /// headroom below OpenSSH's default MaxSessions=10 across all categories.
     func useWindowsSessionBudget() {
-        execSessionBudget = true
+        windowsSessionBudget = true
     }
 
     fileprivate func release(_ channelClass: ChannelClass) {
@@ -160,7 +173,7 @@ actor SSHChannelAdmission {
 
     private func canAcquire(_ channelClass: ChannelClass) -> Bool {
         guard counts.connection < limits.connection else { return false }
-        if execSessionBudget, counts.connection >= 9 { return false }
+        if windowsSessionBudget, counts.connection >= 9 { return false }
         switch channelClass {
         case .ordinaryForwarding:
             return counts.ordinaryForwarding < limits.ordinaryForwarding
@@ -194,6 +207,30 @@ actor SSHChannelAdmission {
                 - (channelClass == .ordinarySession ? 1 : 0),
             attach: counts.attach - (channelClass == .attach ? 1 : 0),
             connection: counts.connection - 1)
+    }
+}
+
+/// A core link's channel with the slot it was admitted under.
+private struct AdmittedCoreLinkChannel: HeelerSSHAPIChannel {
+    let channel: any HeelerSSHAPIChannel
+    let lease: SSHChannelAdmissionLease
+
+    func write(_ data: Data, timeout: Duration) async throws {
+        try await channel.write(data, timeout: timeout)
+    }
+
+    func read(maximumBytes: Int, timeout: Duration) async throws -> Data? {
+        try await channel.read(maximumBytes: maximumBytes, timeout: timeout)
+    }
+
+    func close(timeout: Duration) async throws {
+        do {
+            try await channel.close(timeout: timeout)
+        } catch {
+            await lease.release()
+            throw error
+        }
+        await lease.release()
     }
 }
 

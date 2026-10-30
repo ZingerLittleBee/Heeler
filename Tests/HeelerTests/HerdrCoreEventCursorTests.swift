@@ -101,41 +101,59 @@ import Testing
     }
 
     @Test func everyEventKindDecodesFromTheVectors() throws {
-        #expect(try decodeVector("size") == .size(terminal: "t7", columns: 100, rows: 30))
-        #expect(try decodeVector("title") == .title(terminal: "t7", title: "Working"))
-        #expect(try decodeVector("foreground") == .foreground(
-            terminal: "t7",
-            HerdrCoreForeground(pid: 4300, name: "node", argv: ["node", "cli.js"], cwd: "/work/project")))
-        #expect(try decodeVector("foreground-cleared") == .foreground(terminal: "t7", nil))
+        #expect(try decodeVector("size") == .size(terminal: "t3", columns: 100, rows: 30))
+        #expect(try decodeVector("title") == .title(terminal: "t3", title: "Working"))
+        guard case .foreground("t3", let foreground?) = try decodeVector("foreground") else {
+            Issue.record("foreground must carry its process")
+            return
+        }
+        #expect((foreground.pid ?? 0) > 0)
+        #expect(foreground.name == "zsh")
+        #expect(foreground.argv == ["/bin/zsh"])
+        #expect(foreground.cwd == "/home/user")
+        #expect(try decodeVector("foreground-cleared") == .foreground(terminal: "t6", nil))
         #expect(try decodeVector("status") == .status(
-            terminal: "t7",
+            terminal: "t3",
             HerdrCoreTerminalStatus(state: "working", kind: nil, progress: 10, app: "claude-code", title: "", message: ""),
             records: [:], reported: true))
-        #expect(try decodeVector("status-cleared") == .status(terminal: "t7", nil, records: [:], reported: true))
-        #expect(try decodeVector("turn") == .turn(terminal: "t7", turn: 4, state: "done"))
-        #expect(try decodeVector("turn-cleared") == .turn(terminal: "t7", turn: 5, state: nil))
-        #expect(try decodeVector("labels") == .labels(terminal: "t7", ["heeler.workspace": "w2"]))
-        #expect(try decodeVector("keep") == .keep(terminal: "t7", false))
-        #expect(try decodeVector("doc") == .document(name: "herdr-app-layout", version: 9, machine: nil))
+        #expect(try decodeVector("status-cleared") == .status(terminal: "t3", nil, records: [:], reported: true))
+        #expect(try decodeVector("turn") == .turn(terminal: "t3", turn: 1, state: "done"))
+        #expect(try decodeVector("turn-cleared") == .turn(terminal: "t3", turn: 2, state: nil))
+        #expect(try decodeVector("labels") == .labels(terminal: "t3", ["heeler.workspace": "w2"]))
+        #expect(try decodeVector("keep") == .keep(terminal: "t3", false))
+        #expect(try decodeVector("doc") == .document(name: "herdr-app-layout", version: 1, machine: nil))
         #expect(try decodeVector("lost") == .lost(
-            terminal: "t7",
+            terminal: "t3",
             HerdrCoreTerminalEnd(reason: "signaled", exitCode: nil, signal: 9, finishedMilliseconds: nil)))
-        #expect(try decodeVector("finished") == .finished(
-            terminal: "t7",
-            HerdrCoreTerminalEnd(reason: "exited", exitCode: 0, signal: nil, finishedMilliseconds: 1_790_000_001_000)))
-        #expect(try decodeVector("removed") == .removed(terminal: "t7"))
-        #expect(try decodeVector("heartbeat") == .heartbeat(sequence: 26))
+        guard case .finished("t4", let end) = try decodeVector("finished") else {
+            Issue.record("finished must carry how it ended")
+            return
+        }
+        #expect(end.reason == "exited")
+        #expect(end.exitCode == 0)
+        #expect(end.signal == nil)
+        #expect((end.finishedMilliseconds ?? 0) > 0)
+        #expect(try decodeVector("removed") == .removed(terminal: "t4"))
+        guard case .heartbeat(let sequence) = try decodeVector("heartbeat") else {
+            Issue.record("heartbeat must carry its sequence")
+            return
+        }
+        #expect(sequence > 0)
         guard case .created(let created) = try decodeVector("created") else {
             Issue.record("created must carry its record")
             return
         }
-        #expect(created.address == "t7")
+        #expect(created.address == "t3")
+        #expect(created.name == "review")
+        #expect(created.labels == ["heeler.workspace": "w1"])
+        #expect(created.keep)
         guard case .restarted(let restarted) = try decodeVector("restarted") else {
             Issue.record("restarted must carry its record")
             return
         }
         #expect(restarted.status == nil)
         #expect(restarted.reported == false)
+        #expect(restarted.argv == ["/bin/zsh"])
     }
 
     @Test func everyVectorEventDecodesToATypedEvent() throws {
@@ -147,58 +165,89 @@ import Testing
         }
     }
 
-    @Test func everyTerminalRecordFieldDecodesAndUnknownFieldsAreIgnored() throws {
-        guard case .created(let record) = try decodeVector("created") else {
-            Issue.record("created must carry its record")
-            return
+    /// A record from the captured `missed` snapshot, by the name the capture gave it.
+    private func missedRecord(named name: String) throws -> HerdrCoreTerminalRecord {
+        guard case .missed(let snapshot) = try decodeVector("missed") else {
+            throw CocoaError(.coderReadCorrupt, userInfo: [NSDebugDescriptionErrorKey: "missed must surface its snapshot"])
         }
-        #expect(record.address == "t7")
-        #expect(record.name == "review")
+        return try #require(snapshot.terminals.first { $0.name == name })
+    }
+
+    @Test func everyFieldOfALiveRecordDecodes() throws {
+        let record = try missedRecord(named: "full-record")
+        #expect(record.address == "t10")
         #expect(record.labels == ["heeler.workspace": "w1"])
-        #expect(record.argv == ["/usr/local/bin/claude", "--resume"])
-        #expect(record.cwd == "/work/project")
+        #expect(record.argv == ["sh", "<scrubbed>", "<scrubbed>"])
+        #expect(record.cwd == "/home/user")
         #expect(record.keep)
         #expect(record.state == "live")
-        #expect(record.pid == 4242)
+        #expect((record.pid ?? 0) > 0)
         #expect(record.exitCode == nil)
         #expect(record.signal == nil)
         #expect(record.reason == nil)
-        #expect(record.createdMilliseconds == 1_790_000_000_000)
+        #expect((record.createdMilliseconds ?? 0) > 0)
         #expect(record.finishedMilliseconds == nil)
         #expect(record.screen == "exact")
-        #expect(record.columns == 120)
-        #expect(record.rows == 40)
-        #expect(record.identity == "ghostty 1.4.0")
+        #expect(record.columns == 200)
+        #expect(record.rows == 120)
+        #expect(record.identity == "ghostty")
         #expect(record.status == HerdrCoreTerminalStatus(
             state: "blocked", kind: "permission", progress: 40, app: "claude-code",
-            title: "Reviewing", message: "Allow edit?"))
-        #expect(record.statusMilliseconds == 1_790_000_000_500)
+            title: "Reviewing", message: "Allow"))
+        #expect((record.statusMilliseconds ?? 0) > 0)
         #expect(record.records == ["child": HerdrCoreTerminalStatus(
             state: "working", kind: nil, progress: nil, app: "claude-code", title: "", message: "")])
-        #expect(record.turn == 3)
+        #expect(record.turn == 1)
         #expect(record.reported)
         #expect(record.title == "Reviewing")
-        #expect(record.parent == "t3")
+        #expect(record.parent == "t7")
         #expect(record.notify)
-        #expect(record.dieWithParent == false)
+        #expect(record.dieWithParent)
         #expect(record.removeOnExit == false)
         #expect(record.template == "reviewer")
         #expect(record.submit == "enter")
         #expect(record.stop == "esc")
         #expect(record.pasteGapMilliseconds == 120)
-        #expect(record.foreground == HerdrCoreForeground(
-            pid: 4300, name: "node", argv: ["node", "/opt/claude/cli.js"], cwd: "/work/project/child"))
+        let foreground = try #require(record.foreground)
+        #expect((foreground.pid ?? 0) > 0)
+        #expect(foreground.name == "Python")
+        #expect(foreground.argv == ["/usr/local/bin/python3", "<scrubbed>"])
+        #expect(foreground.cwd == "/home/user")
+    }
+
+    @Test func aCreatedRecordCarriesItsTemplateAndParent() throws {
+        guard case .created(let record) = try decodeVector("created-from-template") else {
+            Issue.record("created must carry its record")
+            return
+        }
+        #expect(record.parent == "t7")
+        #expect(record.template == "reviewer")
+        #expect(record.submit == "enter")
+        #expect(record.stop == "esc")
+        #expect(record.pasteGapMilliseconds == 120)
+        #expect(record.status == nil)
+        #expect(record.foreground == nil)
+    }
+
+    @Test func anUnknownRecordFieldIsIgnored() throws {
+        let captured = try #require(String(data: try vectors.event("created-from-template"), encoding: .utf8))
+        let extended = captured.replacingOccurrences(of: #""data":{"#, with: #""data":{"future_field":{"ignored":true},"#)
+        #expect(extended != captured)
+        var cursor = HerdrCoreTypedEventCursor(sequence: 0)
+        var original = HerdrCoreTypedEventCursor(sequence: 0)
+        #expect(try cursor.decode(line: Data(extended.utf8)) == original.decode(line: Data(captured.utf8)))
     }
 
     @Test func recordFieldsThatDefaultWhenAbsentDecodeTheirOwnValues() throws {
-        guard case .missed(let snapshot) = try decodeVector("missed-killed-rm-record") else {
-            Issue.record("missed must surface its snapshot")
-            return
-        }
-        let record = try #require(snapshot.terminals.first)
-        #expect(record.signal == 9)
+        // The core ends a killed program with SIGHUP, and a wait on its parent's
+        // children keeps an `rm` child in the record once it has finished.
+        let record = try missedRecord(named: "killed-child")
+        #expect(record.state == "finished")
+        #expect(record.signal == 1)
+        #expect(record.exitCode == nil)
         #expect(record.reason == "killed")
-        #expect(record.finishedMilliseconds == 1_790_000_002_000)
+        #expect((record.finishedMilliseconds ?? 0) > 0)
+        #expect(record.parent == "t7")
         #expect(record.dieWithParent)
         #expect(record.removeOnExit)
     }
@@ -206,18 +255,18 @@ import Testing
     @Test func theSubscribeSnapshotAndMissedCarryRecordsWithoutFederatedTerminals() throws {
         let exchange = try vectors.exchange("events-subscribe")
         let snapshot = try HerdrCoreSnapshot(result: exchange.result)
-        #expect(snapshot.sequence == 10)
+        #expect(snapshot.sequence > 0)
         #expect(snapshot.channel == 1)
-        #expect(snapshot.terminals.map(\.address) == ["t7", "t8"])
+        #expect(snapshot.terminals.map(\.address) == ["t1", "t2"])
         #expect(snapshot.terminals[1].state == "finished")
         #expect(snapshot.terminals[1].exitCode == 0)
         guard case .missed(let missed) = try decodeVector("missed") else {
             Issue.record("missed must surface its snapshot")
             return
         }
-        #expect(missed.sequence == 40)
+        #expect(missed.sequence > snapshot.sequence)
         #expect(missed.channel == nil)
-        #expect(missed.terminals.map(\.address) == ["t7", "t8"])
+        #expect(missed.terminals.map(\.address).prefix(2) == ["t1", "t2"])
     }
 
     @Test func onlyTheAddressOfARecordIsRequired() throws {
@@ -276,18 +325,25 @@ import Testing
 }
 
 @Suite struct HerdrCoreVectorFileTests {
-    @Test func theFileIsMarkedProvisionalAndEveryCaseNamesItsSource() {
+    @Test func everyCaseNamesItsCapture() {
         let vectors = HerdrCoreVectorFile.shared
-        #expect(vectors.provisional)
+        #expect(vectors.provisional == false)
         #expect(vectors.coreVersion == "0.1.13")
         #expect(vectors.coreCommit == "88fe4e7")
         // Pinned against the file: a section that stops decoding cannot pass quietly.
         #expect(vectors.allCases.count == 1 + 10 + 3 + 4 + 19 + 2)
         #expect(Set(vectors.allCases.map(\.name)).count == vectors.allCases.count)
         for testCase in vectors.allCases {
-            #expect(testCase.source.contains("herdr-core v0.1.13"), "\(testCase.name)")
-            #expect(testCase.source.contains(".rs"), "\(testCase.name)")
+            #expect(testCase.source.hasPrefix("captured from herdr-core 0.1.13 by "), "\(testCase.name)")
         }
+    }
+
+    @Test func theLargestResizeCarriesAU16PerSide() throws {
+        let vector = try #require(HerdrCoreVectorFile.shared.frames.first { $0.name == "resize-largest" })
+        var decoder = HerdrCoreFrameDecoder()
+        decoder.append(HerdrCoreVectorFile.bytes(hex: vector.bytes))
+        let frame = try #require(try decoder.next())
+        #expect(frame == (try HerdrCoreFrame.resize(channel: frame.channel, columns: 65535, rows: 65535)))
     }
 
     @Test func everyFrameCaseDecodesAndReencodesToItsExactBytes() throws {

@@ -54,15 +54,16 @@ struct AgentUsageStoreTests {
             "Usage needs plugin 0.7.0 or newer; this Host has 0.6.2."))
         #expect(await transport.agentUsageReads == 0)
     }
+    /// The Server Kind check lives where the store borrows its transport: in
+    /// the Console, whose check `aCoreHostsUsageStaysUnsupportedWithoutAProjection`
+    /// drives. This is what the store does with its answer.
     @Test func coreIsUnsupportedWithoutStartingAUsageQuery() async {
         let hostID = UUID()
-        let transport = ScriptedTransport()
-        await transport.setHeelerPlugin(.failure(HeelerPluginUnavailableError.herdrCore))
-        let store = AgentUsageStore(hostID: hostID,
-            transports: ScriptedTransportProvider(transports: [hostID: transport]))
+        let store = AgentUsageStore(hostID: hostID) { _, _ in
+            throw HeelerPluginUnavailableError.herdrCore
+        }
         await store.refresh()
         #expect(store.state == .unsupportedBackend)
-        #expect(await transport.agentUsageReads == 0)
         #expect(AgentUsageScope.reason(for: store.state) == "Not supported on herdr-core")
     }
 

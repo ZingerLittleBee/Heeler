@@ -132,6 +132,22 @@ struct ConsoleStoreTests {
         #expect(store.agentUsageStore(for: core.id) !== usage)
     }
 
+    /// A TUI Host beside it still reads its plugin, so the answer is the
+    /// Server Kind's and not a missing connection's.
+    @Test func aCoreHostsPluginStatusIsUnsupportedByServerKind() async {
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let tui = Host.fixture()
+        let store = makeStore(transports: [tui.id: ScriptedTransport()])
+        defer { store.setHosts([]) }
+        store.setHosts([core, tui])
+
+        let statuses = HeelerPluginStatusStore()
+        await statuses.refresh([core.id, tui.id], transports: store)
+
+        #expect(statuses.status(for: core.id) == .unsupportedBackend)
+        #expect(statuses.status(for: tui.id) != .unsupportedBackend)
+    }
+
     /// Actions only Herdr TUI can serve are offered by Server Kind, not
     /// attempted and failed (ADR 0032). Later tickets turn on each core action
     /// as they build it.
