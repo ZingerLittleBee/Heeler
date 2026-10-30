@@ -757,7 +757,10 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private(set) var inputViewRebuildCount = 0
     private var zoomBaseFontSize: Float?
     private var terminalInputView: UIView?
-    private var modeTracker = TerminalModeTracker()
+    /// The modes of the stream this surface shows: the feed's once one attaches
+    /// it, and until then its own.
+    private var modeSource = TerminalModeSource()
+    private var modeTracker: TerminalModeTracker { modeSource.tracker }
     private var lastInputWindowSize: CGSize?
     private var defersLayoutForKeyboardTransition = false
     /// What ends the current freeze. A dismissal waits for `keyboardDidHide`;
@@ -1096,6 +1099,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         callbackBridge.onReliableInput = { [weak self] in
             self?.reliableInputDidBegin()
         }
+        observeModeSource()
         installTouchScrolling()
         installZoom()
     }
@@ -1177,17 +1181,32 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         onFontSizeChanged?(appliedFontSize)
     }
 
+    /// Output handed straight to the surface, as tests do: it counts toward the
+    /// surface's modes on its way in. A feed uses ``receiveTracked(_:)``.
     func receive(_ data: Data) {
-        let wasAlternateScreen = modeTracker.isAlternateScreen
-        let didTrackMouse = modeTracker.tracksMouse
-        modeTracker.receive(data)
-        if modeTracker.isAlternateScreen != wasAlternateScreen
-            || modeTracker.tracksMouse != didTrackMouse
-        {
-            onAlternateScreenChange?()
-        }
+        modeSource.receive(data)
+        receiveTracked(data)
+    }
+
+    func receiveTracked(_ data: Data) {
         terminalSession.receive(data)
         scheduleViewportSnapshot()
+    }
+
+    /// A remounted surface takes over modes already set, which its
+    /// ``onAlternateScreenChange`` listener has not read yet.
+    func adoptModes(_ modes: TerminalModeSource) {
+        guard modes !== modeSource else { return }
+        modeSource.onScrollModesChange = nil
+        modeSource = modes
+        observeModeSource()
+        onAlternateScreenChange?()
+    }
+
+    private func observeModeSource() {
+        modeSource.onScrollModesChange = { [weak self] in
+            self?.onAlternateScreenChange?()
+        }
     }
 
     /// Whether the remote application currently has the alternate screen

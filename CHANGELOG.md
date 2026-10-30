@@ -41,6 +41,9 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Herdr TUI terminals no longer lose bracketed paste, cursor keys, mouse
+  tracking or the alternate screen when a program queries, saves or restores
+  a mode. (#545; PR #538)
 - Keep the paste button on a terminal's keyboard row visible: it could
   appear as an empty space when the terminal opened. In light mode it is
   now a plain glyph like the row's other buttons, without a gray backing.

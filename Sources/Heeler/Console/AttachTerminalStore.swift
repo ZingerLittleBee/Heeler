@@ -206,6 +206,8 @@ final class AttachTerminalStore {
     private(set) var status: Status = .waitingForSize
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()
+    /// What the remote program has asked of its terminal in this session.
+    var modes: TerminalModeTracker { feed.modes.tracker }
     /// What the screen identifies this pipeline's surface by. Owned by the
     /// store and unique for its lifetime, so a replacement is always a
     /// different surface to SwiftUI.
@@ -468,6 +470,8 @@ final class AttachTerminalStore {
             return
         }
         self.session = session
+        // A new attach sets its own modes; the old attach's are not its.
+        feed.modes.reset()
         let inputGeneration = input.beginSession(
             writer: { data in session.send(data) },
             scroller: { sequence, rows in
