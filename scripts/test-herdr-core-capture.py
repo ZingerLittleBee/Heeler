@@ -333,9 +333,8 @@ class ScenarioMergeTests(unittest.TestCase):
         return {
             "description": "old", "provisional": True, "coreVersion": "0.1.13", "coreCommit": "abc",
             "hello": {"name": "hello", "source": "source review", "reply": "old"},
-            "frames": [{"name": "kept-frame", "source": "x.rs", "bytes": "00"}, {"name": "new-frame", "source": "x.rs", "bytes": "00"}],
-            "exchanges": [], "errors": [],
-            "events": [{"name": "only-by-hand", "source": "y.rs", "line": "old"}], "eventFrames": [],
+            "frames": [{"name": "new-frame", "source": "x.rs", "bytes": "00"}],
+            "exchanges": [], "errors": [], "events": [], "eventFrames": [],
         }
 
     def captured(self) -> dict:
@@ -345,14 +344,40 @@ class ScenarioMergeTests(unittest.TestCase):
             "exchanges": [], "errors": [], "events": [{"name": "added", "source": "captured", "line": "l"}], "eventFrames": [],
         }
 
-    def test_captured_cases_replace_those_of_their_name_and_the_rest_are_listed(self) -> None:
+    def test_captured_cases_replace_those_of_their_name(self) -> None:
         merged = self.scenario.merge(self.old(), self.captured(), "0.1.13")
         self.assertFalse(merged["provisional"])
+        self.assertNotIn("notCaptured", merged)
         self.assertEqual(merged["hello"]["reply"], "new")
-        self.assertEqual([case["bytes"] for case in merged["frames"]], ["00", "01"])
-        self.assertEqual(merged["notCaptured"], ["kept-frame", "only-by-hand"])
-        self.assertEqual([case["name"] for case in merged["events"]], ["only-by-hand", "added"])
+        self.assertEqual([case["bytes"] for case in merged["frames"]], ["01"])
+        self.assertEqual([case["name"] for case in merged["events"]], ["added"])
         self.assertEqual(merged["coreCommit"], "abc")
+
+    def test_a_case_the_run_did_not_capture_refuses_the_whole_file(self) -> None:
+        old = self.old()
+        old["events"] = [{"name": "only-by-hand", "source": "y.rs", "line": "old"}]
+        old["frames"].append({"name": "kept-frame", "source": "x.rs", "bytes": "00"})
+        with self.assertRaises(self.scenario.ScenarioError) as refused:
+            self.scenario.merge(old, self.captured(), "0.1.13")
+        self.assertIn("kept-frame", str(refused.exception))
+        self.assertIn("only-by-hand", str(refused.exception))
+
+    def test_an_event_the_run_never_saw_is_an_error_not_a_gap(self) -> None:
+        with self.assertRaises(self.scenario.ScenarioError) as refused:
+            self.scenario.selected("resize", "a RESIZE frame", None)
+        self.assertIn("resize", str(refused.exception))
+        self.assertEqual(self.scenario.selected("resize", "a RESIZE frame", {"a": 1}), ("resize", "a RESIZE frame", {"a": 1}))
+
+    def test_every_case_in_the_vector_file_names_its_capture(self) -> None:
+        vectors = json.loads((ROOT / "plugin/test-vectors/herdr-core-frames-v1.json").read_text())
+        self.assertFalse(vectors["provisional"])
+        self.assertNotIn("notCaptured", vectors)
+        cases = [vectors["hello"]]
+        for section in ("frames", "exchanges", "errors", "events", "eventFrames"):
+            cases += vectors[section]
+        prefix = f"captured from herdr-core {vectors['coreVersion']} by scripts/fixtures/herdr-core-capture-scenario.py: "
+        for case in cases:
+            self.assertTrue(case["source"].startswith(prefix), case["name"])
 
     def test_the_scenario_runs_no_hc_and_starts_only_through_the_fixture(self) -> None:
         source = (ROOT / "scripts" / "fixtures" / "herdr-core-capture-scenario.py").read_text()

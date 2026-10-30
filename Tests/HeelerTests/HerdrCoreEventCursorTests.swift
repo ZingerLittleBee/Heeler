@@ -111,7 +111,7 @@ import Testing
         #expect(foreground.name == "zsh")
         #expect(foreground.argv == ["/bin/zsh"])
         #expect(foreground.cwd == "/home/user")
-        #expect(try decodeVector("foreground-cleared") == .foreground(terminal: "t7", nil))
+        #expect(try decodeVector("foreground-cleared") == .foreground(terminal: "t6", nil))
         #expect(try decodeVector("status") == .status(
             terminal: "t3",
             HerdrCoreTerminalStatus(state: "working", kind: nil, progress: 10, app: "claude-code", title: "", message: ""),
@@ -165,58 +165,89 @@ import Testing
         }
     }
 
-    @Test func everyTerminalRecordFieldDecodesAndUnknownFieldsAreIgnored() throws {
-        guard case .created(let record) = try decodeVector("created-every-field") else {
-            Issue.record("created must carry its record")
-            return
+    /// A record from the captured `missed` snapshot, by the name the capture gave it.
+    private func missedRecord(named name: String) throws -> HerdrCoreTerminalRecord {
+        guard case .missed(let snapshot) = try decodeVector("missed") else {
+            throw CocoaError(.coderReadCorrupt, userInfo: [NSDebugDescriptionErrorKey: "missed must surface its snapshot"])
         }
-        #expect(record.address == "t7")
-        #expect(record.name == "review")
+        return try #require(snapshot.terminals.first { $0.name == name })
+    }
+
+    @Test func everyFieldOfALiveRecordDecodes() throws {
+        let record = try missedRecord(named: "full-record")
+        #expect(record.address == "t10")
         #expect(record.labels == ["heeler.workspace": "w1"])
-        #expect(record.argv == ["/usr/local/bin/claude", "--resume"])
-        #expect(record.cwd == "/work/project")
+        #expect(record.argv == ["sh", "<scrubbed>", "<scrubbed>"])
+        #expect(record.cwd == "/home/user")
         #expect(record.keep)
         #expect(record.state == "live")
-        #expect(record.pid == 4242)
+        #expect((record.pid ?? 0) > 0)
         #expect(record.exitCode == nil)
         #expect(record.signal == nil)
         #expect(record.reason == nil)
-        #expect(record.createdMilliseconds == 1_790_000_000_000)
+        #expect((record.createdMilliseconds ?? 0) > 0)
         #expect(record.finishedMilliseconds == nil)
         #expect(record.screen == "exact")
-        #expect(record.columns == 120)
-        #expect(record.rows == 40)
-        #expect(record.identity == "ghostty 1.4.0")
+        #expect(record.columns == 200)
+        #expect(record.rows == 120)
+        #expect(record.identity == "ghostty")
         #expect(record.status == HerdrCoreTerminalStatus(
             state: "blocked", kind: "permission", progress: 40, app: "claude-code",
-            title: "Reviewing", message: "Allow edit?"))
-        #expect(record.statusMilliseconds == 1_790_000_000_500)
+            title: "Reviewing", message: "Allow"))
+        #expect((record.statusMilliseconds ?? 0) > 0)
         #expect(record.records == ["child": HerdrCoreTerminalStatus(
             state: "working", kind: nil, progress: nil, app: "claude-code", title: "", message: "")])
-        #expect(record.turn == 3)
+        #expect(record.turn == 1)
         #expect(record.reported)
         #expect(record.title == "Reviewing")
-        #expect(record.parent == "t3")
+        #expect(record.parent == "t7")
         #expect(record.notify)
-        #expect(record.dieWithParent == false)
+        #expect(record.dieWithParent)
         #expect(record.removeOnExit == false)
         #expect(record.template == "reviewer")
         #expect(record.submit == "enter")
         #expect(record.stop == "esc")
         #expect(record.pasteGapMilliseconds == 120)
-        #expect(record.foreground == HerdrCoreForeground(
-            pid: 4300, name: "node", argv: ["node", "/opt/claude/cli.js"], cwd: "/work/project/child"))
+        let foreground = try #require(record.foreground)
+        #expect((foreground.pid ?? 0) > 0)
+        #expect(foreground.name == "Python")
+        #expect(foreground.argv == ["/usr/local/bin/python3", "<scrubbed>"])
+        #expect(foreground.cwd == "/home/user")
+    }
+
+    @Test func aCreatedRecordCarriesItsTemplateAndParent() throws {
+        guard case .created(let record) = try decodeVector("created-from-template") else {
+            Issue.record("created must carry its record")
+            return
+        }
+        #expect(record.parent == "t7")
+        #expect(record.template == "reviewer")
+        #expect(record.submit == "enter")
+        #expect(record.stop == "esc")
+        #expect(record.pasteGapMilliseconds == 120)
+        #expect(record.status == nil)
+        #expect(record.foreground == nil)
+    }
+
+    @Test func anUnknownRecordFieldIsIgnored() throws {
+        let captured = try #require(String(data: try vectors.event("created-from-template"), encoding: .utf8))
+        let extended = captured.replacingOccurrences(of: #""data":{"#, with: #""data":{"future_field":{"ignored":true},"#)
+        #expect(extended != captured)
+        var cursor = HerdrCoreTypedEventCursor(sequence: 0)
+        var original = HerdrCoreTypedEventCursor(sequence: 0)
+        #expect(try cursor.decode(line: Data(extended.utf8)) == original.decode(line: Data(captured.utf8)))
     }
 
     @Test func recordFieldsThatDefaultWhenAbsentDecodeTheirOwnValues() throws {
-        guard case .missed(let snapshot) = try decodeVector("missed-killed-rm-record") else {
-            Issue.record("missed must surface its snapshot")
-            return
-        }
-        let record = try #require(snapshot.terminals.first)
-        #expect(record.signal == 9)
+        // The core ends a killed program with SIGHUP, and a wait on its parent's
+        // children keeps an `rm` child in the record once it has finished.
+        let record = try missedRecord(named: "killed-child")
+        #expect(record.state == "finished")
+        #expect(record.signal == 1)
+        #expect(record.exitCode == nil)
         #expect(record.reason == "killed")
-        #expect(record.finishedMilliseconds == 1_790_000_002_000)
+        #expect((record.finishedMilliseconds ?? 0) > 0)
+        #expect(record.parent == "t7")
         #expect(record.dieWithParent)
         #expect(record.removeOnExit)
     }
@@ -294,27 +325,25 @@ import Testing
 }
 
 @Suite struct HerdrCoreVectorFileTests {
-    /// Every case names its capture. The few a fixture cannot reach are listed,
-    /// and keep the source review they came from.
-    @Test func everyCaseNamesItsCaptureOrIsListedWithItsSourceReview() {
+    @Test func everyCaseNamesItsCapture() {
         let vectors = HerdrCoreVectorFile.shared
         #expect(vectors.provisional == false)
         #expect(vectors.coreVersion == "0.1.13")
         #expect(vectors.coreCommit == "88fe4e7")
-        #expect(vectors.notCaptured == [
-            "resize-largest", "created-every-field", "foreground-cleared", "missed-killed-rm-record",
-        ])
         // Pinned against the file: a section that stops decoding cannot pass quietly.
-        #expect(vectors.allCases.count == 1 + 10 + 3 + 4 + 20 + 2)
+        #expect(vectors.allCases.count == 1 + 10 + 3 + 4 + 19 + 2)
         #expect(Set(vectors.allCases.map(\.name)).count == vectors.allCases.count)
         for testCase in vectors.allCases {
-            if vectors.notCaptured.contains(testCase.name) {
-                #expect(testCase.source.contains("herdr-core v0.1.13"), "\(testCase.name)")
-                #expect(testCase.source.contains(".rs"), "\(testCase.name)")
-            } else {
-                #expect(testCase.source.hasPrefix("captured from herdr-core 0.1.13 by "), "\(testCase.name)")
-            }
+            #expect(testCase.source.hasPrefix("captured from herdr-core 0.1.13 by "), "\(testCase.name)")
         }
+    }
+
+    @Test func theLargestResizeCarriesAU16PerSide() throws {
+        let vector = try #require(HerdrCoreVectorFile.shared.frames.first { $0.name == "resize-largest" })
+        var decoder = HerdrCoreFrameDecoder()
+        decoder.append(HerdrCoreVectorFile.bytes(hex: vector.bytes))
+        let frame = try #require(try decoder.next())
+        #expect(frame == (try HerdrCoreFrame.resize(channel: frame.channel, columns: 65535, rows: 65535)))
     }
 
     @Test func everyFrameCaseDecodesAndReencodesToItsExactBytes() throws {

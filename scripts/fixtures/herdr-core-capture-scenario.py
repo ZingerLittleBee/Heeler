@@ -13,13 +13,15 @@ behind it, and rebuilds them with the capture script's scrubber:
 Unlike the capture script, which only listens on a lab core, this attaches to
 Terminals: only its own, whose programs print nothing but what it tells them to.
 It refuses a root the fixture did not create, and starts the core itself. A case
-it did not capture keeps its old source and is listed in `notCaptured`. Read the
-output before committing it.
+in the file that this run did not capture refuses the whole file, so nothing keeps
+an old source by accident: to retire a case, delete it first. Read the output
+before committing it.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import getpass
 import importlib.util
 import json
@@ -50,8 +52,19 @@ SESSION = "capture"
 WINDOW = 256 * 1024
 # A heartbeat every 15 seconds would make this wait; nothing here depends on its rate.
 EXTRA_ENVIRONMENT = {"HC_HEARTBEAT_MS": "1000"}
+TEMPLATE_NAME = "reviewer"
+# Its body is empty, so a run sends no first message and waits for no agent.
+TEMPLATE = """---
+description: An inert program
+command: {command}
+submit: enter
+stop: esc
+paste_gap_ms: 120
+---
+"""
+LARGEST = 65535
 INERT_PROGRAM = r"""#!/usr/bin/env python3
-import os, sys, tty
+import os, signal, sys, time, tty
 tty.setraw(0)
 sys.stdout.write("ready\\r\\n")
 sys.stdout.flush()
@@ -74,6 +87,24 @@ while True:
     elif word == "exit":
         sys.stdout.flush()
         os._exit(int(value))
+    elif word == "orphan-foreground":
+        # The foreground group's leader goes and a member keeps the group alive,
+        # so the core finds a group with no leader to read. This program is then
+        # in the background: reading the tty would stop it, so it waits to be killed.
+        ready_read, ready_write = os.pipe()
+        leader = os.fork()
+        if leader == 0:
+            os.close(ready_write)
+            os.setpgid(0, 0)
+            os.read(ready_read, 1)
+            if os.fork() == 0:
+                time.sleep(60)
+            os._exit(0)
+        os.setpgid(leader, leader)
+        os.tcsetpgrp(0, leader)
+        os.close(ready_write)
+        os.waitpid(leader, 0)
+        signal.pause()
     sys.stdout.flush()
 """
 
@@ -169,6 +200,13 @@ class Driver:
         return self.wait(find, seconds)
 
 
+def selected(name, how, line):
+    """A selection the run saw. Nothing here is optional: a miss is a failed run."""
+    if line is None:
+        raise ScenarioError(f"the run never saw a {name} event")
+    return name, how, line
+
+
 def plain_line(path, method, params, identifier="1"):
     """A reply on a connection that never switched to frames."""
     connection = capture.Connection(path, timeout=10.0)
@@ -189,6 +227,9 @@ def run_scenario(root, version_source):
     program.write_text(INERT_PROGRAM)
     program.chmod(0o700)
     home = str(root / "home")
+    templates = root / "home/.config/herdr-core/templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    (templates / f"{TEMPLATE_NAME}.md").write_text(TEMPLATE.format(command=program))
 
     prefixes = [(f"{root}/bin", "/usr/local/bin"), (f"{root}/home", "/home/user")]
 
@@ -354,6 +395,78 @@ def run_scenario(root, version_source):
     driver.event("restarted", target)
     driver.wait(lambda: next((line for line in driver.lines if line.get("method") == "heartbeat"), None))
 
+    # The largest size the frame can name, on a Terminal of its own: its screen takes
+    # seconds to shrink back.
+    big = driver.result("terminal.run", {"argv": [str(program)], "cwd": home})
+    big_address = big["terminal"]["address"] if "terminal" in big else big["address"]
+    reply, _ = driver.call("terminal.attach", {"terminal": big_address, "cols": 80, "rows": 24, "observe": False})
+    big_channel = reply["result"]["channel"]
+    driver.stream_frame(big_channel, lambda f: f[1] == DATA and b"ready" in f[2])
+    largest = struct.pack("<HH", LARGEST, LARGEST)
+    driver.send(big_channel, RESIZE, largest)
+    driver.event("size", big_address, seconds=60, matching=lambda data: data.get("cols") == LARGEST)
+    cases["frames"].append(frame_case("resize-largest", "sent to the core, which reported the new size",
+                                      big_channel, RESIZE, largest))
+    driver.send(big_channel, CLOSE)
+    driver.stream_frame(big_channel, lambda f: f[1] == CLOSE, seconds=60)
+    driver.result("terminal.kill", {"terminal": big_address})
+    driver.event("finished", big_address, seconds=30)
+    driver.result("terminal.rm", {"terminal": big_address})
+
+    # A foreground group whose leader is gone: the watcher reports none.
+    orphan = driver.result("terminal.run", {"argv": [str(program)], "cwd": home})
+    orphan_address = orphan["terminal"]["address"] if "terminal" in orphan else orphan["address"]
+    # The field starts empty, so a cleared one only shows after a first report.
+    driver.event("foreground", orphan_address, matching=lambda data: "pid" in data)
+    reply, _ = driver.call("terminal.attach", {"terminal": orphan_address, "cols": 80, "rows": 24, "observe": False})
+    orphan_channel = reply["result"]["channel"]
+    driver.stream_frame(orphan_channel, lambda f: f[1] == DATA and b"ready" in f[2])
+    driver.send(orphan_channel, DATA, b"orphan-foreground:\r")
+    driver.event("foreground", orphan_address, matching=lambda data: data == {})
+    driver.result("terminal.kill", {"terminal": orphan_address})
+    driver.event("finished", orphan_address, seconds=30)
+
+    # A family for the `missed` snapshot. A wait on all children holds while one is
+    # busy, and while it holds a killed `rm` child stays in the record; a report from
+    # the child started from a template fills in every field a live record has.
+    parent = driver.result("terminal.run", {"argv": [str(program)], "cwd": home, "name": "parent"})
+    parent_address = parent["terminal"]["address"] if "terminal" in parent else parent["address"]
+    killed = driver.result("terminal.run", {
+        "argv": [str(program)], "cwd": home, "name": "killed-child", "parent": parent_address, "rm": True,
+    })
+    killed_address = killed["terminal"]["address"] if "terminal" in killed else killed["address"]
+    driver.result("terminal.run", {"argv": [str(program)], "cwd": home, "name": "busy-child", "parent": parent_address})
+    full = driver.result("terminal.run", {
+        "argv": [TEMPLATE_NAME], "cwd": home, "name": "full-record", "parent": parent_address,
+        "labels": {"heeler.workspace": "w1"}, "keep": True,
+    })
+    full_address = full["terminal"]["address"] if "terminal" in full else full["address"]
+    reply, _ = driver.call("terminal.attach", {"terminal": full_address, "cols": 80, "rows": 24, "observe": False})
+    full_channel = reply["result"]["channel"]
+    driver.stream_frame(full_channel, lambda f: f[1] == DATA and b"ready" in f[2])
+    driver.send(full_channel, DATA, b"title:Reviewing\r")
+    driver.event("title", full_address)
+    driver.send(full_channel, DATA, b"osc:state=working:app=claude-code\r")
+    driver.event("status", full_address, matching=lambda data: (data.get("status") or {}).get("state") == "working")
+    driver.send(full_channel, DATA, b"osc:state=working:id=child:app=claude-code\r")
+    driver.event("status", full_address, matching=lambda data: "child" in data.get("records", {}))
+    report = ("osc:state=blocked:kind=permission:progress=40:app=claude-code"
+              f":title={base64.b64encode(b'Reviewing').decode()}:msg={base64.b64encode(b'Allow').decode()}\r")
+    driver.send(full_channel, DATA, report.encode())
+    driver.event("status", full_address, matching=lambda data: (data.get("status") or {}).get("state") == "blocked")
+    driver.event("foreground", full_address, matching=lambda data: "pid" in data)
+    driver.send(full_channel, CLOSE)
+    driver.stream_frame(full_channel, lambda f: f[1] == CLOSE)
+    # Sent and never read back: it ends with this connection. Its reply matches no call.
+    driver.send(0, DATA, capture.request("family-wait", "terminal.wait",
+                                         {"children": "all", "caller": parent_address, "timeout": 600}))
+    driver.result("server.status", {})
+    driver.result("terminal.kill", {"terminal": killed_address})
+    driver.event("finished", killed_address, seconds=30)
+    kept = driver.call("terminal.get", {"terminal": killed_address})[0].get("result") or {}
+    if not kept.get("rm") or kept.get("reason") != "killed":
+        raise ScenarioError(f"the wait did not hold the killed child: {kept}")
+
     # Errors, each in the shape its caller meets it.
     cases["errors"].append({"name": "unknown-method", "source": source("a plain request for a method no core has"),
                             "kind": "unknown_method",
@@ -392,31 +505,44 @@ def run_scenario(root, version_source):
     for _ in range(100):
         flood()
     drain()
-    cut = driver.event_frames[-1]
-    if not cut.endswith(b"\n"):
-        whole = next(frame for frame in reversed(driver.event_frames) if frame.count(b"\n") == 1 and frame.endswith(b"\n"))
-        length, partial = len(whole), len(cut)
-        count = len(driver.event_frames)
-        driver.send(driver.events_channel, CREDIT, struct.pack("<I", length - partial))
-        driver.wait(lambda: len(driver.event_frames) > count)
-        tail = driver.event_frames[-1]
-        if tail.endswith(b"\n") and tail.count(b"\n") == 1:
-            cases["eventFrames"].append({
-                "name": "one-line-across-two-frames", "source": source("an event line cut at the credit edge"),
-                "bytes": (capture.frame(driver.events_channel, DATA, cut)
-                          + capture.frame(driver.events_channel, DATA, tail)).hex(),
-                "lines": 1,
-            })
-        count = len(driver.event_frames)
-        driver.send(driver.events_channel, CREDIT, struct.pack("<I", 2 * length))
-        driver.wait(lambda: len(driver.event_frames) > count)
-        both = driver.event_frames[-1]
-        if both.count(b"\n") == 2 and both.endswith(b"\n"):
-            cases["eventFrames"].append({
-                "name": "two-lines-in-one-frame", "source": source("two event lines the credit released together"),
-                "bytes": capture.frame(driver.events_channel, DATA, both).hex(),
-                "lines": 2,
-            })
+    # Lines are this long unless a heartbeat falls among them, so a guess that misses
+    # leaves the stream at another cut, and the next one lands.
+    whole = [len(frame) for frame in driver.event_frames[-50:] if frame.count(b"\n") == 1 and frame.endswith(b"\n")]
+    length = max(set(whole), key=whole.count)
+
+    def release(count):
+        seen = len(driver.event_frames)
+        driver.send(driver.events_channel, CREDIT, struct.pack("<I", count))
+        driver.wait(lambda: len(driver.event_frames) > seen)
+        return driver.event_frames[-1]
+
+    across = together = None
+    for _ in range(40):
+        if across and together:
+            break
+        start, partial = driver.event_frames[-1], len(driver.stream)
+        if partial:
+            frame = release(length - partial)
+            if not driver.stream and frame.count(b"\n") == 1 and partial == len(start):
+                across = (start, frame)
+        elif across:
+            frame = release(2 * length)
+            if not driver.stream and frame.count(b"\n") == 2:
+                together = frame
+        else:
+            release(length // 2)
+    if across:
+        cases["eventFrames"].append({
+            "name": "one-line-across-two-frames", "source": source("an event line cut at the credit edge"),
+            "bytes": b"".join(capture.frame(driver.events_channel, DATA, part) for part in across).hex(),
+            "lines": 1,
+        })
+    if together:
+        cases["eventFrames"].append({
+            "name": "two-lines-in-one-frame", "source": source("two event lines the credit released together"),
+            "bytes": capture.frame(driver.events_channel, DATA, together).hex(),
+            "lines": 2,
+        })
     # Past the 4 MiB the core keeps. Long labels get there quickly, and the padding
     # says nothing, so what the snapshot keeps of it is scrubbed.
     padding = "x" * (16 * 1024)
@@ -443,11 +569,13 @@ def run_scenario(root, version_source):
 
     selections = [
         ("created", "a Terminal started with a name, labels and keep", first("created")),
+        ("created-from-template", "a Terminal started from a template, with a parent",
+         first("created", terminal=full_address)),
         ("size", "a RESIZE frame", first("size", lambda data: data.get("cols") == 100)),
         ("title", "an inert program's OSC 2", first("title")),
         ("foreground", "the core's foreground watcher", first("foreground", lambda data: data is not None)),
-        ("foreground-cleared", "the core's foreground watcher",
-         first("foreground", lambda data: data is None, terminal=None)),
+        ("foreground-cleared", "a foreground process group whose leader exited",
+         first("foreground", lambda data: data is None, terminal=orphan_address)),
         ("status", "an inert program's OSC 7501",
          first("status", lambda data: (data.get("status") or {}).get("progress") == 10)),
         ("status-cleared", "an inert program's OSC 7501 state=clear",
@@ -464,38 +592,38 @@ def run_scenario(root, version_source):
         ("removed", "terminal.rm", first("removed", terminal=gone_address)),
         ("heartbeat", "the events channel's heartbeat, every second by HC_HEARTBEAT_MS",
          next((line for line in driver.lines if line.get("method") == "heartbeat"), None)),
-        ("missed", "a backlog past the core's limit with credit withheld", missed),
+        ("missed", "a backlog past the core's limit with credit withheld, with a killed rm child a parent's wait "
+                   "holds and a templated child with every field a live record has", missed),
     ]
     for name, how, line in selections:
-        if line is not None:
-            line_case(name, how, line)
+        line_case(*selected(name, how, line))
     driver.result("server.status", {})
     driver.connection.close()
     return cases
 
 
 def merge(old, cases, version):
-    """The new file: captured cases replace those of the same name; the rest stay
-    with their old source and are listed as not captured."""
+    """The new file: captured cases replace those of the same name, new ones follow.
+    Every case has to come from this run; any other refuses the whole file."""
     captured_names = {"hello"}
     merged = dict(old)
     merged["hello"] = cases["hello"]
+    missing = []
     for section in ("frames", "exchanges", "errors", "events", "eventFrames"):
         by_name = {case["name"]: case for case in cases[section]}
         captured_names |= set(by_name)
-        kept = [by_name.pop(case["name"], case) for case in old[section]]
+        missing += [case["name"] for case in old[section] if case["name"] not in by_name]
+        kept = [by_name.pop(case["name"]) for case in old[section] if case["name"] in by_name]
         merged[section] = kept + list(by_name.values())
-    every = [case["name"] for section in ("frames", "exchanges", "errors", "events", "eventFrames")
-             for case in merged[section]]
+    if missing:
+        raise ScenarioError(f"this run did not capture {', '.join(missing)}; re-run, or delete a retired case first")
     merged["provisional"] = False
     merged["coreVersion"] = version
-    merged["notCaptured"] = [name for name in every if name not in captured_names]
     merged["description"] = (
         "Shared herdr-core framed protocol vectors: frames, the hello line, channel-0 exchanges and event lines. "
         "Swift reads them now and the Host Helper reads them later. Captured from a fixture core and scrubbed by "
-        "scripts/fixtures/herdr-core-capture-scenario.py; every case names its capture, and those in notCaptured "
-        "keep a source review a fixture cannot reach. Hex strings hold exact bytes; a frame is channel (u32 LE), "
-        "kind (u8) and length (u32 LE) before its payload."
+        "scripts/fixtures/herdr-core-capture-scenario.py; every case names its capture. Hex strings hold exact "
+        "bytes; a frame is channel (u32 LE), kind (u8) and length (u32 LE) before its payload."
     )
     return merged
 

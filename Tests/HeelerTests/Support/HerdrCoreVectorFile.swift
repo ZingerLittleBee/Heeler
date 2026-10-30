@@ -4,10 +4,9 @@ import Foundation
 
 /// The shared herdr-core frame vectors from `plugin/test-vectors/`, bundled
 /// into the test target as a resource. Captured from a fixture core; every case
-/// names its capture, or is listed in `notCaptured` with its source review.
+/// names its capture.
 struct HerdrCoreVectorFile: Decodable, Sendable {
     let provisional: Bool
-    let notCaptured: [String]
     let coreVersion: String
     let coreCommit: String
     let hello: Hello
