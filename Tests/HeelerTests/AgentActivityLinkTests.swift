@@ -82,7 +82,7 @@ struct AgentLinkHostLookupTests {
     }
 
     @Test func legacyLookupNeverTargetsACoreTerminalWithTheSameAddress() throws {
-        let core = Host(address: "studio.local", username: "dev", backend: .herdrCore)
+        let core = Host(address: "studio.local", username: "dev", serverKind: .herdrCore)
         let link = "heeler://agent?host=studio.local&pane=t3"
         #expect(try opened(link, in: [core]) == nil)
         #expect(try opened(link, in: [core, Self.studio])

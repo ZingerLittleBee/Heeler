@@ -128,7 +128,7 @@ struct HostOnboardingView: View {
 
             Section("Host") {
                 LabeledContent("Account", value: store.host.username)
-                LabeledContent("Backend", value: store.host.backend.displayName)
+                LabeledContent("Server Kind", value: store.host.serverKind.displayName)
                 LabeledContent("Session", value: sessionLine)
                 herdrEndpointRows
                 LabeledContent(
@@ -148,7 +148,7 @@ struct HostOnboardingView: View {
                     // The notice is advisory and the checks still pass: a Host
                     // newer than this build is usable, just not fully known.
                     Text(
-                        store.host.backend == .herdrCore
+                        store.host.serverKind == .herdrCore
                             ? "herdr-core \(info.version)"
                             : info.exceedsGeneratedProtocol
                             ? "herdr \(info.version) · protocol \(info.protocolVersion) — "

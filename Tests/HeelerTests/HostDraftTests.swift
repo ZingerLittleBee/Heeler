@@ -16,29 +16,59 @@ struct HostDraftTests {
         #expect(rebuilt == host)
     }
 
-    @Test func coreBackendSurvivesEditingAndDuplication() throws {
+    @Test func coreKindSurvivesEditingAndDuplication() throws {
         let host = Host(
             name: "Desktop", address: "box.example", username: "dev",
-            backend: .herdrCore, sessionName: "work")
+            serverKind: .herdrCore, sessionName: "work")
         let draft = HostDraft(host: host)
-        #expect(draft.backend == .herdrCore)
+        #expect(draft.serverKind == .herdrCore)
         #expect(try #require(draft.makeHost(id: host.id)) == host)
 
         let duplicate = HostDraft(duplicating: host, password: nil, existingNames: ["Desktop"])
         let copied = try #require(duplicate.makeHost())
-        #expect(copied.backend == .herdrCore)
+        #expect(copied.serverKind == .herdrCore)
         #expect(copied.sessionName == "work")
         #expect(copied.name == "Desktop copy")
     }
 
-    @Test func anEndpointPairingRemainsOnItsLegacyBackend() throws {
+    @Test func aNewDraftAndItsCopyAreHerdrTUI() throws {
+        var draft = HostDraft()
+        draft.address = "box.example"
+        draft.username = "dev"
+        let host = try #require(draft.makeHost())
+        #expect(host.serverKind == .herdrTUI)
+
+        let copy = HostDraft(duplicating: host, password: nil, existingNames: [])
+        #expect(try #require(copy.makeHost()).serverKind == .herdrTUI)
+    }
+
+    /// `serverKind` has no setter outside the draft, so Edit can only hand the
+    /// store the kind the Host already has, whatever else changes.
+    @MainActor
+    @Test(arguments: [ServerKind.herdrTUI, .herdrCore])
+    func editingKeepsTheKindTheStoreRequires(_ kind: ServerKind) throws {
+        let host = Host(name: "Desktop", address: "box.example", username: "dev", serverKind: kind)
+        let store = HostStore(volatileHosts: [host])
+        var draft = HostDraft(host: host)
+        draft.name = "Renamed"
+        draft.sessionName = "work"
+        draft.authMethod = .password
+        draft.password = "secret"
+
+        let edited = try #require(draft.makeHost(id: host.id))
+        try store.update(edited, password: draft.passwordUpdate)
+
+        #expect(store.hosts.map(\.serverKind) == [kind])
+        #expect(store.hosts.map(\.name) == ["Renamed"])
+    }
+
+    @Test func anEndpointPairingStaysHerdrTUI() throws {
         let endpoint = try #require(HerdrEndpoint(
             socketPath: "/srv/app/herdr/herdr.sock", executablePath: "/srv/app/bin/herdr"))
-        var draft = HostDraft(host: Host(
+        let draft = HostDraft(host: Host(
             address: "box.example", username: "dev", herdrEndpoint: endpoint))
-        draft.backend = .herdrCore
         let saved = try #require(draft.makeHost())
-        #expect(saved.backend == .herdr)
+        #expect(saved.serverKind == .herdrTUI)
         #expect(saved.herdrEndpoint == endpoint)
     }
 
@@ -145,25 +175,41 @@ struct HostDraftTests {
         }
     }
 
-    @Test(arguments: ["desktop session", "作業", "O'Brien $project `local`", String(repeating: "a", count: 65)])
-    func coreDraftsAcceptTheCoreSessionNameContract(_ name: String) throws {
-        var draft = HostDraft()
-        draft.address = "box.example"
-        draft.username = "dev"
-        draft.backend = .herdrCore
-        draft.sessionName = name
-        #expect(try #require(draft.makeHost()).sessionName == name)
-        draft.backend = .herdr
-        #expect(!draft.isValid)
+    private func coreDraft(sessionName: String) -> HostDraft {
+        var draft = HostDraft(host: Host(address: "box.example", username: "dev", serverKind: .herdrCore))
+        draft.sessionName = sessionName
+        return draft
     }
 
-    @Test(arguments: [".", "..", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "a\tb"])
-    func coreDraftsRejectInvalidFolderNames(_ name: String) {
-        var draft = HostDraft()
-        draft.address = "box.example"
-        draft.username = "dev"
-        draft.backend = .herdrCore
-        draft.sessionName = name
+    @Test(arguments: ["desktop session", "作業", "O'Brien $project `local`", String(repeating: "a", count: 65)])
+    func coreDraftsAcceptNamesTheTUIRefuses(_ name: String) throws {
+        #expect(try #require(coreDraft(sessionName: name).makeHost()).sessionName == name)
+
+        var tui = HostDraft()
+        tui.address = "box.example"
+        tui.username = "dev"
+        tui.sessionName = name
+        #expect(!tui.isValid)
+    }
+
+    /// hc's `session()` in paths.rs (v0.1.13) trims the name and reads blank as
+    /// `default`.
+    @Test(arguments: [
+        (" work ", "work"), ("\n\twork\r\n", "work"), ("Team space\t", "Team space"),
+        ("", "default"), (" \n\t", "default"),
+    ])
+    func coreDraftsTrimTheSessionNameAsHcDoes(_ typed: String, _ saved: String) throws {
+        #expect(try #require(coreDraft(sessionName: typed).makeHost()).sessionName == saved)
+    }
+
+    /// Every name hc's `session()` refuses: `.`, `..`, control characters and
+    /// the characters a path can't hold, also once trimmed.
+    @Test(arguments: [
+        ".", "..", " . ", "\n..\t", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b",
+        "a\tb", "a\nb", "a\u{7f}b", "a\u{85}b", "a\u{0}b",
+    ])
+    func coreDraftsRefuseNamesHcRefuses(_ name: String) {
+        let draft = coreDraft(sessionName: name)
         #expect(!draft.isValid)
         #expect(draft.makeHost() == nil)
     }

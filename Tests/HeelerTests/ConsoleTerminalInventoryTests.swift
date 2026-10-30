@@ -289,7 +289,7 @@ struct ConsoleTerminalInventoryTests {
 
     @Test func coreTitleUpdatesRefreshAgentAndShellWithoutSnapshotOrSnippetReads() async throws {
         var host = Host.fixture()
-        host.backend = .herdrCore
+        host.serverKind = .herdrCore
         let transport = ScriptedTransport(snapshot: snapshot(
             panes: [pane("agent", agent: "claude"), pane("shell")], agents: [agent()]))
         let store = makeStore([host.id: transport])
@@ -333,7 +333,7 @@ struct ConsoleTerminalInventoryTests {
 
     @Test func coreTitlesObservedDuringSnapshotSurviveTheOlderResponse() async throws {
         var host = Host.fixture()
-        host.backend = .herdrCore
+        host.serverKind = .herdrCore
         let panes = [pane("agent", agent: "claude", title: "Old agent"), pane("shell", title: "Old shell")]
         let transport = ScriptedTransport(snapshot: snapshot(panes: panes, agents: [agent()]))
         let store = makeStore([host.id: transport])
@@ -362,7 +362,7 @@ struct ConsoleTerminalInventoryTests {
 
     @Test func unknownCoreTitleTargetsCoalesceInventoryRecovery() async throws {
         var host = Host.fixture()
-        host.backend = .herdrCore
+        host.serverKind = .herdrCore
         let transport = ScriptedTransport(snapshot: snapshot(panes: [pane("shell")]))
         let store = makeStore([host.id: transport])
         defer { store.setHosts([]) }
@@ -389,7 +389,7 @@ struct ConsoleTerminalInventoryTests {
 
     @Test func coreWireTitlesReachUnnamedRowsWhileExplicitNamesStayVisible() async throws {
         var host = Host.fixture()
-        host.backend = .herdrCore
+        host.serverKind = .herdrCore
         let transport = ScriptedTransport(snapshot: try coreSnapshot([
             coreRecord("t1", title: "Project shell"),
             coreRecord("t2", title: "Build output", name: "Logs"),
@@ -423,7 +423,7 @@ struct ConsoleTerminalInventoryTests {
 
     @Test func coreErrorEventsAndReturnedShellsConvergeWithoutReplacingSubscriptions() async throws {
         var host = Host.fixture()
-        host.backend = .herdrCore
+        host.serverKind = .herdrCore
         let transport = ScriptedTransport(snapshot: try coreSnapshot([coreRecord("t1", app: "claude-code")]))
         let store = makeStore([host.id: transport])
         defer { store.setHosts([]) }
@@ -459,7 +459,7 @@ struct ConsoleTerminalInventoryTests {
 
     @Test func repeatedCoreStatusReportsDoNotRefreshButAppAndTitleChangesDo() async throws {
         var host = Host.fixture()
-        host.backend = .herdrCore
+        host.serverKind = .herdrCore
         let transport = ScriptedTransport(snapshot: try coreSnapshot([
             coreRecord("t1", app: "claude-code"), coreRecord("t2"),
         ]))

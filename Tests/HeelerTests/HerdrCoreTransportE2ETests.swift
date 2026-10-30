@@ -377,7 +377,7 @@ private struct CoreSSHFixture: Sendable {
         var result = SSHTransportSettings(host: configuration.host, port: Int(configuration.port),
             username: configuration.username, credentials: .ed25519(try RealSSHFixture.deviceKey(seed: configuration.deviceKeySeed)),
             hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true }, socket: .defaultSession)
-        result.backend = .herdrCore
+        result.serverKind = .herdrCore
         result.coreSessionName = session
         return result
     }

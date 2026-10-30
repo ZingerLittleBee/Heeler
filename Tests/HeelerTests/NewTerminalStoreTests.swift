@@ -82,7 +82,7 @@ struct NewTerminalStoreTests {
 
     @Test(arguments: [false, true])
     func coreCreationDropsLabelsRetainedAfterSwitchingHosts(newWorkspace: Bool) async {
-        let core = Host(address: "box.example", username: "dev", backend: .herdrCore)
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let recorder = Recorder()
         let store = makeStore(hosts: [host, core], recorder: recorder)
         store.selectedHostID = host.id

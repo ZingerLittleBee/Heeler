@@ -88,7 +88,7 @@ struct SSHTransportSettings: Sendable {
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
     /// Explicit server selection; no fallback from a refused legacy socket.
-    var backend: HostBackend = .herdr
+    var serverKind: ServerKind = .herdrTUI
     /// Core's session name; its default session is named "default".
     var coreSessionName = "default"
     /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023).
