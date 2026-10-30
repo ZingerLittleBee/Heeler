@@ -91,11 +91,14 @@ enum HostProcessReader {
             guard isProcRoot(root) else { throw Refusal.procRoot(root) }
             lines += linuxReads(request, root: root)
         case .macOS:
-            lines += unavailableReads()
+            lines += macOSReads(request)
         case .hostKernel:
             lines.append("case $(uname -s) in")
             lines.append("Linux)")
             lines += linuxReads(request, root: "/proc")
+            lines.append(";;")
+            lines.append("Darwin)")
+            lines += macOSReads(request)
             lines.append(";;")
             lines.append("*)")
             lines += unavailableReads()
@@ -184,6 +187,48 @@ enum HostProcessReader {
             "$1==\"ok\"{k=1;next}",
             "{for(i=1;i<=NF;i++){if($i==\"00\"){o=o \"F \" p \" \" v \"\\n\";v=\"\"}else v=v $i}}",
             "END{if(k){printf \"%s\",o;print \"O\",p,\"ok\"}else print \"O\",p,\"-\"}",
+            "'",
+            "}",
+        ]
+    }
+
+    /// Only the methods the macOS spike confirmed; herdr compatibility records
+    /// each one with its macOS version. `ps -o lstart=` for the start,
+    /// `KERN_PROCARGS2` through `/usr/bin/perl` for variables (`ps -E` cannot
+    /// frame a value holding a space), `lsof -F` for descriptors. macOS
+    /// withholds a platform binary's environment, so no entries read as
+    /// unavailable, as an empty read does on Linux.
+    private static func macOSReads(_ request: Request) -> [String] {
+        [
+            "s() {",
+            "  t=$(/bin/ps -o lstart= -p \"$1\" </dev/null) || t=",
+            "  printf 'S %s %s\\n' \"$1\" \"${t:--}\"",
+            "}",
+            "e() {",
+            "  /usr/bin/perl -e '",
+            "use strict;my $p=shift;",
+            "my %W=map{($_,1)}qw(\(request.valuesOf.joined(separator: " ")));",
+            "my %N=map{($_,1)}qw(\(request.namesOf.joined(separator: " ")));",
+            "my @P=qw(\(request.namesWithPrefix.joined(separator: " ")));",
+            "my $m=pack(\"i3\",1,49,$p);my $b=\"\\0\"x1048576;my $l=pack(\"Q\",1048576);",
+            "syscall(202,$m,3,$b,$l,0,0)==0 or exit 1;",
+            "my $d=substr($b,0,unpack(\"Q\",$l));my $c=unpack(\"i\",$d);",
+            "my $r=substr($d,4);$r=~s/^[^\\0]*\\0+//;",
+            "my @a=split(/\\0/,$r,-1);splice(@a,0,$c);",
+            "my $o=\"\";my $n=0;my %G;",
+            "for my $x(@a){last if $x eq \"\";$n++;my($k,$v)=split(/=/,$x,2);",
+            "next if !defined $v||$G{$k}++;",
+            "$o.=\"V $p $k \".(length $v?unpack(\"H*\",$v):\"-\").\"\\n\" if $W{$k};",
+            "$o.=\"N $p $k\\n\" if length $v&&$k=~/\\A[A-Za-z0-9_]+\\z/"
+                + "&&($N{$k}||grep{index($k,$_)==0}@P);}",
+            "exit 1 if !$n;print $o,\"E $p ok\\n\";",
+            "' \"$1\" </dev/null || printf 'E %s -\\n' \"$1\"",
+            "}",
+            "f() {",
+            "  /usr/sbin/lsof -nP -a -d 0-65535 -Fn -p \"$1\" </dev/null | awk -v p=\"$1\" '",
+            "substr($0,1,2)==\"n/\"{c++;if(c<=\(openFileCap))o=o \"G \" p \" \" substr($0,2) \"\\n\"}",
+            "END{if(c>0&&c<=\(openFileCap)){printf \"%s\",o;print \"O\",p,\"ok\"}"
+                + "else print \"O\",p,\"-\"}",
             "'",
             "}",
         ]
@@ -289,6 +334,10 @@ enum HostProcessReader {
                 if let path = String(data: bytes, encoding: .utf8) {
                     files[pid, default: []].append(path)
                 }
+            case "G":
+                if let path = String(data: lsofName(fields[2]), encoding: .utf8) {
+                    files[pid, default: []].append(path)
+                }
             case "O":
                 guard fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
                 if fields[2] == "ok" { listed.insert(pid) }
@@ -338,10 +387,64 @@ enum HostProcessReader {
         }
     }
 
+    /// Clock ticks from Linux's stat, or `ps -o lstart=` from macOS with the
+    /// padding it ends in removed.
     private static func startReading(_ text: String) -> Reading<String>? {
         if text == "-" { return .unavailable }
-        guard !text.isEmpty, text.utf8.allSatisfy({ (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) })
+        var trimmed = Substring(text)
+        while trimmed.hasSuffix(" ") { trimmed.removeLast() }
+        if isDigits(trimmed) { return .value(String(trimmed)) }
+        let parts = trimmed.split(separator: " ")
+        let time = parts.count == 5 ? parts[3].split(separator: ":") : []
+        guard parts.count == 5, parts[0].count == 3, parts[1].count == 3,
+            parts[2].count <= 2, isDigits(parts[2]), parts[4].count == 4, isDigits(parts[4]),
+            time.count == 3, time.allSatisfy({ $0.count == 2 && isDigits($0) })
         else { return nil }
-        return .value(text)
+        return .value(String(trimmed))
     }
+
+    private static func isDigits(_ text: Substring) -> Bool {
+        !text.isEmpty && text.utf8.allSatisfy { (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }
+    }
+
+    /// Undoes what `lsof -F` does to a name under `LC_ALL=C`: `\\`, `\n`,
+    /// `\t`, `\r`, `\b`, `\f` and `\xHH`. It leaves a literal `^` alone, so a
+    /// control byte it writes as `^A` cannot be told from those two characters
+    /// and stays as written.
+    private static func lsofName(_ text: String) -> Data {
+        let input = Array(text.utf8)
+        var output = Data(capacity: input.count)
+        var index = 0
+        while index < input.count {
+            let byte = input[index]
+            guard byte == UInt8(ascii: "\\"), index + 1 < input.count else {
+                output.append(byte)
+                index += 1
+                continue
+            }
+            let next = input[index + 1]
+            if let plain = lsofEscapes[next] {
+                output.append(plain)
+                index += 2
+            } else if next == UInt8(ascii: "x"), index + 3 < input.count,
+                let high = hexDigit(input[index + 2]), let low = hexDigit(input[index + 3])
+            {
+                output.append(high << 4 | low)
+                index += 4
+            } else {
+                output.append(byte)
+                index += 1
+            }
+        }
+        return output
+    }
+
+    private static let lsofEscapes: [UInt8: UInt8] = [
+        UInt8(ascii: "\\"): UInt8(ascii: "\\"),
+        UInt8(ascii: "n"): 0x0A,
+        UInt8(ascii: "t"): 0x09,
+        UInt8(ascii: "r"): 0x0D,
+        UInt8(ascii: "b"): 0x08,
+        UInt8(ascii: "f"): 0x0C,
+    ]
 }

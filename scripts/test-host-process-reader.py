@@ -15,7 +15,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -436,6 +438,138 @@ class OpenFileTests(ReaderTestCase):
                     "names": ["TMUX"],
                     "files": [f"/open/{pid}"],
                 })
+        self.for_each_shell(check)
+
+
+@unittest.skipUnless(sys.platform == "darwin", "the macOS reads need a Mac")
+class MacOSReadTests(ReaderTestCase):
+    """Real reads on this Mac, against processes these tests start themselves
+    with an environment built from scratch."""
+
+    ENV = {
+        "PATH": "/usr/bin:/bin",
+        "NAMED": "with spaces OTHER=x",
+        "BLANK": "",
+        "LINES": "one\nFORGED=by-a-newline",
+        "UNICODE": "\u8def\u5f84",
+        "TMUX": "/tmp/tmux-sock,1,0",
+        "HERDR_SOCKET_PATH": "/run/herdr.sock",
+        "HERDR_BLANK": "",
+        "NOT_ASKED": "sekrit",
+    }
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.sleep = self.proc / "sleep-copy"
+        # /bin/sleep is a platform binary, whose environment macOS withholds.
+        shutil.copy("/bin/sleep", self.sleep)
+        subprocess.run(["codesign", "-f", "-s", "-", str(self.sleep)], check=True, capture_output=True)
+        self.running: list[subprocess.Popen] = []
+
+    def tearDown(self) -> None:
+        for process in self.running:
+            process.kill()
+            process.wait()
+        super().tearDown()
+
+    def start(self, program: Path | str | None = None, **options) -> str:
+        process = subprocess.Popen(
+            [str(program or self.sleep), "300"], env=self.ENV,
+            stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=options.pop("stdout", subprocess.DEVNULL), **options)
+        self.running.append(process)
+        time.sleep(0.3)
+        return str(process.pid)
+
+    def test_the_host_kernel_form_takes_the_macos_branch(self) -> None:
+        pid = self.start()
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[pid], values=["NAMED"], root=None)
+            self.assertEqual(facts[pid]["variables"], {"NAMED": {"value": self.ENV["NAMED"]}})
+        self.for_each_shell(check)
+
+    def test_process_start_is_the_second_it_started(self) -> None:
+        before = time.time()
+        pid = self.start()
+        after = time.time()
+
+        def check(shell: list[str]) -> None:
+            start = self.read(shell, pids=[pid], start=True, macOS=True)[pid]["start"]
+            stamp = datetime.strptime(start, "%a %b %d %H:%M:%S %Y").timestamp()
+            self.assertGreaterEqual(stamp, int(before))
+            self.assertLessEqual(stamp, after)
+        self.for_each_shell(check)
+
+    def test_named_values_are_exact_and_told_apart_from_unset(self) -> None:
+        pid = self.start()
+
+        def check(shell: list[str]) -> None:
+            asked = ["NAMED", "BLANK", "LINES", "UNICODE", "FORGED", "ABSENT"]
+            variables = self.read(shell, pids=[pid], values=asked, macOS=True)[pid]["variables"]
+            self.assertEqual(variables, {
+                "NAMED": {"value": self.ENV["NAMED"]},
+                "BLANK": {"value": ""},
+                "LINES": {"value": self.ENV["LINES"]},
+                "UNICODE": {"value": self.ENV["UNICODE"]},
+                "FORGED": "unset",
+                "ABSENT": "unset",
+            })
+        self.for_each_shell(check)
+
+    def test_the_names_only_form_prints_no_equals_and_no_value(self) -> None:
+        pid = self.start()
+
+        def check(shell: list[str]) -> None:
+            request = {"pids": [pid], "names": ["TMUX", "STY"], "prefixes": ["HERDR_"], "macOS": True}
+            raw = self.run_script(shell, **request)
+            self.assertEqual(raw.count("="), 0, raw)
+            self.assertEqual(self.parse(raw, **request)[pid]["names"], ["HERDR_SOCKET_PATH", "TMUX"])
+            for word in (b"/tmp/tmux-sock", b"sekrit", b"/usr/bin"):
+                self.assertNotIn(word, raw.encode())
+                self.assertNotIn(word.hex().encode(), raw.encode())
+        self.for_each_shell(check)
+
+    def test_a_platform_binary_withholds_its_environment_so_it_reads_unavailable(self) -> None:
+        pid = self.start("/bin/sleep")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[pid], values=["NAMED"], names=["TMUX"], macOS=True)
+            self.assertEqual(facts[pid]["variables"], {"NAMED": "unavailable"})
+            self.assertEqual(facts[pid]["names"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_open_files_come_back_decoded(self) -> None:
+        names = ["plain.jsonl", "with space.jsonl", "\u8def\u5f84.jsonl", "new\nline.jsonl",
+                 "back\\slash.jsonl"]
+        pids = {}
+        for name in names:
+            path = self.proc / name
+            with path.open("w") as output:
+                pids[name] = self.start(stdout=output)
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=list(pids.values()), files=True, macOS=True)
+            for name, pid in pids.items():
+                self.assertIn(os.path.realpath(self.proc / name), facts[pid]["files"])
+                self.assertIn("/dev/null", facts[pid]["files"])
+        self.for_each_shell(check)
+
+    def test_a_gone_process_reads_unavailable_for_every_read(self) -> None:
+        pid = self.start()
+        process = self.running.pop()
+        process.kill()
+        process.wait()
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[pid], start=True, files=True, values=["NAMED"],
+                              names=["TMUX"], macOS=True)[pid]
+            self.assertEqual(facts, {
+                "start": "unavailable",
+                "variables": {"NAMED": "unavailable"},
+                "names": "unavailable",
+                "files": "unavailable",
+            })
         self.for_each_shell(check)
 
 
