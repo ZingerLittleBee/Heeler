@@ -26,12 +26,15 @@ spec.loader.exec_module(capture)
 
 HEADER = struct.Struct("<IBI")
 SECRET_VALUE = "hunter2-secret-value"
+FLAG_VALUE = "flag-secret-value"
+URL_PASSWORD = "url-secret-value"
+QUOTED_VALUE = "quoted-secret-value"
 USER = "alice"
 HOST = "alices-laptop"
 
 RECORD = {
     "address": "t1",
-    "argv": [f"/home/{USER}/.local/bin/claude", f"--token=abc", f"API_KEY={SECRET_VALUE}"],
+    "argv": [f"/home/{USER}/.local/bin/claude", f"--token={FLAG_VALUE}", f"API_KEY={SECRET_VALUE}"],
     "cwd": f"/Users/{USER}/work/project",
     "title": f"{USER}@{HOST}: ~/work",
     "labels": {"workspace": f"/home/{USER}/w"},
@@ -39,6 +42,11 @@ RECORD = {
     "env": {"PATH": f"/home/{USER}/bin", "SECRET": SECRET_VALUE},
     "status": {"state": "idle", "msg": f"see C:\\Users\\{USER}\\notes"},
     "state": "live",
+    # A Template's foreground is `sh -c <line>`, so a whole command line lands in argv.
+    "foreground": {
+        "name": "sh",
+        "argv": ["sh", "-c", f'http_proxy=http://u:{URL_PASSWORD}@proxy LABEL="quoted {QUOTED_VALUE}" claude'],
+    },
 }
 
 
@@ -141,9 +149,14 @@ class CaptureTests(unittest.TestCase):
             for key in ("requestFrame", "replyFrame")
         )
         for output in (text, decoded):
-            for forbidden in (SECRET_VALUE, USER, HOST, "real-core-id", "restart_env", '"env"', "/run/user/501"):
+            for forbidden in (
+                SECRET_VALUE, FLAG_VALUE, URL_PASSWORD, QUOTED_VALUE,
+                USER, HOST, "real-core-id", "restart_env", '"env"', "/run/user/501",
+            ):
                 self.assertNotIn(forbidden, output)
         self.assertIn("API_KEY=<scrubbed>", text)
+        self.assertIn("--token=<scrubbed>", text)
+        self.assertIn("http_proxy=<scrubbed>", text)
         self.assertIn("/home/user/.local/bin/claude", text)
 
     def test_events_reassemble_across_frames_and_credit_comes_back(self) -> None:
@@ -209,6 +222,8 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(len(connects), 1)
         self.assertEqual(ast.unparse(connects[0].args[0]), "path")
 
+
+class ScrubberTests(unittest.TestCase):
     def test_scrubbing_covers_each_home_form(self) -> None:
         scrubber = capture.Scrubber([])
         self.assertEqual(scrubber.text("/home/bob/x"), "/home/user/x")
@@ -217,7 +232,49 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(scrubber.text("/rootless"), "/rootless")
         self.assertEqual(scrubber.text("/run/user/501/herdr-core/default.sock"), "/run/user/1000/herdr-core/default.sock")
         self.assertEqual(scrubber.text(r"C:\Users\bob\x"), r"C:\Users\user\x")
-        self.assertEqual(scrubber.text("TOKEN=abc def"), "TOKEN=<scrubbed> def")
+
+    def test_an_assignment_takes_the_rest_of_its_string_with_it(self) -> None:
+        scrubber = capture.Scrubber([])
+        cases = {
+            "TOKEN=abc def": "TOKEN=<scrubbed>",
+            "http_proxy=http://u:pw@h claude": "http_proxy=<scrubbed>",
+            "aws_secret_access_key=zz": "aws_secret_access_key=<scrubbed>",
+            'KEY="a secret" claude': "KEY=<scrubbed>",
+            "KEY='a secret' claude": "KEY=<scrubbed>",
+            'KEY="unterminated secret': "KEY=<scrubbed>",
+            r"KEY=a\ secret claude": "KEY=<scrubbed>",
+            "KEY=$(print a secret) claude": "KEY=<scrubbed>",
+            "KEY=`print a secret` claude": "KEY=<scrubbed>",
+            "KEY=first\nsecond line": "KEY=<scrubbed>",
+            "A=1 B=secret claude": "A=<scrubbed>",
+            "export Mixed_Case=secret": "export Mixed_Case=<scrubbed>",
+            "PATH+=:/opt/secret": "PATH+=<scrubbed>",
+            "--token=abc --next": "--token=<scrubbed>",
+            "p\u00e4sswort=secret": "p\u00e4sswort=<scrubbed>",
+            "cd /tmp && KEY=secret claude": "cd /tmp && KEY=<scrubbed>",
+            '$env:API_KEY = "a secret"; claude': "$env:API_KEY=<scrubbed>",
+        }
+        for given, expected in cases.items():
+            with self.subTest(given=given):
+                self.assertEqual(scrubber.text(given), expected)
+
+    def test_an_environment_command_loses_its_value(self) -> None:
+        scrubber = capture.Scrubber([])
+        cases = {
+            "setenv API_KEY a secret": "setenv API_KEY <scrubbed>",
+            "set -gx API_KEY a secret": "set -gx API_KEY <scrubbed>",
+            "set -g -x API_KEY a secret": "set -g -x API_KEY <scrubbed>",
+            "setx API_KEY secret": "setx API_KEY <scrubbed>",
+        }
+        for given, expected in cases.items():
+            with self.subTest(given=given):
+                self.assertEqual(scrubber.text(given), expected)
+
+    def test_text_without_an_assignment_is_left_alone(self) -> None:
+        scrubber = capture.Scrubber([])
+        for given in ("claude --resume", "set up the box", "Reviewing a to b", "sh -c claude"):
+            with self.subTest(given=given):
+                self.assertEqual(scrubber.text(given), given)
 
 
 if __name__ == "__main__":

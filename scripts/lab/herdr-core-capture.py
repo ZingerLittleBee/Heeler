@@ -12,7 +12,11 @@ the core yourself first, on a lab machine.
 The vectors have the shape of plugin/test-vectors/herdr-core-frames-v1.json.
 Everything written is rebuilt from scrubbed JSON: the core's name and id, user
 paths, the user and host names, and environment assignments never reach a file.
-It never attaches to a Terminal, whose screen bytes cannot be scrubbed.
+An assignment takes the rest of its string with it, because a command line in
+argv can quote its value in ways that only a shell can parse. A secret passed as
+a separate argument (`--token abc`) is not an assignment and is not recognized,
+so read the output before committing it. The script never attaches to a Terminal,
+whose screen bytes cannot be scrubbed.
 """
 
 from __future__ import annotations
@@ -36,7 +40,10 @@ MAX_HELLO_LINE = 1024 * 1024
 # Keys whose whole value is an environment, wherever they appear.
 ENVIRONMENT_KEYS = {"env", "environment", "restart_env"}
 SCRUBBED_CORE = {"id": "scrubbed-core-id", "name": "lab-core"}
-ASSIGNMENT = re.compile(r"\b([A-Z_][A-Z0-9_]*)=\S*")
+# POSIX, PowerShell and flag assignments, in any case, through the end of the string.
+ASSIGNMENT = re.compile(r"\b(\w+)[ \t]*(\+?=).*", re.DOTALL)
+# csh, fish and Windows forms, which set a variable with no equals sign.
+ENVIRONMENT_COMMAND = re.compile(r"\b((?:setenv|setx|set(?:[ \t]+-\w+)+)[ \t]+\w+[ \t]+).*", re.DOTALL)
 # The name after a home root, and the directory the core keeps per-user sockets in.
 USER_PATHS = (
     (re.compile(r"/home/[^/\s\"']+"), "/home/user"),
@@ -60,7 +67,8 @@ class Scrubber:
     def text(self, value: str) -> str:
         for pattern, replacement in USER_PATHS:
             value = pattern.sub(replacement, value)
-        value = ASSIGNMENT.sub(lambda match: f"{match.group(1)}=<scrubbed>", value)
+        value = ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}<scrubbed>", value)
+        value = ENVIRONMENT_COMMAND.sub(lambda match: f"{match.group(1)}<scrubbed>", value)
         for name in self.names:
             value = name.sub("scrubbed", value)
         return value
