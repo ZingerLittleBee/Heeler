@@ -190,6 +190,19 @@ import Testing
             pid: 4300, name: "node", argv: ["node", "/opt/claude/cli.js"], cwd: "/work/project/child"))
     }
 
+    @Test func recordFieldsThatDefaultWhenAbsentDecodeTheirOwnValues() throws {
+        guard case .missed(let snapshot) = try decodeVector("missed-killed-rm-record") else {
+            Issue.record("missed must surface its snapshot")
+            return
+        }
+        let record = try #require(snapshot.terminals.first)
+        #expect(record.signal == 9)
+        #expect(record.reason == "killed")
+        #expect(record.finishedMilliseconds == 1_790_000_002_000)
+        #expect(record.dieWithParent)
+        #expect(record.removeOnExit)
+    }
+
     @Test func theSubscribeSnapshotAndMissedCarryRecordsWithoutFederatedTerminals() throws {
         let exchange = try vectors.exchange("events-subscribe")
         let snapshot = try HerdrCoreSnapshot(result: exchange.result)
@@ -269,7 +282,7 @@ import Testing
         #expect(vectors.coreVersion == "0.1.13")
         #expect(vectors.coreCommit == "88fe4e7")
         // Pinned against the file: a section that stops decoding cannot pass quietly.
-        #expect(vectors.allCases.count == 1 + 10 + 3 + 4 + 18 + 2)
+        #expect(vectors.allCases.count == 1 + 10 + 3 + 4 + 19 + 2)
         #expect(Set(vectors.allCases.map(\.name)).count == vectors.allCases.count)
         for testCase in vectors.allCases {
             #expect(testCase.source.contains("herdr-core v0.1.13"), "\(testCase.name)")
