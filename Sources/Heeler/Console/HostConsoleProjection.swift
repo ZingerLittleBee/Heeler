@@ -5,7 +5,7 @@ import Foundation
 /// the EventsSession that supplies them. ConsoleStore only aggregates the
 /// resulting rows and observable Host state.
 @MainActor
-final class HostConsoleProjection {
+final class HostConsoleProjection: ConsoleHostProjection {
     let host: Host
     let session: EventsSession
 
@@ -345,6 +345,73 @@ final class HostConsoleProjection {
                     await reporter.report(progress)
                 }
             }
+        }
+    }
+
+    func withHostServices<Value: Sendable>(
+        _ operation: @escaping @Sendable (any HostServices) async throws -> Value
+    ) async throws -> Value {
+        try await session.withTransport { transport in
+            try await operation(transport)
+        }
+    }
+
+    func withNotificationTransport<Value: Sendable>(
+        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+    ) async throws -> Value {
+        try await session.withTransport(operation)
+    }
+
+    /// The Host's home directory for the New Workspace browser (#280).
+    func remoteHomeDirectory() async throws -> String {
+        try await session.withTransport { transport in
+            guard let ssh = transport as? HeelerSSHTransport else {
+                throw TransportError.sshUnreachable(
+                    detail: "This Host cannot list remote directories.")
+            }
+            return try await ssh.remoteHomeDirectory()
+        }
+    }
+
+    /// One absolute path's subdirectories for the New Workspace browser (#280).
+    func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        try await session.withTransport { transport in
+            guard let ssh = transport as? HeelerSSHTransport else {
+                throw TransportError.sshUnreachable(
+                    detail: "This Host cannot list remote directories.")
+            }
+            return try await ssh.listDirectories(at: path)
+        }
+    }
+
+    /// Composer's one-shot delivery: prompts borrow this connection rather
+    /// than dialing a parallel one or holding an RPC open for completion.
+    func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
+        try await session.withTransport { transport in
+            try await transport.promptAgent(params)
+        }
+    }
+
+    /// The Agent's screen as herdr renders it now, colors kept (`agent.read`).
+    func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
+        let read = try await session.withTransport { transport in
+            try await transport.readAgent(
+                AgentReadParams(source: .visible, target: paneID, format: .ansi, stripANSI: false))
+        }
+        return ANSIScreenDecoder.decode(read.text)
+    }
+
+    /// Presses keys in the Agent's program (`agent.send_keys`).
+    func sendAgentKeys(_ keys: [String], to paneID: String) async throws {
+        try await session.withTransport { transport in
+            try await transport.sendAgentKeys(AgentSendKeysParams(keys: keys, target: paneID))
+        }
+    }
+
+    /// Types one line of text into the Agent's pane (`pane.send_input`).
+    func pasteIntoAgent(_ text: String, paneID: String) async throws {
+        try await session.withTransport { transport in
+            try await transport.sendPaneInput(PaneSendInputParams(paneID: paneID, text: text))
         }
     }
 

@@ -16,6 +16,7 @@
 		03970FA28B8C09C524AF435E /* NotificationPrivacyCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943C187E6425414801A4734E /* NotificationPrivacyCopyTests.swift */; };
 		03A4895D457152CA4D31FC5A /* WorktreeDetailStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 442A5127B47FF6FF8840B0B9 /* WorktreeDetailStoreTests.swift */; };
 		03D51D76D290B174CD1835CD /* AgentSceneDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350E9BC30923D39BA3180FF6 /* AgentSceneDirectory.swift */; };
+		0464D8648C453B67924B352A /* ConsoleHostProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A53DB7ACA079F591F1ADEE /* ConsoleHostProjection.swift */; };
 		04A1AB55679831E97F6944DC /* WorkspaceTerminalDrawer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41234EB3A4D26FF87A07F9D3 /* WorkspaceTerminalDrawer.swift */; };
 		04BFBEABB74E72525A65DDDC /* DialogActionPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51326DED49E0BABEFF681B04 /* DialogActionPlanner.swift */; };
 		0507BD8B4201DB778E11B712 /* GhosttyContentLayers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 190CD80AFC8069AB4ECE7781 /* GhosttyContentLayers.swift */; };
@@ -1306,6 +1307,7 @@
 		7780BE78D868DB0A8275E6FB /* Heeler.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Heeler.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		77DB1F6C018F79AFBFCCD8F5 /* GrokCardBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCardBuilder.swift; sourceTree = "<group>"; };
 		7859F47BE902D8B547E59220 /* UntrackedDirectoryListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UntrackedDirectoryListing.swift; sourceTree = "<group>"; };
+		78A53DB7ACA079F591F1ADEE /* ConsoleHostProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleHostProjection.swift; sourceTree = "<group>"; };
 		78F85C588963C3CE948AA9E4 /* AgentNotificationBannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStore.swift; sourceTree = "<group>"; };
 		791A29C99001477839E4C3E5 /* pairing-code-v2.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pairing-code-v2.json"; sourceTree = "<group>"; };
 		794BADD20F0A9DF42D4916C0 /* ConsoleSplitPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleSplitPresentation.swift; sourceTree = "<group>"; };
@@ -2455,6 +2457,7 @@
 				5E8A1BCBBB2322E297472810 /* ConsoleCommands.swift */,
 				0014CA92DE868782F085801C /* ConsoleEmptyDetailPresentation.swift */,
 				0735F123FB93D94251790AEE /* ConsoleHostIssueRow.swift */,
+				78A53DB7ACA079F591F1ADEE /* ConsoleHostProjection.swift */,
 				C85214981DECFA178F08F06F /* ConsoleHostSectionHeaderPresentation.swift */,
 				530D32C2D59D0DD128053804 /* ConsoleHostStatusPresentation.swift */,
 				76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */,
@@ -3399,6 +3402,7 @@
 				5B37D1E817912A0327B2C7D1 /* ConsoleCommands.swift in Sources */,
 				07CBD5263A4A6B8912B86673 /* ConsoleEmptyDetailPresentation.swift in Sources */,
 				4B4AE725A29A4F1E3AA0B29D /* ConsoleHostIssueRow.swift in Sources */,
+				0464D8648C453B67924B352A /* ConsoleHostProjection.swift in Sources */,
 				ED78C30BC1FC7F679D392EDF /* ConsoleHostSectionHeaderPresentation.swift in Sources */,
 				7B1292E9A9C6175D1272755D /* ConsoleHostStatusPresentation.swift in Sources */,
 				E118CE5CB81C21030F23BC84 /* ConsoleListPresentationStore.swift in Sources */,
