@@ -179,6 +179,7 @@ package_derived_data_path="$fixture_dir/PackageDerivedData"
 # actions/cache so libghostty's XCFramework is not re-fetched every run.
 # Package-lane builds have no remote SwiftPM deps and leave this unused.
 source_packages_dir="${HEELER_CI_SOURCE_PACKAGES_DIR:-$repo_root/.ci/source-packages}"
+core_archive_cache_dir="${HEELER_CI_CORE_ARCHIVE_DIR:-$repo_root/.ci/herdr-core-archive}"
 diagnostic_run_id="${GITHUB_RUN_ID:-local-$$}"
 diagnostic_attempt="${GITHUB_RUN_ATTEMPT:-1}"
 diagnostic_root="${RUNNER_TEMP:-/tmp}/heeler-ci-diagnostics-$diagnostic_run_id-$diagnostic_attempt"
@@ -2223,24 +2224,37 @@ run_ci_diagnostic() {
 # CI never runs the installer or updates the runner's installed/live core.
 download_core_fixture_binary() {
     local release_dir="$fixture_dir/herdr-core-0.1.13"
-    local target checksum archive
+    local target checksum archive cached
     case "$(uname -m)" in
-        arm64 | aarch64)
-            target=macos-aarch64
-            checksum=fc1ffba3820b93b0e2faa5394a64b9ff5528f135611b6034469d81c0fa1c37aa ;;
-        x86_64)
-            target=macos-x86_64
-            checksum=bfb8671d7d40517f8736ec32eb72b823429117db148012a69625afcec582b31d ;;
+        arm64 | aarch64) target=macos-aarch64 ;;
+        x86_64) target=macos-x86_64 ;;
         *) echo "No pinned herdr-core fixture for this architecture" >&2; return 1 ;;
     esac
+    checksum=$(awk -v target="$target" '$2 == target { print $1 }' \
+        "$repo_root/scripts/fixtures/herdr-core-archive.sha256") || return 1
+    [[ -n "$checksum" ]] || { echo "No pinned herdr-core checksum for $target" >&2; return 1; }
     mkdir -p "$release_dir" || return 1
     archive="$release_dir/core.tar.gz"
-    curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 120 \
-        "https://releases.herdr.dev/core/0.1.13/herdr-core-$target.tar.gz" -o "$archive" || return 1
+    cached="$core_archive_cache_dir/herdr-core-$checksum.tar.gz"
+    # A restored archive earns no trust from its cache key: it is verified like a
+    # download, and a bad one is replaced rather than left to fail every run.
+    if [[ -f "$cached" ]]; then
+        cp "$cached" "$archive" || return 1
+        if [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" != "$checksum" ]]; then
+            echo "Discarding a cached herdr-core archive with the wrong checksum" >&2
+            rm -f "$cached" "$archive" || return 1
+        fi
+    fi
+    if [[ ! -f "$archive" ]]; then
+        curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 120 \
+            "https://releases.herdr.dev/core/0.1.13/herdr-core-$target.tar.gz" -o "$archive" || return 1
+    fi
     if [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" != "$checksum" ]]; then
         echo "Pinned herdr-core 0.1.13 archive checksum mismatch" >&2
         return 1
     fi
+    mkdir -p "$core_archive_cache_dir" || return 1
+    cp "$archive" "$cached" || return 1
     # Extract only the named executable, never arbitrary paths from the archive.
     tar -xzf "$archive" -C "$release_dir" herdr-core || return 1
     chmod 700 "$release_dir/herdr-core" || return 1
@@ -2280,7 +2294,7 @@ run_core_fixture_suite() {
     HEELER_SSH_E2E_CONFIG=$(<"$core_fixture_dir/core-test-config")
     push_simulator_environment HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
-    run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests || return $?
+    run_suite HerdrCoreTransportE2ETests 3 1 0 HerdrCoreTransportE2ETests || return $?
     HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
     push_simulator_environment HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
