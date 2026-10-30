@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { deliversToSession } from "../src/delivery/registrations.js";
 import {
-  deliversToSession,
   hookSession,
   isValidSessionName,
   sessionFromSocketPath,
