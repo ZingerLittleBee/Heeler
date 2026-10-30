@@ -36,7 +36,8 @@ import { encryptNotificationEnvelope } from "./notification-envelope.js";
 import { readNotificationConfig } from "./notification-config.js";
 import { refreshSidebarSnapshotForEvent } from "./sidebar-config.js";
 import { forDisplay, optionalText } from "./display-text.js";
-import { deliversToSession, hookSession, sessionStateDir } from "./session.js";
+import { hookSession, sessionStateDir } from "./session.js";
+import { pruneAlertTokens, readAlertDevices } from "./delivery/registrations.js";
 
 // Statuses that notify (ADR 0008: Working/Idle transitions never do), keyed
 // by the registration file's per-device `notify` preference flag they gate on.
@@ -44,8 +45,6 @@ const NOTIFY_FLAG_BY_STATUS = { blocked: "blocked", done: "done" };
 
 const SEND_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
-const KEY_BYTES = 32;
-const APNS_ENVIRONMENTS = new Set(["production", "sandbox"]);
 
 /** Parse HERDR_PLUGIN_EVENT_JSON leniently: require pane id and status only. */
 function parseStatusEvent(raw) {
@@ -71,56 +70,6 @@ function parseStatusEvent(raw) {
     workspaceId: optionalText(data.workspace_id),
     title: optionalText(data.title),
   };
-}
-
-/**
- * Read the Notification Registration file (`notifications.json`, contract in
- * README.md). Absent, corrupt, or foreign-version files mean "send nothing";
- * a malformed device entry is skipped, never fatal for its neighbors. Only
- * entries delivered to this hook's herdr session count (src/session.js).
- */
-function readEligibleDevices(configDir, status, session) {
-  const flag = NOTIFY_FLAG_BY_STATUS[status];
-  let file;
-  try {
-    file = JSON.parse(readFileSync(join(configDir, "notifications.json"), "utf8"));
-  } catch {
-    return [];
-  }
-  if (file?.v !== 1 || !Array.isArray(file.devices)) return [];
-  const devices = [];
-  for (const entry of file.devices) {
-    if (typeof entry?.token !== "string" || entry.token.length === 0) continue;
-    if (!deliversToSession(entry, session)) continue;
-    if (!APNS_ENVIRONMENTS.has(entry.env)) continue;
-    // Per the v1 contract a missing notify flag means do not send (fail closed).
-    if (entry.notify?.[flag] !== true) continue;
-    const key = typeof entry.key === "string" ? Buffer.from(entry.key, "base64url") : null;
-    if (key?.length !== KEY_BYTES) continue;
-    devices.push({ token: entry.token, env: entry.env, key });
-  }
-  return devices;
-}
-
-/**
- * Drop pruned tokens from the registration file, preserving every field this
- * plugin does not understand (additive v1 metadata must survive the rewrite).
- * Atomic temp-file + rename, like every writer of this file; a concurrent
- * app-side rewrite is last-writer-wins, and the next 410 re-prunes.
- */
-function pruneTokens(configDir, tokens) {
-  const path = join(configDir, "notifications.json");
-  let file;
-  try {
-    file = JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return;
-  }
-  if (file?.v !== 1 || !Array.isArray(file.devices)) return;
-  file.devices = file.devices.filter((entry) => !tokens.has(entry?.token));
-  const temp = `${path}.tmp-${process.pid}`;
-  writeFileSync(temp, JSON.stringify(file));
-  renameSync(temp, path);
 }
 
 // Per-pane dedupe state under HERDR_PLUGIN_STATE_DIR: the last status this
@@ -292,7 +241,7 @@ async function main() {
   const lastNotified = readLastNotified(stateDir, event.paneId);
   if (notifyWorthy && lastNotified === event.status) return; // dedupe
   if (!notifyWorthy && lastNotified === null) return; // nothing to send or re-arm
-  if (notifyWorthy && readEligibleDevices(configDir, event.status, session).length === 0) return;
+  if (notifyWorthy && readAlertDevices(configDir, NOTIFY_FLAG_BY_STATUS[event.status], session).length === 0) return;
   // Debounce: only a status that still holds after the sleep notifies
   // (or re-arms), so detection flapping never reaches the user.
   await sleep(config.debounceMs);
@@ -310,7 +259,7 @@ async function main() {
   // Re-read both after the sleep: a concurrent invocation may have delivered,
   // and the app may have rewritten the registration file meanwhile.
   if (readLastNotified(stateDir, event.paneId) === event.status) return;
-  const devices = readEligibleDevices(configDir, event.status, session);
+  const devices = readAlertDevices(configDir, NOTIFY_FLAG_BY_STATUS[event.status], session);
   if (devices.length === 0) return;
 
   // The re-check is the fresher read for anything that can change while the
@@ -339,7 +288,7 @@ async function main() {
       failures.push(error.message);
     }
   }
-  if (pruned.size > 0) pruneTokens(configDir, pruned);
+  if (pruned.size > 0) pruneAlertTokens(configDir, pruned);
   if (delivered) writeLastNotified(stateDir, event.paneId, event.status);
   if (failures.length > 0) throw new Error(failures.join("; "));
 }

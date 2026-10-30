@@ -4,7 +4,8 @@
 // same HERDR_PLUGIN_CONFIG_DIR and HERDR_PLUGIN_STATE_DIR, and pane ids repeat
 // across sessions. A Notification Registration entry therefore names the
 // session it was written for (`session`, README.md), and each hook delivers
-// only to entries of its own session plus legacy entries without one.
+// only to entries of its own session plus legacy entries without one
+// (`deliversToSession`, src/delivery/registrations.js).
 //
 // The session comes from HERDR_SOCKET_PATH (observed on herdr 0.9.3), not
 // HERDR_SESSION, which hooks inherit from the server's environment and can
@@ -46,17 +47,6 @@ export function sessionFromSocketPath(socketPath) {
 /** The session of the current hook process (see sessionFromSocketPath). */
 export function hookSession(env = process.env) {
   return sessionFromSocketPath(env.HERDR_SOCKET_PATH);
-}
-
-/**
- * Whether a registration entry receives this session's deliveries. Entries
- * without a string `session` predate session scoping and receive every
- * session's deliveries, as before. An unknown session (null) delivers to
- * legacy entries only. Names compare exactly.
- */
-export function deliversToSession(entry, session) {
-  if (typeof entry?.session !== "string") return true;
-  return session !== null && entry.session === session;
 }
 
 /**

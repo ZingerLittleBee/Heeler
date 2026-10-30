@@ -221,7 +221,8 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   reads and replaces it over SSH, and [NotificationPreferencesStore](../../Sources/Heeler/Notifications/NotificationPreferencesStore.swift)
   owns the Settings toggles. Entries are scoped to a herdr session and owned by
   a Host's Notification Key ([ADR 0020](../adr/0020-session-scoped-notification-registrations.md));
-  the plugin side is `plugin/src/session.js`.
+  the plugin side is `plugin/src/session.js` and
+  `plugin/src/delivery/registrations.js`.
 - **Deep links:** `ContentView.onOpenURL` parses `heeler://agent` links with
   [AgentActivityLink](../../Sources/HeelerActivityCore/AgentActivityLink.swift),
   which also builds the Live Activity's links. Another app's link names its
