@@ -1519,7 +1519,7 @@ extension Host {
 
 /// Notes which catalog each write touched, and both catalogs as the first write
 /// left them.
-private final class CatalogWriteRecorder: UserDefaults, @unchecked Sendable {
+private final class CatalogWriteRecorder: UserDefaults {
     private(set) var writes: [String] = []
     private(set) var sharedAtFirstWrite: Data?
     private(set) var coreAtFirstWrite: Data?
