@@ -110,6 +110,115 @@ struct HerdrCoreTransportE2ETests {
             #expect(try await fixture.tripwireCalls().isEmpty)
         }
     }
+
+    @Test("a core restarted under one SSH connection resets its event sequence and keeps its id")
+    func coreRestartUnderOneConnection() async throws {
+        try await CoreSSHFixture.with { fixture in
+            try await fixture.startCore()
+            // A kept Terminal, so its holder brings the core back; then enough
+            // events that a restarted core's count starts below this one's.
+            let terminal = try await fixture.runTerminal(["/bin/sleep", "600"], keep: true)
+            for index in 0..<40 {
+                _ = try await fixture.rpc(
+                    "terminal.label",
+                    params: .object([
+                        "terminal": .string(terminal),
+                        "labels": .object(["heeler-e2e": .string("\(index)")]),
+                    ]))
+            }
+
+            let dials = CoreDialCount()
+            let session = HerdrCoreHostSession(
+                connect: {
+                    dials.add()
+                    return try await fixture.connectCore()
+                },
+                keepalive: nil)
+            let watcher = CoreSessionWatcher(session)
+            await session.resume()
+            do {
+                let before = try await watcher.nextSnapshot()
+                #expect(before.snapshot.sequence >= 40)
+                #expect(before.snapshot.terminals.map(\.address) == [terminal])
+
+                let status = try await fixture.rpc("server.status")
+                let pid = try #require(HerdrCoreWire.integer(status["pid"]))
+                try await fixture.kill(pid: pid)
+
+                let after = try await watcher.nextSnapshot()
+                #expect(after.coreID == before.coreID)
+                #expect(after.snapshot.sequence < before.snapshot.sequence)
+                #expect(after.snapshot.terminals.map(\.address) == [terminal])
+                #expect(dials.value == 1)
+                // The Host stayed Connected through it.
+                #expect(watcher.statusesSinceLastSnapshot.isEmpty)
+                await session.end()
+            } catch {
+                await session.end()
+                throw error
+            }
+            #expect(try await fixture.tripwireCalls().isEmpty)
+        }
+    }
+
+    @Test("a recent read of a full-screen program is passive")
+    func passiveRecentRead() async throws {
+        try await CoreSSHFixture.with { fixture in
+            try await fixture.startCore()
+            // The alternate screen, then a marker, then a program that waits.
+            let terminal = try await fixture.runTerminal(
+                ["/bin/sh", "-c", #"printf '\033[?1049hheeler-passive-read\n'; exec cat"#], keep: false)
+            let transport = try await fixture.connectCore()
+            do {
+                _ = try await transport.hello()
+                try await eventually {
+                    try await transport.readTerminal(terminal).text.contains("heeler-passive-read")
+                }
+                let first = try await transport.readTerminal(terminal)
+                let second = try await transport.readTerminal(terminal)
+                #expect(first.how == "screen")
+                #expect(second.how == "screen")
+                #expect(first.text == second.text)
+                try await transport.close()
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+            #expect(try await fixture.tripwireCalls().isEmpty)
+        }
+    }
+}
+
+private final class CoreDialCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func add() { lock.withLock { count += 1 } }
+}
+
+/// The session's next snapshot, within a deadline that covers the holder's
+/// restart. While nothing comes, its retries' statuses bring the deadline up.
+private final class CoreSessionWatcher: @unchecked Sendable {
+    private var iterator: AsyncStream<HerdrCoreHostSessionUpdate>.Iterator
+    private(set) var statusesSinceLastSnapshot: [EventsSessionStatus] = []
+
+    init(_ session: HerdrCoreHostSession) {
+        iterator = session.updates.makeAsyncIterator()
+    }
+
+    func nextSnapshot() async throws -> (snapshot: HerdrCoreSnapshot, coreID: String) {
+        statusesSinceLastSnapshot = []
+        let deadline = ContinuousClock.now.advanced(by: .seconds(30))
+        while ContinuousClock.now < deadline, let next = await iterator.next() {
+            switch next {
+            case .snapshot(let snapshot, let coreID): return (snapshot, coreID)
+            case .status(.failed(let failure)): throw failure
+            case .status(let status): statusesSinceLastSnapshot.append(status)
+            default: continue
+            }
+        }
+        throw CoreSSHFailure.timeout
+    }
 }
 
 private enum CoreSSHFailure: Error { case timeout, fixture(String) }
@@ -239,11 +348,24 @@ private struct CoreSSHFixture: Sendable {
         _ = try await require(coreCommand(["server", "stop"]))
     }
 
-    func rpc(_ method: String) async throws -> JSONValue {
-        let stdout = try await require(
-            [configuration.rpcHelper, "--session", session, method].map(GitProbe.singleQuoted)
-                .joined(separator: " "))
+    func rpc(_ method: String, params: JSONValue? = nil) async throws -> JSONValue {
+        var words = [configuration.rpcHelper, "--session", session, method]
+        if let params {
+            words += ["--params", String(decoding: try JSONEncoder().encode(params), as: UTF8.self)]
+        }
+        let stdout = try await require(words.map(GitProbe.singleQuoted).joined(separator: " "))
         return try JSONDecoder().decode(JSONValue.self, from: stdout)
+    }
+
+    /// Starts a Terminal and returns its address.
+    func runTerminal(_ argv: [String], keep: Bool) async throws -> String {
+        let result = try await rpc(
+            "terminal.run",
+            params: .object([
+                "argv": .array(argv.map(JSONValue.string)), "cwd": .string(configuration.homePath),
+                "keep": .bool(keep),
+            ]))
+        return try #require(result["address"]?.stringValue)
     }
 
     func exists(_ path: String) async throws -> Bool {
