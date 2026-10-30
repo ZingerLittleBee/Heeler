@@ -192,6 +192,10 @@ final class HostOnboardingStore {
         }
         let settings = SSHTransportSettings(
             host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays)
+        if host.serverKind == .herdrCore {
+            await performCoreChecks(settings: settings)
+            return
+        }
         do {
             let transport = try await connector.connect(settings: settings)
             guard !Task.isCancelled else {
@@ -199,11 +203,7 @@ final class HostOnboardingStore {
                 return
             }
             let launcherFailure: PreflightReport?
-            if host.serverKind == .herdrCore {
-                // Core sessions belong to a different server. A legacy CLI
-                // discovery must not advertise unrelated TUI sessions.
-                launcherFailure = nil
-            } else if let endpoint = host.herdrEndpoint {
+            if let endpoint = host.herdrEndpoint {
                 launcherFailure = await launcherProbeFailure(endpoint, over: transport)
             } else {
                 launcherFailure = nil
@@ -242,6 +242,36 @@ final class HostOnboardingStore {
                 }
             }
             // Preflight only probes; the Console owns long-lived connections.
+            try? await transport.close()
+        } catch {
+            guard !Task.isCancelled else { return }
+            captureHostKeyReplacement(error)
+            report = failureReport(error)
+        }
+    }
+
+    /// A core Host's preflight: the locator, `hello` with its feature gate, and
+    /// close. It starts nothing. The plugin does not run here, whatever the core
+    /// answers, and no Herdr TUI session is looked for.
+    private func performCoreChecks(settings: SSHTransportSettings) async {
+        pluginStatus = .unsupportedBackend
+        do {
+            let transport = try await connector.connectCore(settings: settings)
+            guard !Task.isCancelled else {
+                try? await transport.close()
+                return
+            }
+            do {
+                let info = try await transport.hello()
+                if !Task.isCancelled {
+                    serverInfo = ServerInfo(version: info.version, protocolVersion: info.generation)
+                    report = .allPassed
+                }
+            } catch {
+                if !Task.isCancelled {
+                    report = failureReport(error)
+                }
+            }
             try? await transport.close()
         } catch {
             guard !Task.isCancelled else { return }

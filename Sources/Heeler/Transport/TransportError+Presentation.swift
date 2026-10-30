@@ -139,6 +139,35 @@ extension TransportError {
                 summary: "The Host did not confirm the action",
                 detail: "It may still complete. Check the Terminal before trying again.",
                 recoverySuggestion: nil)
+        case .herdrCoreNotInstalled:
+            TransportErrorPresentation(
+                summary: "herdr-core is not installed",
+                detail: "It is not on the SSH PATH or at ~/.local/bin/herdr-core",
+                recoverySuggestion: "Install herdr-core on the Host, then check again.")
+        case .herdrCoreNotRunning(let socketPath, let socketFilePresent):
+            socketFilePresent
+                ? TransportErrorPresentation(
+                    summary: "herdr-core is not running",
+                    detail: "A socket file is left at \(socketPath): a core stopped or crashed, "
+                        + "or the SSH server refuses socket forwarding",
+                    recoverySuggestion:
+                        "Start the core on the Host, or allow stream-local forwarding in its "
+                        + "SSH server, then check again.")
+                : TransportErrorPresentation(
+                    summary: "herdr-core is not running",
+                    detail: "Nothing is listening at \(socketPath)",
+                    recoverySuggestion: "Start the core on the Host, then check again.")
+        case .herdrCoreUpdateRequired(let command):
+            TransportErrorPresentation(
+                summary: "herdr-core needs an update",
+                detail: "This core lacks what the app needs",
+                recoverySuggestion: "Run \(command) on the Host, then check again.")
+        case .herdrCoreSocketPathTooLong(let path, let limit):
+            TransportErrorPresentation(
+                summary: "The herdr-core socket path is too long",
+                detail: "\(path) is over this Host's limit of \(limit) bytes",
+                recoverySuggestion:
+                    "Use a shorter core session name, or set a shorter socket in the core's config.")
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: "Reading Changes timed out",

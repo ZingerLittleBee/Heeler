@@ -139,7 +139,10 @@ struct HostOnboardingView: View {
 
             Section {
                 ForEach(PreflightCheck.allCases, id: \.self) { @Sendable check in
-                    MainActorContent { PreflightCheckRow(check: check, status: status(for: check)) }
+                    MainActorContent {
+                        PreflightCheckRow(
+                            title: check.title(for: store.host.serverKind), status: status(for: check))
+                    }
                 }
             } header: {
                 preflightHeader
@@ -1028,7 +1031,7 @@ enum HostOnboardingConsoleRecovery {
 }
 
 private struct PreflightCheckRow: View {
-    let check: PreflightCheck
+    let title: String
     /// nil while no report exists yet (first run still in flight).
     let status: PreflightCheckStatus?
 
@@ -1036,7 +1039,7 @@ private struct PreflightCheckRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 statusIcon
-                Text(check.title)
+                Text(title)
             }
             if case .failed(let hint) = status {
                 Text(hint)

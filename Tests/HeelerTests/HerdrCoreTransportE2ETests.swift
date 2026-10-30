@@ -1,298 +1,113 @@
-import CryptoKit
 import Foundation
 import HeelerSSH
 import Testing
 
 @testable import Heeler
 
+/// The framed transport against a real core. The app never starts a core, so
+/// each test starts its own through the fixture's explicit, isolated start.
 @Suite("herdr-core real SSH", .enabled(if: RealSSHFixture.gate(CoreSSHFixture.isConfigured),
     "requires scripts/fixtures/herdr-core-ssh.py"), .serialized)
 struct HerdrCoreTransportE2ETests {
-    @Test("core inventory separates desktop agents and ordinary shell terminals")
-    func inventory() async throws {
+    @Test("connecting never starts a core: unused, stopped and killed cores read not running")
+    func neverStartsACoreAndReadsNotRunning() async throws {
         try await CoreSSHFixture.with { fixture in
-            let agent = try await fixture.startProgram()
-            let shell = try await fixture.command(["run", "--bg", "--cwd", fixture.homePath, "/bin/sh"])
-            let shellID = try #require(shell["address"]?.stringValue)
-            let transport = try await fixture.connect()
-            do {
-                #expect(try await transport.ping().protocolVersion == 1)
-                let snapshot = try await transport.sessionSnapshot()
-                #expect(snapshot.agents.map(\.paneID) == [agent])
-                #expect(snapshot.agents.first?.agent == "claude")
-                #expect(snapshot.agents.first?.agentStatus == .idle)
-                #expect(Set(snapshot.panes.map(\.paneID)) == [agent, shellID])
-                #expect(snapshot.workspaces.count == 1)
-                #expect(snapshot.panes.allSatisfy { $0.cwd == fixture.homePath })
-                try await transport.close()
-            } catch { try? await transport.close(); throw error }
-        }
-    }
+            let processes = try await fixture.coreProcesses()
 
-    @Test("prompt submission is refused while explicit Attach input and named keys reach the program")
-    func promptKeysAndRead() async throws {
-        try await CoreSSHFixture.with { fixture in
-            let agent = try await fixture.startProgram()
-            let transport = try await fixture.connect()
-            let session = try await transport.attachTerminal(TerminalAttachRequest(target: agent, cols: 80, rows: 24))
-            do {
-                do {
-                    _ = try await transport.promptAgent(AgentPromptParams(target: agent, text: "refused-prompt"))
-                    Issue.record("Core cannot bind a queued prompt to the current Agent process")
-                } catch TransportError.hostFeatureUnavailable { }
-                #expect(try await fixture.receivedInput().isEmpty)
-                // Insert is deliberately separate from the user's Enter action.
-                session.send(Data("phone-message".utf8))
-                try await eventually { try await fixture.receivedInput() == Data("phone-message".utf8) }
-                let beforeEnter = try await transport.readAgent(AgentReadParams(source: .visible, target: agent))
-                #expect(!beforeEnter.text.contains("INPUT:phone-message"))
-                session.send(Data("\r".utf8))
-                try await fixture.waitForRead(transport, agent: agent, containing: "INPUT:phone-message")
-                try await transport.sendAgentKeys(AgentSendKeysParams(keys: ["x", "Enter"], target: agent))
-                try await fixture.waitForRead(transport, agent: agent, containing: "INPUT:x")
-                #expect(!String(decoding: try await fixture.receivedInput(), as: UTF8.self).contains("refused-prompt"))
-                await session.end()
-                try await transport.close()
-            } catch { await session.end(); try? await transport.close(); throw error }
-        }
-    }
-
-    @Test("a dispatched keys deadline reports an unknown outcome and delivers only once after human input stops")
-    func queuedKeysDeadline() async throws {
-        try await CoreSSHFixture.with { fixture in
-            let agent = try await fixture.startProgram()
-            var settings = try fixture.settings()
-            settings.requestTimeout = .seconds(2)
-            let transport = try await HeelerSSHTransport.connect(settings: settings)
-            _ = try await transport.ping() // Resolve executable identity before measuring the mutation.
-            let session = try await transport.attachTerminal(TerminalAttachRequest(target: agent, cols: 80, rows: 24))
-            let human = Task {
-                while !Task.isCancelled {
-                    session.send(Data("h".utf8))
-                    try await Task.sleep(for: .milliseconds(200))
-                }
+            // A session nobody has used.
+            let unused = try await fixture.helloFailure()
+            guard case TransportError.herdrCoreNotRunning(let socket, false) = unused else {
+                Issue.record("An unused session read \(unused)")
+                return
             }
+            #expect(socket.hasSuffix("/\(fixture.session).sock"))
+            #expect(try await !fixture.exists(fixture.lockPath))
+            #expect(try await !fixture.exists(socket))
+            #expect(try await fixture.coreProcesses() == processes)
+
+            // A stale lock after `server stop`.
+            try await fixture.startCore()
+            try await fixture.stopCore()
+            #expect(try await fixture.exists(fixture.lockPath))
+            #expect(try await !fixture.exists(socket))
+            #expect(try await fixture.helloFailure()
+                == .herdrCoreNotRunning(socketPath: socket, socketFilePresent: false))
+            #expect(try await fixture.coreProcesses() == processes)
+
+            // A socket left behind by a core with no Terminals killed by SIGKILL.
+            try await fixture.startCore()
+            let status = try await fixture.rpc("server.status")
+            let pid = try #require(HerdrCoreWire.integer(status["pid"]))
+            try await fixture.kill(pid: pid)
+            try await eventually { try await !fixture.isRunning(pid: pid) }
+            #expect(try await fixture.exists(socket))
+            #expect(try await fixture.helloFailure()
+                == .herdrCoreNotRunning(socketPath: socket, socketFilePresent: true))
+            #expect(try await fixture.coreProcesses() == processes)
+        }
+    }
+
+    @Test("a framed hello reports the features and core id, and hc is never called")
+    func helloFeaturesCoreIDAndNoHC() async throws {
+        try await CoreSSHFixture.with { fixture in
+            try await fixture.startCore()
+            let viaHelper = try await fixture.rpc("server.status")
+            let transport = try await fixture.connectCore()
             do {
-                try await eventually { try await fixture.receivedInput().contains(UInt8(ascii: "h")) }
-                await #expect(throws: TransportError.coreMutationOutcomeUnknown) {
-                    try await transport.sendAgentKeys(AgentSendKeysParams(keys: ["shift+z", "Enter"], target: agent))
-                }
-                #expect(!((try await fixture.receivedInput()).contains(UInt8(ascii: "Z"))),
-                    "The request deadline must expire while core is still waiting for human input to settle")
-                human.cancel()
-                _ = try? await human.value
-                try await eventually { try await fixture.receivedInput().filter { $0 == UInt8(ascii: "Z") }.count == 1 }
-                // Wait another quiet window so a duplicate queued request could surface.
-                try await Task.sleep(for: .seconds(4))
-                #expect(try await fixture.receivedInput().filter { $0 == UInt8(ascii: "Z") }.count == 1)
-                await session.end()
+                // The exec's PATH leaves out `~/.local/bin`, as many Hosts' do.
+                let location = try await transport.locate()
+                #expect(location.executablePath == fixture.configuration.coreExecutable)
+                #expect(location.version == "0.1.13")
+                #expect(location.socketSource == .lock)
+                #expect(location.socketFilePresent)
+                #expect(location.fitsSocketPathLimit)
+
+                let info = try await transport.hello()
+                #expect(info.generation == 1)
+                #expect(info.version == location.version)
+                #expect(HerdrCoreServerInfo.requiredFeatures.isSubset(of: info.features))
+                #expect(info.coreID == viaHelper["core"]?["id"]?.stringValue)
+
+                let status = try await transport.serverStatus()
+                #expect(status.coreID == info.coreID)
+                #expect(status.pid == HerdrCoreWire.integer(viaHelper["pid"]))
+                #expect(status.live == 0)
                 try await transport.close()
             } catch {
-                human.cancel(); _ = try? await human.value
-                await session.end(); try? await transport.close(); throw error
-            }
-        }
-    }
-
-    @Test("recent reads remain passive for alternate-screen programs that report mouse input")
-    func passiveRecentRead() async throws {
-        try await CoreSSHFixture.with { fixture in
-            let agent = try await fixture.startProgram(alternateScreen: true)
-            let transport = try await fixture.connect()
-            do {
-                try await fixture.waitForRead(transport, agent: agent, containing: "ALT-SCREEN-READY")
-                #expect(try await fixture.receivedInput().isEmpty)
-                let read = try await transport.readAgent(AgentReadParams(source: .recentUnwrapped, target: agent, lines: 6))
-                #expect(read.text.contains("ALT-SCREEN-READY"))
-                try await Task.sleep(for: .milliseconds(500))
-                #expect(try await fixture.receivedInput().isEmpty,
-                    "A Console preview must not inject wheel bytes into an alternate-screen application")
-                try await transport.close()
-            } catch { try? await transport.close(); throw error }
-        }
-    }
-
-    @Test("an unrelated hc does not hide a valid herdr-core executable")
-    func unrelatedHCFallback() async throws {
-        try await CoreSSHFixture.with { fixture in
-            let agent = try await fixture.startProgram()
-            let bin = fixture.homePath + "/.local/bin/"
-            let rejected = fixture.homePath + "/unrelated-hc-called"
-            let fake = "#!/bin/sh\nif [ \"$1\" = --version ]; then printf 'Health Check 2.0\\n'; exit 0; fi\nprintf called >> "
-                + GitProbe.singleQuoted(rejected) + "\nexit 97\n"
-            let replaced = try await fixture.connection.execute(
-                "mv " + GitProbe.singleQuoted(bin + "hc") + " " + GitProbe.singleQuoted(bin + "hc.saved")
-                    + "; rm " + GitProbe.singleQuoted(bin + "herdr-core")
-                    + "; cp " + GitProbe.singleQuoted(bin + "hc.saved") + " " + GitProbe.singleQuoted(bin + "herdr-core")
-                    + "; printf %s " + GitProbe.singleQuoted(fake) + " > " + GitProbe.singleQuoted(bin + "hc")
-                    + "; chmod 700 " + GitProbe.singleQuoted(bin + "hc"), timeout: .seconds(10))
-            try #require(replaced.exitStatus == 0)
-            let restore = "rm -f " + GitProbe.singleQuoted(bin + "hc") + " " + GitProbe.singleQuoted(bin + "herdr-core")
-                + "; mv " + GitProbe.singleQuoted(bin + "hc.saved") + " " + GitProbe.singleQuoted(bin + "hc")
-                + "; ln -s hc " + GitProbe.singleQuoted(bin + "herdr-core")
-            do {
-                let transport = try await fixture.connect()
-                do {
-                    #expect(try await transport.ping().protocolVersion == 1)
-                    #expect(try await transport.sessionSnapshot().agents.map(\.paneID) == [agent])
-                    let session = try await transport.attachTerminal(TerminalAttachRequest(target: agent, cols: 80, rows: 24))
-                    session.send(Data("fallback-attach\r".utf8))
-                    do { try await fixture.waitForRead(transport, agent: agent, containing: "INPUT:fallback-attach") }
-                    catch { await session.end(); throw error }
-                    await session.end()
-                    let checked = try await fixture.connection.execute("test ! -e " + GitProbe.singleQuoted(rejected), timeout: .seconds(5))
-                    #expect(checked.exitStatus == 0, "The unrelated hc must only receive its bounded identity probe")
-                    try await transport.close()
-                } catch { try? await transport.close(); throw error }
-                let restored = try await fixture.connection.execute(restore, timeout: .seconds(10))
-                try #require(restored.exitStatus == 0)
-            } catch {
-                _ = try? await fixture.connection.execute(restore, timeout: .seconds(10))
+                try? await transport.close()
                 throw error
             }
+            #expect(try await fixture.tripwireCalls().isEmpty)
         }
     }
 
-    @Test("subscriptions report membership and status, and reconnect fetches current inventory")
-    func eventsAndReconnect() async throws {
-        try await CoreSSHFixture.with { fixture in
-            let transport = try await fixture.connect()
-            let stream = try await transport.subscribeToEvents([
-                .global(.paneCreated), .global(.paneClosed), .global(.paneAgentDetected),
-            ])
-            let observed = CoreSSHObservations()
-            let reader = Task {
-                do { for try await event in stream.events { await observed.append(event) } }
-                catch { await observed.fail(String(describing: error)) }
-            }
-            do {
-                let agent = try await fixture.startProgram()
-                try await eventually { await observed.has(.paneCreated, target: agent) }
-                _ = try await fixture.command(["send", agent, "title:phone-title"])
-                try await eventually { await observed.hasTitle(target: agent, title: "phone-title") }
-                _ = try await fixture.command(["send", agent, "work"])
-                try await eventually { await observed.hasStatus(target: agent, status: "working") }
-                await stream.end()
-                reader.cancel()
-                try await transport.close()
-                _ = try await fixture.command(["send", agent, "idle"])
-                try await eventually { try await fixture.command(["get", agent])["status"]?["state"] == .string("idle") }
-                let replacement = try await fixture.connect()
-                do {
-                    let snapshot = try await replacement.sessionSnapshot()
-                    #expect(snapshot.agents.first?.paneID == agent)
-                    #expect(snapshot.agents.first?.agentStatus == .idle)
-                    let replacementEvents = try await replacement.subscribeToEvents([.global(.paneClosed)])
-                    let closed = Task {
-                        do { for try await event in replacementEvents.events { await observed.append(event) } }
-                        catch { await observed.fail(String(describing: error)) }
-                    }
-                    try await replacement.closePane(PaneTarget(paneID: agent))
-                    try await eventually { await observed.hasEnded(target: agent) }
-                    #expect(try await replacement.sessionSnapshot().agents.isEmpty)
-                    await replacementEvents.end()
-                    closed.cancel()
-                    try await replacement.close()
-                } catch { try? await replacement.close(); throw error }
-            } catch {
-                await stream.end(); reader.cancel(); try? await transport.close(); throw error
-            }
-        }
-    }
-
-    @Test("attach carries raw input and resize, and detach leaves the program running")
-    func attachResizeAndDetach() async throws {
-        try await CoreSSHFixture.with { fixture in
-            let agent = try await fixture.startProgram()
-            let transport = try await fixture.connect()
-            let session = try await transport.attachTerminal(TerminalAttachRequest(target: agent, cols: 80, rows: 24))
-            let observed = CoreSSHObservations()
-            let reader = Task {
-                do { for try await bytes in session.output { await observed.append(bytes) } }
-                catch { await observed.fail(String(describing: error)) }
-            }
-            do {
-                session.send(Data("raw-\u{1B}[A\n".utf8))
-                try await eventually { await observed.contains("HEX:7261772d1b5b410a") }
-                session.resize(cols: 109, rows: 47)
-                // SSH window-change completion precedes hc's polling loop;
-                // observe the remote resize before querying program geometry.
-                try await eventually {
-                    let terminal = try await fixture.command(["get", agent])
-                    return terminal["cols"] == .number(109) && terminal["rows"] == .number(47)
-                }
-                session.send(Data("size\n".utf8))
-                try await eventually { await observed.contains("SIZE:109x47") }
-                await session.end()
-                reader.cancel()
-                #expect(try await transport.sessionSnapshot().agents.first?.paneID == agent)
-                let replacement = try await transport.attachTerminal(TerminalAttachRequest(target: agent, cols: 80, rows: 24))
-                await replacement.end()
-                try await transport.close()
-            } catch {
-                await session.end(); reader.cancel(); try? await transport.close(); throw error
-            }
-        }
-    }
-
-    @Test("phone launches create a shell workspace, another shell, and an independent agent")
-    func launchFromPhone() async throws {
-        try await CoreSSHFixture.with { fixture in
-            try await fixture.prepareProgram()
-            // The daemon cannot find our unique interpreter on its minimal PATH.
-            // Agent launch must forward the PATH from the SSH executable probe.
-            _ = try await fixture.command(["server", "start"], path: "/usr/bin:/bin")
-            // A same-named core template must not intercept the selected executable.
-            let template = fixture.homePath + "/../config/herdr-core/templates/claude.md"
-            let templateBody = "---\ncommand: python3 -u " + GitProbe.singleQuoted(fixture.program)
-                + "\n---\nThis template must not receive the native arguments.\n"
-            let installed = try await fixture.connection.execute(
-                "mkdir -p " + GitProbe.singleQuoted(fixture.homePath + "/../config/herdr-core/templates")
-                    + "; printf %s " + GitProbe.singleQuoted(templateBody) + " > " + GitProbe.singleQuoted(template),
-                timeout: .seconds(10))
-            try #require(installed.exitStatus == 0)
-            let transport = try await fixture.connect()
-            do {
-                let workspaceShell = try await transport.createShellWorkspace(
-                    NewWorkspaceSpec(directory: fixture.homePath), tabLabel: nil)
-                let snapshot = try await transport.sessionSnapshot()
-                let workspaceID = try #require(snapshot.workspaces.first?.workspaceID)
-                let nextShell = try await transport.createShellTerminal(
-                    ShellTerminalCreationRequest(workspaceID: workspaceID, cwd: fixture.homePath))
-                let agent = try await transport.startAgent(AgentLaunchRequest(
-                    kind: "claude", name: "phone-started", arguments: [fixture.program],
-                    workspaceID: workspaceID, cwd: fixture.homePath))
-                try await eventually { try await fixture.command(["get", agent.paneID])["reported"] == .bool(true) }
-                let record = try await fixture.command(["get", agent.paneID])
-                #expect(record["parent"] == .null)
-                #expect(record["cwd"] == .string(fixture.homePath))
-                #expect(record["template"] == .null)
-                #expect(record["argv"] == .array([
-                    .string(fixture.homePath + "/.local/bin/claude"), .string(fixture.program),
-                ]))
-                let refreshed = try await transport.sessionSnapshot()
-                #expect(refreshed.agents.map(\.paneID) == [agent.paneID])
-                #expect(Set(refreshed.panes.map(\.paneID)) == [workspaceShell.paneID, nextShell.paneID, agent.paneID])
-                let session = try await transport.attachTerminal(TerminalAttachRequest(target: agent.paneID, cols: 80, rows: 24))
-                session.send(Data("launched-from-phone\r".utf8))
-                do { try await fixture.waitForRead(transport, agent: agent.paneID, containing: "INPUT:launched-from-phone") }
-                catch { await session.end(); throw error }
-                await session.end()
-                try await transport.close()
-            } catch { try? await transport.close(); throw error }
-        }
-    }
-
-    @Test("a rejected core session never calls the legacy backend")
+    @Test("no outcome falls back to the legacy herdr on the same machine")
     func noLegacyFallback() async throws {
         try await CoreSSHFixture.with { fixture in
-            var settings = try fixture.settings()
-            settings.coreSessionName = "../invalid-session"
-            await #expect(throws: (any Error).self) {
-                let transport = try await HeelerSSHTransport.connect(settings: settings)
-                do { _ = try await transport.ping(); try await transport.close() }
-                catch { try? await transport.close(); throw error }
+            // The session name hc refuses goes nowhere, not to another backend.
+            let refused = try await SSHTransportConnector().connectCore(
+                settings: fixture.settings(session: "../invalid-session"))
+            do {
+                _ = try await refused.hello()
+                Issue.record("A session name hc refuses reached the Host")
+            } catch TransportError.hostFeatureUnavailable {}
+            try await refused.close()
+
+            // Nor does a core that is not running, or not there at all.
+            guard case TransportError.herdrCoreNotRunning = try await fixture.helloFailure() else {
+                Issue.record("A stopped core must read not running")
+                return
             }
+            try await fixture.hidingCoreExecutable { () async throws in
+                #expect(try await fixture.helloFailure() == .herdrCoreNotInstalled)
+            }
+
+            // The app's Herdr TUI transport refuses this Host outright.
+            await #expect(throws: TransportError.self) {
+                _ = try await SSHTransportConnector().connect(settings: fixture.settings())
+            }
+            #expect(try await !fixture.exists(fixture.configuration.legacyLog))
+            #expect(try await fixture.tripwireCalls().isEmpty)
         }
     }
 }
@@ -308,28 +123,6 @@ private func eventually(_ predicate: @escaping @Sendable () async throws -> Bool
     throw CoreSSHFailure.timeout
 }
 
-private actor CoreSSHObservations {
-    var events: [HerdrEvent] = []
-    var output = Data()
-    var error: String?
-    func append(_ event: HerdrEvent) { events.append(event) }
-    func append(_ data: Data) { output.append(data) }
-    func fail(_ message: String) { error = message }
-    func contains(_ text: String) -> Bool { String(decoding: output, as: UTF8.self).contains(text) }
-    func has(_ kind: GlobalEventKind, target: String) -> Bool {
-        events.contains { $0.kind == kind.kind && $0.data["pane_id"] == .string(target) }
-    }
-    func hasTitle(target: String, title: String) -> Bool {
-        events.contains { $0.kind == .terminalTitleChanged
-            && $0.data["pane_id"] == .string(target) && $0.data["title"] == .string(title) }
-    }
-    func hasEnded(target: String) -> Bool { has(.paneExited, target: target) || has(.paneClosed, target: target) }
-    func hasStatus(target: String, status: String) -> Bool {
-        events.contains { $0.kind == PaneEventKind.agentStatusChanged.kind
-            && $0.data["pane_id"] == .string(target) && $0.data["agent_status"] == .string(status) }
-    }
-}
-
 private struct CoreSSHFixture: Sendable {
     struct Configuration: Decodable, Sendable {
         let coreFixture: Bool
@@ -338,7 +131,13 @@ private struct CoreSSHFixture: Sendable {
         let username: String
         let deviceKeySeed: String
         let homePath: String
+        let coreExecutable: String
+        let startEnvironment: [String: String]
+        let rpcHelper: String
+        let tripwireLog: String
+        let legacyLog: String
     }
+
     static var isConfigured: Bool {
         guard let raw = ProcessInfo.processInfo.environment["HEELER_SSH_E2E_CONFIG"],
             let data = Data(base64Encoded: raw),
@@ -346,117 +145,144 @@ private struct CoreSSHFixture: Sendable {
         else { return false }
         return object["coreFixture"] as? Bool == true
     }
+
     let configuration: Configuration
     let connection: SSHConnection
+    /// Nine characters: the fixture root's path budget counts on it.
     let session = "h" + UUID().uuidString.prefix(8).lowercased()
-    var homePath: String { configuration.homePath }
-    var launcher: String { homePath + "/.local/bin/hc" }
-    var program: String { homePath + "/" + session + ".py" }
+
+    var lockPath: String { "\(configuration.homePath)/.local/state/herdr-core/\(session)/core.lock" }
 
     static func with(_ body: (CoreSSHFixture) async throws -> Void) async throws {
         let raw = try #require(ProcessInfo.processInfo.environment["HEELER_SSH_E2E_CONFIG"])
         let data = try #require(Data(base64Encoded: raw))
         let config = try JSONDecoder().decode(Configuration.self, from: data)
-        let connection = try await SSHConnection.connect(to: SSHEndpoint(host: config.host, port: config.port), timeout: RealSSHFixture.setupTimeout)
+        let connection = try await SSHConnection.connect(
+            to: SSHEndpoint(host: config.host, port: config.port), timeout: RealSSHFixture.setupTimeout)
         let key = DeviceKey(privateKey: try RealSSHFixture.deviceKey(seed: config.deviceKeySeed))
-        try await connection.authenticate(username: config.username, publicKey: key.publicKeyBlob,
+        try await connection.authenticate(
+            username: config.username, publicKey: key.publicKeyBlob,
             signer: { try key.privateKey.signature(for: $0) }, timeout: RealSSHFixture.setupTimeout)
         let fixture = CoreSSHFixture(configuration: config, connection: connection)
         do {
             try await body(fixture)
-            try await fixture.cleanup()
+            try await fixture.stopCore()
             try await connection.close(timeout: .seconds(3))
         } catch {
-            try? await fixture.cleanup()
+            try? await fixture.stopCore()
             try? await connection.close(timeout: .seconds(3))
             throw error
         }
     }
 
-    func settings() throws -> SSHTransportSettings {
-        var result = SSHTransportSettings(host: configuration.host, port: Int(configuration.port),
-            username: configuration.username, credentials: .ed25519(try RealSSHFixture.deviceKey(seed: configuration.deviceKeySeed)),
-            hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true }, socket: .defaultSession)
+    func settings(session: String? = nil) throws -> SSHTransportSettings {
+        var result = SSHTransportSettings(
+            host: configuration.host, port: Int(configuration.port), username: configuration.username,
+            credentials: .ed25519(try RealSSHFixture.deviceKey(seed: configuration.deviceKeySeed)),
+            hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true },
+            socket: .defaultSession)
         result.serverKind = .herdrCore
-        result.coreSessionName = session
+        result.coreSessionName = session ?? self.session
         return result
     }
-    func connect() async throws -> HeelerSSHTransport { try await HeelerSSHTransport.connect(settings: settings()) }
-    func command(_ words: [String], path: String? = nil) async throws -> JSONValue {
-        let prefix = path.map { "PATH=" + GitProbe.singleQuoted($0) + " " } ?? ""
-        let command = prefix + "HC_SESSION=" + GitProbe.singleQuoted(session) + " "
-            + ([launcher, "--json"] + words).map(GitProbe.singleQuoted).joined(separator: " ")
-        let response = try await connection.execute(command, timeout: .seconds(15))
-        guard response.exitStatus == 0 else { throw CoreSSHFailure.fixture(String(decoding: response.stderr, as: UTF8.self)) }
-        return try JSONDecoder().decode(JSONValue.self, from: response.stdout)
+
+    func connectCore() async throws -> any HerdrCoreTransport {
+        try await SSHTransportConnector().connectCore(settings: settings())
     }
-    func prepareProgram() async throws {
-        let source = #"""
-        import os, sys, tty
-        tty.setraw(0)
-        received = open(__file__ + '.input', 'ab', buffering=0)
-        if '--alternate-screen' in sys.argv:
-            print('\033[?1049h\033[?1000h\033[?1006h\033[H' + 'ALT-SCREEN-READY', flush=True)
-        def status(word):
-            print('\033]7501;state='+word+':app=claude-code\007', flush=True)
-        status('idle')
-        pending = bytearray()
-        while True:
-            b = os.read(0, 1)
-            if not b: break
-            received.write(b)
-            pending.extend(b)
-            if b in (b'\r', b'\n'):
-                print('HEX:'+pending.hex(), flush=True)
-                text = pending.rstrip(b'\r\n').decode('utf-8', errors='replace')
-                print('INPUT:'+text, flush=True)
-                size = os.get_terminal_size(0)
-                print('SIZE:'+str(size.columns)+'x'+str(size.lines), flush=True)
-                if text.startswith('title:'):
-                    print('\033]2;'+text[6:]+'\007', flush=True)
-                status('blocked' if text == 'block' else 'working' if text == 'work' else 'idle')
-                pending.clear()
-        """#
-        let sftp = try await connection.openSFTP(timeout: .seconds(10))
-        let file = try await sftp.openFileForWriting(at: program, permissions: 0o600, timeout: .seconds(10))
-        try await file.write(Data(source.utf8), timeout: .seconds(10))
-        try await file.close(timeout: .seconds(10))
-        try await sftp.close(timeout: .seconds(10))
-        // A unique env-shebang interpreter proves daemon PATH and SSH PATH
-        // are distinct. It is private to this disposable fixture home.
-        let wrapper = homePath + "/.local/bin/claude"
-        let interpreter = homePath + "/.local/bin/heeler-fixture-python"
-        let wrapperSource = "#!/usr/bin/env heeler-fixture-python\nimport os, sys\nos.execv(sys.executable, [sys.executable, '-u'] + sys.argv[1:])\n"
-        let installed = try await connection.execute(
-            "ln -sf " + GitProbe.singleQuoted(homePath + "/../bin/python3") + " " + GitProbe.singleQuoted(interpreter)
-                + "; printf %s " + GitProbe.singleQuoted(wrapperSource) + " > " + GitProbe.singleQuoted(wrapper)
-                + "; chmod 700 " + GitProbe.singleQuoted(wrapper), timeout: .seconds(10))
-        try #require(installed.exitStatus == 0)
-    }
-    func startProgram(alternateScreen: Bool = false) async throws -> String {
-        try await prepareProgram()
-        let started = try await command(["run", "--bg", "--cwd", homePath, "python3", "-u", program]
-            + (alternateScreen ? ["--alternate-screen"] : []))
-        let address = try #require(started["address"]?.stringValue)
-        try await eventually { try await command(["get", address])["reported"] == .bool(true) }
-        return address
-    }
-    func receivedInput() async throws -> Data {
-        let response = try await connection.execute("cat " + GitProbe.singleQuoted(program + ".input"), timeout: .seconds(5))
-        guard response.exitStatus == 0 else { throw CoreSSHFailure.fixture("Cannot read inert program input log") }
-        return response.stdout
-    }
-    func waitForRead(_ transport: HeelerSSHTransport, agent: String, containing text: String) async throws {
-        try await eventually {
-            try await transport.readAgent(AgentReadParams(source: .visible, target: agent)).text.contains(text)
+
+    /// What the app reads for this session, over its own SSH connection.
+    func helloFailure() async throws -> TransportError {
+        let transport = try await connectCore()
+        do {
+            let info = try await transport.hello()
+            try? await transport.close()
+            throw CoreSSHFailure.fixture("hello unexpectedly reached core \(info.coreID)")
+        } catch let error as TransportError {
+            try await transport.close()
+            return error
         }
     }
-    func cleanup() async throws {
-        _ = try await command(["server", "stop"])
-        let cleaned = try await connection.execute("rm -f " + GitProbe.singleQuoted(program)
-            + " " + GitProbe.singleQuoted(program + ".input")
-            + " " + GitProbe.singleQuoted(homePath + "/../config/herdr-core/templates/claude.md")
-            + "; test ! -e " + GitProbe.singleQuoted(homePath + "/../legacy-called"), timeout: .seconds(10))
-        #expect(cleaned.exitStatus == 0, "Core selection called the legacy herdr launcher")
+
+    // MARK: The core's side, never through `hc`
+
+    private func run(_ command: String) async throws -> SSHExecResult {
+        try await connection.execute(command, timeout: .seconds(20))
+    }
+
+    private func require(_ command: String) async throws -> Data {
+        let response = try await run(command)
+        guard response.exitStatus == 0 else {
+            throw CoreSSHFailure.fixture("\(command): \(String(decoding: response.stderr, as: UTF8.self))")
+        }
+        return response.stdout
+    }
+
+    /// The explicit isolated start's command line: no rc file, no inherited
+    /// environment, the program by its absolute path.
+    private func coreCommand(_ words: [String]) -> String {
+        let environment = configuration.startEnvironment.merging(["HC_SESSION": session]) { $1 }
+            .sorted { $0.key < $1.key }
+            .map { GitProbe.singleQuoted("\($0.key)=\($0.value)") }
+        return (["env", "-i"] + environment + [GitProbe.singleQuoted(configuration.coreExecutable)]
+            + words.map(GitProbe.singleQuoted)).joined(separator: " ") + " </dev/null >/dev/null 2>&1"
+    }
+
+    func startCore() async throws {
+        _ = try await require(coreCommand(["server", "start"]))
+        try await eventually {
+            HerdrCoreWire.integer((try? await rpc("server.status"))?["pid"]) != nil
+        }
+    }
+
+    /// `server stop` is the one subcommand that cannot start a core.
+    func stopCore() async throws {
+        _ = try await require(coreCommand(["server", "stop"]))
+    }
+
+    func rpc(_ method: String) async throws -> JSONValue {
+        let stdout = try await require(
+            [configuration.rpcHelper, "--session", session, method].map(GitProbe.singleQuoted)
+                .joined(separator: " "))
+        return try JSONDecoder().decode(JSONValue.self, from: stdout)
+    }
+
+    func exists(_ path: String) async throws -> Bool {
+        try await run("test -e " + GitProbe.singleQuoted(path)).exitStatus == 0
+    }
+
+    func kill(pid: Int) async throws {
+        _ = try await require("kill -KILL \(pid)")
+    }
+
+    func isRunning(pid: Int) async throws -> Bool {
+        try await run("ps -p \(pid) -o pid=").exitStatus == 0
+    }
+
+    /// Every process running the fixture's core, which holders run too.
+    func coreProcesses() async throws -> Set<Int> {
+        let listing = String(decoding: try await require("ps -axo pid=,command="), as: UTF8.self)
+        return Set(listing.split(separator: "\n").compactMap { line in
+            let fields = line.split(separator: " ", maxSplits: 1)
+            guard fields.count == 2, fields[1].hasPrefix(configuration.coreExecutable + " ") else { return nil }
+            return Int(fields[0])
+        })
+    }
+
+    func tripwireCalls() async throws -> String {
+        let response = try await run("cat " + GitProbe.singleQuoted(configuration.tripwireLog))
+        return String(decoding: response.stdout, as: UTF8.self)
+    }
+
+    func hidingCoreExecutable(_ body: () async throws -> Void) async throws {
+        let program = GitProbe.singleQuoted(configuration.coreExecutable)
+        let aside = GitProbe.singleQuoted(configuration.coreExecutable + ".aside")
+        _ = try await require("mv \(program) \(aside)")
+        do {
+            try await body()
+            _ = try await require("mv \(aside) \(program)")
+        } catch {
+            _ = try? await require("mv \(aside) \(program)")
+            throw error
+        }
     }
 }

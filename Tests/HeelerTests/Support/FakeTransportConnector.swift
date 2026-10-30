@@ -192,6 +192,7 @@ final actor FakeTransportConnector: TransportConnector {
     private let sessions: [HerdrSession]
     private let plugin: Result<HeelerPluginInstallation?, TransportError>?
     private let pluginSteps: FakePluginSteps
+    private let core: ScriptedCoreHost?
     private(set) var capturedSettings: [SSHTransportSettings] = []
     private(set) var transports: [FakeTransport] = []
 
@@ -199,14 +200,26 @@ final actor FakeTransportConnector: TransportConnector {
         outcome: Outcome, presentedKeyBlob: Data? = nil, presentedJumpKeyBlob: Data? = nil,
         sessions: [HerdrSession] = [],
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
-        pluginSteps: FakePluginSteps = FakePluginSteps()
+        pluginSteps: FakePluginSteps = FakePluginSteps(),
+        core: ScriptedCoreHost? = nil
     ) {
+        self.core = core
         self.outcome = outcome
         self.presentedKeyBlob = presentedKeyBlob
         self.presentedJumpKeyBlob = presentedJumpKeyBlob
         self.sessions = sessions
         self.plugin = plugin
         self.pluginSteps = pluginSteps
+    }
+
+    /// The real framed transport over a scripted Host, for this Host's session.
+    func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
+        capturedSettings.append(settings)
+        if case .connectFails(let error) = outcome { throw error }
+        guard let core else {
+            throw TransportError.hostFeatureUnavailable(feature: "herdr-core Hosts")
+        }
+        return core.transport(session: settings.coreSessionName)
     }
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {

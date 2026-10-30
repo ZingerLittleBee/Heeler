@@ -5,6 +5,17 @@ import Foundation
 /// a scripted fake, so screen logic never touches an SSH library (ADR 0011).
 protocol TransportConnector: Sendable {
     func connect(settings: SSHTransportSettings) async throws -> any Transport
+
+    /// Dials a herdr-core Host. It never reaches `connect`'s Herdr TUI
+    /// transport, and connecting starts no core (ADR 0031).
+    func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport
+}
+
+extension TransportConnector {
+    /// A connector that serves only Herdr TUI Hosts says so.
+    func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
+        throw TransportError.hostFeatureUnavailable(feature: "herdr-core Hosts")
+    }
 }
 
 /// The one production SSH backend: libssh2 reaching the herdr socket over
@@ -13,7 +24,18 @@ protocol TransportConnector: Sendable {
 /// case to fall back from.
 struct SSHTransportConnector: TransportConnector {
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
-        try await HeelerSSHTransport.connect(settings: settings)
+        // No Herdr TUI request ever goes to a herdr-core Host, whose core is
+        // not the server this transport speaks to.
+        guard settings.serverKind != .herdrCore else {
+            throw TransportError.hostFeatureUnavailable(feature: "Herdr TUI on a herdr-core Host")
+        }
+        return try await HeelerSSHTransport.connect(settings: settings)
+    }
+
+    func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
+        HerdrCoreSSHTransport(
+            connection: try await HeelerSSHTransport.connect(settings: settings),
+            session: settings.coreSessionName)
     }
 }
 

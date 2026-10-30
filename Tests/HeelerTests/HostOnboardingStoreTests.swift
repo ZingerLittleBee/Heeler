@@ -21,12 +21,13 @@ struct HostOnboardingStoreTests {
         sessions: [HerdrSession] = [],
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
         pluginSteps: FakePluginSteps = FakePluginSteps(),
-        fingerprintTimeout: Duration = .seconds(5)
+        fingerprintTimeout: Duration = .seconds(5),
+        core: ScriptedCoreHost? = nil
     ) throws -> (HostOnboardingStore, FakeTransportConnector) {
         let connector = FakeTransportConnector(
             outcome: outcome, presentedKeyBlob: presentedKeyBlob,
             presentedJumpKeyBlob: presentedJumpKeyBlob, sessions: sessions,
-            plugin: plugin, pluginSteps: pluginSteps)
+            plugin: plugin, pluginSteps: pluginSteps, core: core)
         let secrets = InMemorySecretStore()
         if let password {
             try secrets.write(
@@ -420,29 +421,115 @@ struct HostOnboardingStoreTests {
         #expect(store.availableSessions == sessions)
     }
 
-    @Test func corePreflightDoesNotDiscoverLegacySessions() async throws {
-        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
-        let (store, _) = try makeStore(
-            host: host,
-            sessions: [HerdrSession(name: "tui-only", isDefault: false, isRunning: true)])
+    private func coreStore(
+        _ core: ScriptedCoreHost, session: String = "work"
+    ) throws -> (HostOnboardingStore, FakeTransportConnector) {
+        var host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        host.sessionName = session
+        return try makeStore(
+            host: host, sessions: [HerdrSession(name: "tui-only", isDefault: false, isRunning: true)],
+            core: core)
+    }
+
+    @Test func corePreflightRunsTheLocatorHelloAndClose() async throws {
+        let core = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let (store, connector) = try coreStore(core)
 
         await store.runChecks()
 
         #expect(store.report?.isFullyPassed == true)
-        #expect(store.serverInfo != nil)
+        #expect(store.serverInfo?.version == "0.1.13")
+        #expect(await core.log == ["locator", "open \(ScriptedCoreHost.socketPath)", "close"])
+        let socket = try #require(await core.socket)
+        #expect(await socket.isClosed)
+        #expect(await core.scripts.first?.hasPrefix("__session='work'\n") == true)
+        // It speaks to the core alone: no Herdr TUI transport, session or plugin read.
+        #expect(await connector.transports.isEmpty)
         #expect(store.availableSessions.isEmpty)
         #expect(store.sessionDiscoveryError == nil)
     }
 
-    @Test func corePreflightStillRequiresAHealthyServer() async throws {
-        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+    @Test func coreOutcomesFailTheirOwnChecks() async throws {
+        let cases: [(ScriptedCoreHost, PreflightCheck, String)] = [
+            (
+                ScriptedCoreHost(
+                    locator: ScriptedCoreHost.locatorLines(executable: nil), channel: .refused),
+                .herdrInstalled, "not installed"
+            ),
+            (ScriptedCoreHost(channel: .refused), .serverRunning, "not running"),
+            (
+                ScriptedCoreHost(
+                    locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .refused),
+                .serverRunning, "forwarding"
+            ),
+            (
+                ScriptedCoreHost(
+                    locator: ScriptedCoreHost.locatorLines(
+                        defaultPath: "/" + String(repeating: "a", count: 107)),
+                    channel: .refused),
+                .serverRunning, "too long"
+            ),
+            (
+                ScriptedCoreHost(
+                    channel: .answersHello(
+                        ScriptedCoreHost.helloReply(features: ["framed", "attach", "events"]))),
+                .protocolCompatible, "\(ScriptedCoreHost.installedPath) update"
+            ),
+            (
+                ScriptedCoreHost(
+                    channel: .answersHello(ScriptedCoreHost.helloReply(errorKind: "unknown_method"))),
+                .protocolCompatible, "\(ScriptedCoreHost.installedPath) update"
+            ),
+        ]
+        for (core, check, words) in cases {
+            let (store, _) = try coreStore(core)
+
+            await store.runChecks()
+
+            guard case .failed(let hint) = store.report?[check] else {
+                Issue.record("\(check) should fail for \(words), got \(String(describing: store.report))")
+                continue
+            }
+            #expect(hint.contains(words), "\(hint)")
+            #expect(store.serverInfo == nil)
+            #expect(await core.log.last == "close", "\(words)")
+        }
+    }
+
+    @Test func aFailedSSHConnectionFailsItsCheckWithoutTouchingTheCore() async throws {
+        let core = ScriptedCoreHost(channel: .refused)
+        var host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        host.sessionName = "work"
         let (store, _) = try makeStore(
-            host: host, outcome: .connects(pingResult: .failure(.timedOut)))
+            host: host, outcome: .connectFails(.authenticationFailed), core: core)
 
         await store.runChecks()
 
-        #expect(store.report?.isFullyPassed == false)
-        #expect(store.serverInfo == nil)
+        #expect(store.report?[.connection] != .passed)
+        #expect(await core.log.isEmpty)
+    }
+
+    @Test func theChecklistIsTitledByServerKind() {
+        #expect(PreflightCheck.allCases.map { $0.title(for: .herdrTUI) } == [
+            "SSH connection", "remote environment", "herdr installed", "herdr server running",
+            "protocol compatible",
+        ])
+        #expect(PreflightCheck.allCases.map { $0.title(for: .herdrCore) } == [
+            "SSH connection", "remote environment", "herdr-core installed", "herdr-core running",
+            "protocol compatible",
+        ])
+    }
+
+    /// The plugin surface reads unsupported from the Host's kind: no read asks,
+    /// and the answer holds whatever the core does.
+    @Test func aCoreHostsPluginIsUnsupportedByServerKind() async throws {
+        let core = ScriptedCoreHost(channel: .refused)
+        let (store, connector) = try coreStore(core)
+
+        await store.runChecks()
+
+        #expect(store.pluginStatus == .unsupportedBackend)
+        #expect(await connector.transports.isEmpty)
     }
 
     @Test func selectingADiscoveredSessionUpdatesTheCatalogHost() throws {

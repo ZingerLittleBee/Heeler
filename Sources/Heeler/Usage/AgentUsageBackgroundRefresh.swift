@@ -66,6 +66,7 @@ extension AgentUsageBackgroundRefresh {
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) -> Self {
         Self(read: { host, claudeLimits in
+            guard host.serverKind != .herdrCore else { return .unsupportedBackend }
             var host = host
             host.routes.removeAll { $0.overlayNetworkID != nil }
             guard !host.routes.isEmpty, let resolved = try? credentials.credentials(for: host) else { return nil }

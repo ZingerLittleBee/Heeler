@@ -954,6 +954,19 @@ indirect enum TransportError: Error, Sendable, Equatable {
     case gitTimedOut
     /// A core mutation may already have run. Never automatically replay it.
     case coreMutationOutcomeUnknown
+    /// No program on the exec's PATH or at the installer's path identifies
+    /// itself as herdr-core.
+    case herdrCoreNotInstalled
+    /// Nothing answered at the core's socket. Connecting never starts a core.
+    /// A socket file left behind has two causes that SSH cannot tell apart: a
+    /// stopped or crashed core, or an SSH server refusing socket forwarding.
+    case herdrCoreNotRunning(socketPath: String, socketFilePresent: Bool)
+    /// The core cannot serve this app. `command` is `herdr-core update` by the
+    /// probed path. Never retried: the same core gives the same answer.
+    case herdrCoreUpdateRequired(command: String)
+    /// The core's socket path does not fit this Host's limit, so nothing can
+    /// connect to it however often the app tries.
+    case herdrCoreSocketPathTooLong(path: String, limit: Int)
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -996,7 +1009,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // A rejection is retryable because herdr's error codes are open-ended
         // and most of them describe a target that moved, not a broken setup.
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
-            .attachExited, .apiRejected:
+            .attachExited, .apiRejected, .herdrCoreNotRunning:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
@@ -1005,6 +1018,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .protocolVersionMismatch,
             .streamLocalOpenFailed, .gitTimedOut, .hostFileTimedOut, .hostFileUnreadable,
             .hostStoreUnreadable, .hostFeatureUnavailable, .coreMutationOutcomeUnknown,
+            .herdrCoreNotInstalled, .herdrCoreUpdateRequired, .herdrCoreSocketPathTooLong,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

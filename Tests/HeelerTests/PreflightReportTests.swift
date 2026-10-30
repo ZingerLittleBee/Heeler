@@ -37,7 +37,7 @@ struct PreflightReportTests {
     /// (ADR 0011): the checklist must not send anyone off to install a helper.
     @Test func theChecklistNeverAsksForSocat() {
         for check in PreflightCheck.allCases {
-            #expect(!check.title.localizedCaseInsensitiveContains("socat"))
+            #expect(!check.title(for: .herdrTUI).localizedCaseInsensitiveContains("socat"))
         }
     }
 
@@ -240,6 +240,24 @@ struct PreflightReportTests {
             let report = PreflightReport.failure(
                 error, authMethod: .deviceKey, usesHerdrEndpoint: true)
             #expect(report[check] == .failed(hint: hint))
+        }
+    }
+
+    /// Each herdr-core outcome fails the check it disproves and says all of
+    /// its presentation; what comes after it stays unknown.
+    @Test func herdrCoreOutcomesFailTheCheckTheyDisprove() {
+        let cases: [(TransportError, PreflightCheck)] = [
+            (.herdrCoreNotInstalled, .herdrInstalled),
+            (.herdrCoreNotRunning(socketPath: "/s", socketFilePresent: false), .serverRunning),
+            (.herdrCoreNotRunning(socketPath: "/s", socketFilePresent: true), .serverRunning),
+            (.herdrCoreSocketPathTooLong(path: "/s", limit: 103), .serverRunning),
+            (.herdrCoreUpdateRequired(command: "/opt/herdr-core update"), .protocolCompatible),
+        ]
+        for (error, check) in cases {
+            let report = PreflightReport.failure(error, authMethod: .deviceKey)
+            #expect(report[check] == .failed(hint: error.presentation.message), "\(error)")
+            #expect(report[.connection] == .passed)
+            #expect(!report.isFullyPassed)
         }
     }
 
