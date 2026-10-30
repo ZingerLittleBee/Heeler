@@ -1121,11 +1121,18 @@ struct AgentTerminalView: View {
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
         .background {
             // Keyboard geometry and the status bar inset follow this view's
-            // own window, not whichever window of the app is key.
-            WindowReader { window in
-                keyboardInset.attach(to: window)
-                mountedWindow.attach(window)
-            }
+            // own window, not whichever window of the app is key. The reader
+            // also anchors the keyboard measurement to this screen's own
+            // bottom edge, which a tab bar can hold above the window's (see
+            // `TerminalKeyboardInset.contentBottomInset`).
+            WindowReader(
+                onWindow: { window in
+                    keyboardInset.attach(to: window)
+                    mountedWindow.attach(window)
+                },
+                onView: { window, view in
+                    keyboardInset.attach(to: window, contentAnchor: view)
+                })
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
@@ -1514,7 +1521,7 @@ struct AgentTerminalView: View {
 
     private func currentWindowKeyboardHeight() -> CGFloat? {
         guard let window = keyboardControl.terminal?.window else { return nil }
-        return TerminalKeyboardInset.layoutGuideHeight(in: window)
+        return keyboardInset.keyboardHeight(in: window)
     }
 
     private func cancelKeyboardHandoffs() {
