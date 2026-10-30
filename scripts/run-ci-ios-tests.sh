@@ -151,18 +151,22 @@ port_block_count=8
 # Core uses a separate pool outside both the 13- and former 14-port default grids.
 core_port_base_default=55400
 core_port_count=8
+# Single-port reservations hold aliases for a legacy 14-port block. Spacing
+# candidates by that width keeps separate core runs from sharing aliases.
+core_port_stride=14
 # Pin a block explicitly, for a caller that would rather not negotiate.
 port_block_base_override="${HEELER_CI_PORT_BASE:-}"
 
 # Cross-run coordination lives here: one owned lock per port block, Simulator,
 # or account-allocation critical section. A short-lived atomic claim guard
 # serializes owner publication, stale reclamation, and token-checked release.
-# Ports still decide whether a block is usable; these locks only let a run say
-# what it holds, and let the next run tell "someone is working" apart from
-# "something crashed".
+# Legacy block locks also reserve listeners that have not started yet. Keep
+# every overlapping legacy block name claimed until our fixtures have stopped;
+# listener probes alone cannot establish exclusive ownership.
 lock_root=/tmp/heeler-ci-locks
 run_lock_dir=""
 core_port_lock_dir=""
+port_reservation_locks=()
 device_lock_dir=""
 account_lock_dir=""
 active_claim_guard=""
@@ -517,6 +521,7 @@ release_claim_guard() {
 claim_resource_lock() {
     local lock=$1
     local description=$2
+    local records_port=${3:-0}
     local owner
     local claim_status=1
 
@@ -540,6 +545,11 @@ claim_resource_lock() {
             claim_status=0
         fi
     fi
+    # Publish port ownership before dropping the guard/active slot, so a
+    # cancellation cannot land between acquisition and rollback bookkeeping.
+    if [[ "$claim_status" == 0 && "$records_port" == 1 ]]; then
+        port_reservation_locks+=("$lock")
+    fi
     release_claim_guard "$active_claim_guard"
     active_resource_lock=""
     return "$claim_status"
@@ -559,6 +569,55 @@ release_resource_lock() {
         rm -rf -- "$lock"
     fi
     release_claim_guard "$active_claim_guard"
+}
+
+# Release only this attempt's suffix on rollback; successful aliases stay
+# owned until cleanup, just like the primary block. Empty/unset arrays must
+# also work in the extracted guard tests on macOS Bash 3.2.
+release_port_reservations() {
+    local keep=${1:-0}
+    local index
+    [[ -n "${port_reservation_locks+set}" ]] || return 0
+    for ((index = ${#port_reservation_locks[@]} - 1; index >= keep; index -= 1)); do
+        release_resource_lock "${port_reservation_locks[index]}" "fixture port reservation" || return 1
+        unset 'port_reservation_locks[index]'
+    done
+}
+
+# Runners with 13- or 14-port layouts claim only block-<start>. For [low, high],
+# every potentially overlapping old block starts in [low-13, high]. Claim those
+# same names, including off-grid explicit overrides, so either start order and
+# concurrent allocation are safe. This deliberately rejects some adjacent new
+# ranges: they could both intersect one old block's indivisible reservation.
+claim_port_reservation() {
+    local low=$1 count=$2
+    local high=$((low + count - 1))
+    local first=$((low > 13 ? low - 13 : 1))
+    local keep=${#port_reservation_locks[@]}
+    local start port lock
+    local -a locks=()
+    for ((start = first; start <= high; start += 1)); do
+        locks+=("$lock_root/block-$start")
+    done
+    # The intervening runner revision reserved its separate core pool with
+    # these names. Main overrides must exclude those deferred listeners too.
+    for ((port = low; port <= high; port += 1)); do
+        locks+=("$lock_root/core-port-$port")
+    done
+    for lock in "${locks[@]}"; do
+        # Disjoint reservations within this run may share compatibility aliases;
+        # actual port keys remain exclusive, even to a second claim by this run.
+        if [[ "$lock" == "$lock_root/block-"* ]] \
+            && [[ "$(cat "$lock/token" 2>/dev/null)" == "$lock_owner_token" ]]; then
+            continue
+        fi
+        if ! claim_resource_lock "$lock" "fixture reservation ${lock##*/}" 1; then
+            failed_port_lock="$lock"
+            release_port_reservations "$keep" || exit 1
+            return 1
+        fi
+    done
+    return 0
 }
 
 # Last 80 lines of each fixture log. Enough to see an sshd refusal or proxy
@@ -734,6 +793,7 @@ cleanup() {
         release_claim_guard "$active_claim_guard"
     fi
     release_resource_lock "$account_lock_dir" "password account allocation" || status=1
+    release_port_reservations || status=1
     release_resource_lock "${core_port_lock_dir:-}" "core fixture port" || status=1
     release_resource_lock "$run_lock_dir" "fixture port block" || status=1
     release_resource_lock "$device_lock_dir" "simulator" || status=1
@@ -1239,6 +1299,11 @@ claim_port_block() {
     local -a rejections=()
 
     if [[ -n "$port_block_base_override" ]]; then
+        if [[ ! "$port_block_base_override" =~ ^[1-9][0-9]{0,4}$ ]] \
+            || ((port_block_base_override > 65535 - port_block_size + 1)); then
+            echo "HEELER_CI_PORT_BASE must start a valid consecutive TCP port range" >&2
+            return 1
+        fi
         bases=("$port_block_base_override")
     else
         for ((slot = 0; slot < port_block_count; slot += 1)); do
@@ -1268,13 +1333,13 @@ claim_port_block() {
             continue
         fi
 
-        if claim_resource_lock "$lock" "port block $base"; then
+        if claim_port_reservation "$base" "$port_block_size"; then
             run_lock_dir="$lock"
             assign_port_block "$base"
             return 0
         fi
 
-        owner=$(cat "$lock/pid" 2>/dev/null)
+        owner=$(cat "$failed_port_lock/pid" 2>/dev/null)
         rejections+=("$base lock ${owner:-unknown}")
     done
 
@@ -1305,19 +1370,19 @@ claim_port_block() {
     exit 1
 }
 
-# A core reservation is independent of the established block lock, so a
-# base-revision runner cannot claim its deferred port before core starts.
+# Core shares the same legacy exclusion protocol as a main block. Its own
+# port key also coordinates with the earlier separate-core-pool revision.
 claim_core_port() {
     local candidate slot lock
     for ((slot = 0; slot < core_port_count; slot += 1)); do
-        candidate=$((core_port_base_default + slot))
+        candidate=$((core_port_base_default + slot * core_port_stride))
         # Explicit main-block overrides can occupy this pool too.
         if ((candidate >= modern_port && candidate <= post_quantum_port)); then
             continue
         fi
         port_is_busy "$candidate" && continue
         lock="$lock_root/core-port-$candidate"
-        if claim_resource_lock "$lock" "core fixture port $candidate"; then
+        if claim_port_reservation "$candidate" 1; then
             core_port_lock_dir="$lock"
             core_port=$candidate
             return 0

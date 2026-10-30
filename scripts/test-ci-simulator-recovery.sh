@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-simulator-recovery.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary claim_core_port assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
+for function in prepare_evidence_directory record_phase start_background_build cancel_background_build run_app_fixture_suites run_core_fixture_suite stop_core_fixture download_core_fixture_binary claim_core_port claim_port_block claim_port_reservation release_port_reservations assign_port_block assert_behavior run_xcodebuild run_suite list_simulator_candidates recover_simulator_destination \
     claim_simulator claim_resource_lock release_resource_lock write_lock_owner \
     lock_is_stale acquire_claim_guard release_claim_guard \
     clear_simulator_environment push_simulator_environment; do
@@ -355,49 +355,229 @@ EXPECTED
 )
 for shard in all session-weak transport ordinary; do run_shard_case "$shard"; done
 
-# Preserve the historical block grid across revisions. A separately locked
-# core port cannot collide with the base runner's next deferred main block.
-(
-    gate="$repo_root/scripts/run-ci-ios-tests.sh"
-    port_block_size=$(sed -n 's/^port_block_size=//p' "$gate")
-    port_block_base_default=$(sed -n 's/^port_block_base_default=//p' "$gate")
-    port_block_count=$(sed -n 's/^port_block_count=//p' "$gate")
-    core_port_base_default=$(sed -n 's/^core_port_base_default=//p' "$gate")
-    core_port_count=$(sed -n 's/^core_port_count=//p' "$gate")
-    post_quantum_port=0
-    core_port=0
-    core_port_lock_dir=""
-    [[ "$port_block_size" == 13 ]] || fail 'main reservation no longer shares the base revision grid'
-    assign_port_block "$port_block_base_default"
-    old_second=$((port_block_base_default + 13))
-    [[ "$post_quantum_port" -lt "$old_second" ]] || fail 'new first block overlaps old second block'
-    # The former 14-wide candidate is covered by the new separate pool too.
-    [[ "$core_port_base_default" -gt "$((port_block_base_default + 14 * port_block_count - 1))" ]] \
-        || fail 'core pool overlaps a historical default block'
-    lock_root="$work/core-port-locks"
-    mkdir -p "$lock_root"
-    lock_owner_token=ours
-    lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
-    active_resource_lock=""
-    active_claim_guard=""
-    port_is_busy() { return 1; }
-    # Simulate an old 13-port runner's existing reservation before any listener
-    # starts. Core must be independently reservable and keep that lock intact.
-    claim_resource_lock "$lock_root/block-$old_second" old-main
+# Exercise real old/new allocation protocols with independent Bash owners and
+# no listeners. A port probe always says free: only reservations can exclude
+# deferred listeners, including when the older allocator starts second.
+python3 - "$repo_root" "$work" <<'PYPORTS'
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+repo, work = map(Path, sys.argv[1:])
+source = (repo / "scripts/run-ci-ios-tests.sh").read_text()
+
+def function(name):
+    match = re.search(r"^" + name + r"\(\) \{\n.*?^\}", source, re.M | re.S)
+    assert match, name
+    return match.group()
+
+names = ["write_lock_owner", "lock_is_stale", "acquire_claim_guard", "release_claim_guard",
+         "claim_resource_lock", "release_resource_lock", "release_port_reservations",
+         "claim_port_reservation", "claim_port_block", "claim_core_port", "assign_port_block"]
+constants = ["port_block_size", "port_block_base_default", "port_block_count",
+             "core_port_base_default", "core_port_count", "core_port_stride"]
+current = work / "current-port-functions.sh"
+current.write_text("\n".join(re.search(r"^" + name + r"=.+$", source, re.M).group()
+                              for name in constants) + "\n" + "\n\n".join(map(function, names)))
+cleanup = work / "port-cleanup.sh"
+cleanup.write_text(function("release_port_reservations") + "\n" + function("cleanup"))
+legacy = repo / "scripts/testdata/ci-port-reservation-3e4fea1.sh"
+assert legacy.is_file()
+worker = work / "port-worker.sh"
+worker.write_text(r'''#!/bin/bash
+set -euo pipefail
+library=$1 profile=$2 mode=$3 requested=$4 lock_root=$5 case_dir=$6 barrier=$7 pause_at=$8
+source "$library"
+source "$case_dir/../port-cleanup.sh"
+if [[ "$profile" == historical13 ]]; then
+    port_block_size=13
+    assign_port_block() { historical_assign_port_block "$@"; }
+fi
+port_block_base_override=""
+[[ "$requested" == auto ]] || port_block_base_override="$requested"
+port_reservation_locks=()
+run_lock_dir="" core_port_lock_dir="" active_claim_guard="" active_resource_lock=""
+account_lock_dir="" device_lock_dir=""
+lock_owner_token="port-worker-$$-$RANDOM"
+lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
+# Exercise the shipped cleanup while replacing only unrelated fixture work.
+fixture_dir="$case_dir/fixture"
+mkdir -p "$fixture_dir"
+stall_pid="" fake_herdr_pid="" weak_network_pid="" password_pid=""
+unprivileged_sshd_pids=()
+password_log_printed=0 password_log="$fixture_dir/password.log" password_user_cleanup_needed=0
+cancel_background_build() { :; }
+clear_simulator_environment() { :; }
+preserve_failure_diagnostics() { :; }
+port_is_busy() { return 1; }
+describe_port_holder() { return 1; }
+trap cleanup EXIT
+trap 'exit 143' TERM
+# Pause inside owner publication, while its claim guard is still held. The
+# first two aliases have already been recorded; the third is in the active slot.
+if [[ "$pause_at" != 0 ]]; then
+    eval "$(declare -f write_lock_owner | sed '1s/write_lock_owner/write_original_owner/')"
+    owner_writes=0
+    write_lock_owner() {
+        write_original_owner "$@"
+        owner_writes=$((owner_writes + 1))
+        if [[ "$owner_writes" == "$pause_at" ]]; then
+            : > "$case_dir/paused"
+            while :; do /bin/sleep 0.02; done
+        fi
+    }
+fi
+: > "$case_dir/ready"
+while [[ ! -f "$barrier" ]]; do /bin/sleep 0.01; done
+if [[ "$mode" == core ]]; then
+    modern_port=0 post_quantum_port=0
     claim_core_port
-    first_core=$core_port
-    first_core_lock=$core_port_lock_dir
-    [[ -d "$lock_root/block-$old_second" ]] || fail 'core removed an old reservation'
-    claim_core_port
-    [[ "$core_port" != "$first_core" ]] || fail 'second core caller reused a reserved port'
-    release_resource_lock "$core_port_lock_dir" core
-    release_resource_lock "$first_core_lock" core
-    release_resource_lock "$lock_root/block-$old_second" old-main
-    # An explicit main override in the separate pool must exclude its own ports.
-    assign_port_block "$core_port_base_default"
-    if claim_core_port; then fail 'core port overlaps its explicit main reservation'; fi
-    echo 'PASS core-port-cross-revision-reservation'
-)
+    low=$core_port high=$core_port
+elif [[ "$mode" == separate-core ]]; then
+    # Revision 360f55a1 only knew this key for its deferred core listener.
+    core_port_lock_dir="$lock_root/core-port-$requested"
+    claim_resource_lock "$core_port_lock_dir" old-separate-core
+    low=$requested high=$requested
+else
+    claim_port_block
+    low=$modern_port high=$((modern_port + port_block_size - 1))
+fi
+printf '%s %s\n' "$low" "$high" > "$case_dir/claimed"
+while [[ ! -f "$case_dir/finish" ]]; do /bin/sleep 0.01; done
+''')
+workers = []
+counter = 0
+
+def until(predicate, description):
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    raise AssertionError(description)
+
+def start(profile, base, locks, *, mode="main", barrier=None, pause=0):
+    global counter
+    counter += 1
+    folder = work / ("port-worker-" + str(counter))
+    folder.mkdir()
+    locks.mkdir(exist_ok=True)
+    barrier = barrier or folder / "go"
+    log = (folder / "output").open("w")
+    proc = subprocess.Popen(["/bin/bash", str(worker), str(current if profile == "current" else legacy),
+                             profile, mode, str(base), str(locks), str(folder), str(barrier), str(pause)],
+                            stdout=log, stderr=subprocess.STDOUT)
+    entry = (proc, folder, log)
+    workers.append(entry)
+    until(lambda: (folder / "ready").exists() or proc.poll() is not None, "worker did not initialize")
+    assert proc.poll() is None, (folder / "output").read_text()
+    return entry, barrier
+
+def outcome(entry):
+    proc, folder, _ = entry
+    until(lambda: (folder / "claimed").exists() or proc.poll() is not None, "allocation did not finish")
+    if (folder / "claimed").exists():
+        assert proc.poll() is None, (folder / "output").read_text()
+        return tuple(map(int, (folder / "claimed").read_text().split()))
+    assert proc.returncode == 1, (folder / "output").read_text()
+    return None
+
+def stop(entry, expected=0):
+    proc, folder, log = entry
+    if proc.poll() is None:
+        (folder / "finish").touch()
+    code = proc.wait(timeout=15)
+    log.flush()
+    assert code == expected, (code, (folder / "output").read_text())
+
+def disjoint(a, b):
+    return a[1] < b[0] or b[1] < a[0]
+
+def clean(locks):
+    assert list(locks.iterdir()) == [], list(locks.iterdir())
+
+try:
+    for profile, size in [("historical13", 13), ("previous14", 14)]:
+        locks = work / ("ports-old-first-" + profile)
+        old, go = start(profile, 55222, locks); go.touch()
+        assert outcome(old) == (55222, 55222 + size - 1)
+        new, go = start("current", "auto", locks); go.touch()
+        assert disjoint(outcome(old), outcome(new)), "a deferred legacy port was reused"
+        stop(new); stop(old); clean(locks)
+        print("PASS port-reservation-old-first-" + profile)
+
+        locks = work / ("ports-new-first-" + profile)
+        new, go = start("current", 55235, locks); go.touch()
+        assert outcome(new) == (55235, 55247)
+        old, go = start(profile, 55222 + size, locks); go.touch()
+        assert outcome(old) is None, "old allocator ignored the new compatibility aliases"
+        stop(old, 1); stop(new); clean(locks)
+        print("PASS port-reservation-new-first-" + profile)
+
+        for iteration in range(3):
+            locks = work / ("ports-race-" + profile + "-" + str(iteration))
+            go = work / (locks.name + "-go")
+            new, _ = start("current", 55235, locks, barrier=go)
+            old, _ = start(profile, 55222 + size, locks, barrier=go)
+            go.touch()  # Both independent owners enter the real allocator together.
+            results = [outcome(new), outcome(old)]
+            assert sum(result is not None for result in results) == 1, results
+            stop(new, 0 if results[0] else 1); stop(old, 0 if results[1] else 1)
+            clean(locks)
+        print("PASS port-reservation-concurrent-race-" + profile)
+
+    locks = work / "ports-partial-rollback"
+    old, go = start("previous14", 55230, locks); go.touch(); assert outcome(old)
+    new, go = start("current", 55235, locks); go.touch(); assert outcome(new) is None
+    assert sorted(p.name for p in locks.iterdir()) == ["block-55230"], "partial claim leaked or erased old ownership"
+    stop(new, 1); stop(old); clean(locks)
+    print("PASS port-reservation-partial-rollback-preserves-foreign-owner")
+
+    for first_mode in ["main", "separate-core"]:
+        locks = work / ("ports-separate-core-" + first_mode)
+        specs = [("current", 55395, "main"), ("previous14", 55400, "separate-core")]
+        if first_mode == "separate-core": specs.reverse()
+        first, go = start(specs[0][0], specs[0][1], locks, mode=specs[0][2]); go.touch(); assert outcome(first)
+        second, go = start(specs[1][0], specs[1][1], locks, mode=specs[1][2]); go.touch(); assert outcome(second) is None
+        stop(second, 1); stop(first); clean(locks)
+    print("PASS port-reservation-main-override-vs-previous-core-both-orders")
+
+    locks = work / "ports-old-override-vs-core"
+    old, go = start("previous14", 55395, locks); go.touch(); assert outcome(old)
+    core, go = start("current", "auto", locks, mode="core"); go.touch()
+    assert outcome(core) == (55414, 55414), "core did not skip the legacy override's aliases"
+    stop(core); stop(old); clean(locks)
+    core, go = start("current", "auto", locks, mode="core"); go.touch(); assert outcome(core) == (55400, 55400)
+    old, go = start("previous14", 55395, locks); go.touch(); assert outcome(old) is None
+    stop(old, 1); stop(core); clean(locks)
+    print("PASS port-reservation-core-vs-legacy-override-both-orders")
+
+    locks = work / "ports-two-cores"
+    first, go = start("current", "auto", locks, mode="core"); go.touch(); assert outcome(first) == (55400, 55400)
+    second, go = start("current", "auto", locks, mode="core"); go.touch(); assert outcome(second) == (55414, 55414)
+    stop(first); stop(second); clean(locks)
+    print("PASS port-reservation-core-pool-retains-concurrency")
+
+    locks = work / "ports-cancel-partial"
+    interrupted, go = start("current", 55235, locks, pause=3); go.touch()
+    proc, folder, _ = interrupted
+    until(lambda: (folder / "paused").exists() or proc.poll() is not None, "partial claim never reached signal barrier")
+    assert (folder / "paused").exists(), (folder / "output").read_text()
+    proc.send_signal(signal.SIGTERM)
+    stop(interrupted, 143); clean(locks)
+    print("PASS port-reservation-cancel-cleans-published-and-active-aliases")
+finally:
+    for proc, folder, log in workers:
+        if proc.poll() is None:
+            proc.terminate()
+            try: proc.wait(timeout=5)
+            except subprocess.TimeoutExpired: proc.kill(); proc.wait(timeout=5)
+        log.close()
+PYPORTS
 
 # Diagnostic I/O is fallible, but must not bypass the actual process owner.
 for stop_result in pass fail; do (
