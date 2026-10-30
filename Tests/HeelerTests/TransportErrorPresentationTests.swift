@@ -55,6 +55,18 @@ struct TransportErrorPresentationTests {
         #expect(presentation.recoverySuggestion?.contains("stream-local forwarding") == true)
     }
 
+    /// A core that just reported itself running leaves one cause, so the copy
+    /// names no stopped core.
+    @Test func forwardingRefusedNamesOnlyThatCause() {
+        let error = TransportError.herdrCoreForwardingRefused(socketPath: "/run/s.sock")
+        #expect(error.presentation.summary == "The SSH server refuses socket forwarding")
+        #expect(error.presentation.detail?.contains("/run/s.sock") == true)
+        #expect(error.presentation.recoverySuggestion?.contains("stream-local forwarding") == true)
+        #expect(!error.presentation.message.contains("not running"))
+        #expect(!error.presentation.message.contains("stopped"))
+        #expect(!error.isRetryable)
+    }
+
     /// Not running can end on its own. The others stay as they are until
     /// someone acts on the Host, so no retry is made for them.
     @Test func notRunningIsRetryableAndTheOthersNeedTheUser() {

@@ -146,6 +146,7 @@ struct HostOnboardingView: View {
 
             if store.host.serverKind.isConfirmed {
                 preflightSection
+                HerdrCoreStartSection(store: store)
             } else {
                 serverKindSection
             }
@@ -564,7 +565,7 @@ struct HostOnboardingView: View {
                     Button("Run Checks Again") {
                         Task { await store.runChecks() }
                     }
-                    .disabled(store.pluginAction == .running)
+                    .disabled(store.pluginAction == .running || store.coreStart == .running)
                 }
             }
             .font(.subheadline)

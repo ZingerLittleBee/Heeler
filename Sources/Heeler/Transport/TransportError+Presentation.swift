@@ -157,6 +157,12 @@ extension TransportError {
                     summary: "herdr-core is not running",
                     detail: "Nothing is listening at \(socketPath)",
                     recoverySuggestion: "Start the core on the Host, then check again.")
+        case .herdrCoreForwardingRefused(let socketPath):
+            TransportErrorPresentation(
+                summary: "The SSH server refuses socket forwarding",
+                detail: "herdr-core is running, but SSH will not open \(socketPath)",
+                recoverySuggestion:
+                    "Allow stream-local forwarding in the Host's SSH server, then check again.")
         case .herdrCoreUpdateRequired(let command):
             TransportErrorPresentation(
                 summary: "herdr-core needs an update",
