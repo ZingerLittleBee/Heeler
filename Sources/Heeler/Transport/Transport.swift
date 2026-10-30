@@ -2,7 +2,7 @@ import Foundation
 
 /// The app-side abstraction that executes herdr API requests over SSH.
 /// UI code talks to Transport, never to SSH primitives (ADR 0011).
-protocol Transport: Sendable {
+protocol Transport: HostServices, HostNotificationFiles {
     /// The catalog route this connection reached (ADR 0022); nil where the
     /// transport does not know one.
     var routeID: UUID? { get }
@@ -191,45 +191,6 @@ protocol Transport: Sendable {
     /// targets share the bounded Host channel admission budget.
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
-    /// Stages one normalized app-owned image in private Host temporary
-    /// storage. Concrete transports own destination selection, restrictive
-    /// permissions, partial-file handling, and atomic completion (ADR 0006).
-    func stageImage(
-        _ image: PreparedImage,
-        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
-    ) async throws -> StagedImage
-
-    /// Stages one app-owned file in private Host temporary storage. The file
-    /// follows the same SFTP, permission, and atomic-completion policy as images.
-    func stageFile(
-        _ file: PreparedFile,
-        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
-    ) async throws -> StagedFile
-
-    /// Reads the Notification Registration file (v1, `plugin/README.md`)
-    /// from the Heeler plugin's config dir on this Host; nil when no
-    /// device has registered yet. Throws
-    /// `NotificationRegistrationError.pluginNotInstalled` when the plugin is
-    /// absent, so the ceremony can tell "install the plugin" apart from a
-    /// broken read (#72).
-    func readNotificationRegistration() async throws -> Data?
-
-    /// Atomically replaces the Notification Registration file with
-    /// `contents` (temp file + rename per the v1 contract), creating it when
-    /// absent. Same plugin gate as the read.
-    func replaceNotificationRegistration(_ contents: Data) async throws
-
-    /// Reads the plugin's `notify.json` config from this Host's Heeler
-    /// plugin config dir (the registration file's sibling; `plugin/README.md`);
-    /// nil when the plugin has no config file yet. Same plugin gate as the
-    /// registration read. Carries the custom Push Relay base URL (#76).
-    func readNotificationConfig() async throws -> Data?
-
-    /// Atomically replaces the plugin's `notify.json` config with `contents`
-    /// (temp file + rename), creating it when absent. Same plugin gate as the
-    /// registration write.
-    func replaceNotificationConfig(_ contents: Data) async throws
-
     /// Reads the plugin's `sidebar.json` snapshot (v1, `plugin/README.md`)
     /// from this Host's Heeler plugin config dir; nil when the file is
     /// absent, including Hosts whose plugin predates the snapshot. Throws
@@ -243,24 +204,6 @@ protocol Transport: Sendable {
     /// on Hosts the plugin does not support (native Windows).
     func readHeelerPlugin() async throws -> HeelerPluginInstallation?
 
-    /// Runs the Usage query of the plugin installed at `pluginRoot`, which
-    /// the caller resolved with `readHeelerPlugin()`. Reads aggregate usage,
-    /// never credentials or Transcripts.
-    func readAgentUsage(
-        timeZone: String, claudeLimits: Bool, pluginRoot: String
-    ) async throws -> AgentUsageReport
-
-    /// Reads the Claude Code Account file (`usage-accounts.json`, ADR 0030)
-    /// from this Host's Heeler plugin config dir; nil when no Account was
-    /// ever added. Same plugin gate and POSIX-only reach as the registration
-    /// read.
-    func readUsageAccountFile() async throws -> Data?
-
-    /// Atomically replaces the Account file with `contents` (temp file +
-    /// rename, file 0600 in a 0700 directory), creating it when absent. Same
-    /// plugin gate as the registration write.
-    func replaceUsageAccountFile(_ contents: Data) async throws
-
     /// Runs one change to the Host's Heeler plugin: the herdr CLI for install
     /// and uninstall, the session's `plugin.enable` request for enable.
     /// Throws `HeelerPluginStepError` when herdr refuses or fails the step,
@@ -272,55 +215,6 @@ protocol Transport: Sendable {
     /// when the Host cannot fetch or parse it, and
     /// `TransportError.hostFeatureUnavailable` on native Windows Hosts.
     func readPluginBranchVersion() async throws -> PluginVersion
-
-    /// Lists the skills / custom slash commands installed for a kind on this
-    /// Host: global sources under the remote home plus project sources under
-    /// the query's project root, per `SkillSourceCatalog`. Kinds without a
-    /// catalog entry return empty. Reads the filesystem over exec, so
-    /// alternative transports without a Host process environment report
-    /// nothing by default.
-    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill]
-
-    /// Reads one skill document in full (capped) for the on-demand content
-    /// view; `path` is what the skills probe reported. Same transport caveat
-    /// as `listSkills`.
-    func readSkillFile(atPath path: String) async throws -> String
-
-    /// Reads one byte range of a Host file. A file that only ever grows — an
-    /// Agent's session transcript — is followed by asking for what has not
-    /// been read yet, so a screen can show a running figure without pulling
-    /// the whole file on every look.
-    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
-
-    /// Reads one byte range of an Agent transcript for Chat. Unlike
-    /// `readFileSlice`, a read past its deadline throws `.hostFileTimedOut`
-    /// rather than the link-failure `.timedOut`, so a slow read on a weak link
-    /// never redials the Host; a refused read throws `.hostFileUnreadable`.
-    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice
-
-    /// Stats one Host path for Chat, following symlinks. Nil when the path
-    /// does not exist. Errors follow `readHostFileRange`.
-    func fileStatus(atPath path: String) async throws -> RemoteFileStatus?
-
-    /// Lists the matching entries of one Host directory for Chat. Nil when
-    /// the directory does not exist. Errors follow `readHostFileRange`.
-    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing?
-
-    /// The Host's home directory as its SSH account sees it, for Chat to
-    /// find transcripts under. A probe past its deadline throws
-    /// `.hostFileTimedOut`, like the file operations.
-    func hostHomeDirectory() async throws -> String
-
-    /// Reads one OpenCode session from OpenCode's own database on the Host
-    /// (ADR 0025): one read-only script over one exec, one query at a time
-    /// per connection. A query past its deadline throws `.hostFileTimedOut`
-    /// and never redials the Host; a reader failure that is no store problem
-    /// Chat can name throws `.hostStoreUnreadable`.
-    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse
-
-    /// The Host's operating system family, known once the transport has
-    /// resolved the remote environment.
-    func hostPlatform() async throws -> HostPlatform
 
     /// Reads one Agent's current record (`agent.get`). Chat re-reads it to
     /// notice the Agent's session changing, which no event reports.
@@ -335,28 +229,6 @@ protocol Transport: Sendable {
     /// `nil` when the CLI is absent or does not know the model; a session
     /// figure is then shown without its window (#325).
     func modelContextWindow(selector: String) async throws -> Int?
-
-    /// Lists the files inside one untracked directory: one git script over
-    /// one exec, using the top level from the latest Changes read. Entries
-    /// carry no line counts. Git-level outcomes throw `ChangesReadError`; a
-    /// git read past its deadline throws `TransportError.gitTimedOut`.
-    /// Transports that cannot run git on a Host throw
-    /// `ChangesReadError.unavailable` by default.
-    func listUntrackedDirectory(
-        _ request: UntrackedDirectoryRequest
-    ) async throws -> UntrackedDirectoryListing
-
-    /// Reads the Changes of the Checkout containing `request.directory`:
-    /// one git script over one exec, resolved and parsed by `GitProbe`.
-    /// Git-level outcomes throw `ChangesReadError`; a git read past its
-    /// deadline throws `TransportError.gitTimedOut`. Transports that cannot
-    /// run git on a Host throw `ChangesReadError.unavailable` by default.
-    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead
-
-    /// Reads one file's patch in its resolved Checkout, including both paths
-    /// for a rename and an empty-file comparison for an untracked file.
-    /// Transports without Host git throw `ChangesReadError.unavailable`.
-    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch
 
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
@@ -393,49 +265,8 @@ extension Transport {
             detail: "This transport cannot create shell terminals.")
     }
 
-    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
-        []
-    }
-
-    func readSkillFile(atPath path: String) async throws -> String {
-        throw TransportError.channelFailed(
-            detail: "This transport cannot read skill files.")
-    }
-
-    /// Test doubles and alternative transports without Host files can decline
-    /// without emulating an SSH library; a follower then shows only what the
-    /// Host reports elsewhere.
-    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
-        throw TransportError.channelFailed(
-            detail: "This transport cannot read Host files.")
-    }
-
     /// A transport without Host commands knows no model windows.
     func modelContextWindow(selector: String) async throws -> Int? { nil }
-
-    /// Transports without Host files decline Chat outright, never with a
-    /// link-failure error that would make the Host reconnect.
-    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
-    }
-
-    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
-    }
-
-    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
-    }
-
-    func hostHomeDirectory() async throws -> String {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
-    }
-
-    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
-    }
-
-    func hostPlatform() async throws -> HostPlatform { .posix }
 
     func agentInfo(_ target: AgentTarget) async throws -> Agent {
         throw TransportError.hostFeatureUnavailable(feature: "Chat")
@@ -449,58 +280,6 @@ extension Transport {
         throw TransportError.hostFeatureUnavailable(feature: "Chat")
     }
 
-    /// A transport without Host commands cannot list an untracked directory.
-    func listUntrackedDirectory(
-        _ request: UntrackedDirectoryRequest
-    ) async throws -> UntrackedDirectoryListing {
-        throw ChangesReadError.unavailable
-    }
-
-    /// A transport without Host commands cannot run git, and says so
-    /// rather than reporting an empty Checkout.
-    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
-        throw ChangesReadError.unavailable
-    }
-
-    /// A transport without Host commands cannot read a file's patch.
-    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
-        throw ChangesReadError.unavailable
-    }
-
-    /// Non-SSH test doubles and alternative transports can state that SFTP is
-    /// unavailable without importing or emulating an SSH library.
-    func stageImage(
-        _ image: PreparedImage,
-        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
-    ) async throws -> StagedImage {
-        throw AttachmentStagingError.sftpUnavailable
-    }
-
-    func stageFile(
-        _ file: PreparedFile,
-        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
-    ) async throws -> StagedFile {
-        throw AttachmentStagingError.sftpUnavailable
-    }
-
-    /// Test doubles and alternative transports without a Host-side plugin
-    /// can report its absence without emulating the plugin CLI.
-    func readNotificationRegistration() async throws -> Data? {
-        throw NotificationRegistrationError.pluginNotInstalled
-    }
-
-    func replaceNotificationRegistration(_ contents: Data) async throws {
-        throw NotificationRegistrationError.pluginNotInstalled
-    }
-
-    func readNotificationConfig() async throws -> Data? {
-        throw NotificationRegistrationError.pluginNotInstalled
-    }
-
-    func replaceNotificationConfig(_ contents: Data) async throws {
-        throw NotificationRegistrationError.pluginNotInstalled
-    }
-
     /// Test doubles and alternative transports without a Host-side plugin
     /// report an absent snapshot rather than emulating the plugin CLI.
     func readSidebarLayout() async throws -> Data? { nil }
@@ -510,20 +289,6 @@ extension Transport {
     func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
         throw TransportError.channelFailed(
             detail: "This transport cannot list herdr plugins.")
-    }
-
-    func readAgentUsage(
-        timeZone: String, claudeLimits: Bool, pluginRoot: String
-    ) async throws -> AgentUsageReport {
-        throw TransportError.hostFeatureUnavailable(feature: "Usage")
-    }
-
-    func readUsageAccountFile() async throws -> Data? {
-        throw NotificationRegistrationError.pluginNotInstalled
-    }
-
-    func replaceUsageAccountFile(_ contents: Data) async throws {
-        throw NotificationRegistrationError.pluginNotInstalled
     }
 
     func runHeelerPluginStep(_ step: HeelerPluginStep) async throws {
