@@ -612,7 +612,7 @@ final class ConsoleStore {
     /// Agent and its Host entry last. Nil when the Host is not in the
     /// catalog or the program has no transcript adapter.
     func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
-        guard usesLegacyHerdr(on: agent.hostID) else { return nil }
+        guard capabilities(for: agent.hostID).chat else { return nil }
         if let existing = chatStores[agent.id], existing.program == program { return existing }
         guard let host = projections[agent.hostID]?.host, let adapter = chatAdapter(program) else {
             return nil
@@ -1140,7 +1140,7 @@ final class ConsoleStore {
         for projection in current
         where projection.status == .connected && !projection.isAwaitingSnapshot {
             let hostID = projection.host.id
-            guard projection.host.serverKind == .herdrTUI,
+            guard projection.host.capabilities.chat,
                 hostPlatformGenerations[hostID] != projection.transportGeneration,
                 projection.agentsByPane.values.contains(where: {
                     AgentChatAvailability.mayOfferChat(for: $0.agent, hasAdapter: { chatAdapter($0) != nil })
@@ -1273,7 +1273,7 @@ final class ConsoleStore {
     private var savedChatAgents: [(agent: ConsoleAgent, readiness: HostReadiness)] {
         let live = Set(agents.map(\.id))
         return projections.values.flatMap { projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
-            guard projection.host.serverKind == .herdrTUI,
+            guard projection.host.capabilities.chat,
                 projection.status != .connected || projection.isAwaitingSnapshot else { return [] }
             let saved = cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
             guard !saved.isEmpty else { return [] }
@@ -1294,14 +1294,15 @@ final class ConsoleStore {
             statusSeverity: issue?.severity, isEmpty: false, inventoryNoun: "Agents")
     }
 
-    /// Core's terminal inventory does not carry legacy management or exact
-    /// conversation-session metadata. Keep those actions off its Agent surface.
-    func usesLegacyHerdr(on hostID: Host.ID) -> Bool {
-        catalog.first(where: { $0.id == hostID })?.serverKind != .herdrCore
+    /// What the Host offers. A detail can outlive its Host's catalog entry for
+    /// a moment; its actions stay as they were and fail as not connected.
+    func capabilities(for hostID: Host.ID) -> HostCapabilities {
+        catalog.first(where: { $0.id == hostID })?.capabilities
+            ?? HostCapabilities(serverKind: .herdrTUI)
     }
 
     func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {
-        guard usesLegacyHerdr(on: agent.hostID) else { return nil }
+        guard capabilities(for: agent.hostID).chat else { return nil }
         let platform = hostPlatforms[agent.hostID]
         if let platform {
             return AgentChatAvailability.program(
@@ -1316,7 +1317,7 @@ final class ConsoleStore {
     private func reconcileChatCache() {
         for projection in projections.values {
             let host = projection.host
-            guard host.serverKind == .herdrTUI, isActive,
+            guard host.capabilities.chat, isActive,
                 projection.status == .connected, !projection.isAwaitingSnapshot else {
                 chatPrefetchTasks[host.id]?.cancel()
                 chatPrefetchTasks[host.id] = nil

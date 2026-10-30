@@ -132,7 +132,37 @@ struct ConsoleStoreTests {
         #expect(store.agentUsageStore(for: core.id) !== usage)
     }
 
-    @Test func coreAgentsOfferNeitherLegacyManagementNorChat() {
+    /// Actions only Herdr TUI can serve are offered by Server Kind, not
+    /// attempted and failed (ADR 0032). Later tickets turn on each core action
+    /// as they build it.
+    @Test func aHerdrTUIHostOffersEveryActionAndACoreHostNone() {
+        let tui = Host.fixture()
+        let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let store = makeStore(transports: [:])
+        defer { store.setHosts([]) }
+        store.setHosts([tui, core])
+
+        #expect(store.capabilities(for: tui.id) == HostCapabilities(
+            renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
+            composerSend: true, chat: true, tabNames: true, closeTab: true,
+            syncLayoutFromPlugin: true))
+        #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
+        #expect(store.capabilities(for: core.id) == HostCapabilities(
+            renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
+            composerSend: false, chat: false, tabNames: false, closeTab: false,
+            syncLayoutFromPlugin: false))
+        #expect(!store.capabilities(for: core.id).renameWorkspace(id: "w1"))
+    }
+
+    /// A detail can outlive its Host's catalog entry for a moment; its actions
+    /// stay as they were and fail as not connected if tried.
+    @Test func aHostOutsideTheCatalogKeepsTheActionsItOffered() {
+        let store = makeStore(transports: [:])
+
+        #expect(store.capabilities(for: UUID()) == HostCapabilities(serverKind: .herdrTUI))
+    }
+
+    @Test func aCoreHostsAgentsCannotOpenChat() {
         let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let store = makeStore(transports: [:])
         defer { store.setHosts([]) }
@@ -140,7 +170,6 @@ struct ConsoleStoreTests {
         let agent = consoleAgent(
             hostID: host.id, hostName: host.name, paneID: "t3", status: .idle)
 
-        #expect(!store.usesLegacyHerdr(on: host.id))
         #expect(store.chatProgram(for: agent) == nil)
         #expect(store.chatStore(for: agent, program: .claude) == nil)
     }

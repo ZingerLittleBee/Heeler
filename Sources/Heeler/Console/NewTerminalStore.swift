@@ -91,9 +91,9 @@ final class NewTerminalStore {
         return workspacesProvider(selectedHostID).sorted { $0.order < $1.order }
     }
 
-    /// Core's directory groups have no separate Workspace or tab labels.
+    /// Whether the form asks for Workspace and tab names.
     var offersWorkspaceAndTabNames: Bool {
-        hosts.first(where: { $0.id == selectedHostID })?.serverKind != .herdrCore
+        hosts.first(where: { $0.id == selectedHostID })?.capabilities.tabNames != false
     }
 
     var canSubmit: Bool {
@@ -148,7 +148,7 @@ final class NewTerminalStore {
     /// the one it vouches for; only when it reports none, or for a
     /// name-only New Workspace, does the Host's home directory stand in.
     private func destination(on hostID: Host.ID) async throws -> Destination {
-        let offersNames = hosts.first(where: { $0.id == hostID })?.serverKind != .herdrCore
+        let offersNames = hosts.first(where: { $0.id == hostID })?.capabilities.tabNames != false
         let label = offersNames ? Self.nonEmptyTrimmed(tabLabel) : nil
         switch target {
         case .existingWorkspace:
