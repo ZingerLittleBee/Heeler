@@ -57,11 +57,11 @@ A Terminal is an Agent while its foreground program is a known coding program, o
 
 Done is per device. An Agent shows Done when it finished a turn this device was not showing and still reports idle or done. Opening the Agent clears it here, and so does having it open when the turn ends; your other devices keep showing it until you open it there. It leaves on its own when the Agent starts working again. A turn finishes when a program goes from Working to Done. A program not known to report done also finishes one by going from Working to Idle, while Claude Code, Codex, Pi and Oh My Pi do not, so a Codex release too old to report done never shows Done. Removing the Host, or the Host getting a different core, starts over.
 
-A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and no Close.
+A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and Close.
 
 **Agent List Fields** in Settings sets a core Host's rows, starting from Heeler's own fields. It offers the labels of the Host's Terminals, and no Sync from plugin, since no plugin runs there.
 
-**Pins** are per Host and survive a core restart. A Pin goes when its Terminal is removed, and all of a Host's Pins go when its core was wiped and started new.
+**Pins** are per Host and survive a core restart. A Pin goes when you close the Agent from its row, or close the Tab it is in, and when its Terminal is removed. All of a Host's Pins go when its core was wiped and started new.
 
 ## Terminal
 
@@ -79,6 +79,14 @@ In an Agent detail, Direct Input types into the terminal, and Changes and Skills
 | A program exited, including your own `exit` | **Agent Ended** in an Agent detail, or **Terminal Closed** on a Terminal's own screen. The Terminal has ended for good, so nothing reattaches |
 
 The new shell is no Agent until you start one in it.
+
+## Close
+
+Closing a Tab on a core Host ends its Terminals for good, and closing a Pane ends that one Terminal. A kept Terminal does not come back as a shell, and it leaves the Console once the core reports it ended. Close works the same from an Agent's or a Terminal's row, Agent detail and a Shell Terminal.
+
+The Host keeps the ended Terminal's record, and Heeler does not show it.
+
+If the Host does not confirm a close, Heeler says so and does not send it again, since the Terminal may already have ended. Check it before trying again.
 
 ## Core Environment
 
@@ -106,7 +114,7 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 
 ## Known limits
 
-- Heeler has no Close or Rename on a core Host yet. Use the Host or the desktop.
+- Heeler has no Rename on a core Host yet. Use the Host or the desktop.
 - Worktrees, Uploads and Chat are not available yet.
 - An Agent detail's Send, Stop and Add stay hidden. Use Direct Input to type into the terminal.
 - Notifications and Live Activities are not available yet.
