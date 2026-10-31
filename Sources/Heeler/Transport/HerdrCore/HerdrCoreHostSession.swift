@@ -245,16 +245,21 @@ actor HerdrCoreHostSession {
         }
     }
 
-    /// The run stopped for good, so nobody waiting will get a link from it.
-    private func failTerminalTransportWaiters(_ failure: TransportError) {
+    /// This activation is going away, so those pinned to it will get no link from
+    /// it. One asked while suspended waits on for the next activation.
+    private func failPinnedTerminalTransportWaiters(_ failure: TransportError) {
         let waiters = terminalTransportWaiters.filter { $0.activationGeneration != nil }
         terminalTransportWaiters.removeAll { $0.activationGeneration != nil }
         for waiter in waiters { waiter.continuation.resume(throwing: failure) }
     }
 
+    /// The run stopped for good and no later activation comes without someone
+    /// asking, so nobody waiting will get a link, whenever they asked.
     private func stopRun(with failure: TransportError) {
         terminalTransportFailure = failure
-        failTerminalTransportWaiters(failure)
+        let waiters = terminalTransportWaiters
+        terminalTransportWaiters = []
+        for waiter in waiters { waiter.continuation.resume(throwing: failure) }
         yieldUpdate(.status(.failed(failure)))
     }
 
@@ -517,7 +522,7 @@ actor HerdrCoreHostSession {
     /// not awaited, since a stalled SSH operation may ignore cancellation;
     /// generation checks make any late result harmless.
     private func windDown() async {
-        failTerminalTransportWaiters(.cancelled)
+        failPinnedTerminalTransportWaiters(.cancelled)
         backoffSleep?.cancel()
         backoffSleep = nil
         backoffGeneration = nil

@@ -369,6 +369,22 @@ struct HerdrCoreHostSessionTests {
         await session.end()
     }
 
+    @Test func aTerminalThatAskedWhileSuspendedGetsWhatStoppedTheNextActivation() async throws {
+        let host = ScriptedCoreHost(
+            channel: .answersHello(ScriptedCoreHost.helloReply(errorKind: "unsupported_generation")))
+        let session = session(on: host)
+        let waiting = Task { try await session.withTerminalTransport { _, _ in } }
+        await untilATerminalWaits(on: session)
+        await session.resume()
+        await #expect(
+            throws: TransportError.herdrCoreUpdateRequired(
+                command: "\(ScriptedCoreHost.installedPath) update")
+        ) {
+            try await waiting.value
+        }
+        await session.end()
+    }
+
     @Test func anUnknownEventKindNeedsNoNewSnapshot() async throws {
         let host = ScriptedCoreHost(channel: .core(.init(id: "c1", sequence: 1)))
         let session = session(on: host)
