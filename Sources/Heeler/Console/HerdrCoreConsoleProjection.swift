@@ -1349,6 +1349,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// One check of the Agent's process: one exec and at most one SFTP read.
     func checkChatSession(paneID: String) async throws -> ChatSessionEvidence {
+        // No inventory is no evidence either way: a Chat keeps what it shows and
+        // the snapshot's fresh inventory asks again. A Send here says it couldn't
+        // check.
+        guard hasInventory else { throw TransportError.cancelled }
         guard let record = terminalRecord(at: paneID) else {
             return .unavailable(.cannotTellSession(.claude))
         }

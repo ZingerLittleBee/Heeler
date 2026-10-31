@@ -799,6 +799,46 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
+    /// Between a new link and its snapshot nothing is known of any Terminal, so a
+    /// check says nothing rather than that Chat cannot tell.
+    @Test func aCheckBeforeTheSnapshotLeavesAFollowedConversationAlone() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        await rig.files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await rig.files.write(try Self.transcript(), at: Self.transcriptPath())
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntil("Chat to follow it") { Self.isFollowing(chat) }
+        let checks = await rig.checks
+
+        // Back from the background: the link comes up before its snapshot.
+        await rig.transport.holdSubscribes()
+        await rig.store.suspend()
+        await rig.store.resume()
+        await rig.transport.waitForSubscribe(count: 2)
+        try await rig.waitUntil("the link, with no snapshot yet") {
+            rig.store.hostStatuses[self.host.id] == .connected && rig.store.hostsAwaitingSnapshot.contains(self.host.id)
+        }
+
+        chat.suspend()
+        chat.retry()
+        await chat.step()
+
+        #expect(Self.isFollowing(chat))
+        #expect(await rig.checks == checks)
+        // Send has nothing to go on, and says that rather than what it cannot tell.
+        #expect(await chat.confirmSessionBeforeSend() == AgentChatStore.uncheckedSessionReason(.claude))
+        #expect(Self.isFollowing(chat))
+
+        await rig.transport.releaseSubscribes()
+        try await rig.waitUntil("the snapshot") { !rig.store.hostsAwaitingSnapshot.contains(self.host.id) }
+        chat.resume()
+        try await rig.waitForChecks(checks + 1)
+        #expect(Self.isFollowing(chat))
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     @Test func aReasonKeepsWhatChatShowedAndAFreshBindingResumesIt() async throws {
         let rig = Rig(host: host)
         try await rig.start()
