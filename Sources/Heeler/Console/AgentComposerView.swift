@@ -318,6 +318,9 @@ struct AgentComposerView: View {
             if let failure = latestFailure {
                 failureRow(failure)
             }
+            if let unanswered = latestOutcomeUnknown {
+                outcomeUnknownRow(unanswered)
+            }
             if let notice = store.notice, notice.route == sendPolicy.route, failureIsHidden {
                 noticeRow(notice)
             }
@@ -415,6 +418,23 @@ struct AgentComposerView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
         }
+    }
+
+    /// A step got no answer: Send cannot say what reached the program, and
+    /// nothing here sends it again.
+    private func outcomeUnknownRow(_ id: AgentComposerStore.Message.ID) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            noticeLabel(
+                "The Host did not answer, so the message may or may not have reached the Agent. Check the terminal. It will not be sent again.")
+            Button("Edit Draft") {
+                store.withdrawToDraft(id)
+                isInputFocused = true
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("composer.outcomeUnknown")
     }
 
     private func noticeRow(_ notice: ComposerNotice) -> some View {
@@ -677,6 +697,13 @@ struct AgentComposerView: View {
               case .failed(let detail) = message.state
         else { return nil }
         return (message.id, detail)
+    }
+
+    private var latestOutcomeUnknown: AgentComposerStore.Message.ID? {
+        guard let message = store.messages.last(where: { $0.route == sendPolicy.route }),
+              message.state == .outcomeUnknown
+        else { return nil }
+        return message.id
     }
 
     private var linkPresentation: AgentComposerLinkPresentation? {

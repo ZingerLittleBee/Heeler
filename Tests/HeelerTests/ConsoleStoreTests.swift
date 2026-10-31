@@ -231,7 +231,7 @@ struct ConsoleStoreTests {
         #expect(store.capabilities(for: core.id) == HostCapabilities(
             opensDetail: true, startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
             composerSend: false, chat: false, tabNames: false, closeTab: true,
-            syncLayoutFromPlugin: false, takeOver: false))
+            syncLayoutFromPlugin: false, takeOver: false, composerStop: false))
         #expect(!store.capabilities(for: core.id).renameWorkspace(id: "w1"))
     }
 

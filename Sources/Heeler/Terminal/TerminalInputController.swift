@@ -38,6 +38,7 @@ final class TerminalInputController {
 
     private var nextGeneration: UInt64 = 0
     private var writer: ((Data) -> Void)?
+    private var acknowledgedWriter: (@Sendable (Data) async throws -> Void)?
     private var scroller: ((Data, Int) -> Void)?
     private var pendingPasteText: String?
     /// Captured when the paste is requested rather than read again at confirm
@@ -47,15 +48,22 @@ final class TerminalInputController {
     /// A channel can own a writer before the Attach client is ready for input.
     private var readyGeneration: SessionGeneration?
     private var heldInsertion = ""
+    @ObservationIgnored private var readyWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     var canConfirmPaste: Bool {
         writer != nil && pendingPasteText != nil
     }
 
+    /// The session, once its Attach has produced output and can take input.
+    var readySession: SessionGeneration? {
+        readyGeneration == liveGeneration ? readyGeneration : nil
+    }
+
     @discardableResult
     func beginSession(
         writer: @escaping (Data) -> Void,
-        scroller: ((Data, Int) -> Void)? = nil
+        scroller: ((Data, Int) -> Void)? = nil,
+        acknowledgedWriter: (@Sendable (Data) async throws -> Void)? = nil
     ) -> SessionGeneration {
         nextGeneration &+= 1
         let generation = SessionGeneration(value: nextGeneration)
@@ -63,6 +71,7 @@ final class TerminalInputController {
         readyGeneration = nil
         userMessageIndex.reset()
         self.writer = writer
+        self.acknowledgedWriter = acknowledgedWriter
         self.scroller = scroller
         return generation
     }
@@ -72,6 +81,7 @@ final class TerminalInputController {
         liveGeneration = nil
         readyGeneration = nil
         writer = nil
+        acknowledgedWriter = nil
         scroller = nil
         userMessageIndex.reset()
         if !preservingPendingPaste {
@@ -86,8 +96,42 @@ final class TerminalInputController {
         liveGeneration = nil
         readyGeneration = nil
         writer = nil
+        acknowledgedWriter = nil
         scroller = nil
         userMessageIndex.reset()
+    }
+
+    /// Returns once a session is ready, or the caller is cancelled.
+    func untilSessionIsReady() async {
+        guard readySession == nil else { return }
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume()
+                } else {
+                    readyWaiters[id] = continuation
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.readyWaiters.removeValue(forKey: id)?.resume()
+            }
+        }
+    }
+
+    /// Writes `data` on `generation`'s session and returns once it has left.
+    /// Throws `TerminalAttachInputError.sessionEnded` when that session is gone
+    /// and nothing was written, or what the session's write threw. `source`
+    /// indexes the bytes as typing; a caller that records its own message omits it.
+    func writeAcknowledged(
+        _ data: Data, generation: SessionGeneration, indexedAs source: AttachUserMessageIndex.OutgoingSource? = nil
+    ) async throws {
+        guard generation == liveGeneration, let acknowledgedWriter else {
+            throw TerminalAttachInputError.sessionEnded
+        }
+        if let source { userMessageIndex.observeOutgoing(data, source: source) }
+        try await acknowledgedWriter(data)
     }
 
     /// Sends ordinary terminal bytes if a live Attach session exists.
@@ -170,6 +214,9 @@ final class TerminalInputController {
         let text = heldInsertion
         heldInsertion = ""
         if !text.isEmpty { insertSnippet(text, bracketedPaste: false) }
+        let waiters = readyWaiters.values
+        readyWaiters = [:]
+        for waiter in waiters { waiter.resume() }
     }
 
     /// Only a departure discards text; ending or replacing a pipeline keeps it.

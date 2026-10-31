@@ -14,7 +14,7 @@ enum ChatComposerEchoes {
             let isDelivered =
                 switch message.state {
                 case .delivered, .undelivered: true
-                case .sending, .failed: false
+                case .sending, .failed, .outcomeUnknown: false
                 }
             return AgentChatStore.SentMessage(
                 id: message.id, text: rules.outgoingText(message.text), isDelivered: isDelivered)
@@ -62,6 +62,8 @@ enum ChatComposerEchoes {
             case .failed(let detail):
                 guard message.id == latest else { return nil }
                 state = .failed(detail)
+            case .outcomeUnknown:
+                state = .unconfirmed
             }
             return ChatPendingEcho(id: message.id, text: message.text, state: state)
         }

@@ -78,6 +78,14 @@ final class ManualClock: @unchecked Sendable {
         }
     }
 
+    /// Returns once a sleep of exactly `duration` from now is parked, when others
+    /// may be parked beside it.
+    func untilParked(for duration: Duration) async {
+        while !lock.withLock({ parked.contains { $0.wakeAt == elapsed + duration } }) {
+            await Task.yield()
+        }
+    }
+
     /// Returns once at least `count` sleeps are parked, so a test can advance
     /// time knowing the deadline it means to pass is armed.
     func untilParked(_ count: Int) async {

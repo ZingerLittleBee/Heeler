@@ -4,10 +4,12 @@ enum AsyncDeadlineError: Error, Equatable {
     case timedOut
 }
 
-/// Runs one asynchronous operation against a wall-clock deadline.
+/// Runs one asynchronous operation against a deadline, on the wall clock unless
+/// `sleep` says otherwise.
 enum AsyncDeadline {
     static func run<Value: Sendable>(
         for timeout: Duration,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         onTimeout: @escaping @Sendable () async -> Void = {},
         onCancel: @escaping @Sendable () async -> Void = {},
         operation: @escaping @Sendable () async throws -> Value
@@ -24,7 +26,7 @@ enum AsyncDeadline {
         }
         let timeoutTask = Task {
             do {
-                try await Task.sleep(for: timeout)
+                try await sleep(timeout)
             } catch {
                 return
             }

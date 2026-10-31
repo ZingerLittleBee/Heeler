@@ -81,16 +81,22 @@ enum HerdrCoreAgentRule {
 
     // MARK: The foreground
 
-    private enum Program: Equatable {
+    enum Program: Equatable, Sendable {
         case shell
         case known(String)
         case other(String)
     }
 
+    /// The shell a foreground names, as its program's own word. Read it only of
+    /// one the rule reads as `.shell`.
+    static func shellName(of foreground: HerdrCoreForeground) -> String {
+        baseName(foreground.argv.first ?? foreground.name)
+    }
+
     /// The foreground, or without one what the Terminal launched. A process
     /// whose arguments say nothing known can still be known by its OS name, as
     /// a native install running from a versioned path is.
-    private static func program(of record: HerdrCoreTerminalRecord) -> Program {
+    static func program(of record: HerdrCoreTerminalRecord) -> Program {
         guard let foreground = record.foreground else { return readLaunch(record.argv) }
         guard !foreground.argv.isEmpty else {
             return foreground.name.isEmpty ? readLaunch(record.argv) : read([foreground.name])
