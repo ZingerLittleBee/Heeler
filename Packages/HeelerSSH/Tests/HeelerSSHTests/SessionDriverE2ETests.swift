@@ -700,23 +700,6 @@ struct SessionDriverE2ETests {
         }
     }
 
-    /// #136 at all four teardown sites, with no link involved in causing it.
-    ///
-    /// Every `deinit` in the package closes on the same hardcoded `.seconds(2)`,
-    /// so on a link slow enough to exhaust it `repeatUntilComplete` throws
-    /// `SSHError.timedOut` — and the shared teardown `catch` used to read that
-    /// as evidence of a corrupt session, taking Events, Attach and every other
-    /// channel on the connection down with the one abandoned transfer.
-    ///
-    /// A zero budget reaches that same throw deterministically: the deadline is
-    /// already past at `repeatUntilComplete`'s first progress check, so it
-    /// expires before libssh2 is called at all. That leaves the session provably
-    /// healthy underneath, which is the state the old code could not tell from
-    /// a dead one — and it needs no impairment proxy to reproduce.
-    ///
-    /// `isConnected` alone would not prove survival: it is a local flag, and a
-    /// change that only stopped clearing it would satisfy it while leaving the
-    /// session wedged. Every site is therefore followed by a real round trip.
     /// A terminal write queued behind a health probe used to spend its budget
     /// in the queue, fail the moment the link recovered, and take the attach
     /// down with it (#523).
@@ -724,11 +707,25 @@ struct SessionDriverE2ETests {
     func ptyWriteBudgetExcludesTheOperationQueue() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let connection = try await environment.connect()
+        // Echo off, so every "queued" that comes back is a delivered write.
         let channel = try await connection.openPTY(
-            command: "cat",
+            command: "stty -echo; printf ready; cat",
             columns: 80,
             rows: 24,
             timeout: .seconds(15))
+        func readUntil(_ marker: String) async throws -> String {
+            var received = Data()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while !received.contains(Data(marker.utf8)), ContinuousClock.now < deadline {
+                do {
+                    received.append(try await channel.read(timeout: .seconds(1)) ?? Data())
+                } catch SSHError.timedOut {
+                    continue
+                }
+            }
+            return String(decoding: received, as: UTF8.self)
+        }
+        #expect(try await readUntil("ready").contains("ready"))
 
         let operation = SessionWaitHold()
         let holder = Task { await connection.holdOperationForTesting(operation.waitUntilReleased) }
@@ -741,15 +738,12 @@ struct SessionDriverE2ETests {
         try await Task.sleep(for: .milliseconds(600))
         await operation.release()
         await holder.value
-
         try await write.value
-        var received = Data()
-        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
-        while !received.contains(Data("queued\r\nqueued".utf8)), ContinuousClock.now < deadline {
-            received.append(try await channel.read(timeout: .seconds(1)) ?? Data())
-        }
-        // Once from the PTY's echo and once from `cat`: delivered, and only once.
-        #expect(String(decoding: received, as: UTF8.self).components(separatedBy: "queued").count == 3)
+        try await channel.write(Data("done\n".utf8), timeout: .seconds(5))
+
+        let received = try await readUntil("done")
+        #expect(received.contains("done"))
+        #expect(received.components(separatedBy: "queued").count == 2)
         #expect(await connection.isConnected)
         try await channel.close(timeout: .seconds(5))
         try await connection.close(timeout: .seconds(2))
@@ -852,6 +846,23 @@ struct SessionDriverE2ETests {
         try? await connection.close(timeout: .seconds(2))
     }
 
+    /// #136 at all four teardown sites, with no link involved in causing it.
+    ///
+    /// Every `deinit` in the package closes on the same hardcoded `.seconds(2)`,
+    /// so on a link slow enough to exhaust it `repeatUntilComplete` throws
+    /// `SSHError.timedOut` — and the shared teardown `catch` used to read that
+    /// as evidence of a corrupt session, taking Events, Attach and every other
+    /// channel on the connection down with the one abandoned transfer.
+    ///
+    /// A zero budget reaches that same throw deterministically: the deadline is
+    /// already past at `repeatUntilComplete`'s first progress check, so it
+    /// expires before libssh2 is called at all. That leaves the session provably
+    /// healthy underneath, which is the state the old code could not tell from
+    /// a dead one — and it needs no impairment proxy to reproduce.
+    ///
+    /// `isConnected` alone would not prove survival: it is a local flag, and a
+    /// change that only stopped clearing it would satisfy it while leaving the
+    /// session wedged. Every site is therefore followed by a real round trip.
     @Test("a teardown that only runs out of its budget spares the session")
     func expiredTeardownBudgetSparesTheSession() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -2894,17 +2905,12 @@ publish("completed", sent)
 """#
 }
 
-/// The four `close*` paths that share one teardown verdict in `SessionDriver`.
-///
-/// Naming them as data is what keeps the two directions of #136 from drifting
-/// apart: both tests walk this list, so neither can end up covering three sites
-/// while the other covers four, and a fifth site added to the driver without a
-/// case here is a visible omission rather than a silent one.
 /// How a test takes the socket out from under a live PTY, and which side finds out.
 enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
     /// The peer sees RST.
     case resetSeenByRead
     case resetSeenByWrite
+    case resetSeenByResize
     /// The server process dies, so the proxy forwards an orderly FIN.
     case serverKilledSeenByRead
 
@@ -2912,7 +2918,7 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
 
     var command: String {
         switch self {
-        case .resetSeenByRead, .resetSeenByWrite: "cat"
+        case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize: "cat"
         // ForceCommand execs this shell, so its parent is the session's sshd.
         case .serverKilledSeenByRead: "sleep 1; kill -KILL $PPID; sleep 30"
         }
@@ -2924,7 +2930,7 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
         proxy: WeakNetworkProxyFixture
     ) async throws -> (any Error)? {
         switch self {
-        case .resetSeenByRead, .resetSeenByWrite:
+        case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize:
             try await channel.write(Data("up\n".utf8), timeout: .seconds(5))
             _ = try await channel.read(timeout: .seconds(5))
             guard try await proxy.cut() > 0 else { return nil }
@@ -2932,13 +2938,19 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
             break
         }
         let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+        var columns = 81
         while ContinuousClock.now < deadline {
             do {
-                if self == .resetSeenByWrite {
+                switch self {
+                case .resetSeenByWrite:
                     try await channel.write(Data("x".utf8), timeout: .seconds(1))
                     try await Task.sleep(for: .milliseconds(50))
-                } else if try await channel.read(timeout: .seconds(1)) == nil {
-                    return nil
+                case .resetSeenByResize:
+                    try await channel.resize(columns: columns, rows: 24, timeout: .seconds(1))
+                    columns += 1
+                    try await Task.sleep(for: .milliseconds(50))
+                case .resetSeenByRead, .serverKilledSeenByRead:
+                    guard try await channel.read(timeout: .seconds(1)) != nil else { return nil }
                 }
             } catch SSHError.timedOut {
                 continue
@@ -2950,6 +2962,12 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
     }
 }
 
+/// The four `close*` paths that share one teardown verdict in `SessionDriver`.
+///
+/// Naming them as data is what keeps the two directions of #136 from drifting
+/// apart: both tests walk this list, so neither can end up covering three sites
+/// while the other covers four, and a fifth site added to the driver without a
+/// case here is a visible omission rather than a silent one.
 private enum TeardownSite: String, CaseIterable {
     case pty = "closePTY"
     case streamLocal = "closeStreamLocal"

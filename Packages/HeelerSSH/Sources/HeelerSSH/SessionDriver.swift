@@ -960,7 +960,7 @@ actor SessionDriver {
             ) {
                 libssh2_channel_request_pty_size_ex($0, Int32(columns), Int32(rows), 0, 0)
             }
-            guard result == 0 else { throw SSHError.channelFailed }
+            guard result == 0 else { throw ptyFailure(Int(result)) }
         }
     }
 
@@ -4589,7 +4589,7 @@ actor SessionDriver {
         throw failure(count)
     }
 
-    /// A PTY read or write that lost the socket must not read as the terminal
+    /// A PTY read, write, or resize that lost the socket must not read as the terminal
     /// ending: the store would show Session Ended over a connection it can
     /// redial. `LIBSSH2_ERROR_SOCKET_NONE` stays a channel failure, because
     /// libssh2 also uses that code as a generic error.
