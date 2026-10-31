@@ -128,3 +128,11 @@ confirm or refine these points with test clients, not the app.
   what the same-pid check compares, is unverified (ADR 0032).
 - A Terminal that has ever reported keeps Esc as its interrupt key after its
   Agent exits, so Stop is offered only while the Agent holds the foreground.
+- Stop is also offered only while Agent Status is Working, and only a report
+  makes a status, so a Terminal that has never reported reads Unknown and has
+  no Stop. The core's Ctrl+C for such a Terminal is therefore not reached from
+  the Composer.
+- Heeler gives the core two seconds to watch for an effect and waits one second
+  more for its answer, then reads the foreground without it. A reply and an
+  event have no order on the link, so a foreground event that lands during the
+  read wins over what the read found.
