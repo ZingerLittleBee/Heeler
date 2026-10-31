@@ -224,7 +224,10 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   interrupts it.
   [ImagePreparer](../../Sources/Heeler/Images/ImagePreparer.swift) and
   [FilePreparer](../../Sources/Heeler/Files/FilePreparer.swift) prepare local media;
-  typed `Transport.stageImage`/`stageFile` use SFTP.
+  typed `Transport.stageImage`/`stageFile` use SFTP. A core Host's stagers come
+  from `HerdrCoreConsoleProjection` through `hostServices`, and it offers Add by
+  the platform in `ConsoleStore.capabilities(for:)`, which it asks once an Agent
+  has a Composer; `HerdrCoreStagingTests` covers them.
   Read [ADR 0005](../adr/0005-keep-staged-image-cleanup-outside-mobile.md) and
   [ADR 0006](../adr/0006-stage-images-over-sftp.md); start with
   [ComposerStagingStoreTests](../../Tests/HeelerTests/ComposerStagingStoreTests.swift)

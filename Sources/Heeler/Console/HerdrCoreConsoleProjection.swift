@@ -839,13 +839,21 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func imageStager() -> ImageStager {
-        let failure = unavailable("Uploads")
-        return { _, _ in throw failure }
+        let session = session
+        return { image, reporter in
+            try await session.withTransport { $0.hostServices }.stageImage(image) { progress in
+                await reporter.report(progress)
+            }
+        }
     }
 
     func fileStager() -> FileStager {
-        let failure = unavailable("Uploads")
-        return { _, _ in throw failure }
+        let session = session
+        return { file, reporter in
+            try await session.withTransport { $0.hostServices }.stageFile(file) { progress in
+                await reporter.report(progress)
+            }
+        }
     }
 
     func sessionFileReader() -> SessionFileReader {

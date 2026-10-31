@@ -71,6 +71,12 @@ Every key reaches the program, Ctrl+\ included. Heeler reserves no detach key.
 
 In an Agent detail, Direct Input types into the terminal, and Changes and Skills work as on any other Host.
 
+## Images and files
+
+On a macOS or Linux Host, **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stages an image or file as on any other Host. Heeler uploads it over SFTP, puts its path on the Host in your draft, and copies the path. Nothing reaches the Agent yet: the draft waits, and since a core Host has no Send yet, paste the path into the terminal to use it.
+
+Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
+
 ## Restarts and ended Terminals
 
 | What happened | Heeler shows |
@@ -107,8 +113,8 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 ## Known limits
 
 - Heeler has no Close or Rename on a core Host yet. Use the Host or the desktop.
-- Worktrees, Uploads and Chat are not available yet.
-- An Agent detail's Send, Stop and Add stay hidden. Use Direct Input to type into the terminal.
+- Worktrees and Chat are not available yet.
+- An Agent detail's Send and Stop stay hidden. Use Direct Input to type into the terminal.
 - Notifications and Live Activities are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
