@@ -62,6 +62,8 @@ final class NewTerminalStore {
     private let remoteHome: (Host.ID) async throws -> String
     private let create: (Destination, Host.ID) async throws -> ShellTerminalIdentity
     private let awaitTerminal: (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?
+    /// Whether a Host's desktop app could apply a typed Workspace name now.
+    private let offersDesktopAppNames: (Host.ID) -> Bool
 
     init(
         hosts: [Host],
@@ -71,8 +73,10 @@ final class NewTerminalStore {
         directory: @escaping (Host.ID, String) -> String?,
         remoteHome: @escaping (Host.ID) async throws -> String,
         create: @escaping (Destination, Host.ID) async throws -> ShellTerminalIdentity,
-        awaitTerminal: @escaping (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?
+        awaitTerminal: @escaping (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?,
+        offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false }
     ) {
+        self.offersDesktopAppNames = offersDesktopAppNames
         self.hosts = hosts
         self.workspacesProvider = workspaces
         self.directory = directory
@@ -94,6 +98,12 @@ final class NewTerminalStore {
     /// Whether the form asks for Workspace and tab names.
     var offersWorkspaceAndTabNames: Bool {
         hosts.first(where: { $0.id == selectedHostID })?.capabilities.tabNames != false
+    }
+
+    /// Whether New Workspace asks for a name. A herdr-core Host has none of its
+    /// own, so only while its desktop app can apply one.
+    var offersWorkspaceName: Bool {
+        offersWorkspaceAndTabNames || selectedHostID.map(offersDesktopAppNames) == true
     }
 
     var canSubmit: Bool {
@@ -165,7 +175,7 @@ final class NewTerminalStore {
             return .newWorkspace(
                 NewWorkspaceSpec(
                     directory: cwd,
-                    label: offersNames ? Self.nonEmptyTrimmed(newWorkspaceLabel) : nil),
+                    label: offersWorkspaceName ? Self.nonEmptyTrimmed(newWorkspaceLabel) : nil),
                 tabLabel: label)
         }
     }

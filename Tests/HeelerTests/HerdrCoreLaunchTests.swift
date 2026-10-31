@@ -523,21 +523,31 @@ struct HerdrCoreLaunchTests {
         #expect(row.workspaceID == beside.workspaceID)
     }
 
-    @Test func aNewTerminalAtABrowsedDirectoryIsADerivedWorkspace() async throws {
+    // MARK: New Workspace
+
+    private static let spaceID = #/^sp[0-9a-f]{32}$/#
+    private static let tabID = #/^tb[0-9a-f]{32}$/#
+
+    @Test func aNewTerminalAtAPickedDirectoryStartsANewDesktopSpace() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
 
         let identity = try await fixture.store.createShellWorkspace(
-            NewWorkspaceSpec(directory: "/srv/new", label: "ignored"), tabLabel: "ignored", on: host.id)
+            NewWorkspaceSpec(directory: "/srv/new"), tabLabel: nil, on: host.id)
 
         let params = try #require(await fixture.transport.runs.last)
         #expect(params["cwd"]?.stringValue == "/srv/new")
-        #expect(params["labels"] == nil)
+        #expect(params["keep"] == .bool(true))
+        let labels = Self.labels(of: params)
+        let space = try #require(labels["herdr.space"])
+        #expect(space.wholeMatch(of: Self.spaceID) != nil)
+        #expect(try #require(labels["herdr.tab"]).wholeMatch(of: Self.tabID) != nil)
         let row = try #require(fixture.store.terminals.first { $0.terminalID == identity.terminalID })
-        #expect(row.workspaceID == HerdrCoreOrganization.workspaceID(directory: "/srv/new"))
+        #expect(row.workspaceID == "space-\(space)")
+        #expect(await fixture.transport.documentWrites.isEmpty)
     }
 
-    @Test func aNewAgentAtABrowsedDirectoryIsADerivedWorkspace() async throws {
+    @Test func aNewAgentAtAPickedDirectoryStartsANewDesktopSpace() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
 
@@ -547,8 +557,56 @@ struct HerdrCoreLaunchTests {
 
         let params = try #require(await fixture.transport.runs.last)
         #expect(params["cwd"]?.stringValue == "/srv/new")
-        #expect(params["labels"] == nil)
-        #expect(agent.workspaceID == HerdrCoreOrganization.workspaceID(directory: "/srv/new"))
+        let labels = Self.labels(of: params)
+        let space = try #require(labels["herdr.space"])
+        #expect(space.wholeMatch(of: Self.spaceID) != nil)
+        #expect(try #require(labels["herdr.tab"]).wholeMatch(of: Self.tabID) != nil)
+        #expect(agent.workspaceID == "space-\(space)")
+        #expect(await fixture.transport.documentWrites.isEmpty)
+    }
+
+    @Test func eachNewWorkspaceIsItsOwnSpaceEvenInTheSameDirectory() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+
+        for _ in 0..<2 {
+            _ = try await fixture.store.createShellWorkspace(
+                NewWorkspaceSpec(directory: "/srv/new"), tabLabel: nil, on: host.id)
+        }
+
+        let labels = await fixture.transport.runs.map(Self.labels(of:))
+        #expect(Set(labels.compactMap { $0["herdr.space"] }).count == 2)
+        #expect(Set(labels.compactMap { $0["herdr.tab"] }).count == 2)
+    }
+
+    @Test func aSpaceNoDesktopAppNamedIsCalledAfterItsTerminalsCheckoutFolder() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.services.setRoots(["/srv/repo/sub": "/srv/repo"])
+
+        let identity = try await fixture.store.createShellWorkspace(
+            NewWorkspaceSpec(directory: "/srv/repo/sub"), tabLabel: nil, on: host.id)
+
+        let row = try #require(fixture.store.terminals.first { $0.terminalID == identity.terminalID })
+        try await fixture.until("the checkout's name") {
+            fixture.store.workspaces(for: fixture.host.id).first { $0.id == row.workspaceID }?.label == "repo"
+        }
+    }
+
+    @Test func theNewWorkspaceFormStartsItsTerminalAtTheDirectoryItWasGiven() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["codex"])
+        let form = fixture.startAgentForm()
+        await form.discoverAgents()
+        form.applyBrowsedDirectory("/srv/picked")
+
+        await form.submit()
+
+        let params = try #require(await fixture.transport.runs.last)
+        #expect(params["cwd"]?.stringValue == "/srv/picked")
+        #expect(Self.labels(of: params)["herdr.space"] != nil)
+        #expect(await fixture.transport.documentWrites.isEmpty)
     }
 
     @Test func theFormOffersNoTabNameOnACoreHost() async throws {

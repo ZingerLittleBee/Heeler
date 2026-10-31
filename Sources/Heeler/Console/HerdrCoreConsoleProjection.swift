@@ -68,6 +68,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var programWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     /// OpenCode's own words from the last discovery, which decide its `-s`.
     private var openCodeVersion: String?
+    /// Whether Rename and applying a typed name are offered at all (ADR 0032).
+    private let herdrAppRename: Bool
+    /// What the last `herdr-app status` on this link said.
+    private var isDesktopAppRunning = false
+    private var desktopAppCheck: Task<Void, Never>?
+    /// Names typed for new Workspaces, by space, until the app adopts the space.
+    private var typedSpaceNames: [String: String] = [:]
 
     init(
         host: Host,
@@ -75,6 +82,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         memory: HerdrCoreHostMemory,
         pins: PinnedAgentsStore,
         gitGate: GitExecGate,
+        herdrAppRename: Bool,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
@@ -82,6 +90,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.memory = memory
         self.pins = pins
         self.gitGate = gitGate
+        self.herdrAppRename = herdrAppRename
         self.onChange = onChange
     }
 
@@ -127,6 +136,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             await session.retry()
         } else {
             await session.revalidate()
+            await checkDesktopApp()
         }
     }
 
@@ -151,6 +161,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         documentRead?.cancel()
         checkoutTask?.cancel()
         environmentTask?.cancel()
+        desktopAppCheck?.cancel()
         consumeTask = nil
         latencyTask = nil
         environmentTask = nil
@@ -216,6 +227,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         queuedCheckouts = []
         askedCheckouts = Set(checkouts.keys)
         hasAskedHome = home != nil
+        desktopAppCheck?.cancel()
+        desktopAppCheck = nil
+        isDesktopAppRunning = false
     }
 
     private func replaceInventory(with snapshot: HerdrCoreSnapshot) {
@@ -236,6 +250,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         readDocument()
         rebuildRows()
         publish()
+        if herdrAppRename { Task { await checkDesktopApp() } }
     }
 
     private func apply(_ event: HerdrCoreEvent) {
@@ -338,6 +353,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let opened = paneIDs.subtracting(shownAgents)
         shownAgents = paneIDs
         guard !opened.isEmpty else { return }
+        // An Agent's menu may be about to offer Rename Workspace.
+        if herdrAppRename { Task { await checkDesktopApp() } }
         let wasDone = doneTerminals
         for address in opened {
             memory.updateTurnState(of: address, for: host.id) { $0.markSeen() }
@@ -443,6 +460,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 document = read.document
                 sidebarRevision &+= 1
             }
+            applyTypedNames()
         }
         if readsDocumentAgain {
             readsDocumentAgain = false
@@ -452,6 +470,55 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         isAwaitingSnapshot = false
         rebuildRows()
         publish()
+    }
+
+    // MARK: Naming through the desktop app
+
+    /// What the app can name now. A space it shows is one its document lists:
+    /// until then there is nothing for `space.rename` to find.
+    var desktopAppNaming: HerdrAppNaming? {
+        guard herdrAppRename, isDesktopAppRunning else { return nil }
+        return HerdrAppNaming(
+            workspaceIDs: Set(
+                (document?.spaces ?? []).map { HerdrCoreOrganization.spaceWorkspaceID($0.id) }))
+    }
+
+    /// One `herdr-app status` at a time. It samples: the app may quit right after,
+    /// and a rename sent then fails and asks again.
+    func checkDesktopApp() async {
+        guard herdrAppRename, !hasEnded else { return }
+        if let desktopAppCheck {
+            await desktopAppCheck.value
+            return
+        }
+        let check = Task { [weak self, session] in
+            let transport = try? await session.withTransport { $0 }
+            let isRunning = await transport?.desktopAppIsRunning() ?? false
+            guard !Task.isCancelled else { return }
+            self?.finishDesktopAppCheck(isRunning: isRunning)
+        }
+        desktopAppCheck = check
+        await check.value
+    }
+
+    private func finishDesktopAppCheck(isRunning: Bool) {
+        desktopAppCheck = nil
+        guard isDesktopAppRunning != isRunning else { return }
+        isDesktopAppRunning = isRunning
+        publish()
+    }
+
+    /// The name is dropped before the one call, so nothing can send it twice. A
+    /// failed call leaves the space named after its folder.
+    private func applyTypedNames() {
+        guard !typedSpaceNames.isEmpty, let document else { return }
+        for space in document.spaces {
+            guard let name = typedSpaceNames.removeValue(forKey: space.id) else { continue }
+            Task { [session] in
+                let transport = try? await session.withTransport { $0 }
+                try? await transport?.renameDesktopSpace(space.id, name: name)
+            }
+        }
     }
 
     // MARK: Checkout roots
@@ -538,7 +605,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func startAgentInNewWorkspace(
         _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
     ) async throws -> Agent {
-        try await launch(request, placement: HerdrCoreLaunch.Placement(cwd: workspace.directory))
+        try await inNewSpace(workspace) { placement in
+            try await launch(request, placement: placement)
+        }
     }
 
     func createShellTerminal(
@@ -548,12 +617,29 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return try await startShell(placement: placement)
     }
 
-    /// A core has no Workspace to create: a Terminal in a new directory is one
-    /// of its own, and its name comes from the directory.
     func createShellWorkspace(
         _ workspace: NewWorkspaceSpec, tabLabel: String?
     ) async throws -> ShellTerminalIdentity {
-        try await startShell(placement: HerdrCoreLaunch.Placement(cwd: workspace.directory))
+        try await inNewSpace(workspace) { placement in
+            try await startShell(placement: placement)
+        }
+    }
+
+    /// A core has no Workspace to create: a Terminal labeled with a new space is
+    /// one, which a desktop app on this core adopts (ADR 0032). A name goes
+    /// through that app afterwards, only if it was offered.
+    private func inNewSpace<Started>(
+        _ workspace: NewWorkspaceSpec,
+        start: (HerdrCoreLaunch.Placement) async throws -> Started
+    ) async throws -> Started {
+        let name = desktopAppNaming == nil ? nil : workspace.label.flatMap { $0.isEmpty ? nil : $0 }
+        let space = HerdrCoreLaunch.Placement.newDesktopSpaceID()
+        let started = try await start(.desktopSpace(space, cwd: workspace.directory))
+        if let name {
+            typedSpaceNames[space] = name
+            applyTypedNames()
+        }
+        return started
     }
 
     private func launch(
@@ -719,8 +805,19 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         throw unavailable("Rename Agent")
     }
 
+    /// One `do`, whatever comes of it. A failure asks whether the app still runs,
+    /// so a Rename it can no longer serve goes away.
     func renameWorkspace(_ workspaceID: String, label: String) async throws {
-        throw unavailable("Rename Workspace")
+        guard desktopAppNaming?.workspaceIDs.contains(workspaceID) == true,
+            let space = HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID)
+        else { throw unavailable("Rename Workspace") }
+        let transport = try await session.withTransport { $0 }
+        do {
+            try await transport.renameDesktopSpace(space, name: label)
+        } catch {
+            Task { await checkDesktopApp() }
+            throw error
+        }
     }
 
     func agentInfo(paneID: String) async throws -> Agent {

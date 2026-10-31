@@ -18,7 +18,10 @@ environment, with its own session (the start-core command, or a test doing the
 same over SSH). herdr-core sits only at ~/.local/bin, off the exec's PATH. `hc`
 and `herdr` are tripwires that log every call, and the rc files carry a PATH
 stub and a marker that a launch through a login shell can be checked by, for
-bash, zsh and fish alike.
+bash, zsh and fish alike. `herdr-app` is a stub on the exec's PATH that answers
+`status` and logs each `do` to herdr-app-do.log, with no desktop app and no
+effect on the core; touch herdr-app-down under the root for a Host with none
+running.
 """
 import argparse
 import base64
@@ -67,6 +70,14 @@ def legacy_log(root):
     return root / "legacy-called"
 
 
+def herdr_app_log(root):
+    return root / "herdr-app-do.log"
+
+
+def herdr_app_down(root):
+    return root / "herdr-app-down"
+
+
 def longest_socket_path(root, session_length=SESSION_LENGTH):
     """The holder's socket, the longest path a core binds with no XDG directory.
 
@@ -96,6 +107,33 @@ def start_core(root, session, extra=None):
 
 def write_tripwire(path, log, status):
     path.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {shlex.quote(str(log))}\nexit {status}\n")
+    path.chmod(0o700)
+
+
+def write_herdr_app_stub(path, log, down):
+    """What the desktop app's control client prints, for Simulator checks.
+
+    A space it is told to rename changes nowhere: a test writes the document.
+    """
+    path.write_text(f"""#!/bin/sh
+if [ -e {shlex.quote(str(down))} ]; then
+    echo 'herdr-app: no Herdr window' >&2
+    exit 2
+fi
+case "$1" in
+status)
+    printf '%s\\n' '{{"space": null, "errors": []}}'
+    ;;
+do)
+    printf '%s\\n' "$*" >> {shlex.quote(str(log))}
+    printf '%s\\n' '{{"ok": true}}'
+    ;;
+*)
+    echo 'herdr-app: the fixture stub knows status and do' >&2
+    exit 2
+    ;;
+esac
+""")
     path.chmod(0o700)
 
 
@@ -238,6 +276,7 @@ def main():
     for directory in (bin_dir, root / "bin"):
         write_tripwire(directory / "hc", tripwire_log(root), 97)
         write_tripwire(directory / "herdr", legacy_log(root), 91)
+    write_herdr_app_stub(root / "bin/herdr-app", herdr_app_log(root), herdr_app_down(root))
     write_rc_files(root)
     port = backend.choose_port(args.port, backend.SSH_PORT_RANGE, "SSH")
     backend.start_sshd(state, port, [], use_pam=False, log_level="DEBUG1")

@@ -263,7 +263,8 @@ enum HerdrCoreOrganization {
 
     private static let spacePrefix = "space-"
 
-    private static func spaceWorkspaceID(_ space: String) -> String {
+    /// The Workspace id of a desktop space.
+    static func spaceWorkspaceID(_ space: String) -> String {
         spacePrefix + space
     }
 
