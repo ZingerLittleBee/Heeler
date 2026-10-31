@@ -459,10 +459,16 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         guard bottomObstruction != height else { return }
         bottomObstruction = height
-        applyBottomInset()
-        // A short list's blank space above its rows follows the room.
-        layout.invalidateLayout()
-        collectionView.setNeedsLayout()
+        // The chrome eases to its new height, as the Composer folds, and the
+        // rows above it ease along.
+        UIView.animate(
+            withDuration: 0.3, delay: 0, options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]
+        ) { [self] in
+            applyBottomInset()
+            // A short list's blank space above its rows follows the room.
+            layout.invalidateLayout()
+            collectionView.layoutIfNeeded()
+        }
     }
 
     /// Keeps `height` at the bottom clear of rows while Collapse Steps

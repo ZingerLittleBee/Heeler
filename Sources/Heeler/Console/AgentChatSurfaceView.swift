@@ -367,25 +367,26 @@ struct AgentChatSurfaceView: View {
         // Above the staging bar, which stays next to the Composer it feeds.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             backgroundWorkStrip
-                .ridesKeyboard(
-                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
-                    isEnabled: composerKeyboardPresentation != .tools)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
                 .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
                 .frame(maxWidth: .infinity)
-                .ridesKeyboard(
-                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
-                    isEnabled: composerKeyboardPresentation != .tools)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             composerChrome
-                .ridesKeyboard(
-                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
-                    isEnabled: composerKeyboardPresentation != .tools)
         }
-        .padding(.bottom, composerKeyboardLayout.contentInset)
+        // The conversation and its chrome stay together on the keyboard. The
+        // tools dock is not a keyboard that moves.
+        .keyboardRidePadding(
+            keyboardInset, restingInset: composerKeyboardLayout.contentInset,
+            isEnabled: composerKeyboardPresentation != .tools)
+        // The Composer's fold and the condensed background work change the
+        // chrome's height with the keyboard. Out here, so the conversation
+        // above them eases along instead of jumping to the final layout.
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.266, dampingFraction: 1),
+            value: condensesBackgroundWork)
         // In place at the system keyboard's last height, as on the terminal,
         // and shown only while the Composer has switched to it.
         .overlay(alignment: .bottom) {

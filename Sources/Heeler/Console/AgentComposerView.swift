@@ -314,15 +314,7 @@ struct AgentComposerView: View {
             if inputReplacement == nil { isInputFocused = true }
         }
         .onChange(of: isInputFocused) { _, isFocused in
-            if isFocused {
-                // A tap into the text while the iPad tools dock is up asks
-                // for the system keyboard; on iPhone the dock keeps the caret.
-                if keyboardPresentation != .tools || toolsDockReleasesFocus {
-                    setKeyboardPresentation(.system)
-                }
-            } else if !(toolsDockReleasesFocus && keyboardPresentation == .tools) {
-                setKeyboardPresentation(.hidden)
-            }
+            keyboardPresentationFollowsFocus(isFocused)
         }
         .onChange(of: store.draft) { _, _ in
             if commandMenu != nil {
@@ -443,7 +435,7 @@ struct AgentComposerView: View {
                     text: store.draft,
                     selectedRange: store.draftSelection,
                     onEdit: { store.applyEditorDraft($0, selection: $1) },
-                    isFocused: $isInputFocused,
+                    isFocused: inputFocus,
                     keyboardPresentation: keyboardPresentation,
                     lineLimit: isCollapsed ? 1 : 5,
                     keyboardHandoffID: keyboardHandoffID,
@@ -695,6 +687,29 @@ struct AgentComposerView: View {
         withTransaction(transaction) {
             setKeyboardPresentation(expectsSystemKeyboard ? .system : .tools)
             isInputFocused = expectsSystemKeyboard || !toolsDockReleasesFocus
+        }
+    }
+
+    /// The editor's focus, with the presentation changing in the same update
+    /// so that the surface animates the fold as one change.
+    private var inputFocus: Binding<Bool> {
+        Binding {
+            isInputFocused
+        } set: { isFocused in
+            keyboardPresentationFollowsFocus(isFocused)
+            isInputFocused = isFocused
+        }
+    }
+
+    private func keyboardPresentationFollowsFocus(_ isFocused: Bool) {
+        if isFocused {
+            // A tap into the text while the iPad tools dock is up asks for the
+            // system keyboard; on iPhone the dock keeps the caret.
+            if keyboardPresentation != .tools || toolsDockReleasesFocus {
+                setKeyboardPresentation(.system)
+            }
+        } else if !(toolsDockReleasesFocus && keyboardPresentation == .tools) {
+            setKeyboardPresentation(.hidden)
         }
     }
 

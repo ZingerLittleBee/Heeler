@@ -204,27 +204,11 @@ struct KeyboardRideTests {
             ])
     }
 
-    private static func offset(coverage: CGFloat, layoutInset: CGFloat) -> CGFloat {
-        KeyboardRideEffect(keyboardCoverage: coverage, contentInset: 34, layoutInset: layoutInset)
-            .effectValue(size: .zero).m32
-    }
-
-    @Test func theRowHoldsUntilTheKeyboardReachesItThenMovesWithIt() {
-        // Laid out at the end of a rise, while the keyboard is still below the
-        // content edge, and then one point of row per point of keyboard.
-        #expect(Self.offset(coverage: 0, layoutInset: 336) == 336)
-        #expect(Self.offset(coverage: 34, layoutInset: 336) == 336)
-        #expect(Self.offset(coverage: 134, layoutInset: 336) == 236)
-        #expect(Self.offset(coverage: 370, layoutInset: 336) == 0)
-        // Laid out at the end of a fall, while the keyboard is still up.
-        #expect(Self.offset(coverage: 134, layoutInset: 0) == -100)
-    }
-
     @Test func theRideStartsWithThePresentationWhileTheLayoutCoalesces() {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
         Self.post(UIResponder.keyboardWillShowNotification, on: center)
-        #expect(inset.keyboardRideCoverage == 336)
+        #expect(inset.keyboardRideTarget == 336)
         #expect(inset.height == 0, "the layout folds in the presentation's follow-up frame")
     }
 
@@ -233,7 +217,7 @@ struct KeyboardRideTests {
         let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
         Self.post(UIResponder.keyboardWillShowNotification, on: center)
         Self.post(UIResponder.keyboardWillHideNotification, on: center)
-        #expect(inset.keyboardRideCoverage == 0)
+        #expect(inset.keyboardRideTarget == 0)
         #expect(inset.height == 0)
     }
 
@@ -242,66 +226,48 @@ struct KeyboardRideTests {
         let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
         let id = inset.beginResponderHandoff()
         Self.post(UIResponder.keyboardWillShowNotification, on: center)
-        #expect(inset.keyboardRideCoverage == 0)
+        #expect(inset.keyboardRideTarget == 0)
         inset.cancelResponderHandoff(id)
     }
 
-    @Test func theMotionRunsOnTheNotificationsClock() throws {
-        let motion = KeyboardMotion(start: 100)
-        let expected = KeyboardMotion.spring.value(target: 335.0, initialVelocity: 0.0, time: 0.1)
-        // However late SwiftUI's first frame, the position is the keyboard's.
-        let position = try #require(motion.position(toward: 335.0, at: 100.1))
-        #expect(abs(position - expected) < 0.01)
-        #expect(motion.position(toward: 335.0, at: 100) == 0)
-        #expect(motion.position(toward: 335.0, at: 100 + KeyboardMotion.spring.settlingDuration) == nil)
+    @Test func aKeyboardThatDoesNotAnimateMovesTheRideAtOnce() {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
+        Self.post(UIResponder.keyboardWillShowNotification, on: center, duration: 0)
+        #expect(inset.keyboardRideCoverage == 336)
     }
 
-    private final class Sampler: NSObject {
-        var body: (CFTimeInterval) -> Void = { _ in }
-        @objc func tick(_ link: CADisplayLink) { body(link.timestamp) }
+    @Test func theRideReachesTheKeyboardFrameByFrame() async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center, measure: { _ in 336 })
+        Self.post(UIResponder.keyboardWillShowNotification, on: center)
+        #expect(inset.keyboardRideCoverage == 0)
+        try await Task.sleep(for: .seconds(1))
+        #expect(inset.keyboardRideCoverage == 336)
     }
 
-    /// The published curve is the keyboard's own: its layout guide follows this
-    /// curve to within a tenth of a percent. The band allows for the unknown
-    /// offset between the animation's start and the first sampled frame.
-    @Test func theMotionMatchesUIKitsKeyboardCurve() async throws {
-        let scene = try #require(
-            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
-        window.rootViewController = UIViewController()
-        window.isHidden = false
-        defer { window.isHidden = true }
-        let view = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-        try #require(window.rootViewController?.view).addSubview(view)
+    @Test func theMotionRunsOnTheNotificationsClock() {
+        let motion = KeyboardRideMotion(from: 0, target: 335, start: 100, initialVelocity: 0)
+        let expected = KeyboardRideMotion.spring.value(target: 335.0, initialVelocity: 0.0, time: 0.1)
+        #expect(abs(motion.coverage(at: 100.1) - expected) < 0.01)
+        #expect(motion.coverage(at: 100) == 0)
+        #expect(motion.isSettled(at: 100 + KeyboardRideMotion.spring.settlingDuration))
+    }
 
-        let spring = KeyboardMotion.spring
-        var samples: [(time: TimeInterval, progress: Double)] = []
-        let start = CACurrentMediaTime()
+    /// `KeyboardRideMotion.spring` is fitted to these numbers. If this fails
+    /// the keyboard moves differently now, and the spring needs fitting again.
+    @Test func theKeyboardCurveIsTheOneTheSpringIsFittedTo() throws {
+        let view = UIView()
         UIView.animate(
             withDuration: 0.25, delay: 0,
             options: [
                 .overrideInheritedCurve, .overrideInheritedDuration,
                 UIView.AnimationOptions(rawValue: 7 << 16),
             ]
-        ) { view.frame.origin.y = 100 }
-        let sampler = Sampler()
-        sampler.body = { now in
-            let progress = (view.layer.presentation() ?? view.layer).frame.minY / 100
-            samples.append((now - start, progress))
-        }
-        let link = CADisplayLink(target: sampler, selector: #selector(Sampler.tick(_:)))
-        link.add(to: .main, forMode: .common)
-        defer { link.invalidate() }
-        try await Task.sleep(for: .milliseconds(500))
-
-        #expect(samples.count > 5)
-        for sample in samples {
-            let earlier = spring.value(target: 1.0, initialVelocity: 0.0, time: max(0, sample.time - 0.05))
-            let later = spring.value(target: 1.0, initialVelocity: 0.0, time: sample.time + 0.05)
-            #expect(
-                (earlier - 0.01...later + 0.01).contains(sample.progress),
-                "\(sample.progress) at \(sample.time)s left [\(earlier), \(later)]")
-        }
+        ) { view.alpha = 0 }
+        let curve = try #require(view.layer.animation(forKey: "opacity") as? CASpringAnimation)
+        #expect(curve.mass == 3)
+        #expect(curve.stiffness == 1000)
+        #expect(curve.damping == 500)
     }
 }

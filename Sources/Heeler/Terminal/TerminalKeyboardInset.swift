@@ -35,14 +35,22 @@ final class TerminalKeyboardInset {
     /// transient will-hide right before the next will-show, and that must
     /// not drop the pin for a frame.
     private(set) var isSoftwareKeyboardDismissed = false
-    /// How much of the window the keyboard covers, as an input row rides it:
-    /// this changes at once under ``KeyboardMotion``, where ``height`` jumps to
-    /// the end of the motion so the terminal resizes once. Measured from the
-    /// window's edge, where the keyboard's own travel starts; see
-    /// `View.ridesKeyboard`.
+    /// How much of the window the keyboard covers right now, frame by frame,
+    /// where ``height`` jumps to the end of the motion so the terminal resizes
+    /// once. Measured from the window's edge, where the keyboard's own travel
+    /// starts; see `View.ridesKeyboard`.
     private(set) var keyboardRideCoverage: CGFloat = 0
+    /// Where ``keyboardRideCoverage`` is heading.
+    private(set) var keyboardRideTarget: CGFloat = 0
     /// How far above the window's edge the row rests with no keyboard.
     private(set) var keyboardRideContentInset: CGFloat = 0
+    /// How far the keyboard has raised a row resting on the content edge: the
+    /// row holds still until the keyboard reaches it.
+    var keyboardRideRaise: CGFloat {
+        Self.insetHeight(covered: keyboardRideCoverage, bottomSafeArea: keyboardRideContentInset)
+    }
+    @ObservationIgnored private var rideMotion: KeyboardRideMotion?
+    @ObservationIgnored private var rideLink: CADisplayLink?
     /// Leaving the tools dock, whose footprint the input row already rests on,
     /// moves the keyboard but not the row. A time rather than one motion,
     /// since that swap publishes a hide and then a show.
@@ -200,7 +208,7 @@ final class TerminalKeyboardInset {
         dismissalConfirmationTask?.cancel()
         dismissalConfirmationTask = nil
         isSoftwareKeyboardDismissed = false
-        withAnimation(animates ? Animation(KeyboardMotion()) : nil) { rideKeyboard(height: height) }
+        rideKeyboard(height: height, animates: animates)
         coalesceTask?.cancel()
         coalesceTask = Task { [weak self] in
             try? await Task.sleep(for: Self.coalesceDelay)
@@ -217,7 +225,7 @@ final class TerminalKeyboardInset {
         }
         coalesceTask?.cancel()
         coalesceTask = nil
-        withAnimation(animates ? Animation(KeyboardMotion()) : nil) { rideKeyboard(height: 0) }
+        rideKeyboard(height: 0, animates: animates)
         apply(0)
         confirmDismissalIfUnanswered()
     }
@@ -474,14 +482,52 @@ final class TerminalKeyboardInset {
         self.height = height
     }
 
-    private func rideKeyboard(height: CGFloat) {
+    /// `animates` starts the keyboard's motion from where the ride is. Without
+    /// it the ride only follows a height the keyboard is already headed to, so
+    /// a motion on its way there is left to finish.
+    private func rideKeyboard(height: CGFloat, animates: Bool = false) {
         let contentInset =
             window.map {
                 Self.contentBottomInset(of: contentAnchor, in: $0) ?? $0.safeAreaInsets.bottom
             } ?? 0
-        let coverage = height > 0 ? height + contentInset : 0
+        let target = height > 0 ? height + contentInset : 0
         if contentInset != keyboardRideContentInset { keyboardRideContentInset = contentInset }
-        if coverage != keyboardRideCoverage { keyboardRideCoverage = coverage }
+        guard target != keyboardRideTarget else { return }
+        keyboardRideTarget = target
+        guard animates else {
+            stopRideMotion()
+            keyboardRideCoverage = target
+            return
+        }
+        let now = CACurrentMediaTime()
+        rideMotion = KeyboardRideMotion(
+            from: keyboardRideCoverage,
+            target: target,
+            start: now,
+            initialVelocity: rideMotion?.velocity(at: now) ?? 0)
+        guard rideLink == nil else { return }
+        let link = CADisplayLink(target: KeyboardRideTicker(self), selector: #selector(KeyboardRideTicker.tick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        rideLink = link
+    }
+
+    /// The position for the frame this tick will reach the screen in, which
+    /// is what the keyboard's own animation shows then.
+    fileprivate func advanceRideMotion(toward time: CFTimeInterval) {
+        guard let rideMotion else { return stopRideMotion() }
+        if rideMotion.isSettled(at: time) {
+            keyboardRideCoverage = rideMotion.target
+            stopRideMotion()
+        } else {
+            keyboardRideCoverage = rideMotion.coverage(at: time)
+        }
+    }
+
+    private func stopRideMotion() {
+        rideMotion = nil
+        rideLink?.invalidate()
+        rideLink = nil
     }
 
     /// How far the keyboard's end frame reaches above the terminal's own
@@ -638,82 +684,86 @@ extension View {
     ) -> some View {
         modifier(KeyboardRide(inset: inset, layoutInset: layoutInset, isEnabled: isEnabled))
     }
+
+    /// Lays this view out on the keyboard while it moves, for a surface with
+    /// no terminal to resize once. `restingInset` is the inset without a
+    /// keyboard to follow, such as the tools dock's.
+    func keyboardRidePadding(
+        _ inset: TerminalKeyboardInset, restingInset: CGFloat, isEnabled: Bool
+    ) -> some View {
+        modifier(KeyboardRidePadding(inset: inset, restingInset: restingInset, isEnabled: isEnabled))
+    }
 }
 
-/// The keyboard's own motion, up or down, for a value changed while handling
-/// its notification.
+/// The keyboard's own motion, up or down, on the clock of its notification.
 ///
 /// Keyboard notifications publish `UIView.AnimationCurve` 7, a
 /// `CASpringAnimation` of mass 3, stiffness 1000 and damping 500 that ignores
 /// the published duration. SwiftUI's `Spring` solves those three numbers
-/// differently, up to 10% of the travel behind, so ``spring`` names the same
-/// motion in SwiftUI's terms; `KeyboardRideTests` holds it to UIKit's curve.
+/// differently, up to 10% of the travel behind, so ``spring`` is fitted to the
+/// curve, within 3pt of the keyboard's 335; `KeyboardRideTests` watches the
+/// numbers it was fitted to.
 ///
-/// The clock is the notification's, not the animation's: the keyboard starts
-/// moving at the notification, while SwiftUI's clock starts at its first
-/// rendered frame, about 70ms later. A stalled frame catches up the same way.
-struct KeyboardMotion: CustomAnimation {
+/// It is not a SwiftUI animation: those start at their first rendered frame,
+/// about 70ms after the keyboard, and leave a hole of about 50ms after it.
+struct KeyboardRideMotion {
     static let spring = Spring(response: 0.266, dampingRatio: 1)
 
+    let from: CGFloat
+    let target: CGFloat
     let start: CFTimeInterval
+    let initialVelocity: CGFloat
 
-    init(start: CFTimeInterval = CACurrentMediaTime()) {
-        self.start = start
+    func coverage(at time: CFTimeInterval) -> CGFloat {
+        from + Self.spring.value(
+            target: target - from, initialVelocity: initialVelocity, time: max(0, time - start))
     }
 
-    func animate<V: VectorArithmetic>(
-        value: V, time: TimeInterval, context: inout AnimationContext<V>
-    ) -> V? {
-        position(toward: value, at: CACurrentMediaTime())
+    func velocity(at time: CFTimeInterval) -> CGFloat {
+        Self.spring.velocity(
+            target: target - from, initialVelocity: initialVelocity, time: max(0, time - start))
     }
 
-    /// Nil once the keyboard has settled.
-    func position<V: VectorArithmetic>(toward target: V, at now: CFTimeInterval) -> V? {
-        let elapsed = now - start
-        guard elapsed < Self.spring.settlingDuration else { return nil }
-        return Self.spring.value(target: target, initialVelocity: .zero, time: max(0, elapsed))
+    func isSettled(at time: CFTimeInterval) -> Bool {
+        time - start >= Self.spring.settlingDuration
     }
 }
 
-/// On its own so the surface does not re-evaluate when the ride changes.
+/// Keeps a display link from retaining the inset it advances.
+@MainActor
+private final class KeyboardRideTicker: NSObject {
+    private weak var inset: TerminalKeyboardInset?
+
+    init(_ inset: TerminalKeyboardInset) {
+        self.inset = inset
+    }
+
+    @objc func tick(_ link: CADisplayLink) {
+        guard let inset else { return link.invalidate() }
+        inset.advanceRideMotion(toward: link.targetTimestamp)
+    }
+}
+
+/// On its own so the surface does not re-evaluate each frame of the ride.
 private struct KeyboardRide: ViewModifier {
     let inset: TerminalKeyboardInset
     let layoutInset: CGFloat
     let isEnabled: Bool
 
     func body(content: Content) -> some View {
-        let contentInset = inset.keyboardRideContentInset
         let rides = isEnabled && !inset.isHoldingHandoffHeight && !inset.isSkippingKeyboardRide
-        content.modifier(
-            KeyboardRideEffect(
-                keyboardCoverage: rides ? inset.keyboardRideCoverage : layoutInset + contentInset,
-                contentInset: contentInset,
-                layoutInset: layoutInset))
+        content.offset(y: rides ? layoutInset - inset.keyboardRideRaise : 0)
     }
 }
 
-/// Places a row on a keyboard covering `keyboardCoverage` of the window, so
-/// the layout can jump to the end of a keyboard's motion, early or late,
-/// without moving the row. The row holds still until the keyboard reaches its
-/// resting place above `contentInset`, then moves with it, at the keyboard's
-/// own speed. `layoutInset` animates too: when the layout itself eases to a
-/// settled keyboard, the two cancel and only the layout moves the row.
-struct KeyboardRideEffect: GeometryEffect {
-    var keyboardCoverage: CGFloat
-    let contentInset: CGFloat
-    var layoutInset: CGFloat
+/// On its own for the same reason as ``KeyboardRide``.
+private struct KeyboardRidePadding: ViewModifier {
+    let inset: TerminalKeyboardInset
+    let restingInset: CGFloat
+    let isEnabled: Bool
 
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(keyboardCoverage, layoutInset) }
-        set {
-            keyboardCoverage = newValue.first
-            layoutInset = newValue.second
-        }
-    }
-
-    func effectValue(size: CGSize) -> ProjectionTransform {
-        let raised = TerminalKeyboardInset.insetHeight(
-            covered: keyboardCoverage, bottomSafeArea: contentInset)
-        return ProjectionTransform(CGAffineTransform(translationX: 0, y: layoutInset - raised))
+    func body(content: Content) -> some View {
+        let rides = isEnabled && !inset.isHoldingHandoffHeight && !inset.isSkippingKeyboardRide
+        content.padding(.bottom, rides ? inset.keyboardRideRaise : restingInset)
     }
 }

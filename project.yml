@@ -72,6 +72,9 @@ targets:
         # Acknowledgements (BuildSourceRevision). `make archive` and
         # release.yml set it; other builds leave it empty.
         HeelerSourceRevision: $(HEELER_SOURCE_REVISION)
+        # Without this an iPhone holds app-driven animation to 60Hz, while the
+        # system keyboard next to it runs at 120Hz.
+        CADisableMinimumFrameDurationOnPhone: true
         # A dragged Console row carries this activity; iPadOS creates a new
         # window from it only for a declared type. The generated scene
         # manifest already declares multiple-scene support.
