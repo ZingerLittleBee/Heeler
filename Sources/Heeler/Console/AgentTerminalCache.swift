@@ -90,6 +90,14 @@ final class AgentTerminalCache {
         return entry
     }
 
+    /// Another window shows this Agent's retained terminal right now.
+    func isShownByAnotherOwner(_ agent: ConsoleAgent, ownerID: UUID) -> Bool {
+        guard let current = entries[agent.id], current.terminalID == agent.agent.terminalID else {
+            return false
+        }
+        return current.lifetime.visible && current.presentationOwnerID != ownerID
+    }
+
     private func admit(agentID: ConsoleAgent.ID, lifetime: Lifetime) async throws {
         guard let entry = entries[agentID], entry.lifetime === lifetime, lifetime.retained else {
             throw CancellationError()

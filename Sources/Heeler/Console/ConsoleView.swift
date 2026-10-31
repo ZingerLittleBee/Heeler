@@ -1398,7 +1398,8 @@ struct ConsoleView: View {
                                 && currentTab == tab
                         },
                         terminalAccess: { [sceneRouting] in
-                            sceneRouting?.terminalAccess(for: id.hostID) ?? .holds
+                            console.capabilities(for: id.hostID)
+                                .terminalAccess(sceneRouting?.terminalAccess(for: id.hostID))
                         }),
                     onSwitch: { selectAgent($0) },
                     onClosed: { clearSelection() },

@@ -180,7 +180,18 @@ struct AgentDetailView: View {
     }
 
     private var terminalAccess: HostTerminalAccess {
-        sceneRouting?.terminalAccess(for: agent.hostID) ?? .holds
+        console.capabilities(for: agent.hostID)
+            .terminalAccess(sceneRouting?.terminalAccess(for: agent.hostID))
+    }
+
+    /// Whether Open Terminal has anywhere to go: a Shell Terminal already in
+    /// this Workspace, or a new one on a Host that can start it.
+    private var canOpenTerminal: Bool {
+        guard terminalAccess == .holds else { return false }
+        if console.capabilities(for: agent.hostID).startsTerminals {
+            return !workspaceShells.isEmpty || openTerminal.canOpen
+        }
+        return onSelectTerminal != nil && !workspaceShells.isEmpty
     }
 
     /// One per window, so a detail SwiftUI remounts, as a size-class change
@@ -280,6 +291,13 @@ struct AgentDetailView: View {
             console.agentTerminals.activate(retainedAgent, ownerID: retentionOwnerID, isPresented: { isOnStage() })
             return
         }
+        // A core Terminal takes any number of viewers, so another window
+        // showing this one keeps it, and this detail stays a viewer of its own.
+        if !console.capabilities(for: agent.hostID).takeOver,
+            console.agentTerminals.isShownByAnotherOwner(agent, ownerID: retentionOwnerID)
+        {
+            return
+        }
         if retainedAgent == nil { attach.leaveForTerminalHandoff() }
         let entry = console.agentTerminals.acquire(
             agent: agent, console: console, ownerID: retentionOwnerID, isPresented: { isOnStage() })
@@ -361,7 +379,7 @@ struct AgentDetailView: View {
                     isOnStage: { isVisible() && showsChatSurface },
                     onSwitch: onSwitch,
                     onClosed: onClosed,
-                    canOpenTerminal: (!workspaceShells.isEmpty || openTerminal.canOpen) && terminalAccess == .holds,
+                    canOpenTerminal: canOpenTerminal,
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
                     showChanges: agent.directory == nil ? nil : { changes.open() },
@@ -387,7 +405,7 @@ struct AgentDetailView: View {
                     },
                     onSwitch: onSwitch,
                     onClosed: onClosed,
-                    canOpenTerminal: (!workspaceShells.isEmpty || openTerminal.canOpen) && terminalAccess == .holds,
+                    canOpenTerminal: canOpenTerminal,
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
                     // Any Agent with a directory, whatever its worktree
@@ -461,7 +479,7 @@ struct AgentDetailView: View {
                     showWorkspaceTerminal(target)
                 }
             }
-            if agent.shellTerminalCreationRequest != nil {
+            if agent.shellTerminalCreationRequest != nil, console.capabilities(for: agent.hostID).startsTerminals {
                 Button("New Terminal") { createWorkspaceTerminal() }
             }
             Button("Cancel", role: .cancel) {}
@@ -581,6 +599,7 @@ struct AgentDetailView: View {
                 }
             },
             onNewTerminal: agent.shellTerminalCreationRequest == nil
+                || !console.capabilities(for: agent.hostID).startsTerminals
                 ? nil : { createWorkspaceTerminal(fresh: true) },
             isCreatingTerminal: isResolvingTerminal)
     }

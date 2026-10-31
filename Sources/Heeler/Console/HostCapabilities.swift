@@ -17,18 +17,27 @@ struct HostCapabilities: Equatable, Sendable {
     let tabNames: Bool
     let closeTab: Bool
     let syncLayoutFromPlugin: Bool
+    /// One client at a time holds a terminal, so another may take it over. A
+    /// herdr-core Terminal has no such thing: every viewer may type (ADR 0031).
+    var takeOver = true
 
     func renameWorkspace(id: String) -> Bool { renamesWorkspaces }
+
+    /// What a window may do with this Host's terminals. Windows only take
+    /// turns where a terminal has one holder.
+    func terminalAccess(_ sceneAccess: HostTerminalAccess?) -> HostTerminalAccess {
+        takeOver ? sceneAccess ?? .holds : .holds
+    }
 }
 
 extension HostCapabilities {
     init(serverKind: ServerKind) {
         let offered = serverKind == .herdrTUI
         self.init(
-            opensDetail: offered, startsAgents: offered, startsTerminals: offered,
+            opensDetail: true, startsAgents: offered, startsTerminals: offered,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered, uploads: offered,
             composerSend: offered, chat: offered, tabNames: offered, closeTab: offered,
-            syncLayoutFromPlugin: offered)
+            syncLayoutFromPlugin: offered, takeOver: offered)
     }
 }
 

@@ -82,8 +82,10 @@ struct WorkspaceTerminalDetailView: View {
                     activity: activity,
                     isReturning: false,
                     isClosingTerminal: isClosing,
-                    onCloseTerminal: { closeTerminal() },
+                    onCloseTerminal: console.capabilities(for: terminal.hostID).closeTab
+                        ? { closeTerminal() } : nil,
                     managesLifecycle: false,
+                    offersTakeOver: console.capabilities(for: terminal.hostID).takeOver,
                     surfaceRetention: entry.surfaceRetention,
                     title: terminal.displayTitle,
                     backTitle: backTitle,

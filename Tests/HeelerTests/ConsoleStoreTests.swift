@@ -222,9 +222,9 @@ struct ConsoleStoreTests {
             syncLayoutFromPlugin: true))
         #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
         #expect(store.capabilities(for: core.id) == HostCapabilities(
-            opensDetail: false, startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
+            opensDetail: true, startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
             composerSend: false, chat: false, tabNames: false, closeTab: false,
-            syncLayoutFromPlugin: false))
+            syncLayoutFromPlugin: false, takeOver: false))
         #expect(!store.capabilities(for: core.id).renameWorkspace(id: "w1"))
     }
 

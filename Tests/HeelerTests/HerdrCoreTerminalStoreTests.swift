@@ -416,6 +416,19 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    @Test func anAgentShownInOneWindowIsNotTakenByASecondOne() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let cache = fixture.console.agentTerminals
+        let first = UUID()
+        let entry = cache.acquire(agent: agent, console: fixture.console, ownerID: first)
+        #expect(!cache.isShownByAnotherOwner(agent, ownerID: first))
+        #expect(cache.isShownByAnotherOwner(agent, ownerID: UUID()))
+        cache.release(entry, ownerID: first)
+        #expect(!cache.isShownByAnotherOwner(agent, ownerID: UUID()))
+        await fixture.finish()
+    }
+
     @Test func theFiveDefaultMinutesAreWhatTheConsoleRetainsFor() async throws {
         let fixture = try await Fixture()
         #expect(fixture.console.terminalConnections.idleTimeout == .seconds(300))
@@ -423,19 +436,20 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    private static let agentRecord: JSONValue = .object([
+        "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
+        "argv": .array([.string("claude")]), "keep": .bool(false), "title": .string(""),
+        "cols": .number(80), "rows": .number(24), "pid": .number(7),
+        "foreground": .object([
+            "pid": .number(40), "name": .string("claude"), "argv": .array([.string("claude")]),
+            "cwd": .string("/work/app"),
+        ]),
+        "status": .object(["state": .string("working"), "app": .string("claude-code")]),
+        "labels": .object([:]),
+    ])
+
     @Test func aRetainedAgentGoesQuietWhenHiddenAndClosesItsChannelWhenEvicted() async throws {
-        let record: JSONValue = .object([
-            "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
-            "argv": .array([.string("claude")]), "keep": .bool(false), "title": .string(""),
-            "cols": .number(80), "rows": .number(24), "pid": .number(7),
-            "foreground": .object([
-                "pid": .number(40), "name": .string("claude"), "argv": .array([.string("claude")]),
-                "cwd": .string("/work/app"),
-            ]),
-            "status": .object(["state": .string("working"), "app": .string("claude-code")]),
-            "labels": .object([:]),
-        ])
-        let fixture = try await Fixture(terminals: [record])
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
         let cache = fixture.console.agentTerminals
         let owner = UUID()

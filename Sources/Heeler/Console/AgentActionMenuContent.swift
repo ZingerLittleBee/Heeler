@@ -121,6 +121,14 @@ enum AgentActionMenuPolicy {
         actions: AgentComposerActions
     ) -> Bool {
         switch item {
+        case .addImage:
+            actions.addImage != nil
+        case .addFile:
+            actions.addFile != nil
+        case .newAgent:
+            actions.startAgent != nil
+        case .closeAgent:
+            actions.closeAgent != nil
         case .showChat:
             actions.showChat != nil
         case .showAgentTerminal:
@@ -162,9 +170,9 @@ enum AgentActionMenuPolicy {
         case .backToConsole:
             actions.backToConsole()
         case .addImage:
-            actions.addImage()
+            actions.addImage?()
         case .addFile:
-            actions.addFile()
+            actions.addFile?()
         case .showChat:
             actions.showChat?()
         case .showAgentTerminal:
@@ -174,7 +182,7 @@ enum AgentActionMenuPolicy {
         case .changes:
             actions.showChanges?()
         case .newAgent:
-            actions.startAgent()
+            actions.startAgent?()
         case .skills:
             actions.showSkills?()
         case .snippets:
@@ -186,7 +194,7 @@ enum AgentActionMenuPolicy {
         case .renameWorkspace:
             actions.renameWorkspace?()
         case .closeAgent:
-            actions.closeAgent()
+            actions.closeAgent?()
         }
     }
 

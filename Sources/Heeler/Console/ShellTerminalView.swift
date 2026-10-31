@@ -26,6 +26,8 @@ struct ShellTerminalView: View {
     var isClosingTerminal: Bool = false
     var onCloseTerminal: (@MainActor () -> Void)? = nil
     var managesLifecycle = true
+    /// False on a Host whose terminals have no Take Over: any viewer may type.
+    var offersTakeOver = true
     var surfaceRetention: TerminalSurfaceRetention?
     var title = "Terminal"
     var backTitle = "Back to Agent"
@@ -539,7 +541,7 @@ struct ShellTerminalView: View {
                 ) {
                     Button("Reattach") { store.retryTerminal() }
                         .buttonStyle(.terminalStatusPrimary)
-                    if !managesLifecycle {
+                    if !managesLifecycle, offersTakeOver {
                         Button("Take Over") { store.takeOverTerminal() }
                             .buttonStyle(.terminalStatusSecondary)
                             .accessibilityHint("Disconnects another client's attachment to this terminal")
