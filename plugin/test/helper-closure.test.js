@@ -90,6 +90,12 @@ suite("Host Helper manifest", () => {
     }
   });
 
+  test("covers the Pi and Oh My Pi extension and what finds its folders", () => {
+    const listed = manifest().files.map((file) => file.path);
+    assert.ok(listed.includes("extensions/heeler-session.js"));
+    assert.ok(listed.includes("extensions/extension-folders.js"));
+  });
+
   test("the shared version vector pins the Helper's version", () => {
     const shared = JSON.parse(
       readFileSync(new URL("../test-vectors/host-helper-version-v1.json", import.meta.url), "utf8"),

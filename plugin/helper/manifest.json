@@ -2,6 +2,14 @@
   "version": "0.1.0",
   "files": [
     {
+      "path": "extensions/extension-folders.js",
+      "sha256": "4133fcfa4749a1799e297dd3113dea7c11d703c487770b55e006cb19d756001c"
+    },
+    {
+      "path": "extensions/heeler-session.js",
+      "sha256": "a31a9ef002fe0fc7e40440d7aa0a518ae1c11e8566132299ab1ed84513d9deed"
+    },
+    {
       "path": "main.js",
       "sha256": "aa73a49f572da24a19b654dbe3b01703ac59bc57f82496a0aa1e4f71baea2833"
     },
