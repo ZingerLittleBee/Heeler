@@ -164,6 +164,7 @@
 		2F46124BDF2DA0AFC14260FA /* AgentListFieldsEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B369B42301D8ACC286AC50 /* AgentListFieldsEditor.swift */; };
 		30B4AE6E1D79A04C047C0808 /* ScriptedCoreTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D910F5434F8DFA0276AF3875 /* ScriptedCoreTransport.swift */; };
 		30D6475F160DC39FA807C98A /* NewTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA18FC9DB67FF92D19A1C29 /* NewTerminalView.swift */; };
+		31D22FECC0AF4A3F38FDA11A /* herdr-core-agent-rule-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 4D23B2481552DE847CD7FBB1 /* herdr-core-agent-rule-v1.json */; };
 		31E4ADB22D4D655E7CFDB749 /* TerminalInputControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05AD61D4FA60884234EA856C /* TerminalInputControllerTests.swift */; };
 		324171566A8731278E37F3B9 /* ChatBackgroundWorkStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026E21425C5C32E24C53FCFE /* ChatBackgroundWorkStrip.swift */; };
 		3286D6FBB12157F2A19A82CE /* AgentNotificationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB37CBDC9DE0CE539FC476A0 /* AgentNotificationRenderer.swift */; };
@@ -1211,6 +1212,7 @@
 		4C6D00C5E1D095E6FD02BD1F /* HerdrCoreEventCursorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreEventCursorTests.swift; sourceTree = "<group>"; };
 		4C8B9FEF2650D7531C179D84 /* ChangesReferenceScrollMeasurementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesReferenceScrollMeasurementTests.swift; sourceTree = "<group>"; };
 		4D0218973C687D6D07E82963 /* ConsoleListPresentationStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleListPresentationStoreTests.swift; sourceTree = "<group>"; };
+		4D23B2481552DE847CD7FBB1 /* herdr-core-agent-rule-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "herdr-core-agent-rule-v1.json"; sourceTree = "<group>"; };
 		4D3494B1280AF198398C5AA4 /* EdgeDockLift.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeDockLift.swift; sourceTree = "<group>"; };
 		4D6E7022FBB1A7A39C88ACA9 /* RenameStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameStoreTests.swift; sourceTree = "<group>"; };
 		4D961656A6D8B4F3964740BD /* HostOnboardingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostOnboardingStoreTests.swift; sourceTree = "<group>"; };
@@ -2769,6 +2771,7 @@
 		82CA97AAEAF7E8D41B6C8B7F /* test-vectors */ = {
 			isa = PBXGroup;
 			children = (
+				4D23B2481552DE847CD7FBB1 /* herdr-core-agent-rule-v1.json */,
 				5D6754A072F62FD9FFF3046F /* herdr-core-frames-v1.json */,
 				971A577545C7B07E4B5A1B06 /* herdr-core-session-names-v1.json */,
 				9ED544C5E701A1ACD12C6F79 /* live-activity-content-v1.json */,
@@ -3267,6 +3270,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				32FD10D6802D96EF929E544E /* ChatFixtures in Resources */,
+				31D22FECC0AF4A3F38FDA11A /* herdr-core-agent-rule-v1.json in Resources */,
 				6AD416CB3368D0FC31312F27 /* herdr-core-frames-v1.json in Resources */,
 				783A66CF9DB80FE70F824B36 /* herdr-core-session-names-v1.json in Resources */,
 				F179667CF0A3DAD2F3F796E6 /* live-activity-content-v1.json in Resources */,
