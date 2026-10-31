@@ -221,7 +221,10 @@ with test clients, not the app.
   Panes closes only its own Terminal, as on Herdr TUI; what becomes of a
   Terminal it started is the core's call.
 - A Template launch returns once the program first reports, which can take
-  30 seconds, and the record carries the Template's submit and stop keys.
+  35 seconds, and the record carries the Template's submit and stop keys. A
+  program Heeler does not know is no Agent until it reports, so a Template
+  whose program never does stays a Terminal. One whose program ended by the
+  time New Agent would close reads as a failed start.
 - A subagent started with `hc run` gets the core's environment, not its
   parent shell's.
 - Any process on the core can rewrite any Terminal's labels, desktop labels

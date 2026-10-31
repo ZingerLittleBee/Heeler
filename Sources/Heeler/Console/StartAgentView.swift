@@ -24,13 +24,10 @@ struct StartAgentView: View {
             initialValue: StartAgentStore(
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
-                existingAgentNames: { hostID in
-                    Set(
-                        console.agents
-                            .filter { $0.hostID == hostID }
-                            .compactMap { $0.agent.name })
-                },
+                existingAgentNames: { console.takenAgentNames(on: $0) },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
+                discoverTemplates: { try await console.availableTemplates(on: $0) },
+                startTemplate: { try await console.startTemplate($0, on: $1) },
                 remoteHome: { try await console.remoteHomeDirectory(on: $0) },
                 start: { params, destination, hostID in
                     switch destination {
@@ -45,6 +42,8 @@ struct StartAgentView: View {
                     }
                 },
                 awaitAgentVisible: { await console.waitForAgent($0) },
+                isAgentListed: { id in console.agents.contains { $0.id == id } },
+                programExit: { console.programExit(of: $0) },
                 origin: origin,
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces }))
     }
@@ -157,6 +156,11 @@ struct StartAgentView: View {
 
                 Section {
                     switch store.agentDiscoveryState {
+                    case _ where store.isStartingTemplate:
+                        HStack {
+                            ProgressView()
+                            Text("Starting \(store.selectedTemplate?.name ?? "the Template")…")
+                        }
                     case .idle:
                         Text("Select a Host to detect installed Agents.")
                             .foregroundStyle(.secondary)
@@ -165,7 +169,7 @@ struct StartAgentView: View {
                             ProgressView()
                             Text("Detecting installed Agents…")
                         }
-                    case .loaded where store.availableAgentKinds.isEmpty:
+                    case .loaded where store.availableAgentKinds.isEmpty && store.availableTemplates.isEmpty:
                         ContentUnavailableView(
                             "No Agents Found",
                             systemImage: "magnifyingglass",
@@ -175,18 +179,16 @@ struct StartAgentView: View {
                             Task { await store.discoverAgents() }
                         }
                     case .loaded:
-                        Picker("Agent", selection: $store.selectedAgentKind) {
-                            ForEach(store.availableAgentKinds) { @Sendable kind in
-                                Text("\(kind.displayName) (\(kind.executable))")
-                                    .tag(SupportedAgentKind?.some(kind))
-                            }
-                        }
+                        agentPicker
                         Button("Detect Again", systemImage: "arrow.clockwise") {
                             Task { await store.discoverAgents() }
                         }
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)
+                        if !store.availableTemplates.isEmpty {
+                            agentPicker
+                        }
                         Button("Retry", systemImage: "arrow.clockwise") {
                             Task { await store.discoverAgents() }
                         }
@@ -194,7 +196,16 @@ struct StartAgentView: View {
                 } header: {
                     Text("Agent")
                 } footer: {
-                    Text("Agents installed and launchable from this Host's PATH.")
+                    if let template = store.selectedTemplate {
+                        VStack(alignment: .leading) {
+                            if !template.description.isEmpty {
+                                Text(template.description)
+                            }
+                            Text("Its first start can take up to 35 seconds.")
+                        }
+                    } else {
+                        Text("Agents installed and launchable from this Host's PATH.")
+                    }
                 }
 
                 Section {
@@ -225,20 +236,22 @@ struct StartAgentView: View {
                     }
                 }
 
-                Section {
-                    AgentArgumentsField(
-                        text: $store.arguments,
-                        placeholder: "Arguments (optional)")
-                } header: {
-                    Text("Arguments")
-                } footer: {
-                    if let message = store.argumentErrorMessage {
-                        Text(message)
-                            .foregroundStyle(.red)
-                    } else {
-                        Text(
-                            "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
-                        )
+                if store.offersArguments {
+                    Section {
+                        AgentArgumentsField(
+                            text: $store.arguments,
+                            placeholder: "Arguments (optional)")
+                    } header: {
+                        Text("Arguments")
+                    } footer: {
+                        if let message = store.argumentErrorMessage {
+                            Text(message)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(
+                                "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
+                            )
+                        }
                     }
                 }
 
@@ -280,6 +293,8 @@ struct StartAgentView: View {
                 if case .started(let id) = store.state {
                     dismiss()
                     onStarted(id)
+                } else if store.state == .startedAsTerminal {
+                    dismiss()
                 }
             }
             .task(id: store.selectedHostID) {
@@ -294,6 +309,23 @@ struct StartAgentView: View {
                 }
             }
             .interactiveDismissDisabled(!store.canDismiss)
+        }
+    }
+
+    private var agentPicker: some View {
+        Picker("Agent", selection: $store.selectedAgent) {
+            ForEach(store.availableAgentKinds) { @Sendable kind in
+                Text("\(kind.displayName) (\(kind.executable))")
+                    .tag(StartAgentStore.AgentChoice?.some(.kind(kind)))
+            }
+            if !store.availableTemplates.isEmpty {
+                Section("Templates") {
+                    ForEach(store.availableTemplates) { @Sendable template in
+                        Text(template.name)
+                            .tag(StartAgentStore.AgentChoice?.some(.template(template)))
+                    }
+                }
+            }
         }
     }
 

@@ -523,6 +523,27 @@ struct HerdrCoreDesktopAppNamingTests {
 
     // MARK: A typed name
 
+    @Test func aTypedNameFollowsATemplateIntoItsNewWorkspace() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        try await fixture.until("the app's status") { fixture.capabilities.desktopAppNaming != nil }
+
+        _ = try await fixture.store.startTemplate(
+            TemplateLaunchRequest(
+                template: "reviewer", name: nil, workspaceID: nil, cwd: nil,
+                newWorkspace: NewWorkspaceSpec(directory: "/srv/new", label: "Fresh")),
+            on: host.id)
+
+        let space = try await fixture.lastSpace()
+        try await fixture.adopt(space)
+        try await fixture.until("the name to be sent") {
+            await !fixture.transport.desktopAppRenames.isEmpty
+        }
+        #expect(
+            await fixture.transport.desktopAppRenames
+                == [ScriptedCoreTransport.DesktopAppRename(space: space, name: "Fresh")])
+    }
+
     @Test func aTypedNameWaitsForTheAppToAdoptTheSpaceAndIsSentOnce() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }

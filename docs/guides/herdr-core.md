@@ -137,11 +137,23 @@ Pick where it starts, for an Agent and for **New Terminal** alike:
 | A directory's Workspace | In that Workspace's directory, even after a Terminal in it moved elsewhere | In that Workspace, and not in the desktop app's layout until you adopt it there |
 | **New Workspace** or **Browse Directory…** | In the directory you chose | In a new Workspace of its own, even when another already uses that directory. A running desktop app shows it as a new space. Until the desktop app names it, it is named for its first Terminal's checkout folder |
 
-Heeler asks for no tab or Workspace name on this kind of Host. Worktrees and Templates are not offered here yet.
+Heeler asks for no tab or Workspace name on this kind of Host. Worktrees are not offered here yet.
 
 Heeler gives an Agent a session of its own from the start where the program takes one, unless your arguments already pick a session, as `--resume` does. Codex runs with `--no-daemon`. OpenCode gets its session only from version 2.1.
 
 If the Host does not confirm a start, Heeler says so and does not try again, since the Agent may already be running. Check the Host before starting another.
+
+### Templates
+
+**New Agent** also lists the Host's Templates, the roles saved under `~/.config/herdr-core/templates` (or `$XDG_CONFIG_HOME/herdr-core/templates`), under the agents your shell can run. A file the core cannot use is not listed.
+
+Pick one and tap **Start**. It lands where any other Agent would, by the table above, and an empty name field names the Agent after the Template, or `reviewer-2` while another live Terminal is named `reviewer`. The core runs the Template's own command, so your shell, your startup files and the session flags above play no part, and the form asks for no arguments. A command that needs a variable from your startup files should set it itself.
+
+A Template that has a first message answers only once its program first reports, which can take up to 35 seconds. New Agent shows it starting for that long. A program that has not reported after 30 seconds still starts, but the core does not type the first message and Heeler does not say so, so check its screen. If the Host does not answer at all, Heeler says it did not confirm the start and does not try again.
+
+A program Heeler does not know joins the Agents once it reports a status. Until then it stays in the Terminals tab, and New Agent closes without opening it.
+
+If the program ends during the few seconds New Agent watches it, the form stays open and says so, with its exit code. Exit code 127 means the core could not find the command, so give it a full path or set `PATH` in the command. A program that ends after the form has closed leaves the Terminals tab like any other that ended.
 
 **Known limit:** with zsh as your login shell and no startup files, such as no `~/.zshrc`, zsh opens its new-user wizard and the Agent waits behind it. Open the Terminal and answer the wizard once, or create an empty `~/.zshrc` on the Host first.
 
