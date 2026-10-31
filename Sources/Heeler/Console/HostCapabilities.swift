@@ -20,6 +20,9 @@ struct HostCapabilities: Equatable, Sendable {
     /// One client at a time holds a terminal, so another may take it over. A
     /// herdr-core Terminal has no such thing: every viewer may type (ADR 0031).
     var takeOver = true
+    /// The Composer's Stop, which shows in Send's place. A native Windows core
+    /// Host offers it with its own Composer.
+    var composerStop = true
 
     func renameWorkspace(id: String) -> Bool { renamesWorkspaces }
 
@@ -49,7 +52,8 @@ extension HostCapabilities {
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
             uploads: offered || (serverKind == .herdrCore && platform == .posix),
             composerSend: offered, chat: offered, tabNames: offered, closeTab: true,
-            syncLayoutFromPlugin: offered, takeOver: offered)
+            syncLayoutFromPlugin: offered, takeOver: offered,
+            composerStop: offered || (serverKind == .herdrCore && platform == .posix))
     }
 }
 

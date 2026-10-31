@@ -165,6 +165,15 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// The Terminal of every `terminal.kill`, oldest first.
     private(set) var kills: [String] = []
     private var killAnswers: [String: Result<JSONValue, any Error>] = [:]
+    /// Each `terminal.interrupt` and `terminal.get`, with its params, oldest first.
+    private(set) var stopCalls: [(method: String, params: JSONValue)] = []
+    private var interruptAnswer: Result<JSONValue, any Error> = .success(
+        .object(["outcome": .string("stopped"), "key": .string("esc")]))
+    private var isHoldingInterrupts = false
+    private var heldInterrupts: [CheckedContinuation<Void, Never>] = []
+    private var terminalRecords: [Result<JSONValue, any Error>] = []
+    private var isHoldingTerminalReads = false
+    private var heldTerminalReads: [CheckedContinuation<Void, Never>] = []
     /// The script of every agent discovery, oldest first.
     private(set) var discoveryScripts: [String] = []
     private var shell: String?
@@ -254,6 +263,21 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
         if isMutation { mutations.append(method) }
         switch method {
+        case "terminal.interrupt":
+            stopCalls.append((method, params))
+            while isHoldingInterrupts {
+                await withCheckedContinuation { heldInterrupts.append($0) }
+            }
+            return try interruptAnswer.get()
+        case "terminal.get":
+            stopCalls.append((method, params))
+            while isHoldingTerminalReads {
+                await withCheckedContinuation { heldTerminalReads.append($0) }
+            }
+            guard !terminalRecords.isEmpty else {
+                throw TransportError.hostFeatureUnavailable(feature: method)
+            }
+            return try (terminalRecords.count > 1 ? terminalRecords.removeFirst() : terminalRecords[0]).get()
         case "terminal.kill":
             let terminal = params["terminal"]?.stringValue ?? ""
             kills.append(terminal)
@@ -351,6 +375,40 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// What a kill of this Terminal gets back instead of its ended record.
     func setKillAnswer(_ answer: Result<JSONValue, any Error>, for terminal: String) {
         killAnswers[terminal] = answer
+    }
+
+    /// What `terminal.interrupt` gets back.
+    func setInterruptAnswer(_ answer: Result<JSONValue, any Error>) {
+        interruptAnswer = answer
+    }
+
+    /// Each `terminal.interrupt` waits, answerless, until `releaseInterrupts`.
+    func holdInterrupts() {
+        isHoldingInterrupts = true
+    }
+
+    func releaseInterrupts() {
+        isHoldingInterrupts = false
+        let held = heldInterrupts
+        heldInterrupts = []
+        for waiter in held { waiter.resume() }
+    }
+
+    /// What each `terminal.get` answers. The last one repeats.
+    func setTerminalRecords(_ answers: [Result<JSONValue, any Error>]) {
+        terminalRecords = answers
+    }
+
+    /// Each `terminal.get` waits, answerless, until `releaseTerminalReads`.
+    func holdTerminalReads() {
+        isHoldingTerminalReads = true
+    }
+
+    func releaseTerminalReads() {
+        isHoldingTerminalReads = false
+        let held = heldTerminalReads
+        heldTerminalReads = []
+        for waiter in held { waiter.resume() }
     }
 
     /// What the next document read answers, as `doc.get` shapes it.

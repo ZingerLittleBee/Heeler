@@ -90,6 +90,28 @@ extension HerdrCoreTransport {
                 isMutation: false))
     }
 
+    /// The Terminal's record as the core knows it now, foreground included.
+    func terminalRecord(_ address: String) async throws -> HerdrCoreTerminalRecord {
+        try HerdrCoreWire.typed(
+            await call(
+                "terminal.get",
+                params: .object(["terminal": .string(try HerdrCoreWire.address(address))]),
+                isMutation: false))
+    }
+
+    /// `terminal.interrupt`, sent once as a mutation: the core presses the
+    /// Terminal's own stop key, then watches for an effect for up to `timeout`.
+    /// Its answer does not say whether the program still runs, so it is not read.
+    func interruptTerminal(_ address: String, timeout: Duration) async throws {
+        _ = try await call(
+            "terminal.interrupt",
+            params: .object([
+                "terminal": .string(try HerdrCoreWire.address(address)),
+                "timeout": .number(timeout / .seconds(1)),
+            ]),
+            isMutation: true)
+    }
+
     /// Ends a Terminal for good with `terminal.kill`, sent once as a mutation. A
     /// kill is final even on a kept Terminal, so keep stays as it is. Unless the
     /// core says the Terminal ended, or no longer knows it, this throws

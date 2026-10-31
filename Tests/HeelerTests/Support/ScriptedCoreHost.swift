@@ -196,6 +196,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var runReply: JSONValue?
     private var isHoldingAttachReplies = false
     private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
+    private var heldTerminalReads: [(socket: FakeCoreSocket, id: String)] = []
+    private var heldInterrupts: [(socket: FakeCoreSocket, id: String)] = []
+    /// The params of every `terminal.interrupt`, oldest first.
+    private(set) var interrupts: [JSONValue] = []
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
@@ -365,6 +369,13 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             // A real core's answer for a name nobody wrote.
             case "doc.get" where core.answersDocumentReads:
                 try? await socket.reply(to: request.id, result: .object(["version": .number(0), "value": .null]))
+            // Nobody answers until the test says what the core knows.
+            case "terminal.get":
+                heldTerminalReads.append((socket, request.id))
+            // The core presses the key and watches until the test says.
+            case "terminal.interrupt":
+                interrupts.append(request.params)
+                heldInterrupts.append((socket, request.id))
             case "terminal.read":
                 try? await socket.reply(
                     to: request.id,
@@ -430,6 +441,32 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         heldAttachReplies = []
         for reply in held {
             try? await reply.socket.reply(to: reply.id, result: reply.result)
+        }
+    }
+
+    /// Answers every `terminal.get` waiting so far with this record.
+    func answerTerminalReads(with record: JSONValue) async {
+        let held = heldTerminalReads
+        heldTerminalReads = []
+        for read in held { try? await read.socket.reply(to: read.id, result: record) }
+    }
+
+    /// Answers every `terminal.get` waiting so far with this error kind.
+    func refuseTerminalReads(kind: String) async {
+        let held = heldTerminalReads
+        heldTerminalReads = []
+        for read in held { try? await read.socket.replyError(to: read.id, kind: kind) }
+    }
+
+    /// Answers every `terminal.interrupt` waiting so far, as a core does once its
+    /// watch ends.
+    func answerInterrupts(outcome: String = "stopped") async {
+        let held = heldInterrupts
+        heldInterrupts = []
+        for interrupt in held {
+            try? await interrupt.socket.reply(
+                to: interrupt.id,
+                result: .object(["outcome": .string(outcome), "key": .string("esc")]))
         }
     }
 

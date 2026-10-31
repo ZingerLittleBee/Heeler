@@ -62,6 +62,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var hasAskedHome = false
     /// Whether `records` is this link's inventory, not yet another's emptied one.
     private var hasInventory = false
+    /// Moves with every event or snapshot that speaks of a foreground.
+    private var foregroundChanges = 0
     /// Terminals waiting to hear what became of a program.
     private var programWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     /// OpenCode's own words from the last discovery, which decide its `-s`.
@@ -220,6 +222,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         memory.noteInventory(snapshot.terminals, for: host.id)
         pins.retainPins(hostID: host.id, paneIDs: Set(snapshot.terminals.map(\.address)))
         records = snapshot.terminals
+        foregroundChanges &+= 1
         hasInventory = true
         for record in records {
             noteTurns(of: record.address) { state, kind in
@@ -259,6 +262,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         case .title(let terminal, let title):
             update(terminal) { $0.title = title }
         case .foreground(let terminal, let foreground):
+            foregroundChanges &+= 1
             update(terminal) { $0.noteForeground(foreground) }
             noteTurns(of: terminal) { _, _ in }
         case .status(let terminal, let status, let records, let reported):
@@ -665,6 +669,26 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             }
         }
         if let failure { throw failure }
+    }
+
+    // MARK: Composer Stop (ADR 0035)
+
+    func interruptTerminal(at address: String, timeout: Duration) async throws {
+        let transport = try await session.withTransport { $0 }
+        try await transport.interruptTerminal(address, timeout: timeout)
+    }
+
+    /// Reads whether the Terminal's program still runs and folds the answer, so a
+    /// program that left stops being the Agent without waiting for the next sample.
+    /// Nothing orders a reply against the events, so whatever spoke of the
+    /// foreground while this was on its way is at least as new.
+    func readForeground(at address: String) async throws {
+        let changes = foregroundChanges
+        let record = try await session.withTransport { try await $0.terminalRecord(address) }
+        guard !hasEnded, foregroundChanges == changes, let foreground = record.foreground else {
+            return
+        }
+        apply(.foreground(terminal: address, foreground))
     }
 
     // MARK: Actions not built yet
