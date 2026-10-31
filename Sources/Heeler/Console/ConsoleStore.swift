@@ -23,6 +23,8 @@ final class ConsoleStore {
     /// The route each connected Host's current connection reached.
     private(set) var hostRouteIDs: [Host.ID: HostRoute.ID] = [:]
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
+    /// Connected core Hosts whose core inherited variables that break things.
+    private(set) var hostCoreEnvironmentNotices: [Host.ID: HerdrCoreEnvironmentNotice] = [:]
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
     /// Hosts whose current connection has not produced its first snapshot.
     /// Their empty Agent projection is loading state, not proof that a pane
@@ -1042,6 +1044,11 @@ final class ConsoleStore {
         hostSyncErrors = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.syncError.map { (projection.host.id, $0) }
+            })
+        hostCoreEnvironmentNotices = Dictionary(
+            uniqueKeysWithValues: current.compactMap { projection in
+                HerdrCoreEnvironmentNotice(names: projection.leakedEnvironmentNames)
+                    .map { (projection.host.id, $0) }
             })
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {

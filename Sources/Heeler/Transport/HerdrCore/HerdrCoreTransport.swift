@@ -39,6 +39,12 @@ protocol HerdrCoreTransport: Sendable {
     /// `server.status` over the link, which it opens if it has to.
     func serverStatus() async throws -> HerdrCoreServerStatus
 
+    /// Which variables the core process inherited, by name only (ADR 0034), from
+    /// one bounded exec per link that later calls share. Empty when it could not
+    /// tell, and nil when there is no live link for the answer to describe. Opens
+    /// no link and never fails the connection.
+    func leakedEnvironmentNames() async -> Set<String>?
+
     /// Subscribes to every Terminal's events. Each subscription has a fresh
     /// cursor from its own snapshot, and no event number outlives the link.
     func subscribeEvents() async throws -> HerdrCoreEventStream
@@ -77,6 +83,9 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// Runs the confirmed Start's script in one bounded exec.
     func runCoreStart(_ script: Data) async throws -> GitExecResult
 
+    /// Runs a `HostProcessReader` script in one bounded exec.
+    func runHostProcessRead(_ script: Data) async throws -> GitExecResult
+
     /// Opens a direct-streamlocal channel under the long-lived events slot.
     /// A channel nobody answers throws `TransportError.streamLocalOpenFailed`.
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel
@@ -99,6 +108,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     /// next call looks at the Host again.
     private var opening: Task<Opened, any Error>?
     private var located: HerdrCoreLocator.Location?
+    private var environmentCheck: (link: HerdrCoreLink, answer: Task<Set<String>, Never>)?
 
     private struct Opened {
         let link: HerdrCoreLink
@@ -178,6 +188,34 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     func serverStatus() async throws -> HerdrCoreServerStatus {
         try await onLink { link in try await link.serverStatus(deadline: Self.callDeadline) }
+    }
+
+    func leakedEnvironmentNames() async -> Set<String>? {
+        guard let link = try? await opening?.value.link, await link.isOpen else { return nil }
+        let answer: Task<Set<String>, Never>
+        if let check = environmentCheck, check.link === link {
+            answer = check.answer
+        } else {
+            answer = Task { await self.readLeakedEnvironment(on: link) }
+            environmentCheck = (link, answer)
+        }
+        let names = await answer.value
+        // A core that restarted meanwhile may be a different one.
+        guard environmentCheck?.link === link, await link.isOpen else { return nil }
+        return names
+    }
+
+    private func readLeakedEnvironment(on link: HerdrCoreLink) async -> Set<String> {
+        do {
+            let pid = try await link.serverStatus(deadline: Self.callDeadline).pid
+            let nonce = nonce()
+            let script = try HerdrCoreEnvironmentCheck.script(pid: pid, nonce: nonce)
+            let result = try await connection.runHostProcessRead(script)
+            guard result.exitStatus == 0 else { return [] }
+            return HerdrCoreEnvironmentCheck.leakedNames(stdout: result.stdout, nonce: nonce, pid: pid)
+        } catch {
+            return []
+        }
     }
 
     func subscribeEvents() async throws -> HerdrCoreEventStream {

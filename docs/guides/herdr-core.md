@@ -27,7 +27,9 @@ Existing legacy Hosts stay on herdr. A manually configured Host can be edited or
 
 ## Host Helper
 
-The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. In this version it only starts and stays running: notifications, Live Activities and Usage still read as unavailable until the app connects them to it.
+The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. In this version it only follows the core: notifications, Live Activities and Usage still read as unavailable until the app connects them to it.
+
+The Helper never starts a core. It connects to the core's socket directly, and while no core runs it waits and tries again, so a core you stopped stays stopped until you start it. When you do, the Helper connects on its own, without a restart.
 
 **Install on Linux.** Open the Host's detail and tap **Host Helper**. The sheet lists every file the install writes, including its systemd user unit. Tap **Install**. The files go in `~/.local/share/heeler/host-helper` (or under `XDG_DATA_HOME`) and are private to your account. Heeler replaces a Helper only with a newer version, or when it is missing or damaged, and never one that a newer version of the app installed.
 

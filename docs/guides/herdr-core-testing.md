@@ -106,6 +106,23 @@ yet, and read each pid from `server.status` or `terminal.list`.
 | Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | The Host stays Connected in the Hosts list and every row stays in its card |
 | Stopped core | `server stop` by absolute path | The Host reads **herdr-core is not running** and retries; no core process appears until you start it |
 
+## Leaked environment
+
+On a throwaway session, start the core by absolute path with made-up values for
+variables that break things, then read Host detail. Never use a real value of
+these, and never use a session you did not start.
+
+```sh
+HC_SESSION=<s> TMUX=/tmp/made-up,1,0 CLAUDE_CODE_CHILD_SESSION=made-up STY= \
+  ~/.local/bin/herdr-core server start
+```
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Leaked variables | The core above, with the Host connected | **Core Environment** names `CLAUDE_CODE_CHILD_SESSION` and `TMUX`, each with what it breaks, and says restarting the core from your own terminal fixes it; blank `STY` is not named, no value appears, and nothing offers a restart |
+| Prefix | Add `HERDR_PANE_ID=made-up` when starting | `HERDR_PANE_ID` is named with the others |
+| Restarted cleanly | `server stop` by absolute path with the same environment, then start again from a clean login shell without those variables | The Host reconnects by itself and **Core Environment** is gone |
+
 ## Desktop organization
 
 With a core running in your unique session and the Host connected, open the
@@ -156,5 +173,18 @@ the run can compare against it.
 | Damage | Change a byte in `app/main.js`, then check the Host | The row reads **Damaged**, and **Repair** puts the file back and keeps `notifications.json` |
 | Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched |
 
-Every step must leave the core as it found it: the Helper in this version only starts
-and stays running, and never connects to a core or starts one.
+Every step must leave the core as it found it: the Helper in this version only follows
+a core, and never starts one.
+
+### The Helper and the core
+
+Until the app registers devices with the Helper, name the session by hand, in the
+Helper directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
+~/.local/share/heeler/host-helper/notifications.json`. Remove the file when done.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| No core | Stop the session's core with `herdr-core server stop` by absolute path, then `systemctl --user restart heeler-host-helper` | `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait. `journalctl --user -u heeler-host-helper` reads `core session "default": waiting for a core at <socket>` once |
+| Core starts | Start the core from the user's login shell, and do not touch the Helper | Within seconds the journal reads `connected to core pid <pid>`, the pid `server.status` reports. The unit's main PID has not changed |
+| Core restarts | `kill -9` the core at that pid, then start it again from the login shell | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
+| Other sessions | Start a core for a session the file does not name | The journal never mentions it, and `ss -xp` shows the Helper connected only to the named session's socket |

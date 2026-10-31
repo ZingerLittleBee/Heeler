@@ -321,6 +321,9 @@ struct HostProcessReaderTests {
         framed("S 13 1", "S 14 1", "E 13 ok", "O 13 ok"),
         framed("S 13 1", "V 13 PATH 2f", "E 13 ok", "O 13 ok"),
         framed("S 13 1", "N 13 PATH", "E 13 ok", "O 13 ok"),
+        // A prefix asked for only ever names a name.
+        framed("S 13 1", "N 13 HERDR_X=secret", "E 13 ok", "O 13 ok"),
+        framed("S 13 1", "N 13 HERDR_X secret", "E 13 ok", "O 13 ok"),
         // A value or a status in the wrong form.
         framed("S 13 1", "V 13 NAMED zz", "E 13 ok", "O 13 ok"),
         framed("S 13 1", "V 13 NAMED abc", "E 13 ok", "O 13 ok"),

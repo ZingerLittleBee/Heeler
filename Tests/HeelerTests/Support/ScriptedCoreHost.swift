@@ -21,6 +21,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         var id = "c1"
         var sequence = 0
         var terminals: [JSONValue] = []
+        var pid = 4242
         static let eventsChannel: UInt32 = 1
 
         var helloReply: Data {
@@ -32,19 +33,30 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             ]))
         }
 
-        var subscribeResult: JSONValue {
+        /// A real core gives every stream a channel of its own.
+        func subscribeResult(channel: UInt32) -> JSONValue {
             .object([
                 "seq": .number(Double(sequence)), "terminals": .array(terminals),
-                "channel": .number(Double(Self.eventsChannel)),
+                "channel": .number(Double(channel)),
             ])
         }
 
         var statusResult: JSONValue {
             .object([
-                "core": .object(["id": .string(id)]), "pid": .number(4242), "uptime_ms": .number(1000),
+                "core": .object(["id": .string(id)]), "pid": .number(Double(pid)), "uptime_ms": .number(1000),
                 "version": .string("0.1.13"),
             ])
         }
+    }
+
+    /// What the exec of a `HostProcessReader` script does. A whole answer is
+    /// framed by the nonce and names the pid the script asked about.
+    enum ProcessRead: Sendable {
+        case names([String])
+        /// The reader could not read that process's environment.
+        case unreadable
+        case exits(status: Int32, stdout: String)
+        case throwsError(TransportError)
     }
 
     /// What `herdr session list --json` does in the detection exec.
@@ -145,6 +157,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private let channelAfterStart: Channel?
     private let herdrRead: HerdrRead
     private let detectionFailure: TransportError?
+    private var processRead: ProcessRead
+    private var isProcessReadHeld = false
+    private var heldProcessReads: [CheckedContinuation<Void, Never>] = []
+    private var processReadWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
     /// Everything that happened, in order.
     private(set) var log: [String] = []
@@ -162,8 +178,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         herdrRead: HerdrRead = .notInstalled, detectionFailure: TransportError? = nil,
         helper: ScriptedHelperHost = ScriptedHelperHost(),
         start: StartResponse = .fresh, channelAfterStart: Channel? = nil,
+        processRead: ProcessRead = .names([]),
         channel: Channel
     ) {
+        self.processRead = processRead
         self.helper = helper
         self.start = start
         self.channelAfterStart = channelAfterStart
@@ -193,6 +211,37 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             throw error
         }
     }
+
+    func runHostProcessRead(_ script: Data) async throws -> GitExecResult {
+        log.append("process-read")
+        let body = String(decoding: script, as: UTF8.self)
+        scripts.append(body)
+        // What this read answers is what the Host held when it started.
+        let read = processRead
+        let waiters = processReadWaiters.filter { $0.count <= processReadCount }
+        processReadWaiters.removeAll { $0.count <= processReadCount }
+        for waiter in waiters { waiter.continuation.resume() }
+        while isProcessReadHeld {
+            await withCheckedContinuation { heldProcessReads.append($0) }
+        }
+        let pid = body.split(separator: "\n").last { $0.hasPrefix("e ") }?.dropFirst(2) ?? ""
+        let answer: [String]
+        switch read {
+        case .names(let names):
+            answer = names.map { "N \(pid) \($0)" } + ["E \(pid) ok"]
+        case .unreadable:
+            answer = ["E \(pid) -"]
+        case .exits(let status, let stdout):
+            return GitExecResult(stdout: Data(stdout.utf8), stderr: Data(), exitStatus: status)
+        case .throwsError(let error):
+            throw error
+        }
+        let lines = ["__HEELER_PROC_BEGIN_\(Self.nonce)"] + answer + ["", "__HEELER_PROC_END_\(Self.nonce)"]
+        return GitExecResult(
+            stdout: Data((lines.joined(separator: "\n") + "\n").utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    private var processReadCount: Int { log.filter { $0 == "process-read" }.count }
 
     /// Prints what the script asked for, framed by the nonce the script carries.
     func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
@@ -249,12 +298,15 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     private func answer(on socket: FakeCoreSocket, core: Core) async {
+        var eventsChannel = Core.eventsChannel
         while !Task.isCancelled {
             let request = await socket.nextRequest()
             methods.append(request.method)
             resumeMethodWaiters()
             switch request.method {
-            case "events.subscribe": try? await socket.reply(to: request.id, result: core.subscribeResult)
+            case "events.subscribe":
+                try? await socket.reply(to: request.id, result: core.subscribeResult(channel: eventsChannel))
+                eventsChannel += 1
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
             case "terminal.read":
                 try? await socket.reply(
@@ -287,6 +339,31 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// Whether the SSH connection is up.
     func setConnected(_ connected: Bool) {
         self.connected = connected
+    }
+
+    /// What the next process read answers.
+    func setProcessRead(_ read: ProcessRead) {
+        processRead = read
+    }
+
+    /// Process reads start and then wait, as one on a slow link does.
+    func holdProcessReads() {
+        isProcessReadHeld = true
+    }
+
+    func releaseProcessReads() {
+        isProcessReadHeld = false
+        let held = heldProcessReads
+        heldProcessReads = []
+        for read in held { read.resume() }
+    }
+
+    /// Returns once this many process reads have started in all.
+    func waitForProcessRead(count: Int = 1) async {
+        if processReadCount >= count { return }
+        await withCheckedContinuation { continuation in
+            processReadWaiters.append((count, continuation))
+        }
     }
 
     /// Returns once the core has received `method` this many times in all.
