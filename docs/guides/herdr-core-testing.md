@@ -392,14 +392,14 @@ besides the default (`omp --profile work` makes one).
 | New profile | Make another Oh My Pi profile, then check the Host | The row still reads the version, and the sheet offers **Repair**, which adds that profile's file and touches no other file of the Helper |
 | Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, no `heeler-session.js` is left, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched |
 
-Every step must leave the core as it found it: the Helper in this version only follows
-a core, and never starts one. The extensions only ever write the one label on their own
+Every step must leave the core as it found it: the Helper only ever follows a core,
+and never starts one. The extensions only ever write the one label on their own
 Terminal.
 
 ### The Helper and the core
 
-Until the app registers devices with the Helper, name the session by hand, in the
-Helper directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
+With no device registered from the app, name the session by hand, in the Helper
+directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
 ~/.local/share/heeler/host-helper/notifications.json`. Remove the file when done.
 
 | Step | What to do | What must happen |
@@ -408,6 +408,32 @@ Helper directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
 | Core starts | Start the core from the user's login shell, and do not touch the Helper | Within seconds the journal reads `connected to core pid <pid>`, the pid `server.status` reports. The unit's main PID has not changed |
 | Core restarts | `kill -9` the core at that pid, then start it again from the login shell | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
 | Other sessions | Start a core for a session the file does not name, and no Host's Usage asked about | The journal never mentions it, and `ss -xp` shows the Helper connected only to the named session's socket |
+
+### Agent Notifications
+
+Point the Helper at a fake relay: a small HTTP server on the Host that logs each `POST
+/push` body and answers `200`. Register a device from the app first, then set `relay_url`
+in the Helper directory's `notify.json` to `http://127.0.0.1:<port>`, and optionally
+`debounce_ms`. A real device needs the real relay for the steps that say so. Never sign in
+to a harness for this: use a throwaway program that reports status, or the mock API from
+[Program Status](#program-status).
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Turn on | In **Settings > Notifications**, turn the Host on | `notifications.json` in the Helper directory holds one entry, whose `session` is the core session (`default` when unnamed). `~/.config/herdr/plugins` has no change |
+| First sight | Restart the Helper with an Agent already Blocked | No push: what a core already showed is not announced |
+| Blocked | Make an Agent ask for permission, and let it stay | One push per registered device after the debounce. Decrypting with the device's key gives `blocked` |
+| Flap | Make it leave Blocked within the debounce | No push |
+| Error | Make an Agent report error | One push, under the Blocked switch. The device reads **Error** |
+| Done | Let an Agent finish a turn with no device on it | One push per registered device with Done on |
+| Per-device Done | On one of two devices, keep the Agent open until the turn ends | `seen-<key id>.json` for that device has the turn. The other device gets Done, this one does not |
+| No Agent | Run `sleep` in a Terminal, then exit a program back to its shell | No push for either |
+| Restart | Stop the Helper during a turn, start it after the turn ends | One Done on start, not two after another restart |
+| Heeler killed (real relay) | Kill Heeler on a real device, make an Agent Blocked | The notification arrives, and a tap opens that Agent's detail |
+| Off | Turn the Host off | The entry and `seen-<key id>.json` are both gone from the Helper directory, and no push follows |
+| Remove | With a mark present, remove the connected Host | The same. Removing it while disconnected reads that notifications are left behind |
+| Helper states | Stop the service, then hide Node.js from it | **Settings > Notifications** names **Service Failed**, then **Node.js Missing** |
+| Native Windows | Open **Settings > Notifications** with a native Windows core Host | It reads that Agent Notifications, in-app banners included, and Live Activity come with the Host Helper and are not available there yet |
 
 ### Usage
 

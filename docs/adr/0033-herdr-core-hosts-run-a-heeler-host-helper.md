@@ -56,6 +56,14 @@ that Heeler can read from outside the process.
   untouched. Those Notification Registrations live in the Helper's own directory, one entry
   per device for the core session the Host targets, never in the plugin's
   registration file.
+- The Helper decides what to send from each Terminal's state after a debounce,
+  not from the event at hand, and keeps what it last notified in
+  `state/notify/<session>.json`, so a restart or a dropped connection loses
+  nothing and a failed send is tried at the next decision. A core seen for the
+  first time sets that memory without sending, so an install or a new core id
+  announces nothing that already happened. The memory goes when a session's
+  connection ends with no registration naming it. Error is sent under the
+  Blocked trigger, in its own word.
 - A turn's end comes from the status word, as in the app: an Agent ends a
   turn when it goes from Working to Done, and, unless it is known to report
   done, also when it goes from Working to Idle. Claude Code, Codex, Pi and Oh
@@ -71,6 +79,15 @@ that Heeler can read from outside the process.
   notifications and Live Activity updates alike. A device's marks go with its
   registration, and all of them with the Helper. The app keeps its own marks in
   the device's Host memory, beside the core id, and they go with that memory.
+  The file is `seen-<Notification Key id>.json`, never named from a Terminal
+  address, and holds all of that device's marks on the Host, so each change
+  costs one exec to find the directory and one SFTP write, and a failed write
+  is carried by the next. `plugin/test-vectors/herdr-core-seen-mark-v1.json`
+  pins it. A later turn count covers a turn; at the same count the same word
+  does, and idle and done cover each other, while a mark taken in Blocked, Error
+  or Working does not cover the Done that follows. When another Host of the same
+  session takes over a device's entry, that entry's old file stays until the
+  Helper is removed.
 - A subscribe snapshot stands in for what happened since the last report known,
   as event numbers cannot be resumed. Only leaving Working moves the count, so
   at the same count the words are compared as live. At a moved count, or at
