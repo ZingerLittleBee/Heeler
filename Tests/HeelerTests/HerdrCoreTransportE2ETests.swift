@@ -496,8 +496,12 @@ struct HerdrCoreTransportE2ETests {
             return
         }
         #expect(exitsComposer.draft == text)
-        // Long enough for a shell handed an Enter to have run the line.
-        try await Task.sleep(for: .seconds(1))
+        // The shell reads its input in order, so a line it was handed earlier has run
+        // once this one's file exists. Text it kept would join this line as more
+        // words for `touch`, the marker among them.
+        let barrier = "\(directory)/barrier"
+        exitsAttach.send(Data(" touch \(barrier)\r".utf8))
+        try await eventually { try await fixture.exists(barrier) }
         #expect(try await !fixture.exists(marker))
         #expect(try await fixture.contents(of: exitLog) == Data("\u{1B}[200~".utf8))
         await exitsAttach.leave().value
