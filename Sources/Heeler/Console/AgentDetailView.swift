@@ -291,8 +291,13 @@ struct AgentDetailView: View {
         }
     }
 
+    /// Closing a window changes nothing `isOnStage` reads.
+    private var windowHasEnded: Bool {
+        console.hasSceneEnded(sceneRouting?.sceneID, on: agent.hostID)
+    }
+
     private func prepareRetainedAgent() {
-        guard permitsRetention, isOnStage(), showsAgentTerminal else { return }
+        guard permitsRetention, isOnStage(), showsAgentTerminal, !windowHasEnded else { return }
         if let retainedAgent, retainedAgent.isRetained {
             console.agentTerminals.activate(retainedAgent, ownerID: retentionOwnerID, isPresented: { isOnStage() })
             return
@@ -311,6 +316,7 @@ struct AgentDetailView: View {
             isOwnViewer = true
             attach = makePrivateAttach()
             attachReference.store = attach
+            if let sceneID { console.agentTerminals.addViewer(attach, sceneID: sceneID) }
             return
         }
         if retainedAgent == nil { attach.leaveForTerminalHandoff() }
@@ -327,11 +333,13 @@ struct AgentDetailView: View {
         let console = console
         let hostID = agent.hostID
         let paneID = agent.agent.paneID
+        let sceneID = sceneRouting?.sceneID
+        let isOnStage = isOnStage
         return AgentAttachStore(
             target: agent.agent.paneID,
             paneTitle: AgentTerminalView.displayTitle(for: agent),
             transportGeneration: console.hostConnectionGenerations[agent.hostID],
-            isOnStage: isOnStage,
+            isOnStage: { isOnStage() && !console.hasSceneEnded(sceneID, on: hostID) },
             runTerminal: console.terminalRunner(for: agent.hostID),
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }

@@ -45,6 +45,8 @@ final class AgentTerminalCache {
 
     private(set) var entries: [ConsoleAgent.ID: Entry] = [:]
     private var teardowns: [ConsoleAgent.ID: Task<Void, Never>] = [:]
+    /// Second windows' viewers by window; see `addViewer`.
+    private var viewers: [UUID: [AgentAttachStore]] = [:]
     private let budget: TerminalRetentionBudget
     let idleTimeout: Duration
 
@@ -129,12 +131,23 @@ final class AgentTerminalCache {
     /// retains, so another window may take it; an entry it had already left
     /// keeps the timer it started.
     func sceneDidEnd(_ sceneID: UUID) {
+        for viewer in viewers.removeValue(forKey: sceneID) ?? [] {
+            viewer.leaveForTerminalHandoff()
+        }
         for entry in entries.values where entry.presentationSceneID == sceneID {
             entry.holder = nil
             if entry.lifetime.visible {
                 release(entry, ownerID: entry.presentationOwnerID)
             }
         }
+    }
+
+    /// A second window's viewer holds no entry and closes with its detail's
+    /// `onDisappear`, which SwiftUI does not promise for a closed window. Held
+    /// strongly: a store that goes away unstopped leaves its channel open.
+    func addViewer(_ attach: AgentAttachStore, sceneID: UUID) {
+        viewers[sceneID, default: []].removeAll(where: \.hasLeft)
+        viewers[sceneID, default: []].append(attach)
     }
 
     private func admit(agentID: ConsoleAgent.ID, lifetime: Lifetime) async throws {

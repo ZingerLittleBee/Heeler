@@ -126,7 +126,8 @@ many are open.
 | Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send, Stop and Add stay hidden; Direct Input types into the terminal |
 | Two windows | On an iPad, show one core Agent in two windows, open Changes in the first and come back | Each window keeps a live terminal of its own, and typing in either reaches the program |
 | Window size | On an iPad, resize a window showing a core Agent across compact and regular widths, then leave the Agent | The same terminal and scrollback stay on screen with one viewer, and the viewer closes five minutes after you leave |
-| Closed window | On an iPad, close one of two windows showing the same core Agent | The other window's terminal stays live; if the closed window retained the Terminal, its viewer stops being reported and closes after five minutes |
+| Closed window | On an iPad, close one of two windows showing the same core Agent | The other window's terminal stays live; if the closed window retained the Terminal, its viewer stops being reported and closes after five minutes; if it held the second viewer, that viewer closes at once and `terminal.get` shows the size follows the window left |
+| Closed window on a Terminal | On an iPad, open a core Terminal in one window, close that window, then open the same Terminal in another | The other window shows the Terminal at once on the same channel and takes its size, with no "already open in another window". Left alone, the Terminal returns to its headless size within five minutes of the close |
 
 ## Program Status
 

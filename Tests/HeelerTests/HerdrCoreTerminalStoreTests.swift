@@ -94,8 +94,8 @@ struct HerdrCoreTerminalStoreTests {
         /// A window showing `agent`'s detail, built as the Console builds it.
         /// `sceneID` puts it under a scene root, as a real window is.
         func showDetail(of agent: ConsoleAgent, sceneID: UUID? = nil) async throws -> CoreDetailWindow {
-            let suite = "core-detail-\(UUID().uuidString)"
-            let defaults = try #require(UserDefaults(suiteName: suite))
+            let settings = try Self.makeSettings()
+            let defaults = try #require(UserDefaults(suiteName: "core-detail-\(UUID().uuidString)"))
             let selection = HostedDetailSelection()
             let changes = AgentChangesPresentation {
                 ChangesStore(directory: { "/work/app" }) { _ in throw ChangesReadError.unavailable }
@@ -110,11 +110,7 @@ struct HerdrCoreTerminalStoreTests {
                     AgentDetailView(
                         agent: agent,
                         console: console,
-                        terminal: TerminalSettings(
-                            themes: TerminalThemeSettings(defaults: defaults),
-                            zoom: TerminalZoomSettings(defaults: defaults),
-                            fonts: TerminalFontSettings(defaults: defaults),
-                            snippets: SnippetStore(defaults: defaults)),
+                        terminal: settings,
                         inputMode: AgentInputModeSettings(defaults: defaults),
                         detailSurface: AgentDetailSurfaceSettings(defaults: defaults),
                         hosts: [],
@@ -130,7 +126,47 @@ struct HerdrCoreTerminalStoreTests {
                 })
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-            return CoreDetailWindow(selection: selection, changes: changes, window: window)
+            return CoreDetailWindow(selection: selection, changes: changes, activity: activity, window: window)
+        }
+
+        /// A window showing a core Terminal's screen, built as the Console
+        /// builds it, under a scene root.
+        func showShell(of terminal: ConsoleTerminal, sceneID: UUID) async throws -> CoreDetailWindow {
+            let settings = try Self.makeSettings()
+            let selection = HostedDetailSelection()
+            let console = console
+            let activity = AppActivityCoordinator()
+            let routing = AgentSceneRouting(directory: directory, sceneID: sceneID)
+            let controller = UIHostingController(
+                rootView: NavigationStack {
+                    WorkspaceTerminalDetailView(
+                        terminal: terminal,
+                        console: console,
+                        settings: settings,
+                        activity: activity,
+                        onSelectAgent: { _ in },
+                        onSelectTerminal: { _ in },
+                        isSelected: { [selection] in selection.showsDetail },
+                        onBack: {})
+                }
+                .environment(\.agentSceneRouting, routing))
+            let window = try await makeTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+            return CoreDetailWindow(
+                selection: selection,
+                changes: AgentChangesPresentation {
+                    ChangesStore(directory: { "/work/app" }) { _ in throw ChangesReadError.unavailable }
+                },
+                activity: activity, window: window)
+        }
+
+        private static func makeSettings() throws -> TerminalSettings {
+            let defaults = try #require(UserDefaults(suiteName: "core-settings-\(UUID().uuidString)"))
+            return TerminalSettings(
+                themes: TerminalThemeSettings(defaults: defaults),
+                zoom: TerminalZoomSettings(defaults: defaults),
+                fonts: TerminalFontSettings(defaults: defaults),
+                snippets: SnippetStore(defaults: defaults))
         }
 
         /// The `count`th attach on the Host, once `detail` has asked for it.
@@ -815,7 +851,7 @@ struct HerdrCoreTerminalStoreTests {
         try await fixture.deliverOutput("x", on: held)
 
         await first.close()
-        fixture.console.agentTerminals.sceneDidEnd(closing)
+        fixture.console.sceneDidEnd(closing)
         try await Self.until("the closed window's terminal to go quiet") {
             await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
         }
@@ -858,6 +894,273 @@ struct HerdrCoreTerminalStoreTests {
         await first.close()
         await fixture.finish()
     }
+
+    /// A closed window's detail may get a late update while the app comes
+    /// back; it must not take back the terminal it has let go of.
+    @Test func aClosedWindowsDetailDoesNotTakeItsTerminalBack() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let closing = UUID()
+        let window = try await fixture.showDetail(of: agent, sceneID: closing)
+        let held = try await fixture.waitForAttach(1, laying: window)
+        try await fixture.deliverOutput("x", on: held)
+        fixture.console.sceneDidEnd(closing)
+        try await Self.until("the closed window's terminal to go quiet") {
+            await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
+        }
+
+        window.activity.didBecomeActive()
+        await window.settle()
+        try await fixture.settle()
+
+        #expect(await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0]))
+        #expect(!fixture.console.agentTerminals.isHeldByAnotherDetail(agent, ownerID: UUID()))
+        await window.close()
+        await fixture.finish()
+    }
+
+    /// SwiftUI promises no `onDisappear` for a closed window, and a second
+    /// viewer's only other way out is its detail's.
+    @Test func aSecondViewerClosesWithItsWindowWhenItsDetailHearsNothing() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let first = try await fixture.showDetail(of: agent, sceneID: UUID())
+        let held = try await fixture.waitForAttach(1, laying: first)
+        let closing = UUID()
+        let second = try await fixture.showDetail(of: agent, sceneID: closing)
+        let viewer = try await fixture.waitForAttach(2, laying: second)
+
+        fixture.console.sceneDidEnd(closing)
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+
+        second.activity.didBecomeActive()
+        await second.settle()
+        try await fixture.settle()
+        #expect(await fixture.scripted.attaches.count == 2)
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+        await second.close()
+        await first.close()
+        await fixture.finish()
+    }
+
+    // MARK: Shell Terminal windows
+
+    private static let shellRecord: JSONValue = .object([
+        "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
+        "argv": .array([.string("/bin/zsh")]), "keep": .bool(false), "title": .string(""),
+        "cols": .number(80), "rows": .number(24), "pid": .number(7),
+    ])
+
+    /// Closing the window changes nothing the screen's selection reads, so
+    /// the screen never releases; the scene root says so instead. The Terminal
+    /// then retains as any other, for another window to come back to, where it
+    /// used to read as already open in a window that no longer exists.
+    @Test func aWindowClosedOnAShellTerminalLeavesItRetainedForAnother() async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let closing = UUID()
+        let first = try await fixture.showShell(of: terminal, sceneID: closing)
+        let held = try await fixture.waitForAttach(1, laying: first)
+        try await fixture.deliverOutput("x", on: held)
+
+        fixture.console.sceneDidEnd(UUID())
+        try await fixture.settle()
+        #expect(await held.socket.frames(channel: held.channel, kind: .focus).last?.payload != Data([0]))
+
+        await first.close()
+        fixture.console.sceneDidEnd(closing)
+        try await Self.until("the closed window's terminal to go quiet") {
+            await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
+        }
+
+        let second = try await fixture.showShell(of: terminal, sceneID: UUID())
+        try await Self.until("the retained terminal in the other window") {
+            second.layOut()
+            return second.surface != nil
+        }
+        await second.settle()
+        #expect(await fixture.scripted.attaches.count == 1)
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+        try await Self.until("the terminal to be viewed again") {
+            await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([1])
+        }
+        await second.close()
+        await fixture.finish()
+    }
+
+    @Test func aWindowThatEndsStartsTheFiveMinutesOfTheShellItShows() async throws {
+        let fixture = try await Fixture()
+        let pool = TerminalConnectionPool(idleTimeout: .milliseconds(20))
+        let scene = UUID()
+        let entry = try await pool.select(
+            hostID: fixture.host.id, identity: Self.identity(1), ownerID: UUID(), sceneID: scene,
+            generation: nil, runTerminal: fixture.runner)
+        entry.store.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let attach = try #require(await fixture.scripted.attaches.last)
+
+        pool.sceneDidEnd(UUID()) { _ in true }
+        pool.sceneDidEnd(scene) { _ in false }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(pool.entries.count == 1)
+
+        pool.sceneDidEnd(scene) { $0 == fixture.host.id }
+        _ = await attach.socket.waitForFrame(channel: attach.channel, kind: .close)
+        #expect(pool.entries.isEmpty)
+        await fixture.finish()
+    }
+
+    /// Eviction skips what a window shows, so a closed window's Shell would
+    /// hold its slot for as long as the app runs.
+    @Test func aWindowThatEndsGivesUpTheSlotOfTheShellItShows() async throws {
+        let fixture = try await Fixture()
+        let pool = TerminalConnectionPool(maximumShellsPerHost: 1)
+        let scene = UUID()
+        let entry = try await pool.select(
+            hostID: fixture.host.id, identity: Self.identity(1), ownerID: UUID(), sceneID: scene,
+            generation: nil, runTerminal: fixture.runner)
+        entry.store.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let attach = try #require(await fixture.scripted.attaches.last)
+        await #expect(throws: TerminalConnectionPool.Failure.self) {
+            try await pool.select(
+                hostID: fixture.host.id, identity: Self.identity(2), ownerID: UUID(), sceneID: UUID(),
+                generation: nil, runTerminal: fixture.runner)
+        }
+
+        pool.sceneDidEnd(scene) { _ in true }
+        _ = try await pool.select(
+            hostID: fixture.host.id, identity: Self.identity(2), ownerID: UUID(), sceneID: UUID(),
+            generation: nil, runTerminal: fixture.runner)
+        _ = await attach.socket.waitForFrame(channel: attach.channel, kind: .close)
+        await pool.suspend()
+        await fixture.finish()
+    }
+
+    /// A load the closing window cancelled, or one still queued when it
+    /// closed, has nobody left to release what it gets.
+    @Test(arguments: [true, false])
+    func aWindowClosedWhileItsTerminalOpensLeavesItFree(screenDisappears: Bool) async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let pool = fixture.console.terminalConnections
+        // A teardown ahead in the pool's queue holds the screen's load back.
+        let opened = ScriptedTransportCallGate()
+        await opened.open()
+        let teardown = ScriptedTransportCallGate()
+        let busy = try await pool.select(
+            hostID: fixture.host.id, identity: Self.identity(9), ownerID: UUID(), generation: nil,
+            runTerminal: Self.gatedRunner(opened: opened, teardown: teardown))
+        busy.store.viewDidResize(cols: 80, rows: 24)
+        await opened.waitForEntry()
+        let removing = Task { await pool.remove(hostID: fixture.host.id, identity: Self.identity(9)) }
+        await teardown.waitForEntry()
+
+        let closing = UUID()
+        let window = try await fixture.showShell(of: terminal, sceneID: closing)
+        if screenDisappears { await window.close() }
+        fixture.console.sceneDidEnd(closing)
+        await teardown.open()
+        await removing.value
+        try await Task.sleep(for: .milliseconds(100))
+
+        let other = try await pool.select(
+            hostID: fixture.host.id, identity: ShellTerminalIdentity(
+                paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID),
+            ownerID: UUID(), sceneID: UUID(), generation: nil, runTerminal: fixture.runner)
+        #expect(other.store.identity.terminalID == terminal.terminalID)
+        if !screenDisappears { await window.close() }
+        await fixture.finish()
+    }
+
+    /// `.task(id:)` runs again when the app comes back, in a screen whose
+    /// window closed without telling it.
+    @Test func aClosedWindowsScreenDoesNotTakeItsTerminalBack() async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let closing = UUID()
+        let window = try await fixture.showShell(of: terminal, sceneID: closing)
+        let held = try await fixture.waitForAttach(1, laying: window)
+        try await fixture.deliverOutput("x", on: held)
+        fixture.console.sceneDidEnd(closing)
+        try await Self.until("the closed window's terminal to go quiet") {
+            await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
+        }
+
+        window.activity.didBecomeActive()
+        await window.settle()
+        try await fixture.settle()
+
+        #expect(await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0]))
+        #expect(
+            fixture.console.terminalConnections.reclaim(
+                hostID: fixture.host.id,
+                identity: ShellTerminalIdentity(
+                    paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID),
+                ownerID: UUID(), sceneID: UUID(), generation: nil) != nil)
+        await window.close()
+        await fixture.finish()
+    }
+
+    /// A window SwiftUI brought back is a window again.
+    @Test func aWindowThatComesBackHasNotEnded() async throws {
+        let fixture = try await Fixture()
+        let scene = UUID()
+        #expect(!fixture.console.hasSceneEnded(nil, on: fixture.host.id))
+        #expect(!fixture.console.hasSceneEnded(scene, on: fixture.host.id))
+        fixture.console.sceneDidEnd(scene)
+        #expect(fixture.console.hasSceneEnded(scene, on: fixture.host.id))
+        fixture.console.sceneDidStart(scene)
+        #expect(!fixture.console.hasSceneEnded(scene, on: fixture.host.id))
+        await fixture.finish()
+    }
+
+    /// One Shell channel at a time still holds on Herdr TUI: a window's end
+    /// changes nothing there.
+    @Test func aHerdrTUIWindowThatEndsLeavesItsShellAsItWas() async throws {
+        let console = ConsoleStore(makeSession: { _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { throw TransportError.sshUnreachable(detail: "unused") },
+                keepalive: nil)
+        })
+        let host = Host(address: "tui.example", username: "dev", serverKind: .herdrTUI)
+        console.setHosts([host])
+        let pool = console.terminalConnections
+        let scene = UUID()
+        let owner = UUID()
+        _ = try await pool.select(
+            hostID: host.id, identity: Self.identity(1), ownerID: owner, sceneID: scene,
+            generation: nil, runTerminal: { _, _ in })
+
+        console.sceneDidEnd(scene)
+
+        #expect(!console.hasSceneEnded(scene, on: host.id))
+        await #expect(throws: TerminalConnectionPool.Failure.self) {
+            try await pool.select(
+                hostID: host.id, identity: Self.identity(1), ownerID: UUID(), sceneID: UUID(),
+                generation: nil, runTerminal: { _, _ in })
+        }
+        await pool.suspend()
+        console.setHosts([])
+    }
+
+    /// Opens a session whose teardown waits for `teardown`.
+    private static func gatedRunner(
+        opened: ScriptedTransportCallGate, teardown: ScriptedTransportCallGate
+    ) -> TerminalSessionRunner {
+        { _, handler in
+            let (stream, continuation) = AsyncThrowingStream<Data, any Error>.makeStream()
+            let input = TerminalAttachInputQueue()
+            let session = TerminalAttachSession(output: { stream }, input: input) {
+                await teardown.waitUntilOpen()
+                input.finish()
+                continuation.finish()
+            }
+            await opened.waitUntilOpen()
+            try await handler.runEndingSession(session)
+        }
+    }
 }
 
 /// Whether a window's selection still shows the Agent, as the router says.
@@ -895,11 +1198,16 @@ private struct HostedCoreDetail: View {
 private final class CoreDetailWindow {
     let selection: HostedDetailSelection
     let changes: AgentChangesPresentation
+    let activity: AppActivityCoordinator
     let window: UIWindow
 
-    init(selection: HostedDetailSelection, changes: AgentChangesPresentation, window: UIWindow) {
+    init(
+        selection: HostedDetailSelection, changes: AgentChangesPresentation,
+        activity: AppActivityCoordinator, window: UIWindow
+    ) {
         self.selection = selection
         self.changes = changes
+        self.activity = activity
         self.window = window
     }
 

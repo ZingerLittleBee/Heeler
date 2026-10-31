@@ -242,6 +242,17 @@ final class TerminalConnectionPool {
         }
     }
 
+    /// A closed window's screen still reads as selected when it disappears,
+    /// so it never releases. Left alone, its terminal would read as open in a
+    /// window that no longer exists, hold its slot, and never start its timer.
+    /// `applies` names the Hosts whose terminals follow their window.
+    func sceneDidEnd(_ sceneID: UUID, where applies: (Host.ID) -> Bool) {
+        for (key, entry) in entries where entry.ownerSceneID == sceneID && applies(key.hostID) {
+            guard let ownerID = entry.ownerID else { continue }
+            release(hostID: key.hostID, identity: key.identity, ownerID: ownerID)
+        }
+    }
+
     func remove(hostID: Host.ID, identity: ShellTerminalIdentity) async {
         await mutate { await self.removeEntry(Key(hostID: hostID, identity: identity)) }
     }

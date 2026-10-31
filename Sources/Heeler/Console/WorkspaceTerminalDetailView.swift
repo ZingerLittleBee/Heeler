@@ -53,6 +53,11 @@ struct WorkspaceTerminalDetailView: View {
         }
     }
 
+    /// Closing a window changes nothing `isSelected` reads.
+    private var windowHasEnded: Bool {
+        console.hasSceneEnded(sceneRouting?.sceneID, on: terminal.hostID)
+    }
+
     private var isMissing: Bool {
         console.hostStatuses[terminal.hostID] == .connected
             && !console.hostsAwaitingSnapshot.contains(terminal.hostID)
@@ -233,7 +238,7 @@ struct WorkspaceTerminalDetailView: View {
     }
 
     private func load() async {
-        guard !isMissing else { return }
+        guard !isMissing, !windowHasEnded else { return }
         failure = nil
         if let entry, entry.store.identity != identity {
             console.terminalConnections.release(
@@ -249,6 +254,12 @@ struct WorkspaceTerminalDetailView: View {
                 runTerminal: console.terminalRunner(for: terminal.hostID))
             guard !Task.isCancelled else {
                 retryAfterSpuriousDisappear()
+                return
+            }
+            // The window closed while this waited, past its `sceneDidEnd`.
+            guard !windowHasEnded else {
+                console.terminalConnections.release(
+                    hostID: terminal.hostID, identity: identity, ownerID: ownerID)
                 return
             }
             entry = selected

@@ -623,6 +623,9 @@ final class AgentAttachStore {
         leave(preservingOnStageActivationRecovery: true)
     }
 
+    /// Nothing will come back to this store's terminal unless it rejoins.
+    var hasLeft: Bool { lifecycleState == .left }
+
     /// A deliberate local destination handoff is not SwiftUI navigation churn.
     /// It must tear down even while a foreground recovery owns the on-stage
     /// lifecycle, because the shell cannot take the Host terminal lease until
