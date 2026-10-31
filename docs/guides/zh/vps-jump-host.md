@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/vps-jump-host.md at 2b014a24 -->
+<!-- Translated from docs/guides/vps-jump-host.md at ed1e9e66 -->
 
 # VPS Jump Host 与反向隧道部署参考
 
@@ -397,7 +397,7 @@ macOS 用户级 LaunchAgent 仅在该用户登录后启动；如果 Mac 重启�
 
 ## 9. 配置 Heeler
 
-在 **Hosts > Add Host** 中，轻点 **Routes** 下的 **Add Route** 填写隧道与 Jump Host 字段并保存路由，再填写其余 Host 字段：
+在 **Hosts > Add Host** 中，轻点 **Routes** 下的 **Add Route** 填写隧道与 Jump Host 字段并轻点 **Save** 保存路由，再填写其余 Host 字段：
 
 | 字段 | 值 |
 |---|---|
@@ -409,7 +409,7 @@ macOS 用户级 LaunchAgent 仅在该用户登录后启动；如果 Mac 重启�
 | Jump Host user（在 Route 中） | `herdr-jump` |
 | Authentication | `Device Key` |
 
-分别独立确认两跳的主机密钥：
+在 **Add Host** 页面轻点 **Save** 开始 **Preflight** 预检，并分别独立确认两跳的主机密钥：
 
 - VPS 的公网端点指纹；
 - 通过 `127.0.0.1:2222` 呈现的 Mac 主机密钥指纹。
@@ -517,7 +517,7 @@ sudo ss -ltnp | grep ':2222'
 | Port（在 Route 中） | `2222` |
 | User | `MAC_USER` |
 
-出现提示时核对并确认新 VPS 的指纹，随后完成应用预检并通过 Attach 打开一个 Agent。至此完成功能切换。
+保存路由（如新增路由则轻点 **Save**）并在 **Edit Host** 页面轻点 **Save**。出现提示时核对并确认新 VPS 的指纹，随后完成 **Preflight** 预检并通过 Attach 打开一个 Agent。至此完成功能切换。
 
 ### 阶段 4：下线旧 VPS
 

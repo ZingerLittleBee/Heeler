@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/chat.md at c9c8167e -->
+<!-- Translated from docs/guides/chat.md at aea333b8 -->
 # 在 Chat 中使用 Agent
 
 Chat 把 Agent 的对话显示成消息，而不是终端画面。你可以查看 Agent 做了什么、回复它，并用按钮回答它的提问。
