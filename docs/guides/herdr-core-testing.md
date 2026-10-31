@@ -121,8 +121,10 @@ Detection must leave the Host as it found it too: no core or herdr server starte
 ## Host Helper
 
 Use a Host whose user has never had the Helper, with linger off. Before installing,
-save `find ~/.local/share ~/.config/systemd -print 2>/dev/null | sort` so the end of
-the run can compare against it.
+save `find ~/.local/share ~/.config/systemd ~/.pi ~/.omp -print 2>/dev/null | sort` so
+the end of the run can compare against it. For the extension steps, have Pi and Oh My
+Pi installed, signed in with an account of the Host's own, with one Oh My Pi profile
+besides the default (`omp --profile work` makes one).
 
 | Step | What to do | What must happen |
 | --- | --- | --- |
@@ -133,7 +135,15 @@ the run can compare against it.
 | Restart | `kill -9` the Helper's Node.js process | systemd starts it again within seconds, `NRestarts` goes up by one, and the row still reads the version |
 | Node.js moved | Rename the Node.js executable, kill the Helper, wait past the start limit, then check the Host | The unit is `failed` with result `start-limit-hit`, and the row reads **Service Failed** or **Node.js Missing**. Restore Node.js and tap **Repair**: it runs again |
 | Damage | Change a byte in `app/main.js`, then check the Host | The row reads **Damaged**, and **Repair** puts the file back and keeps `notifications.json` |
-| Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched |
+| Extensions listed | Read the sheet before installing | It lists `heeler-session.js` in `~/.pi/agent/extensions`, `~/.omp/agent/extensions` and `~/.omp/profiles/work/agent/extensions`, and those are the files on the Host afterwards. `installed.json` names each one, and each folder the install created |
+| Pi label | Start Pi in a core Terminal, then `/new` | The Terminal's `heeler.session` label is JSON naming the session id, its file, Pi's pid and `start`, the process's `/proc/<pid>/stat` field 22. `/new` rewrites it with the new session |
+| Oh My Pi label | Start `omp` and `omp --profile work` in core Terminals, then `/new` in one | Each carries the same label, with a session file under its own profile. `/new` rewrites it (source review only so far: the spike's run stopped at the first-run welcome) |
+| Inert outside | Start the same programs outside herdr-core, with no `HC_TERMINAL_ID` | They behave as before, and nothing connects to the core's socket |
+| Slow socket | Start Pi in a core Terminal with `HC_TERMINAL_SOCKET` pointing at a socket that accepts and never answers | Pi starts as usual, with no delay and no message on screen |
+| Pi status | Run Pi 1.0.4 and Pi 1.4.0 in core Terminals through a prompt | 1.0.4 reports idle, working and done through the extension, with an intact screen during the run, which the spike could not test without a model. 1.4.0 reports for itself, and `app=pi` reports do not double |
+| New profile | Make another Oh My Pi profile, then check the Host | The row still reads the version, and the sheet offers **Repair**, which adds that profile's file and touches no other file of the Helper |
+| Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, no `heeler-session.js` is left, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched |
 
 Every step must leave the core as it found it: the Helper in this version only starts
-and stays running, and never connects to a core or starts one.
+and stays running, and never connects to a core or starts one. The extensions only ever
+write the one label on their own Terminal.

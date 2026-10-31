@@ -69,9 +69,20 @@ that Heeler can read from outside the process.
   a herdr-core Terminal (no `HC_TERMINAL_ID`); inside one it reports its
   session as a `heeler.*` label on its own Terminal, through one JSON-RPC line
   to `$HC_TERMINAL_SOCKET`, and Pi's also reports Program Status for Pi
-  releases before 1.1.0. The install screen lists every file. Removing the
-  Helper removes them, its service and its directory, and any folder the
-  install created that is then empty.
+  releases before 1.1.0. The label is `heeler.session`, a JSON object with
+  `session`, `file` when the session has one, `pid`, and `start` as the app's
+  process reader reads it where the platform has one. Only the program holding
+  the Terminal writes it, never a subagent or a headless run a tool started.
+  Pi and Oh My Pi get the same file, `heeler-session.js`: Pi's version resolves
+  only under Pi, so the status part stays silent under Oh My Pi. The profiles
+  are read on the Host by the Helper's own `extension-folders.js`, which the
+  app runs through the Host's Node.js by its text, since an install's file list
+  comes before the Helper is there. The install screen lists every file.
+  Removing the Helper removes them, its service and its directory, and any
+  folder the install created that is then empty. Both folders are made whether
+  or not the program is on the Host yet, so a later install of either works. A
+  profile made after the install is offered a repair, and until then it has no
+  extension.
 - A harness configuration file changes only when the user accepts that one
   change, shown exactly, and every such change can be undone. There are two:
   - OpenCode, offered from Chat when an OpenCode Agent's session cannot be
