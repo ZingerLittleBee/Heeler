@@ -1,4 +1,5 @@
 import Foundation
+import GhosttyTerminal
 import SwiftUI
 import Testing
 
@@ -95,9 +96,9 @@ struct HerdrCoreTerminalStoreTests {
         /// `sceneID` puts it under a scene root, as a real window is.
         func showDetail(
             of agent: ConsoleAgent, sceneID: UUID? = nil, inputMode: AgentInputMode = .composer,
-            readsHostChanges: Bool = false
+            readsHostChanges: Bool = false, look: WindowLook = WindowLook()
         ) async throws -> CoreDetailWindow {
-            let settings = try Self.makeSettings()
+            let settings = try Self.makeSettings(look: look)
             let defaults = try #require(UserDefaults(suiteName: "core-detail-\(UUID().uuidString)"))
             let inputModeSettings = AgentInputModeSettings(defaults: defaults)
             inputModeSettings.select(inputMode)
@@ -135,15 +136,20 @@ struct HerdrCoreTerminalStoreTests {
                         onSelectTerminal: { _ in },
                         changesPresentation: changes)
                 })
+            controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-            return CoreDetailWindow(selection: selection, changes: changes, activity: activity, window: window)
+            return CoreDetailWindow(
+                selection: selection, changes: changes, activity: activity, themes: settings.themes,
+                window: window)
         }
 
         /// A window showing a core Terminal's screen, built as the Console
         /// builds it, under a scene root.
-        func showShell(of terminal: ConsoleTerminal, sceneID: UUID) async throws -> CoreDetailWindow {
-            let settings = try Self.makeSettings()
+        func showShell(
+            of terminal: ConsoleTerminal, sceneID: UUID, look: WindowLook = WindowLook()
+        ) async throws -> CoreDetailWindow {
+            let settings = try Self.makeSettings(look: look)
             let selection = HostedDetailSelection()
             let console = console
             let activity = AppActivityCoordinator()
@@ -161,6 +167,7 @@ struct HerdrCoreTerminalStoreTests {
                         onBack: {})
                 }
                 .environment(\.agentSceneRouting, routing))
+            controller.overrideUserInterfaceStyle = look.appearance
             let window = try await makeTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
             return CoreDetailWindow(
@@ -168,13 +175,16 @@ struct HerdrCoreTerminalStoreTests {
                 changes: AgentChangesPresentation {
                     ChangesStore(directory: { "/work/app" }) { _ in throw ChangesReadError.unavailable }
                 },
-                activity: activity, window: window)
+                activity: activity, themes: settings.themes, window: window)
         }
 
-        private static func makeSettings() throws -> TerminalSettings {
+        private static func makeSettings(look: WindowLook) throws -> TerminalSettings {
             let defaults = try #require(UserDefaults(suiteName: "core-settings-\(UUID().uuidString)"))
+            let themes = TerminalThemeSettings(defaults: defaults)
+            themes.select(look.light, for: .light)
+            themes.select(look.dark, for: .dark)
             return TerminalSettings(
-                themes: TerminalThemeSettings(defaults: defaults),
+                themes: themes,
                 zoom: TerminalZoomSettings(defaults: defaults),
                 fonts: TerminalFontSettings(defaults: defaults),
                 snippets: SnippetStore(defaults: defaults))
@@ -879,6 +889,176 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    // MARK: What a shown terminal tells the core
+
+    /// A theme's colors as the core takes them, written out so that neither the
+    /// catalog nor the code under test supplies what it is compared with.
+    private struct ReportedColors {
+        let foreground: String
+        let background: String
+        let cursor: String
+
+        func match(_ display: JSONValue?) -> Bool {
+            display?["fg"] == .string(foreground) && display?["bg"] == .string(background)
+                && display?["cursor"] == .string(cursor)
+        }
+    }
+
+    private static let dracula = ReportedColors(foreground: "#f8f8f2", background: "#282a36", cursor: "#f8f8f2")
+    private static let nord = ReportedColors(foreground: "#d8dee9", background: "#2e3440", cursor: "#eceff4")
+    private static let zenburn = ReportedColors(foreground: "#dcdccc", background: "#3f3f3f", cursor: "#73635a")
+
+    /// A screen that reads the wrong slot, or no slot, reports something else.
+    private static let draculaInLight = WindowLook(light: .dracula, dark: .nord, appearance: .light)
+
+    private typealias CoreAttach = (channel: UInt32, params: JSONValue, socket: FakeCoreSocket)
+
+    private static func lastFacts(on attach: CoreAttach) async -> JSONValue? {
+        guard let frame = await attach.socket.frames(channel: attach.channel, kind: .facts).last else { return nil }
+        return try? JSONDecoder().decode(JSONValue.self, from: frame.payload)
+    }
+
+    /// The attach opens with the screen's colors, and FACTS brings the core the
+    /// cell the surface measures and whatever it measures next.
+    private static func checkTellsTheCoreItsColorsAndCell(
+        _ screen: CoreDetailWindow, on fixture: Fixture
+    ) async throws {
+        let attach = try await fixture.waitForAttach(1, laying: screen)
+        #expect(dracula.match(attach.params["display"]), "\(attach.params)")
+
+        try await until("the cell the surface measured") {
+            screen.layOut()
+            guard let facts = await lastFacts(on: attach), dracula.match(facts),
+                case .array(let cell)? = facts["cell"], case .number(let width)? = cell.first,
+                case .number(let height)? = cell.last
+            else { return false }
+            return width > 0 && height > 0
+        }
+
+        try #require(screen.surface).terminalDidResize(
+            TerminalGridMetrics(
+                columns: 40, rows: 20, widthPixels: 680, heightPixels: 660,
+                cellWidthPixels: 17, cellHeightPixels: 33))
+        try await until("the cell the surface measured next") {
+            let facts = await lastFacts(on: attach)
+            return facts?["cell"] == .array([.number(17), .number(33)]) && dracula.match(facts)
+        }
+    }
+
+    /// The appearance and the theme picked in Settings each reach the core.
+    private static func checkTellsTheCoreWhatItShowsNext(
+        _ screen: CoreDetailWindow, on fixture: Fixture
+    ) async throws {
+        let attach = try await fixture.waitForAttach(1, laying: screen)
+        try await until("the opening colors") { dracula.match(await lastFacts(on: attach)) }
+
+        screen.setAppearance(.dark)
+        try await until("the other appearance's colors") {
+            screen.layOut()
+            return nord.match(await lastFacts(on: attach))
+        }
+
+        screen.themes.select(.zenburn, for: .dark)
+        try await until("the theme picked in Settings") {
+            screen.layOut()
+            return zenburn.match(await lastFacts(on: attach))
+        }
+    }
+
+    @Test(arguments: [AgentInputMode.composer, .direct])
+    func aCoreAgentsDetailTellsTheCoreItsColorsAndCell(inputMode: AgentInputMode) async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent, inputMode: inputMode, look: Self.draculaInLight)
+        try await Self.checkTellsTheCoreItsColorsAndCell(detail, on: fixture)
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func aCoreTerminalsScreenTellsTheCoreItsColorsAndCell() async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let screen = try await fixture.showShell(of: terminal, sceneID: UUID(), look: Self.draculaInLight)
+        try await Self.checkTellsTheCoreItsColorsAndCell(screen, on: fixture)
+        await screen.close()
+        await fixture.finish()
+    }
+
+    @Test func aCoreAgentsDetailTellsTheCoreWhatItShowsNext() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent, look: Self.draculaInLight)
+        try await Self.checkTellsTheCoreWhatItShowsNext(detail, on: fixture)
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func aCoreTerminalsScreenTellsTheCoreWhatItShowsNext() async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let screen = try await fixture.showShell(of: terminal, sceneID: UUID(), look: Self.draculaInLight)
+        try await Self.checkTellsTheCoreWhatItShowsNext(screen, on: fixture)
+        await screen.close()
+        await fixture.finish()
+    }
+
+    /// The theme can change while Changes covers the terminal, and then only
+    /// coming back tells the core.
+    @Test func aHiddenCoreAgentTellsTheCoreItsNewColorsOnlyOnceItIsBack() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent, look: Self.draculaInLight)
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await Self.until("the opening colors") { Self.dracula.match(await Self.lastFacts(on: attach)) }
+
+        try #require(detail.changes).open()
+        try await Self.until("the terminal to go quiet under Changes") {
+            detail.layOut()
+            return await attach.socket.frames(channel: attach.channel, kind: .focus).last?.payload == Data([0])
+        }
+        let reportsBefore = await attach.socket.frames(channel: attach.channel, kind: .facts).count
+
+        detail.themes.select(.zenburn, for: .light)
+        await detail.settle()
+        try await fixture.settle()
+        #expect(await attach.socket.frames(channel: attach.channel, kind: .facts).count == reportsBefore)
+        #expect(await attach.socket.frames(channel: attach.channel, kind: .focus).last?.payload == Data([0]))
+
+        try #require(detail.changes).close()
+        try await Self.until("the new colors once it is back") {
+            detail.layOut()
+            return Self.zenburn.match(await Self.lastFacts(on: attach))
+        }
+        #expect(await attach.socket.frames(channel: attach.channel, kind: .focus).last?.payload == Data([1]))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// Each viewer answers for its own window: the core's size leader decides
+    /// which colors a program hears.
+    @Test func aSecondWindowTellsTheCoreItsOwnColorsAndCell() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let first = try await fixture.showDetail(of: agent, look: Self.draculaInLight)
+        let held = try await fixture.waitForAttach(1, laying: first)
+
+        let second = try await fixture.showDetail(
+            of: agent, look: WindowLook(light: .dracula, dark: .nord, appearance: .dark))
+        let viewer = try await fixture.waitForAttach(2, laying: second)
+
+        #expect(Self.dracula.match(held.params["display"]))
+        #expect(Self.nord.match(viewer.params["display"]))
+        try await Self.until("the second window's cell") {
+            second.layOut()
+            let facts = await Self.lastFacts(on: viewer)
+            return facts?["cell"] != nil && Self.nord.match(facts)
+        }
+        #expect(Self.dracula.match(await Self.lastFacts(on: held)))
+        await first.close()
+        await second.close()
+        await fixture.finish()
+    }
+
     // MARK: Windows
 
     @Test func aSecondWindowOnAnAgentAlreadyShownIsASecondViewer() async throws {
@@ -1378,6 +1558,13 @@ struct HerdrCoreTerminalStoreTests {
     }
 }
 
+/// The theme in each of a test window's two slots and the appearance it shows.
+private struct WindowLook {
+    var light = TerminalThemeOption.vesper
+    var dark = TerminalThemeOption.vesper
+    var appearance = UIUserInterfaceStyle.unspecified
+}
+
 /// Whether a window's selection still shows the Agent, as the router says.
 @MainActor
 @Observable
@@ -1415,16 +1602,23 @@ private final class CoreDetailWindow {
     /// The Changes the test handed the detail. Nil: the detail built its own.
     let changes: AgentChangesPresentation?
     let activity: AppActivityCoordinator
+    let themes: TerminalThemeSettings
     let window: UIWindow
 
     init(
         selection: HostedDetailSelection, changes: AgentChangesPresentation?,
-        activity: AppActivityCoordinator, window: UIWindow
+        activity: AppActivityCoordinator, themes: TerminalThemeSettings, window: UIWindow
     ) {
         self.selection = selection
         self.changes = changes
         self.activity = activity
+        self.themes = themes
         self.window = window
+    }
+
+    /// Changes the appearance this window shows, as the system does.
+    func setAppearance(_ appearance: UIUserInterfaceStyle) {
+        window.rootViewController?.overrideUserInterfaceStyle = appearance
     }
 
     func layOut() { window.layoutIfNeeded() }
