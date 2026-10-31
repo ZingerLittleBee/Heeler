@@ -28,9 +28,10 @@ struct HostCapabilities: Equatable, Sendable {
     /// One client at a time holds a terminal, so another may take it over. A
     /// herdr-core Terminal has no such thing: every viewer may type (ADR 0031).
     var takeOver = true
-    var desktopAppNaming: HerdrAppNaming?
-    /// The Composer's Stop. A herdr-core Host offers Send and not this yet.
+    /// The Composer's Stop, which shows in Send's place. A native Windows core
+    /// Host offers it with its own Composer.
     var composerStop = true
+    var desktopAppNaming: HerdrAppNaming?
     /// Chat's Send, Stop and Blocked Card answers. A herdr-core Host shows Chat
     /// without them for now.
     var chatTyping = true
@@ -67,8 +68,8 @@ extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
     /// core Host offers uploads once it is known to take them over SFTP: native
     /// Windows stages through the core's `terminal.put` instead (ADR 0032), and
-    /// has no Rename until one passes a test there. It offers Send once it is
-    /// known to be POSIX too, because the foreground that Send checks takes
+    /// has no Rename until one passes a test there. It offers Send and Stop once it
+    /// is known to be POSIX too, because the foreground that Send checks takes
     /// another form on native Windows (ADRs 0032 and 0035). `coreKernel` is the
     /// core Host's `uname -s`: its Chat opens on Linux, whose process reads a
     /// check of an Agent's session uses, for the one program built so far.
@@ -86,7 +87,8 @@ extension HostCapabilities {
             composerSend: offered || coreOnPosix, chat: offered || coreChat,
             tabNames: offered, closeTab: true,
             syncLayoutFromPlugin: offered, takeOver: offered,
-            desktopAppNaming: coreOnPosix ? desktopAppNaming : nil, composerStop: offered,
+            composerStop: offered || coreOnPosix,
+            desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatTyping: !coreChat, chatPrograms: coreChat ? [.claude] : nil)
     }
 }
