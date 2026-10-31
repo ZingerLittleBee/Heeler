@@ -2,12 +2,24 @@
   "version": "0.1.0",
   "files": [
     {
+      "path": "core/client.js",
+      "sha256": "2a5735881b4eee4ec987eea41795588d90d04c2ce0833b84a9061b8da72e8e5b"
+    },
+    {
       "path": "core/frames.js",
       "sha256": "fd99b55ff351d3e8c3dd4458fa2be909c55da47d937f01595b19bc90fe65a869"
     },
     {
+      "path": "core/inventory.js",
+      "sha256": "1873ae76f6c97c89f8d2b5197000baf6da8cf6ef8b4b55e411040f4dccc89143"
+    },
+    {
       "path": "core/session-name.js",
       "sha256": "336fc6bdc97770d6a4158f600d4ef35fa3a0e40c6b778250089166a6a7022176"
+    },
+    {
+      "path": "core/socket.js",
+      "sha256": "30d724c74f7e472635262c38c3bede1fb3e6e2901bc8852c6d01f196cd952ea0"
     },
     {
       "path": "main.js",
