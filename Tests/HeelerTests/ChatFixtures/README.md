@@ -189,6 +189,17 @@ Scrubbing replaced the account name as above and the shell prompt's
 replacements of the same length. These screens are not part of
 `ScreenFixture.all`, which the dialog and input-box suites walk.
 
+### Core paints
+
+`screens/core-paint/*.paint` are the first paint of an observing attach from
+herdr-core 0.1.13 through `scripts/fixtures/herdr-core-ssh.py` on 2026-10-31,
+with no harness signed in: an inert program replayed the `.ansi` screen of the
+same name in a core Terminal at that screen's size. So the screen drawn is the
+earlier capture's, and the bytes around it are the core's. `modes-*` are not
+replays: the program set the alternate screen, bracketed paste, kitty flags 9
+and application cursor keys, or nothing. These are provisional until a live
+Agent on a core is captured.
+
 ### Grok Build screens
 
 `screens/grok/grok-*.ansi` are visible-screen reads from Grok Build 1.0.62 on

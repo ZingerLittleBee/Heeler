@@ -67,6 +67,11 @@ the shell that stays behind, and a retry can deliver it twice.
   that sending never resizes the Terminal. A Blocked Card answer is sent only
   while the dialog it answers is still on screen and the Agent still holds the
   foreground. A viewer that only observes cannot type.
+- Chat's screen checks read a viewer's first paint. `terminal.read` has text
+  only, and the emulator Heeler embeds reads text only, while every attach
+  starts with the styled screen. Each read is an observing attach of its own
+  that closes once the paint is in, so it neither types nor counts toward the
+  Terminal's size.
 - `terminal.send` and `terminal.keys` are not used for authored input.
 
 This amends ADR 0013's Composer Send and Stop, and the herdr requests behind
@@ -95,11 +100,22 @@ confirm or refine these points with test clients, not the app.
 - [viewers.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/viewers.rs#L186-L232)
   drops an observing viewer's input and makes the viewer that types, resizes,
   reports display facts or takes focus the size leader.
+- [api/types.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/api/types.rs#L326-L349)
+  gives `terminal.read` no styled or cell form, and
+  [viewers.rs](https://github.com/herdrdev/herdr-core/blob/v0.1.13/crates/herdr-core/src/viewers.rs#L281-L290)
+  paints the screen first on every attach. A capture of all of Chat's screen
+  fixtures through a fixture core read back alike
+  ([herdr compatibility](../agents/herdr-compatibility.md)).
 
 ## Considered options
 
 - `terminal.send`. One call, and it waits for a person to stop typing, but it
   can deliver into the wrong program or twice, as above.
+- Refusing Chat's screen-gated actions and offering the terminal's Composer,
+  had no styled source existed. Reading the paint keeps Chat's checks, Stop's
+  guards and Blocked Cards, for one more attach per read.
+- A Chat attach held open, with an emulator of Heeler's own over its bytes. It
+  would spare the attach per read, but Heeler has no emulator that keeps styles.
 - Checking the foreground as soon as the paste is written. Faster, but the
   core samples the foreground every 500 ms, so the check can still see an
   Agent that has just exited, and Enter then runs the paste in the shell; a
@@ -121,6 +137,8 @@ confirm or refine these points with test clients, not the app.
   unsubmitted, and the Composer says so.
 - Under the desktop app's fish wrapper the agent shares the wrapper's pid, so
   only the program behind that pid tells an exited Agent from a live one.
+- Each of Chat's screen reads is a round trip and a paint, up to one a second
+  while a Blocked Card shows and more often while an answer is checked.
 - A person typing into the same Terminal on another client at that moment can
   interleave with the paste, as on Herdr TUI.
 - Typing through a viewer makes it the Terminal's size leader; the viewed

@@ -1,0 +1,38 @@
+[!p[?2026l[?9l[?1000l[?1001l[?1002l[?1003l[?1004l[?1005l[?1006l[?1015l[?1016l[?2004l[?1l[?66l[?2031l[?2048l[=0;1u[?1049l[?1047l[?47l[H[2J[3g[9GH[17GH[25GH[33GH[41GH[49GH[57GH[65GH[73GH[81GH[89GH[97GH[105GH[113GH[H
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the Bash tool to run: touch c1.txt[0m[48;2;55;55;55m                                                                               [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+
+[0m[38;2;255;255;255m⏺[0m skipped
+
+[0m[38;2;153;153;153m✻ Churned for 3s · done 1:47 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the Bash tool to run: touch c2.txt[0m[48;2;55;55;55m                                                                               [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mafter it succeeds, reply with the single word created[0m[48;2;55;55;55m                                                                [0m
+
+[0m[38;2;255;255;255m⏺ [0mcreated
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mWorked for 2s · done 1:47 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the AskUserQuestion tool once with exactly two questions. Question 1: header Colors, question 'Which colors?', [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mmultiSelect true, options Red, Green, Blue. Question 2: header Size, question 'Which size?', options Small and [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mLarge. After the answers arrive, reply with them in one line and stop.[0m[48;2;55;55;55m                                               [0m
+
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+←  ☒ Colors  ☒ Size [0m[38;2;0;0;0m[48;2;177;185;249m ✔ Submit [0m[38;2;153;153;153m →[0m
+
+[0m[1m[38;2;255;255;255mReview your answers[0m
+ 
+ ● Which colors?
+   [0m[38;2;78;186;101m→ Red, Blue[0m
+ ● Which size?
+   [0m[38;2;78;186;101m→ Medium[0m
+
+[0m[38;2;153;153;153mReady to submit your answers?[0m
+
+[0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mSubmit answers[0m
+  [0m[38;2;153;153;153m2. [0mCancel[38;12H[0m[?9001l
