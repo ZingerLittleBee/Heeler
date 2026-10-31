@@ -21,10 +21,10 @@ struct HarnessConfigChangeLines: View {
 
     private func row(_ line: HarnessConfigShownLine) -> some View {
         let isAdded = line.kind == .added
-        return (Text(verbatim: isAdded ? "+ " : "- ") + Text(verbatim: line.text)
+        return (Text(verbatim: isAdded ? "+ " : "- ").foregroundStyle(isAdded ? Color.green : Color.red)
+            + Text(verbatim: line.text)
             + (line.endsWithoutNewline ? Text(" (no newline)").foregroundStyle(.secondary) : Text(verbatim: "")))
             .font(.footnote.monospaced())
-            .foregroundStyle(isAdded ? Color.green : Color.red)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityLabel(
@@ -137,6 +137,9 @@ struct HerdrCoreStatusExplanationSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        // Opaque: over a terminal's dark ground the default glass turns the change's
+        // colored lines and every footnote hard to read.
+        .presentationBackground(ConsoleStatusSheetPresentationModifier.formBackground)
     }
 }
 
