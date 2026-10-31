@@ -974,12 +974,20 @@ final class ConsoleStore {
     /// User-facing copy for a failed `tab.close`. `TransportError` is not a
     /// `LocalizedError`, so `localizedDescription` would read as an opaque
     /// Foundation code; mirror the rename path's mapping instead.
+    /// A close nobody answered may have happened, so it is left to the user to
+    /// check, and nothing sends it again.
+    static let closeUnconfirmedMessage =
+        "The Host did not confirm the close. The Terminal may already have ended, "
+        + "so check it before trying again."
+
     static func tabCloseFailureMessage(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.coreMutationOutcomeUnknown:
+            closeUnconfirmedMessage
         case let apiError as HerdrAPIError:
             "herdr rejected the close: \(apiError.message)"
         case TransportError.apiRejected(_, let message):

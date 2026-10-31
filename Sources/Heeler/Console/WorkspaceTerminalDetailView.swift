@@ -302,7 +302,7 @@ struct WorkspaceTerminalDetailView: View {
                 await console.terminalConnections.remove(hostID: terminal.hostID, identity: identity)
                 onBack()
             } catch {
-                closeFailure = error.localizedDescription
+                closeFailure = ConsoleStore.tabCloseFailureMessage(for: error)
             }
         }
     }
