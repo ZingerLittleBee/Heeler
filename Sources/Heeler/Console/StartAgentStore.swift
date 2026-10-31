@@ -641,6 +641,10 @@ final class StartAgentStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "Agent detection timed out."
+        case TransportError.hostFeatureUnavailable(let feature):
+            feature
+        case TransportError.malformedResponse(let detail):
+            detail
         default:
             "Detecting Agents failed: \(error)"
         }
@@ -667,6 +671,11 @@ final class StartAgentStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.coreMutationOutcomeUnknown:
+            "The Host did not confirm the launch. The Agent may still have started, "
+                + "so check the Host before trying again."
+        case TransportError.hostFeatureUnavailable(let feature):
+            feature
         case let apiError as HerdrAPIError where apiError.code == "not_git_worktree":
             // The one dedicated worktree.create error code (#97); everything
             // else collapses into worktree_create_failed with raw git stderr,

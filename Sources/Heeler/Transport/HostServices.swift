@@ -57,6 +57,9 @@ protocol HostServices: Sendable {
     /// `.hostFileTimedOut`, like the file operations.
     func hostHomeDirectory() async throws -> String
 
+    /// One absolute Host path's subdirectories, for the remote directory browser.
+    func listDirectories(at path: String) async throws -> RemoteDirectoryListing
+
     /// Reads one OpenCode session from OpenCode's own database on the Host
     /// (ADR 0025): one read-only script over one exec, one query at a time
     /// per connection. A query past its deadline throws `.hostFileTimedOut`
@@ -160,6 +163,10 @@ extension HostServices {
 
     func hostHomeDirectory() async throws -> String {
         throw TransportError.hostFeatureUnavailable(feature: "Chat")
+    }
+
+    func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        throw TransportError.hostFeatureUnavailable(feature: "Browsing directories")
     }
 
     func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {

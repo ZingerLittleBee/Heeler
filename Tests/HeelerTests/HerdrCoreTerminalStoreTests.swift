@@ -1143,7 +1143,7 @@ struct HerdrCoreTerminalStoreTests {
     /// Input's offer the same, since Direct Input's Add entries are hidden too.
     private static let coreAgentMenus: Set<[String]> = [
         ["Terminals", "Changes", "Collapse"],
-        ["Back to Console", "Open Terminal", "Changes", "Skills", "Snippets"],
+        ["Back to Console", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets"],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.
     private static let notBuiltLabels = ["Add", "Send", "Stop", "Take Over", "Take Over Here"]
@@ -1312,7 +1312,7 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    @Test func aCoreAgentsDrawerCannotStartATerminal() async throws {
+    @Test func aCoreAgentsDrawerOffersNewTerminal() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord, Self.shellRecord(address: "t2")])
         let agent = try #require(fixture.console.agents.first)
         let detail = try await fixture.showDetail(of: agent)
@@ -1322,7 +1322,7 @@ struct HerdrCoreTerminalStoreTests {
         try await HostedMenu.select("Terminals", labeled: "More", in: detail.window)
 
         try await Self.until("the drawer") { detail.offers("Hide Workspace terminals") }
-        #expect(!detail.offers("New Terminal"))
+        #expect(detail.offers("New Terminal"))
         await detail.close()
         await fixture.finish()
     }
@@ -1788,7 +1788,7 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    @Test func aCoreTerminalsMenusHaveNoCloseOrNewTerminalUntilTheyAreBuilt() async throws {
+    @Test func aCoreTerminalsMenusHaveNoCloseUntilItIsBuiltAndItsDrawerOffersNewTerminal() async throws {
         let fixture = try await Fixture(terminals: [Self.shellRecord])
         let terminal = try #require(fixture.console.terminals.first)
         let screen = try await fixture.showShell(of: terminal, sceneID: UUID())
@@ -1801,7 +1801,7 @@ struct HerdrCoreTerminalStoreTests {
 
         try await HostedMenu.select("Terminals", labeled: "More", in: screen.window)
         try await Self.until("the drawer") { screen.offers("Hide Workspace terminals") }
-        #expect(!screen.offers("New Terminal"))
+        #expect(screen.offers("New Terminal"))
         await screen.close()
         await fixture.finish()
     }

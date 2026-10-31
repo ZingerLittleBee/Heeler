@@ -63,6 +63,18 @@ protocol HerdrCoreTransport: Sendable {
     /// nothing here sends it again.
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue
 
+    /// The user's shell for a launch, which supplies the Agent's PATH and
+    /// variables: the login shell the locator reports, else the `SHELL` the core
+    /// process holds, read by name (ADR 0032). Throws when the Host says neither.
+    func launchShell() async throws -> String
+
+    /// Runs installed-agent discovery's script in one bounded exec.
+    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult
+
+    /// `terminal.run`, as a mutation: with no answer it throws
+    /// `.coreMutationOutcomeUnknown`, and nothing here sends it again.
+    func runTerminal(params: JSONValue) async throws -> JSONValue
+
     /// Closes the link, then the connection.
     func close() async throws
 }
@@ -95,6 +107,10 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// Runs a `HostProcessReader` script in one bounded exec.
     func runHostProcessRead(_ script: Data) async throws -> GitExecResult
 
+    /// Runs a script that goes through the user's interactive shell, with room
+    /// for its startup files, in one bounded exec.
+    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult
+
     /// Opens a direct-streamlocal channel under the long-lived events slot.
     /// A channel nobody answers throws `TransportError.streamLocalOpenFailed`.
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel
@@ -106,6 +122,9 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
 /// channel to the socket it found.
 actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private static let callDeadline: Duration = .seconds(10)
+    /// The core itself gives a program 10 seconds to spawn, after starting a
+    /// holder for the first Terminal, and says so when it fails.
+    private static let runDeadline: Duration = .seconds(20)
 
     nonisolated let routeID: UUID?
     nonisolated var hostServices: any HostServices { connection }
@@ -257,6 +276,34 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
         try await onLink { link in
             try await link.call(method, params: params, deadline: Self.callDeadline, isMutation: isMutation)
+        }
+    }
+
+    func launchShell() async throws -> String {
+        let location = if let located { located } else { try await locate() }
+        if let shell = location.loginShell, !shell.isEmpty { return shell }
+        let pid = String(try await serverStatus().pid)
+        let request = HostProcessReader.Request(pids: [pid], valuesOf: ["SHELL"])
+        let nonce = nonce()
+        let result = try await connection.runHostProcessRead(
+            try HostProcessReader.script(request, nonce: nonce))
+        guard result.exitStatus == 0,
+            let facts = try? HostProcessReader.parse(stdout: result.stdout, nonce: nonce, request: request),
+            case .value(let shell)? = facts[pid]?.variables["SHELL"], !shell.isEmpty
+        else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: "Starting an Agent needs your login shell, which this Host does not report")
+        }
+        return shell
+    }
+
+    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
+        try await connection.runAgentDiscovery(script)
+    }
+
+    func runTerminal(params: JSONValue) async throws -> JSONValue {
+        try await onLink { link in
+            try await link.call("terminal.run", params: params, deadline: Self.runDeadline, isMutation: true)
         }
     }
 

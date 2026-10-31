@@ -34,9 +34,10 @@ covers the fixture and CI.
 make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
 ```
 
-It authorizes a throwaway key through `instabox port-forward`, runs the seven
-methods of `HerdrCoreTransportE2ETests` on the Simulator, then starts a core for a
-unique session and checks:
+It authorizes a throwaway key through `instabox port-forward`, writes the fixture's
+startup files into its own directory for the launch method, so the account's own
+stay as they are, runs the eight methods of `HerdrCoreTransportE2ETests` on the
+Simulator, then starts a core for a unique session and checks:
 
 - the `hc-serve-*` and `hc-hold-*` user units
 - `loginctl show-user <user> -p Linger`
@@ -94,8 +95,8 @@ Stop the session by absolute path when you finish, as the safety rules say.
 ## Console
 
 With a core running in your unique session and the Host connected, open the
-Terminals tab. Start Terminals on the box, since a core Host offers no New Terminal
-yet, and read each pid from `server.status` or `terminal.list`.
+Terminals tab. Start Terminals on the box, and read each pid from `server.status` or
+`terminal.list`.
 
 | Check | How to get there | Heeler shows |
 | --- | --- | --- |
@@ -224,6 +225,28 @@ own Device Key. Record each version.
 Add any case the
 [turn-end vector](../../plugin/test-vectors/herdr-core-turn-end-v1.json) lacks, with
 its source, and clear its `provisional` flag once the captures are in.
+
+## New Agent and New Terminal
+
+Use three throwaway accounts on hc-lab whose login shells are bash, zsh and fish, and
+in each put a harmless stub on `PATH` only through the shell's own startup file
+(`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`), with a marker variable beside
+it. Never sign in to a harness: an Agent that stops at its sign-in has already shown
+its flags. Read each launch with `terminal.get` through
+`scripts/fixtures/herdr-core-rpc.py`.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Startup files | Open **New Agent** on each account, with a stub named as an agent | That agent is listed, and an agent only on the SSH exec's `PATH` is not. `argv` reads the shell replacing itself, fish's own form on fish, and `env` holds no `PATH` |
+| The Agent's environment | Start the stub, and print the marker in it | The startup file's marker and `PATH`. `pid` and `foreground.pid` are the same, with no shell left behind |
+| OpenCode 1.19.5 | Install it, then start it | `argv` has no `-s`, and no `heeler.launch-session` label |
+| OpenCode 2.2.2 | Install it, then start it | `argv` has `-s ses_…`, and the label `heeler.launch-session` holds the same id |
+| zsh with no startup files | Remove `~/.zshrc` on the zsh account, then start an Agent | It waits at zsh's new-user wizard. Answering it in the terminal lets the Agent start |
+| Shell from the core | A blank shell field for the account in `/etc/passwd`, and a core started with `SHELL` set | `argv` uses the core's `SHELL`. With it unset too, **New Agent** says the Host does not report your login shell, and nothing starts |
+| Derived Workspace | **New Terminal** in a directory's Workspace, then `cd` elsewhere in a Terminal there and start another | Both land in that card, both with the Workspace's own directory, and no `herdr.*` label |
+| Browsing | **Browse Directory…** in **New Agent** and in **New Terminal** | Remote folders list, and the launch lands in a card named for the one chosen |
+| Mac with the desktop app | On a Mac running the Herdr desktop app, **New Terminal** in one of its spaces | It shows in a new tab of that space in the window, and `terminal.get` has `herdr.space` and a new `herdr.tab`. Never `doc.set` on this core |
+| No answer | Cut the route just after tapping **Start** | Heeler says the Host did not confirm the launch, and `terminal.list` shows at most one new Terminal |
 
 ## Agent Row Layout
 

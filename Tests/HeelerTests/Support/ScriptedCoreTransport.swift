@@ -37,20 +37,37 @@ enum CoreDesktopJSON {
     }
 }
 
-/// The Host's exec side for store tests: checkout roots and the home directory,
-/// recording every ask. Everything else keeps the seam's refusal.
+/// The Host's exec side for store tests: checkout roots, the home directory and
+/// directory listings, recording every ask. Everything else keeps the seam's
+/// refusal.
 actor ScriptedCoreServices: HostServices {
     private var roots: [String: String]
     private let home: String?
     private var failure: (any Error)?
     private var gate: ScriptedTransportCallGate?
 
+    private let listings: [String: RemoteDirectoryListing]
+
     /// The directories of each `checkoutRoots` call.
     private(set) var checkoutCalls: [[String]] = []
+    /// The path of each directory listing.
+    private(set) var listedPaths: [String] = []
 
-    init(roots: [String: String] = [:], home: String? = nil) {
+    init(
+        roots: [String: String] = [:], home: String? = nil,
+        listings: [String: RemoteDirectoryListing] = [:]
+    ) {
         self.roots = roots
         self.home = home
+        self.listings = listings
+    }
+
+    func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        listedPaths.append(path)
+        guard let listing = listings[path] else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        return listing
     }
 
     /// Every ask fails until this is called with nil.
@@ -141,6 +158,14 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var documentReads: [String] = []
     /// No code path writes a document. A write also fails the test that made it.
     private(set) var documentWrites: [JSONValue] = []
+    /// The exact params of every `terminal.run`, oldest first.
+    private(set) var runs: [JSONValue] = []
+    /// The script of every agent discovery, oldest first.
+    private(set) var discoveryScripts: [String] = []
+    private var shell: String?
+    private var discoveredPrograms: [String] = []
+    private var openCodeVersionOutput: String?
+    private var runFailure: (any Error)?
 
     init(
         coreID: String = "c1", subscribeResults: [JSONValue],
@@ -239,12 +264,69 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         }
     }
 
+    func launchShell() async throws -> String {
+        guard let shell else {
+            throw TransportError.hostFeatureUnavailable(feature: "Starting an Agent")
+        }
+        return shell
+    }
+
+    /// Prints as the real script does, with its nonce and whatever a startup
+    /// file might print ahead of it.
+    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
+        let body = String(decoding: script, as: UTF8.self)
+        discoveryScripts.append(body)
+        let marker = "__HEELER_AGENTS_BEGIN_"
+        let nonce =
+            body.range(of: marker).map { body[$0.upperBound...].prefix { $0.isHexDigit } } ?? ""
+        let lines =
+            ["welcome from the rc", "", "\(marker)\(nonce)"]
+            + discoveredPrograms.map { "agent \($0)" }
+            + ["version \(openCodeVersionOutput ?? "")", "", "__HEELER_AGENTS_END_\(nonce)"]
+        return GitExecResult(
+            stdout: Data((lines.joined(separator: "\n") + "\n").utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    func runTerminal(params: JSONValue) async throws -> JSONValue {
+        runs.append(params)
+        if let runFailure { throw runFailure }
+        return Self.runReply(address: "t\(100 + runs.count)", params: params)
+    }
+
+    /// What a core answers: the Terminal it started from these params.
+    private static func runReply(address: String, params: JSONValue) -> JSONValue {
+        .object([
+            "address": .string(address), "cwd": params["cwd"] ?? .string("/"), "state": .string("live"),
+            "argv": params["argv"] ?? .array([.string("/bin/zsh")]),
+            "keep": params["keep"] ?? .bool(false), "title": .string(""),
+            "name": params["name"] ?? .null, "labels": params["labels"] ?? .object([:]),
+            "cols": .number(80), "rows": .number(24), "pid": .number(4000),
+        ])
+    }
+
     func close() async throws {
         isClosed = true
         await bytes?.close()
     }
 
     // MARK: Driving it
+
+    /// The shell a launch goes through. Nil: the Host says none.
+    func setShell(_ shell: String?) {
+        self.shell = shell
+    }
+
+    /// What discovery finds through the interactive shell: the programs it can
+    /// run, and what OpenCode's `--version` prints.
+    func setDiscovery(programs: [String], openCodeVersion: String? = nil) {
+        discoveredPrograms = programs
+        openCodeVersionOutput = openCodeVersion
+    }
+
+    /// Every run fails with this until it is called with nil.
+    func setRunFailure(_ failure: (any Error)?) {
+        runFailure = failure
+    }
 
     /// What the next document read answers, as `doc.get` shapes it.
     func setDocument(_ value: JSONValue, version: Int) {
