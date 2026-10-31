@@ -31,6 +31,7 @@ struct StartAgentView: View {
                             .compactMap { $0.agent.name })
                 },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
+                discoverTemplates: { try await console.availableTemplates(on: $0) },
                 remoteHome: { try await console.remoteHomeDirectory(on: $0) },
                 start: { params, destination, hostID in
                     switch destination {

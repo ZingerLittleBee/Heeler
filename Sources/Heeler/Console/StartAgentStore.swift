@@ -95,6 +95,8 @@ final class StartAgentStore {
                 pickedWorkspaceID = nil
                 availableAgentKinds = []
                 selectedAgentKind = nil
+                availableTemplates = []
+                selectedTemplate = nil
                 agentDiscoveryState = .idle
                 launchTarget = .existingWorkspace
                 newWorkspaceDirectory = ""
@@ -144,7 +146,13 @@ final class StartAgentStore {
     /// `claude-2`, …), mirroring how the herdr TUI labels unnamed agents.
     var name: String = ""
     /// The canonical kind selected from the Host availability probe.
-    var selectedAgentKind: SupportedAgentKind?
+    var selectedAgentKind: SupportedAgentKind? {
+        didSet { if selectedAgentKind != nil { selectedTemplate = nil } }
+    }
+    /// The Template selected in place of a kind.
+    var selectedTemplate: AgentTemplate? {
+        didSet { if selectedTemplate != nil { selectedAgentKind = nil } }
+    }
     /// Optional native arguments, parsed into argv without invoking a shell.
     /// The editor disables smart punctuation at the UIKit input-trait layer;
     /// parsing still normalizes any smart characters supplied by paste or a
@@ -209,6 +217,8 @@ final class StartAgentStore {
     private(set) var state: State = .editing
     private(set) var agentDiscoveryState: AgentDiscoveryState = .idle
     private(set) var availableAgentKinds: [SupportedAgentKind] = []
+    /// The Host's Templates, offered beside the kinds.
+    private(set) var availableTemplates: [AgentTemplate] = []
 
     private let workspacesProvider: (Host.ID) -> [ConsoleWorkspace]
     /// The agent names already live on a Host, so a generated default never
@@ -217,6 +227,7 @@ final class StartAgentStore {
     /// skipping them merely bumps the suffix.
     private let existingAgentNames: (Host.ID) -> Set<String>
     private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
+    private let discoverTemplates: (Host.ID) async throws -> [AgentTemplate]
     /// Resolves the Host's home directory for a name-only New Workspace
     /// launch; fetched at submit so an unreachable Host never blocks editing.
     private let remoteHome: (Host.ID) async throws -> String
@@ -239,6 +250,7 @@ final class StartAgentStore {
         workspaces: @escaping (Host.ID) -> [ConsoleWorkspace],
         existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
+        discoverTemplates: @escaping (Host.ID) async throws -> [AgentTemplate] = { _ in [] },
         remoteHome: @escaping (Host.ID) async throws -> String,
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
@@ -250,6 +262,7 @@ final class StartAgentStore {
         self.workspacesProvider = workspaces
         self.existingAgentNames = existingAgentNames
         self.discoverAgentKinds = discoverAgentKinds
+        self.discoverTemplates = discoverTemplates
         self.remoteHome = remoteHome
         self.start = start
         self.awaitAgentVisible = awaitAgentVisible
@@ -357,15 +370,20 @@ final class StartAgentStore {
     }
 
     func discoverAgents() async {
+        availableAgentKinds = []
+        selectedAgentKind = nil
+        availableTemplates = []
+        selectedTemplate = nil
         guard let hostID = selectedHostID else {
-            availableAgentKinds = []
-            selectedAgentKind = nil
             agentDiscoveryState = .idle
             return
         }
-        availableAgentKinds = []
-        selectedAgentKind = nil
         agentDiscoveryState = .loading
+        // Heeler's own list does not depend on this one, so an ask that fails
+        // leaves the form with Heeler's agents.
+        let templates = (try? await discoverTemplates(hostID)) ?? []
+        guard selectedHostID == hostID else { return }
+        availableTemplates = templates
         do {
             let kinds = try await discoverAgentKinds(hostID)
             guard selectedHostID == hostID else { return }

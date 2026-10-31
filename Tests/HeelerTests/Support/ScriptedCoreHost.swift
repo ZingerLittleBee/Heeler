@@ -194,6 +194,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
     private var runReply: JSONValue?
+    private var templateList: JSONValue?
     private var isHoldingAttachReplies = false
     private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
 
@@ -361,6 +362,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             case "terminal.run":
                 runs.append(request.params)
                 if let runReply { try? await socket.reply(to: request.id, result: runReply) }
+            case "templates.list":
+                if let templateList { try? await socket.reply(to: request.id, result: templateList) }
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
             // A real core's answer for a name nobody wrote.
             case "doc.get" where core.answersDocumentReads:
@@ -401,6 +404,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// What each `terminal.run` answers. Nil leaves it unanswered.
     func setRunReply(_ reply: JSONValue?) {
         runReply = reply
+    }
+
+    /// What each `templates.list` answers. Nil leaves it unanswered.
+    func setTemplateList(_ reply: JSONValue?) {
+        templateList = reply
     }
 
     /// What the next agent discovery's exec prints.

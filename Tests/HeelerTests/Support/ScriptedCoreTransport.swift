@@ -166,6 +166,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var discoveredPrograms: [String] = []
     private var openCodeVersionOutput: String?
     private var runFailure: (any Error)?
+    private var templateList: JSONValue = .object(["templates": .array([])])
+    private var templateListFailure: (any Error)?
 
     init(
         coreID: String = "c1", subscribeResults: [JSONValue],
@@ -241,6 +243,9 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
             documentWrites.append(params)
             Issue.record("A code path wrote a document: \(params)")
             throw TransportError.hostFeatureUnavailable(feature: method)
+        case "templates.list":
+            if let templateListFailure { throw templateListFailure }
+            return templateList
         default:
             throw TransportError.hostFeatureUnavailable(feature: method)
         }
@@ -308,6 +313,16 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// Every run fails with this until it is called with nil.
     func setRunFailure(_ failure: (any Error)?) {
         runFailure = failure
+    }
+
+    /// What `templates.list` answers, as the core shapes it.
+    func setTemplates(_ templates: [JSONValue]) {
+        templateList = .object(["templates": .array(templates)])
+    }
+
+    /// `templates.list` fails with this until it is called with nil.
+    func setTemplateListFailure(_ failure: (any Error)?) {
+        templateListFailure = failure
     }
 
     /// What the next document read answers, as `doc.get` shapes it.

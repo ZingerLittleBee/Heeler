@@ -419,6 +419,14 @@ struct AgentLaunchRequest: Sendable, Equatable {
     }
 }
 
+/// An agent role saved on a herdr-core Host, by the name New Agent starts it with.
+struct AgentTemplate: Sendable, Hashable, Identifiable {
+    let name: String
+    let description: String
+
+    var id: String { name }
+}
+
 /// The one-shot API request behind Open Terminal and New Terminal. `cwd` is
 /// concrete by construction; callers disable the action when they cannot
 /// resolve one honestly. `label` names the new tab; nil keeps herdr's

@@ -157,6 +157,19 @@ enum HerdrCoreLaunch {
         return "ses_\(time)\(String(random))"
     }
 
+    // MARK: Templates
+
+    /// What `templates.list` answers, without the files the core says it cannot use.
+    static func templates(result: JSONValue) -> [AgentTemplate] {
+        guard case .array(let entries)? = result["templates"] else { return [] }
+        return entries.compactMap { entry in
+            guard entry["error"]?.stringValue == nil,
+                let name = entry["name"]?.stringValue, !name.isEmpty
+            else { return nil }
+            return AgentTemplate(name: name, description: entry["description"]?.stringValue ?? "")
+        }
+    }
+
     // MARK: Discovery
 
     static func discoveryScript(shell: String, nonce: String) -> Data {

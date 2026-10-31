@@ -518,6 +518,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return installed.kinds
     }
 
+    func availableTemplates() async throws -> [AgentTemplate] {
+        try await session.withTransport { $0 }.listTemplates()
+    }
+
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         try await launch(
             request,

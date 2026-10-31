@@ -47,6 +47,8 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     // MARK: Host-scoped actions
 
     func availableAgentKinds() async throws -> [SupportedAgentKind]
+    /// The Host's Templates, which only a herdr-core Host has.
+    func availableTemplates() async throws -> [AgentTemplate]
     @discardableResult func startAgent(_ request: AgentLaunchRequest) async throws -> Agent
     @discardableResult func startAgentInNewWorktree(
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
@@ -105,4 +107,6 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
 
 extension ConsoleHostProjection {
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
+
+    func availableTemplates() async throws -> [AgentTemplate] { [] }
 }

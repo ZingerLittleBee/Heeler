@@ -493,6 +493,11 @@ final class ConsoleStore {
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
         try await projection(for: hostID).availableAgentKinds()
     }
+
+    func availableTemplates(on hostID: Host.ID) async throws -> [AgentTemplate] {
+        try await projection(for: hostID).availableTemplates()
+    }
+
     /// Resolves the Host's remote home directory for the New Workspace
     /// directory browser (#280). Throws the error's own presentation,
     /// including homeDirectoryUnresolvable when the probe fails.

@@ -130,6 +130,7 @@ struct HerdrCoreLaunchTests {
                 workspaces: { store.workspaces(for: $0) },
                 existingAgentNames: { _ in [] },
                 discoverAgentKinds: { try await store.availableAgentKinds(on: $0) },
+                discoverTemplates: { try await store.availableTemplates(on: $0) },
                 remoteHome: { try await store.remoteHomeDirectory(on: $0) },
                 start: { params, destination, hostID in
                     switch destination {
@@ -610,6 +611,80 @@ struct HerdrCoreLaunchTests {
         #expect(await fixture.transport.runs.count == 1)
     }
 
+    // MARK: Templates
+
+    private static func template(
+        _ name: String, description: String = "", command: String = "pi --thinking high",
+        error: String? = nil
+    ) -> JSONValue {
+        var fields: [String: JSONValue] = [
+            "name": .string(name), "description": .string(description), "command": .string(command),
+        ]
+        if let error { fields["error"] = .string(error) }
+        return .object(fields)
+    }
+
+    @Test func newAgentListsTheHostsTemplatesBesideHeelersAgents() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["claude"])
+        await fixture.transport.setTemplates([
+            Self.template("planner"), Self.template("reviewer", description: "Read-only code review"),
+        ])
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(form.agentDiscoveryState == .loaded)
+        #expect(form.availableAgentKinds == [.claude])
+        #expect(
+            form.availableTemplates == [
+                AgentTemplate(name: "planner", description: ""),
+                AgentTemplate(name: "reviewer", description: "Read-only code review"),
+            ])
+        #expect(form.selectedAgentKind == .claude)
+        #expect(form.selectedTemplate == nil)
+    }
+
+    @Test func aHostWithNoTemplatesListsNone() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["omp"])
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(form.availableTemplates.isEmpty)
+        #expect(form.availableAgentKinds == [.omp])
+    }
+
+    @Test func aTemplateFileThatCannotBeUsedIsNotOffered() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setTemplates([
+            Self.template("broken", command: "", error: "no command"), Self.template("reviewer"),
+        ])
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(form.availableTemplates.map(\.name) == ["reviewer"])
+    }
+
+    @Test func aFailedTemplateListStillOffersHeelersAgents() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["claude"])
+        await fixture.transport.setTemplateListFailure(TransportError.timedOut)
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(form.agentDiscoveryState == .loaded)
+        #expect(form.availableAgentKinds == [.claude])
+        #expect(form.availableTemplates.isEmpty)
+    }
+
     // MARK: Directory browsing
 
     @Test func thePickersBrowseRemoteDirectoriesThroughTheHostServices() async throws {
@@ -706,6 +781,27 @@ struct HerdrCoreLaunchTransportTests {
         await #expect(throws: TransportError.coreMutationOutcomeUnknown) { try await run.value }
         #expect(await host.runs == [params])
         #expect(await host.methods.filter { $0 == "terminal.run" }.count == 1)
+        try await transport.close()
+    }
+
+    @Test func theTemplateListIsOneCallOverTheLink() async throws {
+        let host = ScriptedCoreHost(channel: Self.coreChannel)
+        await host.setTemplateList(
+            .object([
+                "templates": .array([
+                    .object([
+                        "name": .string("reviewer"), "description": .string("Reviews"),
+                        "command": .string("pi"),
+                    ])
+                ])
+            ]))
+        let transport = host.transport()
+
+        let templates = try await transport.listTemplates()
+
+        #expect(templates == [AgentTemplate(name: "reviewer", description: "Reviews")])
+        #expect(await host.methods.filter { $0 == "templates.list" }.count == 1)
+        #expect(await host.log == ["locator", "open \(ScriptedCoreHost.socketPath)"])
         try await transport.close()
     }
 

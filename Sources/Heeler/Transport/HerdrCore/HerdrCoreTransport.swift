@@ -85,6 +85,12 @@ extension HerdrCoreTransport {
                 params: .object(["terminal": .string(try HerdrCoreWire.address(address)), "lines": .number(0)]),
                 isMutation: false))
     }
+
+    /// The Templates the core can run now, from its own files on each ask.
+    func listTemplates() async throws -> [AgentTemplate] {
+        HerdrCoreLaunch.templates(
+            result: try await call("templates.list", params: .object([:]), isMutation: false))
+    }
 }
 
 /// The parts of an SSH connection a herdr-core transport uses. Real SSH is
