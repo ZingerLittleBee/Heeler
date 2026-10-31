@@ -69,7 +69,15 @@ that Heeler can read from outside the process.
   SFTP. The Helper counts an Agent as Done for a device when it ended a turn
   after that device's last mark and still reports idle or done, in
   notifications and Live Activity updates alike. A device's marks go with its
-  registration, and all of them with the Helper.
+  registration, and all of them with the Helper. The app keeps its own marks in
+  the device's Host memory, beside the core id, and they go with that memory.
+- A subscribe snapshot stands in for what happened since the last report known,
+  as event numbers cannot be resumed. Only leaving Working moves the count, so
+  at the same count the words are compared as live. At a moved count, or at
+  first sight with a count above zero, a report of done ended a turn, and so
+  does idle unless the program is known to report done. An idle that left
+  Blocked while nobody was connected can therefore read as a finished turn once
+  the count has moved, which errs towards one extra Done.
 - With the Helper come Heeler's extensions for Pi and Oh My Pi, placed in the
   folders those programs load extensions from on their own
   (`~/.pi/agent/extensions`, and `~/.omp/agent/extensions` for each Oh My Pi

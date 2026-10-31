@@ -46,6 +46,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var latencyTask: Task<Void, Never>?
     private var environmentTask: Task<Void, Never>?
     private var hasEnded = false
+    private var shownAgents: Set<String> = []
 
     private let gitGate: GitExecGate
     private var document: HerdrCoreDesktopDocument?
@@ -218,6 +219,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         pins.retainPins(hostID: host.id, paneIDs: Set(snapshot.terminals.map(\.address)))
         records = snapshot.terminals
         hasInventory = true
+        for record in records {
+            noteTurns(of: record.address) { state, kind in
+                state.noteSnapshot(
+                    turn: record.turn, word: record.status?.state, kind: kind,
+                    reported: record.reported)
+            }
+        }
         transportGeneration = max(transportGeneration, session.currentConnectionGeneration)
         sidebarRevision &+= 1
         readDocument()
@@ -234,6 +242,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             } else {
                 records.append(record)
             }
+            noteTurns(of: record.address) { state, kind in
+                if case .restarted = event { state.noteRestart(turn: record.turn) }
+                state.noteSnapshot(
+                    turn: record.turn, word: record.status?.state, kind: kind,
+                    reported: record.reported)
+            }
             sidebarRevision &+= 1
         case .size(let terminal, let columns, let rows):
             update(terminal) {
@@ -244,14 +258,20 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             update(terminal) { $0.title = title }
         case .foreground(let terminal, let foreground):
             update(terminal) { $0.noteForeground(foreground) }
+            noteTurns(of: terminal) { _, _ in }
         case .status(let terminal, let status, let records, let reported):
+            let turn = self.records.first { $0.address == terminal }?.turn ?? 0
             update(terminal) {
                 $0.status = status
                 $0.records = records
                 $0.reported = reported
             }
+            noteTurns(of: terminal) { state, kind in
+                state.noteStatus(word: status?.state, turn: turn, kind: kind)
+            }
         case .turn(let terminal, let turn, _):
             update(terminal) { $0.turn = turn }
+            noteTurns(of: terminal) { state, _ in state.noteTurn(turn) }
         case .labels(let terminal, let labels):
             update(terminal) { $0.labels = labels }
             sidebarRevision &+= 1
@@ -263,12 +283,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 $0.foreground = nil
                 $0.reason = end.reason ?? "lost"
             }
+            noteTurns(of: terminal) { _, _ in }
         case .finished(let terminal, _):
             update(terminal) {
                 $0.state = "finished"
                 $0.pid = nil
                 $0.foreground = nil
             }
+            noteTurns(of: terminal) { _, _ in }
             sidebarRevision &+= 1
         case .removed(let terminal):
             memory.forgetTerminal(terminal, for: host.id)
@@ -302,6 +324,41 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         change(&records[index])
     }
 
+    // MARK: Done per device
+
+    /// Marks each newly shown Agent seen. A turn that ends while one stays shown
+    /// is marked as it ends, so it never reads Done.
+    func setShownAgents(_ paneIDs: Set<String>) {
+        let opened = paneIDs.subtracting(shownAgents)
+        shownAgents = paneIDs
+        guard !opened.isEmpty else { return }
+        let wasDone = doneTerminals
+        for address in opened {
+            memory.updateTurnState(of: address, for: host.id) { $0.markSeen() }
+        }
+        guard doneTerminals != wasDone else { return }
+        rebuildRows()
+        publish()
+    }
+
+    private var doneTerminals: Set<String> {
+        Set(memory.turnStates(for: host.id).filter(\.value.isDone).keys)
+    }
+
+    /// Folds one change into a Terminal's turns, with its record already updated.
+    private func noteTurns(
+        of address: String, _ change: (inout HerdrCoreTurnState, _ kind: String?) -> Void
+    ) {
+        guard let record = records.first(where: { $0.address == address }) else { return }
+        let kind = HerdrCoreAgentRule.agent(in: record)?.kind
+        let isShown = shownAgents.contains(address)
+        memory.updateTurnState(of: address, for: host.id) { state in
+            change(&state, kind)
+            if kind == nil { state.noteNoAgent() }
+            if isShown { state.markEndedTurnSeen() }
+        }
+    }
+
     /// Nothing shows until a link's first document read has settled, so a
     /// desktop Terminal never flashes through a Workspace it does not belong in.
     /// A read nobody answers settles at the link's call deadline.
@@ -310,7 +367,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let organization = HerdrCoreOrganization.build(
             terminals: records, document: document,
             firstSeenDirectories: memory.firstSeenDirectories(for: host.id),
-            checkouts: checkouts, home: home)
+            checkouts: checkouts, home: home, doneTerminals: doneTerminals)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
         // Every value comes from the rebuilt records: nothing is carried over.
         let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })

@@ -1,0 +1,410 @@
+{
+  "description": "When a herdr-core Agent ends a turn and when that reads as Done on one device (ADR 0033), for the app's HerdrCoreTurnState and the Helper. kind is the Agent's kind under the Agent rule (herdr-core-agent-rule-v1.json), and doneReporters are the kinds known to report done. Steps run in order from no memory of the Terminal. A step's event is `snapshot` (a subscribe or missed record's turn, state and reported), `status` (a status event, state null for a cleared one), `turn` (a turn event: the core sends it after the status event that moved the count), `restarted` (a kept restart's record), `agent` (the Agent rule's answer changed: kind, null for no Agent) or `seen` (this device opened the Agent, or has it open). ends says whether the step ended a turn, and done whether the Agent reads Done afterwards.",
+  "provisional": true,
+  "provisionalReason": "Built from the versioned compatibility observations and ADR 0033's cases; recordings of real harnesses on hc-lab may add cases.",
+  "coreVersion": "0.1.13",
+  "coreCommit": "88fe4e752debdc6ff6689eaa153d7f95819835a4",
+  "doneReporters": ["claude", "codex", "pi", "omp"],
+  "cases": [
+    {
+      "name": "Claude Code working to done ends a turn, and working again takes Done away",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (Claude Code 2.1.314, core 0.1.13, 2026-10-30)",
+      "kind": "claude",
+      "steps": [
+        { "event": "snapshot", "turn": 0, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true },
+        { "event": "status", "state": "working", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "Codex working to done ends a turn",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (Codex 0.166.0, core 0.1.13, 2026-10-30)",
+      "kind": "codex",
+      "steps": [
+        { "event": "snapshot", "turn": 1, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 2, "state": "done", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "Pi working to done ends a turn",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (Pi 1.4.0, core 0.1.13, 2026-10-30)",
+      "kind": "pi",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "Oh My Pi working to done ends a turn",
+      "source": "ADR 0033, a turn's end: Working to Done for every program",
+      "kind": "omp",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "OpenCode working to done would end a turn too",
+      "source": "ADR 0033, a turn's end: Working to Done for every program",
+      "kind": "opencode",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "Grok Build working to done would end a turn too",
+      "source": "ADR 0033, a turn's end: Working to Done for every program",
+      "kind": "grok",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "a program Heeler does not know working to done ends a turn",
+      "source": "ADR 0033, a turn's end: Working to Done for every program",
+      "kind": "mytool",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "OpenCode 2.x never reports done, so working to idle ends its turn",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (OpenCode 2.1 and later report idle, working and blocked, never done; source only, core 0.1.13, 2026-10-30)",
+      "kind": "opencode",
+      "steps": [
+        { "event": "snapshot", "turn": 0, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": true },
+        { "event": "status", "state": "working", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "Grok Build working to idle ends its turn",
+      "source": "ADR 0033, a turn's end: Working to Idle unless the program is known to report done",
+      "kind": "grok",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "a program Heeler does not know working to idle ends its turn",
+      "source": "ADR 0033, a turn's end: Working to Idle unless the program is known to report done",
+      "kind": "mytool",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "Claude Code working to idle ends no turn",
+      "source": "ADR 0033, a turn's end: Claude Code is known to report done",
+      "kind": "claude",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "Pi working to idle ends no turn",
+      "source": "ADR 0033, a turn's end: Pi is known to report done",
+      "kind": "pi",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "Oh My Pi working to idle ends no turn",
+      "source": "ADR 0033, a turn's end: Oh My Pi is known to report done",
+      "kind": "omp",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a Codex release that never reports done shows no Done, on a live turn or a reconnect",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (Codex reports from 0.163 and done and blocked from 0.164, core 0.1.13, 2026-10-30)",
+      "kind": "codex",
+      "steps": [
+        { "event": "snapshot", "turn": 4, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 5, "state": "idle", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 9, "state": "idle", "reported": true, "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "Codex's working blip at start moves the turn count and ends no turn",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (a working blip at start moves the turn count, Codex 0.166.0, core 0.1.13, 2026-10-30)",
+      "kind": "codex",
+      "steps": [
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "any key turns Codex's done into idle, which keeps an unseen Done",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (any key turns done or error into idle, Codex 0.166.0, core 0.1.13, 2026-10-30); glossary Agent Status: still reports idle or done",
+      "kind": "codex",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true },
+        { "event": "status", "state": "idle", "ends": false, "done": true },
+        { "event": "seen", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "any key turning a seen done into idle brings no Done back",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (any key turns done or error into idle, Codex 0.166.0, core 0.1.13, 2026-10-30)",
+      "kind": "codex",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 1, "state": "idle", "reported": true, "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a Terminal that reported done counts as a done reporter until its next restart",
+      "source": "ADR 0033, a turn's end: any Terminal that has reported done since its last restart; docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (a kept restart clears reported and status and keeps the turn count, core 0.1.13, 2026-10-30)",
+      "kind": "mytool",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "idle", "ends": false, "done": true },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 2, "state": "done", "ends": false, "done": true },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 3, "state": "idle", "ends": false, "done": false },
+        { "event": "restarted", "turn": 3, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": true, "done": true },
+        { "event": "turn", "turn": 4, "state": "idle", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "a snapshot with a report of done teaches the Terminal, and one after a restart forgets it",
+      "source": "ADR 0033, a turn's end: any Terminal that has reported done since its last restart; docs/agents/herdr-compatibility.md \"herdr-core status, input and reads\" (only a kept restart clears reported, source review of core 0.1.13, 2026-10-30)",
+      "kind": "mytool",
+      "steps": [
+        { "event": "snapshot", "turn": 2, "state": "done", "reported": true, "ends": true, "done": true },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "turn", "turn": 3, "state": "idle", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 3, "state": null, "reported": false, "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": true, "done": true },
+        { "event": "turn", "turn": 4, "state": "idle", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "entering blocked moves the turn count and ends no turn, for a program that reports done or one that does not",
+      "source": "ADR 0033, a turn's end; docs/agents/herdr-compatibility.md \"herdr-core status, input and reads\" (a turn ends whenever the root leaves working, into blocked included, source review of core 0.1.13, 2026-10-30)",
+      "kind": "opencode",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "blocked", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "blocked", "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "idle", "ends": true, "done": true },
+        { "event": "turn", "turn": 2, "state": "idle", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "entering error moves the turn count and ends no turn",
+      "source": "ADR 0033, a turn's end; docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (Claude Code 2.1.314: done and error stay until the next prompt, core 0.1.13, 2026-10-30)",
+      "kind": "claude",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "error", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "error", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a Working turn that went to blocked and then straight to done ends at that done, with no turn event",
+      "source": "ADR 0033, a turn's end: a move from Blocked straight to Done brings no turn event",
+      "kind": "claude",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "blocked", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "blocked", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true }
+      ]
+    },
+    {
+      "name": "an Agent opened while blocked shows Done when that turn ends at done, at the same count",
+      "source": "ADR 0033, Done per device: the seen mark carries the status word because a move from Blocked straight to Done brings no turn event",
+      "kind": "claude",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "blocked", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "blocked", "ends": false, "done": false },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true }
+      ]
+    },
+    {
+      "name": "opening clears Done until the next finished turn",
+      "source": "glossary Agent Status; ADR 0033, Done per device",
+      "kind": "claude",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 2, "state": "done", "ends": false, "done": true }
+      ]
+    },
+    {
+      "name": "another report of the same word ends nothing again",
+      "source": "herdr-core 0.1.13 status.rs:99-115 and viewers.rs:161-170: every report sends a status event, a child record's or a repeated word's included",
+      "kind": "claude",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a cleared status ends no turn though the count moves",
+      "source": "docs/agents/herdr-compatibility.md \"Program Status from harnesses in herdr-core Terminals\" (Claude Code 2.1.314: clear on exit, core 0.1.13, 2026-10-30); herdr-core 0.1.13 status.rs:73-79",
+      "kind": "opencode",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": null, "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": null, "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a done with no working before it ends no turn",
+      "source": "ADR 0033, a turn's end comes from the status word: Working to Done",
+      "kind": "claude",
+      "steps": [
+        { "event": "status", "state": "idle", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a program that left takes its Done with it, and its stale report brings none back",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core status, input and reads\" (the last report outlives its program while the Terminal runs on, source review of core 0.1.13, 2026-10-30); user story 43",
+      "kind": "codex",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "done", "ends": true, "done": true },
+        { "event": "turn", "turn": 1, "state": "done", "ends": false, "done": true },
+        { "event": "agent", "kind": null, "ends": false, "done": false },
+        { "event": "agent", "kind": "codex", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 1, "state": "done", "reported": true, "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a snapshot of a done this device never saw reads Done",
+      "source": "glossary Agent Status: a turn this device was not showing that still reports idle or done",
+      "kind": "claude",
+      "steps": [
+        { "event": "snapshot", "turn": 3, "state": "done", "reported": true, "ends": true, "done": true },
+        { "event": "snapshot", "turn": 3, "state": "done", "reported": true, "ends": false, "done": true },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 3, "state": "done", "reported": true, "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a turn missed while away reads Done from the moved count, for a program not known to report done",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core framed protocol and events\" (the turn count survives restarts, and seq cannot be resumed, so a reconnect has only the snapshot, core 0.1.13, 2026-10-30); ADR 0033, a turn's end",
+      "kind": "opencode",
+      "steps": [
+        { "event": "snapshot", "turn": 0, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "snapshot", "turn": 2, "state": "idle", "reported": true, "ends": true, "done": true },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 2, "state": "idle", "reported": true, "ends": false, "done": false },
+        { "event": "snapshot", "turn": 3, "state": "idle", "reported": true, "ends": true, "done": true }
+      ]
+    },
+    {
+      "name": "a turn missed while away reads Done from a reported done, with a higher count or a blocked one before it",
+      "source": "ADR 0033, a turn's end: a move from Blocked straight to Done brings no turn event",
+      "kind": "codex",
+      "steps": [
+        { "event": "snapshot", "turn": 1, "state": "done", "reported": true, "ends": true, "done": true },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 2, "state": "done", "reported": true, "ends": true, "done": true },
+        { "event": "seen", "ends": false, "done": false },
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "blocked", "ends": false, "done": false },
+        { "event": "turn", "turn": 3, "state": "blocked", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 3, "state": "done", "reported": true, "ends": true, "done": true }
+      ]
+    },
+    {
+      "name": "while away, an Agent that left blocked for idle at the same count ended no turn",
+      "source": "herdr-core 0.1.13 status.rs:73-79: only leaving working moves the count, so the same count means no working came between",
+      "kind": "opencode",
+      "steps": [
+        { "event": "status", "state": "working", "ends": false, "done": false },
+        { "event": "status", "state": "blocked", "ends": false, "done": false },
+        { "event": "turn", "turn": 1, "state": "blocked", "ends": false, "done": false },
+        { "event": "snapshot", "turn": 1, "state": "idle", "reported": true, "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "a blocked or working snapshot takes an unseen Done away",
+      "source": "glossary Agent Status: still reports idle or done",
+      "kind": "claude",
+      "steps": [
+        { "event": "snapshot", "turn": 3, "state": "done", "reported": true, "ends": true, "done": true },
+        { "event": "snapshot", "turn": 3, "state": "working", "reported": true, "ends": false, "done": false },
+        { "event": "snapshot", "turn": 4, "state": "done", "reported": true, "ends": true, "done": true },
+        { "event": "snapshot", "turn": 5, "state": "blocked", "reported": true, "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "first sight of an idle Agent that never finished a turn is not Done",
+      "source": "herdr-core 0.1.13 status.rs:73-79: the count is zero until the root first leaves working",
+      "kind": "opencode",
+      "steps": [
+        { "event": "snapshot", "turn": 0, "state": "idle", "reported": true, "ends": false, "done": false }
+      ]
+    },
+    {
+      "name": "first sight of a Terminal with a done at count zero is not Done, as no working came before it",
+      "source": "herdr-core 0.1.13 status.rs:73-79: the count is zero until the root first leaves working",
+      "kind": "claude",
+      "steps": [
+        { "event": "snapshot", "turn": 0, "state": "done", "reported": true, "ends": false, "done": false }
+      ]
+    }
+  ]
+}

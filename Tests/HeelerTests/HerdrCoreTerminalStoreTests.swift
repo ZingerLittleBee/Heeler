@@ -1169,6 +1169,75 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    /// Done per device through the real screen: opening clears it, a turn that
+    /// ends with the detail open never reads Done, and one after it left does.
+    @Test func aCoreAgentsDetailClearsItsDoneAndSeesTheTurnsThatEndWhileItIsOpen() async throws {
+        var line = 100
+        func event(_ type: String, _ data: JSONValue) -> Data {
+            line += 1
+            return (try? JSONEncoder().encode(JSONValue.object([
+                "jsonrpc": .string("2.0"), "method": .string("event"),
+                "params": .object([
+                    "seq": .number(Double(line)), "type": .string(type), "terminal": .string("t1"),
+                    "data": data,
+                ]),
+            ]))) ?? Data()
+        }
+        func status(_ word: String) -> Data {
+            event(
+                "status",
+                .object([
+                    "status": .object(["state": .string(word), "app": .string("claude-code")]),
+                    "records": .object([:]), "reported": .bool(true),
+                ]))
+        }
+        func turn(_ count: Int, _ word: String) -> Data {
+            event("turn", .object(["turn": .number(Double(count)), "state": .string(word)]))
+        }
+
+        guard case .object(var finished) = Self.agentRecord else { return }
+        finished["status"] = .object(["state": .string("done"), "app": .string("claude-code")])
+        finished["turn"] = .number(1)
+        finished["reported"] = .bool(true)
+        let fixture = try await Fixture(terminals: [.object(finished)])
+        let agent = try #require(fixture.console.agents.first)
+        #expect(agent.agent.status == .done)
+        func current() -> AgentStatus? { fixture.console.agents.first?.agent.status }
+
+        let detail = try await fixture.showDetail(of: agent)
+        try await Self.until("opening to clear Done") {
+            detail.layOut()
+            return current() == .idle
+        }
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("x", on: attach)
+
+        try await fixture.scripted.deliverEvent(status("working"))
+        try await Self.until("the next turn") { current() == .working }
+        try await fixture.scripted.deliverEvent(status("done"))
+        try await fixture.scripted.deliverEvent(turn(2, "done"))
+        try await fixture.scripted.deliverEvent(event("title", .object(["title": .string("ended")])))
+        try await Self.until("the turn's end") {
+            detail.layOut()
+            return fixture.console.agents.first?.agent.terminalTitle == "ended"
+        }
+        #expect(current() == .idle)
+
+        detail.selection.showsDetail = false
+        try await Self.until("the detail to leave its terminal") {
+            detail.layOut()
+            return await attach.socket.frames(channel: attach.channel, kind: .focus).last?.payload == Data([0])
+        }
+        try await fixture.scripted.deliverEvent(status("working"))
+        try await Self.until("another turn") { current() == .working }
+        try await fixture.scripted.deliverEvent(status("done"))
+        try await fixture.scripted.deliverEvent(turn(3, "done"))
+        try await Self.until("Done for the turn nobody was shown") { current() == .done }
+
+        await detail.close()
+        await fixture.finish()
+    }
+
     @Test func aCoreAgentsDirectInputOffersOnlyWhatIsBuiltAndTypesIntoItsAttach() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
@@ -1983,6 +2052,8 @@ private struct HostedCoreDetail: View {
             }
         }
         .environment(\.agentSceneRouting, routing)
+        // A hosting controller has no SwiftUI scene to say so.
+        .environment(\.scenePhase, .active)
     }
 }
 

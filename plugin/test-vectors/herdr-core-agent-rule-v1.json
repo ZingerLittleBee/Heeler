@@ -1,5 +1,5 @@
 {
-  "description": "Which Agent a herdr-core Terminal record holds (ADR 0032), for the app's HerdrCoreAgentRule and the Helper. A case's record is the core's own shape; foregroundEvents, when a case has them, are the data of the `foreground` events that follow that record, in order, null for a cleared one; expected is null when the Terminal hosts no Agent. known is false for a program Heeler does not know: a sanitized kind, the generic glyph and no Chat. A report of done reads Idle until Done per device.",
+  "description": "Which Agent a herdr-core Terminal record holds (ADR 0032), for the app's HerdrCoreAgentRule and the Helper. A case's record is the core's own shape; foregroundEvents, when a case has them, are the data of the `foreground` events that follow that record, in order, null for a cleared one; expected is null when the Terminal hosts no Agent. known is false for a program Heeler does not know: a sanitized kind, the generic glyph and no Chat. A report of done reads idle here: Done is per device, and herdr-core-turn-end-v1.json holds its cases.",
   "provisional": true,
   "provisionalReason": "Built from versioned compatibility observations, the desktop app's wrapper source and PR #538's recognizer tests; recordings of real harnesses on hc-lab may add cases.",
   "coreVersion": "0.1.13",

@@ -153,6 +153,7 @@ credential. Which harness reports what is what this section finds out, so record
 version beside each result. Add any case the
 [Agent-rule vector](../../plugin/test-vectors/herdr-core-agent-rule-v1.json) lacks,
 with its source, and clear the vector's `provisional` flag once the captures are in.
+The [Done step](#done-per-device) below does the same for the turn-end vector.
 
 | Harness | Start it | Its `app` | Agent kind | Heeler shows |
 | --- | --- | --- | --- | --- |
@@ -174,7 +175,7 @@ Terminal. A status report is `printf '\033]7501;state=working:app=x\007'`, as th
 | Check | How to get there | Heeler shows |
 | --- | --- | --- |
 | Error | A running program reports `state=error` | **Error**, sorted with Blocked |
-| Reported done | A running program reports `state=done` | **Idle**. Done per device is a later check |
+| Reported done | A running program reports `state=done` with no `working` before it | **Idle**. It finished no turn |
 | Unknown app | A program that is not a shell reports an `app` Heeler does not know, or none | An Agent with a generic glyph and the program's word as its kind, and no Chat |
 | Shell exit | Quit a harness back to its shell | The Agent ends and the row returns to the Terminals tab, whatever it last reported |
 | Wrappers | A harness started through `bash -lc`, and through the desktop app's fish wrapper | The Agent is the harness underneath. New arguments on the fish wrapper's pid end it |
@@ -202,6 +203,27 @@ account.
 | Undo refused | Apply again, add a comment on the box, and tap **Undo** | **The file changed after Heeler edited it, so nothing was written**, and the file keeps your comment. **Stop Listing** drops the row and leaves the file alone |
 | Symlink | Make the file a symlink and repeat Apply and Undo | It stays a symlink, and the target takes the change |
 | Others untouched | Compare Claude Code's settings, Codex's hooks and `~/.grok`'s global hooks before and after | No change |
+
+## Done per device
+
+Run this for Claude Code and Codex against the mock API, Pi, and OpenCode 2.x, with
+the capture running, and the same Host added on a second device or Simulator with its
+own Device Key. Record each version.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Done while away | Give the Agent a prompt from another client, stay on the Agents list until it finishes | **Done** on the row, and on the second device |
+| Open clears here | Open the Agent, go back | No **Done** on this device. The second device still shows **Done** |
+| Open as it ends | Give it a prompt, keep its detail open until it finishes, go back | Never **Done** on this device. The second device shows **Done** |
+| Working again | With **Done** showing, give it another prompt | **Working** in place of **Done** |
+| Relaunch | Open one finished Agent, leave another, kill the app and relaunch | The opened one stays without **Done**, the other keeps it |
+| Blocked, then done | Make Claude Code ask for permission, answer it, let it finish, without opening it | **Blocked**, **Working**, then **Done** |
+| Codex start-up | Start Codex and leave it at its prompt | Its first working blip shows no **Done** |
+| Not known to report done | OpenCode 2.x finishing a turn | **Done** from its move to idle |
+
+Add any case the
+[turn-end vector](../../plugin/test-vectors/herdr-core-turn-end-v1.json) lacks, with
+its source, and clear its `provisional` flag once the captures are in.
 
 ## Agent Row Layout
 

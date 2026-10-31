@@ -16,9 +16,13 @@ final class AgentFocusCoordinator {
         let isOnStage: Bool
         let showsShellTerminal: Bool
 
+        /// The Agent itself is in front of the user, whatever the Host is doing.
+        var showsAgent: Bool {
+            isSceneActive && isOnStage && !showsShellTerminal
+        }
+
         fileprivate var target: Target? {
-            guard status == .done, isHostReady, isSceneActive, isOnStage,
-                !showsShellTerminal, let transportGeneration
+            guard status == .done, isHostReady, showsAgent, let transportGeneration
             else { return nil }
             return Target(
                 agentID: agentID, terminalID: terminalID,

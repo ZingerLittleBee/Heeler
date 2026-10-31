@@ -364,6 +364,8 @@ struct AgentDetailView: View {
 
     private func updateFocus() {
         let state = focusViewingState
+        console.setAgentShown(
+            state.showsAgent ? agent.id : nil, viewer: presenceToken, scene: sceneRouting?.sceneID)
         focus.update(state) { id in
             // A queued task can begin after selection or Shell ownership moved,
             // before SwiftUI has delivered the next onChange callback.
@@ -483,6 +485,7 @@ struct AgentDetailView: View {
         .onDisappear {
             hasAppeared = false
             focus.leave()
+            console.setAgentShown(nil, viewer: presenceToken, scene: sceneRouting?.sceneID)
             // The router's truth, not SwiftUI's: a spurious disappear, or
             // Changes pushed over the detail, keeps the upload going.
             let key = presenceKey

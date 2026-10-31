@@ -51,9 +51,11 @@ A Terminal is an Agent while its foreground program is a known coding program, o
 | Status | What it means |
 | --- | --- |
 | **Unknown** | The program has not reported yet |
-| **Working**, **Idle** | What it reports. A program reporting done reads **Idle** |
+| **Working**, **Idle** | What it reports. A program reporting done reads **Idle**, unless it shows **Done** |
 | **Blocked** | It waits for you |
 | **Error** | It reports an error, and sorts with **Blocked** |
+
+Done is per device. An Agent shows Done when it finished a turn this device was not showing and still reports idle or done. Opening the Agent clears it here, and so does having it open when the turn ends; your other devices keep showing it until you open it there. It leaves on its own when the Agent starts working again. A turn finishes when a program goes from Working to Done. A program not known to report done also finishes one by going from Working to Idle, while Claude Code, Codex, Pi and Oh My Pi do not, so a Codex release too old to report done never shows Done. Removing the Host, or the Host getting a different core, starts over.
 
 Tap **Unknown** on an Agent's status line to see why it reads that way. Each program reports its status from a release on: Claude Code 2.1.295, Codex 0.163, OpenCode 2.1, Pi 1.1.0 (earlier releases report through the [Host Helper](#host-helper)) and Oh My Pi 18.8.7, so an older one stays Unknown. No such release is known for Grok Build or for a program Heeler does not recognize. A Terminal that has reported but holds no state reads as not having reported a state yet. Heeler never works out a status from the screen.
 
