@@ -28,7 +28,8 @@ function patchFor(type, data) {
     case "title":
       return { title: data.title };
     case "foreground":
-      return { foreground: data };
+      // A cleared one names no program, so the last sample stands until the next.
+      return data === null ? null : { foreground: data };
     case "status":
       return { status: data.status, records: data.records, reported: data.reported };
     case "turn":

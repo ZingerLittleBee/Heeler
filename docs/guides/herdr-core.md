@@ -186,18 +186,34 @@ If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout 
 
 Native Windows core Hosts do not offer Worktrees yet.
 
+## Chat
+
+Chat opens for a Claude Code Agent on a Linux core Host, where you can read its conversation, send to it, stop it and answer its questions.
+
+- **Send** checks the Agent's input box and which conversation it shows, pastes the message, and submits it only if the same Agent still holds the terminal within two seconds. Otherwise nothing is submitted, the draft stays in the Composer, and a notice says whether the text may still be in the terminal. A Send the Host did not answer is never sent again, so check the terminal before sending it yourself.
+- **Stop** presses Esc, or on a Template's Terminal the Template's stop key.
+- A **Blocked card** answers only while the same dialog is on screen and the Agent still holds the terminal. If either changed, it sends nothing and says so.
+
+Typing from Chat does not change the terminal's size for anyone viewing it.
+
+Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. It checks when you open Chat and when the Agent's status or foreground program changes, and at no other time.
+
+| Chat says | What it means |
+| --- | --- |
+| **Can't Tell the Conversation** | Claude Code names its conversation only once it reaches its prompt. Finish signing in or answer its question in the terminal, and Chat follows on the next status change. **Retry** checks at once |
+| **Transcript Saving Is Off** | The Agent runs with the variable Chat names, `CLAUDE_CODE_CHILD_SESSION` or `CLAUDE_CODE_SKIP_PROMPT_HISTORY`, so it keeps no conversation to read. Start it again without the variable. If the core itself carries it, the Host's **Core Environment** says how to fix that |
+
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the desktop.
-- Chat is not available yet.
+- Chat opens only for Claude Code on Linux. Other programs, macOS and native Windows core Hosts offer the terminal alone.
 - Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
-- Notifications and Live Activities are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 
 ## Host Helper
 
-The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. It follows the core and answers Usage. Notifications and Live Activities still read as unavailable until the app connects them to it.
+The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. It follows the core, sends Agent Notifications and Live Activity updates, and answers Usage.
 
 The Helper never starts a core. It connects to the core's socket directly, and while no core runs it waits and tries again, so a core you stopped stays stopped until you start it. When you do, the Helper connects on its own, without a restart.
 
@@ -221,6 +237,28 @@ Without systemd linger, the Helper stops about ten seconds after your last login
 | **Not Available** | This platform has no Helper |
 
 Native Windows Hosts read **Not Available**, so Agent Notifications (in-app banners included), Live Activity and Usage are not available there yet. macOS Hosts also read **Not Available** in this version, with no install offered.
+
+## Agent Notifications
+
+With the Host Helper running, a herdr-core Host notifies you as any other Host does, with Heeler killed too. Turn notifications on for the Host in **Settings > Notifications**. Heeler writes this device's entry for the Host's session into the Helper's directory, never into a plugin's file, and each device's notifications are encrypted with its own key.
+
+- **Blocked** and **Error** come under the Blocked switch. Error reads as Error, since nothing is waiting for your answer.
+- **Done** has its own switch, and is per device. A device gets no Done for a turn it has seen: it had the Agent open as the turn ended, or opened the Agent before the notification was due. To know that, Heeler writes a small file for this device in the Helper's directory, holding only Terminal addresses and turn counts, whenever you open an Agent or a turn ends while it is open. Your other devices still get theirs.
+- A Terminal that has no Agent, or whose Agent has given way to a shell, sends nothing. A status that lasts under about five seconds sends nothing either.
+- What a core had already reported when the Helper first saw it is not announced.
+
+Turning notifications off, or removing the Host while connected, removes this device's entry and its file from the Host. If you remove a disconnected Host, the entry stays and Heeler says so: reconnect first to stop them.
+
+The switches need the Helper, so **Settings > Notifications** says what the Host's Helper needs, such as **Not Installed**, **Service Failed** or **Node.js Missing**. Fix that from the Host's page in **Hosts**. A device already registered keeps its switches there, so it can still leave. With **Linger Off**, the switches work and a note says the Helper stops about ten seconds after your last login ends, so notifications stop too. Notifications need Host Helper 0.4.0 or newer.
+
+### Banners and Live Activity
+
+Once this device is registered with a Host's Helper, that Host's Agents join the in-app banners and the Live Activity alongside your other Hosts. A Host without the Helper, or without this device's registration, gets neither.
+
+- **Banners** come while Heeler is open, under the same switches: Blocked and Error under the Blocked switch, Error reading as Error, and Done under its own switch. Done is this device's, so an Agent you have open makes no Done banner.
+- **Live Activity** has its own switch for the Host, and needs Host Helper 0.5.0 or newer. Heeler starts the activity and writes its push token into the Helper's directory. After Heeler suspends, the Helper updates and ends it through the Push Relay. Done counts for this device only, and an Error Agent counts under Blocked, as the Live Activity has no count of its own for it.
+
+While Heeler is suspended the activity names each Agent's workspace by its folder, not a desktop app's space name, and a row field for the Tab or Pane stays empty. Opening Heeler brings those back.
 
 ## Usage
 

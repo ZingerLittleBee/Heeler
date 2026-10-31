@@ -286,9 +286,10 @@ final class HostStore {
         hosts.filter(\.serverKind.isConfirmed)
     }
 
-    /// Only a Herdr TUI Host has a plugin to receive Live Activity updates.
+    /// A Host waiting for its Server Kind stays out of Live Activities. Whether a
+    /// core Host may show one is its registration's call, see `LiveActivityGate`.
     func supportsLiveActivities(for id: Host.ID) -> Bool {
-        hosts.first(where: { $0.id == id })?.serverKind == .herdrTUI
+        hosts.first(where: { $0.id == id })?.serverKind.isConfirmed == true
     }
 
     /// Removes the Host, its stored password, and the device's consent to

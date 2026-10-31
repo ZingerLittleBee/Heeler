@@ -33,6 +33,7 @@ struct Input: Decodable {
     var names: [String]?
     var prefixes: [String]?
     var files: Bool?
+    var descendants: String?
     var root: String?
     var macOS: Bool?
 }
@@ -47,7 +48,8 @@ let request = HostProcessReader.Request(
     valuesOf: input.values ?? [],
     namesOf: input.names ?? [],
     namesWithPrefix: input.prefixes ?? [],
-    readsOpenFiles: input.files ?? false)
+    readsOpenFiles: input.files ?? false,
+    descendantsOf: input.descendants)
 let nonce = "0123456789abcdef01234567"
 
 func reading<Value>(_ reading: HostProcessReader.Reading<Value>) -> Any {
@@ -93,12 +95,16 @@ case "parse":
         case .value(let found): names = found.sorted()
         case .unavailable: names = "unavailable"
         }
-        result[pid] = [
+        var entry: [String: Any] = [
             "start": reading(fact.start),
             "variables": variables,
             "names": names,
             "files": reading(fact.openFiles),
         ]
+        if let parent = fact.parent { entry["parent"] = parent }
+        if let name = fact.name { entry["name"] = name }
+        if pid == input.descendants { entry["descendants"] = reading(fact.descendants) }
+        result[pid] = entry
     }
     let json = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
     FileHandle.standardOutput.write(json)
@@ -149,9 +155,9 @@ def shells() -> list[list[str]]:
     return found
 
 
-def stat_line(pid: int, command: str, start: int) -> bytes:
-    """A real stat line's shape: field 22 is the start time."""
-    fields = ["S", "1", str(pid), str(pid), "0", "-1", "4194304"] + ["0"] * 12 + [str(start)]
+def stat_line(pid: int, command: str, start: int, parent: int = 1) -> bytes:
+    """A real stat line's shape: field 4 is the parent, field 22 the start time."""
+    fields = ["S", str(parent), str(pid), str(pid), "0", "-1", "4194304"] + ["0"] * 12 + [str(start)]
     fields += ["1000", "2000"]
     return f"{pid} ({command}) {' '.join(fields)}\n".encode()
 
@@ -179,10 +185,10 @@ class ReaderTestCase(unittest.TestCase):
             os.chmod(directory, 0o755)
         shutil.rmtree(self.proc, ignore_errors=True)
 
-    def process(self, pid: int, command: str = "agent", start: int = 4242) -> Path:
+    def process(self, pid: int, command: str = "agent", start: int = 4242, parent: int = 1) -> Path:
         directory = self.proc / str(pid)
         directory.mkdir()
-        (directory / "stat").write_bytes(stat_line(pid, command, start))
+        (directory / "stat").write_bytes(stat_line(pid, command, start, parent))
         return directory
 
     def run_script(self, shell: list[str], **request) -> str:
@@ -467,6 +473,128 @@ class OpenFileTests(ReaderTestCase):
                     "names": ["TMUX"],
                     "files": [f"/open/{pid}"],
                 })
+        self.for_each_shell(check)
+
+
+class DescendantTests(ReaderTestCase):
+    """A launcher, the program under it, and processes that are nothing to it."""
+
+    def tree(self) -> None:
+        self.process(10, command="npm exec", start=100)
+        self.process(11, command="sh", start=110, parent=10)
+        self.process(12, command="claude", start=120, parent=11)
+        (self.process(12 + 1, command="node", start=130, parent=10) / "environ").write_bytes(b"A=one\0")
+        (self.proc / "12" / "environ").write_bytes(b"A=two\0SECRET=do-not-print\0")
+        (self.process(20, command="claude", start=200) / "environ").write_bytes(b"A=other\0")
+
+    def test_reads_every_descendant_the_same_way_as_a_named_process(self) -> None:
+        self.tree()
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["10"], start=True, values=["A"], descendants="10")
+            self.assertEqual(set(facts), {"10", "11", "12", "13"})
+            self.assertEqual(set(facts["10"]["descendants"]), {"11", "12", "13"})
+            self.assertEqual(facts["10"]["name"], "-")
+            self.assertEqual(facts["11"]["parent"], "10")
+            self.assertEqual(facts["12"]["parent"], "11")
+            self.assertEqual(facts["12"]["name"], "claude")
+            self.assertEqual(facts["12"]["start"], "120")
+            self.assertEqual(facts["12"]["variables"]["A"], {"value": "two"})
+            self.assertEqual(facts["13"]["variables"]["A"], {"value": "one"})
+        self.for_each_shell(check)
+
+    def test_nothing_but_the_tree_leaves_the_host(self) -> None:
+        self.tree()
+
+        def check(shell: list[str]) -> None:
+            raw = self.run_script(shell, pids=["10"], start=True, values=["A"], descendants="10")
+            self.assertNotIn(b"do-not-print".hex(), raw)
+            self.assertNotIn("do-not-print", raw)
+            self.assertNotIn("T 20 ", raw)
+            self.assertNotIn(b"other".hex(), raw)
+        self.for_each_shell(check)
+
+    def test_a_process_with_no_children_has_no_descendants(self) -> None:
+        self.tree()
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["12"], start=True, descendants="12")
+            self.assertEqual(facts["12"]["descendants"], [])
+            self.assertEqual(facts["12"]["parent"], "11")
+        self.for_each_shell(check)
+
+    def test_a_command_name_cannot_forge_a_parent_or_a_line(self) -> None:
+        self.process(30, command="root")
+        self.process(31, command=") S 30 2 3", start=310, parent=1)
+        self.process(32, command="a) b (c", start=320, parent=30)
+        self.process(33, command="T 99 30 x", start=330, parent=30)
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["30"], start=True, descendants="30")
+            self.assertEqual(set(facts["30"]["descendants"]), {"32", "33"})
+            self.assertEqual(facts["32"]["name"], "-")
+            self.assertEqual(facts["33"]["name"], "-")
+            self.assertEqual(facts["32"]["start"], "320")
+        self.for_each_shell(check)
+
+    def test_entries_of_proc_that_are_no_process_are_skipped(self) -> None:
+        self.process(40, command="root")
+        (self.proc / "self").mkdir()
+        (self.proc / "self" / "stat").write_bytes(stat_line(41, "self", 1, parent=40))
+        (self.proc / "42x").mkdir()
+        (self.proc / "42x" / "stat").write_bytes(stat_line(42, "odd", 1, parent=40))
+        (self.proc / "43").mkdir()
+
+        def check(shell: list[str]) -> None:
+            self.assertEqual(self.read(shell, pids=["40"], descendants="40", start=True)["40"]["descendants"], [])
+        self.for_each_shell(check)
+
+    def test_too_many_descendants_read_as_unavailable_rather_than_part_of_a_tree(self) -> None:
+        self.process(50, command="root")
+        for pid in range(1000, 1065):
+            self.process(pid, command="worker", parent=50)
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["50"], start=True, descendants="50")
+            self.assertEqual(set(facts), {"50"})
+            self.assertEqual(facts["50"]["descendants"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_a_missing_tree_answer_fails_the_read(self) -> None:
+        self.tree()
+        raw = self.run_script("/bin/sh".split(), pids=["10"], start=True, descendants="10")
+        cut = "\n".join(line for line in raw.split("\n") if not line.startswith("W "))
+        result = subprocess.run(
+            [str(self.binary), "parse", json.dumps(
+                {"pids": ["10"], "start": True, "descendants": "10", "root": str(self.proc)})],
+            input=cut.encode(), capture_output=True,
+        )
+        self.assertEqual(result.returncode, 66)
+
+    def test_the_root_must_be_a_named_process(self) -> None:
+        result = subprocess.run(
+            [str(self.binary), "script", json.dumps({"pids": ["10"], "descendants": "11", "root": str(self.proc)})],
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 65)
+
+    def test_a_kernel_with_no_recorded_method_has_no_tree(self) -> None:
+        tools = self.proc / "tools"
+        tools.mkdir()
+        fake = tools / "uname"
+        fake.write_text("#!/bin/sh\necho FreeBSD\n")
+        fake.chmod(0o755)
+        request = {"pids": ["1"], "start": True, "descendants": "1", "root": None}
+        script = subprocess.run(
+            [str(self.binary), "script", json.dumps(request)], check=True, capture_output=True
+        ).stdout
+
+        def check(shell: list[str]) -> None:
+            result = subprocess.run(
+                shell, input=script, capture_output=True, timeout=60,
+                env={"PATH": f"{tools}:/usr/bin:/bin"},
+            )
+            self.assertEqual(self.parse(result.stdout.decode(), **request)["1"]["descendants"], "unavailable")
         self.for_each_shell(check)
 
 

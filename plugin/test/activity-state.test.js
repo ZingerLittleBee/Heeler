@@ -1,5 +1,6 @@
 import { test, suite } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { DISPLAY_LIMIT } from "../src/display-text.js";
 import {
@@ -288,5 +289,46 @@ suite("eligible status helpers", () => {
     assert.equal(hasNewlyBlocked({ a: "blocked" }, { a: "blocked" }), false);
     assert.equal(hasNewlyBlocked({ a: "blocked", b: "working" }, { a: "working" }), true);
     assert.equal(hasNewlyBlocked({ a: "working" }, { a: "blocked" }), false);
+  });
+});
+
+suite("shared content vectors that carry an inventory", () => {
+  const vectors = JSON.parse(readFileSync(new URL("../test-vectors/live-activity-content-v1.json", import.meta.url), "utf8"));
+
+  for (const vector of vectors.valid.filter((candidate) => candidate.inventory !== undefined)) {
+    test(`builds them: ${vector.name}`, () => {
+      const { counts, plaintextObject } = buildActivityState({
+        agents: vector.inventory,
+        hostName: vector.payload.host,
+        pinnedPaneIds: vector.pinned_pane_ids,
+      });
+      assert.deepEqual(counts, vector.counts);
+      assert.deepEqual(plaintextObject, vector.payload);
+    });
+  }
+
+  test("an Error agent adds no count and no status of its own", () => {
+    const vector = vectors.valid.find((candidate) => candidate.inventory?.some((entry) => entry.agent_status === "error"));
+    assert.deepEqual(Object.keys(vector.counts).sort(), ["blocked", "done", "working"]);
+    assert.deepEqual(new Set(vector.payload.agents.map((entry) => entry.status)), new Set(["blocked", "done", "working"]));
+  });
+});
+
+suite("an Error agent", () => {
+  test("is Blocked to the status map and to what counts as newly blocked", () => {
+    const statuses = eligibleStatusMap([agent("w1:p1", "error"), agent("w1:p2", "idle")]);
+    assert.deepEqual(statuses, { "w1:p1": "blocked" });
+    assert.equal(hasNewlyBlocked(statuses, { "w1:p1": "working" }), true);
+    assert.equal(hasNewlyBlocked(statuses, { "w1:p1": "blocked" }), false);
+  });
+
+  test("keeps its own word in a configured status field", () => {
+    const { plaintextObject } = buildActivityState({
+      agents: [agent("w1:p1", "error", { agent: "claude" })],
+      hostName: "studio",
+      rowLayout: { rows: [[{ token: "status" }]] },
+    });
+    assert.equal(plaintextObject.agents[0].status, "blocked");
+    assert.deepEqual(plaintextObject.agents[0].rows, [[{ text: "Error" }]]);
   });
 });

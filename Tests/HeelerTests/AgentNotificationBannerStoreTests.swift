@@ -121,6 +121,30 @@ struct AgentNotificationBannerStoreTests {
                 == AgentNotificationAlert(title: "Codex", body: "Done"))
     }
 
+    @Test func errorTransitionBannersWithTheErrorCopyUnderTheBlockedTrigger() async throws {
+        world.triggers[hostID] = NotificationTriggerPreferences(blocked: true, done: false)
+        let store = makeStore()
+        store.agentsDidChange([agent("wV:p1", .working)])
+
+        store.agentsDidChange([agent("wV:p1", .error)])
+
+        try await waitUntil("the Error banner should show") { store.banner != nil }
+        #expect(
+            store.banner?.alert
+                == AgentNotificationAlert(title: "Claude", body: "Error"))
+    }
+
+    @Test func errorStaysSilentWithTheBlockedTriggerOff() async throws {
+        world.triggers[hostID] = NotificationTriggerPreferences(blocked: false, done: true)
+        let store = makeStore()
+        store.agentsDidChange([agent("wV:p1", .working)])
+
+        store.agentsDidChange([agent("wV:p1", .error)])
+
+        try await waitPastHold()
+        #expect(store.banner == nil)
+    }
+
     /// The first sight of a pane is baseline, not a transition: a killed-state
     /// launch must not banner every already-Blocked Agent it syncs.
     @Test func firstSightOfABlockedAgentIsBaselineNotATransition() async throws {

@@ -283,11 +283,14 @@ targets:
         buildPhase: resources
       - path: plugin/test-vectors/herdr-core-session-names-v1.json
         buildPhase: resources
-      # Shared Agent rule vectors, read by Swift now and the Helper later.
+      # Shared Agent rule vectors, read by Swift and the Helper.
       - path: plugin/test-vectors/herdr-core-agent-rule-v1.json
         buildPhase: resources
-      # Shared turn-end vectors, read by Swift now and the Helper later.
+      # Shared turn-end vectors, read by Swift and the Helper.
       - path: plugin/test-vectors/herdr-core-turn-end-v1.json
+        buildPhase: resources
+      # Shared seen-mark vectors: Swift writes the format and the Helper reads it.
+      - path: plugin/test-vectors/herdr-core-seen-mark-v1.json
         buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json

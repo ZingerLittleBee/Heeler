@@ -51,6 +51,19 @@ struct AgentNotificationRendererTests {
         #expect(alert.body == "Blocked — waiting for input")
     }
 
+    /// A herdr-core Host sends Error under the Blocked trigger. Nothing is waiting
+    /// for an answer, so it does not read as Blocked.
+    @Test func anErrorFromAHerdrCoreTerminalReadsAsError() throws {
+        let vector = try Self.vector(named: "error agent on a herdr-core Terminal, sent under the Blocked trigger")
+        let record = try Self.record(forVector: vector, named: "box")
+
+        let alert = AgentNotificationRenderer.alert(
+            userInfo: ["envelope": vector.envelope], keys: [record])
+
+        #expect(alert.title == "app · Claude")
+        #expect(alert.body == "Error")
+    }
+
     /// The Host is the same machine on every notification and would spend the
     /// whole title on an address; it must never reach the alert.
     @Test func neverNamesTheHost() throws {

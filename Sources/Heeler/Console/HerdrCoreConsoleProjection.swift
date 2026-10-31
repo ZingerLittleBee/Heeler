@@ -32,6 +32,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var latency: Duration?
     private(set) var routeID: UUID?
     private(set) var leakedEnvironmentNames: Set<String> = []
+    /// As `uname -s` prints it, once a link has located the core.
+    private(set) var kernel: String?
     /// Why each Agent reading Unknown does, by Terminal address.
     private(set) var statusExplanations: [String: HerdrCoreStatusExplanation] = [:]
     private(set) var transportGeneration: UInt64 = 0
@@ -57,6 +59,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var environmentTask: Task<Void, Never>?
     private var hasEnded = false
     private var shownAgents: Set<String> = []
+    /// Events that may mean a Terminal's session changed, for Chat (ADR 0034).
+    private var sessionEventCounts: [String: UInt64] = [:]
+    private var inventoryReplacements: UInt64 = 0
 
     private let gitGate: GitExecGate
     private var document: HerdrCoreDesktopDocument?
@@ -90,11 +95,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var openCodeVersion: String?
     /// Whether Rename and applying a typed name are offered at all (ADR 0032).
     private let herdrAppRename: Bool
+    private let chatTypingClock: BlockedCardClock
+    private var chatTypings: [String: HerdrCoreChatTyping] = [:]
     /// What the last `herdr-app status` on this link said.
     private var isDesktopAppRunning = false
     private var desktopAppCheck: Task<Void, Never>?
     /// Names typed for new Workspaces, by space, until the app adopts the space.
     private var typedSpaceNames: [String: String] = [:]
+    /// Hears every seen mark of this Host when one changes, for its Host Helper.
+    private let onSeenMarksChanged: @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void
 
     init(
         host: Host,
@@ -103,6 +112,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         pins: PinnedAgentsStore,
         gitGate: GitExecGate,
         herdrAppRename: Bool,
+        chatTypingClock: BlockedCardClock = .live,
+        onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
@@ -111,6 +122,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.pins = pins
         self.gitGate = gitGate
         self.herdrAppRename = herdrAppRename
+        self.chatTypingClock = chatTypingClock
+        self.onSeenMarksChanged = onSeenMarksChanged
         self.onChange = onChange
     }
 
@@ -224,9 +237,21 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 pins.removePins(hostID: host.id)
             }
             memory.noteCore(coreID, for: host.id)
+            readKernelOnce()
             replaceInventory(with: snapshot)
         case .event(let event):
             apply(event)
+        }
+    }
+
+    /// The locator already ran for this link, so this reads no Host.
+    private func readKernelOnce() {
+        guard kernel == nil else { return }
+        Task { [weak self, session] in
+            let kernel = try? await session.withTransport { await $0.lastLocation()?.kernel }
+            guard let self, let kernel, self.kernel != kernel else { return }
+            self.kernel = kernel
+            self.publish()
         }
     }
 
@@ -254,6 +279,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     private func replaceInventory(with snapshot: HerdrCoreSnapshot) {
+        inventoryReplacements += 1
         memory.noteInventory(snapshot.terminals, for: host.id)
         pins.retainPins(hostID: host.id, paneIDs: Set(snapshot.terminals.map(\.address)))
         records = snapshot.terminals
@@ -307,11 +333,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         case .title(let terminal, let title):
             update(terminal) { $0.title = title }
         case .foreground(let terminal, let foreground):
+            sessionEventCounts[terminal, default: 0] += 1
             foregroundChanges &+= 1
             update(terminal) { $0.noteForeground(foreground) }
             noteTurns(of: terminal) { _, _ in }
             notifyProgramWatches(of: terminal, .sample(foreground))
         case .status(let terminal, let status, let records, let reported):
+            sessionEventCounts[terminal, default: 0] += 1
             let turn = self.records.first { $0.address == terminal }?.turn ?? 0
             update(terminal) {
                 $0.status = status
@@ -322,6 +350,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 state.noteStatus(word: status?.state, turn: turn, kind: kind)
             }
         case .turn(let terminal, let turn, _):
+            sessionEventCounts[terminal, default: 0] += 1
             update(terminal) { $0.turn = turn }
             noteTurns(of: terminal) { state, _ in state.noteTurn(turn) }
         case .labels(let terminal, let labels):
@@ -351,6 +380,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             memory.forgetTerminal(terminal, for: host.id)
             pins.removePin(hostID: host.id, paneID: terminal)
             records.removeAll { $0.address == terminal }
+            chatTypings[terminal] = nil
             sidebarRevision &+= 1
             notifyProgramWatches(of: terminal, .ended)
         case .missed(let snapshot):
@@ -391,9 +421,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // An Agent's menu may be about to offer Rename Workspace.
         if herdrAppRename { Task { await checkDesktopApp() } }
         let wasDone = doneTerminals
+        let marksBefore = seenMarks
         for address in opened {
             memory.updateTurnState(of: address, for: host.id) { $0.markSeen() }
         }
+        reportSeenMarks(ifChangedFrom: marksBefore)
         guard doneTerminals != wasDone else { return }
         rebuildRows()
         publish()
@@ -403,6 +435,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         Set(memory.turnStates(for: host.id).filter(\.value.isDone).keys)
     }
 
+    private var seenMarks: [String: HerdrCoreTurnState.Mark] {
+        memory.turnStates(for: host.id).compactMapValues(\.seen)
+    }
+
+    private func reportSeenMarks(ifChangedFrom before: [String: HerdrCoreTurnState.Mark]) {
+        let marks = seenMarks
+        guard marks != before, let core = memory.coreID(for: host.id) else { return }
+        onSeenMarksChanged(core, marks)
+    }
+
     /// Folds one change into a Terminal's turns, with its record already updated.
     private func noteTurns(
         of address: String, _ change: (inout HerdrCoreTurnState, _ kind: String?) -> Void
@@ -410,11 +452,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         guard let record = records.first(where: { $0.address == address }) else { return }
         let kind = HerdrCoreAgentRule.agent(in: record)?.kind
         let isShown = shownAgents.contains(address)
+        let marksBefore = isShown ? seenMarks : [:]
         memory.updateTurnState(of: address, for: host.id) { state in
             change(&state, kind)
             if kind == nil { state.noteNoAgent() }
             if isShown { state.markEndedTurnSeen() }
         }
+        if isShown { reportSeenMarks(ifChangedFrom: marksBefore) }
     }
 
     /// Nothing shows until a link's first document read has settled, so a
@@ -1046,15 +1090,38 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
-        throw unavailable("Agents")
+        try await chatTyping(at: paneID).readScreen()
     }
 
     func sendAgentKeys(_ keys: [String], to paneID: String) async throws {
-        throw unavailable("Agents")
+        try await chatTyping(at: paneID).press(keys)
     }
 
     func pasteIntoAgent(_ text: String, paneID: String) async throws {
-        throw unavailable("Agents")
+        try await chatTyping(at: paneID).paste(text)
+    }
+
+    /// How Chat reads and types in a Terminal (ADR 0035), kept so the screen it
+    /// last read is the one its keys are checked against.
+    func chatTyping(at address: String) -> HerdrCoreChatTyping {
+        if let typing = chatTypings[address] { return typing }
+        let typing = HerdrCoreChatTyping(address: address, projection: self, clock: chatTypingClock)
+        chatTypings[address] = typing
+        return typing
+    }
+
+    /// A viewer of Chat's own on the Host's one link, joining at the size the
+    /// Terminal has. It reports no display facts and takes no focus.
+    func openChatViewer(at address: String, as role: TerminalViewerRole) async throws -> TerminalAttachSession {
+        var record = terminalRecord(at: address)
+        if record == nil { record = try await readTerminalRecord(at: address) }
+        guard let record else { throw TransportError.cancelled }
+        let request = TerminalAttachRequest(
+            target: .terminal(address), viewer: role, surfaceHasHistory: true,
+            cols: record.columns, rows: record.rows)
+        return try await session.withTerminalTransport { transport, _ in
+            try await transport.attachTerminal(request)
+        }
     }
 
     /// Every live terminal is a channel on the Host's one link (ADR 0031): no
@@ -1264,6 +1331,44 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     func modelContextWindowResolver() -> ModelContextWindowResolver {
         { _ in nil }
+    }
+
+    // MARK: Chat
+
+    /// Moves with each status, turn or foreground event of the Terminal, and
+    /// each fresh inventory, since those events may have been missed. Chat
+    /// checks the Agent's process again when it moves (ADR 0034).
+    func sessionEventRevision(of address: String) -> UInt64 {
+        inventoryReplacements &+ (sessionEventCounts[address] ?? 0)
+    }
+
+    /// Keys Chat's cache: nil before the first link named its core.
+    var chatCacheScope: String? {
+        memory.coreID(for: host.id).map { ChatCacheKey.coreScope(session: host.sessionName, coreID: $0) }
+    }
+
+    /// One check of the Agent's process: one exec and at most one SFTP read.
+    func checkChatSession(paneID: String) async throws -> ChatSessionEvidence {
+        guard let record = terminalRecord(at: paneID) else {
+            return .unavailable(.cannotTellSession(.claude))
+        }
+        let session = session
+        let binder = HerdrCoreSessionBinder(
+            processes: { request in
+                try await session.withTransport { try await $0.readProcesses(request) }
+            },
+            files: chatHostFiles(),
+            clearLabels: { names in
+                let labels = names.map { ($0, JSONValue.string("")) }
+                let params = JSONValue.object([
+                    "terminal": .string(paneID),
+                    "labels": .object(Dictionary(uniqueKeysWithValues: labels)),
+                ])
+                _ = try await session.withTransport {
+                    try await $0.call("terminal.label", params: params, isMutation: true)
+                }
+            })
+        return try await binder.check(record, coreCarries: leakedEnvironmentNames)
     }
 
     func chatHostFiles() -> ChatHostFiles {

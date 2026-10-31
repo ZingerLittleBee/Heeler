@@ -27,6 +27,12 @@ protocol HerdrCoreTransport: Sendable {
     /// that process's program keeps its configuration. Never says why it could not.
     func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable
 
+    /// What one request reaches, in one bounded exec. An empty answer is a read
+    /// that failed on the Host; a lost connection throws.
+    func readProcesses(
+        _ request: HostProcessReader.Request
+    ) async throws -> [String: HostProcessReader.Facts]
+
     /// Starts the Host's own core session. Only the user's confirmed action
     /// calls this; connecting, preflight and retries never do (ADR 0031).
     func startCore() async throws -> HerdrCoreStart.Outcome
@@ -332,6 +338,16 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         } catch {
             return .unavailable
         }
+    }
+
+    func readProcesses(
+        _ request: HostProcessReader.Request
+    ) async throws -> [String: HostProcessReader.Facts] {
+        let nonce = nonce()
+        let script = try HostProcessReader.script(request, nonce: nonce)
+        let result = try await connection.runHostProcessRead(script)
+        guard result.exitStatus == 0 else { return [:] }
+        return (try? HostProcessReader.parse(stdout: result.stdout, nonce: nonce, request: request)) ?? [:]
     }
 
     func subscribeEvents() async throws -> HerdrCoreEventStream {

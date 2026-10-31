@@ -234,6 +234,49 @@ If it keeps the text, amend [ADR 0035](../adr/0035-herdr-core-composer-sends-thr
 so Send skips Ctrl+C under zsh while still saying so. Either way, record the result in
 [herdr compatibility](../agents/herdr-compatibility.md).
 
+## Chat evidence
+
+Run Claude Code against the mock API in core Terminals of a throwaway session on a
+Linux box, signed in to nothing. Record its version, and the raw value beside each
+check that asks for one. The binder's tests read a fake process tree, and these are
+the facts they took on trust, so correct
+[herdr compatibility](../agents/herdr-compatibility.md) with whatever differs.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Binds at its prompt | Start Claude Code from New Agent, wait for its prompt, send one message from the terminal, open Chat | The conversation shows. Record `procStart` in `<config dir>/sessions/<pid>.json` beside field 22 of `/proc/<pid>/stat`: they are equal |
+| Started by hand | Start `claude` from a shell in a Terminal the Agents tab lists, then open Chat | The same conversation binding, with no `heeler.*` label on the Terminal |
+| Launchers | Run an npm-installed `claude`, through `npx` too, and a shell script that runs it, then open Chat | It binds. Record each process's name from `/proc/<pid>/stat`, and that each shares the Terminal's `HC_SCOPE`. Record what the native installer's binary calls itself |
+| Before its prompt | Use a fresh config dir and stop at the trust dialog, then open Chat | **Can't Tell the Conversation**. No `*.key` file is read. Answer the dialog: Chat follows on the status change, with no Retry |
+| `/clear` and `/resume` | In an open Chat, run each in the terminal | Chat shows the new conversation by the next status change |
+| Own config dir | Start with `CLAUDE_CONFIG_DIR` naming a scratch folder, while `~/.claude` holds other sessions | Chat reads from the scratch folder |
+| Leaked variable | Start `CLAUDE_CODE_CHILD_SESSION=1 claude`, then `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1 claude`, each with the mock API | **Transcript Saving Is Off** names the variable, and the sessions folder and project folder hold what it says they do |
+| Carried by the core | Use the core from [Leaked environment](#leaked-environment), then start `claude` by hand | The same reason, also pointing at the Host's details, where **Core Environment** names it |
+| Stale hint | Set the label `heeler.session` on the Terminal with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show the label's session |
+| No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
+| Off elsewhere | A Codex Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
+
+## Chat typing
+
+Use the same box and Claude Code as [Chat evidence](#chat-evidence). The tests read
+paints a fixture core made of replayed screens, never a live Agent's, so correct
+[herdr compatibility](../agents/herdr-compatibility.md) with whatever differs. Record
+Claude Code's version, and keep one paint from an observing attach of its prompt and
+one of its permission dialog beside the fixtures in
+`Tests/HeelerTests/ChatFixtures/screens/core-paint`.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Send | Send a multi-line message from Chat to an idle Agent | It reaches the Agent as one message and the turn starts. The Composer shows it delivered |
+| A held Send | Type a draft in the terminal's input, then Send from Chat | Nothing is sent, the draft stays, and the notice says the input box already has text |
+| Stop | Stop a running turn from Chat | The turn stops on one tap. Nothing is left in the input |
+| Template's stop key | Start a Template with a `stop` key, Claude Code as its command, then Stop from Chat during a turn | That key reaches the program |
+| Blocked card | Make Claude Code ask for permission, then answer from the card | The dialog closes with that answer and the turn goes on. The Composer returns |
+| Dialog gone | Open the card, answer the dialog in the terminal, then tap the stale card at once | Nothing more reaches the Agent |
+| Second viewer's size | View the Terminal from a second client at another size, then Send and Stop from Chat | The second client's size and the Terminal's stay as they were, with no `size` event |
+| Moved conversation | Run `/clear` in the terminal, then Send from Chat before the next status change | Nothing is sent, the draft stays, and Chat moves to the new conversation |
+| Exit race | Run the Composer's exit race from Chat, on bash | No file. The draft stays and the notice says **no longer in the terminal** |
+
 ## Done per device
 
 Run this for Claude Code and Codex against the mock API, Pi, and OpenCode 2.x, with
@@ -425,14 +468,14 @@ besides the default (`omp --profile work` makes one).
 | New profile | Make another Oh My Pi profile, then check the Host | The row still reads the version, and the sheet offers **Repair**, which adds that profile's file and touches no other file of the Helper |
 | Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, no `heeler-session.js` is left, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched |
 
-Every step must leave the core as it found it: the Helper in this version only follows
-a core, and never starts one. The extensions only ever write the one label on their own
+Every step must leave the core as it found it: the Helper only ever follows a core,
+and never starts one. The extensions only ever write the one label on their own
 Terminal.
 
 ### The Helper and the core
 
-Until the app registers devices with the Helper, name the session by hand, in the
-Helper directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
+With no device registered from the app, name the session by hand, in the Helper
+directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
 ~/.local/share/heeler/host-helper/notifications.json`. Remove the file when done.
 
 | Step | What to do | What must happen |
@@ -441,6 +484,52 @@ Helper directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
 | Core starts | Start the core from the user's login shell, and do not touch the Helper | Within seconds the journal reads `connected to core pid <pid>`, the pid `server.status` reports. The unit's main PID has not changed |
 | Core restarts | `kill -9` the core at that pid, then start it again from the login shell | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
 | Other sessions | Start a core for a session the file does not name, and no Host's Usage asked about | The journal never mentions it, and `ss -xp` shows the Helper connected only to the named session's socket |
+
+### Agent Notifications
+
+Point the Helper at a fake relay: a small HTTP server on the Host that logs each `POST
+/push` body and answers `200`. Register a device from the app first, then set `relay_url`
+in the Helper directory's `notify.json` to `http://127.0.0.1:<port>`, and optionally
+`debounce_ms`. A real device needs the real relay for the steps that say so. Never sign in
+to a harness for this: use a throwaway program that reports status, or the mock API from
+[Program Status](#program-status).
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Turn on | In **Settings > Notifications**, turn the Host on | `notifications.json` in the Helper directory holds one entry, whose `session` is the core session (`default` when unnamed). `~/.config/herdr/plugins` has no change |
+| First sight | Restart the Helper with an Agent already Blocked | No push: what a core already showed is not announced |
+| Blocked | Make an Agent ask for permission, and let it stay | One push per registered device after the debounce. Decrypting with the device's key gives `blocked` |
+| Flap | Make it leave Blocked within the debounce | No push |
+| Error | Make an Agent report error | One push, under the Blocked switch. The device reads **Error** |
+| Done | Let an Agent finish a turn with no device on it | One push per registered device with Done on |
+| Per-device Done | On one of two devices, keep the Agent open until the turn ends | `seen-<key id>.json` for that device has the turn. The other device gets Done, this one does not |
+| No Agent | Run `sleep` in a Terminal, then exit a program back to its shell | No push for either |
+| Restart | Stop the Helper during a turn, start it after the turn ends | One Done on start, not two after another restart |
+| Heeler killed (real relay) | Kill Heeler on a real device, make an Agent Blocked | The notification arrives, and a tap opens that Agent's detail |
+| Off | Turn the Host off | The entry and `seen-<key id>.json` are both gone from the Helper directory, and no push follows |
+| Remove | With a mark present, remove the connected Host | The same. Removing it while disconnected reads that notifications are left behind |
+| Helper states | Stop the service, then hide Node.js from it | **Settings > Notifications** names **Service Failed**, then **Node.js Missing** |
+| Native Windows | Open **Settings > Notifications** with a native Windows core Host | It reads that Agent Notifications, in-app banners included, and Live Activity come with the Host Helper and are not available there yet |
+
+### Banners and Live Activity
+
+Keep the fake relay for the first table. `activity_debounce_ms` in `notify.json` sets the Live Activity debounce, 1500 by default. A fake relay's log shows `kind: liveactivity` bodies beside the alert bodies, and the counts in them are plaintext.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Blocked banner | With Heeler open on the Console and this device registered, make an Agent ask for permission | A banner after about three seconds, reading **Blocked — waiting for input** |
+| Error banner | Make an Agent report error | A banner reading **Error**. With the Blocked switch's entry flag off in `notifications.json` and the app refreshed, none |
+| Done banner | Let an Agent finish a turn while you are on the Console | A banner reading **Done**. Repeat with the Agent open: none |
+| No registration | Turn the Host off in **Settings > Notifications**, repeat the steps above | No banners, and any activity for the Host ends |
+| No Helper | Remove the Helper with the Host still known | No banners and no **Live Activity** switch |
+| Token | Turn on **Live Activity** for the Host with an Agent Working | `live_activity.token` appears in this device's entry in the Helper directory. `~/.config/herdr/plugins` has no change |
+| Update | Move an Agent from Working to Blocked with Heeler suspended | One `update` body with priority 10 and `blocked` 1. Decrypting the envelope with the device's key gives the Agent as `blocked` |
+| Error count | Make an Agent report error with Heeler suspended | `blocked` counts it, the body has no other count, and its entry reads `blocked`. Moving it from Blocked to Error sends nothing |
+| Per-device Done | With two devices registered, open the Agent on one until its turn ends | The other device's body counts `done` 1, this one's `done` 0 |
+| End | Let the last Agent go idle with no Done left for the device | One `end` body with zero counts and a `dismissal_date`, and none after it |
+| Dismissed (real relay) | Dismiss the activity on a real device, change an Agent's status | The relay's 410 removes `live_activity` from the entry. Its `token`, `key` and `notify` stay |
+| Older Helper | Register on Host Helper 0.4.0 | Notifications work, no **Live Activity** switch, and a note asks for a newer Helper |
+| Suspended (real relay) | Start an activity on a real device, suspend Heeler, change statuses | The Lock Screen updates, then ends when nothing is left |
 
 ### Usage
 

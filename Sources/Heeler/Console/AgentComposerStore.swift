@@ -454,7 +454,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             return .ignored
         }
         if let coreSend {
-            return await deliverThroughCore(id, text: text, using: coreSend)
+            return await deliverThroughCore(id, text: text, policy: policy, using: coreSend)
         }
         if agentStatus == .blocked {
             return deliverWhileBlocked(id, text: text, policy: policy)
@@ -489,16 +489,23 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     private func deliverThroughCore(
-        _ id: Message.ID, text: String, using coreSend: HerdrCoreComposerSend
+        _ id: Message.ID, text: String, policy: ComposerDeliveryPolicy, using coreSend: HerdrCoreComposerSend
     ) async -> SendResult {
-        guard TerminalTextSafety.containsOnlySafeScalars(text) else {
+        let outgoing = policy.outgoingText(text)
+        guard TerminalTextSafety.containsOnlySafeScalars(outgoing) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
-        let outcome = await coreSend.send(text)
+        let outcome = await coreSend.send(outgoing, route: policy.route)
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         switch outcome {
         case .submitted:
             messages[index].state = .delivered(progressAfterAcknowledgment(for: messages[index]))
+            if let verify = policy.verify {
+                Task { [weak self] in
+                    guard !(await verify(outgoing)) else { return }
+                    self?.markUndelivered(id)
+                }
+            }
             return .submittedViaAttach
         case .pasted:
             messages[index].tracksAgentProgress = false

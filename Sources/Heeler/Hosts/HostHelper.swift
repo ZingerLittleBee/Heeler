@@ -5,7 +5,11 @@ enum HostHelperCompatibility {
     /// `plugin/helper/version.json` when this app was built. The shared
     /// `plugin/test-vectors/host-helper-version-v1.json` pins both sides, so a
     /// Helper release must update this constant too.
-    static let bundled = PluginVersion(0, 3, 0)
+    static let bundled = PluginVersion(0, 5, 0)
+    /// The first Helper that sends Agent Notifications.
+    static let firstWithNotifications = PluginVersion(0, 4, 0)
+    /// The first Helper that drives a Live Activity through the Push Relay.
+    static let firstWithLiveActivities = PluginVersion(0, 5, 0)
 }
 
 /// `plugin/helper/manifest.json`: the version and every other file's SHA-256,
@@ -308,6 +312,60 @@ struct HostHelperReading: Sendable, Equatable {
     var offersLinger: Bool {
         guard unsupportedPlatform == nil, let probe else { return false }
         return !probe.lingerOn
+    }
+
+    var notificationStanding: HostHelperNotificationStanding {
+        HostHelperNotificationStanding(self)
+    }
+}
+
+/// What a core Host's Helper means for its Agent Notifications, where the user
+/// turns them on.
+struct HostHelperNotificationStanding: Sendable, Equatable {
+    /// Whether this device can register with the Helper now.
+    let canRegister: Bool
+    /// The Helper's status as what notifications need of it. Nil when they need
+    /// nothing more.
+    let requirement: String?
+    /// Whether it keeps a Live Activity current once the app has suspended.
+    let drivesLiveActivity: Bool
+
+    init(_ reading: HostHelperReading) {
+        let status = reading.status
+        let presentation = HostHelperPresentation(status)
+        let action = "See this Host's page in Hosts."
+        let asRequirement = "Host Helper: \(presentation.value). \(presentation.detail) \(action)"
+        var installedVersion: PluginVersion?
+        if case .intact(let version) = reading.integrity { installedVersion = version }
+        if let installedVersion, installedVersion < HostHelperCompatibility.firstWithNotifications {
+            canRegister = false
+            requirement = "Host Helper: \(presentation.value). Notifications need a newer Host Helper. \(action)"
+            drivesLiveActivity = false
+            return
+        }
+        let lacksLiveActivity = installedVersion.map { $0 < HostHelperCompatibility.firstWithLiveActivities } ?? false
+        switch status {
+        case .installed, .newer:
+            canRegister = true
+            requirement =
+                lacksLiveActivity
+                ? "Host Helper: \(presentation.value). Live Activity needs a newer Host Helper. \(action)" : nil
+            drivesLiveActivity = !lacksLiveActivity
+        case .lingerOff:
+            // It runs now, so it notifies, only not once the last login has ended.
+            canRegister = true
+            requirement = asRequirement
+            drivesLiveActivity = !lacksLiveActivity
+        case .notInstalled, .damaged, .nodeMissing, .serviceFailed:
+            canRegister = false
+            requirement = asRequirement
+            drivesLiveActivity = false
+        case .unsupportedPlatform:
+            // Nothing on the Host's page changes this.
+            canRegister = false
+            requirement = presentation.detail
+            drivesLiveActivity = false
+        }
     }
 }
 

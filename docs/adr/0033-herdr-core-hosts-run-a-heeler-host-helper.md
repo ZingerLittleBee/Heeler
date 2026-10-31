@@ -56,6 +56,29 @@ that Heeler can read from outside the process.
   untouched. Those Notification Registrations live in the Helper's own directory, one entry
   per device for the core session the Host targets, never in the plugin's
   registration file.
+- The Helper decides what to send from each Terminal's state after a debounce,
+  not from the event at hand, and keeps what it last notified in
+  `state/notify/<session>.json`, so a restart or a dropped connection loses
+  nothing and a failed send is tried at the next decision. A core seen for the
+  first time sets that memory without sending, so an install or a new core id
+  announces nothing that already happened. The memory goes when a session's
+  connection ends with no registration naming it. Error is sent under the
+  Blocked trigger, in its own word.
+- In-app banners and Live Activity on a core Host are gated on this device's
+  confirmed registration, and an activity also on a Helper that can drive it:
+  one that runs, at 0.5.0 or newer. The app starts the activity and writes its
+  push token into this device's entry in the Helper's directory. While the
+  registration is still being read the app neither starts an activity nor ends
+  one it holds, so a launch does not lose a running activity. After a debounce,
+  the Helper compares what each token should now show with what it last sent,
+  kept in `state/activity/<session>.json`, and sends an update or the end
+  through the Push Relay. Each token has its own content, since Done is per
+  device. Unlike a notification, a core seen for the first time does send: an
+  activity shows what is true now, whereas a notification announces a change.
+  Error counts and reads as Blocked there, so the Push Relay and the widget do
+  not change. An update is built from the Terminal's record, so its workspace is
+  the folder name, never a desktop app's space name, and a configured Tab or Pane
+  field stays empty until the app next updates the activity itself.
 - A turn's end comes from the status word, as in the app: an Agent ends a
   turn when it goes from Working to Done, and, unless it is known to report
   done, also when it goes from Working to Idle. Claude Code, Codex, Pi and Oh
@@ -71,6 +94,15 @@ that Heeler can read from outside the process.
   notifications and Live Activity updates alike. A device's marks go with its
   registration, and all of them with the Helper. The app keeps its own marks in
   the device's Host memory, beside the core id, and they go with that memory.
+  The file is `seen-<Notification Key id>.json`, never named from a Terminal
+  address, and holds all of that device's marks on the Host, so each change
+  costs one exec to find the directory and one SFTP write, and a failed write
+  is carried by the next. `plugin/test-vectors/herdr-core-seen-mark-v1.json`
+  pins it. A later turn count covers a turn; at the same count the same word
+  does, and idle and done cover each other, while a mark taken in Blocked, Error
+  or Working does not cover the Done that follows. When another Host of the same
+  session takes over a device's entry, that entry's old file stays until the
+  Helper is removed.
 - A subscribe snapshot stands in for what happened since the last report known,
   as event numbers cannot be resumed. Only leaving Working moves the count, so
   at the same count the words are compared as live. At a moved count, or at

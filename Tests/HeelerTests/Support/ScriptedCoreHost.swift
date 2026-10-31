@@ -195,11 +195,15 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var changes: CheckoutChangesRead?
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
+    private var attachPaint: Data?
+    private var paintsViewers = true
     private var runReply: JSONValue?
     private var unansweredRuns: [(socket: FakeCoreSocket, id: String)] = []
     private var templateList: JSONValue?
     private var isHoldingAttachReplies = false
-    private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
+    private var heldAttachReplies:
+        [(socket: FakeCoreSocket, id: String, result: JSONValue, channel: UInt32, isObserving: Bool)] = []
+    private var holdsOnlyViewerAttaches = false
     private var heldTerminalReads: [(socket: FakeCoreSocket, id: String)] = []
     private var isHoldingHellos = false
     private var heldHellos: [CheckedContinuation<Void, Never>] = []
@@ -374,11 +378,14 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                     "channel": .number(Double(eventsChannel)),
                     "terminal": .object(["address": request.params["terminal"] ?? .null]),
                 ])
+                let channel = eventsChannel
                 eventsChannel += 1
-                if isHoldingAttachReplies {
-                    heldAttachReplies.append((socket, request.id, result))
+                let isObserving = request.params["observe"] == .bool(true)
+                if isHoldingAttachReplies, !(holdsOnlyViewerAttaches && isObserving) {
+                    heldAttachReplies.append((socket, request.id, result, channel, isObserving))
                 } else {
                     try? await socket.reply(to: request.id, result: result)
+                    await paint(channel: channel, on: socket, isObserving: isObserving)
                 }
             case "terminal.run":
                 runs.append(request.params)
@@ -468,17 +475,35 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         attachRefusals.append(kind)
     }
 
-    func holdAttachReplies() {
-        isHoldingAttachReplies = true
+    /// What an attach gets right after its answer from here on, as a real core
+    /// sends its first paint. `viewers: false` leaves a viewer's for the test to
+    /// deliver, while an observing attach still gets it.
+    func setAttachPaint(_ paint: Data?, viewers: Bool = true) {
+        attachPaint = paint
+        paintsViewers = viewers
     }
 
+    /// `onlyViewers` lets an attach that only observes through, as Chat's screen
+    /// reads are.
+    func holdAttachReplies(onlyViewers: Bool = false) {
+        isHoldingAttachReplies = true
+        holdsOnlyViewerAttaches = onlyViewers
+    }
+
+    /// Each answer goes out now, with the paint the core would send by now.
     func releaseAttachReplies() async {
         isHoldingAttachReplies = false
         let held = heldAttachReplies
         heldAttachReplies = []
         for reply in held {
             try? await reply.socket.reply(to: reply.id, result: reply.result)
+            await paint(channel: reply.channel, on: reply.socket, isObserving: reply.isObserving)
         }
+    }
+
+    private func paint(channel: UInt32, on socket: FakeCoreSocket, isObserving: Bool) async {
+        guard let attachPaint, isObserving || paintsViewers else { return }
+        try? await socket.deliver(HerdrCoreFrame(channel: channel, kind: .data, payload: attachPaint))
     }
 
     /// Answers every `terminal.get` waiting so far with this record.
