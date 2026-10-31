@@ -799,6 +799,58 @@ struct HerdrCoreLaunchTests {
         return form
     }
 
+    // MARK: A Template that has gone
+
+    /// The core would run a program of that name without a word.
+    @Test func aTemplateGoneByStartSendsNoRun() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        let form = try await formWithTemplatePicked(on: fixture)
+        await fixture.transport.setTemplates([Self.template("planner")])
+
+        await form.submit()
+
+        #expect(await fixture.transport.templateRuns == 0)
+        #expect(await fixture.transport.runs.isEmpty)
+        #expect(
+            form.state
+                == .failed(
+                    "reviewer is no longer a Template on this Host, so nothing started. Detect Again refreshes the list."
+                ))
+    }
+
+    /// Which name is a Template is not known, so nothing runs under it.
+    @Test func aListThatCannotBeReadAtStartSendsNoRun() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        let form = try await formWithTemplatePicked(on: fixture)
+        await fixture.transport.setTemplateListFailure(TransportError.timedOut)
+
+        await form.submit()
+
+        #expect(await fixture.transport.templateRuns == 0)
+        #expect(form.state == .failed("The Host did not answer in time."))
+    }
+
+    /// The file can go between the check and the run, and no core call rules that
+    /// out, so the answer is read and the program is left for the user to judge.
+    @Test func aRunThatNamesNoTemplateSaysWhatStartedAndWhere() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        let form = try await formWithTemplatePicked(on: fixture)
+        form.selectExistingWorkspace(fixture.derived)
+        await fixture.transport.runTemplatesAsPrograms()
+
+        await form.submit()
+
+        #expect(await fixture.transport.templateRuns == 1)
+        #expect(
+            form.state
+                == .failed(
+                    "reviewer is no longer a Template on this Host, so the core ran a program of that name in a Terminal at /work/app. Close it if you did not mean to run it."
+                ))
+    }
+
     @Test func aTemplateInADerivedWorkspaceIsRunByNameAndNothingElse() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
@@ -839,6 +891,7 @@ struct HerdrCoreLaunchTests {
     @Test func aTemplateFromAnAgentInADesktopSpaceStartsInThatAgentsDirectory() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
+        await fixture.transport.setTemplates([Self.template("reviewer")])
 
         _ = try await fixture.store.startTemplate(
             TemplateLaunchRequest(
@@ -886,6 +939,7 @@ struct HerdrCoreLaunchTests {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
         await fixture.transport.setTemplateCommand("/opt/mytool --flag")
+        await fixture.transport.setTemplates([Self.template("reviewer")])
 
         let agent = try await fixture.store.startTemplate(
             TemplateLaunchRequest(

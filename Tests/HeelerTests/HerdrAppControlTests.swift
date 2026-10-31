@@ -527,6 +527,9 @@ struct HerdrCoreDesktopAppNamingTests {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
         try await fixture.until("the app's status") { fixture.capabilities.desktopAppNaming != nil }
+        await fixture.transport.setTemplates([
+            .object(["name": .string("reviewer"), "description": .string(""), "command": .string("pi")])
+        ])
 
         _ = try await fixture.store.startTemplate(
             TemplateLaunchRequest(

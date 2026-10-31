@@ -268,6 +268,29 @@ struct HerdrCoreWorktreesTests {
         #expect(terminalLabels(run)["herdr.space"]?.hasPrefix("sp") == true)
     }
 
+    /// No checkout for a launch that cannot happen.
+    @Test func aTemplateGoneByStartMakesNoWorktree() async throws {
+        let fixture = try await Fixture(terminals: [Self.shell("t9", cwd: Self.main)])
+        defer { fixture.finish() }
+        await fixture.store.checkNewAgentOffers(on: fixture.host.id)
+        await fixture.transport.setTemplates([
+            .object([
+                "name": .string("reviewer"), "description": .string(""),
+                "command": .string("pi --thinking high"),
+            ])
+        ])
+        let form = await fixture.form()
+        form.selectedAgent = .template(try #require(form.availableTemplates.first))
+        form.startsInNewWorktree = true
+        form.worktreeBranch = "feature/login"
+        await fixture.transport.setTemplates([])
+
+        await form.submit()
+
+        #expect(await fixture.git("worktree").isEmpty)
+        #expect(await fixture.transport.templateRuns == 0)
+    }
+
     @Test func aBranchThatExistsIsCheckedOutInsteadOfMade() async throws {
         let fixture = try await Fixture(terminals: [Self.shell("t9", cwd: Self.main)])
         defer { fixture.finish() }

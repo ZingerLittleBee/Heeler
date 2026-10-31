@@ -107,6 +107,23 @@ enum HerdrCoreWorktreeError: Error, Equatable {
     }
 }
 
+/// A Template asked for by name that is not one any more.
+enum HerdrCoreTemplateError: Error, Equatable {
+    /// Seen before anything ran.
+    case gone(String)
+    /// Seen in the answer, so a program of that name is already running.
+    case ranAsProgram(String, directory: String)
+
+    var message: String {
+        switch self {
+        case .gone(let name):
+            "\(name) is no longer a Template on this Host, so nothing started. Detect Again refreshes the list."
+        case .ranAsProgram(let name, let directory):
+            "\(name) is no longer a Template on this Host, so the core ran a program of that name in a Terminal at \(directory). Close it if you did not mean to run it."
+        }
+    }
+}
+
 /// The core answered a kill with a refusal, which left its Terminal running. On a
 /// Herdr TUI Host a close's `HerdrAPIError` can mean the Pane is gone already; a
 /// core says that with `not_found`, which never gets this far.

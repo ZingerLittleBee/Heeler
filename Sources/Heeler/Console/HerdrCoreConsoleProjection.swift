@@ -700,8 +700,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// Placed as any other launch is, and started by the core with neither the
     /// shell nor a kind of Heeler's, so the Agent's kind comes from its record.
-    /// A program Heeler does not know is no Agent until it reports.
+    /// A program Heeler does not know is no Agent until it reports. The core runs
+    /// a name with no file as a program, and no call of its asks for a Template
+    /// only, so the list is read again before anything happens and the answer is
+    /// checked after: the file can still go in between.
     func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
+        let templates = try await session.withTransport { $0 }.listTemplates()
+        guard templates.contains(where: { $0.name == request.template }) else {
+            throw HerdrCoreTemplateError.gone(request.template)
+        }
         if let worktree = request.worktree {
             return try await inNewWorktree(worktree, of: request.workspaceID) { placement in
                 try await runTemplate(request, placement: placement)
@@ -725,6 +732,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             runReply: try await transport.runTemplate(
                 params: HerdrCoreLaunch.templateRequest(
                     template: request.template, name: request.name, placement: placement)))
+        guard record.template == request.template else {
+            throw HerdrCoreTemplateError.ranAsProgram(request.template, directory: record.cwd)
+        }
         return agent(at: record, kind: HerdrCoreAgentRule.agent(in: record)?.kind ?? "unknown")
     }
 
@@ -961,6 +971,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             return try await inNewSpace(NewWorkspaceSpec(directory: created.path), start: start)
         } catch TransportError.coreMutationOutcomeUnknown {
             throw TransportError.coreMutationOutcomeUnknown
+        } catch let started as HerdrCoreTemplateError {
+            throw started
         } catch {
             throw WorktreeAgentStartFailure(checkoutPath: created.path, underlying: error)
         }

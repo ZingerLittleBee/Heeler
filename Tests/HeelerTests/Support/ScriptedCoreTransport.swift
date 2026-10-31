@@ -220,6 +220,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// The script of every agent discovery, oldest first.
     private(set) var discoveryScripts: [String] = []
     private var shellFailure: (any Error)?
+    private var runsTemplatesAsPrograms = false
     private var shell: String?
     private var discoveredPrograms: [String] = []
     private var openCodeVersionOutput: String?
@@ -462,7 +463,9 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         var reply = Self.runReply(address: "t\(100 + runs.count)", params: params)
         if case .object(var fields) = reply {
             fields["argv"] = .array(["sh", "-c", templateCommand].map(JSONValue.string))
-            if case .array(let argv)? = params["argv"] { fields["template"] = argv.first }
+            if !runsTemplatesAsPrograms, case .array(let argv)? = params["argv"] {
+                fields["template"] = argv.first
+            }
             fields["submit"] = .string("ctrl+j")
             fields["stop"] = .string("ctrl+c")
             reply = .object(fields)
@@ -538,6 +541,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// The command line a Template's Terminal runs.
     func setTemplateCommand(_ command: String) {
         templateCommand = command
+    }
+
+    /// The Template's file went after the list was read: `argv` runs as a program
+    /// of that name and the record names no Template.
+    func runTemplatesAsPrograms() {
+        runsTemplatesAsPrograms = true
     }
 
     /// `templates.list` fails with this until it is called with nil.

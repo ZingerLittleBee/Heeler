@@ -848,6 +848,8 @@ final class StartAgentStore {
             feature
         case let worktree as HerdrCoreWorktreeError:
             worktree.message
+        case let template as HerdrCoreTemplateError:
+            template.message
         case let failure as WorktreeAgentStartFailure:
             "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. "
                 + message(for: failure.underlying, launchedKind: launchedKind)

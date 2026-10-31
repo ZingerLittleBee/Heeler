@@ -162,7 +162,7 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 
 ### Templates
 
-**New Agent** also lists the Host's Templates, the roles saved under `~/.config/herdr-core/templates` (or `$XDG_CONFIG_HOME/herdr-core/templates`), under the agents your shell can run. A file the core cannot use is not listed.
+**New Agent** also lists the Host's Templates, the roles saved under `~/.config/herdr-core/templates` (or `$XDG_CONFIG_HOME/herdr-core/templates`), under the agents your shell can run. A file the core cannot use is not listed. A Template removed after you opened the form is no longer started: **Detect Again** refreshes the list. If it goes in the moment before the start, the core runs a program of that name instead, and Heeler says so and where.
 
 Pick one and tap **Start**. It lands where any other Agent would, by the table above, and an empty name field names the Agent after the Template, or `reviewer-2` while another live Terminal is named `reviewer`. The core runs the Template's own command, so your shell, your startup files and the session flags above play no part, and the form asks for no arguments. A command that needs a variable from your startup files should set it itself.
 
