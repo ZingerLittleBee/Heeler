@@ -23,6 +23,10 @@ protocol HerdrCoreTransport: Sendable {
     /// What the last locator run found, for a caller that reads why `hello` failed.
     func lastLocation() async -> HerdrCoreLocator.Location?
 
+    /// One named variable of one process, in one bounded exec, for finding where
+    /// that process's program keeps its configuration. Never says why it could not.
+    func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable
+
     /// Starts the Host's own core session. Only the user's confirmed action
     /// calls this; connecting, preflight and retries never do (ADR 0031).
     func startCore() async throws -> HerdrCoreStart.Outcome
@@ -94,6 +98,28 @@ extension HerdrCoreTransport {
     func listTemplates() async throws -> [AgentTemplate] {
         HerdrCoreLaunch.templates(
             result: try await call("templates.list", params: .object([:]), isMutation: false))
+    }
+
+    /// Ends a Terminal for good with `terminal.kill`, sent once as a mutation. A
+    /// kill is final even on a kept Terminal, so keep stays as it is. Unless the
+    /// core says the Terminal ended, or no longer knows it, this throws
+    /// `.coreMutationOutcomeUnknown`: a core that gave up on a stuck program still
+    /// ends the Terminal when the program goes.
+    func killTerminal(_ address: String) async throws {
+        let reply: JSONValue
+        do {
+            reply = try await call(
+                "terminal.kill",
+                params: .object(["terminal": .string(try HerdrCoreWire.address(address))]),
+                isMutation: true)
+        } catch let refusal as HerdrAPIError where refusal.code == "not_found" {
+            return
+        }
+        guard let record = try? HerdrCoreWire.typed(reply) as HerdrCoreTerminalRecord,
+            record.hasFinished
+        else {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
     }
 }
 
@@ -256,6 +282,20 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             return HerdrCoreEnvironmentCheck.leakedNames(stdout: result.stdout, nonce: nonce, pid: pid)
         } catch {
             return []
+        }
+    }
+
+    func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable {
+        do {
+            let request = HostProcessReader.Request(pids: [String(pid)], valuesOf: [name])
+            let nonce = nonce()
+            let script = try HostProcessReader.script(request, nonce: nonce)
+            let result = try await connection.runHostProcessRead(script)
+            guard result.exitStatus == 0 else { return .unavailable }
+            let facts = try HostProcessReader.parse(stdout: result.stdout, nonce: nonce, request: request)
+            return facts[String(pid)]?.variables[name] ?? .unavailable
+        } catch {
+            return .unavailable
         }
     }
 

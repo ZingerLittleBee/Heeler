@@ -162,6 +162,11 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var runs: [JSONValue] = []
     /// How many of `runs` asked for a Template's long deadline.
     private(set) var templateRuns = 0
+    /// The method of every call sent as a mutation, oldest first.
+    private(set) var mutations: [String] = []
+    /// The Terminal of every `terminal.kill`, oldest first.
+    private(set) var kills: [String] = []
+    private var killAnswers: [String: Result<JSONValue, any Error>] = [:]
     /// The script of every agent discovery, oldest first.
     private(set) var discoveryScripts: [String] = []
     private var shell: String?
@@ -188,6 +193,24 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     }
 
     func lastLocation() async -> HerdrCoreLocator.Location? { nil }
+
+    /// What each process's environment answers, and every read asked for.
+    private var processVariables: [String: HostProcessReader.Variable] = [:]
+    private(set) var processVariableReads: [String] = []
+
+    func setProcessVariable(_ name: String, to value: String) {
+        processVariables[name] = .value(value)
+    }
+
+    /// The environment could not be read, which says nothing about the name.
+    func makeProcessVariableUnavailable(_ name: String) {
+        processVariables[name] = .unavailable
+    }
+
+    func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable {
+        processVariableReads.append("\(name) of \(pid)")
+        return processVariables[name] ?? .unset
+    }
 
     func startCore() async throws -> HerdrCoreStart.Outcome {
         throw TransportError.hostFeatureUnavailable(feature: "startCore")
@@ -234,7 +257,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     }
 
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
+        if isMutation { mutations.append(method) }
         switch method {
+        case "terminal.kill":
+            let terminal = params["terminal"]?.stringValue ?? ""
+            kills.append(terminal)
+            return try (killAnswers[terminal] ?? .success(Self.killReply(address: terminal))).get()
         case "doc.get":
             documentReads.append(params["name"]?.stringValue ?? "")
             let answer: JSONValue = .object([
@@ -311,6 +339,16 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         ])
     }
 
+    /// What a core answers a kill: the record, already ended.
+    private static func killReply(address: String) -> JSONValue {
+        .object([
+            "address": .string(address), "cwd": .string("/"), "state": .string("finished"),
+            "argv": .array([.string("/bin/zsh")]), "keep": .bool(true), "title": .string(""),
+            "labels": .object([:]), "cols": .number(80), "rows": .number(24),
+            "reason": .string("killed"), "signal": .number(1),
+        ])
+    }
+
     func close() async throws {
         isClosed = true
         await bytes?.close()
@@ -348,6 +386,11 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// `templates.list` fails with this until it is called with nil.
     func setTemplateListFailure(_ failure: (any Error)?) {
         templateListFailure = failure
+    }
+
+    /// What a kill of this Terminal gets back instead of its ended record.
+    func setKillAnswer(_ answer: Result<JSONValue, any Error>, for terminal: String) {
+        killAnswers[terminal] = answer
     }
 
     /// What the next document read answers, as `doc.get` shapes it.

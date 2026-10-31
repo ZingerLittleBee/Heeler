@@ -454,7 +454,7 @@ struct HerdrCoreAgentsTests {
     // MARK: Agent detail
 
     /// Agent detail opens on its live terminal, and its row reads Changes
-    /// through the kind-neutral Host services. Closing stays hidden.
+    /// through the kind-neutral Host services.
     @Test func aCoreAgentOpensItsDetailAndItsRowReadsChangesThroughHostServices() async throws {
         let (store, transport) = try await started([Self.claude("t1")])
         defer { store.setHosts([]) }
@@ -463,7 +463,7 @@ struct HerdrCoreAgentsTests {
         #expect(store.capabilities(for: host.id).opensDetail)
         let offers = ConsoleAgentRowOffers(
             capabilities: store.capabilities(for: host.id), supportsMultipleWindows: true)
-        #expect(offers == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: true, closes: false))
+        #expect(offers == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: true, closes: true))
 
         store.rowChanges.rowAppeared(row)
         #expect(store.rowChanges.store(for: row) != nil)

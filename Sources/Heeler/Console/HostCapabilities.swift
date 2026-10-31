@@ -48,7 +48,7 @@ extension HostCapabilities {
             opensDetail: true, startsAgents: true, startsTerminals: true,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
             uploads: offered || (serverKind == .herdrCore && platform == .posix),
-            composerSend: offered, chat: offered, tabNames: offered, closeTab: offered,
+            composerSend: offered, chat: offered, tabNames: offered, closeTab: true,
             syncLayoutFromPlugin: offered, takeOver: offered)
     }
 }

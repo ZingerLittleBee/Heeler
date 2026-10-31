@@ -214,6 +214,12 @@ with test clients, not the app.
   restarting or ended, though the Terminal has stopped being an Agent. The app
   keeps that departed Agent for the detail alone, so no list shows it, and a
   reconnect forgets it.
+- Close ends a Terminal for good with `terminal.kill`, one for each Terminal
+  it takes, and never sends one twice: a kill the core did not answer reads as
+  outcome unknown. A kill is final even on a kept Terminal, so keep is left as
+  it is. The Console hides the record the core keeps. A row whose Tab has other
+  Panes closes only its own Terminal, as on Herdr TUI; what becomes of a
+  Terminal it started is the core's call.
 - A Template launch returns once the program first reports, which can take
   35 seconds, and the record carries the Template's submit and stop keys. A
   program Heeler does not know is no Agent until it reports, so a Template

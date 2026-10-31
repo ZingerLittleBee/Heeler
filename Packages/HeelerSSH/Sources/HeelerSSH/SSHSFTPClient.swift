@@ -179,6 +179,13 @@ public final class SSHSFTPClient: Sendable {
             timeout: timeout)
     }
 
+    /// The server's absolute form of a path, with its symbolic links followed. A
+    /// last component that does not exist is still answered by OpenSSH's server, so
+    /// a link's missing target can be created.
+    public func canonicalPath(_ path: String, timeout: Duration) async throws -> String {
+        try await driver.canonicalSFTPPath(id: id, path: path, timeout: timeout)
+    }
+
     /// Closes only this SFTP subsystem channel. Idempotent.
     public func close(timeout: Duration) async throws {
         let shouldClose = closed.withLock { closed in
