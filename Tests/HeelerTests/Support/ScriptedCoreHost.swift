@@ -11,8 +11,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         case refused
         /// Answers the plain `hello` line with these bytes.
         case answersHello(Data)
-        /// A core that answers `hello`, `events.subscribe` and `server.status`,
-        /// as `ScriptedCoreHost.Core` scripts them.
+        /// A core that answers `hello`, `events.subscribe`, `server.status` and
+        /// `doc.get`, as `ScriptedCoreHost.Core` scripts them.
         case core(Core)
     }
 
@@ -22,6 +22,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         var sequence = 0
         var terminals: [JSONValue] = []
         var pid = 4242
+        /// False: `doc.get` goes unanswered while everything else still works.
+        var answersDocumentReads = true
         static let eventsChannel: UInt32 = 1
 
         var helloReply: Data {
@@ -308,6 +310,9 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 try? await socket.reply(to: request.id, result: core.subscribeResult(channel: eventsChannel))
                 eventsChannel += 1
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
+            // A real core's answer for a name nobody wrote.
+            case "doc.get" where core.answersDocumentReads:
+                try? await socket.reply(to: request.id, result: .object(["version": .number(0), "value": .null]))
             case "terminal.read":
                 try? await socket.reply(
                     to: request.id,
@@ -405,7 +410,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     /// The transport the app gets for this Host, with a nonce the script knows.
-    nonisolated func transport(session: String = "work") -> HerdrCoreSSHTransport {
-        HerdrCoreSSHTransport(connection: self, session: session, nonce: { Self.nonce })
+    nonisolated func transport(
+        session: String = "work",
+        sleep: @escaping HerdrCoreLink.Sleep = { try await Task.sleep(for: $0) }
+    ) -> HerdrCoreSSHTransport {
+        HerdrCoreSSHTransport(connection: self, session: session, nonce: { Self.nonce }, sleep: sleep)
     }
 }

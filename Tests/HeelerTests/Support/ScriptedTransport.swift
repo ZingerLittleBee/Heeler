@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 
 @testable import Heeler
 
@@ -965,6 +966,12 @@ final actor ScriptedTransport: Transport {
         nextFilePatchReadGate = nil
         if let gate { await gate.waitUntilOpen() }
         return try outcome.get()
+    }
+
+    /// Only a herdr-core projection asks for checkout roots.
+    func checkoutRoots(for directories: [String]) async throws -> [String: String] {
+        Issue.record("A Herdr TUI path asked for checkout roots: \(directories)")
+        throw ChangesReadError.unavailable
     }
 
     func gateNextSidebarLayoutRead(_ gate: ScriptedTransportCallGate) {
