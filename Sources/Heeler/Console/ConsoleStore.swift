@@ -103,6 +103,7 @@ final class ConsoleStore {
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
+    @ObservationIgnored private let coreSendClock: BlockedCardClock
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
@@ -174,8 +175,10 @@ final class ConsoleStore {
         },
         makeCoreSession: @escaping @Sendable (Host) -> HerdrCoreHostSession =
             ConsoleStore.coreSessionFactory(),
-        coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory()
+        coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
+        coreSendClock: BlockedCardClock = .live
     ) {
+        self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.coreHostMemory = coreHostMemory
         self.chatCache = chatCache
@@ -620,10 +623,18 @@ final class ConsoleStore {
     func composerSession(for agent: ConsoleAgent) -> AgentComposerSession {
         if let existing = composerSessions[agent.id] { return existing }
         let hostID = agent.hostID
+        let coreSend =
+            projections[hostID] is HerdrCoreConsoleProjection
+            ? HerdrCoreComposerSend(
+                address: agent.agent.paneID,
+                projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
+                clock: coreSendClock)
+            : nil
         let composer = AgentComposerStore(
             target: agent.agent.paneID,
             initialStatus: agent.agent.status,
-            statusUpdates: agentStatusUpdates(for: agent.id)
+            statusUpdates: agentStatusUpdates(for: agent.id),
+            coreSend: coreSend
         ) { [weak self] params in
             guard let self else { throw TransportError.cancelled }
             return try await self.promptAgent(params, on: hostID)

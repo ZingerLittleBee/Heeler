@@ -1,5 +1,13 @@
 import Foundation
 
+/// What an event says of a Terminal's program.
+enum HerdrCoreProgramChange: Equatable, Sendable {
+    /// A sample of its foreground; nil when the core can no longer name one.
+    case sample(HerdrCoreForeground?)
+    /// The program lost, finished or removed, or replaced by a new shell.
+    case ended
+}
+
 /// A herdr-core Host's share of the Console (ADR 0032). It folds the Host
 /// session's subscribe snapshots and deltas into the Console's models: a snapshot
 /// or `missed` replaces the inventory wholesale, and deltas change one Terminal
@@ -62,6 +70,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var hasInventory = false
     /// Terminals waiting to hear what became of a program.
     private var programWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    private var programWatches:
+        [UUID: (address: String, onChange: @MainActor (HerdrCoreProgramChange) -> Void)] = [:]
 
     init(
         host: Host,
@@ -229,6 +239,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         readDocument()
         rebuildRows()
         publish()
+        for watch in programWatches.values {
+            let record = records.first { $0.address == watch.address }
+            if let record, !record.hasFinished, !record.isRestarting {
+                watch.onChange(.sample(record.foreground))
+            } else {
+                watch.onChange(.ended)
+            }
+        }
     }
 
     private func apply(_ event: HerdrCoreEvent) {
@@ -247,6 +265,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                     reported: record.reported)
             }
             sidebarRevision &+= 1
+            if case .restarted = event { notifyProgramWatches(of: record.address, .ended) }
         case .size(let terminal, let columns, let rows):
             update(terminal) {
                 $0.columns = columns
@@ -257,6 +276,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         case .foreground(let terminal, let foreground):
             update(terminal) { $0.noteForeground(foreground) }
             noteTurns(of: terminal) { _, _ in }
+            notifyProgramWatches(of: terminal, .sample(foreground))
         case .status(let terminal, let status, let records, let reported):
             let turn = self.records.first { $0.address == terminal }?.turn ?? 0
             update(terminal) {
@@ -282,6 +302,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 $0.reason = end.reason ?? "lost"
             }
             noteTurns(of: terminal) { _, _ in }
+            notifyProgramWatches(of: terminal, .ended)
         case .finished(let terminal, _):
             update(terminal) {
                 $0.state = "finished"
@@ -290,11 +311,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             }
             noteTurns(of: terminal) { _, _ in }
             sidebarRevision &+= 1
+            notifyProgramWatches(of: terminal, .ended)
         case .removed(let terminal):
             memory.forgetTerminal(terminal, for: host.id)
             pins.removePin(hostID: host.id, paneID: terminal)
             records.removeAll { $0.address == terminal }
             sidebarRevision &+= 1
+            notifyProgramWatches(of: terminal, .ended)
         case .missed(let snapshot):
             replaceInventory(with: snapshot)
             return
@@ -619,6 +642,38 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             }
             try await self?.followProgram(
                 at: address, attachedTo: program ?? .unknown, handler: handler)
+        }
+    }
+
+    // MARK: What Composer Send checks (ADR 0035)
+
+    /// A Terminal's record as this link's events left it. Nil between links.
+    func terminalRecord(at address: String) -> HerdrCoreTerminalRecord? {
+        records.first { $0.address == address }
+    }
+
+    /// The Terminal's record as the core knows it now. Waits for a link.
+    func readTerminalRecord(at address: String) async throws -> HerdrCoreTerminalRecord {
+        try await session.withTransport { try await $0.terminalRecord(address) }
+    }
+
+    /// Calls `onChange` with what the events say of `address`'s program until
+    /// `endProgramWatch`.
+    func watchProgram(
+        at address: String, onChange: @escaping @MainActor (HerdrCoreProgramChange) -> Void
+    ) -> UUID {
+        let id = UUID()
+        programWatches[id] = (address, onChange)
+        return id
+    }
+
+    func endProgramWatch(_ id: UUID) {
+        programWatches[id] = nil
+    }
+
+    private func notifyProgramWatches(of address: String, _ change: HerdrCoreProgramChange) {
+        for watch in programWatches.values where watch.address == address {
+            watch.onChange(change)
         }
     }
 

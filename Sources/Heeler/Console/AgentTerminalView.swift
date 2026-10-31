@@ -759,6 +759,7 @@ struct AgentTerminalView: View {
                 jumpNewer: { jumpToNewerMessageOrLive() },
                 lastViewportFrame: { messageJump.lastViewportFrame })
             composer.bindAttachInput(attach.input)
+            composer.bindCoreAttach(attach)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
             if isOnStage() {
@@ -1306,7 +1307,7 @@ struct AgentTerminalView: View {
     /// The Composer's Stop: one Esc over the Attach PTY, or nil to keep Send
     /// for a kind Esc doesn't stop (`AgentComposerInterrupt.terminal`).
     private var stopInterrupt: AgentComposerInterrupt? {
-        guard console.capabilities(for: agent.hostID).composerSend else { return nil }
+        guard console.capabilities(for: agent.hostID).composerStop else { return nil }
         return .terminal(forAgentKind: agent.agent.kind) { interruptAgent() }
     }
 

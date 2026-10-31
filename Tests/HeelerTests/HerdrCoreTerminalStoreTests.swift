@@ -1146,10 +1146,10 @@ struct HerdrCoreTerminalStoreTests {
         ["Back to Console", "Open Terminal", "Changes", "Skills", "Snippets"],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.
-    private static let notBuiltLabels = ["Add", "Send", "Stop", "Take Over", "Take Over Here"]
+    private static let notBuiltLabels = ["Add", "Stop", "Take Over", "Take Over Here"]
 
-    /// A Composer that cannot send hides Send, Stop and Add, and the Agent is
-    /// working, so Stop is what a Host that can would show.
+    /// The Composer offers Send (ADR 0035) and hides Stop and Add, and the Agent
+    /// is working, so Stop is what a Host that can would show.
     @Test func aCoreAgentsDetailShowsItsTerminalAndOffersOnlyWhatIsBuilt() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
@@ -1161,6 +1161,7 @@ struct HerdrCoreTerminalStoreTests {
         #expect(detail.surface != nil)
 
         try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        #expect(detail.offers("Send"))
         for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
 
         let menus = try await HostedMenu.items(labeled: "More", in: detail.window)

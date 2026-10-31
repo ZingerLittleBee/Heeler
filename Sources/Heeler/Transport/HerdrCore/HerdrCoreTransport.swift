@@ -73,6 +73,15 @@ extension HerdrCoreTransport {
                 params: .object(["terminal": .string(try HerdrCoreWire.address(address)), "lines": .number(0)]),
                 isMutation: false))
     }
+
+    /// The Terminal's record as the core knows it now, foreground included.
+    func terminalRecord(_ address: String) async throws -> HerdrCoreTerminalRecord {
+        try HerdrCoreWire.typed(
+            await call(
+                "terminal.get",
+                params: .object(["terminal": .string(try HerdrCoreWire.address(address))]),
+                isMutation: false))
+    }
 }
 
 /// The parts of an SSH connection a herdr-core transport uses. Real SSH is
