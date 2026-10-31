@@ -11,7 +11,7 @@
     },
     {
       "path": "core/follower.js",
-      "sha256": "88366b23481c3f9a19846906766e335e77884bc2f5ff156215f2694370abf8c7"
+      "sha256": "880e505a9f0dcb8db4236adf45a8a07ee3dfb73c563119a405a0b72833a75e4b"
     },
     {
       "path": "core/frames.js",
@@ -30,6 +30,10 @@
       "sha256": "30d724c74f7e472635262c38c3bede1fb3e6e2901bc8852c6d01f196cd952ea0"
     },
     {
+      "path": "core/turn-state.js",
+      "sha256": "cd0d5caa0a5051661a4a4d6b34d421f68efd5dd38f67d1b6c8bb00e5c71c3eca"
+    },
+    {
       "path": "extensions/extension-folders.js",
       "sha256": "4133fcfa4749a1799e297dd3113dea7c11d703c487770b55e006cb19d756001c"
     },
@@ -39,7 +43,15 @@
     },
     {
       "path": "main.js",
-      "sha256": "97e19eb08eca4c0cee2679cd76fc1b514d39148500f26c767d6ba115e94bceb6"
+      "sha256": "f452e8153eefa71150cc35b5fc49818a99eceb8aab593272f03f8edad9f3f808"
+    },
+    {
+      "path": "notifications/notifier.js",
+      "sha256": "1e27800e88bdc06200f33c862c42640402625252c0b13b01233e5036d4dcd6a5"
+    },
+    {
+      "path": "notifications/seen-marks.js",
+      "sha256": "0b1ddc4b3be8aa898745069d03592d6111dcc257733e3256fc5b1056256eec8c"
     },
     {
       "path": "package.json",
@@ -50,12 +62,24 @@
       "sha256": "4219ba8aa21e9d8fd2a734a8c87c2fe9845280ef95beb1b9e19bafa8a32643be"
     },
     {
+      "path": "shared/delivery/push.js",
+      "sha256": "9cbec4370b580eabf3a708264fd862fd2fc82d88c823a33fb00b14900399746b"
+    },
+    {
       "path": "shared/delivery/registrations.js",
       "sha256": "5803a9f5181aa4d6920e90e4b99411bb37ebb4cd415df3dbe0b2aa4eb7ae4b26"
     },
     {
       "path": "shared/display-text.js",
       "sha256": "df9a931a239c0f5e544ec9510d51867ca11d44c7403bd9dff39ae387ea7f0126"
+    },
+    {
+      "path": "shared/notification-config.js",
+      "sha256": "40fc8dfc11a344159c4146c48a33625da88b586e738b9010361e9ab7c68b3e93"
+    },
+    {
+      "path": "shared/notification-envelope.js",
+      "sha256": "87351f0a432d780a373eef1d592aad3c556c5e5c3e99b9b6f3219c8d6ec9a5fc"
     },
     {
       "path": "shared/seal-envelope.js",

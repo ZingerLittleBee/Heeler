@@ -15,6 +15,14 @@ const POLL_MS = 3000;
 // What a session with no running core reads as: no socket yet, or one a killed core left.
 const NO_CORE_CODES = new Set(["ENOENT", "ENOTDIR", "ECONNREFUSED", "ENOTSOCK"]);
 
+/** One listener that tells each of `listeners`, in order. */
+export function combineListeners(...listeners) {
+  const tell = (name) => (report) => {
+    for (const listener of listeners) listener[name]?.(report);
+  };
+  return { connected: tell("connected"), ended: tell("ended"), inventoryReplaced: tell("inventoryReplaced"), event: tell("event") };
+}
+
 /**
  * Follows one normalized session until `stop()`. `listener` hears, each with
  * `session`: `connected({coreId, pid, socketPath, inventory})`, `ended({pid, reason})`,
