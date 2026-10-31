@@ -108,7 +108,7 @@ Pick where it starts, for an Agent and for **New Terminal** alike:
 | --- | --- | --- |
 | A desktop space | In the directory of the Agent you started from, else the space's folder | In a new tab of that space, here and in the desktop app |
 | A directory's Workspace | In that Workspace's directory, even after a Terminal in it moved elsewhere | In that Workspace, and not in the desktop app's layout until you adopt it there |
-| **Browse Directory…** | In the directory you chose | In a Workspace named for that directory |
+| **New Workspace** or **Browse Directory…** | In the directory you chose | In a new Workspace of its own, even when another already uses that directory. A running desktop app shows it as a new space. Until the desktop app names it, it is named for its first Terminal's checkout folder |
 
 Heeler asks for no tab or Workspace name on this kind of Host. Worktrees and Templates are not offered here yet.
 
