@@ -10,6 +10,10 @@ protocol HerdrCoreTransport: Sendable {
     /// The Host's exec and SFTP services, on the same SSH connection.
     nonisolated var hostServices: any HostServices { get }
 
+    /// This connection's exec and SFTP, for the Host Helper, which works with
+    /// or without a running core (ADR 0033).
+    nonisolated var hostHelperHost: any HostHelperHost { get }
+
     /// Whether the SSH connection is up, whatever became of the link on it.
     var isConnected: Bool { get async }
 
@@ -62,7 +66,7 @@ extension HerdrCoreTransport {
 
 /// The parts of an SSH connection a herdr-core transport uses. Real SSH is
 /// `HeelerSSHTransport`; tests script the exec and hand over a fake socket.
-protocol HerdrCoreHostConnection: HostServices {
+protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     nonisolated var routeID: UUID? { get }
 
     var isConnected: Bool { get async }
@@ -87,6 +91,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     nonisolated let routeID: UUID?
     nonisolated var hostServices: any HostServices { connection }
+    nonisolated var hostHelperHost: any HostHelperHost { connection }
     private nonisolated let connection: any HerdrCoreHostConnection
     private let session: String
     private let nonce: @Sendable () -> String

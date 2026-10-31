@@ -61,6 +61,11 @@ targets:
       - path: Sources/Heeler/Resources/Notices
         type: folder
         buildPhase: resources
+      # The Host Helper the app installs on a herdr-core Host (ADR 0033). A
+      # folder reference keeps its tree whole; its manifest names every file.
+      - path: plugin/helper
+        type: folder
+        buildPhase: resources
     info:
       path: Sources/Heeler/Info.plist
       properties:
@@ -286,6 +291,9 @@ targets:
         buildPhase: resources
       # Shared plugin version vector: the release the app recommends.
       - path: plugin/test-vectors/plugin-version-v1.json
+        buildPhase: resources
+      # Shared Host Helper version vector: the Helper the app bundles.
+      - path: plugin/test-vectors/host-helper-version-v1.json
         buildPhase: resources
     settings:
       base:

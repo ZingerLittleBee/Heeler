@@ -163,3 +163,36 @@ before confirming. Tap **Run Checks Again** after changing a state.
 | Not running | `server stop` by absolute path, or a session never used | The core's version, then **not running** |
 
 Detection must leave the Host as it found it too: no core or herdr server started.
+
+## Host Helper
+
+Use a Host whose user has never had the Helper, with linger off. Before installing,
+save `find ~/.local/share ~/.config/systemd -print 2>/dev/null | sort` so the end of
+the run can compare against it.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Install | Open the Host's detail, tap **Host Helper**, read the sheet, and tap **Install** | The sheet lists every file, the unit included, and those are the files on the Host. `XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status heeler-host-helper` is active, with the absolute Node.js path in its `ExecStart` |
+| Privacy | `ls -la` the Helper directory, its `app` folder and the unit | Directories `0700`, files `0600` |
+| Linger | Read the row with linger off, then tap **Turn On Linger** | The row reads **Linger Off**, the sheet offers linger, and `loginctl show-user $USER -p Linger` then reads `yes`. On a Host that asks for an administrator, the sheet shows the Host's reason |
+| Log out | End every login to the Host, wait a minute, and log back in | The Helper kept running: the same main PID, with no restart counted |
+| Restart | `kill -9` the Helper's Node.js process | systemd starts it again within seconds, `NRestarts` goes up by one, and the row still reads the version |
+| Node.js moved | Rename the Node.js executable, kill the Helper, wait past the start limit, then check the Host | The unit is `failed` with result `start-limit-hit`, and the row reads **Service Failed** or **Node.js Missing**. Restore Node.js and tap **Repair**: it runs again |
+| Damage | Change a byte in `app/main.js`, then check the Host | The row reads **Damaged**, and **Repair** puts the file back and keeps `notifications.json` |
+| Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched |
+
+Every step must leave the core as it found it: the Helper in this version only follows
+a core, and never starts one.
+
+### The Helper and the core
+
+Until the app registers devices with the Helper, name the session by hand, in the
+Helper directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
+~/.local/share/heeler/host-helper/notifications.json`. Remove the file when done.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| No core | Stop the session's core with `herdr-core server stop` by absolute path, then `systemctl --user restart heeler-host-helper` | `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait. `journalctl --user -u heeler-host-helper` reads `core session "default": waiting for a core at <socket>` once |
+| Core starts | Start the core from the user's login shell, and do not touch the Helper | Within seconds the journal reads `connected to core pid <pid>`, the pid `server.status` reports. The unit's main PID has not changed |
+| Core restarts | `kill -9` the core at that pid, then start it again from the login shell | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
+| Other sessions | Start a core for a session the file does not name | The journal never mentions it, and `ss -xp` shows the Helper connected only to the named session's socket |

@@ -24,3 +24,30 @@ The core CLI reserves its configured detach chord, **Ctrl+backslash** by default
 Chat, the Heeler plugin, notifications, Live Activities, Usage, renaming, and creating/removing Worktrees are unavailable for this backend. Core does not supply the legacy plugin contract or exact transcript identity. Changes, files, and Skills still use the same Host's SSH filesystem. Terminals federated from another machine are omitted: add that machine directly as a Host so its file operations reach the right computer.
 
 Existing legacy Hosts stay on herdr. A manually configured Host can be edited or duplicated to select core. Before switching a legacy Host, turn off its notifications and wait for the remote update to finish; an unreachable original Host must be recovered before that registration can be removed. Hosts carrying a paired Herdr Endpoint retain that endpoint when edited or duplicated and cannot change backend. Add a new manual core Host for those accounts.
+
+## Host Helper
+
+The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. In this version it only follows the core: notifications, Live Activities and Usage still read as unavailable until the app connects them to it.
+
+The Helper never starts a core. It connects to the core's socket directly, and while no core runs it waits and tries again, so a core you stopped stays stopped until you start it. When you do, the Helper connects on its own, without a restart.
+
+**Install on Linux.** Open the Host's detail and tap **Host Helper**. The sheet lists every file the install writes, including its systemd user unit. Tap **Install**. The files go in `~/.local/share/heeler/host-helper` (or under `XDG_DATA_HOME`) and are private to your account. Heeler replaces a Helper only with a newer version, or when it is missing or damaged, and never one that a newer version of the app installed.
+
+Without systemd linger, the Helper stops about ten seconds after your last login to the Host ends. The sheet checks it and offers **Turn On Linger**. Some Hosts ask for an administrator instead: the sheet shows the Host's reason, and an administrator can run `loginctl enable-linger <your-user>` there.
+
+**Check.** The Host Helper row shows the Host's state each time you check the Host:
+
+| Row reads | What it means |
+| --- | --- |
+| **Not Installed** | No Helper on this Host |
+| A version | Installed and running. The sheet says when this app carries a newer one |
+| A newer version | A newer version of Heeler installed it. Update the app to change it |
+| **Damaged** | Files are missing or changed. **Repair** puts them back |
+| **Node.js Missing** | The Host has no Node.js, or one too old to run the Helper |
+| **Linger Off** | Runs only while you are logged in |
+| **Service Failed** | The service stopped and will not start again by itself, for example after Node.js moved. **Repair** sets it up with the Node.js the Host has now |
+| **Not Available** | This platform has no Helper |
+
+Native Windows Hosts read **Not Available**, so Agent Notifications (in-app banners included), Live Activity and Usage are not available there yet. macOS Hosts also read **Not Available** in this version, with no install offered.
+
+**Remove.** In the sheet, tap **Remove**. Heeler disables and stops the service, deletes the files the install recorded, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.

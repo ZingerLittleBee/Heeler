@@ -44,6 +44,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         borrows.withLock { $0 += 1 }
         return NoServices()
     }
+    nonisolated var hostHelperHost: any HostHelperHost { ScriptedHelperHost() }
 
     private let coreID: String
     /// What each subscribe answers. The last one repeats.
