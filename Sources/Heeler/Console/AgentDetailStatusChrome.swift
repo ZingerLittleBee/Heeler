@@ -10,6 +10,8 @@ struct AgentDetailStatusChrome: View {
     /// list row shows.
     var changes: AgentDetailChanges? = nil
     let chromeColorScheme: ColorScheme
+    /// Set where an Unknown Agent has something to explain, on a core Host.
+    @Environment(\.showAgentStatusExplanation) private var showStatusExplanation
 
     var body: some View {
         let store = changes?.store
@@ -29,6 +31,10 @@ struct AgentDetailStatusChrome: View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
             if let title = status.displayTitle {
                 statusLabel(title)
+                    .fixedSize()
+                if showsGit { StatusLineDivider() }
+            } else if let showStatusExplanation {
+                unknownStatusButton(showStatusExplanation)
                     .fixedSize()
                 if showsGit { StatusLineDivider() }
             } else {
@@ -89,6 +95,26 @@ struct AgentDetailStatusChrome: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Agent status")
         .accessibilityValue(title)
+    }
+
+    /// Reads as the status line's status, with room around it for a finger.
+    private func unknownStatusButton(_ show: @escaping @MainActor @Sendable () -> Void) -> some View {
+        Button(action: show) {
+            HStack(spacing: 4) {
+                Text("Unknown")
+                Image(systemName: "info.circle")
+            }
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+            .padding(.vertical, -10)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Agent status")
+        .accessibilityValue("Unknown")
+        .accessibilityHint("Explains why")
+        .accessibilityIdentifier("agent-status-explanation")
     }
 
     /// Deliberately quieter than Agent Status: it never changes color with the

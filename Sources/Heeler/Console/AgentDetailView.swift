@@ -512,6 +512,7 @@ struct AgentDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .modifier(AgentStatusExplanationPresenter(console: console, agentID: agent.id))
         .alert("Couldn't Open Terminal", isPresented: Binding(
             get: { terminalOpenFailure != nil }, set: { if !$0 { terminalOpenFailure = nil } })
         ) {

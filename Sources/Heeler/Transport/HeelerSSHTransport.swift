@@ -1545,6 +1545,110 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    // MARK: Harness configuration files
+
+    /// SFTP has no compare-and-swap, so this reads the file twice, once before it
+    /// writes anything and again just before the rename, in the file's own
+    /// directory. A change in the one round trip after that second read can still
+    /// be lost; a file changed any earlier than that is refused.
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        guard RemoteFilePath.isAcceptable(path) else {
+            throw TransportError.invalidDirectoryPath(path: path)
+        }
+        _ = try await hostFileEnvironment()
+        try await requirePOSIXHost(feature: "Editing Host files")
+        do {
+            try await withNotificationFileRequestDeadline {
+                guard await self.notificationConnectionIsAvailable() else {
+                    throw TransportError.sshUnreachable(detail: "The SSH connection is unavailable.")
+                }
+                let operationID = UUID()
+                try await self.channelAdmission.withChannel(.ordinarySession) {
+                    try await self.performHostTextFileReplace(
+                        path: path, expected: expected, contents: contents, operationID: operationID)
+                }
+            }
+        } catch let refusal as HostTextFileError {
+            throw refusal
+        } catch {
+            throw await mapHostFileError(error).0
+        }
+    }
+
+    private func performHostTextFileReplace(
+        path: String, expected: Data?, contents: Data?, operationID: UUID
+    ) async throws {
+        let sftp = try await connection.openSFTP(timeout: requestTimeout)
+        notificationFileClients[operationID] = sftp
+        var temporaryPath: String?
+        do {
+            // A link stays a link: its target is what changes.
+            let target = try await sftp.canonicalPath(path, timeout: requestTimeout)
+            try await requireFile(at: target, holds: expected, over: sftp)
+            if let contents {
+                let permissions: UInt32 =
+                    if expected == nil {
+                        0o600
+                    } else {
+                        (try await sftp.attributes(at: target, timeout: requestTimeout).permissions ?? 0o600)
+                            & 0o7777
+                    }
+                let temporary = "\(target).heeler-\(UUID().uuidString.lowercased())"
+                temporaryPath = temporary
+                notificationTemporaryPaths[operationID] = temporary
+                let file = try await sftp.openFileForWriting(
+                    at: temporary, permissions: 0o600, timeout: requestTimeout)
+                do {
+                    if !contents.isEmpty {
+                        try await file.write(contents, timeout: requestTimeout)
+                    }
+                    try await file.close(timeout: requestTimeout)
+                } catch {
+                    try? await file.close(timeout: .seconds(2))
+                    throw error
+                }
+                try await sftp.setPermissions(permissions, at: temporary, timeout: requestTimeout)
+                let written = try await sftp.attributes(at: temporary, timeout: requestTimeout)
+                guard written.size == UInt64(contents.count) else {
+                    throw TransportError.malformedResponse("The written file failed verification.")
+                }
+                try await requireFile(at: target, holds: expected, over: sftp)
+                try Task.checkCancellation()
+                try await sftp.renameFileAtomically(
+                    from: temporary, to: target, timeout: requestTimeout)
+                temporaryPath = nil
+            } else {
+                try Task.checkCancellation()
+                try await sftp.removeFile(at: target, timeout: requestTimeout)
+            }
+            notificationTemporaryPaths[operationID] = nil
+            notificationFileClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+        } catch {
+            if let temporaryPath {
+                try? await removeNotificationTemporaryFile(at: temporaryPath, over: sftp)
+            }
+            notificationTemporaryPaths[operationID] = nil
+            notificationFileClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
+    /// Compares sizes first, so a file that grew past what was read is not fetched.
+    private func requireFile(
+        at path: String, holds expected: Data?, over sftp: SSHSFTPClient
+    ) async throws {
+        let status = try await sftp.fileStatus(at: path, timeout: requestTimeout)
+        guard let status else {
+            guard expected == nil else { throw HostTextFileError.changedSinceRead }
+            return
+        }
+        guard let expected, status.size == UInt64(expected.count),
+            try await sftp.readFileIfPresent(at: path, timeout: requestTimeout) == expected
+        else { throw HostTextFileError.changedSinceRead }
+    }
+
     private func enforceNotificationPermissions(
         _ permissions: UInt32,
         at path: String,

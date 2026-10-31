@@ -115,7 +115,8 @@ that Heeler can read from outside the process.
     removes the entry, then the folder; removing the Helper undoes it.
   - Grok Build, offered where a Grok Build Agent shows no status because its
     automatic check left Program Status off: `[ui.notifications]
-    program_status = on` in its configuration.
+    program_status = "on"` in its configuration. The value is a quoted string:
+    a bare `on` is not TOML (herdr compatibility, Grok Build 1.0.70).
 
   Heeler never edits Claude Code's settings, Codex's hooks or their trusted
   hashes, or Grok Build's global hooks.
