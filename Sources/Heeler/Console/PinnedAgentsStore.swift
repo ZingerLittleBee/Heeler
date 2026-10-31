@@ -3,9 +3,10 @@ import Observation
 
 /// Pins the user has chosen on Console rows, keyed by `(hostID, paneID)` —
 /// the same identity as `ConsoleAgent.ID`. Array order is recency: most
-/// recently pinned first. Entries are never pruned; a pane that has closed
-/// leaves a dangling pin so the same pane id coming back after a herdr
-/// restart is still pinned.
+/// recently pinned first. A Herdr TUI Host's entries are never pruned; a pane
+/// that has closed leaves a dangling pin so the same pane id coming back after
+/// a herdr restart is still pinned. A herdr-core Host's projection prunes its
+/// own, since an address is never reused (ADR 0031).
 @MainActor
 @Observable
 final class PinnedAgentsStore {
@@ -77,10 +78,31 @@ final class PinnedAgentsStore {
 
     /// Drops one pin because the user destroyed its pane on purpose (tab
     /// close). Unlike a pane that vanishes on its own, an explicitly closed
-    /// tab should not resurrect as a pin if herdr reuses the id later.
+    /// tab should not resurrect as a pin if herdr reuses the id later. A
+    /// herdr-core Host also calls this when the core removes a Terminal.
     func removePin(hostID: Host.ID, paneID: String) {
         guard isPinned(hostID: hostID, paneID: paneID) else { return }
         entries.removeAll { $0.hostID == hostID && $0.paneID == paneID }
+        persist()
+        revision += 1
+    }
+
+    /// Drops this Host's pins on panes outside `paneIDs`. Only herdr-core Hosts
+    /// call this: their addresses never return once gone.
+    func retainPins(hostID: Host.ID, paneIDs: Set<String>) {
+        drop { $0.hostID == hostID && !paneIDs.contains($0.paneID) }
+    }
+
+    /// Drops all of this Host's pins. Only herdr-core Hosts call this: another
+    /// core's addresses are not these.
+    func removePins(hostID: Host.ID) {
+        drop { $0.hostID == hostID }
+    }
+
+    private func drop(where shouldDrop: (Entry) -> Bool) {
+        let kept = entries.filter { !shouldDrop($0) }
+        guard kept.count != entries.count else { return }
+        entries = kept
         persist()
         revision += 1
     }
