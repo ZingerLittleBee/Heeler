@@ -341,7 +341,7 @@ struct AgentComposerView: View {
     private var keyboardGrabber: some View {
         Capsule()
             .fill(keyboardPull > 0 ? HierarchicalShapeStyle.secondary : .tertiary)
-            .frame(width: 36, height: 5)
+            .frame(width: 48, height: 5)
             .offset(y: AgentComposerKeyboardPull.grabberOffset(translation: keyboardPull))
             .padding(.top, 5 + AgentComposerKeyboardPull.touchOverhang)
             .frame(
