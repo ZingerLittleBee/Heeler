@@ -54,6 +54,15 @@ struct AgentFocusCoordinatorTests {
         }
     }
 
+    @Test func aDetailShowsItsAgentOnlyInFrontOfTheUserWithNoShellOverIt() {
+        #expect(state().showsAgent)
+        // A Host still connecting takes nothing away from what is on screen.
+        #expect(state(status: .working, ready: false, generation: nil).showsAgent)
+        #expect(!state(active: false).showsAgent)
+        #expect(!state(onStage: false).showsAgent)
+        #expect(!state(shell: true).showsAgent)
+    }
+
     @Test func foregroundWorkingToDoneAndReentryEachAllowOneAttempt() async throws {
         let coordinator = AgentFocusCoordinator()
         var calls = 0

@@ -19,6 +19,12 @@ final class ConsoleStore {
     private(set) var terminals: [ConsoleTerminal] = []
     /// See `sceneDidEnd`.
     @ObservationIgnored private var endedScenes: Set<UUID> = []
+    private struct AgentViewer {
+        let agent: ConsoleAgent.ID
+        let scene: UUID?
+    }
+    /// See `setAgentShown`.
+    @ObservationIgnored private var agentViewers: [UUID: AgentViewer] = [:]
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
     private(set) var hostStandingFailures: [Host.ID: TransportError] = [:]
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
@@ -983,6 +989,24 @@ final class ConsoleStore {
         try await projection(for: hostID).focusAgent(paneID)
     }
 
+    /// Which Agent one Agent detail shows now, nil once it shows none. On a core
+    /// Host this is what Done per device reads: a shown Agent's turns are seen as
+    /// they end, whichever window shows it.
+    func setAgentShown(_ agent: ConsoleAgent.ID?, viewer: UUID, scene: UUID?) {
+        // A window that ended may still run a late update.
+        let shown = scene.map(endedScenes.contains) == true ? nil : agent
+        let previous = agentViewers[viewer]?.agent
+        guard previous != shown else { return }
+        agentViewers[viewer] = shown.map { AgentViewer(agent: $0, scene: scene) }
+        for hostID in Set([previous?.hostID, shown?.hostID].compactMap(\.self)) {
+            projections[hostID]?.setShownAgents(shownAgents(on: hostID))
+        }
+    }
+
+    private func shownAgents(on hostID: Host.ID) -> Set<String> {
+        Set(agentViewers.values.lazy.filter { $0.agent.hostID == hostID }.map(\.agent.paneID))
+    }
+
     func renameAgent(
         _ paneID: String, name: String?, on hostID: Host.ID
     ) async throws {
@@ -1012,6 +1036,7 @@ final class ConsoleStore {
                     onChange: onChange)
             }
         projections[host.id] = projection
+        projection.setShownAgents(shownAgents(on: host.id))
         projection.start(isActive: isActive)
     }
 
@@ -1372,6 +1397,9 @@ final class ConsoleStore {
     /// `HostTerminalOwnership`.
     func sceneDidEnd(_ sceneID: UUID) {
         endedScenes.insert(sceneID)
+        for (viewer, shown) in agentViewers where shown.scene == sceneID {
+            setAgentShown(nil, viewer: viewer, scene: sceneID)
+        }
         agentTerminals.sceneDidEnd(sceneID)
         terminalConnections.sceneDidEnd(sceneID) { [self] hostID in
             !capabilities(for: hostID).takeOver

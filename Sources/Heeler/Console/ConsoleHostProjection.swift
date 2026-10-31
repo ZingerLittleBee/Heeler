@@ -63,6 +63,8 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse
     func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
     func focusAgent(_ paneID: String) async throws
+    /// The Agents some Agent detail on this device shows now.
+    func setShownAgents(_ paneIDs: Set<String>)
     func renameAgent(_ paneID: String, name: String?) async throws
     func renameWorkspace(_ workspaceID: String, label: String) async throws
 

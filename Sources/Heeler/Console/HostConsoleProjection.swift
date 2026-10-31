@@ -652,6 +652,9 @@ final class HostConsoleProjection: ConsoleHostProjection {
         }
     }
 
+    /// herdr keeps its own unseen completion, which `focusAgent` reports to.
+    func setShownAgents(_ paneIDs: Set<String>) {}
+
     /// Focus can mark sibling Panes seen too; only a full Host snapshot can
     /// supply the resulting authoritative statuses, including Live Activity.
     func focusAgent(_ paneID: String) async throws {

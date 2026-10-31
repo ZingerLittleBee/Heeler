@@ -165,6 +165,7 @@
 		2E612B94231EF97A285C83D5 /* SSHSourcePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65CFDDFD7A676ECD4EF29BDE /* SSHSourcePolicyTests.swift */; };
 		2E82149F859FCBF05F9E999B /* HerdrSocketLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F09325DE68693680E5A3BB /* HerdrSocketLocationTests.swift */; };
 		2F46124BDF2DA0AFC14260FA /* AgentListFieldsEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B369B42301D8ACC286AC50 /* AgentListFieldsEditor.swift */; };
+		2F8905E394BC4A4E59B5C4B0 /* HerdrCoreDoneTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F7EC7F75CCE0247D02EC9A /* HerdrCoreDoneTests.swift */; };
 		30B4AE6E1D79A04C047C0808 /* ScriptedCoreTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D910F5434F8DFA0276AF3875 /* ScriptedCoreTransport.swift */; };
 		30D6475F160DC39FA807C98A /* NewTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA18FC9DB67FF92D19A1C29 /* NewTerminalView.swift */; };
 		31D22FECC0AF4A3F38FDA11A /* herdr-core-agent-rule-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 4D23B2481552DE847CD7FBB1 /* herdr-core-agent-rule-v1.json */; };
@@ -1038,6 +1039,7 @@
 		1142E803F7CA971D3CCDF2EB /* LiveActivityPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPreferences.swift; sourceTree = "<group>"; };
 		1187933BD5FAA5064BBF856F /* TerminalZoomSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalZoomSettingsTests.swift; sourceTree = "<group>"; };
 		11E0EA7996F618E85BF3B988 /* HeelerPluginInstallation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerPluginInstallation.swift; sourceTree = "<group>"; };
+		11F7EC7F75CCE0247D02EC9A /* HerdrCoreDoneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreDoneTests.swift; sourceTree = "<group>"; };
 		1209F79DFBDD6D95E0510227 /* PollBudget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollBudget.swift; sourceTree = "<group>"; };
 		1264F90327344290A094B378 /* HeelerSSHTransportBehaviorE2ETests+FailureStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+FailureStates.swift"; sourceTree = "<group>"; };
 		126DE4AA09228412D12EE4E6 /* LiveInAnotherWindowPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveInAnotherWindowPresentationTests.swift; sourceTree = "<group>"; };
@@ -2131,6 +2133,7 @@
 				7E8AB621459A7895E1AA969B /* HerdrCoreAttachTests.swift */,
 				3C4EC4891D805C617F78CF27 /* HerdrCoreConsolePlacementTests.swift */,
 				79887E955BAAF7654E81B1ED /* HerdrCoreConsoleProjectionTests.swift */,
+				11F7EC7F75CCE0247D02EC9A /* HerdrCoreDoneTests.swift */,
 				4D2E74D7CBEDABB8B99B602F /* HerdrCoreEnvironmentCheckTests.swift */,
 				4C6D00C5E1D095E6FD02BD1F /* HerdrCoreEventCursorTests.swift */,
 				00579AE5826A4D7EC6F148A7 /* HerdrCoreFrameTests.swift */,
@@ -4145,6 +4148,7 @@
 				0D1C15B6F74323AECFF7595E /* HerdrCoreAttachTests.swift in Sources */,
 				FA7D19F205871831CCD506C4 /* HerdrCoreConsolePlacementTests.swift in Sources */,
 				2DBFA48945D299B45EA7BDEC /* HerdrCoreConsoleProjectionTests.swift in Sources */,
+				2F8905E394BC4A4E59B5C4B0 /* HerdrCoreDoneTests.swift in Sources */,
 				E34CE3A65011CEB56D265A77 /* HerdrCoreEnvironmentCheckTests.swift in Sources */,
 				BF34AFDEB274D8503D59FB05 /* HerdrCoreEventCursorTests.swift in Sources */,
 				1B43061A7B09A01207C5D14F /* HerdrCoreFrameTests.swift in Sources */,
