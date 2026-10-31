@@ -79,7 +79,6 @@ final class NotificationPreferencesStore {
     /// write before them. Each holds every mark, so a newer one replaces an older.
     private var pendingSeenMarks: [Host.ID: PendingSeenMarks] = [:]
     private var seenMarkWrites: [Host.ID: Task<Void, Never>] = [:]
-    private var writtenSeenMarks: [Host.ID: Data] = [:]
 
     private let transports: any NotificationTransportProvider
     private let deviceToken: @MainActor () -> APNSDeviceToken?
@@ -114,7 +113,6 @@ final class NotificationPreferencesStore {
         helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
         pendingSeenMarks = pendingSeenMarks.filter { unchanged.contains($0.key) }
-        writtenSeenMarks = writtenSeenMarks.filter { unchanged.contains($0.key) }
     }
 
     private func isCurrent(_ operation: UUID, for host: Host) -> Bool {
@@ -439,7 +437,7 @@ final class NotificationPreferencesStore {
             }
             pendingSeenMarks[hostID] = nil
             let file = HerdrCoreSeenMarkFile(device: keyID, core: pending.core, marks: pending.marks)
-            guard let contents = try? file.encoded(), contents != writtenSeenMarks[hostID] else { continue }
+            guard let contents = try? file.encoded() else { continue }
             let wrote = try? await transports.withNotificationFiles(for: hostID) { [weak self] files in
                 try await ceremony.writeSeenMarks(contents, keyID: keyID, over: files) {
                     if case .registered(let current)? = self?.seenMarkDevice(for: hostID) {
@@ -448,9 +446,7 @@ final class NotificationPreferencesStore {
                     return false
                 }
             }
-            if wrote == true {
-                writtenSeenMarks[hostID] = contents
-            } else if wrote == false, pendingSeenMarks[hostID] == nil {
+            if wrote == false, pendingSeenMarks[hostID] == nil {
                 // The registration moved while this waited its turn.
                 pendingSeenMarks[hostID] = pending
             }

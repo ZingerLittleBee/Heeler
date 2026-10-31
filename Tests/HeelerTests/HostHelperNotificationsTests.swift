@@ -182,6 +182,13 @@ struct HostHelperNotificationsTests {
         }
     }
 
+    /// The folder name the Helper follows, which is never empty.
+    @Test(arguments: [("", "default"), ("  ", "default"), (" work ", "work")])
+    func aCoreHostsNotificationSessionIsItsCoreSessionsFolderName(_ written: String, _ folder: String) {
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore, sessionName: written)
+        #expect(host.notificationSession == folder)
+    }
+
     @Test func aCoreHostsBannersStayOff() async throws {
         let rig = try await registeredRig()
         defer { rig.console.setHosts([]) }
@@ -308,6 +315,9 @@ struct HostHelperNotificationsTests {
         let helper = try await installedHelper()
         let rig = try await rig(helper)
         defer { rig.console.setHosts([]) }
+        // A key from an earlier registration is not one.
+        try keys.save(NotificationKeyRecord(
+            hostID: host.id, hostName: host.displayName, key: NotificationKeyStore.generateKey()))
         await rig.preferences.refresh()
         #expect(unavailableMessage(rig) == nil)
         #expect(!isRegistered(rig))
