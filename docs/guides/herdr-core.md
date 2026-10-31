@@ -71,6 +71,23 @@ Every key reaches the program, Ctrl+\ included. Heeler reserves no detach key.
 
 In an Agent detail, Direct Input types into the terminal, and Changes and Skills work as on any other Host.
 
+## Send
+
+The Composer's Send writes into the terminal you are viewing, in two steps. It pastes the draft, checks that the same Agent still holds the terminal, then presses Enter, or the submit key of the Template the Terminal came from. That takes a little over half a second, and if the terminal is not connected yet, Send opens it first.
+
+The submit goes out within two seconds of the paste or not at all, so a slow link or an Agent that quit never turns your message into a shell command. When it does not go out, the draft stays in the Composer and a notice says what happened:
+
+| Notice | What it means | What to do |
+| --- | --- | --- |
+| **stayed in the Agent's input unsubmitted** | The Agent still holds the terminal, and the check took longer than two seconds | Finish it in the terminal, or clear it there before you send again |
+| **no longer in the terminal** | The Agent left and a shell took over. Send pressed Ctrl+C once, which made the shell drop the text unrun | Send again once the Agent is back |
+| **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and what zsh does with that is not confirmed yet | Check the terminal before you press anything there |
+| **not accepting a paste** | The program has bracketed paste off, so nothing was written | Send again when it is back at its input |
+
+While the Agent is **Blocked**, Send only pastes. Use the tools keyboard to submit or cancel.
+
+If the Host does not answer a step, Send cannot tell what reached the program. The Composer says so, offers **Edit Draft** instead of Retry, and never sends the message again, because a paste or an Enter the core was holding can still arrive. Look at the terminal first.
+
 ## Restarts and ended Terminals
 
 | What happened | Heeler shows |
@@ -108,7 +125,7 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 
 - Heeler has no Close or Rename on a core Host yet. Use the Host or the desktop.
 - Worktrees, Uploads and Chat are not available yet.
-- An Agent detail's Send, Stop and Add stay hidden. Use Direct Input to type into the terminal.
+- An Agent detail's Stop and Add stay hidden. To stop an Agent, use the tools keyboard or Direct Input.
 - Notifications and Live Activities are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.

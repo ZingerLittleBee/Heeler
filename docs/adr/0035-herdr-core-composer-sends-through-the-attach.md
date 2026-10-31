@@ -38,7 +38,9 @@ the shell that stays behind, and a retry can deliver it twice.
   had read goes with it; text it had not read reaches whatever now holds the
   terminal, usually the shell's line editor as a pending paste. When a shell
   holds the foreground, Send presses Ctrl+C once, which makes the shell drop
-  that text unrun. The Composer keeps the draft and says whether the text may
+  that text unrun. It writes the byte 0x03 whatever keyboard mode is set,
+  because an Agent that died leaves its flags behind and a shell reads no
+  `CSI 99 ; 5 u`. The Composer keeps the draft and says whether the text may
   still be in the terminal.
 - A Send whose steps get no answer has an unknown outcome and is never
   repeated. The core holds a viewer's input while it types a note or stitches
@@ -110,9 +112,11 @@ confirm or refine these points with test clients, not the app.
 ## Consequences
 
 - Send needs a live Attach to the Agent; Composer opens one before sending.
-- Send takes at least 550 ms between paste and submit. On a link slow
-  enough that the check passes two seconds, the text stays in the Agent's
-  input unsubmitted, and the Composer says so.
+- Send takes at least 550 ms between paste and submit, even when a foreground
+  event showing the same program comes sooner; such an event only spares the
+  read. On a link slow enough that the check passes two seconds, counted from
+  when the paste was handed to the link, the text stays in the Agent's input
+  unsubmitted, and the Composer says so.
 - Under the desktop app's fish wrapper the agent shares the wrapper's pid, so
   only the program behind that pid tells an exited Agent from a live one.
 - A person typing into the same Terminal on another client at that moment can
