@@ -180,7 +180,7 @@ On macOS and Linux, **New Agent** can start an agent or a Template in a new Work
 
 The checkout goes to `~/.herdr/worktrees/<repository>/<branch>`, where the desktop app puts its own. `<repository>` is the main checkout's folder name, and in the branch's folder name anything other than letters, digits, `.`, `_` and `-` reads `-`. It opens as a new Workspace, which a running desktop app shows as a new space.
 
-To remove one, open an Agent in it, then **Worktree Details** in the More menu. Heeler first ends every Terminal of that Workspace, as Close does, then removes the checkout. The confirmation warns when uncommitted changes or submodules would go with it. The branch stays.
+To remove one, open an Agent in it, then **Worktree Details** in the More menu. Heeler first ends every Terminal of that Workspace, as Close does, then removes the checkout. **Remove Worktree** becomes available once Heeler has checked the checkout, and the confirmation warns when uncommitted changes or submodules would go with it. The branch stays.
 
 If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout in place. Check the Host before trying again. A Terminal in another Workspace that has moved into the checkout is not ended, so close it first.
 

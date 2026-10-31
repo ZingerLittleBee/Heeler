@@ -80,7 +80,10 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   submodules, keeping the branch. Those two git commands run as the app's do,
   with the repository's hooks, while Heeler's git reads stay neutralized. A
   removal stops before any kill when git reports a risk the confirmation did
-  not name, so force never covers something the user did not hear about.
+  not name, so force never covers something the user did not hear about. Remove
+  waits for the read of those risks, as the desktop's mod does, and the
+  confirmation carries what it named to the removal, so a read nobody was shown
+  covers nothing.
 - Native Windows herdr-core Hosts get the same Console, with these
   differences. Staged Images and Files are written by the core's
   `terminal.put` into its state directory beside the Terminal, which the core

@@ -91,10 +91,8 @@ struct WorktreeDetailView: View {
                 onRemoved(receipt)
                 dismiss()
             }
-            .task {
-                await store.loadBranchIfNeeded()
-                await store.loadRemovalRisk()
-            }
+            .task { await store.loadBranchIfNeeded() }
+            .task { await store.loadRemovalRiskIfNeeded() }
         }
     }
 

@@ -27,10 +27,14 @@ struct WorktreeIdentity: Equatable, Hashable, Sendable {
 struct WorktreeRemovalRequest: Equatable, Hashable, Sendable {
     let id: UUID
     let identity: WorktreeIdentity
+    /// What the confirmation warned would be lost, which is all a forced removal
+    /// may cover. Reading a risk does not set this; showing it does.
+    let toldRisk: WorktreeRemovalRisk?
 
-    init(id: UUID = UUID(), identity: WorktreeIdentity) {
+    init(id: UUID = UUID(), identity: WorktreeIdentity, toldRisk: WorktreeRemovalRisk? = nil) {
         self.id = id
         self.identity = identity
+        self.toldRisk = toldRisk
     }
 }
 
@@ -93,7 +97,7 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
 
 /// What removing a core Host's Worktree would lose, which is what forces it.
 /// Herdr TUI Hosts refuse these removals instead, and have none.
-struct WorktreeRemovalRisk: Equatable, Sendable {
+struct WorktreeRemovalRisk: Equatable, Hashable, Sendable {
     let hasChanges: Bool
     let hasSubmodules: Bool
 
@@ -145,7 +149,8 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         }
         sentences.append("This can't be undone.")
         return WorktreeRemovalConfirmation(
-            request: request,
+            request: WorktreeRemovalRequest(
+                id: request.id, identity: request.identity, toldRisk: risk),
             title: "Remove \(workspaceLabel) worktree?",
             message: sentences.joined(separator: " "))
     }

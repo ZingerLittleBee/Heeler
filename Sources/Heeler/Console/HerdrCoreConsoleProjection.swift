@@ -76,8 +76,6 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// left to be found by, so that trying again still can.
     private var worktreeRemovals: [WorktreeIdentity: Set<ConsoleAgent.ID>] = [:]
     private var worktreesBeingRemoved: Set<WorktreeIdentity> = []
-    /// What the user last heard a removal would lose, by Worktree.
-    private var toldWorktreeRisks: [WorktreeIdentity: WorktreeRemovalRisk] = [:]
     private var askedCheckouts: Set<String> = []
     private var queuedCheckouts: [String] = []
     private var checkoutTask: Task<Void, Never>?
@@ -972,17 +970,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func worktreeRemovalRisk(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
-        let risk = try await worktreeGit().removalRisk(ofCheckout: request.identity.checkoutPath)
-        toldWorktreeRisks[request.identity] = risk
-        return risk
+        try await worktreeGit().removalRisk(ofCheckout: request.identity.checkoutPath)
     }
 
     /// Every Terminal of the Workspace ends first, and only then does git remove
     /// the checkout, so nothing keeps running in a deleted folder. Which Terminals
     /// comes from the membership computed here, never from labels alone: any
     /// process can rewrite those. What the checkout would lose is checked against
-    /// what the user heard before anything ends, and it is what forces the
-    /// removal; anything newer than that check makes git refuse.
+    /// what the request's confirmation named before anything ends, and it is what
+    /// forces the removal; anything newer than that check makes git refuse.
     func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt {
         let identity = request.identity
         guard identity.hostID == host.id else { throw WorktreeRemovalError.staleIdentity }
@@ -1004,7 +1000,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
         let mainCheckout = try await git.verifiedMainCheckout(of: identity)
         let risk = try await git.removalRisk(ofCheckout: identity.checkoutPath)
-        guard risk.isCovered(by: toldWorktreeRisks[identity]) else {
+        guard risk.isCovered(by: request.toldRisk) else {
             throw WorktreeRemovalError.changedSinceConfirmation
         }
 
@@ -1017,7 +1013,6 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let receipt = WorktreeRemovalReceipt(
             request: request, affectedAgentIDs: worktreeRemovals[identity] ?? [])
         worktreeRemovals[identity] = nil
-        toldWorktreeRisks[identity] = nil
         checkouts[identity.checkoutPath] = nil
         askedCheckouts.remove(identity.checkoutPath)
         for agent in receipt.affectedAgentIDs { removedWorktreesByAgent[agent] = receipt }

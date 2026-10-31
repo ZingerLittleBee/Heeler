@@ -166,11 +166,12 @@ struct HerdrCoreWorktreesTests {
                     hostID: host.id, workspaceID: row.agent.workspaceID, checkout: checkout))
         }
 
-        /// What the sheet does on opening, so the user has heard what will be lost.
+        /// The request a confirmation hands over once it has named what will be lost.
         func removalAfterHearing() async throws -> WorktreeRemovalRequest {
             let request = try await removal()
-            _ = try await store.worktreeRemovalRisk(request, on: host.id)
-            return request
+            return WorktreeRemovalRequest(
+                identity: request.identity,
+                toldRisk: try await store.worktreeRemovalRisk(request, on: host.id))
         }
 
         func git(_ prefix: String...) async -> [GitCommand] {
@@ -639,7 +640,7 @@ struct HerdrCoreWorktreesTests {
         await fixture.transport.setKillAnswer(.failure(TransportError.coreMutationOutcomeUnknown), for: "t2")
         let request = try await fixture.removal()
         let detail = makeDetail(fixture, request: request)
-        await detail.loadRemovalRisk()
+        await detail.loadRemovalRiskIfNeeded()
         detail.prepareConfirmation()
         let begun = try #require(detail.beginRemoval())
 
@@ -718,7 +719,7 @@ struct HerdrCoreWorktreesTests {
         defer { fixture.finish() }
         let request = try await fixture.removal()
         let detail = makeDetail(fixture, request: request)
-        await detail.loadRemovalRisk()
+        await detail.loadRemovalRiskIfNeeded()
         detail.prepareConfirmation()
         #expect(detail.confirmation?.message.contains("uncommitted") == false)
         await fixture.setChanges()
@@ -762,7 +763,7 @@ struct HerdrCoreWorktreesTests {
         let detail = makeDetail(fixture, request: request)
 
         await detail.loadBranchIfNeeded()
-        await detail.loadRemovalRisk()
+        await detail.loadRemovalRiskIfNeeded()
         detail.prepareConfirmation()
 
         #expect(detail.branch == .named("feature/login"))
@@ -772,8 +773,115 @@ struct HerdrCoreWorktreesTests {
         #expect(!message.contains("uncommitted"))
     }
 
+    /// A confirmation can only warn of what has been read, so a tap that comes
+    /// first does nothing, as Enter does in the desktop app's mod.
+    @Test func removeWaitsForTheReadOfWhatItWouldLose() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.setChanges()
+        let request = try await fixture.removal()
+        let held = ScriptedTransportCallGate()
+        let store = fixture.store
+        let hostID = fixture.host.id
+        let detail = makeDetail(fixture, request: request) {
+            await held.waitUntilOpen()
+            return try await store.worktreeRemovalRisk($0, on: hostID)
+        }
+        let reading = Task { await detail.loadRemovalRiskIfNeeded() }
+        await held.waitForEntry()
+
+        #expect(!detail.canRemove)
+        detail.prepareConfirmation()
+        #expect(detail.confirmation == nil)
+
+        await held.open()
+        await reading.value
+
+        #expect(detail.canRemove)
+        detail.prepareConfirmation()
+        #expect(detail.confirmation?.message.contains("Its uncommitted changes will be lost.") == true)
+        let begun = try #require(detail.beginRemoval())
+        await detail.finishRemoval(begun)
+        #expect(await fixture.git("worktree", "remove").map(\.arguments) == [
+            ["worktree", "remove", "--force", Self.linked]
+        ])
+    }
+
+    /// What an earlier sheet read was never promised to this one, so a read that
+    /// fails here leaves a confirmation that warned of nothing, and that covers
+    /// nothing.
+    @Test(arguments: [TransportError.timedOut, .cancelled])
+    func aLaterSheetWhoseReadFailedForcesNothing(failure: TransportError) async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.setChanges()
+        let request = try await fixture.removal()
+        let earlier = makeDetail(fixture, request: request)
+        await earlier.loadRemovalRiskIfNeeded()
+        earlier.prepareConfirmation()
+        #expect(earlier.confirmation?.message.contains("uncommitted") == true)
+        earlier.cancelConfirmation()
+
+        let later = makeDetail(fixture, request: request) { _ in throw failure }
+        await later.loadRemovalRiskIfNeeded()
+        #expect(later.canRemove)
+        later.prepareConfirmation()
+        #expect(later.confirmation?.message.contains("uncommitted") == false)
+        let begun = try #require(later.beginRemoval())
+        await later.finishRemoval(begun)
+
+        #expect(later.removalPhase == .failed(WorktreeRemovalError.changedSinceConfirmation.message))
+        #expect(await fixture.transport.kills.isEmpty)
+        #expect(await fixture.git("worktree").isEmpty)
+    }
+
+    /// Reading says nothing of what any confirmation showed.
+    @Test func aReadNoConfirmationShowedCoversNothing() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.setChanges()
+        let request = try await fixture.removal()
+        _ = try await fixture.store.worktreeRemovalRisk(request, on: fixture.host.id)
+
+        await #expect(throws: WorktreeRemovalError.changedSinceConfirmation) {
+            _ = try await fixture.store.removeWorktree(request, on: fixture.host.id)
+        }
+
+        #expect(await fixture.transport.kills.isEmpty)
+        #expect(await fixture.git("worktree").isEmpty)
+    }
+
+    /// The sheet's task ended with the read unanswered, so its next one asks again.
+    @Test func aReadLeftBehindWithItsSheetIsMadeAgain() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.setChanges()
+        let request = try await fixture.removal()
+        let held = ScriptedTransportCallGate()
+        let store = fixture.store
+        let hostID = fixture.host.id
+        let detail = makeDetail(fixture, request: request) {
+            await held.waitUntilOpen()
+            return try await store.worktreeRemovalRisk($0, on: hostID)
+        }
+        let leftBehind = Task { await detail.loadRemovalRiskIfNeeded() }
+        await held.waitForEntry()
+        leftBehind.cancel()
+        await held.open()
+        await leftBehind.value
+
+        #expect(!detail.canRemove)
+
+        await detail.loadRemovalRiskIfNeeded()
+
+        #expect(detail.canRemove)
+        detail.prepareConfirmation()
+        #expect(detail.confirmation?.message.contains("Its uncommitted changes will be lost.") == true)
+    }
+
     private func makeDetail(
-        _ fixture: Fixture, request: WorktreeRemovalRequest
+        _ fixture: Fixture, request: WorktreeRemovalRequest,
+        readRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)? = nil
     ) -> WorktreeDetailStore {
         let store = fixture.store
         let hostID = fixture.host.id
@@ -786,7 +894,7 @@ struct HerdrCoreWorktreesTests {
             list: { try await store.listWorktrees(forWorkspaceID: $0, on: hostID) },
             remove: { try await store.removeWorktree($0, on: hostID) },
             hasWorkingAgent: { false },
-            readRemovalRisk: { try await store.worktreeRemovalRisk($0, on: hostID) })
+            readRemovalRisk: readRisk ?? { try await store.worktreeRemovalRisk($0, on: hostID) })
     }
 
     /// git has the last word on what the path is, however the row reads.
