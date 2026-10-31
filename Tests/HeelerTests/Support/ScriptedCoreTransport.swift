@@ -123,7 +123,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     }
     nonisolated var hostHelperHost: any HostHelperHost { ScriptedHelperHost() }
 
-    private let coreID: String
+    private var coreID: String
     /// What each subscribe answers. The last one repeats.
     private var subscribeResults: [JSONValue]
     private var bytes: Bytes?
@@ -243,6 +243,17 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// One line of the live subscription's events channel.
     func deliver(_ line: Data) async {
         await bytes?.push(line + Data([0x0A]))
+    }
+
+    /// What the next `hello` reports, as a core whose state was wiped does.
+    func setCoreID(_ coreID: String) {
+        self.coreID = coreID
+    }
+
+    /// The subscription's channel ends with the connection still up, as a core
+    /// going away does: the session says `hello` and subscribes again.
+    func endLink() async {
+        await bytes?.push(nil)
     }
 
     /// Subscribes wait, for the window between Connected and the first snapshot.
