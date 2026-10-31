@@ -886,6 +886,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 try await transport.killTerminal(address)
             } catch TransportError.coreMutationOutcomeUnknown {
                 failure = TransportError.coreMutationOutcomeUnknown
+            } catch let refusal as HerdrAPIError {
+                failure = failure ?? HerdrCoreCloseRefusal(message: refusal.message)
             } catch {
                 failure = failure ?? error
             }

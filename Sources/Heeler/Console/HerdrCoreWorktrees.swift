@@ -107,6 +107,13 @@ enum HerdrCoreWorktreeError: Error, Equatable {
     }
 }
 
+/// The core answered a kill with a refusal, which left its Terminal running. On a
+/// Herdr TUI Host a close's `HerdrAPIError` can mean the Pane is gone already; a
+/// core says that with `not_found`, which never gets this far.
+struct HerdrCoreCloseRefusal: Error, Equatable {
+    let message: String
+}
+
 /// The checkout exists and only the Agent is missing, so another try with this
 /// branch would find it taken.
 struct WorktreeAgentStartFailure: Error {

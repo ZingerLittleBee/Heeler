@@ -1082,6 +1082,8 @@ final class ConsoleStore {
             "The Host did not answer in time."
         case TransportError.coreMutationOutcomeUnknown:
             closeUnconfirmedMessage
+        case let refusal as HerdrCoreCloseRefusal:
+            "herdr-core rejected the close: \(refusal.message)"
         case let apiError as HerdrAPIError:
             "herdr rejected the close: \(apiError.message)"
         case TransportError.apiRejected(_, let message):

@@ -251,13 +251,25 @@ struct HerdrCoreCloseTests {
         #expect(await transport.kills == ["t1"])
     }
 
+    /// The core is what refused, wherever Close was asked from.
     @Test func aRefusedKillSaysWhatTheCoreSaid() async throws {
         let (store, transport) = try await started([Self.shell("t1")])
         defer { store.setHosts([]) }
-        let refusal = HerdrAPIError(code: "invalid_params", message: "no")
-        await transport.setKillAnswer(.failure(refusal), for: "t1")
+        await transport.setKillAnswer(
+            .failure(HerdrAPIError(code: "invalid_params", message: "no")), for: "t1")
 
-        await #expect(throws: refusal) { try await store.closePane("t1", on: self.host.id) }
+        let refusal = await #expect(throws: (any Error).self) {
+            try await store.closePane("t1", on: self.host.id)
+        }
+        let row = try #require(refusal)
+        #expect(ConsoleStore.tabCloseFailureMessage(for: row) == "herdr-core rejected the close: no")
+
+        let hostID = host.id
+        let detail = ClosePaneStore(paneTitle: "Claude") {
+            try await store.closePane("t1", on: hostID)
+        }
+        await detail.confirmClose()
+        #expect(detail.state == .failed("herdr-core rejected the close: no"))
     }
 
     /// A row kept from an earlier connection, with no inventory yet on this one.
