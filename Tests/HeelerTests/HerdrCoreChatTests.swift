@@ -566,6 +566,39 @@ struct HerdrCoreChatTests {
         failing.end()
     }
 
+    /// One check before the Send, and none for the Send having gone or for its
+    /// clock passing: neither is one of the events that say the session may have
+    /// changed (ADR 0034).
+    @Test func aSendAddsNoCheckOfItsOwn() async throws {
+        let table = ScriptedProcessTable()
+        await table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, name: "claude", start: Self.start, environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        let files = VirtualHostFiles(home: Self.home)
+        await files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await files.write(try Self.transcript(), at: Self.transcriptPath())
+        let date = ManualDate()
+        let chat = try evidenceStore(table: table, files: files, now: { date.now })
+        await chat.step()
+        #expect(Self.isFollowing(chat))
+        #expect(await table.requests.count == 1)
+
+        let id = UUID()
+        chat.updateSends([AgentChatStore.SentMessage(id: id, text: "nothing records this", isDelivered: false)])
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        #expect(await table.requests.count == 2)
+
+        chat.updateSends([AgentChatStore.SentMessage(id: id, text: "nothing records this", isDelivered: true)])
+        await chat.step()
+        #expect(await table.requests.count == 2)
+
+        date.now = date.now.addingTimeInterval(AgentChatStore.Timing().echoTimeout + 1)
+        await chat.step()
+        #expect(chat.sendStatuses[id] == .overdue)
+        await chat.step()
+        #expect(await table.requests.count == 2)
+    }
+
     /// `/clear` while Chat reads the old conversation's file, and that read fails:
     /// the turn it reported still gets its check.
     @Test func anEventDuringAFailedOpenStillChecks() async throws {

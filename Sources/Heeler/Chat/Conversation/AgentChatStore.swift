@@ -555,7 +555,8 @@ final class AgentChatStore {
     /// session Chat has not seen.
     func noteSent() {
         lastActivity = now()
-        needsAgentRefresh = true
+        // A check of a process waits for an event: a Send had its own just now.
+        if source.sessionEvidence == nil { needsAgentRefresh = true }
         nextOpen = nil
         failedOpens = 0
         wake()
@@ -1602,9 +1603,10 @@ final class AgentChatStore {
         let oldestAwaiting = sends.compactMap { statuses[$0.id] == .awaiting ? $0.deliveredAt : nil }.min()
         busySpells.removeAll { spell in oldestAwaiting.map { spell.end <= $0 } ?? true }
         // The program may have forked into a session herdr has not
-        // reported through the snapshot yet.
+        // reported through the snapshot yet. A check of a process waits for
+        // an event, or this clock would be its timer.
         if becameOverdue {
-            needsAgentRefresh = true
+            if source.sessionEvidence == nil { needsAgentRefresh = true }
             needsRelocate = true
             wake()
         }
