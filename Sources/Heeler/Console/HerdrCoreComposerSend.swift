@@ -309,10 +309,12 @@ final class HerdrCoreComposerSend {
         guard let foreground else { return .refused(.notSubmitted(Self.mayRemain)) }
         var now = record
         now.foreground = foreground
-        guard HerdrCoreAgentRule.program(of: now) == .shell,
-            let interrupt = TerminalKeyEncoder.encode("ctrl+c", modes: attach.terminal.modes)
-        else { return .refused(.notSubmitted(Self.mayRemain)) }
-        switch await write(interrupt, on: session, attach) {
+        guard HerdrCoreAgentRule.program(of: now) == .shell else {
+            return .refused(.notSubmitted(Self.mayRemain))
+        }
+        // The byte itself, not the key in the program's mode: an Agent that died
+        // leaves its keyboard flags behind, and a shell reads no `CSI 99;5u`.
+        switch await write(Data([0x03]), on: session, attach) {
         case .unknown:
             return .outcomeUnknown
         case .notLeft:

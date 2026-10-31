@@ -330,6 +330,22 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
+    /// An Agent that died never popped its keyboard flags, and a shell does not
+    /// read a Ctrl+C written for them.
+    @Test func aCtrlCForAShellIsTheByteWhateverKeyboardFlagsWereLeftBehind() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live(modes: Self.bracketedPasteOn + Self.kittyAllKeys)
+        let sending = await fixture.sendPastingHello(on: attached)
+        try await fixture.deliverForeground(Self.foreground(pid: 50, argv: ["bash", "-i"]))
+
+        guard case .refused(.notSubmitted) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.ctrlC])
+        await fixture.finish()
+    }
+
     /// Ctrl+C is for a shell's line editor: another program would take it as an
     /// interrupt of its own.
     @Test func anotherProgramGetsNoCtrlC() async throws {

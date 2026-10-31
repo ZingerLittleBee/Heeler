@@ -358,6 +358,123 @@ struct HerdrCoreTransportE2ETests {
         }
     }
 
+    @Test("a Composer Send pastes through the Attach and submits in the program's keyboard mode, and a program that exits before the submit gets nothing")
+    func composerPasteThenSubmit() async throws {
+        try await CoreSSHFixture.with { fixture in
+            try await fixture.startCore()
+            try await checkComposerPasteThenSubmit(fixture)
+            #expect(try await fixture.tripwireCalls().isEmpty)
+        }
+    }
+
+    @MainActor
+    private func checkComposerPasteThenSubmit(_ fixture: CoreSSHFixture) async throws {
+        let directory = "\(fixture.configuration.homePath)/composer"
+        // Asks for bracketed paste and for every key as an escape code, as a
+        // full-screen agent does, and logs each byte it reads.
+        let stays = "\(directory)/stays/claude"
+        try await fixture.writeProgram(
+            at: stays,
+            """
+            #!/bin/sh
+            stty raw -echo
+            printf '\\033[?2004h\\033[>8u'
+            cat > "$1"
+            """)
+        // Reads the paste's opening marker and exits, leaving the rest to the
+        // shell the desktop app's wrapper continues as, under the same pid.
+        let exits = "\(directory)/exits/claude"
+        try await fixture.writeProgram(
+            at: exits,
+            """
+            #!/bin/sh
+            stty raw -echo
+            printf '\\033[?2004h\\033[>8u'
+            dd bs=1 count=6 of="$1" 2>/dev/null
+            stty sane
+            """)
+
+        let host = Host(address: "fixture", username: "dev", serverKind: .herdrCore)
+        let store = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(connect: { try await fixture.connectCore() }, keepalive: nil)
+            },
+            coreHostMemory: HerdrCoreHostMemory(
+                defaults: UserDefaults(suiteName: "core-send-\(UUID())") ?? .standard))
+        store.setHosts([host])
+        await store.resume()
+        defer { store.setHosts([]) }
+
+        /// The Composer and Attach of the Agent at `address`, once the program
+        /// has asked for both modes and the Attach has shown it.
+        func composer(at address: String) async throws -> (AgentComposerStore, AgentAttachStore) {
+            let agent = try await Self.onMainUntilFound("the Agent at \(address)") {
+                store.agents.first { $0.agent.paneID == address }
+            }
+            let attach = AgentAttachStore(
+                target: address, paneTitle: "", transportGeneration: nil, isOnStage: { true },
+                runTerminal: store.terminalRunner(for: host.id), closePane: {})
+            attach.viewDidResize(cols: 80, rows: 24)
+            _ = try await Self.onMainUntilFound("both modes") {
+                let modes = attach.terminal.modes
+                return modes.usesBracketedPaste && modes.kittyKeyboardFlags & 8 != 0 ? true : nil
+            }
+            let composer = store.composerStore(for: agent)
+            composer.bindCoreAttach(attach)
+            return (composer, attach)
+        }
+
+        // The passing path: the markers, then Enter as the program asked for it.
+        let log = "\(directory)/stays.log"
+        let staying = try await fixture.runTerminal([stays, log], keep: false)
+        let (staysComposer, staysAttach) = try await composer(at: staying)
+        staysComposer.replaceDraft(with: "hello e2e")
+        #expect(await staysComposer.send() == .submittedViaAttach)
+        let expected = Data("\u{1B}[200~hello e2e\u{1B}[201~\u{1B}[13u".utf8)
+        try await eventually { try await fixture.contents(of: log) == expected }
+        #expect(staysComposer.draft.isEmpty)
+        await staysAttach.leave().value
+
+        // The exit race: nothing is submitted, so the shell runs nothing.
+        let marker = "\(directory)/ran"
+        let exitLog = "\(directory)/exits.log"
+        let exiting = try await fixture.runTerminal(
+            ["/bin/sh", "-c", "\"$@\"; exec \"$0\" -i", "/bin/sh", exits, exitLog], keep: false)
+        let (exitsComposer, exitsAttach) = try await composer(at: exiting)
+        let text = "touch \(marker)"
+        exitsComposer.replaceDraft(with: text)
+        let result = await exitsComposer.send()
+        guard case .refused(.notSubmitted) = result else {
+            Issue.record("A program that exited read \(result)")
+            return
+        }
+        #expect(exitsComposer.draft == text)
+        // Long enough for a shell handed an Enter to have run the line.
+        try await Task.sleep(for: .seconds(1))
+        #expect(try await !fixture.exists(marker))
+        #expect(try await fixture.contents(of: exitLog) == Data("\u{1B}[200~".utf8))
+        await exitsAttach.leave().value
+    }
+
+    /// Polls on the main actor, so a store can be asked between its updates.
+    @MainActor
+    private static func onMainUntilFound<Value>(
+        _ what: String, _ find: @MainActor () -> Value?
+    ) async throws -> Value {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+        while ContinuousClock.now < deadline {
+            if let found = find() { return found }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        throw CoreSSHFailure.fixture("Timed out waiting for \(what)")
+    }
+
     @Test("labels and a seeded herdr-app document place Terminals, and the app never writes it")
     func desktopPlacement() async throws {
         try await CoreSSHFixture.with { fixture in
@@ -706,6 +823,17 @@ private struct CoreSSHFixture: Sendable {
     func makeCheckout(at path: String, subdirectory: String) async throws {
         try await makeDirectory("\(path)/\(subdirectory)")
         _ = try await require("git init -q " + GitProbe.singleQuoted(path))
+    }
+
+    /// An executable at `path`, in a directory made for it.
+    func writeProgram(at path: String, _ body: String) async throws {
+        let quoted = GitProbe.singleQuoted(path)
+        _ = try await require(
+            "mkdir -p \"$(dirname \(quoted))\" && printf '%s\\n' \(GitProbe.singleQuoted(body)) > \(quoted) && chmod +x \(quoted)")
+    }
+
+    func contents(of path: String) async throws -> Data {
+        try await run("cat " + GitProbe.singleQuoted(path)).stdout
     }
 
     func exists(_ path: String) async throws -> Bool {
