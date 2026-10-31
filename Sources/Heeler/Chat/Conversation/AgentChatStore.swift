@@ -1269,6 +1269,9 @@ final class AgentChatStore {
     /// why the message would land outside the conversation Chat shows, or
     /// nil to go on.
     func confirmSessionBeforeSend() async -> String? {
+        if let sessionEvidence = source.sessionEvidence {
+            return await confirmBindingBeforeSend(sessionEvidence)
+        }
         guard program.confirmsSessionBeforeSend else { return nil }
         let shown = followed
         let recordRevision = sessionRecordRevision
@@ -1290,6 +1293,34 @@ final class AgentChatStore {
             terminalTitle: fresh.terminalTitleStripped, sessionTitle: conversation.transcript.title)
         if case .differs(let title) = verdict {
             return "\(name)'s terminal shows another conversation (\(title)). Open this one in the terminal, then send again."
+        }
+        return nil
+    }
+
+    /// Whether each send first checks the conversation. No server reports a move
+    /// on herdr-core, so there a send always asks the Host again (ADR 0034).
+    var confirmsSessionBeforeSend: Bool {
+        source.sessionEvidence != nil || program.confirmsSessionBeforeSend
+    }
+
+    /// On herdr-core: one more check of what the Host shows about the process.
+    private func confirmBindingBeforeSend(
+        _ sessionEvidence: @Sendable () async throws -> ChatSessionEvidence
+    ) async -> String? {
+        let shown = followed
+        let recordRevision = sessionRecordRevision
+        guard let evidence = try? await sessionEvidence(), !Task.isCancelled,
+            recordRevision == sessionRecordRevision
+        else { return Self.uncheckedSessionReason(program) }
+        let before = resolution
+        adoptEvidence(evidence)
+        if resolution != before { wake() }
+        let name = program.chatName
+        if case .unavailable = evidence {
+            return "Heeler can't tell which conversation \(name) shows, so it sent nothing."
+        }
+        if followed != shown {
+            return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."
         }
         return nil
     }

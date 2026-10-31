@@ -32,9 +32,6 @@ struct HostCapabilities: Equatable, Sendable {
     /// Host offers it with its own Composer.
     var composerStop = true
     var desktopAppNaming: HerdrAppNaming?
-    /// Chat's Send, Stop and Blocked Card answers. A herdr-core Host shows Chat
-    /// without them for now.
-    var chatTyping = true
     /// The programs Chat opens for; nil for every one it can read.
     var chatPrograms: Set<ChatProgram>?
 
@@ -89,7 +86,7 @@ extension HostCapabilities {
             syncLayoutFromPlugin: offered, takeOver: offered,
             composerStop: offered || coreOnPosix,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
-            chatTyping: !coreChat, chatPrograms: coreChat ? [.claude] : nil)
+            chatPrograms: coreChat ? [.claude] : nil)
     }
 }
 

@@ -59,6 +59,15 @@ struct ChatStopPlan: Sendable {
         }
     }
 
+    /// The plan on a herdr-core Template's Terminal: the Template's stop key, with
+    /// the program's guard and wait as they are (ADR 0035).
+    func pressing(templateStopKey key: String) -> ChatStopPlan {
+        var plan = self
+        plan.keys = [key]
+        plan.accessibilityHint = AgentComposerInterrupt.coreHint
+        return plan
+    }
+
     /// OpenCode's interrupt resumes: a message waiting during the turn
     /// runs after it.
     private static let openCodeUnconfirmedNotice =

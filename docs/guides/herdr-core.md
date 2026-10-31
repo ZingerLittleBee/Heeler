@@ -176,7 +176,13 @@ If the program ends during the few seconds New Agent watches it, the form stays 
 
 ## Chat
 
-Chat opens for a Claude Code Agent on a Linux core Host, to read its conversation. To type to the Agent or answer its questions, use the terminal: Send, Stop and Blocked answers are not in Chat here yet.
+Chat opens for a Claude Code Agent on a Linux core Host, where you can read its conversation, send to it, stop it and answer its questions.
+
+- **Send** checks the Agent's input box and which conversation it shows, pastes the message, and submits it only if the same Agent still holds the terminal within two seconds. Otherwise nothing is submitted, the draft stays in the Composer, and a notice says whether the text may still be in the terminal. A Send the Host did not answer is never sent again, so check the terminal before sending it yourself.
+- **Stop** presses Esc, or on a Template's Terminal the Template's stop key.
+- A **Blocked card** answers only while the same dialog is on screen and the Agent still holds the terminal. If either changed, it sends nothing and says so.
+
+Typing from Chat does not change the terminal's size for anyone viewing it.
 
 Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. It checks when you open Chat and when the Agent's status or foreground program changes, and at no other time.
 
@@ -189,7 +195,7 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 
 - Heeler has no Rename on a core Host yet. Use the Host or the desktop.
 - Worktrees are not available yet.
-- Chat opens only for Claude Code on Linux, and only to read. Other programs, macOS and native Windows core Hosts offer the terminal alone.
+- Chat opens only for Claude Code on Linux. Other programs, macOS and native Windows core Hosts offer the terminal alone.
 - Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.

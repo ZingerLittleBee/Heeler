@@ -5,8 +5,8 @@ extension ComposerDeliveryPolicy {
     /// Otherwise the Agent's screen is read first, and the message goes only
     /// into an input box read as empty; a second read `DeliveryCheck.delay`
     /// after `agent.prompt` tells whether Enter took it. Both reads go
-    /// through `agent.read`, and a Blocked Agent refuses: nothing here
-    /// touches the Attach PTY. `sendConcern` gets the text as sent and the
+    /// through `agent.read`, on herdr-core an observing attach's paint, and a
+    /// Blocked Agent refuses: nothing here touches the Attach PTY. `sendConcern` gets the text as sent and the
     /// screen the input box passed on, and may hold the message for what
     /// Chat knows beyond the box; nothing is awaited between them.
     /// `willReadScreen` runs just before the first read, once the Agent is
@@ -15,6 +15,7 @@ extension ComposerDeliveryPolicy {
     ///
     /// `confirmSession`, for a program that can leave its conversation
     /// without herdr reporting it (`ChatProgram.confirmsSessionBeforeSend`),
+    /// and for any on herdr-core (`AgentChatStore.confirmsSessionBeforeSend`),
     /// runs before `willReadScreen` and the screen read: why the message
     /// would land outside the conversation Chat shows, or nil to go on.
     static func chat(

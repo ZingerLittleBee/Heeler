@@ -374,27 +374,25 @@ struct AgentChatSurfaceView: View {
                 .frame(maxWidth: .infinity)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if offersTyping { composerChrome }
+            composerChrome
         }
         .padding(.bottom, composerKeyboardLayout.contentInset)
         // In place at the system keyboard's last height, as on the terminal,
         // and shown only while the Composer has switched to it.
         .overlay(alignment: .bottom) {
-            if offersTyping {
-                AgentChatToolsKeyboard(
-                    insertText: { composer.insertIntoDraft($0) },
-                    skills: skills.map { store in
-                        TerminalSkillsContext(store: store) { viewingSkill = $0 }
-                    },
-                    snippets: terminal.snippets,
-                    manageSnippets: { isManagingSnippets = true },
-                    agentKeys: agentKeys,
-                    height: composerKeyboardLayout.availableToolsHeight)
-                .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
-                .disabled(composerKeyboardPresentation != .tools)
-                .allowsHitTesting(composerKeyboardPresentation == .tools)
-                .accessibilityHidden(composerKeyboardPresentation != .tools)
-            }
+            AgentChatToolsKeyboard(
+                insertText: { composer.insertIntoDraft($0) },
+                skills: skills.map { store in
+                    TerminalSkillsContext(store: store) { viewingSkill = $0 }
+                },
+                snippets: terminal.snippets,
+                manageSnippets: { isManagingSnippets = true },
+                agentKeys: agentKeys,
+                height: composerKeyboardLayout.availableToolsHeight)
+            .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
+            .disabled(composerKeyboardPresentation != .tools)
+            .allowsHitTesting(composerKeyboardPresentation == .tools)
+            .accessibilityHidden(composerKeyboardPresentation != .tools)
         }
         .padding(.top, topInset)
         .overlay(alignment: .top) {
@@ -741,10 +739,11 @@ struct AgentChatSurfaceView: View {
     }
 
     /// Whether the program still shows the conversation Chat shows, for a
-    /// program that can leave it without herdr reporting it. Without a
-    /// store there is nothing to check with, so nothing is sent.
+    /// program that can leave it without herdr reporting it, and for any on a
+    /// herdr-core Host. Without a store there is nothing to check with, so
+    /// nothing is sent.
     private var confirmSession: (@MainActor () async -> String?)? {
-        guard program.confirmsSessionBeforeSend else { return nil }
+        guard chat?.confirmsSessionBeforeSend ?? program.confirmsSessionBeforeSend else { return nil }
         let chat = chat
         let program = program
         return {
@@ -792,11 +791,6 @@ struct AgentChatSurfaceView: View {
         }
     }
 
-    /// The Composer carries Send, Stop and the Blocked card in its place.
-    private var offersTyping: Bool {
-        console.capabilities(for: agent.hostID).chatTyping
-    }
-
     private var composerChrome: some View {
         AgentComposerView(
             store: composer,
@@ -831,7 +825,7 @@ struct AgentChatSurfaceView: View {
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
     /// keys, as typed keys would arrive.
     private var stopInterrupt: AgentComposerInterrupt {
-        ChatStopPlan.standard(for: program).composerInterrupt(context: stopContext, agentKeys: agentKeys)
+        console.chatStopPlan(for: agent, program: program).composerInterrupt(context: stopContext, agentKeys: agentKeys)
     }
 
     /// What a Stop guard reads: the screen, then herdr's status.

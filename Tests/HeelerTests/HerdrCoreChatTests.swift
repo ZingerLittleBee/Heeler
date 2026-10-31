@@ -208,14 +208,12 @@ struct HerdrCoreChatTests {
 
     // MARK: The offer
 
-    @Test func chatIsOfferedForClaudeCodeOnLinuxWithItsTypingHidden() async throws {
+    @Test func chatIsOfferedForClaudeCodeOnLinux() async throws {
         let rig = Rig(host: host)
         try await rig.start()
 
         #expect(rig.store.chatProgram(for: try #require(rig.agent)) == .claude)
-        let capabilities = rig.store.capabilities(for: host.id)
-        #expect(capabilities.chat)
-        #expect(!capabilities.chatTyping)
+        #expect(rig.store.capabilities(for: host.id).chat)
         rig.store.setHosts([])
     }
 
@@ -240,7 +238,6 @@ struct HerdrCoreChatTests {
     @Test func hostCapabilitiesOfferChatOnlyWhereItReads() {
         for platform in [HostPlatform.posix, .nativeWindows, nil] {
             #expect(HostCapabilities(serverKind: .herdrTUI, platform: platform).chat)
-            #expect(HostCapabilities(serverKind: .herdrTUI, platform: platform).chatTyping)
             #expect(HostCapabilities(serverKind: .herdrTUI, platform: platform).chatPrograms == nil)
             #expect(!HostCapabilities(serverKind: .unconfirmed, platform: platform, coreKernel: "Linux").chat)
         }
@@ -251,7 +248,6 @@ struct HerdrCoreChatTests {
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Darwin").chat)
         let linux = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux")
         #expect(linux.chat)
-        #expect(!linux.chatTyping)
         for program in ChatProgram.allCases {
             #expect(linux.offersChat(for: program) == (program == .claude))
             #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: program))
@@ -297,6 +293,114 @@ struct HerdrCoreChatTests {
         try await rig.waitUntil("the store to stop waiting for a dialog") { chat.blocked.content == .unreadable }
 
         #expect(await rig.transport.mutations.isEmpty)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: Before a Send
+
+    @MainActor
+    private final class Recorder {
+        var steps: [String] = []
+    }
+
+    /// Chat's policy over a screen that clears the input box, noting what it did in
+    /// order. The Composer on a core goes on to Chat's viewer, which this transport
+    /// does not offer, so nothing is typed.
+    private static func policy(
+        confirmingWith chat: AgentChatStore, order: Recorder
+    ) throws -> ComposerDeliveryPolicy {
+        let screen = ANSIScreenDecoder.decode(try ScreenFixture.text("claude-01-ready"))
+        return .chat(
+            rules: ChatSendRules(
+                program: .claude, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .claude)),
+            activity: { .idle },
+            readScreen: {
+                order.steps.append("read")
+                return screen
+            },
+            confirmSession: {
+                order.steps.append("confirm")
+                return await chat.confirmSessionBeforeSend()
+            })
+    }
+
+    private static func follow(_ rig: Rig) async throws -> AgentChatStore {
+        let chat = try rig.chat()
+        await rig.files.write(registryEntry(), at: "\(home)/.claude/sessions/\(pid).json")
+        await rig.files.write(try transcript(), at: transcriptPath())
+        chat.show()
+        try await rig.waitUntil("the Transcript") { isFollowing(chat) }
+        return chat
+    }
+
+    @Test func aCoreChatAsksTheHostAgainBeforeEachSend() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        let chat = try await Self.follow(rig)
+        #expect(chat.confirmsSessionBeforeSend)
+        let composer = rig.store.composerStore(for: try #require(rig.agent))
+        composer.open()
+        let order = Recorder()
+        let policy = try Self.policy(confirmingWith: chat, order: order)
+        let settled = await rig.checks
+
+        composer.replaceDraft(with: "first")
+        _ = await composer.send(policy: policy)
+        let afterFirst = await rig.checks
+        composer.replaceDraft(with: "second")
+        _ = await composer.send(policy: policy)
+
+        #expect(afterFirst > settled)
+        #expect(await rig.checks > afterFirst)
+        #expect(order.steps == ["confirm", "read", "confirm", "read"])
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    @Test func aMovedBindingSendsNothingAndKeepsTheDraft() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        let chat = try await Self.follow(rig)
+        let composer = rig.store.composerStore(for: try #require(rig.agent))
+        composer.open()
+        let order = Recorder()
+        let policy = try Self.policy(confirmingWith: chat, order: order)
+        await rig.files.write(try Self.transcript(session: Self.second), at: Self.transcriptPath(session: Self.second))
+        await rig.files.write(Self.registryEntry(session: Self.second), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+
+        composer.replaceDraft(with: "hello")
+        guard case .refused(.inputNotReady(let reason)) = await composer.send(policy: policy) else {
+            Issue.record("Expected a refusal")
+            return
+        }
+
+        #expect(reason.contains("now shows another conversation"))
+        #expect(composer.draft == "hello")
+        #expect(order.steps == ["confirm"])
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    @Test func aBindingTheHostNoLongerShowsSendsNothingAndKeepsTheDraft() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        let chat = try await Self.follow(rig)
+        let composer = rig.store.composerStore(for: try #require(rig.agent))
+        composer.open()
+        let order = Recorder()
+        let policy = try Self.policy(confirmingWith: chat, order: order)
+        await rig.files.remove("\(Self.home)/.claude/sessions/\(Self.pid).json")
+
+        composer.replaceDraft(with: "hello")
+        guard case .refused(.inputNotReady(let reason)) = await composer.send(policy: policy) else {
+            Issue.record("Expected a refusal")
+            return
+        }
+
+        #expect(reason.contains("can't tell which conversation"), "\(reason)")
+        #expect(composer.draft == "hello")
+        #expect(order.steps == ["confirm"])
         chat.end()
         rig.store.setHosts([])
     }

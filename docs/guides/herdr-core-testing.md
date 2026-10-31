@@ -254,8 +254,28 @@ the facts they took on trust, so correct
 | Carried by the core | Use the core from [Leaked environment](#leaked-environment), then start `claude` by hand | The same reason, also pointing at the Host's details, where **Core Environment** names it |
 | Stale hint | Set the label `heeler.session` on the Terminal with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show the label's session |
 | No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
-| Typing hidden | In Chat, with the Agent idle and then Blocked on a permission | No Composer, no Stop, no Blocked card. The terminal still answers |
 | Off elsewhere | A Codex Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
+
+## Chat typing
+
+Use the same box and Claude Code as [Chat evidence](#chat-evidence). The tests read
+paints a fixture core made of replayed screens, never a live Agent's, so correct
+[herdr compatibility](../agents/herdr-compatibility.md) with whatever differs. Record
+Claude Code's version, and keep one paint from an observing attach of its prompt and
+one of its permission dialog beside the fixtures in
+`Tests/HeelerTests/ChatFixtures/screens/core-paint`.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Send | Send a multi-line message from Chat to an idle Agent | It reaches the Agent as one message and the turn starts. The Composer shows it delivered |
+| A held Send | Type a draft in the terminal's input, then Send from Chat | Nothing is sent, the draft stays, and the notice says the input box already has text |
+| Stop | Stop a running turn from Chat | The turn stops on one tap. Nothing is left in the input |
+| Template's stop key | Start a Template with a `stop` key, Claude Code as its command, then Stop from Chat during a turn | That key reaches the program |
+| Blocked card | Make Claude Code ask for permission, then answer from the card | The dialog closes with that answer and the turn goes on. The Composer returns |
+| Dialog gone | Open the card, answer the dialog in the terminal, then tap the stale card at once | Nothing more reaches the Agent |
+| Second viewer's size | View the Terminal from a second client at another size, then Send and Stop from Chat | The second client's size and the Terminal's stay as they were, with no `size` event |
+| Moved conversation | Run `/clear` in the terminal, then Send from Chat before the next status change | Nothing is sent, the draft stays, and Chat moves to the new conversation |
+| Exit race | Run the Composer's exit race from Chat, on bash | No file. The draft stays and the notice says **no longer in the terminal** |
 
 ## Done per device
 

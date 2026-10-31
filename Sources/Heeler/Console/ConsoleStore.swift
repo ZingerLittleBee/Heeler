@@ -761,8 +761,8 @@ final class ConsoleStore {
                     try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
                 }))
         if let core {
-            // Chat's typing stays hidden, and no record names a session here.
-            source.screen = .unavailable
+            source.screen = core.chatTyping(at: paneID).blockedScreen
+            // No record names a session here.
             source.processInfo = nil
             source.coreScope = core.chatCacheScope
             source.sessionEvidence = { [weak self] in
@@ -776,6 +776,16 @@ final class ConsoleStore {
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
         return store
+    }
+
+    /// Chat's Stop for this Agent (ADR 0024). On a herdr-core Template's Terminal
+    /// it presses the Template's stop key (ADR 0035).
+    func chatStopPlan(for agent: ConsoleAgent, program: ChatProgram) -> ChatStopPlan {
+        let plan = ChatStopPlan.standard(for: program)
+        guard let core = projections[agent.hostID] as? HerdrCoreConsoleProjection,
+            let stopKey = core.terminalRecord(at: agent.agent.paneID)?.stop
+        else { return plan }
+        return plan.pressing(templateStopKey: stopKey)
     }
 
     private func checkChatSession(paneID: String, on hostID: Host.ID) async throws -> ChatSessionEvidence {
@@ -1142,6 +1152,7 @@ final class ConsoleStore {
                 HerdrCoreConsoleProjection(
                     host: host, session: makeCoreSession(host), memory: coreHostMemory, pins: pins,
                     gitGate: gitExecGate(for: host.id), herdrAppRename: herdrAppRename,
+                    chatTypingClock: coreSendClock,
                     onSeenMarksChanged: { [weak self, id = host.id] core, marks in
                         self?.onCoreSeenMarksChanged?(id, core, marks)
                     },
