@@ -42,6 +42,26 @@ function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+/** What a module passes as the program to each start, as written. */
+function programsStarted(source) {
+  return [...source.matchAll(/(?<![.\w])(?:spawn|spawnSync|execFile|execFileSync|exec|execSync|fork)\(\s*([^,)]+)/g)].map((match) => match[1].trim());
+}
+
+/** The modules the long-running service loads, from main.js by relative imports. */
+function serviceModules() {
+  const seen = new Set();
+  const pending = ["main.js"];
+  while (pending.length > 0) {
+    const path = pending.pop();
+    if (seen.has(path)) continue;
+    seen.add(path);
+    for (const specifier of specifiersIn(readFileSync(join(HELPER, path), "utf8"))) {
+      if (specifier.startsWith(".")) pending.push(relative(HELPER, resolve(HELPER, dirname(path), specifier)).split(sep).join("/"));
+    }
+  }
+  return [...seen];
+}
+
 const helperModules = () =>
   filesUnder(HELPER)
     .filter((path) => path.endsWith(".js"))
@@ -68,12 +88,26 @@ suite("Host Helper closure", () => {
     }
   });
 
-  test("can start no process, so it can never start a core", () => {
-    for (const path of helperModules().filter((module) => module !== SESSION_EXTENSION)) {
-      for (const specifier of specifiersIn(readFileSync(path, "utf8"))) {
-        assert.notEqual(specifier.replace(/^node:/, ""), "child_process", `${path} imports ${specifier}`);
+  test("the service runs nothing but /bin/ps, so it can never start a core", () => {
+    // The Usage environment's read on macOS, and a Usage lock's owner check there.
+    const mayRunPs = new Set(["shared/usage/process-environment.js", "shared/usage/cache.js"]);
+    for (const path of serviceModules()) {
+      const source = readFileSync(join(HELPER, path), "utf8");
+      if (mayRunPs.has(path)) {
+        assert.deepEqual([...new Set(programsStarted(source))], ["\"/bin/ps\""], path);
+      } else {
+        for (const specifier of specifiersIn(source)) {
+          assert.notEqual(specifier.replace(/^node:/, ""), "child_process", `${path} imports ${specifier}`);
+        }
       }
     }
+  });
+
+  test("the Usage query and worker start only recorded programs, so never a core", () => {
+    // `executable` is a Usage Limits request's recorded program, or the zstd on the
+    // recorded PATH. Naming a new program here is a decision, not a test to update.
+    const started = new Set(helperModules().flatMap((path) => programsStarted(readFileSync(path, "utf8"))));
+    assert.deepEqual([...started].sort(), ['"/bin/ps"', '"security"', "executable", "runtime.claude", "runtime.node"]);
   });
 
   test("the Helper's own process never loads an extension", () => {

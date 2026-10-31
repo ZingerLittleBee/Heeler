@@ -260,4 +260,23 @@ Helper directory: `printf '{"v":1,"devices":[{"session":"default"}]}' >
 | No core | Stop the session's core with `herdr-core server stop` by absolute path, then `systemctl --user restart heeler-host-helper` | `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait. `journalctl --user -u heeler-host-helper` reads `core session "default": waiting for a core at <socket>` once |
 | Core starts | Start the core from the user's login shell, and do not touch the Helper | Within seconds the journal reads `connected to core pid <pid>`, the pid `server.status` reports. The unit's main PID has not changed |
 | Core restarts | `kill -9` the core at that pid, then start it again from the login shell | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
-| Other sessions | Start a core for a session the file does not name | The journal never mentions it, and `ss -xp` shows the Helper connected only to the named session's socket |
+| Other sessions | Start a core for a session the file does not name, and no Host's Usage asked about | The journal never mentions it, and `ss -xp` shows the Helper connected only to the named session's socket |
+
+### Usage
+
+Use a throwaway `CLAUDE_CONFIG_DIR`, for example `~/heeler-usage-lab`, that the SSH session's environment lacks, and put a small Transcript with known token counts under its `projects/`. Add a unique marker to the core's environment, `HEELER_LAB_MARKER=not-listed`. Add the Host with the session you start. Never sign in to a harness for these steps, and leave out **Claude Code limits** unless the Host has a throwaway sign-in. Remove the directory when done.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| No Helper | Open Usage before installing, with the core running and again with it stopped | The Host's Usage reads **Usage needs the Host Helper**, and the Usage tab and widget leave it out of their totals as **Needs the Host Helper**, both times. Nothing is added to the Host |
+| Waiting | Install the Helper, stop the session's core, and open Usage | In the Usage tab too, not **Not connected**: **The Host Helper has not reached this session's core yet**. `~/.local/share/heeler/host-helper/sessions/<session>` is there, `0700`. `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait |
+| Core's environment | Start the core from a login shell with `CLAUDE_CONFIG_DIR` and the marker set, and do not touch Usage | Within a minute Usage shows the Transcript's tokens under the Default Account, and so does the Usage widget, with no notification registration on the Host. `sessions/<session>/runtime.json` is `0600` and names that directory |
+| Only named variables | `grep -c HEELER_LAB_MARKER` the record, then `journalctl --user -u heeler-host-helper \| grep -c not-listed` | Both print `0`. The journal reads the core's pid, and no value |
+| Core restarts | Restart the core with another `CLAUDE_CONFIG_DIR` | The record names the new directory, and Usage follows after the next read |
+| Suggestions | Start Claude Code in a core Terminal with a third directory as `CLAUDE_CONFIG_DIR`, whether or not it is signed in, and open **Claude Code Accounts** | That directory is suggested. Adding it writes `usage-accounts.json` in the Helper's directory, `0600`, and nothing under `~/.config/herdr` |
+| Limits | With a throwaway sign-in, turn on **Claude Code limits** for this Host, then off | A read asks only while it is on, and the card follows. Skip this without such a sign-in |
+| Update | Install a Helper from before Usage, and open Usage | **Usage needs a newer Host Helper**, until you update it from the Host's detail |
+| Unreachable | Stop `sshd` or block the route, and open Usage | The Usage tab leaves the Host out as **Not connected** |
+| Widget alone | Add a Usage widget. With the core stopped and no Helper, reopen Heeler and do not open Usage. Repeat on an unreachable Host, and on a native Windows Host if one is on hand | The widget says **Needs the Host Helper**, **Not connected**, and **Comes with the Host Helper, not available yet**, and keeps saying so after you force-quit Heeler and reopen it. None of them reads **Not read yet** |
+
+`/proc/<pid>/environ` holds the environment the core started with, so a variable it set for itself later does not appear. A Windows Host's line is covered by unit tests, not this checklist.

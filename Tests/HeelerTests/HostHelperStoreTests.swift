@@ -276,14 +276,16 @@ struct HostNotificationFilesRoutingTests {
         #expect(await helper.reads == ["\(directory)/\(UsageAccountFile.fileName)"])
     }
 
-    @Test func aCoreHostCannotRunTheUsageQueryYet() async throws {
-        let (console, host, _) = coreConsole(ScriptedHelperHost())
+    @Test func aCoreHostsUsageQueryIsTheHelpers() async throws {
+        let helper = ScriptedHelperHost()
+        await helper.installApp()
+        await helper.seedUsage(Data(#"{"version":1,"runtime":"missing"}"#.utf8), session: "default")
+        let (console, host, _) = coreConsole(helper)
         defer { console.setHosts([]) }
-        await #expect(throws: TransportError.hostFeatureUnavailable(feature: "Usage")) {
-            _ = try await console.withNotificationFiles(for: host.id) {
-                try await $0.readAgentUsage(timeZone: "UTC", claudeLimits: false, pluginRoot: "/plugin")
-            }
+        let report = try await console.withNotificationFiles(for: host.id) {
+            try await $0.readAgentUsage(timeZone: "UTC", claudeLimits: false, pluginRoot: "/plugin")
         }
+        #expect(report.runtime == "missing")
     }
 
     @Test func aCoreHostsFilesCloseTheConnectionTheyDialed() async throws {

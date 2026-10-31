@@ -157,7 +157,7 @@ extension RemoteDirectoryListing {
     /// reads. For a folder a program reads by the path it is given, such as
     /// a Claude Code Account, a link is as good a choice as a directory. A
     /// link that is broken or cannot be followed is left out.
-    static func followingLinks(at path: String, over transport: any Transport) async throws -> Self {
+    static func followingLinks(at path: String, over transport: any HostServices) async throws -> Self {
         let request = RemoteFileListingRequest(directory: path, kinds: [.directory, .symlink])
         guard let listing = try await transport.listFiles(request) else {
             throw TransportError.invalidDirectoryPath(path: path)

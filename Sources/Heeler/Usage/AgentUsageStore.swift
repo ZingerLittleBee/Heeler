@@ -2,8 +2,40 @@ import Foundation
 import Observation
 import os
 
-/// One Host's on-demand Usage reading. Connections are borrowed from Console;
-/// opening Usage never starts an independent SSH connection.
+/// What a herdr-core Host's Usage is waiting for (ADR 0033). Thrown by a read,
+/// and held in `AgentUsageStore.State`.
+enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
+    case notInstalled
+    /// A Helper from before it served Usage.
+    case outdated
+    /// The Helper holds no record of this session's core yet.
+    case waitingForCore
+    case notOnWindows
+
+    var message: String {
+        switch self {
+        case .notInstalled: "Usage needs the Host Helper. Install it from this Host's details."
+        case .outdated: "Usage needs a newer Host Helper. Update it from this Host's details."
+        case .waitingForCore:
+            "The Host Helper has not reached this session's core yet. Start the core if it is not running."
+        case .notOnWindows: "Usage comes with the Host Helper, which is not available on native Windows yet."
+        }
+    }
+
+    /// The short line a Host left out of the totals shows.
+    var reason: String {
+        switch self {
+        case .notInstalled: "Needs the Host Helper"
+        case .outdated: "Update the Host Helper"
+        case .waitingForCore: "Waiting for the core"
+        case .notOnWindows: "Comes with the Host Helper, not available yet"
+        }
+    }
+}
+
+/// One Host's on-demand Usage reading. A Herdr TUI Host's connection is borrowed
+/// from Console, so opening Usage starts no independent SSH connection there. A
+/// core Host's read dials one when Console has none (ADR 0033).
 @MainActor
 @Observable
 final class AgentUsageStore {
@@ -12,11 +44,16 @@ final class AgentUsageStore {
         case loading
         case requirement(String)
         case unsupportedPlatform
-        case unsupportedBackend
+        case hostHelper(AgentUsageHostHelperNeed)
         case runtimeMissing
         case updateRequired
         case available(AgentUsageReport)
         case failed(String)
+
+        /// The read failed on the way to the Host, not at the Host's answer.
+        nonisolated var couldNotReachHost: Bool {
+            self == .failed(AgentUsageStore.connectionFailureMessage)
+        }
     }
 
     /// One read's outcome and the plugin release that gave it, when the
@@ -28,7 +65,7 @@ final class AgentUsageStore {
 
     /// Runs one operation over the Host's connection.
     typealias HostOperation = @MainActor (
-        _ operation: @escaping @Sendable (any Transport) async throws -> Void
+        _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Void
     ) async throws -> Void
 
     /// What one Account file change is about, so its row can show a spinner.
@@ -132,6 +169,7 @@ final class AgentUsageStore {
     @ObservationIgnored private var request: UUID?
     @ObservationIgnored private var lastRead: ContinuousClock.Instant?
     @ObservationIgnored private var consecutiveFailures = 0
+    @ObservationIgnored private var consecutiveWaits = 0
     @ObservationIgnored private var pendingPause: Task<Void, any Error>?
     @ObservationIgnored private var readWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     /// Reads started so far; each read is numbered by it.
@@ -145,7 +183,9 @@ final class AgentUsageStore {
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.init(
             hostID: hostID,
-            onHost: { operation in try await transports.withNotificationTransport(for: hostID, operation) },
+            onHost: { operation in
+                try await transports.withNotificationTransport(for: hostID) { try await operation($0) }
+            },
             defaults: defaults, sleep: sleep
         ) { timeZone, claudeLimits in
             try await transports.withNotificationTransport(for: hostID) { transport in
@@ -249,6 +289,7 @@ final class AgentUsageStore {
         pluginVersion = nil
         hostHome = nil
         consecutiveFailures = 0
+        consecutiveWaits = 0
         didChange?()
     }
 
@@ -288,13 +329,27 @@ final class AgentUsageStore {
         return Reading(state: state, pluginVersion: version)
     }
 
+    /// A herdr-core Host's read: its Helper's report for the Host's session, from
+    /// one bounded exec. A native Windows Host has no Helper and runs nothing.
+    nonisolated static func reading(
+        overHelper host: any HostHelperHost, session: String, timeZone: String, claudeLimits: Bool
+    ) async throws -> Reading {
+        guard try await host.hostPlatform() == .posix else {
+            return Reading(state: .hostHelper(.notOnWindows), pluginVersion: nil)
+        }
+        let report = try await HostHelperFiles(host: host, session: session)
+            .readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+        return Reading(
+            state: report.runtime == "missing" ? .hostHelper(.waitingForCore) : .available(report),
+            pluginVersion: nil)
+    }
+
     /// Link failures ask the user to check the connection. A Host that
     /// answered, but not with a readable report, would answer the same way
     /// over any connection, so its copy does not blame the link.
     nonisolated static func state(for error: any Error) -> State {
         switch error {
-        case HeelerPluginUnavailableError.herdrCore:
-            .unsupportedBackend
+        case let need as AgentUsageHostHelperNeed: .hostHelper(need)
         case AgentUsageError.unsupportedVersion: .updateRequired
         case TransportError.hostFeatureUnavailable: .unsupportedPlatform
         case TransportError.hostFileTimedOut: .failed(timeoutMessage)
@@ -313,8 +368,13 @@ final class AgentUsageStore {
         "The Host took too long to report Usage. Try again in a moment."
 
     /// Polling continues while the shown report is refreshing; a failed
-    /// refresh backs off. nil stops polling.
+    /// refresh backs off. A Helper that has yet to reach a core is read again
+    /// too, backing off, since no core may be running. nil stops polling.
     private var pollingInterval: Duration? {
+        if snapshotState == .hostHelper(.waitingForCore) {
+            let doublings = min(max(consecutiveWaits - 1, 0), 4)
+            return min(Self.pollInterval * (1 << doublings), Self.maximumRetryInterval)
+        }
         guard case .available(let report) = snapshotState, report.refreshing == true else { return nil }
         guard refreshFailure != nil else { return Self.pollInterval }
         let doublings = min(max(consecutiveFailures - 1, 0), 4)
@@ -373,6 +433,7 @@ final class AgentUsageStore {
             refreshFailure = nil
             readAt = .now
             consecutiveFailures = 0
+            consecutiveWaits = next == .hostHelper(.waitingForCore) ? consecutiveWaits + 1 : 0
         }
         // This read shows the Account changes written before it started; a
         // failed one ends their wait all the same.
@@ -564,7 +625,7 @@ extension AgentUsageStore {
 
     /// Whether `directory` holds Claude Code's own `.claude.json` or a
     /// `projects/` directory, as the plugin's home listing checks.
-    nonisolated static func holdsClaudeCode(_ directory: String, over transport: any Transport) async throws -> Bool {
+    nonisolated static func holdsClaudeCode(_ directory: String, over transport: any HostServices) async throws -> Bool {
         let base = directory.count > 1 && directory.hasSuffix("/") ? String(directory.dropLast()) : directory
         if try await transport.fileStatus(atPath: base + "/.claude.json")?.kind == .regular { return true }
         return try await transport.fileStatus(atPath: base + "/projects")?.kind == .directory
@@ -572,7 +633,7 @@ extension AgentUsageStore {
 
     /// Runs `operation` over the Host's connection and returns its value.
     private func onHostValue<Value: Sendable>(
-        _ operation: @escaping @Sendable (any Transport) async throws -> Value
+        _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Value
     ) async throws -> Value {
         guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Claude Code Accounts") }
         let result = OSAllocatedUnfairLock<Value?>(initialState: nil)

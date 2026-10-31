@@ -85,17 +85,17 @@ export function followCoreSession(
 
 /**
  * Keeps one follower per session named in `directory`'s Notification
- * Registrations, re-reading them so a device registering or leaving takes effect
- * without a restart. Runs until `stop()`.
+ * Registrations or by `alsoFollow()`, reading them again so a device registering
+ * or leaving takes effect without a restart. Runs until `stop()`.
  */
-export function followRegisteredSessions({ directory, log = () => {}, pollMs = POLL_MS, ...followOptions }) {
+export function followRegisteredSessions({ directory, log = () => {}, pollMs = POLL_MS, alsoFollow = () => [], ...followOptions }) {
   const followers = new Map();
   const leaving = new Set();
   const refused = new Set();
 
   const wantedSessions = () => {
     const wanted = new Set();
-    for (const raw of registeredSessions(directory)) {
+    for (const raw of [...registeredSessions(directory), ...alsoFollow()]) {
       const session = normalizeSessionName(raw);
       if (session !== null) {
         wanted.add(session);

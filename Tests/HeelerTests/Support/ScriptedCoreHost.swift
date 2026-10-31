@@ -409,6 +409,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         try await helper.replaceHostHelperFile(contents, at: path, privateDirectory: privateDirectory)
     }
 
+    func hostHomeDirectory() async throws -> String { ScriptedHelperHost.home }
+
     /// The transport the app gets for this Host, with a nonce the script knows.
     nonisolated func transport(
         session: String = "work",

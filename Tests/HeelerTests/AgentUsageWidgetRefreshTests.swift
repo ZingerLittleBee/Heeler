@@ -162,22 +162,63 @@ struct AgentUsageWidgetRefreshTests {
         #expect(connector.connects.withLock { $0 } == 1)
     }
 
-    /// The background read asks by Server Kind: it never dials a core Host.
-    @Test func aCoreHostsBackgroundReadIsUnsupportedWithoutConnecting() async {
-        let transport = ScriptedTransport()
-        let connector = RecordingConnector(transport: transport)
-        let refresh = AgentUsageBackgroundRefresh.live(
+    private static func backgroundRead(
+        _ connector: any TransportConnector, sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
+    ) -> AgentUsageBackgroundRefresh {
+        AgentUsageBackgroundRefresh.live(
             connector: connector, knownHosts: InMemoryKnownHostsStore(),
             credentials: HostCredentialsProvider(
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
                 secrets: InMemorySecretStore()),
-            sleep: { _ in })
+            sleep: sleep)
+    }
+
+    private static func coreConnector(_ core: ScriptedCoreHost) -> FakeTransportConnector {
+        FakeTransportConnector(
+            outcome: .connects(pingResult: .success(ServerInfo(version: "0.1.13", protocolVersion: 1))), core: core)
+    }
+
+    /// The background read follows the Server Kind: a core Host's Usage is its
+    /// Helper's, over the connection it dials for the read.
+    @Test func aCoreHostsBackgroundReadAsksItsHelper() async throws {
+        let helper = ScriptedHelperHost()
+        await helper.installApp()
+        await helper.seedUsage(try AgentUsageFixture.reportData(refreshing: false), session: "default")
+        let scripted = ScriptedCoreHost(helper: helper, channel: .refused)
+        let connector = Self.coreConnector(scripted)
         var core = Self.host("Core Mac")
         core.serverKind = .herdrCore
 
-        #expect(await refresh.read(core, false) == .unsupportedBackend)
-        #expect(connector.connects.withLock { $0 } == 0)
+        let state = await Self.backgroundRead(connector).read(core, true)
+
+        #expect(state == .available(try AgentUsageFixture.report()))
+        let limits = await helper.steps.compactMap { step -> Bool? in
+            guard case .usageQuery(_, let limits, _) = step else { return nil }
+            return limits
+        }
+        #expect(limits == [true])
+        #expect(await scripted.log == ["close"])
+    }
+
+    @Test func aCoreHostWithoutTheHelperSaysSoInTheBackgroundToo() async {
+        let connector = Self.coreConnector(ScriptedCoreHost(channel: .refused))
+        var core = Self.host("Core Mac")
+        core.serverKind = .herdrCore
+
+        #expect(await Self.backgroundRead(connector).read(core, false) == .hostHelper(.notInstalled))
+    }
+
+    @Test func aCoreHostTheBackgroundReadCannotReachSaysNotConnected() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var core = Self.host("Core Mac")
+        core.serverKind = .herdrCore
+        let connector = FakeTransportConnector(outcome: .connectFails(.sshUnreachable(detail: "no route")))
+
+        await Self.backgroundRead(connector).run(hosts: [core], publisher: publisher)
+
+        #expect(Self.snapshot(directory)?.host(core.id)?.excludedReason == "Not connected")
     }
 
     @Test func connectingReadsAStaleHostForTheWidgetsOnce() async throws {

@@ -467,11 +467,7 @@ struct ConsoleView: View {
 
     /// Every Host the Usage tab can read, in catalog order.
     private var usageEntries: [AgentUsageHostEntry] {
-        hosts.consoleHosts.map { host in
-            AgentUsageHostEntry(
-                id: host.id, name: host.displayName, store: console.agentUsageStore(for: host.id),
-                isConnected: console.hostStatuses[host.id] == .connected)
-        }
+        hosts.consoleHosts.map(console.agentUsageEntry(for:))
     }
 
     /// Usage, as a tab; beside an iPad's sidebar, its own split view whose
