@@ -417,6 +417,10 @@ final class HostOnboardingStore {
         } catch HostStoreError.sessionNameRefused(let reason) {
             confirmationRefusal = reason
             return
+        } catch HostStoreError.catalogUnreadable where catalog.coreCatalogLoadError != nil {
+            confirmationRefusal =
+                "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added."
+            return
         } catch {
             confirmationRefusal = "The Server Kind could not be saved. (\(error))"
             return

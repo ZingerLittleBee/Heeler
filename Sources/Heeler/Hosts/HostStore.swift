@@ -117,7 +117,11 @@ final class HostStore {
     }
 
     private(set) var hosts: [Host]
+    /// The shared catalog could not be read, so no Host is shown or written.
     private(set) var catalogLoadError: HostStoreError?
+    /// The herdr-core catalog could not be read. Herdr TUI Hosts carry on from
+    /// their own key; nothing goes to this one, whose bytes stay as they are.
+    private(set) var coreCatalogLoadError: HostStoreError?
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults?
     @ObservationIgnored private let secrets: any SecretStore
@@ -132,7 +136,14 @@ final class HostStore {
         self.secrets = secrets
         do {
             var shared = try Self.loadSharedEntries(from: defaults)
-            let core = try Self.loadCoreCatalog(from: defaults)
+            let core: PersistedCatalog?
+            do {
+                core = try Self.loadCoreCatalog(from: defaults)
+                coreCatalogLoadError = nil
+            } catch {
+                core = nil
+                coreCatalogLoadError = .catalogUnreadable
+            }
             let coreEntries = core?.hosts.entries ?? []
             // A Host found in both is herdr-core. Its shared copy goes now, so
             // an older build cannot show it and removing the Host cannot bring
@@ -152,6 +163,7 @@ final class HostStore {
             catalogEntries = []
             coreCatalogEntries = []
             catalogLoadError = .catalogUnreadable
+            coreCatalogLoadError = nil
         }
     }
 
@@ -204,11 +216,13 @@ final class HostStore {
         coreCatalogEntries = volatileHosts.filter { $0.serverKind == .herdrCore }
             .map(PersistedHosts.Entry.known)
         catalogLoadError = nil
+        coreCatalogLoadError = nil
     }
 
     /// Adds a Host, storing `password` in the secret store when given.
     func add(_ host: Host, password: String? = nil) throws {
         try ensureCatalogIsWritable()
+        if host.serverKind == .herdrCore { try ensureCoreCatalogIsWritable() }
         try applyPassword(password, to: host)
         hosts.append(host)
         if host.serverKind == .herdrCore {
@@ -259,6 +273,7 @@ final class HostStore {
         guard kind.isConfirmed else {
             throw HostStoreError.serverKindChanged
         }
+        if kind == .herdrCore { try ensureCoreCatalogIsWritable() }
         if let reason = kind.sessionNameRefusal(hosts[index].sessionName) {
             throw HostStoreError.sessionNameRefused(reason: reason)
         }
@@ -339,6 +354,12 @@ final class HostStore {
 
     private func ensureCatalogIsWritable() throws {
         if catalogLoadError != nil {
+            throw HostStoreError.catalogUnreadable
+        }
+    }
+
+    private func ensureCoreCatalogIsWritable() throws {
+        if coreCatalogLoadError != nil {
             throw HostStoreError.catalogUnreadable
         }
     }
