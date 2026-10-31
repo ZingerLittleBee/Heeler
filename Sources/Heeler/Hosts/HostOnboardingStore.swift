@@ -401,6 +401,11 @@ final class HostOnboardingStore {
     /// kind's server refuses leaves the Host as it was and says why.
     func confirmServerKind(_ kind: ServerKind, in catalog: HostStore) async {
         guard phase != .running, offeredKinds.contains(kind) else { return }
+        if kind == .herdrCore, case .socketPathTooLong(_, let path, let limit) = detection?.herdrCore {
+            confirmationRefusal =
+                TransportError.herdrCoreSocketPathTooLong(path: path, limit: limit).presentation.message
+            return
+        }
         do {
             host = try catalog.confirmServerKind(kind, for: host.id)
         } catch HostStoreError.sessionNameRefused(let reason) {

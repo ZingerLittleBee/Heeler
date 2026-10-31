@@ -706,6 +706,24 @@ struct HostOnboardingStoreTests {
         #expect(await connector.transports.count == 1)
     }
 
+    @Test func confirmingHerdrCoreWithASocketPathOverTheLimitSaysWhy() async throws {
+        let long = "/" + String(repeating: "a", count: 107)
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(defaultPath: long), channel: .refused)
+        let (store, _, catalog) = try unconfirmedStore(core)
+        await store.runChecks()
+        #expect(store.offeredKinds == [.herdrCore])
+
+        await store.confirmServerKind(.herdrCore, in: catalog)
+
+        #expect(
+            store.confirmationRefusal
+                == TransportError.herdrCoreSocketPathTooLong(path: long, limit: 107).presentation.message)
+        #expect(store.host.serverKind == .unconfirmed)
+        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
+        #expect(await core.log == ["detection", "close"])
+    }
+
     @Test func detectionAsksToTrustTheHostFirst() async throws {
         let core = ScriptedCoreHost(channel: .refused)
         let (store, _, _) = try unconfirmedStore(core, presentedKeyBlob: keyBlob)
