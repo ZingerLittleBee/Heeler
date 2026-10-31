@@ -28,19 +28,23 @@ enum HerdrCoreShellLaunch {
     /// A script for `/bin/sh`, for one bounded exec: the interactive shell looks
     /// for each program and asks one for its version in that same run. The inner
     /// script parses under POSIX shells and fish alike. Its markers start their
-    /// own lines after whatever the startup files print.
+    /// own lines after whatever the startup files print. A child `/bin/sh` does the
+    /// looking, with the PATH the startup files set: it sees no alias or function
+    /// of the shell's, which the launch's `exec` could not run either.
     static func discoveryScript(
         shell: String, executables: [String], versionOf versioned: String, nonce: String
     ) -> Data {
         let quoted = HerdrCoreLocator.quoted
         var lines = ["printf '\\n%s\\n' \(quoted(beginMarker(nonce)))"]
+        func isOnPath(_ program: String) -> String {
+            "/bin/sh -c 'command -v \"$1\"' sh \(quoted(program)) >/dev/null 2>&1"
+        }
         for executable in executables {
-            lines.append(
-                "command -v \(quoted(executable)) >/dev/null 2>&1 && printf 'agent %s\\n' \(quoted(executable))")
+            lines.append("\(isOnPath(executable)) && printf 'agent %s\\n' \(quoted(executable))")
         }
         lines += [
             "printf 'version '",
-            "command -v \(quoted(versioned)) >/dev/null 2>&1 && \(quoted(versioned)) --version </dev/null 2>/dev/null",
+            "\(isOnPath(versioned)) && \(quoted(versioned)) --version </dev/null 2>/dev/null",
             "printf '\\n%s\\n' \(quoted(endMarker(nonce)))",
             "exit 0",
         ]

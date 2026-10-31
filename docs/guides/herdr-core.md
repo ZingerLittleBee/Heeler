@@ -144,7 +144,7 @@ A core started from inside another program can inherit variables that change how
 
 ## New Agent and New Terminal
 
-**New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.
+**New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. An alias or a shell function does not count, since a start runs a program on that `PATH`. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.
 
 Pick where it starts, for an Agent and for **New Terminal** alike:
 
