@@ -36,6 +36,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     private let memory: HerdrCoreHostMemory
+    private let pins: PinnedAgentsStore
     private let onChange: @MainActor @Sendable () -> Void
     private var records: [HerdrCoreTerminalRecord] = []
     private var consumeTask: Task<Void, Never>?
@@ -60,12 +61,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         host: Host,
         session: HerdrCoreHostSession,
         memory: HerdrCoreHostMemory,
+        pins: PinnedAgentsStore,
         gitGate: GitExecGate,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
         self.memory = memory
+        self.pins = pins
         self.gitGate = gitGate
         self.onChange = onChange
     }
@@ -253,6 +256,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             sidebarRevision &+= 1
         case .removed(let terminal):
             memory.forgetTerminal(terminal, for: host.id)
+            pins.removePin(hostID: host.id, paneID: terminal)
             records.removeAll { $0.address == terminal }
             sidebarRevision &+= 1
         case .missed(let snapshot):
