@@ -134,6 +134,8 @@ enum AgentSceneWindowState: Equatable, Sendable {
 @MainActor
 protocol AgentSceneWindow: AnyObject {
     var sceneWindowState: AgentSceneWindowState { get }
+    /// The scene the window is in, while it has one.
+    var windowScene: UIScene? { get }
 }
 
 /// The app-wide registry of connected windows and the one place deep links
@@ -167,6 +169,7 @@ final class AgentSceneDirectory {
     /// Connection order, so iteration and tie-breaks are deterministic.
     @ObservationIgnored private var order: [UUID] = []
     @ObservationIgnored private var activationClock: UInt64 = 0
+    @ObservationIgnored private var disconnectObserver: NSObjectProtocol?
     /// A link that arrived before any window connected. The inner optional
     /// is the link itself: nil means "the Console".
     @ObservationIgnored private var pendingOpen: AgentNotificationTarget??
@@ -198,6 +201,32 @@ final class AgentSceneDirectory {
             open(pending, preferredSceneID: sceneID)
         } else {
             reconcileTerminalOwnership()
+        }
+    }
+
+    /// Reports the windows a disconnecting scene takes with it. `onDisappear`
+    /// does not promise to run for them, and a window that ended without it
+    /// stays registered, so this can report one more than once.
+    func observeDisconnects(
+        center: NotificationCenter = .default, onEnd: @escaping @MainActor @Sendable (UUID) -> Void
+    ) {
+        disconnectObserver = center.addObserver(
+            forName: UIScene.didDisconnectNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let scene = notification.object as? UIScene else { return }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                for sceneID in self.windowsEnded(by: scene) { onEnd(sceneID) }
+            }
+        }
+    }
+
+    private func windowsEnded(by scene: UIScene) -> [UUID] {
+        order.filter { id in
+            guard let window = entries[id]?.window else { return false }
+            // A window in another scene may only be connecting yet.
+            if let windowScene = window.windowScene { return windowScene === scene }
+            return window.sceneWindowState == .disconnected
         }
     }
 

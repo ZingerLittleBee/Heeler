@@ -199,6 +199,9 @@ final class HeelerAppModel {
         liveActivities.start()
 
         observeStores()
+        sceneDirectory.observeDisconnects { [console] sceneID in
+            console.sceneDidEnd(sceneID)
+        }
     }
 
     /// The app's aggregate scene phase: active while any window is.
