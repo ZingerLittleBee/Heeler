@@ -104,6 +104,23 @@ On a macOS or Linux Host, **Add** in the Composer, or **Add Image** and **Add Fi
 
 Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
 
+## Stop
+
+While an Agent is **Working** and the draft is empty, **Stop** takes Send's place. Heeler asks the core to press the Terminal's own stop key: the stop key of the Template the Terminal came from, else Esc. It then reads whether the program still runs, so an Agent that exits at the key leaves the list without waiting for the next update. Each tap presses once, and Heeler never presses again by itself.
+
+Stop shows only while the Agent holds the terminal, never for the shell it left behind. A program that has not reported a status reads **Unknown** and has no Stop. Use the tools keyboard or Direct Input there.
+
+A Grok Build Agent's Composer keeps **Send** while it works, as on any other Host, because Esc does not stop its turns. Use the tools keyboard or Direct Input to press Ctrl+C.
+
+On a native Windows Host, Stop is not available yet.
+
+| Notice | What it means | What to do |
+| --- | --- | --- |
+| **still shows Working** | The key went and the Agent is still Working a few seconds later. A background task can do that | Tap **Stop** again if you still want it to stop |
+| **may or may not have reached the Agent** | The connection dropped or went silent during Stop, so Heeler cannot tell, and it does not send it again | Look at the terminal first |
+| **did not say whether the Agent still runs** | The Host answered that it pressed the key, and the check after it got no answer | Look at the terminal |
+| **wasn't sent** | The connection was down, or too busy to take Stop within a few seconds. No key was pressed | Tap **Stop** again |
+
 ## Restarts and ended Terminals
 
 | What happened | Heeler shows |
@@ -161,7 +178,7 @@ If the program ends during the few seconds New Agent watches it, the form stays 
 
 - Heeler has no Rename on a core Host yet. Use the Host or the desktop.
 - Worktrees and Chat are not available yet.
-- An Agent detail's Stop stays hidden, and native Windows core Hosts offer no Send yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
+- Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
 - Notifications and Live Activities are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
