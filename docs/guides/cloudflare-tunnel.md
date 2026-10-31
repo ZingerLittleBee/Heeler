@@ -102,10 +102,10 @@ narrow it when it isn't, as the last troubleshooting row describes.
 Follow [Prepare the Host](overlay-networks.md#prepare-the-host) for the Mac's
 user, sign-in method, and herdr session, then add the Host with these values:
 
-1. Under **Routes**, tap **Add Route**, set **Network** to **Direct**, and fill
-   in the address from step 2 and port `22`. Leave **Jump Host** blank. (**Direct**
-   means Heeler dials the address itself; the VPN app is what makes it
-   reachable.)
+1. Open **Hosts** and tap **Add Host**. Under **Routes**, tap **Add Route**, set
+   **Network** to **Direct**, fill in the address from step 2 and port `22`,
+   leave **Jump Host** blank, and tap **Save**. (**Direct** means Heeler dials
+   the address itself; the VPN app is what makes it reachable.)
 2. In **Add Host**, fill in the remaining fields and tap **Save**.
 3. Tap **Trust** only if the fingerprint matches the one from the Mac.
 4. If iOS asks whether Heeler may find devices on your local network, allow it.
