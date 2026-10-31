@@ -50,6 +50,12 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// The Host's Templates, which only a herdr-core Host has.
     func availableTemplates() async throws -> [AgentTemplate]
     @discardableResult func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent
+    /// How the program at `paneID` ended, once it has for good and the Host still
+    /// knows it. Only a herdr-core Host keeps that.
+    func programExit(ofPane paneID: String) -> ProgramExit?
+    /// The names the Host's live Terminals hold, beyond those its Agents show.
+    /// A herdr-core Host refuses to give any of them out again.
+    var heldTerminalNames: Set<String> { get }
     @discardableResult func startAgent(_ request: AgentLaunchRequest) async throws -> Agent
     @discardableResult func startAgentInNewWorktree(
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
@@ -114,4 +120,8 @@ extension ConsoleHostProjection {
     func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
         throw TransportError.hostFeatureUnavailable(feature: "Templates")
     }
+
+    func programExit(ofPane paneID: String) -> ProgramExit? { nil }
+
+    var heldTerminalNames: Set<String> { [] }
 }

@@ -24,12 +24,7 @@ struct StartAgentView: View {
             initialValue: StartAgentStore(
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
-                existingAgentNames: { hostID in
-                    Set(
-                        console.agents
-                            .filter { $0.hostID == hostID }
-                            .compactMap { $0.agent.name })
-                },
+                existingAgentNames: { console.takenAgentNames(on: $0) },
                 discoverAgentKinds: { try await console.availableAgentKinds(on: $0) },
                 discoverTemplates: { try await console.availableTemplates(on: $0) },
                 startTemplate: { try await console.startTemplate($0, on: $1) },
@@ -48,6 +43,7 @@ struct StartAgentView: View {
                 },
                 awaitAgentVisible: { await console.waitForAgent($0) },
                 isAgentListed: { id in console.agents.contains { $0.id == id } },
+                programExit: { console.programExit(of: $0) },
                 origin: origin,
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces }))
     }

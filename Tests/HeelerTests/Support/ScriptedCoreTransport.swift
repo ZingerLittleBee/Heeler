@@ -173,6 +173,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var discoveredPrograms: [String] = []
     private var openCodeVersionOutput: String?
     private var runFailure: (any Error)?
+    private var heldNames: Set<String> = []
     private var templateList: JSONValue = .object(["templates": .array([])])
     private var templateListFailure: (any Error)?
     private var templateCommand = "pi --thinking high"
@@ -320,7 +321,18 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     func runTerminal(params: JSONValue) async throws -> JSONValue {
         runs.append(params)
         if let runFailure { throw runFailure }
+        try holdName(in: params)
         return Self.runReply(address: "t\(100 + runs.count)", params: params)
+    }
+
+    /// The core's rule for a name a live Terminal holds. Every Terminal started
+    /// here stays live as far as this knows.
+    private func holdName(in params: JSONValue) throws {
+        guard let name = params["name"]?.stringValue else { return }
+        guard heldNames.insert(name).inserted else {
+            throw HerdrAPIError(
+                code: "name_taken", message: "a live terminal is already named \"\(name)\"")
+        }
     }
 
     /// What a core answers for a Template: its command under `sh -c`, with its
@@ -329,6 +341,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         templateRuns += 1
         runs.append(params)
         if let runFailure { throw runFailure }
+        try holdName(in: params)
         var reply = Self.runReply(address: "t\(100 + runs.count)", params: params)
         if case .object(var fields) = reply {
             fields["argv"] = .array(["sh", "-c", templateCommand].map(JSONValue.string))

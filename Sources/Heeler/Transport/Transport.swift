@@ -427,6 +427,11 @@ struct AgentTemplate: Sendable, Hashable, Identifiable {
     var id: String { name }
 }
 
+/// How a Terminal's program ended for good. A nil `code`: no exit, as after a kill.
+struct ProgramExit: Sendable, Equatable {
+    let code: Int?
+}
+
 /// A Template launch on a herdr-core Host. Its name goes out as the core's
 /// `terminal.run` wants it, so it has no kind or arguments, and a nil `name` leaves
 /// the Terminal unnamed. `newWorkspace` is a browsed directory, in place of

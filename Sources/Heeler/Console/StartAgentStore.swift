@@ -24,8 +24,9 @@ final class StartAgentStore {
         /// The start succeeded; the payload is the started Agent's Console
         /// identity, which the owner opens after the screen dismisses.
         case started(ConsoleAgent.ID)
-        /// A Template started a program that is no Agent until it reports. Its
-        /// row is in the Terminals list, and an Agent detail would read as gone.
+        /// A Template started a program that is running and is no Agent until it
+        /// reports. Its row is in the Terminals list, and an Agent detail would
+        /// read as gone.
         case startedAsTerminal
     }
 
@@ -251,10 +252,11 @@ final class StartAgentStore {
     private(set) var availableTemplates: [AgentTemplate] = []
 
     private let workspacesProvider: (Host.ID) -> [ConsoleWorkspace]
-    /// The agent names already live on a Host, so a generated default never
-    /// collides with them. Names only: herdr's duplicate check ignores
-    /// detected kind labels, but the Console reports those as names too, and
-    /// skipping them merely bumps the suffix.
+    /// The names already live on a Host, so a generated default never collides
+    /// with them. A herdr-core Host's Terminals hold theirs whether or not they
+    /// are Agents. herdr's duplicate check ignores detected kind labels, but the
+    /// Console reports those as names too, and skipping them merely bumps the
+    /// suffix.
     private let existingAgentNames: (Host.ID) -> Set<String>
     private let discoverAgentKinds: (Host.ID) async throws -> [SupportedAgentKind]
     private let discoverTemplates: (Host.ID) async throws -> [AgentTemplate]
@@ -273,6 +275,7 @@ final class StartAgentStore {
     /// missing-Agent placeholder over a launch that just succeeded.
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
     private let isAgentListed: (ConsoleAgent.ID) -> Bool
+    private let programExit: (ConsoleAgent.ID) -> ProgramExit?
     @ObservationIgnored private let recents: RecentWorkspaceStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
@@ -292,6 +295,7 @@ final class StartAgentStore {
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         isAgentListed: @escaping (ConsoleAgent.ID) -> Bool = { _ in true },
+        programExit: @escaping (ConsoleAgent.ID) -> ProgramExit? = { _ in nil },
         origin: LaunchOrigin? = nil,
         recents: RecentWorkspaceStore = RecentWorkspaceStore(),
         offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false }
@@ -308,6 +312,7 @@ final class StartAgentStore {
         self.startTemplate = startTemplate
         self.awaitAgentVisible = awaitAgentVisible
         self.isAgentListed = isAgentListed
+        self.programExit = programExit
         self.recents = recents
         // Pre-select when there is no choice to make.
         self.selectedHostID = origin?.hostID ?? (hosts.count == 1 ? hosts.first?.id : nil)
@@ -561,8 +566,12 @@ final class StartAgentStore {
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
             await awaitAgentVisible(startedID)
-            if case .template = launch, !isAgentListed(startedID) {
-                state = .startedAsTerminal
+            if case .template(let template, _) = launch {
+                if let exit = programExit(startedID) {
+                    state = .failed(Self.message(forTemplate: template.name, endedWith: exit))
+                } else {
+                    state = isAgentListed(startedID) ? .started(startedID) : .startedAsTerminal
+                }
             } else {
                 state = .started(startedID)
             }
@@ -780,6 +789,22 @@ final class StartAgentStore {
             "Resolving the Host's home directory timed out."
         default:
             "Could not determine the Host's home directory: \(error)"
+        }
+    }
+
+    /// The core reports a command `sh -c` could not find as exit code 127.
+    private static func message(forTemplate template: String, endedWith exit: ProgramExit) -> String {
+        switch exit.code {
+        case 0:
+            "\(template) finished right after it started, so no Agent is running."
+        case 127:
+            "\(template) ended right after it started, with exit code 127, so no Agent is running. "
+                + "That code means its command was not found: a Template runs without your shell, "
+                + "so it needs a full path or a PATH of its own."
+        case let code?:
+            "\(template) ended right after it started, with exit code \(code), so no Agent is running."
+        case nil:
+            "\(template) ended right after it started, so no Agent is running."
         }
     }
 

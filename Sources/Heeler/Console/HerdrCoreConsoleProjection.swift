@@ -301,11 +301,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 $0.reason = end.reason ?? "lost"
             }
             noteTurns(of: terminal) { _, _ in }
-        case .finished(let terminal, _):
+        case .finished(let terminal, let end):
             update(terminal) {
                 $0.state = "finished"
                 $0.pid = nil
                 $0.foreground = nil
+                $0.exitCode = end.exitCode
             }
             noteTurns(of: terminal) { _, _ in }
             sidebarRevision &+= 1
@@ -614,18 +615,39 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// shell nor a kind of Heeler's, so the Agent's kind comes from its record.
     /// A program Heeler does not know is no Agent until it reports.
     func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
-        let target =
-            if let workspace = request.newWorkspace {
-                HerdrCoreLaunch.Placement(cwd: workspace.directory)
-            } else {
-                try await placement(workspaceID: request.workspaceID, directory: request.cwd)
+        if let workspace = request.newWorkspace {
+            return try await inNewSpace(workspace) { placement in
+                try await runTemplate(request, placement: placement)
             }
+        }
+        return try await runTemplate(
+            request,
+            placement: try await placement(workspaceID: request.workspaceID, directory: request.cwd))
+    }
+
+    private func runTemplate(
+        _ request: TemplateLaunchRequest, placement: HerdrCoreLaunch.Placement
+    ) async throws -> Agent {
         let transport = try await session.withTransport { $0 }
         let record = try fold(
             runReply: try await transport.runTemplate(
                 params: HerdrCoreLaunch.templateRequest(
-                    template: request.template, name: request.name, placement: target)))
+                    template: request.template, name: request.name, placement: placement)))
         return agent(at: record, kind: HerdrCoreAgentRule.agent(in: record)?.kind ?? "unknown")
+    }
+
+    /// An exit is final even for a kept Terminal, and a lost program is not.
+    func programExit(ofPane paneID: String) -> ProgramExit? {
+        guard let record = records.first(where: { $0.address == paneID }), record.hasFinished else {
+            return nil
+        }
+        return ProgramExit(code: record.exitCode)
+    }
+
+    /// A name stays with its Terminal for as long as the core calls it live,
+    /// which covers a kept one between programs.
+    var heldTerminalNames: Set<String> {
+        Set(records.lazy.filter { !$0.hasFinished }.compactMap(\.name))
     }
 
     func createShellTerminal(

@@ -23,10 +23,11 @@ struct HerdrCoreLaunchTests {
 
     private static func record(
         _ address: String, cwd: String = "/work/app", labels: [String: String] = [:],
-        keep: Bool = false
+        keep: Bool = false, name: String? = nil
     ) -> JSONValue {
         .object([
             "address": .string(address), "cwd": .string(cwd), "state": .string("live"),
+            "name": name.map(JSONValue.string) ?? .null,
             "argv": .array([.string("/bin/zsh")]), "cols": .number(80), "rows": .number(24),
             "pid": .number(7), "keep": .bool(keep), "labels": .object(labels.mapValues(JSONValue.string)),
         ])
@@ -131,7 +132,7 @@ struct HerdrCoreLaunchTests {
             return StartAgentStore(
                 hosts: [host],
                 workspaces: { store.workspaces(for: $0) },
-                existingAgentNames: { _ in existingNames },
+                existingAgentNames: { existingNames.union(store.takenAgentNames(on: $0)) },
                 discoverAgentKinds: { try await store.availableAgentKinds(on: $0) },
                 discoverTemplates: { try await store.availableTemplates(on: $0) },
                 startTemplate: { try await store.startTemplate($0, on: $1) },
@@ -147,6 +148,7 @@ struct HerdrCoreLaunchTests {
                 },
                 awaitAgentVisible: { await store.waitForAgent($0, timeout: agentWait) },
                 isAgentListed: { id in store.agents.contains { $0.id == id } },
+                programExit: { store.programExit(of: $0) },
                 recents: RecentWorkspaceStore(defaults: UserDefaults(suiteName: "launch-\(UUID())") ?? .standard))
         }
 
@@ -407,7 +409,7 @@ struct HerdrCoreLaunchTests {
         defer { fixture.finish() }
 
         let first = try await fixture.launch(.omp, workspaceID: "space-s1")
-        let second = try await fixture.launch(.omp, workspaceID: "space-s1")
+        let second = try await fixture.launch(.pi, workspaceID: "space-s1")
 
         let labels = Self.labels(of: first)
         #expect(labels["herdr.space"] == "s1")
@@ -811,7 +813,7 @@ struct HerdrCoreLaunchTests {
         #expect(params["name"] == nil)
     }
 
-    @Test func aTemplateAtABrowsedDirectoryIsADerivedWorkspace() async throws {
+    @Test func aTemplateAtABrowsedDirectoryStartsANewDesktopSpace() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
         let form = try await formWithTemplatePicked(on: fixture)
@@ -822,9 +824,12 @@ struct HerdrCoreLaunchTests {
         let params = try #require(await fixture.transport.runs.last)
         #expect(Self.strings(params["argv"]) == ["reviewer"])
         #expect(params["cwd"]?.stringValue == "/srv/new")
-        #expect(params["labels"] == nil)
+        let labels = Self.labels(of: params)
+        let space = try #require(labels["herdr.space"])
+        #expect(space.wholeMatch(of: Self.spaceID) != nil)
+        #expect(try #require(labels["herdr.tab"]).wholeMatch(of: Self.tabID) != nil)
         let row = try #require(fixture.store.agents.first { $0.agent.paneID == "t101" })
-        #expect(row.agent.workspaceID == HerdrCoreOrganization.workspaceID(directory: "/srv/new"))
+        #expect(row.agent.workspaceID == "space-\(space)")
     }
 
     @Test func aTemplateAgentShowsWhatItsCommandRuns() async throws {
@@ -880,6 +885,151 @@ struct HerdrCoreLaunchTests {
 
         #expect(form.state == .startedAsTerminal)
         #expect(fixture.store.terminals.contains { $0.paneID == "t101" })
+    }
+
+    // MARK: A Template's program ending
+
+    private static func finished(
+        sequence: Int = 2, terminal: String = "t101", reason: String = "exited", exitCode: Int?,
+        signal: Int? = nil
+    ) -> Data {
+        event(
+            sequence: sequence, type: "finished", terminal: terminal,
+            data: .object([
+                "reason": .string(reason), "exit_code": exitCode.map { .number(Double($0)) } ?? .null,
+                "signal": signal.map { .number(Double($0)) } ?? .null, "finished_ms": .number(5),
+            ]))
+    }
+
+    @Test(arguments: [
+        (
+            "exited", 127 as Int?, nil as Int?,
+            "reviewer ended right after it started, with exit code 127, so no Agent is running. "
+                + "That code means its command was not found: a Template runs without your shell, "
+                + "so it needs a full path or a PATH of its own."
+        ),
+        (
+            "exited", 1, nil,
+            "reviewer ended right after it started, with exit code 1, so no Agent is running."
+        ),
+        ("exited", 0, nil, "reviewer finished right after it started, so no Agent is running."),
+        ("killed", nil, 9, "reviewer ended right after it started, so no Agent is running."),
+    ])
+    func aTemplateWhoseProgramEndsDuringTheWaitSaysSoWithoutWaitingItOut(
+        reason: String, exitCode: Int?, signal: Int?, message: String
+    ) async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setTemplateCommand("nosuchtool --flag")
+        await fixture.transport.setTemplates([Self.template("reviewer")])
+        let form = fixture.startAgentForm(agentWait: .seconds(40))
+        await form.discoverAgents()
+        form.selectExistingWorkspace(fixture.derived)
+
+        let submit = Task { await form.submit() }
+        defer { submit.cancel() }
+        try await fixture.until("the Terminal") {
+            fixture.store.terminals.contains { $0.paneID == "t101" }
+        }
+        await fixture.transport.deliver(
+            Self.finished(reason: reason, exitCode: exitCode, signal: signal))
+        try await fixture.until("the form hearing of it") { form.state != .starting }
+
+        #expect(form.state == .failed(message))
+        #expect(form.canSubmit)
+        #expect(await fixture.transport.templateRuns == 1)
+        #expect(!fixture.store.terminals.contains { $0.paneID == "t101" })
+    }
+
+    /// With a first message the core answers only after the program ended, and
+    /// that end can be in before the answer.
+    @Test func aTemplateThatEndedBeforeItsAnswerReadsAsEnded() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setTemplates([Self.template("reviewer")])
+        let form = fixture.startAgentForm(agentWait: .seconds(40))
+        await form.discoverAgents()
+        form.selectExistingWorkspace(fixture.derived)
+        let created = try JSONEncoder().encode(
+            JSONValue.object([
+                "jsonrpc": .string("2.0"), "method": .string("event"),
+                "params": .object([
+                    "seq": .number(2), "type": .string("created"), "terminal": .string("t101"),
+                    "data": Self.record("t101", keep: true),
+                ]),
+            ]))
+        await fixture.transport.deliver(created)
+        try await fixture.until("the Terminal") {
+            fixture.store.terminals.contains { $0.paneID == "t101" }
+        }
+        await fixture.transport.deliver(Self.finished(sequence: 3, exitCode: 2))
+        try await fixture.until("its end") {
+            !fixture.store.terminals.contains { $0.paneID == "t101" }
+        }
+
+        await form.submit()
+
+        #expect(
+            form.state
+                == .failed(
+                    "reviewer ended right after it started, with exit code 2, so no Agent is running."))
+    }
+
+    // MARK: Names live Terminals hold
+
+    @Test func startingATemplateThatIsNoAgentYetAgainTakesTheNextName() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setTemplateCommand("/opt/mytool --flag")
+        await fixture.transport.setTemplates([Self.template("silent")])
+
+        let first = fixture.startAgentForm(agentWait: .milliseconds(20))
+        await first.discoverAgents()
+        first.selectExistingWorkspace(fixture.derived)
+        await first.submit()
+        #expect(first.state == .startedAsTerminal)
+
+        let second = fixture.startAgentForm(agentWait: .milliseconds(20))
+        await second.discoverAgents()
+        second.selectExistingWorkspace(fixture.derived)
+        #expect(second.defaultAgentName == "silent-2")
+        await second.submit()
+
+        #expect(second.state == .startedAsTerminal)
+        #expect(await fixture.transport.runs.map { $0["name"]?.stringValue } == ["silent", "silent-2"])
+    }
+
+    @Test func aTerminalThatEndedGivesItsNameBack() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setTemplateCommand("/opt/mytool --flag")
+        await fixture.transport.setTemplates([Self.template("silent")])
+        let first = fixture.startAgentForm(agentWait: .milliseconds(20))
+        await first.discoverAgents()
+        first.selectExistingWorkspace(fixture.derived)
+        await first.submit()
+
+        await fixture.transport.deliver(Self.finished(exitCode: 0))
+        try await fixture.until("its end") {
+            !fixture.store.terminals.contains { $0.paneID == "t101" }
+        }
+
+        let second = fixture.startAgentForm()
+        await second.discoverAgents()
+        #expect(second.defaultAgentName == "silent")
+    }
+
+    @Test func aShellHoldingAnAgentsNameBumpsTheDefault() async throws {
+        let fixture = try await Fixture(
+            host: host, terminals: [Self.record("t1", keep: true, name: "claude")])
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["claude"])
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(!fixture.store.agents.contains { $0.agent.paneID == "t1" })
+        #expect(form.defaultAgentName == "claude-2")
     }
 
     @Test(arguments: [
