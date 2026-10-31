@@ -349,6 +349,33 @@ struct HerdrCoreTransportE2ETests {
                 try await eventually { try await record().hasFinished }
                 #expect(try await record().exitCode == 0)
                 await session.end()
+
+                // Close: a kill ends a kept Terminal for good. What matters is
+                // the order of its lifecycle events, so nothing waits for a restart.
+                let kept: HerdrCoreTerminalRecord = try HerdrCoreWire.typed(
+                    try await transport.runTerminal(
+                        params: .object([
+                            "argv": .array(
+                                HerdrCoreShellLaunch.argv(
+                                    shell: shell, program: ["heeler-rc-stub", "--wait"]
+                                ).map(JSONValue.string)),
+                            "cwd": .string(launchHome), "keep": .bool(true),
+                            "env": .object(["HOME": .string(launchHome)]),
+                        ])))
+                #expect(kept.keep)
+                try await eventually {
+                    try await transport.readTerminal(kept.address).text.contains("marker=rc-sourced")
+                }
+                let events = try await transport.subscribeEvents()
+                try await transport.killTerminal(kept.address)
+                let firstLifecycle = try await Self.firstLifecycleEvent(of: kept.address, in: events)
+                await events.end()
+                guard case .finished(_, let end) = firstLifecycle else {
+                    Issue.record("The first lifecycle event after the kill was \(firstLifecycle)")
+                    throw CoreSSHFailure.fixture("no finished after the kill")
+                }
+                #expect(end.reason == "killed")
+
                 try await transport.close()
             } catch {
                 try? await transport.close()
@@ -356,6 +383,22 @@ struct HerdrCoreTransportE2ETests {
             }
             #expect(try await fixture.tripwireCalls().isEmpty)
         }
+    }
+
+    private static func firstLifecycleEvent(
+        of terminal: String, in stream: HerdrCoreEventStream
+    ) async throws -> HerdrCoreEvent {
+        for try await event in stream.events {
+            switch event {
+            case .finished(let address, _), .lost(let address, _):
+                if address == terminal { return event }
+            case .restarted(let record):
+                if record.address == terminal { return event }
+            default:
+                continue
+            }
+        }
+        throw CoreSSHFailure.timeout
     }
 
     @Test("labels and a seeded herdr-app document place Terminals, and the app never writes it")

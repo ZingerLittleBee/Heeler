@@ -89,6 +89,28 @@ extension HerdrCoreTransport {
                 params: .object(["terminal": .string(try HerdrCoreWire.address(address)), "lines": .number(0)]),
                 isMutation: false))
     }
+
+    /// Ends a Terminal for good with `terminal.kill`, sent once as a mutation. A
+    /// kill is final even on a kept Terminal, so keep stays as it is. Unless the
+    /// core says the Terminal ended, or no longer knows it, this throws
+    /// `.coreMutationOutcomeUnknown`: a core that gave up on a stuck program still
+    /// ends the Terminal when the program goes.
+    func killTerminal(_ address: String) async throws {
+        let reply: JSONValue
+        do {
+            reply = try await call(
+                "terminal.kill",
+                params: .object(["terminal": .string(try HerdrCoreWire.address(address))]),
+                isMutation: true)
+        } catch let refusal as HerdrAPIError where refusal.code == "not_found" {
+            return
+        }
+        guard let record = try? HerdrCoreWire.typed(reply) as HerdrCoreTerminalRecord,
+            record.hasFinished
+        else {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+    }
 }
 
 /// The parts of an SSH connection a herdr-core transport uses. Real SSH is
