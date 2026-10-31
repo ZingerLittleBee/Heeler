@@ -83,7 +83,7 @@ struct WorkspaceTerminalDetailView: View {
                     isReturning: false,
                     isClosingTerminal: isClosing,
                     onCloseTerminal: console.capabilities(for: terminal.hostID).closeTab
-                        ? { closeTerminal() } : nil,
+                        ? { @MainActor @Sendable in closeTerminal() } : nil,
                     managesLifecycle: false,
                     offersTakeOver: console.capabilities(for: terminal.hostID).takeOver,
                     surfaceRetention: entry.surfaceRetention,
