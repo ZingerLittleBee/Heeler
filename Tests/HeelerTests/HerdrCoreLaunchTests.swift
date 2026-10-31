@@ -124,7 +124,9 @@ struct HerdrCoreLaunchTests {
             return try #require(await transport.runs.last)
         }
 
-        func startAgentForm(existingNames: Set<String> = []) -> StartAgentStore {
+        func startAgentForm(
+            existingNames: Set<String> = [], agentWait: Duration = .seconds(5)
+        ) -> StartAgentStore {
             let store = store
             return StartAgentStore(
                 hosts: [host],
@@ -143,7 +145,8 @@ struct HerdrCoreLaunchTests {
                         try await store.startAgentInNewWorkspace(params, workspace: workspace, on: hostID)
                     }
                 },
-                awaitAgentVisible: { await store.waitForAgent($0) },
+                awaitAgentVisible: { await store.waitForAgent($0, timeout: agentWait) },
+                isAgentListed: { id in store.agents.contains { $0.id == id } },
                 recents: RecentWorkspaceStore(defaults: UserDefaults(suiteName: "launch-\(UUID())") ?? .standard))
         }
 
@@ -804,6 +807,21 @@ struct HerdrCoreLaunchTests {
         try await fixture.until("the report") {
             fixture.store.agents.contains { $0.agent.paneID == "t101" }
         }
+    }
+
+    @Test func aTemplateThatIsNoAgentYetClosesTheFormWithoutOpeningAnAgent() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setTemplateCommand("/opt/mytool --flag")
+        await fixture.transport.setTemplates([Self.template("reviewer")])
+        let form = fixture.startAgentForm(agentWait: .milliseconds(20))
+        await form.discoverAgents()
+        form.selectExistingWorkspace(fixture.derived)
+
+        await form.submit()
+
+        #expect(form.state == .startedAsTerminal)
+        #expect(fixture.store.terminals.contains { $0.paneID == "t101" })
     }
 
     @Test(arguments: [

@@ -47,6 +47,7 @@ struct StartAgentView: View {
                     }
                 },
                 awaitAgentVisible: { await console.waitForAgent($0) },
+                isAgentListed: { id in console.agents.contains { $0.id == id } },
                 origin: origin))
     }
 
@@ -292,6 +293,8 @@ struct StartAgentView: View {
                 if case .started(let id) = store.state {
                     dismiss()
                     onStarted(id)
+                } else if store.state == .startedAsTerminal {
+                    dismiss()
                 }
             }
             .task(id: store.selectedHostID) {

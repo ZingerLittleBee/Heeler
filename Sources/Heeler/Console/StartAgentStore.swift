@@ -24,6 +24,9 @@ final class StartAgentStore {
         /// The start succeeded; the payload is the started Agent's Console
         /// identity, which the owner opens after the screen dismisses.
         case started(ConsoleAgent.ID)
+        /// A Template started a program that is no Agent until it reports. Its
+        /// row is in the Terminals list, and an Agent detail would read as gone.
+        case startedAsTerminal
     }
 
     enum AgentDiscoveryState: Equatable {
@@ -267,6 +270,7 @@ final class StartAgentStore {
     /// lands; waiting here keeps the opened detail from flashing its
     /// missing-Agent placeholder over a launch that just succeeded.
     private let awaitAgentVisible: (ConsoleAgent.ID) async -> Void
+    private let isAgentListed: (ConsoleAgent.ID) -> Bool
     @ObservationIgnored private let recents: RecentWorkspaceStore
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
@@ -285,6 +289,7 @@ final class StartAgentStore {
         remoteHome: @escaping (Host.ID) async throws -> String,
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
+        isAgentListed: @escaping (ConsoleAgent.ID) -> Bool = { _ in true },
         origin: LaunchOrigin? = nil,
         recents: RecentWorkspaceStore = RecentWorkspaceStore()
     ) {
@@ -298,6 +303,7 @@ final class StartAgentStore {
         self.start = start
         self.startTemplate = startTemplate
         self.awaitAgentVisible = awaitAgentVisible
+        self.isAgentListed = isAgentListed
         self.recents = recents
         // Pre-select when there is no choice to make.
         self.selectedHostID = origin?.hostID ?? (hosts.count == 1 ? hosts.first?.id : nil)
@@ -545,7 +551,11 @@ final class StartAgentStore {
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
             await awaitAgentVisible(startedID)
-            state = .started(startedID)
+            if case .template = launch, !isAgentListed(startedID) {
+                state = .startedAsTerminal
+            } else {
+                state = .started(startedID)
+            }
         } catch {
             var kind: SupportedAgentKind?
             if case .kind(let launched, _, _) = launch { kind = launched }
