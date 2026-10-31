@@ -138,7 +138,7 @@ struct ConsoleView: View {
     /// raised keyboard would lay out full height first and shrink a moment
     /// later — an extra reflow, and a Connecting dialog that visibly jumps
     /// from the middle of the screen to the middle of the terminal.
-    @State private var keyboardInset = TerminalKeyboardInset(tracksKeyboardMotion: true)
+    @State private var keyboardInset = TerminalKeyboardInset()
     /// Per list tab: hiding one list's sidebar leaves the other's alone, and
     /// a split view coming back on screen cannot overwrite a hide made in
     /// the other tab with its own stale state.
