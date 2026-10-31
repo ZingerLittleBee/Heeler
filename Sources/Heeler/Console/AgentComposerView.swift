@@ -15,8 +15,9 @@ enum AgentComposerKeyboardPresentation: Equatable {
 
 /// Pulling the Composer's grabber down to hide the keyboard. The system's
 /// interactive dismissal belongs to scroll views and starts only once the
-/// finger reaches the keyboard, a whole card away from here, so the card
-/// follows the finger itself and the keyboard goes on release.
+/// finger reaches the keyboard, a whole card away from here. So the grabber
+/// alone follows the finger, against growing resistance, and the keyboard
+/// goes the moment the pull is long enough, without waiting for the release.
 enum AgentComposerKeyboardPull {
     /// The grabber's touch area: it reaches this far above the card, into
     /// the gap under the status line, and stops short of the input's text.
@@ -27,20 +28,31 @@ enum AgentComposerKeyboardPull {
 
     private static let hidingDistance: CGFloat = 44
     private static let flickDistance: CGFloat = 120
-    private static let followFactor: CGFloat = 0.5
-    private static let maximumOffset: CGFloat = 44
+    /// How far the grabber could go, however long the pull.
+    private static let travel: CGFloat = 18
+    /// `UIScrollView`'s rubber-band coefficient.
+    private static let resistance: CGFloat = 0.55
+    private static let tickSpacing: CGFloat = 2
 
-    /// Downward only, and slower than the finger: the card is sliding behind
-    /// the keyboard.
-    static func offset(translation: CGFloat) -> CGFloat {
-        min(max(0, translation) * followFactor, maximumOffset)
+    /// Downward only, each point of the finger moving the grabber less.
+    static func grabberOffset(translation: CGFloat) -> CGFloat {
+        let pull = max(0, translation)
+        return (1 - 1 / (pull * resistance / travel + 1)) * travel
     }
 
-    /// Far enough on release, or flicked down. Flinging back up, or letting
-    /// go above the start, cancels.
-    static func hidesKeyboard(translation: CGFloat, predictedTranslation: CGFloat) -> Bool {
-        guard translation > 0, predictedTranslation >= hidingDistance else { return false }
-        return translation >= hidingDistance || predictedTranslation >= flickDistance
+    /// One haptic per step of the grabber's own movement, so they space out
+    /// as the resistance grows.
+    static func tick(translation: CGFloat) -> Int {
+        Int(grabberOffset(translation: translation) / tickSpacing)
+    }
+
+    static func reachesHidingDistance(translation: CGFloat) -> Bool {
+        translation >= hidingDistance
+    }
+
+    /// A release short of the distance that was still heading down fast.
+    static func isFlickDown(translation: CGFloat, predictedTranslation: CGFloat) -> Bool {
+        translation > 0 && predictedTranslation >= flickDistance
     }
 }
 
@@ -233,10 +245,9 @@ struct AgentComposerView: View {
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
     @State private var isDropTargeted = false
-    /// How far the card follows a pull on its grabber; the Composer's layout,
-    /// and so the terminal's size, stays put.
-    @GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.3)))
-    private var keyboardPullOffset: CGFloat = 0
+    /// The finger's travel from where it took the grabber.
+    @GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.35, bounce: 0.4)))
+    private var keyboardPull: CGFloat = 0
 
     private var isToolsKeyboardPresented: Bool {
         keyboardPresentation == .tools
@@ -288,7 +299,6 @@ struct AgentComposerView: View {
                     accept: { store.acceptDrop($0) }
                 )
                 .padding(.horizontal, 12)
-                .offset(y: keyboardPullOffset)
             }
             .padding(.vertical, 8)
 
@@ -342,8 +352,9 @@ struct AgentComposerView: View {
     /// hide. The Switcher row's keyboard button does the same for VoiceOver.
     private var keyboardGrabber: some View {
         Capsule()
-            .fill(keyboardPullOffset > 0 ? HierarchicalShapeStyle.secondary : .tertiary)
+            .fill(keyboardPull > 0 ? HierarchicalShapeStyle.secondary : .tertiary)
             .frame(width: 36, height: 5)
+            .offset(y: AgentComposerKeyboardPull.grabberOffset(translation: keyboardPull))
             .padding(.top, 5 + AgentComposerKeyboardPull.touchOverhang)
             .frame(
                 width: AgentComposerKeyboardPull.touchWidth,
@@ -356,18 +367,29 @@ struct AgentComposerView: View {
             .animation(.easeOut(duration: 0.2), value: isKeyboardPresented)
             .allowsHitTesting(isKeyboardPresented)
             .gesture(
-                // Global, since the card moves under the finger.
-                DragGesture(minimumDistance: 6, coordinateSpace: .global)
-                    .updating($keyboardPullOffset) { value, offset, _ in
-                        offset = AgentComposerKeyboardPull.offset(translation: value.translation.height)
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .updating($keyboardPull) { value, pull, _ in
+                        let translation = value.translation.height
+                        if isKeyboardPresented,
+                            AgentComposerKeyboardPull.tick(translation: pull)
+                                != AgentComposerKeyboardPull.tick(translation: translation)
+                        {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                        pull = translation
+                    }
+                    .onChanged { value in
+                        guard AgentComposerKeyboardPull.reachesHidingDistance(translation: value.translation.height)
+                        else { return }
+                        hideKeyboardFromPull()
                     }
                     .onEnded { value in
                         guard
-                            AgentComposerKeyboardPull.hidesKeyboard(
+                            AgentComposerKeyboardPull.isFlickDown(
                                 translation: value.translation.height,
                                 predictedTranslation: value.predictedEndTranslation.height)
                         else { return }
-                        hideKeyboard()
+                        hideKeyboardFromPull()
                     }
             )
             .accessibilityHidden(true)
@@ -671,6 +693,13 @@ struct AgentComposerView: View {
     private func hideKeyboard() {
         setKeyboardPresentation(.hidden)
         isInputFocused = false
+    }
+
+    /// Once per pull: the finger is often still moving after this.
+    private func hideKeyboardFromPull() {
+        guard isKeyboardPresented else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        hideKeyboard()
     }
 
     private func switchKeyboard() {

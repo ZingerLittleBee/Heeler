@@ -67,26 +67,44 @@ struct AgentComposerCollapseTests {
 
 @Suite("Agent Composer keyboard pull")
 struct AgentComposerKeyboardPullTests {
-    @Test func theCardFollowsDownwardOnlyAndStopsAtItsLimit() {
-        #expect(AgentComposerKeyboardPull.offset(translation: -30) == 0)
-        #expect(AgentComposerKeyboardPull.offset(translation: 0) == 0)
-        #expect(AgentComposerKeyboardPull.offset(translation: 20) == 10)
-        #expect(AgentComposerKeyboardPull.offset(translation: 400) == 44)
+    private typealias Pull = AgentComposerKeyboardPull
+
+    @Test func theGrabberMovesDownOnlyAndLessThanTheFinger() {
+        #expect(Pull.grabberOffset(translation: -30) == 0)
+        #expect(Pull.grabberOffset(translation: 0) == 0)
+        for translation: CGFloat in [4, 20, 44, 400] {
+            #expect(Pull.grabberOffset(translation: translation) < translation)
+        }
     }
 
-    @Test func aFarEnoughReleaseHidesTheKeyboard() {
-        #expect(AgentComposerKeyboardPull.hidesKeyboard(translation: 44, predictedTranslation: 44))
-        #expect(!AgentComposerKeyboardPull.hidesKeyboard(translation: 43, predictedTranslation: 43))
+    @Test func eachPointOfThePullMovesTheGrabberLess() {
+        let early = Pull.grabberOffset(translation: 10) - Pull.grabberOffset(translation: 0)
+        let late = Pull.grabberOffset(translation: 40) - Pull.grabberOffset(translation: 30)
+        #expect(late < early)
+        #expect(Pull.grabberOffset(translation: 10_000) < 18)
+    }
+
+    @Test func theKeyboardGoesAtTheDistanceWithoutARelease() {
+        #expect(!Pull.reachesHidingDistance(translation: 43))
+        #expect(Pull.reachesHidingDistance(translation: 44))
     }
 
     @Test func aShortFlickDownHidesTheKeyboard() {
-        #expect(AgentComposerKeyboardPull.hidesKeyboard(translation: 12, predictedTranslation: 200))
-        #expect(!AgentComposerKeyboardPull.hidesKeyboard(translation: 12, predictedTranslation: 60))
+        #expect(Pull.isFlickDown(translation: 12, predictedTranslation: 200))
+        #expect(!Pull.isFlickDown(translation: 12, predictedTranslation: 60))
+        #expect(!Pull.isFlickDown(translation: -10, predictedTranslation: 200))
     }
 
-    @Test func flingingBackUpOrEndingAboveTheStartCancels() {
-        #expect(!AgentComposerKeyboardPull.hidesKeyboard(translation: 90, predictedTranslation: -40))
-        #expect(!AgentComposerKeyboardPull.hidesKeyboard(translation: -10, predictedTranslation: 200))
+    @Test func hapticsFollowTheGrabberSoTheySpaceOutUnderResistance() {
+        #expect(Pull.tick(translation: 0) == 0)
+        #expect(Pull.tick(translation: -30) == 0)
+        let ticks = stride(from: CGFloat(0), through: 44, by: 1).map { Pull.tick(translation: $0) }
+        #expect(ticks == ticks.sorted())
+        #expect(ticks.last ?? 0 >= 3, "a pull to the distance should be felt: \(ticks)")
+        // Finger points spent per tick grow along the pull.
+        let spans = Dictionary(grouping: ticks, by: { $0 }).filter { $0.key > 0 }
+            .sorted { $0.key < $1.key }.dropLast().map(\.value.count)
+        #expect(spans == spans.sorted(), "\(spans)")
     }
 }
 
