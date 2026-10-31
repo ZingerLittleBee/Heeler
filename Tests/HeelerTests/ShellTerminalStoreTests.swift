@@ -878,8 +878,12 @@ struct ShellTerminalStoreTests {
 
         await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
         await opening.waitForEntry()
+        store.viewDidResize(cols: 100, rows: 30)
         await opening.open()
-        try #require(await eventually { await transport.hasLiveAttachSession })
+        // The catch-up resize follows the point a writer used to be installed.
+        try #require(await eventually {
+            await transport.attachInputs.contains(.resize(cols: 100, rows: 30))
+        })
         #expect(store.terminalStatus == .reconnecting)
         // The channel is open, but the screen still shows the lost session.
         store.send(Data("y".utf8))

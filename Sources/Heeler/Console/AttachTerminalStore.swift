@@ -474,13 +474,20 @@ final class AttachTerminalStore {
             return
         }
         self.session = session
-        let inputGeneration = input.beginSession(
-            writer: { data in session.send(data) },
-            scroller: { sequence, rows in
-                session.scroll(sequence, rows: rows)
-            },
-            discardPendingScroll: { session.discardPendingScroll() })
-        self.inputGeneration = inputGeneration
+        func beginInput() -> TerminalInputController.SessionGeneration {
+            let generation = input.beginSession(
+                writer: { data in session.send(data) },
+                scroller: { sequence, rows in
+                    session.scroll(sequence, rows: rows)
+                },
+                discardPendingScroll: { session.discardPendingScroll() })
+            self.inputGeneration = generation
+            return generation
+        }
+        // A reattach opens its channel while the screen still shows the lost
+        // session. A key typed at that screen would answer whatever the pane has
+        // moved on to, so its input begins with the new output.
+        var inputGeneration = status == .reconnecting ? nil : beginInput()
         if let latestCols = cols, let latestRows = rows,
             latestCols != initialCols || latestRows != initialRows
         {
@@ -497,8 +504,10 @@ final class AttachTerminalStore {
                 // connecting. This does not prove that a renderer presented
                 // the bytes on screen.
                 if status == .connecting || status == .reconnecting {
+                    let liveGeneration = inputGeneration ?? beginInput()
+                    inputGeneration = liveGeneration
                     status = .live
-                    input.sessionDidBecomeLive(inputGeneration)
+                    input.sessionDidBecomeLive(liveGeneration)
                 }
                 #if DEBUG
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
@@ -513,8 +522,9 @@ final class AttachTerminalStore {
         finishSession(inputGeneration)
     }
 
-    private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration) {
+    private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration?) {
         self.session = nil
+        guard let inputGeneration else { return }
         input.endSession(
             inputGeneration,
             preservingPendingPaste: preservesPendingPasteOnStop)
