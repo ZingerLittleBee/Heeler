@@ -78,7 +78,8 @@ final class PinnedAgentsStore {
 
     /// Drops one pin because the user destroyed its pane on purpose (tab
     /// close). Unlike a pane that vanishes on its own, an explicitly closed
-    /// tab should not resurrect as a pin if herdr reuses the id later.
+    /// tab should not resurrect as a pin if herdr reuses the id later. A
+    /// herdr-core Host also calls this when the core removes a Terminal.
     func removePin(hostID: Host.ID, paneID: String) {
         guard isPinned(hostID: hostID, paneID: paneID) else { return }
         entries.removeAll { $0.hostID == hostID && $0.paneID == paneID }
