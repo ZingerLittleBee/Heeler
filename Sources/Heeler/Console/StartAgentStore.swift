@@ -354,6 +354,12 @@ final class StartAgentStore {
         offersWorkspaceAndTabNames || selectedHostID.map(offersDesktopAppNames) == true
     }
 
+    /// A herdr-core Host finds Agents through the user's interactive shell
+    /// (ADR 0032), not the Host's PATH.
+    var discoversThroughUserShell: Bool {
+        selectedHost?.serverKind == .herdrCore
+    }
+
     private var selectedHost: Host? {
         hosts.first(where: { $0.id == selectedHostID })
     }

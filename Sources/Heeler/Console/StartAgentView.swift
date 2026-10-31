@@ -213,7 +213,9 @@ struct StartAgentView: View {
                             Text("Its first start can take up to 35 seconds.")
                         }
                     } else {
-                        Text("Agents installed and launchable from this Host's PATH.")
+                        Text(store.discoversThroughUserShell
+                            ? "Agents your own shell on this Host can run."
+                            : "Agents installed and launchable from this Host's PATH.")
                     }
                 }
 
