@@ -280,6 +280,105 @@ struct HerdrCoreCloseTests {
 
         #expect(await transport.kills.isEmpty)
     }
+
+    // MARK: Pins
+
+    private func pin(_ addresses: String..., in store: ConsoleStore) {
+        for address in addresses { store.togglePin(hostID: host.id, paneID: address) }
+    }
+
+    private func isPinned(_ address: String, in store: ConsoleStore) -> Bool {
+        store.pins.isPinned(hostID: host.id, paneID: address)
+    }
+
+    @Test func anAgentClosedFromItsRowLosesItsPinAndOthersKeepTheirs() async throws {
+        let (store, _) = try await started([Self.agent("t1"), Self.agent("t2")])
+        defer { store.setHosts([]) }
+        pin("t1", "t2", in: store)
+
+        try await store.closeAgent(try #require(store.agents.first { $0.agent.paneID == "t1" }))
+
+        #expect(!isPinned("t1", in: store))
+        #expect(isPinned("t2", in: store))
+    }
+
+    @Test func everyAgentThatClosesWithItsTabLosesItsPin() async throws {
+        let (store, transport) = try await started([
+            Self.agent("t1", labels: Self.tab("tb1")), Self.agent("t9", labels: Self.tab("tb2")),
+        ])
+        defer { store.setHosts([]) }
+        let row = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        await transport.deliver(
+            Self.event(
+                sequence: 2, type: "created", terminal: "t2", data: Self.agent("t2", labels: Self.tab("tb1"))))
+        try await waitUntil("the other Agent") { store.agents.contains { $0.agent.paneID == "t2" } }
+        pin("t1", "t2", "t9", in: store)
+
+        try await store.closeAgent(row)
+
+        #expect(!isPinned("t1", in: store))
+        #expect(!isPinned("t2", in: store))
+        #expect(isPinned("t9", in: store))
+    }
+
+    @Test func anAgentBesideOtherPanesLosesOnlyItsOwnPin() async throws {
+        let (store, _) = try await started([
+            Self.agent("t1", labels: Self.tab("tb1")), Self.agent("t2", labels: Self.tab("tb1")),
+        ])
+        defer { store.setHosts([]) }
+        pin("t1", "t2", in: store)
+
+        try await store.closeAgent(try #require(store.agents.first { $0.agent.paneID == "t1" }))
+
+        #expect(!isPinned("t1", in: store))
+        #expect(isPinned("t2", in: store))
+    }
+
+    @Test func aKillWithNoAnswerKeepsThePin() async throws {
+        let (store, transport) = try await started([Self.agent("t1")])
+        defer { store.setHosts([]) }
+        pin("t1", in: store)
+        await transport.setKillAnswer(.failure(TransportError.coreMutationOutcomeUnknown), for: "t1")
+        let row = try #require(store.agents.first)
+
+        await #expect(throws: TransportError.coreMutationOutcomeUnknown) {
+            try await store.closeAgent(row)
+        }
+
+        #expect(isPinned("t1", in: store))
+    }
+
+    // MARK: Saying so
+
+    private static let unconfirmed =
+        "The Host did not confirm the close. The Terminal may already have ended, "
+        + "so check it before trying again."
+
+    @Test func aRowsCloseSaysSoWhenTheHostDidNotConfirm() {
+        #expect(
+            ConsoleStore.tabCloseFailureMessage(for: TransportError.coreMutationOutcomeUnknown)
+                == Self.unconfirmed)
+    }
+
+    /// The detail's Close asks once for each confirmation.
+    @Test func aDetailsCloseSaysSoAndDoesNotAskAgain() async {
+        var closes = 0
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            closes += 1
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+
+        await store.confirmClose()
+
+        #expect(store.state == .failed(Self.unconfirmed))
+        #expect(closes == 1)
+    }
+
+    // MARK: What a core Host offers
+
+    @Test func aCoreHostOffersCloseOnItsRowsAndDetails() {
+        #expect(HostCapabilities(serverKind: .herdrCore).closeTab)
+    }
 }
 
 /// A kill on the real link and transport, over a scripted Host.
