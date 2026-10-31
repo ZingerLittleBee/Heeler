@@ -44,6 +44,23 @@ struct HarnessConfigHunk: Codable, Equatable, Sendable {
         added = Data(new[prefix..<(new.count - suffix)].joined())
     }
 
+    private init(offset: Int, removed: Data, added: Data) {
+        self.offset = offset
+        self.removed = removed
+        self.added = added
+    }
+
+    /// What this device keeps of the change. Writing after a last line with no
+    /// newline reads as changing that line, though its bytes stay, so they are
+    /// left out: `reverted(from:)` still restores the file byte for byte.
+    var remembered: HarnessConfigHunk {
+        guard !removed.isEmpty, removed.last != UInt8(ascii: "\n"), added.starts(with: removed) else {
+            return self
+        }
+        return HarnessConfigHunk(
+            offset: offset + removed.count, removed: Data(), added: Data(added.dropFirst(removed.count)))
+    }
+
     /// `base` with this change made.
     func applied(to base: Data) -> Data {
         var result = base.prefix(offset)
@@ -203,7 +220,7 @@ struct HarnessConfigEditor: Sendable {
         }
         return HarnessConfigAppliedEdit(
             id: makeID(), editID: change.editID, harness: change.harness, path: change.path,
-            hunk: change.hunk, createdFile: change.createsFile,
+            hunk: change.hunk.remembered, createdFile: change.createsFile,
             writtenDigest: Self.digest(change.after), appliedAt: now())
     }
 

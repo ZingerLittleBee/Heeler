@@ -102,6 +102,31 @@ import Testing
         #expect(try JSONDecoder().decode(HarnessConfigAppliedEdit.self, from: stored) == applied)
     }
 
+    /// A file with no last newline: appending adds one to its last line, which
+    /// reads as a change of that line and may be where a token sits.
+    @Test func whatIsRememberedLeavesOutALastLineWithNoNewline() async throws {
+        let original = Data("[agent]\nsecret = \"t0ken\"".utf8)
+        let files = InMemoryHostFiles(files: [Self.path: original])
+        let editor = HarnessConfigEditor(files: files)
+        let edit = HarnessConfigEdit(id: "a", harness: "Tool", path: Self.path) { before in
+            var after = before ?? Data()
+            after.append(Data("\n\n[ui]\nx = 1\n".utf8))
+            return .change(to: after)
+        }
+        let token = Data("t0ken".utf8)
+
+        let applied = try await editor.apply(try await pending(files, edit: edit))
+
+        #expect(applied.hunk.removed.isEmpty)
+        #expect(applied.hunk.added.range(of: token) == nil)
+        #expect(applied.hunk.added == Data("\n\n[ui]\nx = 1\n".utf8))
+        let stored = try JSONEncoder().encode(applied)
+        #expect(try JSONDecoder().decode(HarnessConfigAppliedEdit.self, from: stored).hunk == applied.hunk)
+
+        try await editor.undo(applied)
+        #expect(await files.files[Self.path] == original)
+    }
+
     // MARK: Compare and swap
 
     @Test func applyRefusesWhenTheFileChangedAfterItWasRead() async throws {
