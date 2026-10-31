@@ -196,7 +196,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         case .title(let terminal, let title):
             update(terminal) { $0.title = title }
         case .foreground(let terminal, let foreground):
-            update(terminal) { $0.foreground = foreground }
+            update(terminal) { $0.noteForeground(foreground) }
         case .status(let terminal, let status, let records, let reported):
             update(terminal) {
                 $0.status = status

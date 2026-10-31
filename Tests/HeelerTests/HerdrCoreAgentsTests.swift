@@ -229,6 +229,79 @@ struct HerdrCoreAgentsTests {
         #expect(shells(store) == ["t1"])
     }
 
+    /// Delivers a cleared foreground, then a title to know it has been folded.
+    private func clearForeground(
+        of address: String, sequence: Int, store: ConsoleStore, transport: ScriptedCoreTransport
+    ) async throws {
+        await transport.deliver(
+            Self.event(sequence: sequence, type: "foreground", terminal: address, data: .null))
+        let title = "after the clear \(sequence)"
+        await transport.deliver(
+            Self.event(
+                sequence: sequence + 1, type: "title", terminal: address,
+                data: .object(["title": .string(title)])))
+        try await waitUntil("the clear folded") {
+            store.terminals.first { $0.paneID == address }?.pane.terminalTitle == title
+        }
+    }
+
+    @Test func aClearedForegroundBringsNoExitedAgentBackFromTheLaunchCommand() async throws {
+        let wrapper = ["/bin/zsh", "-ic", "\"$@\"; exec \"$0\" -i", "/bin/zsh", "claude"]
+        let (store, transport) = try await started([
+            Self.record(
+                "t1", argv: wrapper, foreground: Self.foreground(["/bin/zsh", "-i"]),
+                status: Self.report("working", app: "claude-code"))
+        ])
+        defer { store.setHosts([]) }
+        #expect(store.agents.isEmpty)
+
+        // `printf x | less` in the shell the Agent left: the group's leader is gone.
+        try await clearForeground(of: "t1", sequence: 2, store: store, transport: transport)
+        #expect(store.agents.isEmpty)
+        #expect(shells(store) == ["t1"])
+    }
+
+    @Test func aClearedForegroundKeepsTheAgentItWasSampledHolding() async throws {
+        let (store, transport) = try await started([
+            Self.record(
+                "t1", foreground: Self.foreground(["claude"]),
+                status: Self.report("working", app: "claude-code"))
+        ])
+        defer { store.setHosts([]) }
+        #expect(agent(store, "t1")?.agent.kind == "claude")
+
+        try await clearForeground(of: "t1", sequence: 2, store: store, transport: transport)
+        #expect(agent(store, "t1")?.agent.kind == "claude")
+        #expect(agent(store, "t1")?.agent.status == .working)
+        #expect(agent(store, "t1")?.directory == "/work/app/src")
+        #expect(shells(store).isEmpty)
+
+        await transport.deliver(
+            Self.event(
+                sequence: 4, type: "foreground", terminal: "t1", data: Self.foreground(["/bin/zsh", "-i"])))
+        try await waitUntil("the next sample decides") { store.agents.isEmpty }
+        #expect(shells(store) == ["t1"])
+    }
+
+    /// A record omits a cleared foreground, so a reconnect's snapshot cannot say
+    /// the shell the wrapper continued as has one. The first sample speaks for it.
+    @Test func aDesktopWrapperLaunchWaitsForItsFirstSample() async throws {
+        let wrapper = ["/bin/zsh", "-ic", "\"$@\"; exec \"$0\" -i", "/bin/zsh", "claude"]
+        let (store, transport) = try await started([
+            Self.record("t1", argv: wrapper, status: Self.report("idle", app: "claude-code"))
+        ])
+        defer { store.setHosts([]) }
+        #expect(store.agents.isEmpty)
+        #expect(shells(store) == ["t1"])
+
+        await transport.deliver(
+            Self.event(
+                sequence: 2, type: "foreground", terminal: "t1",
+                data: Self.foreground(wrapper, name: "zsh", pid: 77)))
+        try await waitUntil("the sample names it") { agent(store, "t1")?.agent.kind == "claude" }
+        #expect(agent(store, "t1")?.agent.status == .idle)
+    }
+
     @Test func aReportFromAProgramThatLeftEndsNothingButNamesNothing() async throws {
         let (store, transport) = try await started([Self.claude("t1", state: "idle")])
         defer { store.setHosts([]) }

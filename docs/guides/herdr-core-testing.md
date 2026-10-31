@@ -140,6 +140,7 @@ Terminal. A status report is `printf '\033]7501;state=working:app=x\007'`, as th
 | Unknown app | A program that is not a shell reports an `app` Heeler does not know, or none | An Agent with a generic glyph and the program's word as its kind, and no Chat |
 | Shell exit | Quit a harness back to its shell | The Agent ends and the row returns to the Terminals tab, whatever it last reported |
 | Wrappers | A harness started through `bash -lc`, and through the desktop app's fish wrapper | The Agent is the harness underneath. New arguments on the fish wrapper's pid end it |
+| Cleared foreground | Quit a harness started through the desktop app's bash wrapper, then run `printf x \| less` in the shell it left, and background and reopen Heeler while it runs | No Agent comes back, at the capture's `null` `foreground` event or after the reconnect |
 | Kept restart | `kill -9` a harness started with `keep` | No Agent between `lost` and `restarted` |
 
 ## Agent Row Layout

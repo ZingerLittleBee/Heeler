@@ -1,5 +1,5 @@
 {
-  "description": "Which Agent a herdr-core Terminal record holds (ADR 0032), for the app's HerdrCoreAgentRule and the Helper. A case's record is the core's own shape; expected is null when the Terminal hosts no Agent. known is false for a program Heeler does not know: a sanitized kind, the generic glyph and no Chat. A report of done reads Idle until Done per device.",
+  "description": "Which Agent a herdr-core Terminal record holds (ADR 0032), for the app's HerdrCoreAgentRule and the Helper. A case's record is the core's own shape; foregroundEvents, when a case has them, are the data of the `foreground` events that follow that record, in order, null for a cleared one; expected is null when the Terminal hosts no Agent. known is false for a program Heeler does not know: a sanitized kind, the generic glyph and no Chat. A report of done reads Idle until Done per device.",
   "provisional": true,
   "provisionalReason": "Built from versioned compatibility observations, the desktop app's wrapper source and PR #538's recognizer tests; recordings of real harnesses on hc-lab may add cases.",
   "coreVersion": "0.1.13",
@@ -1143,7 +1143,101 @@
     },
     {
       "name": "the desktop's remote wrapper names its command",
-      "source": "PR #538 HerdrCoreWireTests exactDesktopShellWrappersRevealTheCommandPosition; herdr-app v0.1.9 src/window.rs:2225 remote agent argv",
+      "source": "PR #538 HerdrCoreWireTests exactDesktopShellWrappersRevealTheCommandPosition; herdr-app v0.1.9 src/window.rs:2225 remote agent argv; launch-only record moved to the foreground by ADR 0032: a launch that continues as a shell names nothing",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "sh",
+          "argv": [
+            "sh",
+            "-c",
+            "\"$@\"; exec \"${SHELL:-sh}\" -i",
+            "sh",
+            "pi",
+            "task"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "pi",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "the desktop POSIX wrapper names an interpreter's script",
+      "source": "PR #538 HerdrCoreWireTests exactDesktopShellWrappersRevealTheCommandPosition; launch-only record moved to the foreground by ADR 0032: a launch that continues as a shell names nothing",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-ic",
+            "\"$@\"; exec \"$0\" -i",
+            "/bin/zsh",
+            "node",
+            "/opt/bin/gemini.js",
+            "task"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "gemini",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "a launch through the desktop POSIX wrapper names nothing without a sample",
+      "source": "ADR 0032, the Agent rule; herdr-core v0.1.13 crates/herdr-core/src/terminals.rs:130 omits a cleared foreground from a record, so a snapshot cannot tell it from one not sampled yet",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh",
+          "-ic",
+          "\"$@\"; exec \"$0\" -i",
+          "/bin/zsh",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a launch through the desktop's remote wrapper names nothing without a sample",
+      "source": "ADR 0032, the Agent rule; herdr-core v0.1.13 crates/herdr-core/src/terminals.rs:130 omits a cleared foreground from a record, so a snapshot cannot tell it from one not sampled yet",
       "record": {
         "address": "t1",
         "state": "live",
@@ -1159,18 +1253,66 @@
         ],
         "cwd": "/work/app",
         "foreground": null,
-        "status": null,
-        "reported": false
+        "status": {
+          "state": "idle",
+          "app": "pi"
+        },
+        "reported": true
       },
-      "expected": {
-        "kind": "pi",
-        "known": true,
-        "status": "unknown"
-      }
+      "expected": null
     },
     {
-      "name": "the desktop POSIX launch command names an interpreter's script",
-      "source": "PR #538 HerdrCoreWireTests exactDesktopShellWrappersRevealTheCommandPosition",
+      "name": "a launch through the desktop fish wrapper names nothing without a sample",
+      "source": "ADR 0032, the Agent rule; herdr-core v0.1.13 crates/herdr-core/src/terminals.rs:130 omits a cleared foreground from a record, so a snapshot cannot tell it from one not sampled yet",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/usr/bin/fish",
+          "-ic",
+          "command $argv[2..]; exec $argv[1] -i",
+          "/usr/bin/fish",
+          "codex"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "idle",
+          "app": "codex"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a launch through the desktop PowerShell wrapper names nothing without a sample",
+      "source": "ADR 0032, the Agent rule; herdr-core v0.1.13 crates/herdr-core/src/terminals.rs:130 omits a cleared foreground from a record, so a snapshot cannot tell it from one not sampled yet",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit",
+          "-Command",
+          "& 'claude'"
+        ],
+        "cwd": "/work/app",
+        "foreground": null,
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "expected": null
+    },
+    {
+      "name": "a cleared foreground revives no Agent from the desktop POSIX wrapper's launch",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
       "record": {
         "address": "t1",
         "state": "live",
@@ -1181,17 +1323,244 @@
           "-ic",
           "\"$@\"; exec \"$0\" -i",
           "/bin/zsh",
-          "node",
-          "/opt/bin/gemini.js",
-          "task"
+          "claude"
         ],
         "cwd": "/work/app",
-        "foreground": null,
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "name": "a cleared foreground revives no Agent from the desktop fish wrapper's launch",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/usr/bin/fish",
+          "-ic",
+          "command $argv[2..]; exec $argv[1] -i",
+          "/usr/bin/fish",
+          "claude"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "fish",
+          "argv": [
+            "/usr/bin/fish",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "name": "a cleared foreground keeps the Agent it was sampled holding",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "working"
+      }
+    },
+    {
+      "name": "a cleared foreground keeps a generic Agent and its report",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "mytool",
+          "argv": [
+            "mytool"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "blocked",
+          "app": "mytool"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": {
+        "kind": "mytool",
+        "known": false,
+        "status": "blocked"
+      }
+    },
+    {
+      "name": "a cleared foreground reads a shell it was sampled at as that shell",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "idle",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "name": "the sample after a cleared foreground decides again",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "claude",
+          "argv": [
+            "claude"
+          ],
+          "cwd": "/work/app"
+        },
+        "status": {
+          "state": "working",
+          "app": "claude-code"
+        },
+        "reported": true
+      },
+      "foregroundEvents": [
+        null,
+        {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "a sample naming an Agent after a cleared foreground starts it",
+      "source": "docs/agents/herdr-compatibility.md \"herdr-core Terminals and credit on macOS\" (core 0.1.13, 2026-10-31), scripts/fixtures/herdr-core-capture-scenario.py orphan-foreground; ADR 0032: a cleared foreground names no program, so the last sample stands",
+      "record": {
+        "address": "t1",
+        "state": "live",
+        "pid": 7,
+        "reason": null,
+        "argv": [
+          "/bin/zsh"
+        ],
+        "cwd": "/work/app",
+        "foreground": {
+          "pid": 4242,
+          "name": "zsh",
+          "argv": [
+            "/bin/zsh",
+            "-i"
+          ],
+          "cwd": "/work/app"
+        },
         "status": null,
         "reported": false
       },
+      "foregroundEvents": [
+        null,
+        {
+          "pid": 4242,
+          "name": "codex",
+          "argv": [
+            "codex"
+          ],
+          "cwd": "/work/app"
+        }
+      ],
       "expected": {
-        "kind": "gemini",
+        "kind": "codex",
         "known": true,
         "status": "unknown"
       }

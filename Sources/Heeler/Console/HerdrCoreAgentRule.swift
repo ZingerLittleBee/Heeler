@@ -14,7 +14,8 @@ struct HerdrCoreAgent: Equatable, Sendable {
 /// has a Program Status whose `app` is missing or unknown here. A known `app`
 /// counts only while it names the foreground: nothing ties a report to a process,
 /// and the core keeps the report after its program left. The foreground is read
-/// after unwrapping launch wrappers, `sh -c` lines and interpreters.
+/// after unwrapping launch wrappers, `sh -c` lines and interpreters, and a cleared
+/// one leaves the last sample standing (`HerdrCoreTerminalRecord.noteForeground`).
 ///
 /// `plugin/test-vectors/herdr-core-agent-rule-v1.json` holds this rule's cases, so
 /// a change here changes that file and the Helper's reading of it in one commit.
@@ -78,19 +79,35 @@ enum HerdrCoreAgentRule {
         case other(String)
     }
 
-    /// The foreground, or until one arrives what the Terminal launched. A
-    /// process whose arguments say nothing known can still be known by its OS
-    /// name, as a native install running from a versioned path is.
+    /// The foreground, or without one what the Terminal launched. A process
+    /// whose arguments say nothing known can still be known by its OS name, as
+    /// a native install running from a versioned path is.
     private static func program(of record: HerdrCoreTerminalRecord) -> Program {
-        guard let foreground = record.foreground else { return read(record.argv) }
+        guard let foreground = record.foreground else { return readLaunch(record.argv) }
         guard !foreground.argv.isEmpty else {
-            return foreground.name.isEmpty ? read(record.argv) : read([foreground.name])
+            return foreground.name.isEmpty ? readLaunch(record.argv) : read([foreground.name])
         }
         let program = read(foreground.argv)
         if case .other = program, let kind = knownKind(baseName(foreground.name)) {
             return .known(kind)
         }
         return program
+    }
+
+    /// A launch stands in for a foreground not sampled yet, and a record omits a
+    /// cleared one, so this can also be long after the launch. One that continues
+    /// as a shell may have outlived its command, so only a sample can name it.
+    private static func readLaunch(_ arguments: [String]) -> Program {
+        continuesAsShell(arguments) ? .shell : read(arguments)
+    }
+
+    private static func continuesAsShell(_ arguments: [String]) -> Bool {
+        guard let executable = arguments.first, shells.contains(baseName(executable)) else {
+            return false
+        }
+        return arguments.dropFirst().contains {
+            continuingWrapperBodies.contains($0) || ["-noexit", "/k"].contains($0.lowercased())
+        }
     }
 
     private static let maximumDepth = 8
@@ -141,16 +158,19 @@ enum HerdrCoreAgentRule {
 
     // MARK: Shells
 
-    /// The bodies whose arguments are the command to run: the desktop app's
-    /// `"$@"; exec "$0" -i`, its remote and fish forms, and Heeler's own, which
-    /// exec the agent and leave no shell behind.
-    private static let wrapperBodies: Set<String> = [
+    /// The desktop app's `"$@"; exec "$0" -i`, and its remote and fish forms.
+    private static let continuingWrapperBodies: Set<String> = [
         "\"$@\"; exec \"$0\" -i",
         "\"$@\"; exec \"${SHELL:-sh}\" -i",
         "command $argv[2..]; exec $argv[1] -i",
+    ]
+
+    /// The bodies whose arguments are the command to run: the desktop app's, and
+    /// Heeler's own, which exec the agent and leave no shell behind.
+    private static let wrapperBodies = continuingWrapperBodies.union([
         "exec \"$@\"",
         "exec $argv[2..]",
-    ]
+    ])
 
     /// Options of a shell that take the next argument, which is no script.
     private static let shellValueOptions: Set<String> = [

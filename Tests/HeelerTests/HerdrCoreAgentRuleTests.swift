@@ -17,6 +17,8 @@ import Testing
         let name: String
         let source: String
         let record: JSONValue
+        /// The data of the `foreground` events after the record, null for a cleared one.
+        let foregroundEvents: [JSONValue]?
         let expected: Expected?
     }
 
@@ -43,7 +45,11 @@ import Testing
         let file = try Self.vectors()
         #expect(file.cases.count >= 100)
         for vector in file.cases {
-            let agent = HerdrCoreAgentRule.agent(in: try Self.terminal(vector.record))
+            var record = try Self.terminal(vector.record)
+            for event in vector.foregroundEvents ?? [] {
+                record.noteForeground(event == .null ? nil : try HerdrCoreWire.typed(event))
+            }
+            let agent = HerdrCoreAgentRule.agent(in: record)
             let actual = agent.map {
                 Expected(kind: $0.kind, known: $0.isKnownProgram, status: $0.status.rawValue)
             }

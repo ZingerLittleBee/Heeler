@@ -114,6 +114,13 @@ struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
     /// The core keeps a finished Terminal until it is removed. The Console hides it.
     var hasFinished: Bool { state == "finished" }
 
+    /// One `foreground` event. A cleared one says the core cannot name the group
+    /// holding the terminal, as when its leader has left and a member stays. That
+    /// names no program, so the last sample stands until the next.
+    mutating func noteForeground(_ sample: HerdrCoreForeground?) {
+        if let sample { foreground = sample }
+    }
+
     /// Between losing a kept Terminal's program and its new shell: live, with
     /// no process and a reason that is not a first spawn still pending.
     var isRestarting: Bool {
