@@ -778,6 +778,27 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
+    /// The leak check comes back after the check it should have informed.
+    @Test func aLeakAnswerAfterTheReasonPointsAtTheHostNotice() async throws {
+        let rig = Rig(host: host)
+        let name = ChatTranscriptOffVariable.childSession.rawValue
+        await rig.transport.setLeakedEnvironment([name])
+        await rig.transport.holdLeakAnswers()
+        try await rig.start(environment: [name: "1"])
+        let chat = try rig.chat()
+
+        chat.show()
+        let before = ChatUnavailableReason.transcriptOff(.childSession, coreCarriesIt: false)
+        try await rig.waitUntil("the reason") { chat.conversation.phase == .unavailable(before) }
+
+        await rig.transport.releaseLeakAnswers()
+
+        let after = ChatUnavailableReason.transcriptOff(.childSession, coreCarriesIt: true)
+        try await rig.waitUntil("the reason to point at the notice") { chat.conversation.phase == .unavailable(after) }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     @Test func aReasonKeepsWhatChatShowedAndAFreshBindingResumesIt() async throws {
         let rig = Rig(host: host)
         try await rig.start()

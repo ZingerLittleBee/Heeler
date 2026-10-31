@@ -321,12 +321,32 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
             ]))
     }
 
-    func leakedEnvironmentNames() async -> Set<String>? { leakedEnvironment }
+    func leakedEnvironmentNames() async -> Set<String>? {
+        while isHoldingLeakAnswers {
+            await withCheckedContinuation { heldLeakAnswers.append($0) }
+        }
+        return leakedEnvironment
+    }
 
     private var leakedEnvironment: Set<String> = []
+    private var isHoldingLeakAnswers = false
+    private var heldLeakAnswers: [CheckedContinuation<Void, Never>] = []
 
     func setLeakedEnvironment(_ names: Set<String>) {
         leakedEnvironment = names
+    }
+
+    /// The leak check takes as long as the test says, so a check of the Agent's
+    /// process can come first.
+    func holdLeakAnswers() {
+        isHoldingLeakAnswers = true
+    }
+
+    func releaseLeakAnswers() {
+        isHoldingLeakAnswers = false
+        let held = heldLeakAnswers
+        heldLeakAnswers = []
+        for answer in held { answer.resume() }
     }
 
     func subscribeEvents() async throws -> HerdrCoreEventStream {
