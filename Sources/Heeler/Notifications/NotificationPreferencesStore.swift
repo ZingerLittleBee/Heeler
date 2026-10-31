@@ -34,8 +34,8 @@ extension NotificationTransportProvider {
 
 /// Per-Host Agent Notification preferences (#75): the on/off registration
 /// toggle and the separate Done flag, persisted in the Host's registration
-/// file and filtered at the source by the plugin (the service extension
-/// cannot silently drop a push).
+/// file and filtered at the source by the plugin, or on a herdr-core Host by its
+/// Host Helper (the service extension cannot silently drop a push).
 ///
 /// The displayed value is always the last state the Host confirmed: a toggle
 /// never flips optimistically, a failed write surfaces its error and snaps
@@ -55,8 +55,9 @@ final class NotificationPreferencesStore {
     enum HostState: Equatable, Sendable {
         /// The registration file read is in flight.
         case loading
-        /// The Host's truth is unknown: unreachable, plugin missing, or push
-        /// bootstrap incomplete. No toggle can act until a refresh succeeds.
+        /// The Host's truth is unknown: unreachable, plugin or Host Helper
+        /// missing, or push bootstrap incomplete. No toggle can act until a
+        /// refresh succeeds.
         case unavailable(message: String)
         /// The Host answered; the toggles reflect `settings`.
         case idle(HostSettings)
@@ -70,8 +71,15 @@ final class NotificationPreferencesStore {
 
     private(set) var hosts: [Host] = []
     private(set) var states: [Host.ID: HostState] = [:]
+    /// What a core Host's Helper needs, from its last read.
+    private var helperRequirements: [Host.ID: String] = [:]
     /// A catalog edit/removal invalidates every result captured for that Host.
     private var operations: [Host.ID: UUID] = [:]
+    /// Seen marks waiting for a core Host's registration to be known, or for the
+    /// write before them. Each holds every mark, so a newer one replaces an older.
+    private var pendingSeenMarks: [Host.ID: PendingSeenMarks] = [:]
+    private var seenMarkWrites: [Host.ID: Task<Void, Never>] = [:]
+    private var writtenSeenMarks: [Host.ID: Data] = [:]
 
     private let transports: any NotificationTransportProvider
     private let deviceToken: @MainActor () -> APNSDeviceToken?
@@ -103,14 +111,23 @@ final class NotificationPreferencesStore {
         let unchanged = Set(hosts.filter { self.hosts.contains($0) }.map(\.id))
         self.hosts = hosts
         states = states.filter { unchanged.contains($0.key) }
+        helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
-        for host in hosts where host.serverKind == .herdrCore {
-            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
-        }
+        pendingSeenMarks = pendingSeenMarks.filter { unchanged.contains($0.key) }
+        writtenSeenMarks = writtenSeenMarks.filter { unchanged.contains($0.key) }
     }
 
     private func isCurrent(_ operation: UUID, for host: Host) -> Bool {
-        operations[host.id] == operation && hosts.contains(host) && host.serverKind == .herdrTUI
+        operations[host.id] == operation && hosts.contains(host)
+    }
+
+    /// A note beside a core Host's toggles: what its Helper still needs while they
+    /// work without it. With no toggles to show, the unavailable state says it.
+    func helperRequirement(for hostID: Host.ID) -> String? {
+        switch states[hostID] {
+        case .idle, .updating, .failed: helperRequirements[hostID]
+        case .loading, .unavailable, nil: nil
+        }
     }
 
     /// Re-reads every Host's registration file so the toggles reflect what
@@ -131,15 +148,19 @@ final class NotificationPreferencesStore {
             settings.isRegistered != enabled
         else { return }
         let relay = relayBaseURL()
-        await write(for: host, from: settings, registers: enabled) { ceremony, token, transport in
+        await write(for: host, from: settings, registers: enabled) { ceremony, token, files in
             if enabled {
+                // The Helper may have gone since this screen last read it.
+                if let standing = try await files.readHostHelper()?.notificationStanding, !standing.canRegister {
+                    throw HostHelperRequirementError(message: standing.requirement ?? "")
+                }
                 let notify = NotificationTriggerPreferences()
                 try await ceremony.register(
                     host: host, deviceToken: token, notify: notify, relayBaseURL: relay,
-                    over: transport)
+                    over: files)
                 return HostSettings(isRegistered: true, notify: notify)
             } else {
-                try await ceremony.remove(host: host, deviceToken: token, over: transport)
+                try await ceremony.remove(host: host, deviceToken: token, over: files)
                 return HostSettings(
                     isRegistered: false, notify: NotificationTriggerPreferences())
             }
@@ -147,8 +168,9 @@ final class NotificationPreferencesStore {
     }
 
     /// The separate Done flag (User Story 9): rewrites this device's entry
-    /// over SSH so the plugin stops (or resumes) sending Done pushes at the
-    /// source. Ignored while unregistered — there is no entry to update.
+    /// over SSH so the plugin or Host Helper stops (or resumes) sending Done
+    /// pushes at the source. Ignored while unregistered — there is no entry to
+    /// update.
     func setDoneEnabled(_ enabled: Bool, for host: Host) async {
         guard let settings = confirmedSettings(for: host.id),
             settings.isRegistered, settings.notify.done != enabled
@@ -156,12 +178,12 @@ final class NotificationPreferencesStore {
         let notify = NotificationTriggerPreferences(
             blocked: settings.notify.blocked, done: enabled)
         let relay = relayBaseURL()
-        await write(for: host, from: settings, registers: true) { ceremony, token, transport in
+        await write(for: host, from: settings, registers: true) { ceremony, token, files in
             // Re-registration is the flag update: it rewrites this Host's
             // entry reusing the stored Notification Key (#72 idempotence).
             try await ceremony.register(
                 host: host, deviceToken: token, notify: notify, relayBaseURL: relay,
-                over: transport)
+                over: files)
             return HostSettings(isRegistered: true, notify: notify)
         }
     }
@@ -180,8 +202,9 @@ final class NotificationPreferencesStore {
     }
 
     /// Best effort, before a Host is removed: drops this device's own entries
-    /// from the Host's registration file so its plugin stops pushing here,
-    /// keeping the Notification Key (`forgetNotificationKey` deletes it).
+    /// from the Host's registration file so its plugin or Host Helper stops
+    /// pushing here, with its seen marks on a Host Helper, keeping the
+    /// Notification Key (`forgetNotificationKey` deletes it).
     /// Entries are matched by the key alone, so no device token is needed.
     /// Only a connected Host with a stored key is asked; anything else
     /// touches no network. The whole revoke, gate wait included, is
@@ -193,16 +216,15 @@ final class NotificationPreferencesStore {
     func revokeRegistration(
         for host: Host, isConnected: Bool, timeout: Duration = .seconds(6)
     ) async {
-        guard host.serverKind == .herdrTUI, isConnected,
-            (try? ceremony.keys.record(forHost: host.id)) != nil else { return }
+        guard isConnected, (try? ceremony.keys.record(forHost: host.id)) != nil else { return }
         let operation = UUID()
         operations[host.id] = operation
         let ceremony = ceremony
         let transports = transports
         do {
             try await AsyncDeadline.run(for: timeout) {
-                try await transports.withNotificationTransport(for: host.id) { transport in
-                    try await ceremony.revoke(host: host, over: transport)
+                try await transports.withNotificationFiles(for: host.id) { files in
+                    try await ceremony.revoke(host: host, over: files)
                 }
             }
         } catch {
@@ -229,14 +251,8 @@ final class NotificationPreferencesStore {
             HostSettings(isRegistered: false, notify: NotificationTriggerPreferences()))
     }
 
-    static let coreUnavailableMessage = "Notifications are not supported on herdr-core."
-
     private func load(_ host: Host) async {
         guard hosts.contains(host) else { return }
-        guard host.serverKind == .herdrTUI else {
-            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
-            return
-        }
         if case .updating = states[host.id] { return }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
@@ -246,9 +262,12 @@ final class NotificationPreferencesStore {
         let operation = UUID()
         operations[host.id] = operation
         states[host.id] = .loading
+        defer { writeSeenMarks(for: host.id) }
         do {
-            var file = try await readFile(for: host.id)
+            let read = try await readRegistration(for: host.id)
             guard isCurrent(operation, for: host) else { return }
+            var file = try NotificationRegistrationFile.decode(read.registration)
+            helperRequirements[host.id] = read.standing?.requirement
             // Only an entry carrying this Host's Notification Key is its own;
             // another Host of the same remote user shares this file (#412).
             let owner = try ceremony.registrationOwner(for: host, deviceToken: token)
@@ -257,6 +276,11 @@ final class NotificationPreferencesStore {
                 guard isCurrent(operation, for: host) else { return }
             }
             let preferences = owner.flatMap { file.preferences(for: $0) }
+            // A Helper that can take no registration still lets this device leave.
+            if let standing = read.standing, !standing.canRegister, preferences == nil {
+                states[host.id] = .unavailable(message: standing.requirement ?? "")
+                return
+            }
             states[host.id] = .idle(
                 HostSettings(
                     isRegistered: preferences != nil,
@@ -264,6 +288,21 @@ final class NotificationPreferencesStore {
         } catch {
             guard isCurrent(operation, for: host) else { return }
             states[host.id] = .unavailable(message: Self.message(for: error))
+        }
+    }
+
+    /// The Host's registration file, and on a core Host what its Helper stands
+    /// as, over one connection. A Host with nothing of the Helper's has no
+    /// directory to read a file from.
+    private func readRegistration(for hostID: Host.ID) async throws -> RegistrationRead {
+        try await transports.withNotificationFiles(for: hostID) { files in
+            guard let reading = try await files.readHostHelper() else {
+                return RegistrationRead(
+                    registration: try await files.readNotificationRegistration(), standing: nil)
+            }
+            return RegistrationRead(
+                registration: reading.offersRemoval ? try await files.readNotificationRegistration() : nil,
+                standing: reading.notificationStanding)
         }
     }
 
@@ -275,8 +314,8 @@ final class NotificationPreferencesStore {
         _ host: Host, token: APNSDeviceToken
     ) async -> NotificationRegistrationFile? {
         let ceremony = ceremony
-        return try? await transports.withNotificationTransport(for: host.id) { transport in
-            try await ceremony.migrate(host: host, deviceToken: token, over: transport)
+        return try? await transports.withNotificationFiles(for: host.id) { files in
+            try await ceremony.migrate(host: host, deviceToken: token, over: files)
         }
     }
 
@@ -288,14 +327,10 @@ final class NotificationPreferencesStore {
         from settings: HostSettings,
         registers: Bool,
         _ operation: @escaping @Sendable (
-            NotificationRegistrationCeremony, APNSDeviceToken, any Transport
+            NotificationRegistrationCeremony, APNSDeviceToken, any HostNotificationFiles
         ) async throws -> HostSettings
     ) async {
         guard hosts.contains(host) else { return }
-        guard host.serverKind == .herdrTUI else {
-            states[host.id] = .unavailable(message: Self.coreUnavailableMessage)
-            return
-        }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
                 message: "Waiting for push registration on this device.")
@@ -304,12 +339,13 @@ final class NotificationPreferencesStore {
         let operationID = UUID()
         operations[host.id] = operationID
         states[host.id] = .updating(settings)
+        defer { writeSeenMarks(for: host.id) }
         do {
             let ceremony = ceremony
-            let confirmed = try await transports.withNotificationTransport(
+            let confirmed = try await transports.withNotificationFiles(
                 for: host.id
-            ) { transport in
-                try await operation(ceremony, token, transport)
+            ) { files in
+                try await operation(ceremony, token, files)
             }
             guard isCurrent(operationID, for: host) else { return }
             states[host.id] = .idle(confirmed)
@@ -337,25 +373,20 @@ final class NotificationPreferencesStore {
         }
     }
 
-    private func readFile(for hostID: Host.ID) async throws -> NotificationRegistrationFile {
-        try NotificationRegistrationFile.decode(
-            try await transports.withNotificationTransport(for: hostID) { transport in
-                try await transport.readNotificationRegistration()
-            })
-    }
-
     /// The gate the in-app banner reads (#77): the Host's confirmed notify
     /// flags, or nil when this device is not registered or the Host's truth
     /// is unknown (unreachable, still loading, never refreshed) — in which
-    /// case the banner fails closed, matching the plugin's semantics.
+    /// case the banner fails closed, matching the plugin's semantics. A core
+    /// Host's notifications reach no in-app banner.
     func confirmedTriggers(for hostID: Host.ID) -> NotificationTriggerPreferences? {
-        guard let settings = confirmedSettings(for: hostID), settings.isRegistered
+        guard hosts.contains(where: { $0.id == hostID && $0.serverKind == .herdrTUI }),
+            let settings = confirmedSettings(for: hostID), settings.isRegistered
         else { return nil }
         return settings.notify
     }
 
     private func confirmedSettings(for hostID: Host.ID) -> HostSettings? {
-        guard hosts.contains(where: { $0.id == hostID && $0.serverKind == .herdrTUI }) else { return nil }
+        guard hosts.contains(where: { $0.id == hostID }) else { return nil }
         return switch states[hostID] {
         case .idle(let settings), .failed(_, let settings):
             settings
@@ -364,10 +395,88 @@ final class NotificationPreferencesStore {
         }
     }
 
+    // MARK: Seen marks (ADR 0033)
+
+    /// Hears what this device sees on `console`'s core Hosts.
+    func followSeenMarks(of console: ConsoleStore) {
+        console.onCoreSeenMarksChanged = { [weak self] hostID, core, marks in
+            self?.noteSeenMarks(core: core, marks: marks, for: hostID)
+        }
+    }
+
+    /// What this device has seen on a core Host changed, in full. It goes into
+    /// the Helper's directory while the Helper holds this device's registration,
+    /// and never otherwise. A write that fails leaves those Agents counted as Done
+    /// there, and the next change's write carries these marks too.
+    func noteSeenMarks(
+        core: String, marks: [String: HerdrCoreTurnState.Mark], for hostID: Host.ID
+    ) {
+        guard hosts.contains(where: { $0.id == hostID && $0.serverKind == .herdrCore }) else { return }
+        pendingSeenMarks[hostID] = PendingSeenMarks(core: core, marks: marks)
+        writeSeenMarks(for: hostID)
+    }
+
+    private func writeSeenMarks(for hostID: Host.ID) {
+        guard seenMarkWrites[hostID] == nil, pendingSeenMarks[hostID] != nil else { return }
+        seenMarkWrites[hostID] = Task { [weak self] in
+            await self?.drainSeenMarks(for: hostID)
+            self?.seenMarkWrites[hostID] = nil
+        }
+    }
+
+    private func drainSeenMarks(for hostID: Host.ID) async {
+        let ceremony = ceremony
+        while let pending = pendingSeenMarks[hostID] {
+            let keyID: String
+            switch seenMarkDevice(for: hostID) {
+            case .unknownYet:
+                return  // What settles the registration comes back here.
+            case .unregistered:
+                pendingSeenMarks[hostID] = nil
+                return
+            case .registered(let id):
+                keyID = id
+            }
+            pendingSeenMarks[hostID] = nil
+            let file = HerdrCoreSeenMarkFile(device: keyID, core: pending.core, marks: pending.marks)
+            guard let contents = try? file.encoded(), contents != writtenSeenMarks[hostID] else { continue }
+            let wrote = try? await transports.withNotificationFiles(for: hostID) { [weak self] files in
+                try await ceremony.writeSeenMarks(contents, keyID: keyID, over: files) {
+                    if case .registered(let current)? = self?.seenMarkDevice(for: hostID) {
+                        return current == keyID
+                    }
+                    return false
+                }
+            }
+            if wrote == true {
+                writtenSeenMarks[hostID] = contents
+            } else if wrote == false, pendingSeenMarks[hostID] == nil {
+                // The registration moved while this waited its turn.
+                pendingSeenMarks[hostID] = pending
+            }
+        }
+    }
+
+    private func seenMarkDevice(for hostID: Host.ID) -> SeenMarkDevice {
+        switch states[hostID] {
+        case nil, .loading, .updating:
+            return .unknownYet
+        case .unavailable:
+            return .unregistered
+        case .idle(let settings), .failed(_, let settings):
+            guard settings.isRegistered, let record = try? ceremony.keys.record(forHost: hostID) else {
+                return .unregistered
+            }
+            return .registered(keyID: record.keyID)
+        }
+    }
+
     static func message(for error: any Error) -> String {
         switch error {
-        case HeelerPluginUnavailableError.herdrCore:
-            coreUnavailableMessage
+        case let error as HostHelperRequirementError:
+            error.message
+        case let error as HostHelperError:
+            error.message
         case NotificationRegistrationError.pluginNotInstalled:
             "The Heeler plugin is missing or turned off on this Host. "
                 + "See this Host's page in Hosts, then check again."
@@ -398,4 +507,28 @@ final class NotificationPreferencesStore {
             "Could not update notification settings. Try again."
         }
     }
+}
+
+/// One read of a Host's notification state.
+private struct RegistrationRead: Sendable {
+    let registration: Data?
+    /// Nil on a Host whose notifications come from the plugin.
+    let standing: HostHelperNotificationStanding?
+}
+
+private struct PendingSeenMarks: Sendable {
+    let core: String
+    let marks: [String: HerdrCoreTurnState.Mark]
+}
+
+private enum SeenMarkDevice: Sendable {
+    /// The Host's truth is still being read or written.
+    case unknownYet
+    case unregistered
+    case registered(keyID: String)
+}
+
+/// A core Host's Helper stands in the way of registering, in words for the user.
+private struct HostHelperRequirementError: Error {
+    let message: String
 }

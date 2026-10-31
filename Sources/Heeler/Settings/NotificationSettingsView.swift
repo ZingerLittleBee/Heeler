@@ -175,12 +175,14 @@ struct NotificationSettingsView: View {
                         }
                     }))
                 .disabled(isUpdating)
-            Toggle(
-                "Live Activity",
-                isOn: Binding(
-                    get: { liveActivities.isEnabled(for: host.id) },
-                    set: { liveActivities.setEnabled($0, for: host.id) }))
-                .disabled(isUpdating)
+            if host.serverKind == .herdrTUI {
+                Toggle(
+                    "Live Activity",
+                    isOn: Binding(
+                        get: { liveActivities.isEnabled(for: host.id) },
+                        set: { liveActivities.setEnabled($0, for: host.id) }))
+                    .disabled(isUpdating)
+            }
         }
     }
 
@@ -195,7 +197,11 @@ struct NotificationSettingsView: View {
             }
         }()
         VStack(alignment: .leading, spacing: 6) {
-            if registered {
+            if let requirement = notificationPreferences.helperRequirement(for: host.id) {
+                Text(requirement)
+                    .accessibilityIdentifier("settings.notifications.helperRequirement.\(host.id.uuidString)")
+            }
+            if registered, host.serverKind == .herdrTUI {
                 Text(NotificationPrivacyCopy.liveActivityFooter)
                 if !liveActivities.areActivitiesEnabled {
                     Text(NotificationPrivacyCopy.liveActivityDisabledHint)

@@ -6,6 +6,8 @@ enum HostHelperCompatibility {
     /// `plugin/test-vectors/host-helper-version-v1.json` pins both sides, so a
     /// Helper release must update this constant too.
     static let bundled = PluginVersion(0, 4, 0)
+    /// The first Helper that sends Agent Notifications.
+    static let firstWithNotifications = PluginVersion(0, 4, 0)
 }
 
 /// `plugin/helper/manifest.json`: the version and every other file's SHA-256,
@@ -308,6 +310,50 @@ struct HostHelperReading: Sendable, Equatable {
     var offersLinger: Bool {
         guard unsupportedPlatform == nil, let probe else { return false }
         return !probe.lingerOn
+    }
+
+    var notificationStanding: HostHelperNotificationStanding {
+        HostHelperNotificationStanding(self)
+    }
+}
+
+/// What a core Host's Helper means for its Agent Notifications, where the user
+/// turns them on.
+struct HostHelperNotificationStanding: Sendable, Equatable {
+    /// Whether this device can register with the Helper now.
+    let canRegister: Bool
+    /// The Helper's status as what notifications need of it. Nil when they need
+    /// nothing more.
+    let requirement: String?
+
+    init(_ reading: HostHelperReading) {
+        let status = reading.status
+        let presentation = HostHelperPresentation(status)
+        let action = "See this Host's page in Hosts."
+        let asRequirement = "Host Helper: \(presentation.value). \(presentation.detail) \(action)"
+        if case .intact(let version) = reading.integrity,
+            version < HostHelperCompatibility.firstWithNotifications
+        {
+            canRegister = false
+            requirement = "Host Helper: \(presentation.value). Notifications need a newer Host Helper. \(action)"
+            return
+        }
+        switch status {
+        case .installed, .newer:
+            canRegister = true
+            requirement = nil
+        case .lingerOff:
+            // It runs now, so it notifies, only not once the last login has ended.
+            canRegister = true
+            requirement = asRequirement
+        case .notInstalled, .damaged, .nodeMissing, .serviceFailed:
+            canRegister = false
+            requirement = asRequirement
+        case .unsupportedPlatform:
+            // Nothing on the Host's page changes this.
+            canRegister = false
+            requirement = presentation.detail
+        }
     }
 }
 

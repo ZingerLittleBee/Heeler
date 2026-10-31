@@ -83,6 +83,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var desktopAppCheck: Task<Void, Never>?
     /// Names typed for new Workspaces, by space, until the app adopts the space.
     private var typedSpaceNames: [String: String] = [:]
+    /// Hears every seen mark of this Host when one changes, for its Host Helper.
+    private let onSeenMarksChanged: @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void
 
     init(
         host: Host,
@@ -91,6 +93,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         pins: PinnedAgentsStore,
         gitGate: GitExecGate,
         herdrAppRename: Bool,
+        onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
@@ -99,6 +102,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.pins = pins
         self.gitGate = gitGate
         self.herdrAppRename = herdrAppRename
+        self.onSeenMarksChanged = onSeenMarksChanged
         self.onChange = onChange
     }
 
@@ -375,9 +379,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // An Agent's menu may be about to offer Rename Workspace.
         if herdrAppRename { Task { await checkDesktopApp() } }
         let wasDone = doneTerminals
+        let marksBefore = seenMarks
         for address in opened {
             memory.updateTurnState(of: address, for: host.id) { $0.markSeen() }
         }
+        reportSeenMarks(ifChangedFrom: marksBefore)
         guard doneTerminals != wasDone else { return }
         rebuildRows()
         publish()
@@ -387,6 +393,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         Set(memory.turnStates(for: host.id).filter(\.value.isDone).keys)
     }
 
+    private var seenMarks: [String: HerdrCoreTurnState.Mark] {
+        memory.turnStates(for: host.id).compactMapValues(\.seen)
+    }
+
+    private func reportSeenMarks(ifChangedFrom before: [String: HerdrCoreTurnState.Mark]) {
+        let marks = seenMarks
+        guard marks != before, let core = memory.coreID(for: host.id) else { return }
+        onSeenMarksChanged(core, marks)
+    }
+
     /// Folds one change into a Terminal's turns, with its record already updated.
     private func noteTurns(
         of address: String, _ change: (inout HerdrCoreTurnState, _ kind: String?) -> Void
@@ -394,11 +410,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         guard let record = records.first(where: { $0.address == address }) else { return }
         let kind = HerdrCoreAgentRule.agent(in: record)?.kind
         let isShown = shownAgents.contains(address)
+        let marksBefore = isShown ? seenMarks : [:]
         memory.updateTurnState(of: address, for: host.id) { state in
             change(&state, kind)
             if kind == nil { state.noteNoAgent() }
             if isShown { state.markEndedTurnSeen() }
         }
+        if isShown { reportSeenMarks(ifChangedFrom: marksBefore) }
     }
 
     /// Nothing shows until a link's first document read has settled, so a

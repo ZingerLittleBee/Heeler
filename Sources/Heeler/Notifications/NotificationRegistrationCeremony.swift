@@ -2,8 +2,9 @@ import Foundation
 
 /// The per-Host Notification Registration ceremony (#72, ADR 0008): mint or
 /// reuse the Host's Notification Key, then write this device's entry into
-/// the registration file the Host's notify hook reads. The Transport owns
-/// where that file lives and how it is replaced atomically; this type owns
+/// the registration file the Host reads to notify it: the plugin's on Herdr TUI,
+/// the Host Helper's on herdr-core. `HostNotificationFiles` owns where that file
+/// lives and how it is replaced atomically; this type owns
 /// the read-merge-write and the custody split (key in the device Keychain and
 /// Host registration file, token only in the Host registration file).
 ///
@@ -58,7 +59,7 @@ struct NotificationRegistrationCeremony: Sendable {
         deviceToken: APNSDeviceToken,
         notify: NotificationTriggerPreferences = NotificationTriggerPreferences(),
         relayBaseURL: URL? = nil,
-        over transport: any Transport
+        over files: any HostNotificationFiles
     ) async throws -> NotificationKeyRecord {
         let record = try hostRecord(hostID: host.id, hostName: host.displayName)
         try keys.save(record)
@@ -67,14 +68,14 @@ struct NotificationRegistrationCeremony: Sendable {
             notify: notify)
         try await exclusively {
             let file = try NotificationRegistrationFile.decode(
-                try await transport.readNotificationRegistration())
-            try await transport.replaceNotificationRegistration(
+                try await files.readNotificationRegistration())
+            try await files.replaceNotificationRegistration(
                 try file.registering(entry).encoded())
         }
         if let resolvedRelayURL = NotificationRelayEndpoint.resolve(
             customBaseURL: relayBaseURL)
         {
-            try await applyRelayURL(resolvedRelayURL, over: transport)
+            try await applyRelayURL(resolvedRelayURL, over: files)
         }
         return record
     }
@@ -84,27 +85,30 @@ struct NotificationRegistrationCeremony: Sendable {
     /// the plugin's own knobs (`debounce_ms`, `retry_delay_ms`, and future
     /// fields). The production endpoint is written for the empty/default app
     /// setting; self-builders can still supply an explicit custom URL.
-    private func applyRelayURL(_ relayBaseURL: URL, over transport: any Transport) async throws {
+    private func applyRelayURL(_ relayBaseURL: URL, over files: any HostNotificationFiles) async throws {
         let config = try NotificationConfigFile.decode(
-            try await transport.readNotificationConfig())
+            try await files.readNotificationConfig())
         let updated = config.settingRelayURL(relayBaseURL.absoluteString)
         guard updated != config else { return }
-        try await transport.replaceNotificationConfig(try updated.encoded())
+        try await files.replaceNotificationConfig(try updated.encoded())
     }
 
     /// Revokes this device on one Host: the Host's entries (this device
-    /// token with the Host's Notification Key) leave the registration file,
-    /// then the local Notification Key record is dropped — in that order, so
-    /// a failed remote removal keeps the key that still-armed pushes need.
-    /// Other Hosts' entries of this device stay. Removing a device that was
-    /// never registered is a no-op.
+    /// token with the Host's Notification Key) and its seen marks leave the
+    /// Host in one operation, then the local Notification Key record is
+    /// dropped — in that order, so a failed remote removal keeps the key that
+    /// still-armed pushes need. Other Hosts' entries of this device stay.
+    /// Removing a device that was never registered is a no-op.
     func remove(
         host: Host,
         deviceToken: APNSDeviceToken,
-        over transport: any Transport
+        over files: any HostNotificationFiles
     ) async throws {
         let owner = try registrationOwner(for: host, deviceToken: deviceToken)
-        try await dropEntries(over: transport) { file in owner.map { file.removing($0) } ?? file }
+        let keyID = try keys.record(forHost: host.id)?.keyID
+        try await dropEntries(over: files, seenMarksOf: keyID) { file in
+            owner.map { file.removing($0) } ?? file
+        }
         try keys.removeRecord(forHost: host.id)
     }
 
@@ -113,25 +117,44 @@ struct NotificationRegistrationCeremony: Sendable {
     /// It needs no device token, so it works before APNs has answered or
     /// after notification permission was withdrawn. A Host whose entry
     /// another Host of the same session already took over (#412) sees no
-    /// write; without a stored key nothing is read.
-    func revoke(host: Host, over transport: any Transport) async throws {
-        guard let key = try keys.record(forHost: host.id)?.key else { return }
-        try await dropEntries(over: transport) { $0.removing(key: key) }
+    /// write; without a stored key nothing is read. The device's seen marks go
+    /// with its entry.
+    func revoke(host: Host, over files: any HostNotificationFiles) async throws {
+        guard let record = try keys.record(forHost: host.id) else { return }
+        try await dropEntries(over: files, seenMarksOf: record.keyID) { $0.removing(key: record.key) }
     }
 
-    /// Replaces the registration file with `drop` applied, under the gate,
-    /// only when an entry left it.
+    /// Replaces the registration file with `drop` applied, under the gate, only
+    /// when an entry left it, and removes the seen marks of `keyID` with it: the
+    /// entry first, so a retry after a failure in between still finds the marks.
     private func dropEntries(
-        over transport: any Transport,
+        over files: any HostNotificationFiles,
+        seenMarksOf keyID: String?,
         _ drop: @Sendable (NotificationRegistrationFile) -> NotificationRegistrationFile
     ) async throws {
         try await exclusively {
-            guard let data = try await transport.readNotificationRegistration() else { return }
-            let file = try NotificationRegistrationFile.decode(data)
-            let updated = drop(file)
-            if updated != file {
-                try await transport.replaceNotificationRegistration(try updated.encoded())
+            if let data = try await files.readNotificationRegistration() {
+                let file = try NotificationRegistrationFile.decode(data)
+                let updated = drop(file)
+                if updated != file {
+                    try await files.replaceNotificationRegistration(try updated.encoded())
+                }
             }
+            if let keyID { try await files.removeSeenMarks(keyID: keyID) }
+        }
+    }
+
+    /// Replaces this device's seen marks on a core Host, under the gate turning
+    /// notifications off holds, and only if `isWanted` still says so there: marks
+    /// written after their removal would stay behind. Returns whether it wrote.
+    func writeSeenMarks(
+        _ contents: Data, keyID: String, over files: any HostNotificationFiles,
+        isWanted: @escaping @MainActor @Sendable () -> Bool
+    ) async throws -> Bool {
+        try await exclusively {
+            guard await isWanted() else { return false }
+            try await files.replaceSeenMarks(contents, keyID: keyID)
+            return true
         }
     }
 
@@ -143,16 +166,16 @@ struct NotificationRegistrationCeremony: Sendable {
     func migrate(
         host: Host,
         deviceToken: APNSDeviceToken,
-        over transport: any Transport
+        over files: any HostNotificationFiles
     ) async throws -> NotificationRegistrationFile {
         let owner = try registrationOwner(for: host, deviceToken: deviceToken)
         return try await exclusively {
             let file = try NotificationRegistrationFile.decode(
-                try await transport.readNotificationRegistration())
+                try await files.readNotificationRegistration())
             guard let owner else { return file }
             let normalized = file.normalized(for: owner)
             if normalized != file {
-                try await transport.replaceNotificationRegistration(try normalized.encoded())
+                try await files.replaceNotificationRegistration(try normalized.encoded())
             }
             return normalized
         }
@@ -171,12 +194,12 @@ struct NotificationRegistrationCeremony: Sendable {
         pinnedPaneIDs: [String] = [],
         rowLayout: AgentRowLayout? = nil,
         hostName: String? = nil,
-        over transport: any Transport,
+        over files: any HostNotificationFiles,
         diagnose: (@Sendable (String) async -> Void)? = nil
     ) async throws {
         let owner = try await liveActivityOwner(hostID: hostID, deviceToken: deviceToken)
         try await rewrite(
-            for: owner, over: transport, diagnose: diagnose,
+            for: owner, over: files, diagnose: diagnose,
             prepare: { $0.strippingLiveActivity(token: tokenHex, keepingOwnEntryOf: owner) }
         ) { file in
             guard let owner else { throw NotificationRegistrationError.deviceNotRegistered }
@@ -196,11 +219,11 @@ struct NotificationRegistrationCeremony: Sendable {
         hostName: String? = nil,
         hostID: Host.ID,
         deviceToken: APNSDeviceToken,
-        over transport: any Transport
+        over files: any HostNotificationFiles
     ) async throws {
         guard let owner = try await liveActivityOwner(hostID: hostID, deviceToken: deviceToken)
         else { return }
-        try await rewrite(for: owner, over: transport) { file in
+        try await rewrite(for: owner, over: files) { file in
             var updated = try file.settingLiveActivityPinnedPaneIDs(pinnedPaneIDs, for: owner)
             if let rowLayout {
                 updated = try updated.settingLiveActivityRowLayout(
@@ -219,10 +242,10 @@ struct NotificationRegistrationCeremony: Sendable {
         _ liveActivityToken: String?,
         hostID: Host.ID,
         deviceToken: APNSDeviceToken,
-        over transport: any Transport
+        over files: any HostNotificationFiles
     ) async throws {
         let owner = try await liveActivityOwner(hostID: hostID, deviceToken: deviceToken)
-        try await rewrite(for: owner, over: transport) { file in
+        try await rewrite(for: owner, over: files) { file in
             file.clearingLiveActivity(token: liveActivityToken, for: owner)
         }
     }
@@ -243,7 +266,7 @@ struct NotificationRegistrationCeremony: Sendable {
     /// when that differs, then rethrows.
     private func rewrite(
         for owner: NotificationRegistrationOwner?,
-        over transport: any Transport,
+        over files: any HostNotificationFiles,
         diagnose: (@Sendable (String) async -> Void)? = nil,
         prepare: @escaping @Sendable (NotificationRegistrationFile) -> NotificationRegistrationFile = {
             $0
@@ -253,20 +276,20 @@ struct NotificationRegistrationCeremony: Sendable {
     ) async throws {
         try await exclusively {
             try await rewriteUnderGate(
-                for: owner, over: transport, diagnose: diagnose, prepare: prepare, change: change)
+                for: owner, over: files, diagnose: diagnose, prepare: prepare, change: change)
         }
     }
 
     private func rewriteUnderGate(
         for owner: NotificationRegistrationOwner?,
-        over transport: any Transport,
+        over files: any HostNotificationFiles,
         diagnose: (@Sendable (String) async -> Void)?,
         prepare: (NotificationRegistrationFile) -> NotificationRegistrationFile,
         change: (NotificationRegistrationFile) throws -> NotificationRegistrationFile
     ) async throws {
         try Task.checkCancellation()
         await diagnose?("registration read started")
-        let registration = try await transport.readNotificationRegistration()
+        let registration = try await files.readNotificationRegistration()
         await diagnose?("registration read completed")
         try Task.checkCancellation()
         let file = try NotificationRegistrationFile.decode(registration)
@@ -277,7 +300,7 @@ struct NotificationRegistrationCeremony: Sendable {
             updated = try change(base)
         } catch {
             if base != file {
-                try await transport.replaceNotificationRegistration(try base.encoded())
+                try await files.replaceNotificationRegistration(try base.encoded())
             }
             throw error
         }
@@ -285,7 +308,7 @@ struct NotificationRegistrationCeremony: Sendable {
         let contents = try updated.encoded()
         await diagnose?("registration encoded")
         try Task.checkCancellation()
-        try await transport.replaceNotificationRegistration(contents)
+        try await files.replaceNotificationRegistration(contents)
         await diagnose?("registration replaced")
     }
 
@@ -313,8 +336,12 @@ extension Host {
     /// "" for the default session, otherwise the session name. An endpoint
     /// Host carries the session its socket names, as its hooks derive it
     /// (ADR 0023); any other fixed socket path (test fixtures only) counts as
-    /// the default session.
+    /// the default session. A herdr-core Host carries its core session's folder
+    /// name, which is what its Host Helper follows (ADR 0033).
     var notificationSession: String {
+        if serverKind == .herdrCore {
+            return HerdrCoreSessionName.normalized(sessionName)
+        }
         if let herdrEndpoint {
             return herdrEndpoint.session
         }

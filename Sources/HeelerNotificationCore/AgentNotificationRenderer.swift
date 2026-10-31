@@ -69,6 +69,9 @@ enum AgentNotificationRenderer {
         switch status {
         case .blocked: "Blocked — waiting for input"
         case .done: "Done"
+        // Only a herdr-core Host sends it, under the Blocked trigger. Nothing is
+        // waiting for an answer, so it reads as what it is.
+        case AgentStatus(rawValue: "error"): "Error"
         // The status set is open on the wire; render unrecognized values
         // factually instead of guessing at their meaning.
         default: "Status: \(status.rawValue)"
