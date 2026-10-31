@@ -374,25 +374,27 @@ struct AgentChatSurfaceView: View {
                 .frame(maxWidth: .infinity)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            composerChrome
+            if offersTyping { composerChrome }
         }
         .padding(.bottom, composerKeyboardLayout.contentInset)
         // In place at the system keyboard's last height, as on the terminal,
         // and shown only while the Composer has switched to it.
         .overlay(alignment: .bottom) {
-            AgentChatToolsKeyboard(
-                insertText: { composer.insertIntoDraft($0) },
-                skills: skills.map { store in
-                    TerminalSkillsContext(store: store) { viewingSkill = $0 }
-                },
-                snippets: terminal.snippets,
-                manageSnippets: { isManagingSnippets = true },
-                agentKeys: agentKeys,
-                height: composerKeyboardLayout.availableToolsHeight)
-            .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
-            .disabled(composerKeyboardPresentation != .tools)
-            .allowsHitTesting(composerKeyboardPresentation == .tools)
-            .accessibilityHidden(composerKeyboardPresentation != .tools)
+            if offersTyping {
+                AgentChatToolsKeyboard(
+                    insertText: { composer.insertIntoDraft($0) },
+                    skills: skills.map { store in
+                        TerminalSkillsContext(store: store) { viewingSkill = $0 }
+                    },
+                    snippets: terminal.snippets,
+                    manageSnippets: { isManagingSnippets = true },
+                    agentKeys: agentKeys,
+                    height: composerKeyboardLayout.availableToolsHeight)
+                .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
+                .disabled(composerKeyboardPresentation != .tools)
+                .allowsHitTesting(composerKeyboardPresentation == .tools)
+                .accessibilityHidden(composerKeyboardPresentation != .tools)
+            }
         }
         .padding(.top, topInset)
         .overlay(alignment: .top) {
@@ -788,6 +790,11 @@ struct AgentChatSurfaceView: View {
             chat?.inputBoxWasRead(screen)
             return screen
         }
+    }
+
+    /// The Composer carries Send, Stop and the Blocked card in its place.
+    private var offersTyping: Bool {
+        console.capabilities(for: agent.hostID).chatTyping
     }
 
     private var composerChrome: some View {

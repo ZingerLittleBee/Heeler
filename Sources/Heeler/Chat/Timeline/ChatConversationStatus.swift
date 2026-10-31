@@ -13,6 +13,8 @@ extension ChatUnavailableReason {
         case .compressed: "Conversation Compressed"
         case .unsupportedSession, .unsupportedFormat, .sessionStore: "Conversation Not Readable"
         case .startScreen: "Not in This Conversation"
+        case .cannotTellSession: "Can't Tell the Conversation"
+        case .transcriptOff: "Transcript Saving Is Off"
         }
     }
 
@@ -61,6 +63,10 @@ extension ChatUnavailableReason {
             problem.explanation
         case .startScreen(let program):
             "\(program.chatName) is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it."
+        case .cannotTellSession(let program):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal. Chat checks again when the Agent's status changes."
+        case .transcriptOff(let variable, let coreCarriesIt):
+            variable.explanation(coreCarriesIt: coreCarriesIt)
         }
     }
 
@@ -115,13 +121,17 @@ extension ChatUnavailableReason {
         // Never over the timeline, which this reason hides.
         case .startScreen(let program):
             "\(program.chatName) is on its home screen."
+        case .cannotTellSession:
+            "Chat can't tell which conversation this Agent is in now.\(saved)"
+        case .transcriptOff:
+            "This Agent isn't saving a transcript.\(saved)"
         }
     }
 
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
-        case .noSession, .notFound, .mismatched, .startScreen: true
+        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .transcriptOff: true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false
         }
@@ -138,6 +148,23 @@ extension ChatUnavailableReason {
         case .noSession, .awaitingFirstMessage: true
         default: false
         }
+    }
+}
+
+extension ChatTranscriptOffVariable {
+    /// Says so instead of waiting for a file. When the core carries the variable
+    /// every Agent it starts inherits it, which the Host's notice explains.
+    func explanation(coreCarriesIt: Bool) -> String {
+        let effect =
+            switch self {
+            case .childSession: "keeps neither a session record nor a transcript"
+            case .skipPromptHistory: "keeps no transcript"
+            }
+        let fix =
+            coreCarriesIt
+            ? "The herdr-core on this Host carries it too. See the notice in the Host's details for how to fix that."
+            : "Start the Agent again without that variable to use Chat."
+        return "This Claude Code was started with \(rawValue), so it \(effect) for Chat to read. \(fix)"
     }
 }
 

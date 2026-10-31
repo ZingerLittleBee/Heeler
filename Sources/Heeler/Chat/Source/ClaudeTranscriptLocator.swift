@@ -86,11 +86,20 @@ struct ClaudeTranscriptLocator: Sendable {
 
     /// `searchesEveryProject` false keeps to the Agent's directories, a
     /// few stats, for a new session whose file comes under one of them.
+    ///
+    /// `configRoot` is the Agent's own config dir when a check of its process
+    /// found the session there (ADR 0034). A session it found is running, so
+    /// with no file it is one still to write. Nil looks under `~/.claude`.
     func locate(
-        sessionID: String, directories: [String], searchesEveryProject: Bool = true
+        sessionID: String, directories: [String], searchesEveryProject: Bool = true, configRoot: String? = nil
     ) async throws -> Result<ClaudeTranscriptLocation, ClaudeTranscriptUnavailable> {
-        let home = try await files.home()
-        let projects = RemoteFilePath.join(home, ".claude", "projects")
+        let root: String
+        if let configRoot {
+            root = configRoot
+        } else {
+            root = RemoteFilePath.join(try await files.home(), ".claude")
+        }
+        let projects = RemoteFilePath.join(root, "projects")
         let fileName = "\(sessionID).jsonl"
         let plan = Self.plan(directories: directories)
         var tried = Set<String>()
@@ -130,7 +139,8 @@ struct ClaudeTranscriptLocator: Sendable {
         }
         func missing(searchedAll: Bool) async throws -> ClaudeTranscriptUnavailable {
             if sawMismatch { return .mismatched }
-            return try await sessionStarted(home: home, sessionID: sessionID)
+            if configRoot != nil { return .notWritten }
+            return try await sessionStarted(root: root, sessionID: sessionID)
                 ? .notWritten : .notFound(searchedAll: searchedAll)
         }
         guard
@@ -153,11 +163,11 @@ struct ClaudeTranscriptLocator: Sendable {
         return .failure(try await missing(searchedAll: searchedAll))
     }
 
-    /// Whether Claude Code started the session under `home`: its
+    /// Whether Claude Code started the session under `root`: its
     /// `session-env/<id>` is a directory. One the Host won't let Heeler
     /// see is no sign either way.
-    private func sessionStarted(home: String, sessionID: String) async throws -> Bool {
-        let path = RemoteFilePath.join(home, ".claude", "session-env", sessionID)
+    private func sessionStarted(root: String, sessionID: String) async throws -> Bool {
+        let path = RemoteFilePath.join(root, "session-env", sessionID)
         do {
             guard let status = try await files.status(path) else { return false }
             return status.kind == nil || status.kind == .directory

@@ -62,6 +62,8 @@ final class ConsoleStore {
     private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
     /// What each core Host's desktop app can name right now.
     private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
+    /// Each core Host's `uname -s`, once a link has located its core.
+    private(set) var hostCoreKernels: [Host.ID: String] = [:]
     /// The connection each Host's platform was last asked on.
     @ObservationIgnored private var hostPlatformGenerations: [Host.ID: UInt64] = [:]
 
@@ -163,6 +165,8 @@ final class ConsoleStore {
     /// One Chat per Agent whose detail has shown it, kept like the Composer
     /// so leaving and returning keeps the conversation and its position.
     @ObservationIgnored private var chatStores: [ConsoleAgent.ID: AgentChatStore] = [:]
+    /// The last session event each core Agent's Chat has heard of.
+    @ObservationIgnored private var chatSessionEventRevisions: [ConsoleAgent.ID: UInt64] = [:]
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
 
@@ -241,6 +245,7 @@ final class ConsoleStore {
         for (id, store) in chatStores where incoming[id.hostID] != projections[id.hostID]?.host {
             store.end()
             chatStores[id] = nil
+            chatSessionEventRevisions[id] = nil
         }
         // Also the launch-time sweep: a Host removed while the app was not
         // running leaves a cache no one else would delete. Chained, so the
@@ -689,48 +694,66 @@ final class ConsoleStore {
     /// Agent and its Host entry last. Nil when the Host is not in the
     /// catalog or the program has no transcript adapter.
     func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
-        guard capabilities(for: agent.hostID).chat else { return nil }
+        guard capabilities(for: agent.hostID).offersChat(for: program) else { return nil }
         if let existing = chatStores[agent.id], existing.program == program { return existing }
         guard let host = projections[agent.hostID]?.host, let adapter = chatAdapter(program) else {
             return nil
         }
+        let core = projections[agent.hostID] as? HerdrCoreConsoleProjection
+        if let core, core.chatCacheScope == nil { return nil }
         chatStores[agent.id]?.end()
         let hostID = agent.hostID
         let paneID = agent.agent.paneID
-        let store = AgentChatStore(
-            agentID: agent.id, agent: agent.agent, program: program,
-            source: AgentChatSource(
-                hostID: hostID, socketLocation: host.socketLocation,
-                files: chatHostFiles(for: hostID),
-                agentInfo: { [weak self] in
+        var source = AgentChatSource(
+            hostID: hostID, socketLocation: host.socketLocation,
+            files: chatHostFiles(for: hostID),
+            agentInfo: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
+            },
+            cache: chatCache, adapter: adapter,
+            cachedSession: { [weak self] agent in
+                guard let self else { return nil }
+                return await self.cachedChats.cachedSession(for: agent, on: host)
+            },
+            processInfo: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.projection(for: hostID).processInfo(paneID: paneID)
+            },
+            screen: BlockedScreenIO(
+                readScreen: { [weak self] in
                     guard let self else { throw TransportError.cancelled }
-                    return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
+                    return try await self.readAgentScreen(paneID, on: hostID)
                 },
-                cache: chatCache, adapter: adapter,
-                cachedSession: { [weak self] agent in
-                    guard let self else { return nil }
-                    return await self.cachedChats.cachedSession(for: agent, on: host)
-                },
-                processInfo: { [weak self] in
+                sendKeys: { [weak self] keys in
                     guard let self else { throw TransportError.cancelled }
-                    return try await self.projection(for: hostID).processInfo(paneID: paneID)
+                    try await self.sendAgentKeys(keys, to: paneID, on: hostID)
                 },
-                screen: BlockedScreenIO(
-                    readScreen: { [weak self] in
-                        guard let self else { throw TransportError.cancelled }
-                        return try await self.readAgentScreen(paneID, on: hostID)
-                    },
-                    sendKeys: { [weak self] keys in
-                        guard let self else { throw TransportError.cancelled }
-                        try await self.sendAgentKeys(keys, to: paneID, on: hostID)
-                    },
-                    paste: { [weak self] text in
-                        guard let self else { throw TransportError.cancelled }
-                        try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
-                    })))
+                paste: { [weak self] text in
+                    guard let self else { throw TransportError.cancelled }
+                    try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
+                }))
+        if let core {
+            // Chat's typing stays hidden, and no record names a session here.
+            source.screen = .unavailable
+            source.processInfo = nil
+            source.coreScope = core.chatCacheScope
+            source.sessionEvidence = { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.checkChatSession(paneID: paneID, on: hostID)
+            }
+            // Only events after this store exists are news to it.
+            chatSessionEventRevisions[agent.id] = core.sessionEventRevision(of: paneID)
+        }
+        let store = AgentChatStore(agentID: agent.id, agent: agent.agent, program: program, source: source)
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
         return store
+    }
+
+    private func checkChatSession(paneID: String, on hostID: Host.ID) async throws -> ChatSessionEvidence {
+        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else { throw TransportError.cancelled }
+        return try await core.checkChatSession(paneID: paneID)
     }
 
     /// Chat's transcript reads and store queries on the Host's live
@@ -1163,6 +1186,10 @@ final class ConsoleStore {
         if hostDesktopAppNaming != nextDesktopAppNaming {
             hostDesktopAppNaming = nextDesktopAppNaming
         }
+        let nextCoreKernels = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .compactMap { projection in projection.kernel.map { (projection.host.id, $0) } })
+        if hostCoreKernels != nextCoreKernels { hostCoreKernels = nextCoreKernels }
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
@@ -1521,7 +1548,8 @@ final class ConsoleStore {
         HostCapabilities(
             serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
             platform: hostPlatforms[hostID],
-            desktopAppNaming: hostDesktopAppNaming[hostID])
+            desktopAppNaming: hostDesktopAppNaming[hostID],
+            coreKernel: hostCoreKernels[hostID])
     }
 
     // MARK: Harness configuration edits
@@ -1576,7 +1604,11 @@ final class ConsoleStore {
     }
 
     func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {
-        guard capabilities(for: agent.hostID).chat else { return nil }
+        let capabilities = capabilities(for: agent.hostID)
+        guard capabilities.chat else { return nil }
+        if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
+            return nil
+        }
         let platform = hostPlatforms[agent.hostID]
         if let platform {
             return AgentChatAvailability.program(
@@ -1679,6 +1711,21 @@ final class ConsoleStore {
         guard !chatStores.isEmpty else { return }
         let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
         for (id, store) in chatStores {
+            let core = projections[id.hostID] as? HerdrCoreConsoleProjection
+            // Another core's Agents are other Agents: its Transcripts are keyed
+            // apart, and this store is keyed to the last one.
+            if let core, store.coreScope != core.chatCacheScope {
+                store.end()
+                chatStores[id] = nil
+                chatSessionEventRevisions[id] = nil
+                continue
+            }
+            if let core {
+                let revision = core.sessionEventRevision(of: id.paneID)
+                if chatSessionEventRevisions.updateValue(revision, forKey: id) != revision {
+                    store.sessionEvidenceMayHaveChanged()
+                }
+            }
             if let agent = current[id] {
                 store.agentDidChange(agent)
             } else if hostStatuses[id.hostID] == .connected,
@@ -1686,6 +1733,7 @@ final class ConsoleStore {
             {
                 store.end()
                 chatStores[id] = nil
+                chatSessionEventRevisions[id] = nil
             }
         }
     }
