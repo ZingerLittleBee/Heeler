@@ -150,9 +150,7 @@ final class HerdrCoreComposerSend {
         let held: HerdrCoreAgentHolder
         switch await HerdrCoreAgentHolder.current(at: address, in: projection, clock: clock) {
         case .success(let holder): held = holder
-        case .failure(.agentLeft): return .refused(.inputNotReady(Self.agentLeft))
-        case .failure(.notSampledYet): return .refused(.inputNotReady(Self.notSampledYet))
-        case .failure(.noAnswer): return .failed(Self.noAnswerBeforePaste)
+        case .failure(let problem): return Self.outcome(of: problem)
         }
         let isBlocked = held.agent.status == .blocked
 
@@ -171,6 +169,10 @@ final class HerdrCoreComposerSend {
             }
         }
         defer { seat.leave() }
+
+        if viewed == nil, let change = await changeWhileViewerOpened(from: held, in: projection) {
+            return change
+        }
 
         let modes = seat.modes
         guard modes.usesBracketedPaste else { return .refused(.programNotAcceptingPaste) }
@@ -211,6 +213,30 @@ final class HerdrCoreComposerSend {
             return .refused(.notSubmitted(Self.programEnded))
         case .noAnswer:
             return .outcomeUnknown
+        }
+    }
+
+    private static func outcome(of problem: HerdrCoreAgentHolder.Problem) -> Outcome {
+        switch problem {
+        case .agentLeft: .refused(.inputNotReady(agentLeft))
+        case .notSampledYet: .refused(.inputNotReady(notSampledYet))
+        case .noAnswer: .failed(noAnswerBeforePaste)
+        }
+    }
+
+    /// Opening Chat's viewer can take seconds, and a paste goes only while the same
+    /// process holds the foreground and has no dialog up. Why not, or nil to go on.
+    private func changeWhileViewerOpened(
+        from held: HerdrCoreAgentHolder, in projection: HerdrCoreConsoleProjection
+    ) async -> Outcome? {
+        switch await HerdrCoreAgentHolder.current(at: address, in: projection, clock: clock) {
+        case .failure(let problem):
+            return Self.outcome(of: problem)
+        case .success(let now):
+            guard Self.holdsTheSameProgram(now.foreground, as: held) else {
+                return .refused(.inputNotReady(Self.holderChangedWhileOpening))
+            }
+            return now.agent.status == .blocked ? .refused(.agentBlocked) : nil
         }
     }
 
@@ -390,6 +416,8 @@ final class HerdrCoreComposerSend {
         "The Agent started asking something before the message was submitted, so nothing was submitted. The text may still be in the Agent's input."
     private static let noAnswerBeforePaste = "The Host did not answer, so nothing was sent. Check the connection and retry."
     private static let agentLeft = "The Agent no longer holds this terminal, so nothing was sent."
+    private static let holderChangedWhileOpening =
+        "Another process took over the terminal as Heeler reached it, so nothing was sent."
     private static let notSampledYet = "The Agent is still starting, so nothing was sent. Try again in a moment."
     private static let unknownSubmitKey = "This Terminal's Template names a submit key Heeler cannot press, so nothing was sent."
     private static let windowPassed =
