@@ -237,13 +237,19 @@ final class ConsoleStore {
     /// Aligns Host projections with the catalog. Editing a Host replaces its
     /// projection because its connection coordinates may have changed. A Host
     /// waiting for its Server Kind is not the Console's yet.
-    func setHosts(_ catalogHosts: [Host]) {
+    ///
+    /// `hostsOutOfSight` is `HostStore.hostsOutOfSight`: Hosts in the catalog that
+    /// are not listed, whose device memory stays. Nil says the catalog could not be
+    /// read, so nobody can say which Hosts went and none of that memory is swept.
+    func setHosts(_ catalogHosts: [Host], hostsOutOfSight: Set<Host.ID>? = []) {
         let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
-        let coreHostIDs = Set(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
-        coreHostMemory.retainHosts(coreHostIDs)
-        harnessEdits.retainHosts(coreHostIDs)
+        if let hostsOutOfSight {
+            let retained = hostsOutOfSight.union(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
+            coreHostMemory.retainHosts(retained)
+            harnessEdits.retainHosts(retained)
+        }
         cachedChats.setHosts(hosts)
         for id in projections.keys where incoming[id] != projections[id]?.host {
             chatPrefetchTasks[id]?.cancel()

@@ -92,6 +92,37 @@ struct HerdrCoreConsoleProjectionTests {
 
     // MARK: The inventory
 
+    @Test func deviceMemorySurvivesACatalogThatCannotSayWhichHostsExist() throws {
+        let suite = "core-memory-sweep-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let memory = HerdrCoreHostMemory(defaults: defaults)
+        let edits = HarnessConfigEditStore(defaults: defaults)
+        let hostID = Host.ID()
+        memory.noteCore("c1", for: hostID)
+        let edit = HarnessConfigAppliedEdit(
+            id: UUID(), editID: GrokBuildProgramStatusEdit.id, harness: "Grok Build", path: "/config",
+            hunk: HarnessConfigHunk(before: Data("a".utf8), after: Data("b".utf8)), createdFile: false,
+            writtenDigest: Data([1]), appliedAt: Date(timeIntervalSince1970: 0))
+        edits.note(edit, on: hostID)
+        let console = ConsoleStore(coreHostMemory: memory, harnessEdits: edits)
+
+        // The catalog cannot be read: nobody knows this Host went.
+        console.setHosts([], hostsOutOfSight: nil)
+        #expect(memory.coreID(for: hostID) == "c1")
+        #expect(edits.edits(on: hostID) == [edit])
+
+        // A Host this build cannot read is still in the catalog.
+        console.setHosts([], hostsOutOfSight: [hostID])
+        #expect(memory.coreID(for: hostID) == "c1")
+        #expect(edits.edits(on: hostID) == [edit])
+
+        // It really was removed.
+        console.setHosts([], hostsOutOfSight: [])
+        #expect(memory.coreID(for: hostID) == nil)
+        #expect(edits.edits(on: hostID).isEmpty)
+    }
+
     @Test func theSnapshotFillsTheListWithOneWorkspacePerDirectoryAndOneTabPerTerminal() async throws {
         let transport = ScriptedCoreTransport(subscribeResults: [
             Self.subscribeResult([

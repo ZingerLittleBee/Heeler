@@ -805,6 +805,48 @@ struct HostStoreTests {
         #expect(defaults.data(forKey: Self.coreKey) == core)
     }
 
+    // MARK: Which Hosts device memory may be swept against
+
+    @Test func aCatalogOfOnlyReadableHostsKeepsNothingOutOfSight() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        try store.add(coreHost())
+        #expect(store.hostsOutOfSight == [])
+    }
+
+    @Test func aHostThisBuildCannotReadIsOutOfSightNotGone() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let futureCore = UUID()
+        let futureShared = UUID()
+        func catalog(_ id: UUID) -> Data {
+            Data(
+                """
+                {"version":1,"hosts":[{"id":"\(id.uuidString)","name":"Future","address":"f.example",
+                  "port":22,"username":"dev","authMethod":"deviceKey","serverKind":"future-kind"}]}
+                """.utf8)
+        }
+        defaults.set(catalog(futureCore), forKey: Self.coreKey)
+        defaults.set(catalog(futureShared), forKey: "hosts")
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(store.hosts.isEmpty)
+        #expect(store.catalogLoadError == nil)
+        #expect(store.hostsOutOfSight == [futureCore, futureShared])
+    }
+
+    @Test func aCatalogThatCannotBeReadSaysNothingOfWhichHostsExist() throws {
+        for key in ["hosts", Self.coreKey] {
+            let (defaults, cleanup) = try makeDefaults()
+            defer { cleanup() }
+            defaults.set(Data("not-json".utf8), forKey: key)
+            let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+            #expect(store.hostsOutOfSight == nil, "\(key)")
+        }
+    }
+
     @Test func addPersistsAcrossInstances() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }

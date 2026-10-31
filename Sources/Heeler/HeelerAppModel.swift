@@ -154,7 +154,7 @@ final class HeelerAppModel {
         // A window can render before start() runs. Publish the configured
         // Hosts and begin loading saved Chats before that first render;
         // connections still wait for start() to resume the Console.
-        console.setHosts(hostStore.hosts)
+        console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
     }
 
     var terminal: TerminalSettings {
@@ -176,7 +176,7 @@ final class HeelerAppModel {
         liveActivities.agentsDidChange(console.agents)
 
         Task {
-            console.setHosts(hostStore.hosts)
+            console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
             notificationPreferences.setHosts(hostStore.hosts)
             await console.resume()
         }
@@ -262,7 +262,7 @@ final class HeelerAppModel {
 
         observe({ hostStore.hosts }) { [weak self] hosts in
             guard let self else { return }
-            console.setHosts(hosts)
+            console.setHosts(hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
             notificationPreferences.setHosts(hosts)
             liveActivities.layoutsDidChange()
         }

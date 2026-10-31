@@ -48,6 +48,13 @@ final class HostStore {
             }
 
             var knownHostID: Host.ID? { knownHost?.id }
+
+            var unknownHostID: Host.ID? {
+                guard case .unknown(let rawHost) = self, let id = rawHost["id"]?.stringValue else {
+                    return nil
+                }
+                return Host.ID(uuidString: id)
+            }
         }
 
         let entries: [Entry]
@@ -293,6 +300,15 @@ final class HostStore {
         }
         try persistSharedCatalog()
         return confirmed
+    }
+
+    /// Hosts the catalog keeps that this build cannot read, as an older build
+    /// finds a newer one's. Nil when a catalog itself could not be read, which
+    /// says nothing of which Hosts exist: device memory of a Host goes only when
+    /// the Host is known to be gone.
+    var hostsOutOfSight: Set<Host.ID>? {
+        guard catalogLoadError == nil, coreCatalogLoadError == nil else { return nil }
+        return Set((catalogEntries + coreCatalogEntries).compactMap(\.unknownHostID))
     }
 
     /// The Hosts the Console, Usage and its pickers show. A Host waiting for its
