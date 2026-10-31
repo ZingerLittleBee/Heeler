@@ -11,7 +11,7 @@ struct AgentListFieldsPreview: View {
 
     var body: some View {
         AgentCardView(
-            agent: Self.sampleAgent(hostName: hostName), layout: layout,
+            agent: Self.sampleAgent(hostName: hostName, layout: layout), layout: layout,
             sampleChanges: Self.sampleChanges)
             .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
@@ -21,12 +21,17 @@ struct AgentListFieldsPreview: View {
 
     /// Same presentation the Console card uses for this sample.
     static func presentation(layout: AgentRowLayout, hostName: String) -> AgentCardPresentation {
-        AgentCardPresentation(agent: sampleAgent(hostName: hostName), layout: layout)
+        AgentCardPresentation(agent: sampleAgent(hostName: hostName, layout: layout), layout: layout)
     }
 
-    /// Deterministic sample values for built-in and custom tokens; not a live Agent.
-    static func sampleAgent(hostName: String) -> ConsoleAgent {
-        ConsoleAgent(
+    /// Deterministic sample values for built-in and custom tokens, and each
+    /// label `layout` names, shown by its key; not a live Agent.
+    static func sampleAgent(hostName: String, layout: AgentRowLayout? = nil) -> ConsoleAgent {
+        var tokens = ["branch": "feat/sidebar"]
+        for case .label(let key) in (layout?.rows ?? []).joined().map(\.token) {
+            tokens[key] = key
+        }
+        return ConsoleAgent(
             hostID: sampleHostID,
             hostName: hostName,
             agent: Agent(
@@ -43,7 +48,7 @@ struct AgentListFieldsPreview: View {
                 terminalTitle: "fix sidebar sync",
                 terminalTitleStripped: "fix sidebar sync",
                 paneTitle: "claude",
-                tokens: ["branch": "feat/sidebar"]),
+                tokens: tokens),
             workspaceLabel: "heeler",
             repositoryCheckout: nil,
             tabLabel: "1",

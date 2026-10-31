@@ -22,6 +22,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     var terminalsByPane: [String: ConsoleTerminal] { get }
     var agentsByPane: [String: ConsoleAgent] { get }
     var sidebarRevision: UInt64 { get }
+    var terminalLabelKeys: [String] { get }
 
     // MARK: Lifecycle
 

@@ -47,7 +47,7 @@ enum AgentRowRenderer {
         case .host: nonempty(row.hostName)
         case .status: row.agent.status.displayTitle.flatMap(nonempty)
         case .directory: nonempty(row.displayCwd)
-        case .custom(let name): row.agent.tokens[name]
+        case .custom(let name), .label(let name): row.agent.tokens[name]
         }
     }
 

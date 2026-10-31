@@ -1,13 +1,17 @@
 import SwiftUI
 
-/// Picks one field for a row slot and saves it at once. Every row offers
-/// herdr fields, Heeler fields, and custom `$` plugin fields.
+/// Picks one field for a row slot and saves it at once. On a Host following a
+/// plugin every row offers herdr fields, Heeler fields, and custom `$` plugin
+/// fields; on any other Host, its fields and its Terminals' labels.
 struct AgentListFieldsAddFieldSheet: View {
     let editor: AgentListFieldsEditor
     let destination: AgentListFieldsEditorDestination
     var hostName: String = ""
+    var followsPlugin = true
+    var labelKeys: [String] = []
     @Environment(\.dismiss) private var dismiss
     @State private var customName = ""
+    @State private var labelName = ""
 
     private var rows: [AgentRow] { editor.layout(for: destination.hostID).rows }
     private var tokens: AgentRow { AgentLayoutTokensEditing.row(destination.rowIndex, in: rows) }
@@ -15,37 +19,36 @@ struct AgentListFieldsAddFieldSheet: View {
         editor.syncStates[destination.hostID] != .syncing
             && AgentLayoutTokensEditing.canAddField(to: tokens, rows: rows, rowIndex: destination.rowIndex)
     }
-    private var availableHerdrFields: [AgentRowToken] {
-        AgentLayoutTokensEditing.availableBuiltins(in: tokens, from: AgentRowToken.herdrBuiltins)
-    }
-    private var availableHeelerFields: [AgentRowToken] {
-        AgentLayoutTokensEditing.availableHeelerFields(in: tokens)
+    private var offer: AgentLayoutFieldOffer {
+        AgentLayoutFieldOffer(row: tokens, followsPlugin: followsPlugin, labelKeys: labelKeys)
     }
     private var subtitle: String {
-        AgentLayoutTokensEditing.navigationSubtitle(hostName: hostName, rowIndex: destination.rowIndex)
+        AgentLayoutTokensEditing.navigationSubtitle(
+            hostName: hostName, rowIndex: destination.rowIndex, followsPlugin: followsPlugin)
     }
 
     var body: some View {
         NavigationStack {
             List {
-                if availableHerdrFields.isEmpty && availableHeelerFields.isEmpty {
+                let offer = self.offer
+                if !offer.hasBuiltins {
                     Section {
                         Text("Every built-in field is already in this row.")
                             .foregroundStyle(.secondary)
                     }
                 } else {
-                    if !availableHerdrFields.isEmpty {
+                    if !offer.herdrFields.isEmpty {
                         Section {
-                            ForEach(availableHerdrFields, id: \.self) { @Sendable token in
+                            ForEach(offer.herdrFields, id: \.self) { @Sendable token in
                                 MainActorContent { fieldButton(for: token) }
                             }
                         } header: {
                             Text("herdr fields")
                         }
                     }
-                    if !availableHeelerFields.isEmpty {
+                    if !offer.heelerFields.isEmpty {
                         Section {
-                            ForEach(availableHeelerFields, id: \.self) { @Sendable token in
+                            ForEach(offer.heelerFields, id: \.self) { @Sendable token in
                                 MainActorContent { fieldButton(for: token) }
                             }
                         } header: {
@@ -54,30 +57,62 @@ struct AgentListFieldsAddFieldSheet: View {
                             Text("These fields exist only in Heeler.")
                         }
                     }
-                }
-                Section {
-                    TextField("$custom_name", text: $customName)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .fontDesign(.monospaced)
-                    Button("Add Custom Field") {
-                        guard let token = AgentLayoutTokensEditing.customToken(
-                            from: customName, alreadyIn: tokens)
-                        else { return }
-                        add(token)
+                    if !offer.hostFields.isEmpty {
+                        Section {
+                            ForEach(offer.hostFields, id: \.self) { @Sendable token in
+                                MainActorContent { fieldButton(for: token) }
+                            }
+                        }
                     }
-                    .disabled(
-                        AgentLayoutTokensEditing.customToken(from: customName, alreadyIn: tokens) == nil
-                            || !canAddField)
-                } header: {
-                    Text("Custom field")
-                } footer: {
-                    Text("Custom names start with $ and contain 1–32 letters, digits, underscores or hyphens. Values come from herdr plugins and display as plain text.")
                 }
-                Section {
-                    EmptyView()
-                } footer: {
-                    Text(AgentLayoutTokensEditing.addFieldFooter(rowIndex: destination.rowIndex))
+                if offer.acceptsPluginFields {
+                    Section {
+                        TextField("$custom_name", text: $customName)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .fontDesign(.monospaced)
+                        Button("Add Custom Field") {
+                            guard let token = AgentLayoutTokensEditing.customToken(
+                                from: customName, alreadyIn: tokens)
+                            else { return }
+                            add(token)
+                        }
+                        .disabled(
+                            AgentLayoutTokensEditing.customToken(from: customName, alreadyIn: tokens) == nil
+                                || !canAddField)
+                    } header: {
+                        Text("Custom field")
+                    } footer: {
+                        Text("Custom names start with $ and contain 1–32 letters, digits, underscores or hyphens. Values come from herdr plugins and display as plain text.")
+                    }
+                    Section {
+                        EmptyView()
+                    } footer: {
+                        Text(AgentLayoutTokensEditing.addFieldFooter(rowIndex: destination.rowIndex))
+                    }
+                } else {
+                    Section {
+                        ForEach(offer.labelFields, id: \.self) { @Sendable token in
+                            MainActorContent { fieldButton(for: token) }
+                        }
+                        TextField("Label name", text: $labelName)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .fontDesign(.monospaced)
+                        Button("Add Label") {
+                            guard let token = AgentLayoutTokensEditing.labelToken(
+                                from: labelName, alreadyIn: tokens)
+                            else { return }
+                            add(token)
+                        }
+                        .disabled(
+                            AgentLayoutTokensEditing.labelToken(from: labelName, alreadyIn: tokens) == nil
+                                || !canAddField)
+                    } header: {
+                        Text("Terminal labels")
+                    } footer: {
+                        Text("Values come from each Terminal's labels and display as plain text.")
+                    }
                 }
             }
             .listSectionSpacing(.compact)

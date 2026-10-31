@@ -28,6 +28,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     let syncError: String? = nil
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
+    var terminalLabelKeys: [String] {
+        Set(records.flatMap(\.labels.keys)).sorted()
+    }
 
     private let memory: HerdrCoreHostMemory
     private let onChange: @MainActor @Sendable () -> Void

@@ -27,6 +27,8 @@ final class HostConsoleProjection: ConsoleHostProjection {
     private(set) var syncError: String?
     private(set) var transportGeneration: UInt64 = 0
     private(set) var sidebarRevision: UInt64 = 0
+    /// Labels are herdr-core's; a Herdr TUI Pane has none.
+    let terminalLabelKeys: [String] = []
     /// Whether the Host's current connection generation has produced a
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".

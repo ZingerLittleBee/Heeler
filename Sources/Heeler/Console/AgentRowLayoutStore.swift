@@ -72,8 +72,11 @@ final class AgentRowLayoutStore {
         hostLayouts = updated
     }
 
-    func resolvedLayout(for hostID: Host.ID, pluginSnapshot: AgentRowLayoutSnapshot?) -> AgentRowLayout {
-        AgentRowLayoutResolver.resolve(hostLayout: hostLayouts[hostID], pluginSnapshot: pluginSnapshot)
+    func resolvedLayout(
+        for hostID: Host.ID, pluginSnapshot: AgentRowLayoutSnapshot?, followsPlugin: Bool = true
+    ) -> AgentRowLayout {
+        AgentRowLayoutResolver.resolve(
+            hostLayout: hostLayouts[hostID], pluginSnapshot: pluginSnapshot, followsPlugin: followsPlugin)
     }
 
     private func persist(hostLayouts: [Host.ID: AgentRowLayout]) throws {

@@ -408,6 +408,150 @@ struct HerdrCoreAgentsTests {
                 == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: false, closes: true))
     }
 
+    // MARK: Agent Row Layout
+
+    private static let titleThenDirectory: [AgentRow] = [
+        [.init(.terminalTitleStripped)], [.init(.directory)],
+    ]
+
+    @Test func aCoreHostsRowsStartFromTheTitleThenTheDirectory() async throws {
+        let (store, _) = try await started([Self.claude("t1", title: "fix the sync")])
+        defer { store.setHosts([]) }
+        let layout = store.rowLayout(for: host.id)
+        #expect(layout.rows == Self.titleThenDirectory)
+        let row = try #require(agent(store, "t1"))
+        #expect(
+            AgentRowRenderer.render(layout: layout, agent: row).map { $0.map(\.text) }
+                == [["fix the sync"], ["/work/app"]])
+    }
+
+    @Test func aPluginSnapshotNeverSetsACoreHostsRowsButItsSavedLayoutDoes() {
+        let plugin = AgentRowLayoutSnapshot(layout: AgentRowLayout(rows: [[.init(.workspace)]]))
+        #expect(
+            AgentRowLayoutResolver.resolve(hostLayout: nil, pluginSnapshot: plugin, followsPlugin: false).rows
+                == Self.titleThenDirectory)
+        let saved = AgentRowLayout(rows: [[.init(.host)]])
+        #expect(
+            AgentRowLayoutResolver.resolve(hostLayout: saved, pluginSnapshot: plugin, followsPlugin: false)
+                == saved)
+        // Herdr TUI still follows its plugin.
+        #expect(
+            AgentRowLayoutResolver.resolve(hostLayout: nil, pluginSnapshot: plugin, followsPlugin: true)
+                == plugin.layout.withHeelerRow())
+    }
+
+    @Test func theEditorStartsACoreHostFromHeelersRowsAndNeverAsksForPluginFields() async throws {
+        let suite = "core-agent-rows-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var fetches = 0
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(),
+            fetch: { _ in
+                fetches += 1
+                return .loaded(AgentRowLayoutSnapshot(layout: AgentRowLayout(rows: [[.init(.workspace)]])))
+            },
+            followsPlugin: { _ in false })
+        let id = host.id
+
+        #expect(editor.layout(for: id).rows == Self.titleThenDirectory)
+        #expect(AgentListFieldsSourceCaption.text(editor.underlyingSource(for: id)) == "Heeler's fields")
+
+        await editor.replaceWithPluginFields(id)
+        #expect(fetches == 0)
+        #expect(layouts.hostLayouts[id] == nil)
+        #expect(editor.syncStates[id] == nil)
+
+        let label = try #require(AgentRowToken.terminalLabel("team.owner"))
+        #expect(AgentLayoutTokensEditing.add(label, editor: editor, hostID: id, rowIndex: 1))
+        #expect(
+            AgentRowLayoutStore(defaults: defaults).hostLayouts[id]?.rows
+                == [[.init(.terminalTitleStripped)], [.init(.directory), .init(label)]])
+        #expect(AgentListFieldsSourceCaption.text(editor.underlyingSource(for: id)) == "Your fields")
+    }
+
+    /// Core accepts any non-empty label key without `=` (terminals.rs
+    /// `check_label_key`, v0.1.13), so a label is not a `$` plugin name.
+    @Test func aTerminalLabelIsARowFieldReadFromItsTerminal() async throws {
+        let (store, _) = try await started([
+            Self.claude("t1", labels: ["team.owner": "ana"]),
+            Self.record("t2", labels: ["project": "heeler", "team.owner": "bo"]),
+        ])
+        defer { store.setHosts([]) }
+        #expect(store.terminalLabelKeys(on: host.id) == ["project", "team.owner"])
+
+        let owner = try #require(AgentRowToken.terminalLabel("team.owner"))
+        #expect(owner.rawValue == "label:team.owner")
+        #expect(AgentRowToken(rawValue: "label:team.owner") == owner)
+        let project = try #require(AgentRowToken.terminalLabel("project"))
+        let row = try #require(agent(store, "t1"))
+        // A label the Terminal does not carry leaves no empty field behind.
+        let layout = AgentRowLayout(rows: [[.init(owner), .init(project)]])
+        #expect(AgentRowRenderer.render(layout: layout, agent: row).map { $0.map(\.text) } == [["ana"]])
+    }
+
+    @Test(arguments: ["", "   ", "a=b", "tab\tkey", String(repeating: "k", count: 65)])
+    func aKeyCoreWouldRefuseOrThatCannotBeShownIsNoField(key: String) {
+        #expect(AgentRowToken.terminalLabel(key) == nil)
+        #expect(AgentRowToken(rawValue: "label:\(key)") == nil)
+    }
+
+    @Test func aSavedLabelFieldSurvivesTheCatalogThatDropsUnknownNames() throws {
+        let data = Data(#"{"rows":[[{"token":"label:team.owner"},{"token":"mystery"}]]}"#.utf8)
+        let layout = try JSONDecoder().decode(AgentRowLayout.Lenient.self, from: data).layout
+        #expect(layout.rows == [[.init(try #require(AgentRowToken.terminalLabel("team.owner")))]])
+    }
+
+    @Test func aCoreHostOffersItsTerminalsLabelsAndNoPluginOnlyFields() throws {
+        let project = try #require(AgentRowToken.terminalLabel("project"))
+        let team = try #require(AgentRowToken.terminalLabel("team"))
+        let offer = AgentLayoutFieldOffer(
+            row: [.init(.directory), .init(project)], followsPlugin: false, labelKeys: ["project", "team"])
+        #expect(offer.labelFields == [team])
+        #expect(offer.acceptsPluginFields == false)
+        #expect(offer.herdrFields.isEmpty)
+        #expect(offer.heelerFields.isEmpty)
+        #expect(offer.hostFields.contains(.terminalTitleStripped))
+        #expect(!offer.hostFields.contains(.directory))
+        #expect(!offer.hostFields.contains(.stateText))
+        #expect(!offer.hostFields.contains(.stateIcon))
+    }
+
+    @Test func aHerdrTUIHostsOfferStaysAsItWas() {
+        let offer = AgentLayoutFieldOffer(row: [.init(.tab)], followsPlugin: true, labelKeys: ["project"])
+        #expect(offer.herdrFields == AgentRowToken.herdrBuiltins.filter { $0 != .tab })
+        #expect(offer.heelerFields == AgentRowToken.heelerBuiltins)
+        #expect(offer.hostFields.isEmpty)
+        #expect(offer.labelFields.isEmpty)
+        #expect(offer.acceptsPluginFields)
+    }
+
+    @Test func aCoreHostsLayoutCopyMentionsNoSyncNoPluginAndNoHerdrRow() {
+        let copy =
+            [AgentListFieldsCopy.rowSlots(followsPlugin: false)]
+            + (0..<3).map { AgentLayoutTokensEditing.addFieldFooter(rowIndex: $0, followsPlugin: false) }
+            + (0..<3).map {
+                AgentLayoutTokensEditing.navigationSubtitle(
+                    hostName: "Studio Mac", rowIndex: $0, followsPlugin: false)
+            }
+            + (0..<3).map { AgentListFieldsRowLabel.accessibilityLabel(index: $0, row: [], followsPlugin: false) }
+        for text in copy {
+            #expect(!text.localizedCaseInsensitiveContains("sync"))
+            #expect(!text.localizedCaseInsensitiveContains("plugin"))
+            #expect(!text.localizedCaseInsensitiveContains("herdr"))
+        }
+        #expect(AgentListFieldsCopy.rowSlots(followsPlugin: false).contains("Row 1 starts from the terminal's title"))
+        #expect(AgentListFieldsCopy.rowSlots(followsPlugin: true) == AgentListFieldsCopy.rowSlots)
+    }
+
+    @Test func thePreviewFillsALabelFieldSoItReadsInTheCard() throws {
+        let owner = try #require(AgentRowToken.terminalLabel("team.owner"))
+        let layout = AgentRowLayout(rows: [[.init(owner)]])
+        let sample = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac", layout: layout)
+        #expect(AgentRowRenderer.render(layout: layout, agent: sample).map { $0.map(\.text) } == [["team.owner"]])
+    }
+
     // MARK: Row fields
 
     @Test func anAgentCarriesItsTerminalsLabelsAndTitle() async throws {

@@ -1167,7 +1167,13 @@ final class ConsoleStore {
 
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
         rowLayouts.resolvedLayout(
-            for: hostID, pluginSnapshot: sidebarSnapshots.snapshot(for: hostID))
+            for: hostID, pluginSnapshot: sidebarSnapshots.snapshot(for: hostID),
+            followsPlugin: capabilities(for: hostID).syncLayoutFromPlugin)
+    }
+
+    /// The labels on the Host's Terminals right now, offered as row fields.
+    func terminalLabelKeys(on hostID: Host.ID) -> [String] {
+        projections[hostID]?.terminalLabelKeys ?? []
     }
 
     func refreshSidebarLayouts() async {
