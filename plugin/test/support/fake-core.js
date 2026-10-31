@@ -1,8 +1,7 @@
 // A fake herdr-core socket fed by the shared frame vectors, for the Host Helper's
 // tests. Its own small parser keeps a bug in the Helper's codec from hiding here.
 
-import { readFileSync, rmSync } from "node:fs";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 

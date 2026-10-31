@@ -49,6 +49,16 @@ export function deliversToSession(entry, session) {
 }
 
 /**
+ * Each session the registrations name, once, as written. An entry that predates
+ * session scoping names none.
+ */
+export function registeredSessions(dir) {
+  const file = readRegistrationFile(dir);
+  if (file === null) return [];
+  return [...new Set(file.devices.map((entry) => entry?.session).filter((session) => typeof session === "string"))];
+}
+
+/**
  * Devices that want an Agent Notification gated on `flag`, a key of each
  * entry's `notify` preferences. A malformed entry is skipped, never fatal for
  * its neighbors.
