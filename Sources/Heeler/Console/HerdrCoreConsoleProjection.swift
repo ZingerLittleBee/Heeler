@@ -16,6 +16,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
+    private(set) var departedAgentsByPane: [String: ConsoleAgent] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
     /// See Standing Failure in `CONTEXT.md`.
@@ -197,6 +198,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         records = []
         terminalsByPane = [:]
         agentsByPane = [:]
+        departedAgentsByPane = [:]
         workspaces = []
         documentRead?.cancel()
         documentRead = nil
@@ -317,9 +319,28 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             rows[record.address]?.gridRows = record.rows
         }
         terminalsByPane = rows
+        noteDepartedAgents(listed: agents)
         agentsByPane = agents
         workspaces = builder.workspaceRows()
         askForCheckouts(organization.checkoutDirectories)
+    }
+
+    /// A Terminal between programs hosts no Agent, nor does one that ended, but
+    /// a detail open on it stays to show what happens next. An Agent that left
+    /// its shell running only left, so nothing stays. One stays until an Agent
+    /// is back at the address or the core forgets the Terminal.
+    private func noteDepartedAgents(listed agents: [String: ConsoleAgent]) {
+        for (address, agent) in agentsByPane where agents[address] == nil {
+            guard let record = records.first(where: { $0.address == address }),
+                record.hasFinished || record.isRestarting
+            else { continue }
+            var departed = agent
+            departed.agent.status = .unknown
+            departedAgentsByPane[address] = departed
+        }
+        departedAgentsByPane = departedAgentsByPane.filter { address, _ in
+            agents[address] == nil && records.contains { $0.address == address }
+        }
     }
 
     // MARK: The desktop app's document

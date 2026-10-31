@@ -645,6 +645,147 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    // MARK: A detail over a kept restart
+
+    private static let keptAgentRecord: JSONValue = .object([
+        "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
+        "argv": .array([.string("claude")]), "keep": .bool(true), "title": .string(""),
+        "cols": .number(80), "rows": .number(24), "pid": .number(7),
+        "foreground": .object([
+            "pid": .number(7), "name": .string("claude"), "argv": .array([.string("claude")]),
+            "cwd": .string("/work/app"),
+        ]),
+        "status": .object(["state": .string("working"), "app": .string("claude-code")]),
+        "labels": .object([:]),
+    ])
+
+    private static let restoredShell = keptRecord(argv: "/bin/zsh", pid: 99)
+
+    @Test func anAgentDetailShowsRestartingThenTheRestoredShellInPlace() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await Self.deliverClose(on: first)
+        try await Self.until("the restarting state") { detail.reads("Restarting…") }
+        #expect(!detail.offers("Reattach"))
+        #expect(!detail.reads("Session Ended"))
+        #expect(fixture.console.agents.isEmpty)
+        #expect(!fixture.console.chatDisplayAgents.contains { $0.id == agent.id })
+        let departed = try #require(fixture.console.detailAgent(for: agent.id))
+        #expect(departed.agent.status == .unknown)
+        #expect(fixture.console.terminals.first?.isRestarting == true)
+
+        // `restarted` changes the inventory's revision, which is when the
+        // Console lets go of terminals no Agent holds.
+        try await fixture.scripted.deliverEvent(Self.eventLine("restarted", data: Self.restoredShell))
+        let second = try await fixture.waitForAttach(2, laying: detail)
+        #expect(second.params["resumed"] == .bool(true))
+        try await fixture.deliverOutput("new shell", on: second)
+        try await Self.until("the shell on screen") { !detail.reads("Restarting…") }
+        #expect(!detail.offers("Reattach"))
+        #expect(detail.surface != nil)
+        #expect(fixture.console.agents.isEmpty)
+        #expect(fixture.console.agentTerminals.entries[agent.id] != nil)
+        #expect(fixture.console.detailAgent(for: agent.id) != nil)
+        #expect(await second.socket.frames(channel: second.channel, kind: .close).isEmpty)
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func anAgentDetailSaysItEndedAndMakesNoReattachAttempt() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedEnd))
+        try await Self.deliverClose(on: first, end: Self.exitedEnd)
+        try await Self.until("the ended state") { detail.reads("Agent Ended") }
+        #expect(!detail.offers("Reattach"))
+        #expect(!detail.reads("Session Ended"))
+        #expect(fixture.console.terminals.isEmpty)
+        #expect(fixture.console.agents.isEmpty)
+        #expect(fixture.console.detailAgent(for: agent.id) != nil)
+
+        // A later turn of the app's wheel does not bring an attempt.
+        detail.layOut()
+        try await fixture.settle()
+        #expect(await fixture.scripted.attaches.count == 1)
+
+        // Gone from the core, so there is nothing left to show.
+        try await fixture.scripted.deliverEvent(Self.eventLine("removed", data: .object([:])))
+        try await Self.until("the core forgets it") {
+            fixture.console.detailAgent(for: agent.id) == nil
+        }
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func anAgentThatLeftItsShellRunningLeavesNoDetailBehind() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine(
+                "foreground",
+                data: .object([
+                    "pid": .number(8), "name": .string("zsh"), "argv": .array([.string("/bin/zsh")]),
+                    "cwd": .string("/work/app"),
+                ])))
+        try await Self.until("no Agent") { fixture.console.agents.isEmpty }
+        #expect(fixture.console.detailAgent(for: agent.id) == nil)
+        await fixture.finish()
+    }
+
+    /// The same address can host an Agent again, and that one is on the list.
+    @Test func anAgentStartedInTheRestoredShellIsListedAgain() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await Self.until("no Agent") { fixture.console.agents.isEmpty }
+        try await fixture.scripted.deliverEvent(Self.eventLine("restarted", data: Self.restoredShell))
+        try await Self.until("the shell") {
+            fixture.console.terminals.first?.isRestarting == false
+        }
+        #expect(fixture.console.departedAgents.map(\.id) == [agent.id])
+
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine(
+                "foreground",
+                data: .object([
+                    "pid": .number(120), "name": .string("claude"), "argv": .array([.string("claude")]),
+                    "cwd": .string("/work/app"),
+                ])))
+        try await Self.until("the Agent") { !fixture.console.agents.isEmpty }
+        #expect(fixture.console.departedAgents.isEmpty)
+        await fixture.finish()
+    }
+
+    @Test func aCoreTerminalsScreenShowsRestartingAndComesBack() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "/bin/zsh")])
+        let terminal = try #require(fixture.console.terminals.first)
+        let screen = try await fixture.showShell(of: terminal, sceneID: UUID())
+        let first = try await fixture.waitForAttach(1, laying: screen)
+        try await fixture.deliverOutput("x", on: first)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await Self.deliverClose(on: first)
+        try await Self.until("the restarting state") { screen.reads("Restarting…") }
+        #expect(!screen.offers("Reattach"))
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("restarted", data: Self.restoredShell))
+        let second = try await fixture.waitForAttach(2, laying: screen)
+        try await fixture.deliverOutput("y", on: second)
+        try await Self.until("the shell on screen") { !screen.reads("Restarting…") }
+        #expect(!screen.offers("Reattach"))
+        await screen.close()
+        await fixture.finish()
+    }
+
     // MARK: Scrollback
 
     /// The core paints no history unless asked (`history` defaults to 0), and
