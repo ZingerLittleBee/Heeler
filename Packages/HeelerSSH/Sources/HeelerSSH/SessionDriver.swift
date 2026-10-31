@@ -649,12 +649,17 @@ actor SessionDriver {
     func writePTY(id: UInt64, data: Data, timeout: Duration) async throws {
         try await withDiagnosticPhase("PTY write channel \(id)", budget: timeout) {
             guard !data.isEmpty else { return }
-            let deadline = ContinuousClock.now.advanced(by: timeout)
+            var deadline = ContinuousClock.now.advanced(by: timeout)
             var offset = 0
             let owner = allocateTransportSendOwner()
 
             while offset < data.count {
+                // The budget measures this write's own progress. Queueing behind
+                // another operation, such as a health probe opening a channel on
+                // a stalled link, says nothing about this channel.
+                let queuedAt = ContinuousClock.now
                 await acquireOperation()
+                deadline = deadline.advanced(by: queuedAt.duration(to: ContinuousClock.now))
                 let progress: (written: Int, wait: SessionWaitPlan, parkedOutbound: Bool)
                 do {
                     try await holdOwnedLoopTopForTestingIfNeeded(owner: owner)
@@ -2809,6 +2814,14 @@ actor SessionDriver {
         _ hold: @escaping @Sendable () async throws -> Void
     ) {
         nextSessionWaitHoldForTesting = hold
+    }
+
+    /// Occupies the operation mutex the way a pending channel open does, so
+    /// later operations queue behind it without any network impairment.
+    func holdOperationForTesting(_ hold: @Sendable () async -> Void) async {
+        await acquireOperation()
+        await hold()
+        releaseOperation()
     }
 
     func failNextExecStderrReadForTesting(_ error: SSHError) {

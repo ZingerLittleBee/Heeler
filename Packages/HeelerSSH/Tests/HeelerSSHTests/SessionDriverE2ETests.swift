@@ -717,6 +717,44 @@ struct SessionDriverE2ETests {
     /// `isConnected` alone would not prove survival: it is a local flag, and a
     /// change that only stopped clearing it would satisfy it while leaving the
     /// session wedged. Every site is therefore followed by a real round trip.
+    /// A terminal write queued behind a health probe used to spend its budget
+    /// in the queue, fail the moment the link recovered, and take the attach
+    /// down with it (#523).
+    @Test("a PTY write spends no budget queueing behind another operation")
+    func ptyWriteBudgetExcludesTheOperationQueue() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let channel = try await connection.openPTY(
+            command: "cat",
+            columns: 80,
+            rows: 24,
+            timeout: .seconds(15))
+
+        let operation = SessionWaitHold()
+        let holder = Task { await connection.holdOperationForTesting(operation.waitUntilReleased) }
+        try await waitUntilTrue("the hold should own the operation mutex") {
+            await operation.hasEntered
+        }
+        let write = Task {
+            try await channel.write(Data("queued\n".utf8), timeout: .milliseconds(200))
+        }
+        try await Task.sleep(for: .milliseconds(600))
+        await operation.release()
+        await holder.value
+
+        try await write.value
+        var received = Data()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        while !received.contains(Data("queued\r\nqueued".utf8)), ContinuousClock.now < deadline {
+            received.append(try await channel.read(timeout: .seconds(1)) ?? Data())
+        }
+        // Once from the PTY's echo and once from `cat`: delivered, and only once.
+        #expect(String(decoding: received, as: UTF8.self).components(separatedBy: "queued").count == 3)
+        #expect(await connection.isConnected)
+        try await channel.close(timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
     @Test("a teardown that only runs out of its budget spares the session")
     func expiredTeardownBudgetSparesTheSession() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
