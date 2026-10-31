@@ -247,6 +247,79 @@ struct ConsoleChatCacheTests {
 
     /// Trusting a replaced host key leaves the Host record as it was, so
     /// only the next connection's revalidation can tell another machine.
+    @Test func removingASavedChatTakesItOffTheDeviceWithoutAHost() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let removed = Self.agent(host: host, session: Self.sessionA)
+        let kept = Self.agent(host: host, session: Self.sessionB, paneID: "w1:p2")
+        await cache.saveAgentDirectory([ChatCachedAgent(removed), ChatCachedAgent(kept)], for: host)
+        _ = try await Self.saveTranscript(for: removed, on: host, in: cache)
+        _ = try await Self.saveTranscript(for: kept, on: host, in: cache)
+        let removedKey = try Self.cacheKey(for: removed, on: host)
+        let keptKey = try Self.cacheKey(for: kept, on: host)
+        let console = ConsoleStore(chatCache: cache)
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.cachedChats.settled()
+        console.togglePin(hostID: host.id, paneID: removed.agent.paneID)
+        let chat = try #require(console.chatStore(for: removed, program: .codex))
+
+        #expect(console.isSavedChat(removed.id))
+        #expect(console.removeSavedChat(removed))
+        await console.cachedChats.settled()
+
+        #expect(console.chatDisplayAgents.map(\.id) == [kept.id])
+        #expect(console.savedChatEntries[removed.id] == nil)
+        #expect(!console.isSavedChat(removed.id))
+        #expect(!console.pins.isPinned(hostID: host.id, paneID: removed.agent.paneID))
+        #expect(console.chatStore(for: removed, program: .codex) !== chat)
+        #expect(await cache.loadAgentDirectory(for: host).map(\.paneID) == [kept.agent.paneID])
+        if case .hit = await cache.load(removedKey) { Issue.record("The removed Chat's messages stayed") }
+        guard case .hit = await cache.load(keptKey) else {
+            Issue.record("Another Chat's messages went with it")
+            return
+        }
+    }
+
+    @Test func aSavedChatRemovedDuringRevalidationStaysRemoved() async {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let agent = Self.agent(host: host, session: Self.sessionA)
+        await cache.saveAgentDirectory([ChatCachedAgent(agent)], for: host)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+
+        directory.revalidate(on: host)
+        directory.remove(paneID: agent.agent.paneID, on: host)
+        await directory.settled()
+
+        #expect(directory.agents(on: host).isEmpty)
+        #expect(await cache.loadAgentDirectory(for: host).isEmpty)
+    }
+
+    @Test func aConversationAnotherEntryShowsKeepsItsMessages() async throws {
+        let host = Host(address: "host", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let agent = Self.agent(host: host, session: Self.sessionA)
+        let sibling = Self.agent(host: host, session: Self.sessionA, paneID: "w1:p2")
+        await cache.saveAgentDirectory([ChatCachedAgent(agent), ChatCachedAgent(sibling)], for: host)
+        _ = try await Self.saveTranscript(for: agent, on: host, in: cache)
+        let key = try Self.cacheKey(for: agent, on: host)
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+
+        directory.remove(paneID: agent.agent.paneID, on: host)
+        await directory.settled()
+
+        #expect(directory.agents(on: host).map(\.id) == [sibling.id])
+        guard case .hit = await cache.load(key) else {
+            Issue.record("The sibling's messages went with the removed entry")
+            return
+        }
+    }
+
     @Test func aReplacedHostKeyDropsSavedBindingsOnRevalidation() async {
         let host = Host(address: "host", username: "reader")
         let knownHosts = InMemoryKnownHostsStore()
@@ -340,6 +413,11 @@ struct ConsoleChatCacheTests {
             workspaceID: workspaceID, tabID: tabID, paneID: paneID, cwd: "/project", revision: 1,
             agentSession: session.map { AgentSessionInfo(agent: kind, kind: .id, source: "herdr:\(kind)", value: $0) }),
             workspaceLabel: "Project", repositoryCheckout: nil)
+    }
+
+    private static func cacheKey(for agent: ConsoleAgent, on host: Host) throws -> ChatCacheKey {
+        ChatCacheKey(
+            hostID: host.id, socketLocation: host.socketLocation, reference: try #require(Self.reference(agent)))
     }
 
     private static func saveTranscript(

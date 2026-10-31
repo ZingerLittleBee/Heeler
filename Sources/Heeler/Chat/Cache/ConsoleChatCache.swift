@@ -21,6 +21,7 @@ final class ConsoleChatCache {
     private enum Update {
         case snapshot([ConsoleAgent])
         case confirmation(Agent, ConsoleAgent)
+        case removal(paneID: String)
     }
 
     private struct ConfirmedSession {
@@ -88,6 +89,7 @@ final class ConsoleChatCache {
             switch update {
             case .snapshot(let agents): observe(agents, on: host)
             case .confirmation(let fresh, let snapshot): confirm(fresh, for: snapshot, on: host)
+            case .removal(let paneID): remove(paneID: paneID, on: host)
             }
         }
     }
@@ -145,6 +147,30 @@ final class ConsoleChatCache {
             next.append(entry)
         }
         replace(next.sorted { $0.paneID < $1.paneID }, on: host)
+    }
+
+    /// The user's removal of a saved entry: it and its saved messages leave
+    /// this device, unless another entry still shows that conversation. A
+    /// later snapshot still lists the Agent if it is running on the Host.
+    func remove(paneID: String, on host: Host) {
+        guard hosts[host.id] == host else { return }
+        if loads[host.id] != nil {
+            pendingUpdates[host.id, default: []].append(.removal(paneID: paneID))
+            return
+        }
+        let entries = records[host.id] ?? []
+        guard let removed = entries.first(where: { $0.paneID == paneID }) else { return }
+        let remaining = entries.filter { $0.paneID != paneID }
+        confirmed[ConsoleAgent.ID(hostID: host.id, paneID: paneID)] = nil
+        replace(remaining, on: host)
+        guard case .bound(let reference) = ConversationReference.resolve(removed.agentSession),
+            !remaining.contains(where: { ConversationReference.resolve($0.agentSession) == .bound(reference) })
+        else { return }
+        let key = ChatCacheKey(hostID: host.id, socketLocation: host.socketLocation, reference: reference)
+        writes[host.id] = Task { [previous = writes[host.id], cache] in
+            await previous?.value
+            await cache.remove(key)
+        }
     }
 
     func agents(on host: Host) -> [ConsoleAgent] {

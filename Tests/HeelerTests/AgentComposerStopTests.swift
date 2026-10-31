@@ -37,6 +37,17 @@ struct AgentComposerPrimaryControlTests {
 
 @Suite("Agent Composer collapse")
 struct AgentComposerCollapseTests {
+    @Test func theFoldWaitsForTheKeyboardToStartDown() {
+        let collapsed = { (keyboardIsLeaving: Bool) in
+            AgentComposerCollapse.isCollapsed(
+                isEnabled: true, isInputFocused: false, keyboardPresentation: .hidden,
+                inheritsKeyboard: false, hasInputReplacement: false,
+                keyboardIsLeaving: keyboardIsLeaving)
+        }
+        #expect(!collapsed(true))
+        #expect(collapsed(false))
+    }
+
     @Test func foldsOnlyWhileNothingHoldsOrAwaitsTheKeyboard() {
         #expect(Self.folds())
         #expect(!Self.folds(isEnabled: false), "the terminal keeps its height")
@@ -62,6 +73,37 @@ struct AgentComposerCollapseTests {
             keyboardPresentation: keyboardPresentation,
             inheritsKeyboard: inheritsKeyboard,
             hasInputReplacement: hasInputReplacement)
+    }
+}
+
+@Suite("Agent Composer keyboard pull")
+struct AgentComposerKeyboardPullTests {
+    private typealias Pull = AgentComposerKeyboardPull
+
+    @Test func theGrabberMovesDownOnlyAndLessThanTheFinger() {
+        #expect(Pull.grabberOffset(translation: -30) == 0)
+        #expect(Pull.grabberOffset(translation: 0) == 0)
+        for translation: CGFloat in [4, 20, 44, 400] {
+            #expect(Pull.grabberOffset(translation: translation) < translation)
+        }
+    }
+
+    @Test func eachPointOfThePullMovesTheGrabberLess() {
+        let early = Pull.grabberOffset(translation: 10) - Pull.grabberOffset(translation: 0)
+        let late = Pull.grabberOffset(translation: 40) - Pull.grabberOffset(translation: 30)
+        #expect(late < early)
+        #expect(Pull.grabberOffset(translation: 10_000) < 18)
+    }
+
+    @Test func theKeyboardGoesAtTheDistanceWithoutARelease() {
+        #expect(!Pull.reachesHidingDistance(translation: 43))
+        #expect(Pull.reachesHidingDistance(translation: 44))
+    }
+
+    @Test func aShortFlickDownHidesTheKeyboard() {
+        #expect(Pull.isFlickDown(translation: 12, predictedTranslation: 200))
+        #expect(!Pull.isFlickDown(translation: 12, predictedTranslation: 60))
+        #expect(!Pull.isFlickDown(translation: -10, predictedTranslation: 200))
     }
 }
 

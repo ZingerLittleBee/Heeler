@@ -13,6 +13,42 @@ enum AgentComposerKeyboardPresentation: Equatable {
     }
 }
 
+/// Pulling the Composer's grabber down to hide the keyboard. The system's
+/// interactive dismissal belongs to scroll views and starts only once the
+/// finger reaches the keyboard, a whole card away from here. So the grabber
+/// alone follows the finger, against growing resistance, and the keyboard
+/// goes the moment the pull is long enough, without waiting for the release.
+enum AgentComposerKeyboardPull {
+    /// The grabber's touch area: it reaches this far above the card, into
+    /// the gap under the status line, and stops short of the input's text.
+    static let touchOverhang: CGFloat = 6
+    static let touchHeight: CGFloat = 22
+    /// Narrower than the card, clear of the screen edge's back gesture.
+    static let touchWidth: CGFloat = 160
+
+    private static let hidingDistance: CGFloat = 44
+    private static let flickDistance: CGFloat = 120
+    /// How far the grabber could go, however long the pull.
+    private static let travel: CGFloat = 18
+    /// `UIScrollView`'s rubber-band coefficient.
+    private static let resistance: CGFloat = 0.55
+
+    /// Downward only, each point of the finger moving the grabber less.
+    static func grabberOffset(translation: CGFloat) -> CGFloat {
+        let pull = max(0, translation)
+        return (1 - 1 / (pull * resistance / travel + 1)) * travel
+    }
+
+    static func reachesHidingDistance(translation: CGFloat) -> Bool {
+        translation >= hidingDistance
+    }
+
+    /// A release short of the distance that was still heading down fast.
+    static func isFlickDown(translation: CGFloat, predictedTranslation: CGFloat) -> Bool {
+        translation > 0 && predictedTranslation >= flickDistance
+    }
+}
+
 struct AgentComposerKeyboardLayout: Equatable {
     /// Used only when `lastPresentedHeight` is still zero. Any positive
     /// measurement is the tools footprint as-is, even when it is shorter
@@ -87,6 +123,21 @@ struct AgentComposerActions {
     /// Close Agent's confirmation, set only on the More menu that is on
     /// screen so the dialog has a single anchor.
     var closeConfirmation: AgentCloseConfirmation? = nil
+    /// A saved Chat entry has no pane to close while its Host is away: the
+    /// close entry removes it from this device instead.
+    var removesSavedChat = false
+}
+
+/// What removing a saved Chat entry says, from its row or its detail.
+enum SavedChatRemovalCopy {
+    static let action = "Remove Saved Chat"
+    static let question = "Remove Saved Chat?"
+    static let confirm = "Remove"
+
+    static func message(naming name: String) -> String {
+        "Removes \u{201C}\(name)\u{201D} and its saved messages from this device. "
+            + "If the Agent is still running, it returns when the Host connects."
+    }
 }
 
 /// Close Agent's confirmation, hung off the More button that asked for it:
@@ -95,13 +146,27 @@ struct AgentComposerActions {
 struct AgentCloseConfirmation {
     let title: String
     let isPresented: Binding<Bool>
+    /// Decided when the dialog renders, with the words it shows: a Host that
+    /// connects behind it must not turn this removal into a remote close.
+    var removesSavedChat = false
     let close: () -> Void
 }
 
 extension View {
     @ViewBuilder
     func agentCloseConfirmation(_ confirmation: AgentCloseConfirmation?) -> some View {
-        if let confirmation {
+        if let confirmation, confirmation.removesSavedChat {
+            confirmationDialog(
+                SavedChatRemovalCopy.question,
+                isPresented: confirmation.isPresented,
+                titleVisibility: .visible
+            ) {
+                Button(SavedChatRemovalCopy.confirm, role: .destructive) { confirmation.close() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(SavedChatRemovalCopy.message(naming: confirmation.title))
+            }
+        } else if let confirmation {
             confirmationDialog(
                 "Close \(confirmation.title)?",
                 isPresented: confirmation.isPresented,
@@ -194,6 +259,9 @@ struct AgentComposerView: View {
     /// `AgentComposerCollapse`. The terminal keeps its height, since every
     /// fold would resize the PTY, so each surface says which it wants.
     let collapsesWithoutKeyboard: Bool
+    /// Focus has left but the keyboard has not started down. The fold waits, so
+    /// that it and the keyboard move the conversation as one motion.
+    var keyboardIsLeaving = false
     /// What Stop presses in the Agent's program, its wait and its hint; nil
     /// keeps Send.
     var interrupt: AgentComposerInterrupt? = nil
@@ -202,6 +270,9 @@ struct AgentComposerView: View {
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
     @State private var isDropTargeted = false
+    /// The finger's travel from where it took the grabber.
+    @GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.35, bounce: 0.4)))
+    private var keyboardPull: CGFloat = 0
 
     private var isToolsKeyboardPresented: Bool {
         keyboardPresentation == .tools
@@ -246,6 +317,7 @@ struct AgentComposerView: View {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .stroke(composerCardStroke, lineWidth: dropHighlight.strokeWidth)
                 }
+                .overlay(alignment: .top) { keyboardGrabber }
                 .composerDropDestination(
                     isEnabled: ComposerDropPolicy.acceptsDrops(in: inputMode),
                     isTargeted: $isDropTargeted,
@@ -274,15 +346,7 @@ struct AgentComposerView: View {
             if inputReplacement == nil { isInputFocused = true }
         }
         .onChange(of: isInputFocused) { _, isFocused in
-            if isFocused {
-                // A tap into the text while the iPad tools dock is up asks
-                // for the system keyboard; on iPhone the dock keeps the caret.
-                if keyboardPresentation != .tools || toolsDockReleasesFocus {
-                    setKeyboardPresentation(.system)
-                }
-            } else if !(toolsDockReleasesFocus && keyboardPresentation == .tools) {
-                setKeyboardPresentation(.hidden)
-            }
+            keyboardPresentationFollowsFocus(isFocused)
         }
         .onChange(of: store.draft) { _, _ in
             if commandMenu != nil {
@@ -298,6 +362,47 @@ struct AgentComposerView: View {
                 Task { await skills.loadIfNeeded() }
             }
         }
+    }
+
+    /// Pull down to hide the keyboard. It sits in the card's top inset, so
+    /// showing it moves nothing, and shows only while there is a keyboard to
+    /// hide. The Switcher row's keyboard button does the same for VoiceOver.
+    private var keyboardGrabber: some View {
+        Capsule()
+            .fill(keyboardPull > 0 ? HierarchicalShapeStyle.secondary : .tertiary)
+            .frame(width: 48, height: 5)
+            .offset(y: AgentComposerKeyboardPull.grabberOffset(translation: keyboardPull))
+            .padding(.top, 5 + AgentComposerKeyboardPull.touchOverhang)
+            .frame(
+                width: AgentComposerKeyboardPull.touchWidth,
+                height: AgentComposerKeyboardPull.touchHeight,
+                alignment: .top
+            )
+            .contentShape(Rectangle())
+            .offset(y: -AgentComposerKeyboardPull.touchOverhang)
+            .opacity(isKeyboardPresented ? 1 : 0)
+            .animation(.easeOut(duration: 0.2), value: isKeyboardPresented)
+            .allowsHitTesting(isKeyboardPresented)
+            .gesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .updating($keyboardPull) { value, pull, _ in
+                        pull = value.translation.height
+                    }
+                    .onChanged { value in
+                        guard AgentComposerKeyboardPull.reachesHidingDistance(translation: value.translation.height)
+                        else { return }
+                        hideKeyboardFromPull()
+                    }
+                    .onEnded { value in
+                        guard
+                            AgentComposerKeyboardPull.isFlickDown(
+                                translation: value.translation.height,
+                                predictedTranslation: value.predictedEndTranslation.height)
+                        else { return }
+                        hideKeyboardFromPull()
+                    }
+            )
+            .accessibilityHidden(true)
     }
 
     /// The input with its suggestions, notices and actions; a card in its
@@ -362,7 +467,7 @@ struct AgentComposerView: View {
                     text: store.draft,
                     selectedRange: store.draftSelection,
                     onEdit: { store.applyEditorDraft($0, selection: $1) },
-                    isFocused: $isInputFocused,
+                    isFocused: inputFocus,
                     keyboardPresentation: keyboardPresentation,
                     lineLimit: isCollapsed ? 1 : 5,
                     keyboardHandoffID: keyboardHandoffID,
@@ -558,7 +663,8 @@ struct AgentComposerView: View {
             isInputFocused: isInputFocused,
             keyboardPresentation: keyboardPresentation,
             inheritsKeyboard: inheritsPendingKeyboard,
-            hasInputReplacement: inputReplacement != nil)
+            hasInputReplacement: inputReplacement != nil,
+            keyboardIsLeaving: keyboardIsLeaving)
     }
 
     /// A keyboard handed over by the screen this one replaces, read without
@@ -587,18 +693,24 @@ struct AgentComposerView: View {
     }
 
     private func dismissOrPresentKeyboard() {
-        if isToolsKeyboardPresented {
-            setKeyboardPresentation(.hidden)
-            isInputFocused = false
+        if isKeyboardPresented {
+            hideKeyboard()
         } else {
-            if isInputFocused {
-                setKeyboardPresentation(.hidden)
-                isInputFocused = false
-            } else {
-                setKeyboardPresentation(.system)
-                isInputFocused = true
-            }
+            setKeyboardPresentation(.system)
+            isInputFocused = true
         }
+    }
+
+    private func hideKeyboard() {
+        setKeyboardPresentation(.hidden)
+        isInputFocused = false
+    }
+
+    /// Once per pull: the finger is often still moving after this.
+    private func hideKeyboardFromPull() {
+        guard isKeyboardPresented else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        hideKeyboard()
     }
 
     private func switchKeyboard() {
@@ -608,6 +720,29 @@ struct AgentComposerView: View {
         withTransaction(transaction) {
             setKeyboardPresentation(expectsSystemKeyboard ? .system : .tools)
             isInputFocused = expectsSystemKeyboard || !toolsDockReleasesFocus
+        }
+    }
+
+    /// The editor's focus, with the presentation changing in the same update
+    /// so that the surface animates the fold as one change.
+    private var inputFocus: Binding<Bool> {
+        Binding {
+            isInputFocused
+        } set: { isFocused in
+            keyboardPresentationFollowsFocus(isFocused)
+            isInputFocused = isFocused
+        }
+    }
+
+    private func keyboardPresentationFollowsFocus(_ isFocused: Bool) {
+        if isFocused {
+            // A tap into the text while the iPad tools dock is up asks for the
+            // system keyboard; on iPhone the dock keeps the caret.
+            if keyboardPresentation != .tools || toolsDockReleasesFocus {
+                setKeyboardPresentation(.system)
+            }
+        } else if !(toolsDockReleasesFocus && keyboardPresentation == .tools) {
+            setKeyboardPresentation(.hidden)
         }
     }
 

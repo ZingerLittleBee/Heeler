@@ -31,6 +31,9 @@ final class HostConsoleProjection {
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".
     private(set) var isAwaitingSnapshot = true
+    /// Until a snapshot proves what the Host runs, its Console rows may be
+    /// saved Chat entries.
+    var showsSavedChats: Bool { status != .connected || isAwaitingSnapshot }
     /// Stable success surfaces keyed by every Agent that belonged to the
     /// exact validated worktree at dispatch.
     var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] {

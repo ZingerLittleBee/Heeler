@@ -28,6 +28,16 @@ struct SettingsViewTests {
                 == "https://github.com/ZingerLittleBee/Heeler")
     }
 
+    @Test func documentationLinkFollowsTheSetupGuideAndLeavesTheApp() throws {
+        let url = try #require(SettingsView.documentationURL)
+        #expect(url.absoluteString == "https://docs.heeler.bybee.dev")
+
+        let rows = SettingsView.aboutRows
+        let setupGuide = try #require(rows.firstIndex(of: .setupGuide))
+        #expect(rows[setupGuide + 1] == .documentation)
+        #expect(SettingsView.aboutDestination(for: .documentation) == nil)
+    }
+
     @Test func setupGuideAnchorsAnExistingReadmeHeading() throws {
         // GitHub drops an unknown fragment silently and opens the README top,
         // so a renamed heading would leave the guide link quietly wrong.

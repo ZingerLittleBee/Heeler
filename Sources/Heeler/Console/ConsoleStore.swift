@@ -890,6 +890,20 @@ final class ConsoleStore {
         rebuild()
     }
 
+    /// Removes a saved Chat entry from this device, which needs no Host and
+    /// never asks one to close anything. False, with nothing changed, once
+    /// the entry is no longer saved: a Host that connected behind the
+    /// confirmation lists the live Agent, which only `closeAgent` closes.
+    @discardableResult
+    func removeSavedChat(_ agent: ConsoleAgent) -> Bool {
+        guard isSavedChat(agent.id), let host = projections[agent.hostID]?.host else { return false }
+        chatStores.removeValue(forKey: agent.id)?.end()
+        cachedChats.remove(paneID: agent.agent.paneID, on: host)
+        pins.removePin(hostID: agent.hostID, paneID: agent.agent.paneID)
+        rebuild()
+        return true
+    }
+
     /// Whether a Terminals row's close takes the shell's whole tab: only when
     /// no other pane, Agent or shell, shares it.
     func closesTab(of terminal: ConsoleTerminal) -> Bool {
@@ -1281,10 +1295,19 @@ final class ConsoleStore {
         Dictionary(savedChatAgents.map { ($0.agent.id, $0.readiness) }) { first, _ in first }
     }
 
+    /// One row's answer to `savedChatEntries`, cheap enough for a detail
+    /// screen to ask on every render.
+    func isSavedChat(_ id: ConsoleAgent.ID) -> Bool {
+        guard let projection = projections[id.hostID], projection.showsSavedChats,
+            !agents.contains(where: { $0.id == id })
+        else { return false }
+        return cachedChats.agents(on: projection.host).contains { $0.id == id }
+    }
+
     private var savedChatAgents: [(agent: ConsoleAgent, readiness: HostReadiness)] {
         let live = Set(agents.map(\.id))
         return projections.values.flatMap { projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
-            guard projection.status != .connected || projection.isAwaitingSnapshot else { return [] }
+            guard projection.showsSavedChats else { return [] }
             let saved = cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
             guard !saved.isEmpty else { return [] }
             let hostReadiness = readiness(of: projection.host)

@@ -1791,6 +1791,29 @@ struct ConsoleStoreTests {
         #expect(store.pins.isPinned(hostID: host.id, paneID: "w2:p1"))
     }
 
+    @Test func aHostConnectingBehindARemovalNeverClosesTheLiveAgent() async throws {
+        // The confirmation promised a removal on this device. Once the Host
+        // lists the Agent, confirming it must neither close nor forget it.
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the agent should arrive") { store.agents.count == 1 }
+        store.togglePin(hostID: host.id, paneID: "w1:p1")
+        let live = try #require(store.agents.first)
+
+        #expect(!store.isSavedChat(live.id))
+        #expect(!store.removeSavedChat(live))
+
+        #expect(await transport.closedTabs.isEmpty)
+        #expect(await transport.closedPanes.isEmpty)
+        #expect(store.agents.map(\.id) == [live.id])
+        #expect(store.pins.isPinned(hostID: host.id, paneID: "w1:p1"))
+    }
+
     @Test func aShellPaneBesideTheAgentKeepsItsTabOpen() async throws {
         // Shell panes are not Agents, so only the tab's reported pane count
         // shows the Agent is not alone in it.

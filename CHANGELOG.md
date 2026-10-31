@@ -9,6 +9,8 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Pull the grabber on the Composer's top edge down to hide the keyboard.
+  (#594)
 - Pair a herdr that runs with its own config home, such as a per-project
   instance or a profile started by a wrapper script. Its pairing popup now
   shows a Pairing Code v2 that names its socket and a launcher the plugin
@@ -32,9 +34,13 @@ Entries reference the pull request that made the change.
   environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
   it until you add it as an Account. Update the Heeler plugin to 0.8.0 on
   the Host. (#529; PR #533)
+- Open the documentation from About in Settings. (#594)
 
 ### Changed
 
+- Raise and lower the Composer with the keyboard, in step with it, and move
+  Chat's conversation and fold along instead of jumping ahead of it. (#594)
+- Run animation at up to 120Hz on iPhones with ProMotion. (#594)
 - Lead each Agents list row with its program's mark, such as Claude Code's
   or Codex's, inside a ring that shows its status, the Working ring turning,
   in place of the status capsule; add `status_badge` to a row's right side
@@ -54,10 +60,18 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep the Host connection row atop the Agents and Terminals lists one
+  height while Hosts connect, so the list below no longer jumps. Statuses
+  stay on one line; those that do not fit fold into a count, and the row's
+  sheet lists every Host. (#594)
 - Bring out the Agents list when swiping in from the left edge of an
   Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
   Duo's inner display or a Pro Max in landscape, instead of closing it to
   No Agent Selected. The sidebar now follows the finger, on iPad too. (#592)
+- Remove a Saved Chat while its Host is not connected. Closing one always
+  failed with "The Host is not connected"; its row and More menu now offer
+  Remove, which takes it and its saved messages off this device and leaves
+  the Host alone. (#594)
 - Keep each row's fields in Agent List Fields on their own line. The last
   one, often the add button, could drop below the row onto the next.
   (#591)

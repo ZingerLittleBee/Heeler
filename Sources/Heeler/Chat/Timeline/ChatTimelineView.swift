@@ -11,9 +11,9 @@ struct ChatTimelineView: UIViewControllerRepresentable {
     var collapseRequest: Int = 0
     /// Height of the chrome floating over the list's top edge.
     var topObstruction: CGFloat = 0
-    /// Where the chrome floating over the list's bottom edge begins, in
-    /// the global coordinate space.
-    var bottomEdge: CGFloat?
+    /// Where the chrome floating over the list's bottom edge begins. Through
+    /// a relay, since it changes on every frame of the keyboard's motion.
+    var bottomEdge = ChatTimelineBottomEdge()
     /// Height of the Collapse Steps button over the list's bottom edge.
     var collapseControlClearance: CGFloat = 0
     /// Chat's own text size; nil follows the system's.
@@ -29,7 +29,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         let controller = ChatTimelineController(actions: actions)
         controller.setTypography(size: textSize, font: font)
         controller.setTopObstruction(topObstruction)
-        controller.setBottomEdge(bottomEdge)
+        bottomEdge.controller = controller
         controller.setCollapseControlClearance(collapseControlClearance)
         controller.apply(state)
         return controller
@@ -39,7 +39,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.actions = actions
         controller.setTypography(size: textSize, font: font)
         controller.setTopObstruction(topObstruction)
-        controller.setBottomEdge(bottomEdge)
+        bottomEdge.controller = controller
         controller.setCollapseControlClearance(collapseControlClearance)
         controller.apply(state)
         let coordinator = context.coordinator
@@ -130,5 +130,29 @@ private struct ChatFloatingIcon: View {
             .headerGlass(in: .circle, opacity: Self.glassOpacity)
             .frame(width: AgentDetailHeader.controlSize, height: AgentDetailHeader.controlSize)
             .contentShape(.rect)
+    }
+}
+
+/// Hands the list where the bottom chrome begins without invalidating any
+/// view: the surface around the list would otherwise re-evaluate on every frame
+/// of the keyboard's motion, which holds the motion to about 20Hz.
+@MainActor
+final class ChatTimelineBottomEdge {
+    weak var controller: ChatTimelineController? {
+        didSet { apply() }
+    }
+    private var edge: CGFloat?
+    private var keyboardLift: CGFloat = 0
+    private var keyboardIsFalling = false
+
+    func update(edge: CGFloat?, keyboardLift: CGFloat, keyboardIsFalling: Bool) {
+        self.edge = edge
+        self.keyboardLift = keyboardLift
+        self.keyboardIsFalling = keyboardIsFalling
+        apply()
+    }
+
+    private func apply() {
+        controller?.setBottomEdge(edge, keyboardLift: keyboardLift, keyboardIsFalling: keyboardIsFalling)
     }
 }
