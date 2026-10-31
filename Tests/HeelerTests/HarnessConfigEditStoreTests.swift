@@ -12,6 +12,9 @@ import Testing
     private static let edited = Data(
         "[agent]\nname = \"a\"\n\n[ui.notifications]\nprogram_status = \"on\"\n".utf8)
 
+    private static let unreadableEnvironment =
+        "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."
+
     private static func record(_ address: String, foreground: [String], status: JSONValue = .null, reported: Bool = false) -> JSONValue {
         .object([
             "address": .string(address), "cwd": .string("/work/app"), "state": .string("live"),
@@ -296,6 +299,55 @@ import Testing
         await flow.review()
         #expect(flow.phase == .failed(HarnessConfigEditError.unresolvedPath.errorDescription ?? ""))
         #expect(await files.replaceCalls == 0)
+    }
+
+    /// Unreadable is not unset: that Agent's `GROK_HOME` may name another file, and
+    /// an edit to the default one would never reach its program.
+    @Test func anEnvironmentThatCannotBeReadIsRefusedRatherThanTakenForUnset() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, transport, host) = try await started(
+            [Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        await transport.makeProcessVariableUnavailable("GROK_HOME")
+        let flow = grokFlow(store, host)
+
+        await flow.review()
+
+        #expect(flow.phase == .failed(Self.unreadableEnvironment))
+        #expect(await transport.processVariableReads == ["GROK_HOME of 70"])
+        #expect(await files.replaceCalls == 0)
+        #expect(flow.applied == nil)
+    }
+
+    @Test func anAgentWithNoProcessToReadIsRefused() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, _, host) = try await started(
+            [Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let flow = store.grokBuildEditFlow(on: host.id, process: nil)
+
+        await flow.review()
+
+        #expect(flow.phase == .failed(Self.unreadableEnvironment))
+        #expect(await files.replaceCalls == 0)
+    }
+
+    /// The environment read, with no `GROK_HOME` in it, is what the default file is for.
+    @Test func anUnsetGrokHomeNamesTheDefaultFile() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, transport, host) = try await started(
+            [Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let flow = grokFlow(store, host)
+
+        await flow.review()
+
+        guard case .review(let change) = flow.phase else {
+            Issue.record("expected a review, got \(flow.phase)")
+            return
+        }
+        #expect(change.path == Self.config)
+        #expect(await transport.processVariableReads == ["GROK_HOME of 70"])
     }
 
     // MARK: Staying with the Host

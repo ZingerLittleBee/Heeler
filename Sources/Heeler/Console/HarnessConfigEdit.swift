@@ -148,6 +148,7 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
     case tooLarge
     case unreadable
     case unresolvedPath
+    case agentEnvironmentUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -161,6 +162,8 @@ enum HarnessConfigEditError: Error, Equatable, LocalizedError {
             "Heeler couldn't read the whole file, so nothing was written."
         case .unresolvedPath:
             "This Agent's configuration folder isn't an absolute path, so Heeler can't tell which file to change."
+        case .agentEnvironmentUnavailable:
+            "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."
         }
     }
 }

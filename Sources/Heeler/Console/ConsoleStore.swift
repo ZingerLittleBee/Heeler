@@ -1445,9 +1445,14 @@ final class ConsoleStore {
         guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
             throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
         }
-        var grokHome: String?
-        if let process, case .value(let value) = await core.processVariable("GROK_HOME", pid: process) {
-            grokHome = value
+        // Only an environment that was read can say `GROK_HOME` is unset. Taking an
+        // unreadable one for unset would edit a file this Agent may not read.
+        guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+        let grokHome: String?
+        switch await core.processVariable("GROK_HOME", pid: process) {
+        case .value(let value): grokHome = value
+        case .unset: grokHome = nil
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
         }
         let home = try await harnessEditServices(on: hostID).hostHomeDirectory()
         guard let path = GrokBuildProgramStatusEdit.configPath(grokHome: grokHome, home: home) else {
