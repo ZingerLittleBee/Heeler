@@ -1,6 +1,10 @@
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "files": [
+    {
+      "path": "core/agent-rule.js",
+      "sha256": "e615e9e00df3f135a7040a3c5e79db568785d2cc1e4d04548791789a317d3ed2"
+    },
     {
       "path": "core/client.js",
       "sha256": "2a5735881b4eee4ec987eea41795588d90d04c2ce0833b84a9061b8da72e8e5b"
@@ -15,7 +19,7 @@
     },
     {
       "path": "core/inventory.js",
-      "sha256": "1873ae76f6c97c89f8d2b5197000baf6da8cf6ef8b4b55e411040f4dccc89143"
+      "sha256": "59c1e1702625e38df60b7bc40a5b97f6a921879f062091877d24297998c09206"
     },
     {
       "path": "core/session-name.js",
@@ -147,7 +151,7 @@
     },
     {
       "path": "usage/claude-terminal.js",
-      "sha256": "dc91a838e048c0b12b2f49532679cd4bd152f449a89123907a7c2dc0144914c0"
+      "sha256": "e8ffc2110035b5fcc488464abcf1ef11ff392ded0133c6c09c74dbd71e7d7b47"
     },
     {
       "path": "usage/layout.js",
@@ -159,7 +163,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "03eada1f990a27a1357eb782c4320727d973f1ed51155b8b082dd8ea99b9ae19"
+      "sha256": "da9da2c003b8eee13e6a8b295dadb7e37740a6616eadf890d60a353cc33d37d1"
     }
   ]
 }

@@ -5,7 +5,7 @@ enum HostHelperCompatibility {
     /// `plugin/helper/version.json` when this app was built. The shared
     /// `plugin/test-vectors/host-helper-version-v1.json` pins both sides, so a
     /// Helper release must update this constant too.
-    static let bundled = PluginVersion(0, 3, 0)
+    static let bundled = PluginVersion(0, 4, 0)
 }
 
 /// `plugin/helper/manifest.json`: the version and every other file's SHA-256,
