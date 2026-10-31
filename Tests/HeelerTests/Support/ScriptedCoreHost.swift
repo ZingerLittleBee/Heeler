@@ -195,6 +195,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var changes: CheckoutChangesRead?
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
+    private var attachPaint: Data?
+    private var paintsViewers = true
     private var runReply: JSONValue?
     private var unansweredRuns: [(socket: FakeCoreSocket, id: String)] = []
     private var templateList: JSONValue?
@@ -379,6 +381,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                     heldAttachReplies.append((socket, request.id, result))
                 } else {
                     try? await socket.reply(to: request.id, result: result)
+                    let isObserving = request.params["observe"] == .bool(true)
+                    if let attachPaint, isObserving || paintsViewers {
+                        try? await socket.deliver(
+                            HerdrCoreFrame(channel: eventsChannel - 1, kind: .data, payload: attachPaint))
+                    }
                 }
             case "terminal.run":
                 runs.append(request.params)
@@ -466,6 +473,14 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// The next `terminal.attach` answers with this error kind.
     func refuseNextAttach(kind: String) {
         attachRefusals.append(kind)
+    }
+
+    /// What an attach gets right after its answer from here on, as a real core
+    /// sends its first paint. `viewers: false` leaves a viewer's for the test to
+    /// deliver, while an observing attach still gets it.
+    func setAttachPaint(_ paint: Data?, viewers: Bool = true) {
+        attachPaint = paint
+        paintsViewers = viewers
     }
 
     func holdAttachReplies() {

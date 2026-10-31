@@ -85,6 +85,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var openCodeVersion: String?
     /// Whether Rename and applying a typed name are offered at all (ADR 0032).
     private let herdrAppRename: Bool
+    private let chatTypingClock: BlockedCardClock
+    private var chatTypings: [String: HerdrCoreChatTyping] = [:]
     /// What the last `herdr-app status` on this link said.
     private var isDesktopAppRunning = false
     private var desktopAppCheck: Task<Void, Never>?
@@ -100,6 +102,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         pins: PinnedAgentsStore,
         gitGate: GitExecGate,
         herdrAppRename: Bool,
+        chatTypingClock: BlockedCardClock = .live,
         onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
@@ -109,6 +112,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.pins = pins
         self.gitGate = gitGate
         self.herdrAppRename = herdrAppRename
+        self.chatTypingClock = chatTypingClock
         self.onSeenMarksChanged = onSeenMarksChanged
         self.onChange = onChange
     }
@@ -365,6 +369,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             memory.forgetTerminal(terminal, for: host.id)
             pins.removePin(hostID: host.id, paneID: terminal)
             records.removeAll { $0.address == terminal }
+            chatTypings[terminal] = nil
             sidebarRevision &+= 1
             notifyProgramWatches(of: terminal, .ended)
         case .missed(let snapshot):
@@ -943,15 +948,38 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
-        throw unavailable("Agents")
+        try await chatTyping(at: paneID).readScreen()
     }
 
     func sendAgentKeys(_ keys: [String], to paneID: String) async throws {
-        throw unavailable("Agents")
+        try await chatTyping(at: paneID).press(keys)
     }
 
     func pasteIntoAgent(_ text: String, paneID: String) async throws {
-        throw unavailable("Agents")
+        try await chatTyping(at: paneID).paste(text)
+    }
+
+    /// How Chat reads and types in a Terminal (ADR 0035), kept so the screen it
+    /// last read is the one its keys are checked against.
+    func chatTyping(at address: String) -> HerdrCoreChatTyping {
+        if let typing = chatTypings[address] { return typing }
+        let typing = HerdrCoreChatTyping(address: address, projection: self, clock: chatTypingClock)
+        chatTypings[address] = typing
+        return typing
+    }
+
+    /// A viewer of Chat's own on the Host's one link, joining at the size the
+    /// Terminal has. It reports no display facts and takes no focus.
+    func openChatViewer(at address: String, as role: TerminalViewerRole) async throws -> TerminalAttachSession {
+        var record = terminalRecord(at: address)
+        if record == nil { record = try await readTerminalRecord(at: address) }
+        guard let record else { throw TransportError.cancelled }
+        let request = TerminalAttachRequest(
+            target: .terminal(address), viewer: role, surfaceHasHistory: true,
+            cols: record.columns, rows: record.rows)
+        return try await session.withTerminalTransport { transport, _ in
+            try await transport.attachTerminal(request)
+        }
     }
 
     /// Every live terminal is a channel on the Host's one link (ADR 0031): no

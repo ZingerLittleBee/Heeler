@@ -1,0 +1,757 @@
+import Foundation
+import Testing
+
+@testable import Heeler
+
+/// Chat's Send, Stop and Blocked answers on a core Host (ADR 0035), from the Composer
+/// and the stores down: the real Console, Host session and link, with the core
+/// scripted and its screens the paints a real core sent. What is asserted is what
+/// reaches the core.
+@MainActor
+@Suite(.timeLimit(.minutes(1)))
+struct HerdrCoreChatTypingTests {
+    /// Chat's rules send a message with one trailing space.
+    private static let pasteOfSend = "\u{1B}[200~hello \u{1B}[201~"
+    private static let paste = "\u{1B}[200~hello\u{1B}[201~"
+    private static let enter = "\r"
+    private static let ctrlC = "\u{3}"
+    private static let esc = "\u{1B}"
+    private static let bracketedPasteOn = "\u{1B}[?2004h"
+    private static let kittyAllKeys = "\u{1B}[=8;1u"
+    private static let readyScreen = "claude-01-ready"
+    private static let dialogScreen = "claude-02-c1-bash-blocked"
+
+    private typealias Attached = (channel: UInt32, params: JSONValue, socket: FakeCoreSocket)
+
+    /// A captured paint, with the modes the program asked for where a core puts them.
+    private static func paint(_ stem: String, modes: String = bracketedPasteOn) throws -> Data {
+        let end = "\u{1B}[?9001l"
+        let captured = try ChatFixture.text("screens/core-paint/\(stem).paint")
+        return Data(captured.replacingOccurrences(of: end, with: modes + end).utf8)
+    }
+
+    private static func foreground(pid: Int = 40, argv: [String] = ["claude"]) -> JSONValue {
+        .object([
+            "pid": .number(Double(pid)), "name": .string(argv.first ?? ""),
+            "argv": .array(argv.map(JSONValue.string)), "cwd": .string("/work/app"),
+        ])
+    }
+
+    private static func record(
+        argv: [String] = ["claude"], status: String = "idle", app: String = "claude-code", submit: String? = nil,
+        stop: String? = nil, columns: Int = 80, rows: Int = 24
+    ) -> JSONValue {
+        var fields: [String: JSONValue] = [
+            "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
+            "argv": .array(argv.map(JSONValue.string)), "keep": .bool(false), "title": .string(""),
+            "cols": .number(Double(columns)), "rows": .number(Double(rows)), "pid": .number(7),
+            "foreground": Self.foreground(argv: argv),
+            "status": .object(["state": .string(status), "app": .string(app)]),
+            "labels": .object([:]),
+        ]
+        fields["submit"] = submit.map(JSONValue.string)
+        fields["stop"] = stop.map(JSONValue.string)
+        return .object(fields)
+    }
+
+    private static func until(
+        _ what: String, _ condition: @MainActor () async -> Bool,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        for _ in 0..<1000 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+    }
+
+    @MainActor
+    private struct Fixture {
+        let scripted: ScriptedCoreHost
+        let console: ConsoleStore
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        let clock = ManualClock()
+        let composer: AgentComposerStore
+        let agent: ConsoleAgent
+
+        init(
+            terminal: JSONValue = HerdrCoreChatTypingTests.record(),
+            screen: String = HerdrCoreChatTypingTests.readyScreen,
+            modes: String = HerdrCoreChatTypingTests.bracketedPasteOn
+        ) async throws {
+            let scripted = ScriptedCoreHost(channel: .core(.init(id: "c1", terminals: [terminal])))
+            self.scripted = scripted
+            await scripted.setAttachPaint(try HerdrCoreChatTypingTests.paint(screen, modes: modes))
+            let clock = clock
+            let console = ConsoleStore(
+                makeSession: { _, subscriptions in
+                    EventsSession(
+                        subscriptions: subscriptions,
+                        connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                        keepalive: nil)
+                },
+                makeCoreSession: { _ in
+                    HerdrCoreHostSession(
+                        connect: {
+                            await scripted.setConnected(true)
+                            return scripted.transport()
+                        },
+                        keepalive: nil)
+                },
+                coreHostMemory: HerdrCoreHostMemory(
+                    defaults: UserDefaults(suiteName: "core-chat-typing-\(UUID().uuidString)") ?? .standard),
+                coreSendClock: BlockedCardClock(now: clock.clock.now, sleep: clock.parkedSleep(for:)))
+            self.console = console
+            console.setHosts([host])
+            await console.resume()
+            try await until("the Agent") { [console] in !console.agents.isEmpty }
+            let agent = try #require(console.agents.first)
+            self.agent = agent
+            composer = console.composerStore(for: agent)
+            composer.open()
+        }
+
+        func finish() {
+            console.setHosts([])
+        }
+
+        /// Chat's policy as its surface builds it, over the Console's screen reads,
+        /// with the delivery check's pause already over.
+        var policy: ComposerDeliveryPolicy {
+            let console = console
+            let hostID = host.id
+            return .chat(
+                rules: ChatSendRules(
+                    program: .claude,
+                    commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .claude)),
+                activity: { .idle },
+                readScreen: { try await console.readAgentScreen("t1", on: hostID) },
+                pause: { _ in })
+        }
+
+        var viewers: [Attached] {
+            get async { await scripted.attaches.filter { $0.params["resumed"] == .bool(true) } }
+        }
+
+        var reads: [Attached] {
+            get async { await scripted.attaches.filter { $0.params["observe"] == .bool(true) } }
+        }
+
+        func viewer() async throws -> Attached {
+            try await until("Chat's viewer") { await !viewers.isEmpty }
+            return try #require(await viewers.first)
+        }
+
+        func written(on viewer: Attached) async -> [String] {
+            await viewer.socket.dataWritten(channel: viewer.channel)
+        }
+
+        func startSend() -> Task<AgentComposerStore.SendResult, Never> {
+            composer.replaceDraft(with: "hello")
+            let composer = composer
+            let policy = policy
+            return Task { await composer.send(policy: policy) }
+        }
+
+        /// Starts a Send and returns once its paste has reached the core.
+        func sendPastingHello() async throws -> (sending: Task<AgentComposerStore.SendResult, Never>, viewer: Attached) {
+            let sending = startSend()
+            let viewer = try await viewer()
+            await viewer.socket.waitForData(channel: viewer.channel, count: 1)
+            return (sending, viewer)
+        }
+
+        /// Takes the sample delay's 550 ms, with nothing else having happened.
+        func passSampleDelay() async {
+            await clock.untilParked(for: HerdrCoreComposerSend.sampleDelay)
+            clock.advance(HerdrCoreComposerSend.sampleDelay)
+        }
+
+        /// The sample delay and the read that follows it, answered with `record`.
+        func answerSample(with record: JSONValue = HerdrCoreChatTypingTests.record()) async {
+            await passSampleDelay()
+            await scripted.waitForMethod("terminal.get")
+            await scripted.answerTerminalReads(with: record)
+        }
+
+        func deliverEvent(_ type: String, data: JSONValue, sequence: Int = 101) async throws {
+            let line = try JSONEncoder().encode(
+                JSONValue.object([
+                    "jsonrpc": .string("2.0"), "method": .string("event"),
+                    "params": .object([
+                        "seq": .number(Double(sequence)), "type": .string(type), "terminal": .string("t1"),
+                        "data": data,
+                    ]),
+                ]))
+            let events = try #require(await scripted.sockets.first)
+            try await scripted.deliverEvent(line, on: events)
+        }
+
+        /// Events apply in order, so a title showing means those before it applied.
+        func untilEventsApplied() async throws {
+            try await deliverEvent("title", data: .object(["title": .string("applied")]), sequence: 102)
+            try await until("the events") { [console] in console.agents.first?.agent.terminalTitle == "applied" }
+        }
+
+        func deliverSize(columns: Int, rows: Int) async throws {
+            try await deliverEvent(
+                "size", data: .object(["cols": .number(Double(columns)), "rows": .number(Double(rows))]))
+            try await untilEventsApplied()
+        }
+
+        // MARK: Stop
+
+        func stop(as program: ChatProgram, activity: ChatAgentActivity = .working) async -> AgentInterruptOutcome {
+            let console = console
+            let hostID = host.id
+            let keys = ChatAgentKeysStore { try await console.sendAgentKeys($0, to: "t1", on: hostID) }
+            let interrupt = console.chatStopPlan(for: agent, program: program).composerInterrupt(
+                context: {
+                    ChatStopContext(screen: try await console.readAgentScreen("t1", on: hostID), activity: activity)
+                },
+                agentKeys: keys)
+            return await interrupt.perform()
+        }
+
+        // MARK: Blocked
+
+        /// The Blocked card of a Chat that has read `screen`, showing its dialog.
+        func blockedCard() async throws -> BlockedCardStore {
+            try await until("Chat") { [console, agent] in console.chatProgram(for: agent) != nil }
+            let chat = try #require(console.chatStore(for: agent, program: .claude))
+            chat.blocked.update(activity: .blocked)
+            await chat.blocked.refresh()
+            guard case .card = chat.blocked.content else {
+                Issue.record("Expected a card, got \(chat.blocked.content)")
+                return chat.blocked
+            }
+            return chat.blocked
+        }
+    }
+
+    private static func noAuthoredInputRPC(_ scripted: ScriptedCoreHost) async -> Bool {
+        let methods = await scripted.methods
+        return !methods.contains("terminal.send") && !methods.contains("terminal.keys")
+    }
+
+    // MARK: Chat's attach
+
+    @Test func chatsAttachIsAResumedViewerOnTheHostsLinkThatReportsNoFacts() async throws {
+        let fixture = try await Fixture()
+
+        let (sending, viewer) = try await fixture.sendPastingHello()
+
+        #expect(viewer.params["resumed"] == .bool(true))
+        #expect(viewer.params["observe"] == nil)
+        #expect(viewer.params["display"] == nil)
+        #expect(viewer.params["history"] == nil)
+        #expect(await fixture.scripted.sockets.count == 1)
+        #expect(await fixture.scripted.sockets.first === viewer.socket)
+        await fixture.answerSample()
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await viewer.socket.frames(channel: viewer.channel, kind: .facts).isEmpty)
+        #expect(await viewer.socket.frames(channel: viewer.channel, kind: .focus).isEmpty)
+        fixture.finish()
+    }
+
+    @Test func aResizeWithTheTerminalsLatestSizeGoesBeforeTheFirstData() async throws {
+        let fixture = try await Fixture()
+        try await fixture.deliverSize(columns: 100, rows: 30)
+
+        let (sending, viewer) = try await fixture.sendPastingHello()
+
+        let frames = await viewer.socket.writtenFrames.filter {
+            $0.channel == viewer.channel && ($0.kind == .resize || $0.kind == .data)
+        }
+        #expect(frames.map(\.kind) == [.resize, .data])
+        #expect(frames.first?.payload == Data([100, 0, 30, 0]))
+        await fixture.answerSample(with: Self.record(columns: 100, rows: 30))
+        #expect(await sending.value == .submittedViaAttach)
+        fixture.finish()
+    }
+
+    /// Another viewer resized the Terminal while the Send waited for its sample.
+    @Test func aSizeThatChangedBetweenItsStepsGoesBeforeTheNextOne() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await fixture.sendPastingHello()
+
+        try await fixture.deliverSize(columns: 90, rows: 20)
+        await fixture.answerSample(with: Self.record(columns: 90, rows: 20))
+
+        #expect(await sending.value == .submittedViaAttach)
+        let frames = await viewer.socket.writtenFrames.filter {
+            $0.channel == viewer.channel && ($0.kind == .resize || $0.kind == .data)
+        }
+        #expect(frames.map(\.kind) == [.resize, .data, .resize, .data])
+        #expect(frames[safe: 0]?.payload == Data([80, 0, 24, 0]))
+        #expect(frames[safe: 2]?.payload == Data([90, 0, 20, 0]))
+        fixture.finish()
+    }
+
+    /// Past its one action, it no longer counts as a viewer of the Terminal.
+    @Test func chatsViewerLeavesOnceItsSendIsOver() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await fixture.sendPastingHello()
+        #expect(await viewer.socket.frames(channel: viewer.channel, kind: .close).isEmpty)
+
+        await fixture.answerSample()
+        #expect(await sending.value == .submittedViaAttach)
+
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        fixture.finish()
+    }
+
+    // MARK: Reading the screen
+
+    @Test func aScreenReadObservesAndLeavesOnceItIsPainted() async throws {
+        let fixture = try await Fixture(screen: Self.dialogScreen)
+
+        let screen = try await fixture.console.readAgentScreen("t1", on: fixture.host.id)
+
+        let original = ANSIScreenDecoder.decode(try ScreenFixture.text(Self.dialogScreen))
+        #expect(screen.rows.map(\.trimmedText) == original.rows.map(\.trimmedText))
+        let read = try #require(await fixture.reads.first)
+        #expect(read.params["display"] == nil)
+        #expect(await fixture.scripted.sockets.count == 1)
+        _ = await read.socket.waitForFrame(channel: read.channel, kind: .close)
+        #expect(await read.socket.frames(channel: read.channel, kind: .resize).isEmpty)
+        #expect(await read.socket.dataWritten(channel: read.channel).isEmpty)
+        fixture.finish()
+    }
+
+    /// The input box is what clears a Send, so with no screen nothing goes.
+    @Test func aScreenThatNeverPaintsKeepsTheDraftAndSendsNothing() async throws {
+        let fixture = try await Fixture()
+        await fixture.scripted.setAttachPaint(nil)
+
+        let sending = fixture.startSend()
+        await fixture.scripted.waitForMethod("terminal.attach")
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+
+        guard case .refused(.inputNotReady(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("couldn't check the Agent's input box"))
+        #expect(fixture.composer.draft == "hello")
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    @Test func anInputBoxHoldingADraftKeepsTheDraftAndSendsNothing() async throws {
+        let fixture = try await Fixture(screen: Self.dialogScreen)
+
+        guard case .refused = await fixture.startSend().value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+
+        #expect(fixture.composer.draft == "hello")
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    // MARK: Send
+
+    @Test func aSampleOfTheSameProgramSubmitsWithEnter() async throws {
+        let fixture = try await Fixture()
+
+        let (sending, viewer) = try await fixture.sendPastingHello()
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend])
+        #expect(await !fixture.scripted.methods.contains("terminal.get"))
+
+        await fixture.answerSample()
+
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend, Self.enter])
+        #expect(fixture.composer.draft.isEmpty)
+        #expect(fixture.composer.notice == nil)
+        #expect(await Self.noAuthoredInputRPC(fixture.scripted))
+        fixture.finish()
+    }
+
+    @Test func aProgramThatAskedForEveryKeyGetsItsSubmitInThatForm() async throws {
+        let fixture = try await Fixture(modes: Self.bracketedPasteOn + Self.kittyAllKeys)
+
+        let (sending, viewer) = try await fixture.sendPastingHello()
+        await fixture.answerSample()
+
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend, "\u{1B}[13u"])
+        fixture.finish()
+    }
+
+    @Test func aTemplatesSubmitKeyIsWhatItPresses() async throws {
+        let terminal = Self.record(submit: "ctrl+s")
+        let fixture = try await Fixture(terminal: terminal)
+
+        let (sending, viewer) = try await fixture.sendPastingHello()
+        await fixture.answerSample(with: terminal)
+
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend, "\u{13}"])
+        fixture.finish()
+    }
+
+    @Test func aChangedPidSubmitsNothingAndSaysTheTextMayRemain() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await fixture.sendPastingHello()
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41))
+
+        guard case .refused(.notSubmitted(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("may still be in the terminal"))
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend])
+        #expect(fixture.composer.draft == "hello")
+        fixture.finish()
+    }
+
+    @Test func aLateSampleSubmitsNothingAndSaysTheTextStayed() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await fixture.sendPastingHello()
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+
+        fixture.clock.advance(HerdrCoreComposerSend.submitWindow - HerdrCoreComposerSend.sampleDelay)
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+
+        guard case .refused(.notSubmitted(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("stayed in the Agent's input unsubmitted"))
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend])
+        #expect(fixture.composer.draft == "hello")
+        fixture.finish()
+    }
+
+    @Test(arguments: [
+        ("bash", "no longer in the terminal"), ("fish", "no longer in the terminal"),
+        ("zsh", "may still be in the terminal"), ("nu", "may still be in the terminal"),
+    ])
+    func aShellInTheForegroundGetsOneCtrlC(shell: String, says copy: String) async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await fixture.sendPastingHello()
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: [shell]))
+
+        guard case .refused(.notSubmitted(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains(copy), "\(reason)")
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend, Self.ctrlC])
+        #expect(fixture.composer.draft == "hello")
+        fixture.finish()
+    }
+
+    /// An Agent that died leaves its keyboard flags behind, and a shell reads no
+    /// `CSI 99;5u`.
+    @Test func theShellsCtrlCIsTheByteEvenWhereTheProgramAskedForEveryKey() async throws {
+        let fixture = try await Fixture(modes: Self.bracketedPasteOn + Self.kittyAllKeys)
+        let (sending, viewer) = try await fixture.sendPastingHello()
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: ["bash"]))
+
+        _ = await sending.value
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend, Self.ctrlC])
+        fixture.finish()
+    }
+
+    @Test func aBlockedAgentGetsNothingTyped() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"))
+
+        #expect(await fixture.startSend().value == .refused(.agentBlocked))
+
+        #expect(fixture.composer.draft == "hello")
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    @Test func anAgentThatStartedAskingBeforeTheSubmitGetsNoSubmit() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await fixture.sendPastingHello()
+
+        await fixture.answerSample(with: Self.record(status: "blocked"))
+
+        guard case .refused(.notSubmitted(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("may still be in the Agent's input"))
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend])
+        #expect(fixture.composer.draft == "hello")
+        fixture.finish()
+    }
+
+    @Test func aProgramNotTakingAPasteGetsNothingTyped() async throws {
+        let fixture = try await Fixture(modes: "")
+
+        #expect(await fixture.startSend().value == .refused(.programNotAcceptingPaste))
+
+        let viewer = try await fixture.viewer()
+        #expect(await fixture.written(on: viewer).isEmpty)
+        #expect(fixture.composer.draft == "hello")
+        fixture.finish()
+    }
+
+    // MARK: A step with no answer
+
+    private static func expectUnknownAndNoRetry(_ fixture: Fixture) async throws {
+        let message = try #require(fixture.composer.messages.last)
+        #expect(message.state == .outcomeUnknown)
+        #expect(fixture.composer.draft.isEmpty)
+        #expect(await fixture.composer.retry(message.id, policy: fixture.policy) == .ignored)
+        #expect(fixture.composer.messages.last?.state == .outcomeUnknown)
+    }
+
+    @Test func aPasteWithNoAnswerIsNeverSentAgain() async throws {
+        let fixture = try await Fixture()
+        let paint = try Self.paint(Self.readyScreen)
+        await fixture.scripted.setAttachPaint(paint, viewers: false)
+
+        let sending = fixture.startSend()
+        let viewer = try await fixture.viewer()
+        await viewer.socket.holdWrites()
+        // A second on, so the viewer's own deadline is told apart from the paste's.
+        fixture.clock.advance(.seconds(1))
+        try await viewer.socket.deliver(HerdrCoreFrame(channel: viewer.channel, kind: .data, payload: paint))
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        await viewer.socket.waitForHeldWrite()
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+
+        #expect(await sending.value == .outcomeUnknown)
+        try await Self.expectUnknownAndNoRetry(fixture)
+
+        // What was held reaches the core at most once, and the viewer goes.
+        await viewer.socket.releaseWrites()
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).count <= 1)
+        #expect(await fixture.viewers.count == 1)
+        fixture.finish()
+    }
+
+    @Test func aSampleWithNoAnswerSubmitsNothingAndIsNeverSentAgain() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await fixture.sendPastingHello()
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+
+        #expect(await sending.value == .outcomeUnknown)
+        try await Self.expectUnknownAndNoRetry(fixture)
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend])
+        #expect(await fixture.viewers.count == 1)
+        fixture.finish()
+    }
+
+    // MARK: Stop
+
+    @Test(arguments: [
+        (ChatProgram.claude, ["claude"], "claude-code"), (.codex, ["codex"], "codex"), (.pi, ["pi"], "pi"),
+        (.omp, ["omp"], "omp"),
+    ])
+    func stopPressesEscWhereTheProgramStopsOnIt(program: ChatProgram, argv: [String], app: String) async throws {
+        let fixture = try await Fixture(terminal: Self.record(argv: argv, app: app), modes: "")
+
+        #expect(await fixture.stop(as: program) == .sent)
+
+        let viewer = try await fixture.viewer()
+        #expect(await fixture.written(on: viewer) == [Self.esc])
+        #expect(await fixture.reads.isEmpty)
+        fixture.finish()
+    }
+
+    @Test func stopPressesEscInTheFormTheProgramAskedFor() async throws {
+        let fixture = try await Fixture(modes: Self.kittyAllKeys)
+
+        #expect(await fixture.stop(as: .claude) == .sent)
+
+        let viewer = try await fixture.viewer()
+        #expect(await fixture.written(on: viewer) == ["\u{1B}[27u"])
+        fixture.finish()
+    }
+
+    @Test func openCodesStopPressesEscTwiceInOneWriteOnARunningTurn() async throws {
+        let fixture = try await Fixture(
+            terminal: Self.record(argv: ["opencode"], app: "opencode"), screen: "opencode-08-working-180", modes: "")
+
+        #expect(await fixture.stop(as: .opencode) == .sent)
+
+        let viewer = try await fixture.viewer()
+        #expect(await fixture.written(on: viewer) == [Self.esc + Self.esc])
+        fixture.finish()
+    }
+
+    @Test func openCodesStopPressesNothingOverItsPermission() async throws {
+        let fixture = try await Fixture(
+            terminal: Self.record(argv: ["opencode"], app: "opencode"), screen: "opencode-10-permission-180")
+
+        guard case .failed = await fixture.stop(as: .opencode) else {
+            Issue.record("Expected Stop to press nothing")
+            return
+        }
+
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    @Test func grokBuildsStopPressesCtrlCOnARunningTurn() async throws {
+        let fixture = try await Fixture(
+            terminal: Self.record(argv: ["grok"], app: "grok"), screen: "grok-03-working", modes: "")
+
+        #expect(await fixture.stop(as: .grok) == .sent)
+
+        let viewer = try await fixture.viewer()
+        #expect(await fixture.written(on: viewer) == [Self.ctrlC])
+        fixture.finish()
+    }
+
+    @Test func grokBuildsStopPressesNothingOverItsPermission() async throws {
+        let fixture = try await Fixture(
+            terminal: Self.record(argv: ["grok"], app: "grok"), screen: "grok-12-permission-command")
+
+        guard case .failed = await fixture.stop(as: .grok) else {
+            Issue.record("Expected Stop to press nothing")
+            return
+        }
+
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    @Test func stopOnATemplatesTerminalPressesItsStopKey() async throws {
+        let fixture = try await Fixture(terminal: Self.record(stop: "ctrl+g"), modes: "")
+
+        #expect(await fixture.stop(as: .claude) == .sent)
+
+        let viewer = try await fixture.viewer()
+        #expect(await fixture.written(on: viewer) == ["\u{7}"])
+        fixture.finish()
+    }
+
+    @Test func stopPressesNothingOnceTheAgentHasLeft() async throws {
+        let fixture = try await Fixture()
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: ["bash"]))
+        try await Self.until("the Agent to go") { fixture.console.agents.isEmpty }
+
+        guard case .failed(let reason) = await fixture.stop(as: .claude) else {
+            Issue.record("Expected Stop to press nothing")
+            return
+        }
+
+        #expect(reason.contains("no longer holds this terminal"))
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    // MARK: Blocked
+
+    @Test func anAnswerGoesWhileItsDialogIsOnScreenAndTheAgentHoldsTheForeground() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: Self.dialogScreen, modes: "")
+        let card = try await fixture.blockedCard()
+
+        let answering = Task { await card.perform(.choose(ordinal: 1)) }
+        let viewer = try await fixture.viewer()
+        await viewer.socket.waitForData(channel: viewer.channel, count: 1)
+        await fixture.scripted.setAttachPaint(try Self.paint(Self.readyScreen))
+        await answering.value
+
+        #expect(await fixture.written(on: viewer) == ["1"])
+        #expect(card.notice == nil)
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        fixture.finish()
+    }
+
+    @Test func aChangedDialogGetsNoAnswer() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: "claude-30-par-first")
+        let card = try await fixture.blockedCard()
+        await fixture.scripted.setAttachPaint(try Self.paint("claude-31-par-second"))
+
+        await card.perform(.choose(ordinal: 1))
+
+        #expect(card.notice == "This prompt changed. Check it before answering.")
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    @Test func aShellInTheForegroundGetsNoAnswerWithTheDialogStillOnScreen() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: Self.dialogScreen)
+        let card = try await fixture.blockedCard()
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: ["bash"]))
+        try await Self.until("the Agent to go") { fixture.console.agents.isEmpty }
+        // The card has not heard yet, with the Agent's dialog still drawn.
+        card.update(activity: .blocked)
+        await card.refresh()
+
+        await card.perform(.choose(ordinal: 1))
+
+        #expect(card.notice?.contains("no longer holds this terminal") == true, "\(card.notice ?? "")")
+        #expect(await fixture.viewers.isEmpty)
+        fixture.finish()
+    }
+
+    /// The same dialog from another process may not be the one the user read.
+    @Test func anotherProcessGetsNoAnswerUntilItsScreenHasBeenReadAgain() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: Self.dialogScreen, modes: "")
+        let card = try await fixture.blockedCard()
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41))
+        try await fixture.untilEventsApplied()
+
+        await card.perform(.choose(ordinal: 1))
+
+        #expect(card.notice?.contains("Another process took over") == true, "\(card.notice ?? "")")
+        #expect(await fixture.viewers.isEmpty)
+
+        // The next read has seen only that process, so its dialog can be answered.
+        await card.refresh()
+        let answering = Task { await card.perform(.choose(ordinal: 1)) }
+        let viewer = try await fixture.viewer()
+        await viewer.socket.waitForData(channel: viewer.channel, count: 1)
+        await fixture.scripted.setAttachPaint(try Self.paint(Self.readyScreen))
+        await answering.value
+        #expect(await fixture.written(on: viewer) == ["1"])
+        fixture.finish()
+    }
+
+    // MARK: Keys and text
+
+    @Test func aPasteGoesThroughAViewerInTheFormTheProgramTakes() async throws {
+        let bracketed = try await Fixture()
+        try await bracketed.console.pasteIntoAgent("hello", paneID: "t1", on: bracketed.host.id)
+        #expect(await bracketed.written(on: try await bracketed.viewer()) == [Self.paste])
+        bracketed.finish()
+
+        let plain = try await Fixture(modes: "")
+        try await plain.console.pasteIntoAgent("hello", paneID: "t1", on: plain.host.id)
+        #expect(await plain.written(on: try await plain.viewer()) == ["hello"])
+        plain.finish()
+    }
+
+    /// Every name `agent.send_keys` gets from Chat's keys and its dialogs.
+    @Test(arguments: [
+        ("esc", "\u{1B}"), ("enter", "\r"), ("tab", "\t"), ("shift+tab", "\u{1B}[Z"), ("left", "\u{1B}[D"),
+        ("up", "\u{1B}[A"), ("down", "\u{1B}[B"), ("right", "\u{1B}[C"), ("backspace", "\u{7F}"), ("space", " "),
+        ("ctrl+c", "\u{3}"), ("ctrl+]", "\u{1D}"), ("ctrl+q", "\u{11}"), ("shift+left", "\u{1B}[1;2D"),
+        ("f1", "\u{1B}OP"), ("1", "1"), ("a", "a"), ("A", "A"), ("plus", "+"), ("/", "/"), ("é", "é"),
+    ])
+    func aKeyNameReadsAsTheBytesItsKeySends(name: String, bytes: String) {
+        #expect(HerdrCoreChatTyping.bytes(forKeyNamed: name, modes: TerminalModeTracker()) == Data(bytes.utf8))
+    }
+
+    @Test func aNameThatIsNoKeyHasNoBytes() {
+        #expect(HerdrCoreChatTyping.bytes(forKeyNamed: "hyper+nothing", modes: TerminalModeTracker()) == nil)
+    }
+}
+
+extension Array {
+    fileprivate subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}

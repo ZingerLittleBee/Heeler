@@ -3,7 +3,9 @@ import Observation
 
 /// The Agent's pane as a Blocked card reads and answers it: the screen
 /// through `agent.read`, keys through `agent.send_keys` and typed text
-/// through `pane.send_input`. Never the Attach PTY.
+/// through `pane.send_input`. Never the Attach PTY. On herdr-core, a viewer's
+/// paint and an attach of Chat's own (ADR 0035), which refuses a key once the
+/// Agent no longer holds the foreground the screen was read under.
 struct BlockedScreenIO: Sendable {
     var readScreen: @Sendable () async throws -> ANSIScreen
     var sendKeys: @Sendable ([String]) async throws -> Void
@@ -782,6 +784,7 @@ final class BlockedCardStore {
         "The dialog didn't respond the way Heeler expected, so it stopped. " + finishThere
 
     private static func sendFailure(_ error: any Error) -> String {
+        if let refusal = error as? HerdrCoreChatTyping.Refusal { return refusal.message }
         let prefix = "Heeler couldn't reach the Agent, so the answer may not have gone."
         guard let error = error as? TransportError else { return prefix }
         return "\(prefix) \(error.presentation.explanation)"
