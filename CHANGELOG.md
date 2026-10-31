@@ -36,6 +36,8 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Raise and lower the Composer with the keyboard, in step with it, instead of
+  jumping ahead of it.
 - Lead each Agents list row with its program's mark, such as Claude Code's
   or Codex's, inside a ring that shows its status, the Working ring turning,
   in place of the status capsule; add `status_badge` to a row's right side

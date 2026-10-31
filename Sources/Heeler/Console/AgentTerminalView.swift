@@ -1054,6 +1054,9 @@ struct AgentTerminalView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
+                .ridesKeyboard(
+                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
+                    isEnabled: composerRidesKeyboard)
         }
         // Below the keyboard's own inset, so the strip rides above the
         // keyboard while it is up and rests on the screen's edge once it is
@@ -1061,6 +1064,9 @@ struct AgentTerminalView: View {
         // switching to whether or not the user is typing.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             inputChrome
+                .ridesKeyboard(
+                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
+                    isEnabled: composerRidesKeyboard)
         }
         // Not SwiftUI's keyboard avoidance: it retracts in two stages and the
         // terminal would resize twice per dismissal. See TerminalKeyboardInset.
@@ -1199,6 +1205,12 @@ struct AgentTerminalView: View {
         return actions
     }
 
+    /// Direct Input keeps its own keyboard handling, and the tools dock is
+    /// not a keyboard that moves.
+    private var composerRidesKeyboard: Bool {
+        !isDirectInput && directToComposerHandoffID == nil && composerKeyboardPresentation != .tools
+    }
+
     private func prepareComposerKeyboardPresentation(
         _ presentation: AgentComposerKeyboardPresentation
     ) {
@@ -1210,6 +1222,9 @@ struct AgentTerminalView: View {
         case .system:
             keyboardInset.resumeHeightCapture()
             keyboardInset.expectSoftwareKeyboard()
+        }
+        if composerKeyboardPresentation == .tools, presentation != .tools {
+            keyboardInset.skipKeyboardRideLeavingToolsDock()
         }
     }
 

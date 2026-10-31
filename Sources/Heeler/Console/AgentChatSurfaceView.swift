@@ -367,14 +367,23 @@ struct AgentChatSurfaceView: View {
         // Above the staging bar, which stays next to the Composer it feeds.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             backgroundWorkStrip
+                .ridesKeyboard(
+                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
+                    isEnabled: composerKeyboardPresentation != .tools)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
                 .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
                 .frame(maxWidth: .infinity)
+                .ridesKeyboard(
+                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
+                    isEnabled: composerKeyboardPresentation != .tools)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             composerChrome
+                .ridesKeyboard(
+                    keyboardInset, layoutInset: composerKeyboardLayout.contentInset,
+                    isEnabled: composerKeyboardPresentation != .tools)
         }
         .padding(.bottom, composerKeyboardLayout.contentInset)
         // In place at the system keyboard's last height, as on the terminal,
@@ -961,6 +970,9 @@ struct AgentChatSurfaceView: View {
         case .system:
             keyboardInset.resumeHeightCapture()
             keyboardInset.expectSoftwareKeyboard()
+        }
+        if composerKeyboardPresentation == .tools, presentation != .tools {
+            keyboardInset.skipKeyboardRideLeavingToolsDock()
         }
     }
 

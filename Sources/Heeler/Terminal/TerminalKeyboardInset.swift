@@ -35,6 +35,18 @@ final class TerminalKeyboardInset {
     /// transient will-hide right before the next will-show, and that must
     /// not drop the pin for a frame.
     private(set) var isSoftwareKeyboardDismissed = false
+    /// How far the keyboard reaches above the content edge on screen right
+    /// now, while it is moving; nil at rest. `height` jumps to the end of the
+    /// motion so the terminal resizes once, and this is what an input row
+    /// rides on meanwhile; see ``rideOffset(layoutInset:)``.
+    private(set) var movingKeyboardHeight: CGFloat?
+    /// Motions before this time are not ones to ride: leaving the tools dock,
+    /// whose footprint the input row already rests on. A time rather than one
+    /// motion, since that swap publishes a hide and then a show.
+    @ObservationIgnored private var ridesKeyboardAfter: ContinuousClock.Instant?
+    private static let toolsDockExitDuration = Duration.milliseconds(800)
+    /// Nil where nothing rides the keyboard.
+    @ObservationIgnored private var motionTracker: KeyboardMotionTracker?
     @ObservationIgnored var dismissalConfirmationDelay = Duration.milliseconds(350)
     @ObservationIgnored private var dismissalConfirmationTask: Task<Void, Never>?
     /// Whether a will-hide is still waiting on ``dismissalConfirmationDelay``.
@@ -84,11 +96,17 @@ final class TerminalKeyboardInset {
     /// window instead.
     init(
         notificationCenter: NotificationCenter = .default,
+        tracksKeyboardMotion: Bool = false,
         measure: (@MainActor (CGRect) -> CGFloat?)? = nil,
         measureWindowKeyboard: (@MainActor () -> CGFloat?)? = nil
     ) {
         measureOverride = measure
         measureWindowKeyboardOverride = measureWindowKeyboard
+        if tracksKeyboardMotion {
+            motionTracker = KeyboardMotionTracker { [weak self] top in
+                self?.keyboardMoved(toTop: top)
+            }
+        }
         for name: Notification.Name in [
             UIResponder.keyboardWillShowNotification,
             UIResponder.keyboardWillChangeFrameNotification,
@@ -125,8 +143,48 @@ final class TerminalKeyboardInset {
     /// keeps the last window it was given, and the last `contentAnchor`.
     func attach(to window: UIWindow, contentAnchor: UIView? = nil) {
         if let contentAnchor { self.contentAnchor = contentAnchor }
+        if let rootView = window.rootViewController?.view {
+            motionTracker?.install(in: rootView)
+        }
         guard self.window !== window else { return }
         self.window = window
+    }
+
+    /// The offset that keeps an input row laid out `layoutInset` above the
+    /// content edge on the moving keyboard; zero at rest. Read it from a small
+    /// view of its own: it changes every frame of the motion.
+    func rideOffset(layoutInset: CGFloat) -> CGFloat {
+        guard !isHoldingHandoffHeight, let movingKeyboardHeight else { return 0 }
+        return Self.rideOffset(layoutInset: layoutInset, keyboardHeight: movingKeyboardHeight)
+    }
+
+    /// Positive below the row's place while the keyboard is on its way up,
+    /// negative above it while the keyboard is on its way down.
+    nonisolated static func rideOffset(layoutInset: CGFloat, keyboardHeight: CGFloat) -> CGFloat {
+        layoutInset - keyboardHeight
+    }
+
+    /// Leaving the tools dock: the keyboard's motions right after move nothing
+    /// that rides them, since the row already rests at the dock's height.
+    func skipKeyboardRideLeavingToolsDock() {
+        ridesKeyboardAfter = .now + Self.toolsDockExitDuration
+        movingKeyboardHeight = nil
+    }
+
+    private func keyboardMoved(toTop top: CGFloat?) {
+        if let ridesKeyboardAfter, ContinuousClock.now < ridesKeyboardAfter {
+            movingKeyboardHeight = nil
+            return
+        }
+        ridesKeyboardAfter = nil
+        guard let top, let window else {
+            movingKeyboardHeight = nil
+            return
+        }
+        movingKeyboardHeight = Self.insetHeight(
+            covered: max(0, window.bounds.maxY - top),
+            bottomSafeArea: Self.contentBottomInset(of: contentAnchor, in: window)
+                ?? window.safeAreaInsets.bottom)
     }
 
     private func measure(_ endFrame: CGRect) -> CGFloat? {
@@ -168,6 +226,7 @@ final class TerminalKeyboardInset {
         dismissalConfirmationTask?.cancel()
         dismissalConfirmationTask = nil
         isSoftwareKeyboardDismissed = false
+        motionTracker?.start()
         coalesceTask?.cancel()
         coalesceTask = Task { [weak self] in
             try? await Task.sleep(for: Self.coalesceDelay)
@@ -184,6 +243,7 @@ final class TerminalKeyboardInset {
         }
         coalesceTask?.cancel()
         coalesceTask = nil
+        motionTracker?.start()
         apply(0)
         confirmDismissalIfUnanswered()
     }
@@ -234,6 +294,9 @@ final class TerminalKeyboardInset {
     /// confirmed after the same delay as an unanswered will-hide.
     func expectSoftwareKeyboard() {
         isSoftwareKeyboardDismissed = false
+        // The pin raises the layout before the keyboard's first frame; the
+        // row waits for it at the keyboard's current height.
+        motionTracker?.start()
         confirmDismissalIfUnanswered()
     }
 
@@ -582,5 +645,24 @@ extension View {
     func terminalKeyboardInset(_ inset: TerminalKeyboardInset) -> some View {
         padding(.bottom, inset.height)
             .ignoresSafeArea(.keyboard)
+    }
+
+    /// Keeps an input row on the keyboard while it moves. `layoutInset` is how
+    /// far above the content edge the row is laid out.
+    func ridesKeyboard(
+        _ inset: TerminalKeyboardInset, layoutInset: CGFloat, isEnabled: Bool
+    ) -> some View {
+        modifier(KeyboardRide(inset: inset, layoutInset: layoutInset, isEnabled: isEnabled))
+    }
+}
+
+/// On its own so only this offset re-evaluates per frame, not the whole surface.
+private struct KeyboardRide: ViewModifier {
+    let inset: TerminalKeyboardInset
+    let layoutInset: CGFloat
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        content.offset(y: isEnabled ? inset.rideOffset(layoutInset: layoutInset) : 0)
     }
 }

@@ -189,3 +189,38 @@ struct TerminalKeysKeyboardTests {
         return condition()
     }
 }
+
+@MainActor
+@Suite("Keyboard ride", .serialized)
+struct KeyboardRideTests {
+    @Test func theOffsetPutsTheRowOnTheKeyboardBothWays() {
+        // On the way up the row is laid out ahead of the keyboard, so it sits
+        // below its place; on the way down it is laid out behind it, above.
+        #expect(TerminalKeyboardInset.rideOffset(layoutInset: 336, keyboardHeight: 100) == 236)
+        #expect(TerminalKeyboardInset.rideOffset(layoutInset: 0, keyboardHeight: 100) == -100)
+        #expect(TerminalKeyboardInset.rideOffset(layoutInset: 336, keyboardHeight: 336) == 0)
+    }
+
+    @Test func nothingMovesARowWhileTheKeyboardIsAtRest() {
+        #expect(TerminalKeyboardInset().rideOffset(layoutInset: 336) == 0)
+    }
+
+    @Test func aKeyboardThatNeverMovesEndsTheTracking() async throws {
+        var reports: [CGFloat?] = []
+        let tracker = KeyboardMotionTracker { reports.append($0) }
+        let controller = UIViewController()
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            tracker.install(in: controller.view)
+            controller.view.layoutIfNeeded()
+            tracker.start()
+            #expect(reports.first.map { $0 != nil } == true, "the first read comes at once")
+            for _ in 0..<60 where reports.last != .some(nil) {
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            #expect(reports.last == .some(nil), "tracking should end: \(reports.count) reports")
+        }
+    }
+}
+
