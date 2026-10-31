@@ -837,6 +837,18 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return record
     }
 
+    /// The directory a launch from an Agent would land in, for the form to show.
+    /// Only a derived Workspace overrides the Agent's directory, as `placement` does.
+    func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String {
+        guard HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID) == nil,
+            let key = HerdrCoreOrganization.keyDirectory(
+                ofWorkspace: workspaceID, terminals: records,
+                firstSeenDirectories: memory.firstSeenDirectories(for: host.id)),
+            !key.isEmpty
+        else { return asked }
+        return key
+    }
+
     /// A desktop space takes the directory asked for, else its own. A derived
     /// Workspace is its key directory and nothing else, or the Terminal would
     /// land in another Workspace. A launch that names no Workspace is a derived one.

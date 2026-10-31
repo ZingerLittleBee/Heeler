@@ -851,6 +851,35 @@ struct HerdrCoreLaunchTests {
                 ))
     }
 
+    // MARK: Where it starts
+
+    /// A derived Workspace is its key directory, wherever its Terminal has gone.
+    @Test func theOriginFormShowsADerivedWorkspacesKeyDirectory() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+
+        #expect(
+            fixture.store.launchDirectory(
+                ofWorkspace: fixture.derived, asked: "/work/app/sub", on: host.id) == "/work/app")
+
+        _ = try await fixture.store.startAgent(
+            AgentLaunchRequest(
+                kind: "claude", name: "claude", arguments: [], workspaceID: fixture.derived,
+                cwd: "/work/app/sub"),
+            on: host.id)
+        #expect(await fixture.transport.runs.last?["cwd"]?.stringValue == "/work/app")
+    }
+
+    /// A desktop space takes the directory it is given.
+    @Test func theOriginFormShowsTheAskedDirectoryInADesktopSpace() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+
+        #expect(
+            fixture.store.launchDirectory(
+                ofWorkspace: "space-s1", asked: "/work/alpha/sub", on: host.id) == "/work/alpha/sub")
+    }
+
     @Test func aTemplateInADerivedWorkspaceIsRunByNameAndNothingElse() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }

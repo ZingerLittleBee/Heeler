@@ -531,6 +531,11 @@ final class ConsoleStore {
         try await projection(for: hostID).startTemplate(request)
     }
 
+    /// See `ConsoleHostProjection.launchDirectory(ofWorkspace:asked:)`.
+    func launchDirectory(ofWorkspace workspaceID: String, asked: String, on hostID: Host.ID) -> String {
+        projections[hostID]?.launchDirectory(ofWorkspace: workspaceID, asked: asked) ?? asked
+    }
+
     /// See `ConsoleHostProjection.programExit(ofPane:)`.
     func programExit(of id: ConsoleAgent.ID) -> ProgramExit? {
         projections[id.hostID]?.programExit(ofPane: id.paneID)
