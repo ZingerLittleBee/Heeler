@@ -552,6 +552,17 @@ struct HerdrCoreAgentsTests {
         #expect(AgentRowRenderer.render(layout: layout, agent: sample).map { $0.map(\.text) } == [["team.owner"]])
     }
 
+    /// Its rows read no Changes yet, and no sample on its page talks about Sync.
+    @Test func aCoreHostsPreviewShowsNoChangesTotalsAndNoSyncSample() {
+        #expect(AgentListFieldsPreview.sampleChanges(followsPlugin: false) == nil)
+        #expect(AgentListFieldsPreview.sampleChanges(followsPlugin: true) != nil)
+        let sample = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac", followsPlugin: false)
+        #expect(sample.agent.terminalTitleStripped == "fix login redirect")
+        #expect(
+            AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac").agent.terminalTitleStripped
+                == "fix sidebar sync")
+    }
+
     // MARK: Row fields
 
     @Test func anAgentCarriesItsTerminalsLabelsAndTitle() async throws {

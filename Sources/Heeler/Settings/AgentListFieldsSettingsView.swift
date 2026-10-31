@@ -183,7 +183,8 @@ struct AgentListFieldsHostDetailView: View {
                 .tracking(0.5)
                 .foregroundStyle(.tertiary)
                 .textCase(.uppercase)
-            AgentListFieldsPreview(layout: layout, hostName: host.displayName)
+            AgentListFieldsPreview(
+                layout: layout, hostName: host.displayName, followsPlugin: followsPlugin)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .listRowInsets(AgentListFieldsChrome.previewInsets)
