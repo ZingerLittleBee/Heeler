@@ -22,7 +22,14 @@ never show or send into a conversation it has guessed.
   (`app-server --managed-daemon`), which keeps the `HC_SCOPE` of the Terminal
   that started it while serving every window. It reads only the variables it
   names from a process environment, on the Host, because environments hold
-  secrets.
+  secrets. The core keeps a Terminal's scope out of its record, so the check
+  reads `HC_SCOPE` from the Terminal's own process, in the same exec.
+- For Claude Code the agent is the nearest of those processes that calls itself
+  `claude` or a version number, past a launcher of the same name, or the
+  foreground itself with nothing under it. Two equally near bind nothing, and a
+  child carrying `CLAUDE_CODE_CHILD_SESSION` that its parent does not is that
+  parent's tool, not the agent. Its config dir is the same process's
+  `CLAUDE_CONFIG_DIR`, or `.claude` under its `HOME`.
 - Evidence by program, without installing anything:
 
   | Program | Evidence |

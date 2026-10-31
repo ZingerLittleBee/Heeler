@@ -23,6 +23,13 @@ struct AgentChatSource: Sendable {
     var processInfo: (@Sendable () async throws -> PaneProcessInfo)?
     /// The Agent's pane, which a Blocked card reads and answers.
     var screen: BlockedScreenIO = .unavailable
+    /// A herdr-core Host reports no session, so Chat checks the Agent's process
+    /// in place of `agentInfo`, and only when Chat opens or an event says the
+    /// answer may have changed, never on a timer (ADR 0034).
+    var sessionEvidence: (@Sendable () async throws -> ChatSessionEvidence)?
+    /// The core session and core id, which key the cache beside the Host: nil
+    /// on Herdr TUI, whose session the socket location names.
+    var coreScope: String?
 }
 
 /// One Agent's Chat (ADR 0024): the conversation herdr says the Agent is
@@ -183,6 +190,12 @@ final class AgentChatStore {
     /// another (`checkStartScreen`).
     @ObservationIgnored private var staleSession: ConversationReference?
     @ObservationIgnored private var staleTitle: String?
+    /// Why the last check of the Agent's process bound nothing.
+    @ObservationIgnored private var evidenceReason: ChatUnavailableReason?
+    /// Where the last check that bound says the Agent keeps its Transcripts,
+    /// and the directory it filed this conversation under, if it said.
+    @ObservationIgnored private var evidenceRoot: String?
+    @ObservationIgnored private var evidenceDirectory: String?
     /// Retry asks the start-screen watch for a look at the screen.
     @ObservationIgnored private var screenCheckRequested = false
     /// Whether the next visible step reads how the program was launched.
@@ -503,6 +516,8 @@ final class AgentChatStore {
         guard isConnected != isHostConnected else { return }
         isHostConnected = isConnected
         guard isConnected else { return }
+        // Whatever happened meanwhile sent no event this Chat saw.
+        sessionEvidenceMayHaveChanged()
         let waiting = waitingOutputs
         for id in waiting {
             loadOutput(id)
@@ -647,13 +662,28 @@ final class AgentChatStore {
         wake()
     }
 
+    /// The core whose Transcripts this Chat keeps; see `AgentChatSource`.
+    var coreScope: String? { source.coreScope }
+
+    /// A status, turn or foreground event of the Agent's Terminal: the next
+    /// step checks its process again, however many arrived by then.
+    func sessionEvidenceMayHaveChanged() {
+        guard source.sessionEvidence != nil else { return }
+        needsAgentRefresh = true
+        wake()
+    }
+
     /// The Console's latest record of the Agent, from a snapshot or a status
     /// change.
     func agentDidChange(_ next: Agent) {
         let statusChanged = next.status != agent.status
         let sessionChanged = next.agentSession != agent.agentSession
         let identityChanged = !sameIdentity(agent, next)
-        if identityChanged { forgetStaleSession() }
+        if identityChanged {
+            forgetStaleSession()
+            evidenceReason = nil
+            sessionEvidenceMayHaveChanged()
+        }
         let reported = resolveReported(next.agentSession)
         // While the start screen marks a conversation stale, the same record
         // handed over again is no report: OpenCode changes its conversation
@@ -890,6 +920,7 @@ final class AgentChatStore {
     // MARK: Session
 
     private var sessionRecheckIsDue: Bool {
+        guard source.sessionEvidence == nil else { return false }
         let interval: TimeInterval
         if engine == nil || isUnavailable || agentRefreshFailure != nil {
             interval = timing.sessionRecheck
@@ -910,6 +941,14 @@ final class AgentChatStore {
         lastAgentRefresh = now()
         let recordRevision = sessionRecordRevision
         do {
+            if let sessionEvidence = source.sessionEvidence {
+                let evidence = try await sessionEvidence()
+                guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return nil }
+                agentRefreshFailure = nil
+                updateReadFailure()
+                adoptEvidence(evidence)
+                return nil
+            }
             let fresh = try await source.agentInfo()
             guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return nil }
             agentRefreshFailure = nil
@@ -941,6 +980,31 @@ final class AgentChatStore {
             needsLaunchCheck = true
         }
         adopt(resolveReported(fresh.agentSession), replacingAgent: identityChanged)
+    }
+
+    /// Follows what a check of the Agent's process found, as `adoptRecord` does
+    /// a herdr record.
+    private func adoptEvidence(_ evidence: ChatSessionEvidence) {
+        switch evidence {
+        case .bound(let sessionID, let transcriptRoot, let directory):
+            evidenceReason = nil
+            evidenceDirectory = directory
+            // The same id under another root is another file.
+            let movedRoot = followed != nil && evidenceRoot != transcriptRoot
+            evidenceRoot = transcriptRoot
+            adopt(.bound(ConversationReference(program: program, sessionID: sessionID)), replacingAgent: movedRoot)
+        case .unavailable(let reason):
+            evidenceReason = reason
+            guard resolution == .noSession else {
+                adopt(.noSession)
+                return
+            }
+            if isAwaitingSession {
+                conversation.phase = .unavailable(reason)
+            } else {
+                showUnavailable()
+            }
+        }
     }
 
     /// Due while Chat shows the conversation, after anything that may mean
@@ -1019,13 +1083,15 @@ final class AgentChatStore {
     /// Why Chat shows no conversation while it awaits a session from herdr:
     /// none reported, or only the one the program left for its home screen.
     private var awaitingReason: ChatUnavailableReason {
-        staleSession == nil ? .noSession(program) : .startScreen(program)
+        evidenceReason ?? (staleSession == nil ? .noSession(program) : .startScreen(program))
     }
 
     /// Whether the conversation shows `awaitingReason`.
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
-        case .unavailable(.noSession), .unavailable(.startScreen): true
+        case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
+            .unavailable(.transcriptOff):
+            true
         default: false
         }
     }
@@ -1101,12 +1167,16 @@ final class AgentChatStore {
     private func showUnavailable() {
         let reason: ChatUnavailableReason =
             switch resolution {
-            case .noSession: .noSession(program)
+            case .noSession: evidenceReason ?? .noSession(program)
             case .unidentified: .unidentifiedSession(program)
             case .unsupported, .bound: .unsupportedSession
             }
         var next = ChatConversationSnapshot()
-        next.phase = .unavailable(reason)
+        // Before its first check a core Agent still may bind, with no herdr to
+        // wait for: it stays looking.
+        if source.sessionEvidence == nil || evidenceReason != nil {
+            next.phase = .unavailable(reason)
+        }
         next.readFailure = agentRefreshFailure
         if conversation != next { conversation = next }
     }
@@ -1115,8 +1185,10 @@ final class AgentChatStore {
         ChatConversationEngine(
             reference: reference,
             cacheKey: ChatCacheKey(
-                hostID: source.hostID, socketLocation: source.socketLocation, reference: reference),
-            files: source.files, cache: source.cache, adapter: source.adapter, now: now)
+                hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
+                coreScope: source.coreScope),
+            files: source.files, cache: source.cache, adapter: source.adapter,
+            claudeConfigRoot: source.sessionEvidence == nil ? nil : evidenceRoot, now: now)
     }
 
     // MARK: Start screen
@@ -1328,13 +1400,14 @@ final class AgentChatStore {
         let delay = delays.isEmpty ? 0 : delays[min(failedOpens, delays.count - 1)]
         failedOpens += 1
         nextOpen = now().addingTimeInterval(delay)
-        // Not found may mean the session moved on: ask herdr again first.
-        needsAgentRefresh = true
+        // Not found may mean the session moved on: ask herdr again first. A
+        // check of a process waits for an event, or this would be its timer.
+        if source.sessionEvidence == nil { needsAgentRefresh = true }
     }
 
     private var directories: [String] {
         var directories: [String] = []
-        for directory in [agent.foregroundCwd, agent.cwd].compactMap(\.self)
+        for directory in [evidenceDirectory, agent.foregroundCwd, agent.cwd].compactMap(\.self)
         where !directory.isEmpty && !directories.contains(directory) {
             directories.append(directory)
         }

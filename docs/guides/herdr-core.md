@@ -174,10 +174,22 @@ If the program ends during the few seconds New Agent watches it, the form stays 
 
 **Known limit:** with zsh as your login shell and no startup files, such as no `~/.zshrc`, zsh opens its new-user wizard and the Agent waits behind it. Open the Terminal and answer the wizard once, or create an empty `~/.zshrc` on the Host first.
 
+## Chat
+
+Chat opens for a Claude Code Agent on a Linux core Host, to read its conversation. To type to the Agent or answer its questions, use the terminal: Send, Stop and Blocked answers are not in Chat here yet.
+
+Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. It checks when you open Chat and when the Agent's status or foreground program changes, and at no other time.
+
+| Chat says | What it means |
+| --- | --- |
+| **Can't Tell the Conversation** | Claude Code names its conversation only once it reaches its prompt. Finish signing in or answer its question in the terminal, and Chat follows on the next status change. **Retry** checks at once |
+| **Transcript Saving Is Off** | The Agent runs with the variable Chat names, `CLAUDE_CODE_CHILD_SESSION` or `CLAUDE_CODE_SKIP_PROMPT_HISTORY`, so it keeps no conversation to read. Start it again without the variable. If the core itself carries it, the Host's **Core Environment** says how to fix that |
+
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the desktop.
-- Worktrees and Chat are not available yet.
+- Worktrees are not available yet.
+- Chat opens only for Claude Code on Linux, and only to read. Other programs, macOS and native Windows core Hosts offer the terminal alone.
 - Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
 - Live Activities and in-app banners for Agent Notifications are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.

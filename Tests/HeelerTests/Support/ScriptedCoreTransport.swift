@@ -165,6 +165,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var templateRuns = 0
     /// The method of every call sent as a mutation, oldest first.
     private(set) var mutations: [String] = []
+    /// The exact params of every `terminal.label`, oldest first.
+    private(set) var labelWrites: [JSONValue] = []
     /// The Terminal of every `terminal.kill`, oldest first.
     private(set) var kills: [String] = []
     private var killAnswers: [String: Result<JSONValue, any Error>] = [:]
@@ -217,7 +219,27 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         throw TransportError.hostFeatureUnavailable(feature: "locate")
     }
 
-    func lastLocation() async -> HerdrCoreLocator.Location? { nil }
+    func lastLocation() async -> HerdrCoreLocator.Location? {
+        location
+    }
+
+    private var location: HerdrCoreLocator.Location?
+
+    func setKernel(_ kernel: String) {
+        location = HerdrCoreLocator.Location(
+            kernel: kernel, executablePath: "/usr/bin/herdr-core", version: "0.1.13",
+            socketPath: "/run/core.sock", socketSource: .lock, socketFilePresent: true,
+            socketPathLimit: 107, loginShell: nil)
+    }
+
+    /// The Host's processes for `readProcesses`, which reads them as one exec.
+    let processTable = ScriptedProcessTable()
+
+    func readProcesses(
+        _ request: HostProcessReader.Request
+    ) async throws -> [String: HostProcessReader.Facts] {
+        try await processTable.read(request)
+    }
 
     /// What each process's environment answers, and every read asked for.
     private var processVariables: [String: HostProcessReader.Variable] = [:]
@@ -261,7 +283,13 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
             ]))
     }
 
-    func leakedEnvironmentNames() async -> Set<String>? { [] }
+    func leakedEnvironmentNames() async -> Set<String>? { leakedEnvironment }
+
+    private var leakedEnvironment: Set<String> = []
+
+    func setLeakedEnvironment(_ names: Set<String>) {
+        leakedEnvironment = names
+    }
 
     func subscribeEvents() async throws -> HerdrCoreEventStream {
         subscribeCount += 1
@@ -315,6 +343,9 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         case "templates.list":
             if let templateListFailure { throw templateListFailure }
             return templateList
+        case "terminal.label":
+            labelWrites.append(params)
+            return .null
         default:
             throw TransportError.hostFeatureUnavailable(feature: method)
         }

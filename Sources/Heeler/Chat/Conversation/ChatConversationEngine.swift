@@ -32,6 +32,12 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// still reports is no longer open: OpenCode keeps reporting one after
     /// `/new` or `/clear` (ADR 0025).
     case startScreen(ChatProgram)
+    /// Nothing on the Host shows which conversation a herdr-core Agent is in,
+    /// and Chat never guesses (ADR 0034).
+    case cannotTellSession(ChatProgram)
+    /// The Agent's process carries a variable that stops the program keeping
+    /// a Transcript, so there is no file to wait for (ADR 0034).
+    case transcriptOff(ChatTranscriptOffVariable, coreCarriesIt: Bool)
 
     /// Whether Chat shows the explanation in the conversation's place even
     /// over saved messages, which stay in memory until the program shows
@@ -39,6 +45,15 @@ enum ChatUnavailableReason: Equatable, Sendable {
     var hidesConversation: Bool {
         if case .startScreen = self { true } else { false }
     }
+}
+
+/// Variables that stop Claude Code keeping a Transcript when it inherits them,
+/// as from a core started inside a Claude Code session (ADR 0034).
+enum ChatTranscriptOffVariable: String, CaseIterable, Equatable, Sendable {
+    /// No registry entry and no Transcript.
+    case childSession = "CLAUDE_CODE_CHILD_SESSION"
+    /// No Transcript.
+    case skipPromptHistory = "CLAUDE_CODE_SKIP_PROMPT_HISTORY"
 }
 
 extension ChatProgram {
@@ -304,6 +319,9 @@ actor ChatConversationEngine {
     /// lists.
     private var journals: [String: FollowedJournal] = [:]
     private var journalCalls = 0
+    /// The Agent's own Claude Code config dir, from a check of its process
+    /// (ADR 0034). Nil looks in the Host's default place.
+    private let claudeConfigRoot: String?
 
     init(
         reference: ConversationReference,
@@ -313,8 +331,10 @@ actor ChatConversationEngine {
         adapter: ChatTranscriptAdapter,
         saveInterval: TimeInterval = 10,
         workflowLimits: WorkflowLimits = WorkflowLimits(),
+        claudeConfigRoot: String? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
+        self.claudeConfigRoot = claudeConfigRoot
         self.reference = reference
         self.cacheKey = cacheKey
         self.files = files
@@ -720,7 +740,8 @@ actor ChatConversationEngine {
             // every pass.
             if isNew, searchesEveryProject { newConversationActivity = context.activity }
             switch try await ClaudeTranscriptLocator(files: files).locate(
-                sessionID: reference.sessionID, directories: candidates, searchesEveryProject: searchesEveryProject)
+                sessionID: reference.sessionID, directories: candidates, searchesEveryProject: searchesEveryProject,
+                configRoot: claudeConfigRoot)
             {
             case .success(let location): return .found(location.transcriptPath)
             case .failure(.notFound) where !searchesEveryProject:

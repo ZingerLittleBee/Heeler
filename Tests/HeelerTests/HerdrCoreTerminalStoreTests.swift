@@ -1142,12 +1142,15 @@ struct HerdrCoreTerminalStoreTests {
     /// The header's More, and the Composer's, whose Add has a button of its own.
     private static let coreAgentMenus: Set<[String]> = [
         ["Terminals", "Changes", "Collapse"],
-        ["Back to Console", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
+        ["Back to Console", "Show Chat", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
     ]
     /// Direct Input has no Add of its own: its More carries the same two items.
     private static let coreDirectInputMenus: Set<[String]> = [
         ["Terminals", "Changes", "Collapse"],
-        ["Back to Console", "Add Image", "Add File", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
+        [
+            "Back to Console", "Add Image", "Add File", "Show Chat", "Open Terminal", "Changes", "New Agent", "Skills",
+            "Snippets", "Close Agent",
+        ],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.
     private static let notBuiltLabels = ["Take Over", "Take Over Here"]
@@ -1173,9 +1176,66 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("Send") { detail.offers("Send") }
         #expect(!detail.offers("Stop"))
         fixture.console.composerStore(for: agent).replaceDraft(with: "")
+        try await Self.until("Chat, once the Host's kernel is known") { fixture.console.chatProgram(for: agent) != nil }
+        detail.layOut()
 
         let menus = try await HostedMenu.items(labeled: "More", in: detail.window)
         #expect(Set(menus) == Self.coreAgentMenus, "\(menus)")
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// Send, Stop, Add and the Blocked card all live in Chat's Composer, which a
+    /// core Chat does not show yet. The same labels on the terminal show they read.
+    @Test func aCoreChatOffersNothingToType() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("x", on: attach)
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        try await Self.until("Add") { detail.offers("Add") }
+        #expect(detail.offers("Stop"))
+        try await Self.until("Chat, once the Host's kernel is known") { fixture.console.chatProgram(for: agent) != nil }
+        detail.layOut()
+
+        try await HostedMenu.select("Show Chat", labeled: "More", in: detail.window)
+        try await Self.until("Chat") { detail.offers("Show Agent Terminal") }
+
+        for label in ["Message the Agent", "Add", "Stop", "Send"] { #expect(!detail.offers(label), "\(label)") }
+        fixture.console.composerStore(for: agent).replaceDraft(with: "and the tests")
+        await detail.settle()
+        #expect(!detail.offers("Send"))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// With no screen to read, the store soon holds the "can't read" card.
+    @Test func aCoreChatShowsNoBlockedCard() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("x", on: attach)
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        try await Self.until("Chat, once the Host's kernel is known") { fixture.console.chatProgram(for: agent) != nil }
+        detail.layOut()
+        try await HostedMenu.select("Show Chat", labeled: "More", in: detail.window)
+        try await Self.until("Chat") { detail.offers("Show Agent Terminal") }
+        let chat = try #require(fixture.console.chatStore(for: agent, program: .claude))
+
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine(
+                "status",
+                data: .object([
+                    "status": .object(["state": .string("blocked"), "app": .string("claude-code")]),
+                    "records": .object([:]), "reported": .bool(true),
+                ])))
+        try await Self.until("the store's card") { chat.blocked.content == .unreadable }
+        await detail.settle()
+
+        #expect(!detail.reads("Waiting for Input"))
+        #expect(detail.offers("Show Agent Terminal"))
         await detail.close()
         await fixture.finish()
     }
@@ -1369,6 +1429,7 @@ struct HerdrCoreTerminalStoreTests {
         for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
         let hostID = fixture.host.id
         try await Self.until("uploads") { fixture.console.capabilities(for: hostID).uploads }
+        try await Self.until("Chat, once the Host's kernel is known") { fixture.console.chatProgram(for: agent) != nil }
         detail.layOut()
 
         let menus = try await HostedMenu.items(labeled: "More", in: detail.window)

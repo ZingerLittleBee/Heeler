@@ -20,6 +20,9 @@ enum HostProcessReader {
         /// As ``namesOf``, for any name starting with one of these.
         var namesWithPrefix: [String] = []
         var readsOpenFiles = false
+        /// One of ``pids``: also finds its descendants on the Host and reads
+        /// each of them the same way, since nothing can name them beforehand.
+        var descendantsOf: String?
 
         var readsEnvironment: Bool {
             !valuesOf.isEmpty || !namesOf.isEmpty || !namesWithPrefix.isEmpty
@@ -39,6 +42,7 @@ enum HostProcessReader {
         case tooManyProcesses(Int)
         case variableName(String)
         case procRoot(String)
+        case descendantRoot(String)
     }
 
     /// The output was cut short or does not read as this script's.
@@ -63,6 +67,14 @@ enum HostProcessReader {
         var variables: [String: Variable] = [:]
         var nonEmptyNames: Reading<Set<String>> = .unavailable
         var openFiles: Reading<[String]> = .unavailable
+        /// In ``Request/descendantsOf``'s walk: the parent, and the kernel's
+        /// name for the process, `-` when it holds anything but `[A-Za-z0-9._-]`.
+        var parent: String?
+        var name: String?
+        /// On the walk's root: everything under it, each with its own facts.
+        /// Unavailable on a platform with no recorded method, or past the cap,
+        /// where part of a tree could hide the process a caller looks for.
+        var descendants: Reading<[String]> = .unavailable
     }
 
     /// The script's output past this is cut, with its end marker, so the read
@@ -89,6 +101,9 @@ enum HostProcessReader {
         }
         guard request.pids.count <= processCap else {
             throw Refusal.tooManyProcesses(request.pids.count)
+        }
+        if let root = request.descendantsOf, !request.pids.contains(root) {
+            throw Refusal.descendantRoot(root)
         }
         for name in request.valuesOf + request.namesOf + request.namesWithPrefix
         where !isVariableName(name) {
@@ -125,6 +140,17 @@ enum HostProcessReader {
             if request.readsStart { lines.append("s \(pid)") }
             if request.readsEnvironment { lines.append("e \(pid)") }
             if request.readsOpenFiles { lines.append("f \(pid)") }
+        }
+        if let root = request.descendantsOf {
+            lines += [
+                "o=$(w \(root))",
+                "printf '%s\\n' \"$o\"",
+                "for x in $(printf '%s\\n' \"$o\" | awk -v r=\(root) '$1==\"T\"&&$2!=r{print $2}'); do",
+            ]
+            if request.readsStart { lines.append("s \"$x\"") }
+            if request.readsEnvironment { lines.append("e \"$x\"") }
+            if request.readsOpenFiles { lines.append("f \"$x\"") }
+            lines += [":", "done"]
         }
         lines.append("printf '\\n%s\\n' '\(endMarker(nonce))'")
         lines.append("} | head -c \(outputCap)")
@@ -203,6 +229,37 @@ enum HostProcessReader {
             "END{if(k){printf \"%s\",o;print \"O\",p,\"ok\"}else print \"O\",p,\"-\"}",
             "'",
             "}",
+            // `read` needs no process per entry of /proc. The parent is counted
+            // past the last `) ` like the start, and a name is printed only
+            // when it cannot be taken for anything else.
+            "w() {",
+            "  q=$1",
+            "  set +f",
+            "  set -- \"$R\"/[0-9]*",
+            "  set -f",
+            "  for d in \"$@\"; do",
+            "    l=",
+            "    { read -r l <\"$d/stat\"; } || continue",
+            "    n=${l#*\\(}",
+            "    n=${n%\\)*}",
+            "    t=${l##*\") \"}",
+            "    set -- $t",
+            "    c=${d##*/}",
+            "    case $c in *[!0-9]*) continue ;; esac",
+            "    case $2 in ''|*[!0-9]*) continue ;; esac",
+            "    case $n in ''|*[!A-Za-z0-9._-]*) n=- ;; esac",
+            "    printf '%s %s %s\\n' \"$c\" \"$2\" \"$n\"",
+            "  done | awk -v r=\"$q\" -v m=\(processCap) '",
+            "{P[$1]=$2;N[$1]=$3;K[$2]=K[$2] \" \" $1}",
+            "END{Q[1]=r;h=1;e=1;",
+            "while(h<=e){x=Q[h++];u=split(K[x],A,\" \");",
+            "for(i=1;i<=u;i++)if(!(A[i] in S)&&A[i]!=r){S[A[i]]=1;Q[++e]=A[i]}}",
+            "if(e-1>m){print \"W\",r,\"-\";exit}",
+            "if(r in N)print \"T\",r,P[r],N[r];",
+            "for(i=2;i<=e;i++){y=Q[i];print \"T\",y,P[y],N[y]}",
+            "print \"W\",r,\"ok\"}",
+            "'",
+            "}",
         ]
     }
 
@@ -257,6 +314,8 @@ enum HostProcessReader {
                 + "else print \"O\",p,\"-\"}",
             "'",
             "}",
+            // No method confirmed yet, so a walk reads as unavailable (ADR 0034).
+            "w() { printf 'W %s -\\n' \"$1\"; }",
         ]
     }
 
@@ -270,6 +329,7 @@ enum HostProcessReader {
             "s() { printf 'S %s -\\n' \"$1\"; }",
             "e() { printf 'E %s -\\n' \"$1\"; }",
             "f() { printf 'O %s -\\n' \"$1\"; }",
+            "w() { printf 'W %s -\\n' \"$1\"; }",
         ]
     }
 
@@ -324,14 +384,32 @@ enum HostProcessReader {
         var names: [String: Set<String>] = [:]
         var listed: Set<String> = []
         var files: [String: [String]] = [:]
+        var known = request.pids
+        var walked: [String] = []
+        let root = request.descendantsOf
         for line in lines[(begin + 1)..<end] where !line.isEmpty {
             let fields = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
                 .map(String.init)
-            guard fields.count == 3, request.pids.contains(fields[1]) else {
+            guard fields.count == 3, known.contains(fields[1]) || (fields[0] == "T" && root != nil) else {
                 throw MalformedOutput()
             }
             let pid = fields[1]
             switch fields[0] {
+            case "T":
+                let parts = fields[2].split(separator: " ", omittingEmptySubsequences: false)
+                guard root != nil, isProcessID(pid), parts.count == 2, isDigits(parts[0]) else {
+                    throw MalformedOutput()
+                }
+                if !known.contains(pid) {
+                    known.append(pid)
+                    walked.append(pid)
+                }
+                facts[pid, default: Facts()].parent = String(parts[0])
+                facts[pid, default: Facts()].name = String(parts[1])
+            case "W":
+                guard pid == root, fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
+                if fields[2] == "ok" { facts[pid, default: Facts()].descendants = .value(walked) }
+                answered.insert("W \(pid)")
             case "S":
                 guard let start = startReading(fields[2]) else { throw MalformedOutput() }
                 facts[pid, default: Facts()].start = start
@@ -372,7 +450,8 @@ enum HostProcessReader {
                 throw MalformedOutput()
             }
         }
-        for pid in request.pids {
+        if let root, !answered.contains("W \(root)") { throw MalformedOutput() }
+        for pid in known {
             if request.readsStart, !answered.contains("S \(pid)") { throw MalformedOutput() }
             if request.readsEnvironment, !answered.contains("E \(pid)") { throw MalformedOutput() }
             if request.readsOpenFiles, !answered.contains("O \(pid)") { throw MalformedOutput() }
