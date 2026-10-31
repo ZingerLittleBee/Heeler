@@ -354,6 +354,29 @@ import Testing
         #expect(await nonsense.log == ["locator"])
     }
 
+    @Test func aLocatorCutShortIsARetryableChannelFailure() async {
+        let nonce = ScriptedCoreHost.nonce
+        let cuts: [(String, GitExecResult)] = [
+            ("killed by a signal", GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 143)),
+            ("no output at all", GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 0)),
+            (
+                "begin with no end",
+                GitExecResult(stdout: Data("\n\(nonce) begin\nkernel Linux\n".utf8), stderr: Data(), exitStatus: 0)
+            ),
+        ]
+        for (name, answer) in cuts {
+            let host = ScriptedCoreHost(channel: .refused)
+            await host.answerNextLocator(answer)
+            await #expect("\(name)") {
+                try await host.transport().hello()
+            } throws: { error in
+                guard let failure = error as? TransportError, failure.isRetryable else { return false }
+                if case .channelFailed = failure { return true }
+                return false
+            }
+        }
+    }
+
     private func waitForSocket(_ host: ScriptedCoreHost) async throws -> FakeCoreSocket {
         var budget = PollBudget(.seconds(10))
         while budget.hasTimeLeft {

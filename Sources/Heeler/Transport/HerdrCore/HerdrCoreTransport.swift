@@ -245,6 +245,9 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
                 feature: "herdr-core refuses the session name \"\(session)\"")
         }
         let result = try await connection.runCoreLocator(script)
+        if HerdrCoreLocator.wasCutShort(stdout: result.stdout, exitStatus: result.exitStatus, nonce: nonce) {
+            throw TransportError.channelFailed(detail: "herdr-core: The locator was cut short.")
+        }
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
                 "herdr-core: The locator exited with status \(result.exitStatus).")

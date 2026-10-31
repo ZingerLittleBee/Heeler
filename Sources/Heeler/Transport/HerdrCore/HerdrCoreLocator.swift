@@ -150,6 +150,19 @@ enum HerdrCoreLocator {
             loginShell: fields["shell"])
     }
 
+    /// An exec the Host's shutdown or session cleanup ended partway: killed by a
+    /// signal, with nothing printed, or with a begin marker and no end. That says
+    /// nothing about this Host's core, as a shell's own failure or output that is
+    /// not this script's does.
+    static func wasCutShort(stdout: Data, exitStatus: Int32, nonce: String) -> Bool {
+        if exitStatus > 128 { return true }
+        guard exitStatus == 0 else { return false }
+        if stdout.isEmpty { return true }
+        let lines = stdout.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false)
+        return lines.contains { $0.elementsEqual("\(nonce) begin".utf8) }
+            && !lines.contains { $0.elementsEqual("\(nonce) end".utf8) }
+    }
+
     static func quoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
