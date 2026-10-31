@@ -987,7 +987,7 @@ final class ConsoleStore {
             case .herdrCore:
                 HerdrCoreConsoleProjection(
                     host: host, session: makeCoreSession(host), memory: coreHostMemory,
-                    onChange: onChange)
+                    gitGate: gitExecGate(for: host.id), onChange: onChange)
             default:
                 HostConsoleProjection(
                     host: host,

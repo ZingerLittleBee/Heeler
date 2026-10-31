@@ -2636,6 +2636,16 @@ actor HeelerSSHTransport: Transport {
             stdout: result.stdout, stderr: result.stderr, nonce: nonce, request: request)
     }
 
+    /// One script, one bounded exec, however many directories it was given.
+    func checkoutRoots(for directories: [String]) async throws -> [String: String] {
+        guard !GitProbe.checkoutRootDirectories(directories).isEmpty else { return [:] }
+        let nonce = GitProbe.makeNonce()
+        let result = try await runGitScript(
+            GitProbe.checkoutRootsScript(directories: directories, nonce: nonce))
+        return try GitProbe.parseCheckoutRoots(
+            stdout: result.stdout, stderr: result.stderr, nonce: nonce, directories: directories)
+    }
+
     func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
         try await queryOpenCode(query, reader: .automatic)
     }

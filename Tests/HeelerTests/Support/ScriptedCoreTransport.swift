@@ -1,6 +1,84 @@
 import Foundation
+import Testing
 
 @testable import Heeler
+
+/// What the desktop app keeps in its document, in its own JSON.
+enum CoreDesktopJSON {
+    static func block(_ terminal: String) -> JSONValue {
+        .object([
+            "id": .string("p-\(terminal)"), "type": .string("block"),
+            "content": .object(["terminal": .string(terminal)]),
+        ])
+    }
+
+    static func tab(_ id: String, name: String = "", terminals: [String] = []) -> JSONValue {
+        .object([
+            "id": .string(id), "name": .string(name),
+            "root": .object([
+                "id": .string(id), "type": .string("row"),
+                "children": .array(terminals.map(block)),
+            ]),
+        ])
+    }
+
+    static func space(
+        _ id: String, name: String = "", folder: String = "", tabs: [JSONValue]
+    ) -> JSONValue {
+        .object([
+            "id": .string(id), "name": .string(name), "folder": .string(folder),
+            "tabs": .array(tabs),
+        ])
+    }
+
+    static func document(_ spaces: [JSONValue]) -> JSONValue {
+        .object(["spaces": .array(spaces)])
+    }
+}
+
+/// The Host's exec side for store tests: checkout roots and the home directory,
+/// recording every ask. Everything else keeps the seam's refusal.
+actor ScriptedCoreServices: HostServices {
+    private var roots: [String: String]
+    private let home: String?
+    private var failure: (any Error)?
+    private var gate: ScriptedTransportCallGate?
+
+    /// The directories of each `checkoutRoots` call.
+    private(set) var checkoutCalls: [[String]] = []
+
+    init(roots: [String: String] = [:], home: String? = nil) {
+        self.roots = roots
+        self.home = home
+    }
+
+    /// Every ask fails until this is called with nil.
+    func setFailure(_ failure: (any Error)?) {
+        self.failure = failure
+    }
+
+    func setRoots(_ roots: [String: String]) {
+        self.roots = roots
+    }
+
+    /// Holds each ask, after it is recorded, until `gate` opens.
+    func hold(using gate: ScriptedTransportCallGate?) {
+        self.gate = gate
+    }
+
+    func checkoutRoots(for directories: [String]) async throws -> [String: String] {
+        #expect(directories.count <= GitProbe.checkoutRootsPerCall)
+        checkoutCalls.append(directories)
+        if let gate { await gate.waitUntilOpen() }
+        if let failure { throw failure }
+        return roots.filter { directories.contains($0.key) }
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        guard let home else { throw TransportError.hostFeatureUnavailable(feature: "Chat") }
+        return home
+    }
+}
 
 /// A herdr-core Host for store tests, as `ScriptedTransport` is for a Herdr TUI
 /// one. It hands out real event streams fed from scrubbed log lines, so the line
@@ -33,10 +111,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         }
     }
 
-    private final class NoServices: HostServices {}
-
     nonisolated let routeID: UUID? = nil
-    nonisolated var hostServices: any HostServices { NoServices() }
+    nonisolated let hostServices: any HostServices
 
     private let coreID: String
     /// What each subscribe answers. The last one repeats.
@@ -45,14 +121,25 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var isSubscribeHeld = false
     private var heldSubscribes: [CheckedContinuation<Void, Never>] = []
     private var subscribeWaiters: [CheckedContinuation<Void, Never>] = []
+    private var documentValue: JSONValue = .null
+    private var documentVersion = 0
+    private var documentGate: ScriptedTransportCallGate?
 
     /// How many times the core was asked for its Terminals.
     private(set) var subscribeCount = 0
     private(set) var isClosed = false
+    /// The name of each document read.
+    private(set) var documentReads: [String] = []
+    /// No code path writes a document. A write also fails the test that made it.
+    private(set) var documentWrites: [JSONValue] = []
 
-    init(coreID: String = "c1", subscribeResults: [JSONValue]) {
+    init(
+        coreID: String = "c1", subscribeResults: [JSONValue],
+        services: any HostServices = ScriptedCoreServices()
+    ) {
         self.coreID = coreID
         self.subscribeResults = subscribeResults
+        hostServices = services
     }
 
     var isConnected: Bool { !isClosed }
@@ -102,7 +189,21 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     }
 
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
-        throw TransportError.hostFeatureUnavailable(feature: method)
+        switch method {
+        case "doc.get":
+            documentReads.append(params["name"]?.stringValue ?? "")
+            let answer: JSONValue = .object([
+                "value": documentValue, "version": .number(Double(documentVersion)),
+            ])
+            if let documentGate { await documentGate.waitUntilOpen() }
+            return answer
+        case "doc.set":
+            documentWrites.append(params)
+            Issue.record("A code path wrote a document: \(params)")
+            throw TransportError.hostFeatureUnavailable(feature: method)
+        default:
+            throw TransportError.hostFeatureUnavailable(feature: method)
+        }
     }
 
     func close() async throws {
@@ -111,6 +212,18 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     }
 
     // MARK: Driving it
+
+    /// What the next document read answers, as `doc.get` shapes it.
+    func setDocument(_ value: JSONValue, version: Int) {
+        documentValue = value
+        documentVersion = version
+    }
+
+    /// Holds each document read, with what it read already decided, until
+    /// `gate` opens. Nil lets them through.
+    func holdDocumentReads(using gate: ScriptedTransportCallGate?) {
+        documentGate = gate
+    }
 
     /// One line of the live subscription's events channel.
     func deliver(_ line: Data) async {

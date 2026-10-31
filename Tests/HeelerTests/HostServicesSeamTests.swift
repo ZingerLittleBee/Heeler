@@ -78,6 +78,9 @@ struct HostServicesSeamTests {
             _ = try await services.readFilePatch(
                 FilePatchRequest(topLevel: topLevel, path: Data("a.swift".utf8), isUntracked: false))
         }
+        await #expect(throws: ChangesReadError.unavailable) {
+            _ = try await services.checkoutRoots(for: ["/home/dev/src/app"])
+        }
     }
 
     @Test func aTransportAnswersThroughTheSeamWithItsOwnImplementation() async throws {
