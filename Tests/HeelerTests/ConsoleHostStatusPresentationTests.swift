@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -312,5 +314,63 @@ struct ConsoleHostIssueSummaryTests {
         let issues = [issue("a", .failed(.timedOut)), loading].compactMap { $0 }
         let summary = try #require(ConsoleHostIssueSummary(issues: issues))
         #expect(summary.title == "2 Hosts not ready")
+    }
+}
+
+/// The list below must not move while Hosts connect, so the row is one height
+/// whichever conditions it shows, at any width and text size.
+@MainActor
+@Suite("Console host issue list height", .serialized)
+struct ConsoleHostIssueListHeightTests {
+    private static func issue(
+        _ name: String, _ status: EventsSessionStatus, awaitingSnapshot: Bool = false, syncError: String? = nil
+    ) -> ConsoleHostStatusPresentation? {
+        ConsoleHostStatusPresentation(
+            host: Host.fixture(name: name), status: status, isAwaitingSnapshot: awaitingSnapshot,
+            syncError: syncError)
+    }
+
+    /// Every state a Host can report, so the chips far outgrow one line.
+    private static let everyCondition: [ConsoleHostStatusPresentation] = [
+        issue("a", .failed(.timedOut)),
+        issue("b", .connected, syncError: "Snapshot failed"),
+        issue("c", .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)),
+        issue("d", .connecting),
+        issue("e", .suspended),
+        issue("f", .connected, awaitingSnapshot: true),
+    ].compactMap { $0 }
+
+    private static func height(
+        of issues: [ConsoleHostStatusPresentation], width: CGFloat, dynamicType: DynamicTypeSize
+    ) async throws -> CGFloat {
+        let controller = UIHostingController(
+            rootView: ConsoleHostIssueList(issues: issues, onOpenHost: { _ in }, onShowAll: {})
+                .environment(\.dynamicTypeSize, dynamicType)
+                .environment(\.locale, Locale(identifier: "en_US")))
+        // The row's own size, without the window's insets.
+        controller.safeAreaRegions = []
+        var size = CGSize.zero
+        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: width, height: 874), rootViewController: controller) { _ in
+            controller.view.layoutIfNeeded()
+            size = controller.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+        }
+        return size.height
+    }
+
+    @Test(arguments: [DynamicTypeSize.large, .accessibility3], [CGFloat(280), 402])
+    func keepsOneHeightWhicheverConditionsItShows(dynamicType: DynamicTypeSize, width: CGFloat) async throws {
+        var heights: [CGFloat] = []
+        for count in [1, 2, Self.everyCondition.count] {
+            let issues = Array(Self.everyCondition.prefix(count))
+            heights.append(try await Self.height(of: issues, width: width, dynamicType: dynamicType))
+        }
+        #expect(heights.allSatisfy { $0 > 0 && $0 == heights[0] }, "Heights: \(heights)")
+    }
+
+    @Test func growsWithTheTextSize() async throws {
+        let issues = Self.everyCondition
+        let regular = try await Self.height(of: issues, width: 402, dynamicType: .large)
+        let larger = try await Self.height(of: issues, width: 402, dynamicType: .accessibility3)
+        #expect(larger > regular)
     }
 }

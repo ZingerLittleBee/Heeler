@@ -62,13 +62,31 @@ struct ConsoleHostIssueList: View {
     /// tile, and the gap after it: all text starts on one edge.
     static let iconColumn: CGFloat = 30
     static let iconGap: CGFloat = 12
+    private static let summaryTitleFont = Font.subheadline.weight(.semibold)
+    private static let summaryCountFont = Font.footnote
+    private static let summaryLineSpacing: CGFloat = 4
 
     var body: some View {
         if let summary = ConsoleHostIssueSummary(issues: issues) {
-            summaryRow(summary)
+            fixedHeight { summaryRow(summary) }
         } else if let issue = issues.first {
-            ConsoleHostIssueCompactRow(issue: issue, onOpenHost: onOpenHost)
+            fixedHeight { ConsoleHostIssueCompactRow(issue: issue, onOpenHost: onOpenHost) }
         }
+    }
+
+    /// The list below stays put while Hosts connect: the height comes from
+    /// two hidden lines in the summary's fonts, and the row only overlays
+    /// them, so no condition can make it taller. It still follows the text
+    /// size.
+    private func fixedHeight(@ViewBuilder row: () -> some View) -> some View {
+        VStack(spacing: Self.summaryLineSpacing) {
+            Text(verbatim: " ").font(Self.summaryTitleFont)
+            Text(verbatim: " ").font(Self.summaryCountFont)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .hidden()
+        .overlay { row() }
     }
 
     private func summaryRow(_ summary: ConsoleHostIssueSummary) -> some View {
@@ -77,28 +95,19 @@ struct ConsoleHostIssueList: View {
                 // A tile as on terminal rows, centered on the text beside it;
                 // its color is the worst state's, so no badge is needed.
                 TerminalTile(systemImage: "server.rack", tint: summary.tone.tint)
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Self.summaryLineSpacing) {
                     Text(summary.title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(Self.summaryTitleFont)
                         .foregroundStyle(Color.primary)
-                    // Chips wrap whole, never splitting "1 connecting".
-                    ChipWrap(spacing: 12, lineSpacing: 2) {
-                        ForEach(summary.counts, id: \.text) { @Sendable count in
-                            HStack(spacing: 5) {
-                                Circle()
-                                    .fill(count.tone.tint)
-                                    .frame(width: 6, height: 6)
-                                Text(count.text)
-                            }
-                            .font(.footnote)
-                            .foregroundStyle(Color.secondary)
-                        }
-                    }
+                    ConsoleHostIssueCountLine(counts: summary.counts)
+                        .font(Self.summaryCountFont)
+                        .foregroundStyle(Color.secondary)
                 }
-                Spacer(minLength: 0)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 ConsoleListRowChevron()
             }
-            .padding(.vertical, 12)
+            .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -107,6 +116,37 @@ struct ConsoleHostIssueList: View {
         .accessibilityLabel("\(summary.title), \(summary.detail)")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Lists these Hosts.")
+    }
+}
+
+/// The summary's counts on one line, the most serious first. Those that do
+/// not fit fold into "+2", never splitting "1 connecting" or wrapping onto a
+/// line the row has no room for; the sheet and VoiceOver have them all.
+private struct ConsoleHostIssueCountLine: View {
+    let counts: [ConsoleHostIssueSummary.Count]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(Array(stride(from: counts.count, to: 0, by: -1)), id: \.self) { @Sendable shown in
+                MainActorContent { line(showing: shown) }
+            }
+        }
+    }
+
+    private func line(showing shown: Int) -> some View {
+        HStack(spacing: 12) {
+            ForEach(counts.prefix(shown), id: \.text) { @Sendable count in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(count.tone.tint)
+                        .frame(width: 6, height: 6)
+                    Text(count.text)
+                }
+            }
+            if shown < counts.count {
+                Text(verbatim: "+\(counts.count - shown)")
+            }
+        }
     }
 }
 
@@ -249,7 +289,7 @@ struct ConsoleHostIssueCompactRow: View {
             ConsoleListRowChevron()
                 .opacity(issue.navigates ? 1 : 0)
         }
-        .padding(.vertical, 12)
+        .frame(maxHeight: .infinity)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(issue.message)

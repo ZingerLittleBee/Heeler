@@ -54,6 +54,10 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep the Host connection row atop the Agents and Terminals lists one
+  height while Hosts connect, so the list below no longer jumps. Statuses
+  stay on one line; those that do not fit fold into a count, and the row's
+  sheet lists every Host.
 - Keep each row's fields in Agent List Fields on their own line. The last
   one, often the add button, could drop below the row onto the next.
   (#591)
