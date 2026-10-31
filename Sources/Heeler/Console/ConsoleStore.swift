@@ -1229,14 +1229,33 @@ final class ConsoleStore {
         return store
     }
 
+    /// One Host as the Usage tab reads it.
+    func agentUsageEntry(for host: Host) -> AgentUsageHostEntry {
+        let store = agentUsageStore(for: host.id)
+        return AgentUsageHostEntry(
+            id: host.id, name: host.displayName, store: store,
+            isConnected: usageHasConnection(host, state: store.state))
+    }
+
+    /// Whether a Host's Usage has a connection to answer over. A Herdr TUI Host
+    /// borrows the Console's. A core Host's read dials one when the Console has
+    /// none: its Helper answers with the core stopped, and a native Windows Host
+    /// says why it has none though its session never connects. So only a read
+    /// that could not reach the Host makes a core Host not connected.
+    private func usageHasConnection(_ host: Host, state: AgentUsageStore.State) -> Bool {
+        if hostStatuses[host.id] == .connected { return true }
+        return host.serverKind == .herdrCore && state != .failed(AgentUsageStore.connectionFailureMessage)
+    }
+
     /// Hands every catalog Host's current Usage reading to the widgets.
     private func publishUsageWidgets() {
         guard let usageWidgets else { return }
         usageWidgets.publish(catalog.map { host in
             let store = agentUsageStores[host.id]
+            let state = store?.state ?? .idle
             return AgentUsageWidgetReading(
-                id: host.id, name: host.displayName, state: store?.state ?? .idle, readAt: store?.readAt,
-                isConnected: hostStatuses[host.id] == .connected)
+                id: host.id, name: host.displayName, state: state, readAt: store?.readAt,
+                isConnected: usageHasConnection(host, state: state))
         })
     }
 

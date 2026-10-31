@@ -252,13 +252,14 @@ Use a throwaway `CLAUDE_CONFIG_DIR`, for example `~/heeler-usage-lab`, that the 
 
 | Step | What to do | What must happen |
 | --- | --- | --- |
-| No Helper | Open Usage before installing | The Host's Usage reads **Usage needs the Host Helper**, and the Usage tab and widget leave it out of their totals as **Needs the Host Helper**. Nothing is added to the Host |
-| Waiting | Install the Helper, stop the session's core, and open Usage | **The Host Helper has not reached this session's core yet**. `~/.local/share/heeler/host-helper/sessions/<session>` is there, `0700`. `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait |
+| No Helper | Open Usage before installing, with the core running and again with it stopped | The Host's Usage reads **Usage needs the Host Helper**, and the Usage tab and widget leave it out of their totals as **Needs the Host Helper**, both times. Nothing is added to the Host |
+| Waiting | Install the Helper, stop the session's core, and open Usage | In the Usage tab too, not **Not connected**: **The Host Helper has not reached this session's core yet**. `~/.local/share/heeler/host-helper/sessions/<session>` is there, `0700`. `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait |
 | Core's environment | Start the core from a login shell with `CLAUDE_CONFIG_DIR` and the marker set, and do not touch Usage | Within a minute Usage shows the Transcript's tokens under the Default Account, and so does the Usage widget, with no notification registration on the Host. `sessions/<session>/runtime.json` is `0600` and names that directory |
 | Only named variables | `grep -c HEELER_LAB_MARKER` the record, then `journalctl --user -u heeler-host-helper \| grep -c not-listed` | Both print `0`. The journal reads the core's pid, and no value |
 | Core restarts | Restart the core with another `CLAUDE_CONFIG_DIR` | The record names the new directory, and Usage follows after the next read |
 | Suggestions | Start Claude Code in a core Terminal with a third directory as `CLAUDE_CONFIG_DIR`, whether or not it is signed in, and open **Claude Code Accounts** | That directory is suggested. Adding it writes `usage-accounts.json` in the Helper's directory, `0600`, and nothing under `~/.config/herdr` |
 | Limits | With a throwaway sign-in, turn on **Claude Code limits** for this Host, then off | A read asks only while it is on, and the card follows. Skip this without such a sign-in |
 | Update | Install a Helper from before Usage, and open Usage | **Usage needs a newer Host Helper**, until you update it from the Host's detail |
+| Unreachable | Stop `sshd` or block the route, and open Usage | The Usage tab leaves the Host out as **Not connected** |
 
 `/proc/<pid>/environ` holds the environment the core started with, so a variable it set for itself later does not appear. A Windows Host's line is covered by unit tests, not this checklist.

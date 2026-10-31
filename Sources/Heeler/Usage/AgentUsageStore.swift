@@ -33,8 +33,9 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
     }
 }
 
-/// One Host's on-demand Usage reading. Connections are borrowed from Console;
-/// opening Usage never starts an independent SSH connection.
+/// One Host's on-demand Usage reading. A Herdr TUI Host's connection is borrowed
+/// from Console, so opening Usage starts no independent SSH connection there. A
+/// core Host's read dials one when Console has none (ADR 0033).
 @MainActor
 @Observable
 final class AgentUsageStore {

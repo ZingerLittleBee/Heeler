@@ -12,8 +12,9 @@ struct AgentUsageScope: Equatable {
         let state: AgentUsageStore.State
         var refreshFailure: String? = nil
         var isRetryingRefresh = false
-        /// Usage borrows the Console's connection: a Host without one
-        /// cannot answer until it reconnects.
+        /// A Host's Usage has a connection to answer over: without one it
+        /// cannot answer until it reconnects. See
+        /// `ConsoleStore.agentUsageEntry(for:)`, which sets it per Server Kind.
         var isConnected = true
     }
 
