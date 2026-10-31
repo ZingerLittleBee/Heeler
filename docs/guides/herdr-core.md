@@ -215,6 +215,7 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 - Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
+- If Heeler cannot read its saved herdr-core Hosts, the Hosts tab says so. Herdr TUI Hosts keep working and the saved data stays as it was, but no herdr-core Host can be added until it reads again.
 
 ## Host Helper
 
