@@ -116,6 +116,46 @@ suite("the Helper's process", () => {
     }
   });
 
+  test("sends a core's Live Activity update through the Push Relay, from a bare copy of its files", async () => {
+    const received = [];
+    const relay = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => (body += chunk));
+      request.on("end", () => {
+        received.push(JSON.parse(body));
+        response.writeHead(200).end("{}");
+      });
+    });
+    await new Promise((done) => relay.listen(0, "127.0.0.1", done));
+    try {
+      const token = "c0".repeat(32);
+      const key = Buffer.alloc(32, 7);
+      startHelper(["work"], {
+        devices: [{
+          token: "a".repeat(64), key: key.toString("base64url"), env: "sandbox", session: "work",
+          notify: { blocked: true, done: true }, live_activity: { token },
+        }],
+        config: { relay_url: `http://127.0.0.1:${relay.address().port}`, debounce_ms: 10, activity_debounce_ms: 10, retry_delay_ms: 1 },
+      });
+      const terminal = {
+        address: "t1", state: "live", pid: 7, argv: ["/bin/zsh"], cwd: "/work/app", turn: 0, reported: true,
+        foreground: { pid: 8, name: "claude", argv: ["claude"], cwd: "/work/app" },
+        status: { state: "error", app: "claude-code" },
+      };
+      await core("work", { snapshot: { seq: 1, channel: exchange("events-subscribe").result.channel, terminals: [terminal] } });
+      await waitFor(() => received.some((body) => body.token === token), "the update", PATIENCE_MS);
+
+      const update = received.find((body) => body.token === token);
+      assert.equal(update.kind, "liveactivity");
+      assert.deepEqual(update.counts, { working: 0, blocked: 1, done: 0 });
+      assert.equal(JSON.parse(update.envelope).kid, notificationKeyId(key));
+      assert.equal(existsSync(tripwire), false);
+    } finally {
+      relay.closeAllConnections();
+      await new Promise((done) => relay.close(done));
+    }
+  });
+
   test("waits with no core, then connects and follows a restart, running no program", async () => {
     startHelper(["work"]);
     await waitFor(() => stdout.includes("waiting for a core"), "the waiting line", PATIENCE_MS);

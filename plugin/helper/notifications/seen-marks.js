@@ -30,16 +30,21 @@ export function parseSeenMarks(text, keyId) {
   return { core: file.core, marks };
 }
 
-/** This device's mark of one Terminal of `core`, or null. Addresses belong to one core. */
-export function readSeenMark(directory, keyId, core, terminal) {
+/** This device's marks of `core`'s Terminals. Addresses belong to one core. */
+export function readSeenMarks(directory, keyId, core) {
   let text;
   try {
     text = readFileSync(join(directory, seenMarkFileName(keyId)), "utf8");
   } catch {
-    return null;
+    return new Map();
   }
   const file = parseSeenMarks(text, keyId);
-  return file?.core === core ? (file.marks.get(terminal) ?? null) : null;
+  return file?.core === core ? file.marks : new Map();
+}
+
+/** This device's mark of one Terminal of `core`, or null. */
+export function readSeenMark(directory, keyId, core, terminal) {
+  return readSeenMarks(directory, keyId, core).get(terminal) ?? null;
 }
 
 /** A device's marks go with its registration. */

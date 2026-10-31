@@ -64,6 +64,21 @@ that Heeler can read from outside the process.
   announces nothing that already happened. The memory goes when a session's
   connection ends with no registration naming it. Error is sent under the
   Blocked trigger, in its own word.
+- In-app banners and Live Activity on a core Host are gated on this device's
+  confirmed registration, and an activity also on a Helper that can drive it:
+  one that runs, at 0.5.0 or newer. The app starts the activity and writes its
+  push token into this device's entry in the Helper's directory. While the
+  registration is still being read the app neither starts an activity nor ends
+  one it holds, so a launch does not lose a running activity. After a debounce,
+  the Helper compares what each token should now show with what it last sent,
+  kept in `state/activity/<session>.json`, and sends an update or the end
+  through the Push Relay. Each token has its own content, since Done is per
+  device. Unlike a notification, a core seen for the first time does send: an
+  activity shows what is true now, whereas a notification announces a change.
+  Error counts and reads as Blocked there, so the Push Relay and the widget do
+  not change. An update is built from the Terminal's record, so its workspace is
+  the folder name, never a desktop app's space name, and a configured Tab or Pane
+  field stays empty until the app next updates the activity itself.
 - A turn's end comes from the status word, as in the app: an Agent ends a
   turn when it goes from Working to Done, and, unless it is known to report
   done, also when it goes from Working to Idle. Claude Code, Codex, Pi and Oh
