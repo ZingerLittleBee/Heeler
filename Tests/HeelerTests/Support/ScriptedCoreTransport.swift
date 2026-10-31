@@ -88,6 +88,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
             ]))
     }
 
+    func leakedEnvironmentNames() async -> Set<String>? { [] }
+
     func subscribeEvents() async throws -> HerdrCoreEventStream {
         subscribeCount += 1
         let waiters = subscribeWaiters

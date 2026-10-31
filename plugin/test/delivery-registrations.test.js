@@ -13,6 +13,7 @@ import {
   pruneLiveActivityTokens,
   readAlertDevices,
   readLiveActivityDevices,
+  registeredSessions,
 } from "../src/delivery/registrations.js";
 
 const KEY = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
@@ -91,6 +92,21 @@ suite("alert device reads", () => {
     });
     assert.deepEqual(readAlertDevices(dir, "blocked", "work").map((device) => device.token), [TOKEN_A, TOKEN_B]);
     assert.deepEqual(readAlertDevices(dir, "blocked", null).map((device) => device.token), [TOKEN_B]);
+  });
+});
+
+suite("registered sessions", () => {
+  test("names each session once, as written, and nothing for an entry without one", () => {
+    writeRegistrations({ v: 1, devices: [{ session: "work" }, { session: " work " }, { session: "work" }, {}, null, { session: 7 }] });
+    assert.deepEqual(registeredSessions(dir), ["work", " work "]);
+  });
+
+  test("an absent, corrupt or foreign file names none", () => {
+    assert.deepEqual(registeredSessions(dir), []);
+    writeRegistrations("{not json");
+    assert.deepEqual(registeredSessions(dir), []);
+    writeRegistrations({ v: 2, devices: [{ session: "work" }] });
+    assert.deepEqual(registeredSessions(dir), []);
   });
 });
 

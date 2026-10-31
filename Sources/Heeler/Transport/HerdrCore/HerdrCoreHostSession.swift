@@ -59,6 +59,14 @@ actor HerdrCoreHostSession {
     /// Advances with each new SSH connection, not with each link on one.
     nonisolated var currentConnectionGeneration: UInt64 { generationBox.withLock { $0 } }
     private nonisolated let generationBox = Mutex<UInt64>(0)
+    /// A signal that `currentLeakedEnvironment` holds a new answer.
+    nonisolated let leakedEnvironmentUpdates: AsyncStream<Void>
+    private let leakedEnvironmentContinuation: AsyncStream<Void>.Continuation
+    /// Which variables the connected core inherited, by name only (ADR 0034).
+    /// Empty when it holds none of them and when the check could not tell.
+    /// Cleared before any status that ends a connection, as `currentLatency` is.
+    nonisolated var currentLeakedEnvironment: Set<String> { leakedEnvironmentBox.withLock { $0 } }
+    private nonisolated let leakedEnvironmentBox = Mutex<Set<String>>([])
 
     private let connect: @Sendable () async throws -> any HerdrCoreTransport
     private let reconnectPolicy: ReconnectPolicy
@@ -103,6 +111,8 @@ actor HerdrCoreHostSession {
             of: HerdrCoreHostSessionUpdate.self,
             bufferingPolicy: .bufferingNewest(updatesBufferLimit))
         (latencyUpdates, latencyContinuation) = AsyncStream.makeStream(
+            of: Void.self, bufferingPolicy: .bufferingNewest(1))
+        (leakedEnvironmentUpdates, leakedEnvironmentContinuation) = AsyncStream.makeStream(
             of: Void.self, bufferingPolicy: .bufferingNewest(1))
     }
 
@@ -207,6 +217,7 @@ actor HerdrCoreHostSession {
         yieldUpdate(.status(.ended))
         updatesContinuation.finish()
         latencyContinuation.finish()
+        leakedEnvironmentContinuation.finish()
     }
 
     private func yieldUpdate(_ update: HerdrCoreHostSessionUpdate) {
@@ -215,6 +226,7 @@ actor HerdrCoreHostSession {
             if status != .connected {
                 latencyBox.withLock { $0 = nil }
                 routeIDBox.withLock { $0 = nil }
+                leakedEnvironmentBox.withLock { $0 = [] }
             }
         }
         guard case .dropped = updatesContinuation.yield(update) else { return }
@@ -257,6 +269,7 @@ actor HerdrCoreHostSession {
                     routeIDBox.withLock { $0 = transport.routeID }
                     yieldUpdate(.status(.connected))
                 }
+                checkLeakedEnvironment(on: transport, generation: generation)
                 stream = try await transport.subscribeEvents()
                 coreID = info.coreID
             } catch {
@@ -330,6 +343,22 @@ actor HerdrCoreHostSession {
             attempt += 1
             await emitReconnectingAndBackOff(attempt: attempt, failure: failure, generation: generation)
         }
+    }
+
+    /// Asked after every `hello`; the transport runs the exec once per link. The
+    /// connection neither waits for the answer nor depends on it. Not cancelled:
+    /// its own deadlines bound it, and the generation makes a late answer harmless.
+    private func checkLeakedEnvironment(on transport: any HerdrCoreTransport, generation: UInt64) {
+        Task { [weak self] in
+            guard let names = await transport.leakedEnvironmentNames() else { return }
+            await self?.publishLeakedEnvironment(names, generation: generation)
+        }
+    }
+
+    private func publishLeakedEnvironment(_ names: Set<String>, generation: UInt64) {
+        guard activationIsCurrent(generation), isAnnouncedConnected else { return }
+        leakedEnvironmentBox.withLock { $0 = names }
+        leakedEnvironmentContinuation.yield()
     }
 
     /// The core's `hello`. A channel refused with the socket file present may

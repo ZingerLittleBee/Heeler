@@ -19,6 +19,8 @@ struct HostOnboardingView: View {
     let connectedRouteID: HostRoute.ID?
     /// Why this connected Host's Agents could not be synced.
     let syncIssue: String?
+    /// The variables the connected core inherited, on a herdr-core Host.
+    let coreEnvironmentNotice: HerdrCoreEnvironmentNotice?
     /// True while Console is serving a Host-detail Reconnect press (the
     /// retry call plus the 1.2 s visual-feedback hold). Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -56,6 +58,7 @@ struct HostOnboardingView: View {
         standingFailure: TransportError? = nil,
         connectedRouteID: HostRoute.ID? = nil,
         syncIssue: String? = nil,
+        coreEnvironmentNotice: HerdrCoreEnvironmentNotice? = nil,
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable () async -> Void)? = nil,
@@ -69,6 +72,7 @@ struct HostOnboardingView: View {
         self.standingFailure = standingFailure
         self.connectedRouteID = connectedRouteID
         self.syncIssue = syncIssue
+        self.coreEnvironmentNotice = coreEnvironmentNotice
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         self.stopConnecting = stopConnecting
@@ -153,6 +157,9 @@ struct HostOnboardingView: View {
             if store.host.serverKind.isConfirmed {
                 preflightSection
                 HerdrCoreStartSection(store: store)
+                if let coreEnvironmentNotice {
+                    HerdrCoreEnvironmentSection(notice: coreEnvironmentNotice)
+                }
             } else {
                 serverKindSection
             }

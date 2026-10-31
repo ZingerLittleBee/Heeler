@@ -65,6 +65,14 @@ suite("Host Helper closure", () => {
     }
   });
 
+  test("can start no process, so it can never start a core", () => {
+    for (const path of helperModules()) {
+      for (const specifier of specifiersIn(readFileSync(path, "utf8"))) {
+        assert.notEqual(specifier.replace(/^node:/, ""), "child_process", `${path} imports ${specifier}`);
+      }
+    }
+  });
+
   test("a shared module is the plugin's own source, byte for byte", () => {
     for (const path of filesUnder(HELPER).filter((name) => name.startsWith("shared/"))) {
       assert.deepEqual(
