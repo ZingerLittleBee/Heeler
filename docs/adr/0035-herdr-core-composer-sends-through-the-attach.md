@@ -112,6 +112,8 @@ confirm or refine these points with test clients, not the app.
 ## Consequences
 
 - Send needs a live Attach to the Agent; Composer opens one before sending.
+- Send is offered once the connection reports a POSIX Host. Native Windows
+  turns it on separately, after its foreground form is settled (ADR 0032).
 - Send takes at least 550 ms between paste and submit, even when a foreground
   event showing the same program comes sooner; such an event only spares the
   read. On a link slow enough that the check passes two seconds, counted from

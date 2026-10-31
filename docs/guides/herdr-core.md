@@ -81,7 +81,7 @@ In an Agent detail, Direct Input types into the terminal, and Changes and Skills
 
 ## Send
 
-The Composer's Send writes into the terminal you are viewing, in two steps. It pastes the draft, checks that the same Agent still holds the terminal, then presses Enter, or the submit key of the Template the Terminal came from. That takes a little over half a second, and if the terminal is not connected yet, Send opens it first.
+On a macOS or Linux Host, the Composer's Send writes into the terminal you are viewing, in two steps. It pastes the draft, checks that the same Agent still holds the terminal, then presses Enter, or the submit key of the Template the Terminal came from. That takes a little over half a second, and if the terminal is not connected yet, Send opens it first.
 
 The submit goes out within two seconds of the paste or not at all, so a slow link or an Agent that quit never turns your message into a shell command. When it does not go out, the draft stays in the Composer and a notice says what happened:
 
@@ -95,6 +95,8 @@ The submit goes out within two seconds of the paste or not at all, so a slow lin
 While the Agent is **Blocked**, Send only pastes. Use the tools keyboard to submit or cancel.
 
 If the Host does not answer a step, Send cannot tell what reached the program. The Composer says so, offers **Edit Draft** instead of Retry, and never sends the message again, because a paste or an Enter the core was holding can still arrive. Look at the terminal first.
+
+Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
 
 ## Images and files
 
@@ -139,7 +141,7 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 
 - Heeler has no Close or Rename on a core Host yet. Use the Host or the desktop.
 - Worktrees and Chat are not available yet.
-- An Agent detail's Stop stays hidden. To stop an Agent, use the tools keyboard or Direct Input.
+- An Agent detail's Stop stays hidden, and native Windows core Hosts offer no Send yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
 - Notifications and Live Activities are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.

@@ -1152,9 +1152,9 @@ struct HerdrCoreTerminalStoreTests {
     /// On screen for a Host that has them; none are built for a core Host yet.
     private static let notBuiltLabels = ["Stop", "Take Over", "Take Over Here"]
 
-    /// The Composer offers Send (ADR 0035) and hides Stop, and the Agent is
-    /// working, so Stop is what a Host that can would show. Add waits for the
-    /// platform the connection reports.
+    /// The Composer hides Stop, and the Agent is working, so Stop is what a Host
+    /// that can would show. Add and Send (ADR 0035) wait for the platform the
+    /// connection reports.
     @Test func aCoreAgentsDetailShowsItsTerminalAndOffersOnlyWhatIsBuilt() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
@@ -1166,9 +1166,9 @@ struct HerdrCoreTerminalStoreTests {
         #expect(detail.surface != nil)
 
         try await Self.until("the Composer") { detail.offers("Message the Agent") }
-        #expect(detail.offers("Send"))
         for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
         try await Self.until("Add") { detail.offers("Add") }
+        #expect(detail.offers("Send"))
 
         let menus = try await HostedMenu.items(labeled: "More", in: detail.window)
         #expect(Set(menus) == Self.coreAgentMenus, "\(menus)")
@@ -1176,8 +1176,9 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    /// Native Windows stages through the core, which is not built yet.
-    @Test func aNativeWindowsCoreAgentsComposerOffersNoAdd() async throws {
+    /// Native Windows stages through the core and has its own Send ticket,
+    /// neither built yet.
+    @Test func aNativeWindowsCoreAgentsComposerOffersNoAddAndNoSend() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         await fixture.scripted.helper.configure { $0.platform = .nativeWindows }
         let agent = try #require(fixture.console.agents.first)
@@ -1188,6 +1189,7 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .nativeWindows }
         await Task.yield()
         #expect(!detail.offers("Add"))
+        #expect(!detail.offers("Send"))
         await detail.close()
         await fixture.finish()
     }
