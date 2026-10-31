@@ -17,9 +17,11 @@ the shell that stays behind, and a retry can deliver it twice.
 - Composer Send on a herdr-core Agent writes into the Attach the user is
   viewing, over the framed connection (ADR 0031), in two steps. It notes the
   pid of the Agent's foreground process and pastes the draft as a bracketed
-  paste. It then waits for a foreground sample taken after the paste: the
-  next foreground event, or 550 ms, one sampling period with margin, after
-  which it reads the Terminal's foreground. Only when that sample shows the
+  paste. It then waits for a foreground sample taken after the paste: 550 ms,
+  one sampling period with margin, after which it reads the Terminal's
+  foreground. A foreground event can only stop the Send sooner, by showing the
+  Agent gone: it may have been sampled before the paste reached the core, so
+  one showing the same program spares nothing. Only when the read shows the
   same pid running the same agent program does it submit: Enter, or the
   submit key of the Template on the Terminal's record, encoded for the
   keyboard mode the program set (Enter is `CSI 13 u` once it asks for kitty's
@@ -137,11 +139,11 @@ confirm or refine these points with test clients, not the app.
 - Send needs a live Attach to the Agent; Composer opens one before sending.
 - Send is offered once the connection reports a POSIX Host. Native Windows
   turns it on separately, after its foreground form is settled (ADR 0032).
-- Send takes at least 550 ms between paste and submit, even when a foreground
-  event showing the same program comes sooner; such an event only spares the
-  read. On a link slow enough that the check passes two seconds, counted from
-  when the paste was handed to the link, the text stays in the Agent's input
-  unsubmitted, and the Composer says so.
+- Send takes at least 550 ms and one read between paste and submit, even when a
+  foreground event showing the same program comes sooner. On a link slow enough
+  that the check passes two seconds, counted from when the paste was handed to
+  the link, the text stays in the Agent's input unsubmitted, and the Composer
+  says so.
 - Under the desktop app's fish wrapper the agent shares the wrapper's pid, so
   only the program behind that pid tells an exited Agent from a live one.
 - Each of Chat's screen reads is a round trip and a paint, up to one a second

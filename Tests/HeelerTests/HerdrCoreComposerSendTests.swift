@@ -137,6 +137,20 @@ struct HerdrCoreComposerSendTests {
             try await deliverEvent("foreground", data: data, sequence: sequence)
         }
 
+        /// Events apply in order, so a status showing means those before it applied.
+        func untilEventsFolded() async throws {
+            try await deliverEvent(
+                "status",
+                data: .object([
+                    "status": .object(["state": .string("working"), "app": .string("claude-code")]),
+                    "reported": .bool(true),
+                ]),
+                sequence: 102)
+            try await HerdrCoreComposerSendTests.until("the events to fold") { [console] in
+                console.agents.first?.agent.status == .working
+            }
+        }
+
         func deliverEvent(_ type: String, data: JSONValue, sequence: Int = 101) async throws {
             let line = try JSONEncoder().encode(
                 JSONValue.object([
@@ -220,31 +234,49 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
-    /// The event is the fresh sample, so no read is needed, and the submit still
-    /// waits out the full delay.
-    @Test func aForegroundEventBeforeTheDelaySparesTheReadAndDoesNotHurryTheSubmit() async throws {
+    /// An event can have been sampled before the paste reached the core, so only
+    /// the read says the Agent still holds the terminal after it.
+    @Test func aForegroundEventOfTheSameProgramNeitherHurriesNorSparesTheRead() async throws {
         let fixture = try await Fixture()
         let attached = try await fixture.live()
         let sending = await fixture.sendPastingHello(on: attached)
 
         await fixture.clock.untilParked(for: HerdrCoreComposerSend.sampleDelay)
         try await fixture.deliverForeground(Self.foreground())
-        // The status behind it shows both events have been folded.
-        try await fixture.deliverEvent(
-            "status",
-            data: .object([
-                "status": .object(["state": .string("working"), "app": .string("claude-code")]),
-                "reported": .bool(true),
-            ]),
-            sequence: 102)
-        try await Self.until("the events to fold") { fixture.console.agents.first?.agent.status == .working }
+        try await fixture.untilEventsFolded()
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
 
         fixture.clock.advance(HerdrCoreComposerSend.sampleDelay)
-        await attached.socket.waitForData(channel: attached.channel, count: 2)
+        await fixture.scripted.waitForMethod("terminal.get")
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+
+        await fixture.scripted.answerTerminalReads(with: Self.record())
         #expect(await sending.value == .submittedViaAttach)
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.enter])
-        #expect(await !fixture.scripted.methods.contains("terminal.get"))
+        await fixture.finish()
+    }
+
+    /// The Agent exits right after an event sampled before the paste arrived: the
+    /// read is what stops the Enter that would run the paste in the shell.
+    @Test func aReadAfterAnEventOfTheSameProgramStillStopsTheSubmit() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        let sending = await fixture.sendPastingHello(on: attached)
+
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.sampleDelay)
+        try await fixture.deliverForeground(Self.foreground())
+        try await fixture.untilEventsFolded()
+        fixture.clock.advance(HerdrCoreComposerSend.sampleDelay)
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(
+            with: Self.record(foreground: Self.foreground(argv: ["bash", "-i"])))
+
+        guard case .refused(.notSubmitted(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("no longer in the terminal"))
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.ctrlC])
         await fixture.finish()
     }
 

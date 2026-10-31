@@ -195,7 +195,6 @@ final class HerdrCoreComposerSend {
         case .unknown: return .outcomeUnknown
         }
         if isBlocked { return .pasted }
-        wake.yield(.pasteLeft)
 
         switch await sampleAfterPaste(of: held, wakes: wakes, wake: wake, in: projection) {
         case .holds(let record):
@@ -277,15 +276,16 @@ final class HerdrCoreComposerSend {
 
     private enum Wake: Sendable {
         case program(HerdrCoreProgramChange)
-        case pasteLeft
         case sampleDelayPassed
         case read(Result<HerdrCoreTerminalRecord, any Error>)
     }
 
-    /// Waits for a foreground sample taken after the paste: the next event, or
-    /// the sample delay followed by a read. An event that shows the Agent gone
-    /// ends the wait at once; one that shows it still there does not hurry the
-    /// submit, which keeps the full delay.
+    /// Waits for a foreground sample taken after the paste: the sample delay
+    /// followed by a read, which the core answers at least that long after the
+    /// paste reached it. An event that shows the Agent gone ends the wait at once.
+    /// One that shows it still there says nothing about after the paste: the core
+    /// may have sampled it before the paste arrived, and it sends no other until
+    /// the foreground changes.
     private func sampleAfterPaste(
         of held: HerdrCoreAgentHolder, wakes: AsyncStream<Wake>, wake: AsyncStream<Wake>.Continuation,
         in projection: HerdrCoreConsoleProjection
@@ -301,21 +301,13 @@ final class HerdrCoreComposerSend {
             reading?.cancel()
         }
 
-        var hasPasteLeft = false
-        var sawSampleAfterPaste = false
         for await event in wakes {
             switch event {
             case .program(.ended):
                 return .ended
             case .program(.sample(let foreground)):
                 guard Self.holdsTheSameProgram(foreground, as: held) else { return .changed(foreground) }
-                sawSampleAfterPaste = hasPasteLeft
-            case .pasteLeft:
-                hasPasteLeft = true
             case .sampleDelayPassed:
-                if sawSampleAfterPaste {
-                    return .holds(projection.terminalRecord(at: address) ?? held.record)
-                }
                 reading = Task {
                     do {
                         wake.yield(.read(.success(try await read(in: projection))))
