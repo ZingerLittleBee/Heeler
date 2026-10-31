@@ -153,6 +153,22 @@ Open **Settings**, then **Agent List Fields**, and the Host.
 | Labels | Label a Terminal on the box, then add a field to a row | The label is offered under **Terminal labels**, and the Agents tab shows its value. No `$` field and no `state_text` is offered |
 | Herdr TUI beside it | Open a Herdr TUI Host | **Sync from plugin**, its copy and its fields as before |
 
+## Pins
+
+Launch with `--offer-herdr-core-hosts`, with a core running in your unique session and
+two Agents listed, from inert programs if you like. Removing a Terminal takes
+`terminal.kill` then `terminal.rm` through `scripts/fixtures/herdr-core-rpc.py`, since
+`terminal.rm` refuses a running one.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Pin | Long-press the lower Agent, then **Pin** | It moves to the top of the Agents tab with its pin mark, and stays there after you force-quit and reopen the app |
+| Removed while connected | Remove a pinned Terminal | Its row goes. The Host's other Pins stay |
+| Removed while away | Force-quit the app, remove a pinned Terminal, reopen | Its Pin is gone once the Host connects, and starting another Terminal does not bring it back |
+| Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | Every Pin stays, and the pinned rows return to the top |
+| Wiped core | **Only on a throwaway session.** `server stop` by absolute path, delete `~/.local/state/herdr-core/<s>`, start the core again and start a Terminal in it | All of this Host's Pins are gone, the new Terminal is unpinned even at an address a Pin had, and a second Host's Pins stay |
+| Herdr TUI beside it | Pin an Agent on a Herdr TUI Host and close its pane on the box | The Pin stays, and the same pane id coming back is pinned |
+
 ## Leaked environment
 
 On a throwaway session, start the core by absolute path with made-up values for

@@ -996,7 +996,7 @@ final class ConsoleStore {
             switch host.serverKind {
             case .herdrCore:
                 HerdrCoreConsoleProjection(
-                    host: host, session: makeCoreSession(host), memory: coreHostMemory,
+                    host: host, session: makeCoreSession(host), memory: coreHostMemory, pins: pins,
                     gitGate: gitExecGate(for: host.id), onChange: onChange)
             default:
                 HostConsoleProjection(
