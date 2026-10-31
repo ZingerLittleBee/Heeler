@@ -10,6 +10,26 @@ protocol NotificationTransportProvider: Sendable {
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value
+
+    /// Borrows a Host's notification and Usage files, whose root follows its
+    /// Server Kind: the plugin's directories on Herdr TUI, the Host Helper's on
+    /// herdr-core (ADR 0033).
+    func withNotificationFiles<Value: Sendable>(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
+    ) async throws -> Value
+}
+
+extension NotificationTransportProvider {
+    /// A provider of Herdr TUI Hosts only has the plugin's files to offer.
+    func withNotificationFiles<Value: Sendable>(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
+    ) async throws -> Value {
+        try await withNotificationTransport(for: hostID) { transport in
+            try await operation(transport)
+        }
+    }
 }
 
 /// Per-Host Agent Notification preferences (#75): the on/off registration

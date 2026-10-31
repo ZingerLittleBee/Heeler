@@ -198,6 +198,8 @@ python3 scripts/fixtures/herdr-core-ssh.py stop --root /tmp/hc-heeler
 
 Native fixture success on macOS and the Linux lab check are separate evidence. `make verify-core-linux-host` runs the same five methods on hc-lab; [the lab checklist](../guides/herdr-core-testing.md) has its setup and safety rules.
 
+The Host Helper's Swift tests run through `ScriptedHelperHost`, an in-memory Host that acts on each script's `step`, so they pin what is asked and in what order but no shell text. `scripts/test-host-helper-scripts.py` (in `make test-tools`) runs the same scripts through every POSIX shell on the machine with a fake `systemctl`, `loginctl` and `node`. Neither reaches a real systemd: restart, linger and start-limit behaviour are the [lab checklist](../guides/herdr-core-testing.md)'s. Run `node scripts/generate-host-helper-manifest.mjs` after any change under `plugin/helper`, because `plugin/test/helper-closure.test.js` fails on a stale manifest.
+
 ## Host and platform acceptance
 
 Local real-SSH tests may skip without a configured sshd/key. The CI runner

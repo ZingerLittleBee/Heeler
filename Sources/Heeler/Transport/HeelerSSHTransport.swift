@@ -1455,10 +1455,11 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// `configDirectory` is made private first, when there is one to make so.
     private func performNotificationFileReplace(
         _ contents: Data,
         at path: String,
-        configDirectory: String,
+        configDirectory: String?,
         operationID: UUID
     ) async throws {
         let sftp: SSHSFTPClient
@@ -1473,10 +1474,12 @@ actor HeelerSSHTransport: Transport {
 
         do {
             try Task.checkCancellation()
-            try await enforceNotificationPermissions(
-                0o700,
-                at: configDirectory,
-                over: sftp)
+            if let configDirectory {
+                try await enforceNotificationPermissions(
+                    0o700,
+                    at: configDirectory,
+                    over: sftp)
+            }
             guard let currentTemporaryPath = temporaryPath else {
                 throw NotificationRegistrationError.writeFailed(
                     detail: "The private temporary file is unavailable.")
@@ -3557,6 +3560,44 @@ extension HeelerSSHTransport: ServerKindDetectionConnection {
         try await runBoundedScript(
             script, feature: "Server Kind detection", deadline: .seconds(16), remoteSeconds: 12,
             timeoutMarkerPrefix: "__HEELER_KIND_DETECTION_TIMEOUT_", timedOut: .timedOut)
+    }
+}
+
+// MARK: - What the Host Helper uses of this connection
+extension HeelerSSHTransport: HostHelperHost {
+    /// One bounded exec, long enough for the Node.js search's login shell.
+    func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
+        try await runBoundedScript(
+            Data(script.text.utf8), feature: "The Host Helper", deadline: .seconds(40), remoteSeconds: 30,
+            timeoutMarkerPrefix: "__HEELER_HOST_HELPER_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? {
+        try await withNotificationFileRequestDeadline {
+            guard await self.notificationConnectionIsAvailable() else {
+                throw NotificationRegistrationError.readFailed(
+                    detail: "The SSH connection is unavailable.")
+            }
+            let operationID = UUID()
+            return try await self.channelAdmission.withChannel(.ordinarySession) {
+                try await self.performNotificationFileRead(
+                    at: path, configDirectory: privateDirectory, operationID: operationID)
+            }
+        }
+    }
+
+    func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {
+        try await withNotificationFileRequestDeadline {
+            guard await self.notificationConnectionIsAvailable() else {
+                throw NotificationRegistrationError.writeFailed(
+                    detail: "The SSH connection is unavailable.")
+            }
+            let operationID = UUID()
+            try await self.channelAdmission.withChannel(.ordinarySession) {
+                try await self.performNotificationFileReplace(
+                    contents, at: path, configDirectory: privateDirectory, operationID: operationID)
+            }
+        }
     }
 }
 

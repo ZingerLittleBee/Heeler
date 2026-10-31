@@ -92,6 +92,9 @@ final class HostOnboardingStore {
     private(set) var coreStartConfirmation: CoreStartConfirmation?
     private(set) var coreStart: CoreStartState = .idle
 
+    /// A herdr-core Host's Host Helper, read with its checks.
+    private(set) var hostHelper: HostHelperStore?
+
     private(set) var host: Host
     let offersHerdrCore: Bool
 
@@ -149,6 +152,11 @@ final class HostOnboardingStore {
         notRunningCore = nil
         coreStartConfirmation = nil
         coreStart = .idle
+        if host.serverKind == .herdrCore {
+            let hostHelper = hostHelper ?? makeHostHelper()
+            hostHelper.checkStarted()
+            self.hostHelper = hostHelper
+        }
         let run = UUID()
         currentRun = run
         let task = Task { await self.performChecks(run: run, coreReportedRunning: coreReportedRunning) }
@@ -163,9 +171,16 @@ final class HostOnboardingStore {
         if task.isCancelled {
             markCancelled()
         } else {
-            if pluginStatus == .checking { pluginStatus = .unavailable }
+            settleUnreadStatuses()
             phase = .finished
         }
+    }
+
+    /// What a finished run never got to read is unknown, not still being checked.
+    private func settleUnreadStatuses() {
+        if pluginStatus == .checking { pluginStatus = .unavailable }
+        hostHelper?.checkEnded(
+            unreadBecause: report?.failureHint ?? "The checks ended before reading this Host.")
     }
 
     /// Stops a preflight still connecting — through an Overlay Network
@@ -184,7 +199,7 @@ final class HostOnboardingStore {
         resolveFingerprint(false)
         report = .failure(TransportError.cancelled, authMethod: host.authMethod)
         overlayLoginURL = nil
-        if pluginStatus == .checking { pluginStatus = .unavailable }
+        settleUnreadStatuses()
         phase = .finished
     }
 
@@ -292,6 +307,8 @@ final class HostOnboardingStore {
                 try? await transport.close()
                 return
             }
+            // The Helper does not need a core, so it reads whether one runs or not.
+            await hostHelper?.refresh(over: transport)
             do {
                 let info = try await transport.hello()
                 if !Task.isCancelled {
@@ -315,6 +332,23 @@ final class HostOnboardingStore {
             captureHostKeyReplacement(error)
             report = failureReport(error)
         }
+    }
+
+    /// The Helper's actions dial for themselves, after the preflight settled the
+    /// Host key: a key that still needs trusting is declined.
+    private func makeHostHelper() -> HostHelperStore {
+        let host = host
+        let connector = connector
+        let knownHosts = knownHosts
+        let credentials = credentials
+        let overlays = overlays
+        return HostHelperStore(connect: {
+            let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
+            return try await connector.connectCore(
+                settings: SSHTransportSettings(
+                    host: host, credentials: try credentials.credentials(for: host),
+                    hostKeyPolicy: policy, overlays: overlays))
+        })
     }
 
     /// One exec over a connection of its own, which starts no server. A Host

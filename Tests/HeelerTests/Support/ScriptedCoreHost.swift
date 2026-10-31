@@ -146,6 +146,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     nonisolated let routeID: UUID? = nil
+    /// The Host Helper's side of this Host. Its steps stay out of `log`.
+    nonisolated let helper: ScriptedHelperHost
     private let locator: [String]
     private let locatorStatus: Int32
     private let shellBanner: Data
@@ -174,11 +176,13 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     init(
         locator: [String] = locatorLines(), locatorStatus: Int32 = 0, shellBanner: Data = Data(),
         herdrRead: HerdrRead = .notInstalled, detectionFailure: TransportError? = nil,
+        helper: ScriptedHelperHost = ScriptedHelperHost(),
         start: StartResponse = .fresh, channelAfterStart: Channel? = nil,
         processRead: ProcessRead = .names([]),
         channel: Channel
     ) {
         self.processRead = processRead
+        self.helper = helper
         self.start = start
         self.channelAfterStart = channelAfterStart
         self.herdrRead = herdrRead
@@ -382,6 +386,22 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     func close() async throws {
         log.append("close")
         connected = false
+    }
+
+    func hostPlatform() async throws -> HostPlatform {
+        try await helper.hostPlatform()
+    }
+
+    func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
+        try await helper.runHostHelperScript(script)
+    }
+
+    func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? {
+        try await helper.readHostHelperFile(at: path, privateDirectory: privateDirectory)
+    }
+
+    func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {
+        try await helper.replaceHostHelperFile(contents, at: path, privateDirectory: privateDirectory)
     }
 
     /// The transport the app gets for this Host, with a nonce the script knows.

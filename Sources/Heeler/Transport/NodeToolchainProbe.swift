@@ -51,7 +51,7 @@ enum NodeToolchainProbe {
     /// inside a single-quoted `/bin/sh -c` body. Variables use a `__h_`
     /// prefix to stay clear of the Host's environment; the function's `$1`
     /// leaves the body's own positional parameters alone.
-    static let script = [
+    static let script = ([
         // Accepts the npm in $1, with $2 when its shims need another
         // directory, when it runs and the node it would start is new enough.
         // That node is the one `PATH` finds with $1 first, as npm's
@@ -68,6 +68,44 @@ enum NodeToolchainProbe {
             + "[ -n \"$__h_old\" ] || __h_old=\"$__h_v\"; return 1; fi; "
             + "PATH=\"$__h_p:$PATH\" \"$1/npm\" --version </dev/null >/dev/null 2>&1 || return 1; "
             + "__h_npm=\"$__h_p\"; }",
+    ] + searches(for: "npm") + [
+        // Without an npm, a node alone still says what to fix.
+        "if [ -z \"$__h_npm\" ]; then if [ -z \"$__h_old\" ]; then "
+            + "__h_v=$(PATH=\"${__h_lp:+$__h_lp:}$PATH\"; node -p process.versions.node </dev/null 2>/dev/null); "
+            + "if [ \"${__h_v%%.*}\" -ge \(minimumMajorVersion) ] 2>/dev/null; then "
+            + "printf \"%s%s\\n\" \(npmMissingMarker) \"$__h_v\" >&2; exit \(failureExitStatus); fi; "
+            + "__h_old=\"$__h_v\"; fi; "
+            + "if [ -n \"$__h_old\" ]; then printf \"%s%s\\n\" \(tooOldMarker) \"$__h_old\" >&2; "
+            + "else printf \"%s\\n\" \(missingMarker) >&2; fi; exit \(failureExitStatus); fi",
+        "PATH=\"$__h_npm:$PATH\"; export PATH",
+    ]).map { $0 + "; " }.joined()
+
+    /// The same search for a program that needs only Node.js, as the Host
+    /// Helper does (ADR 0033). It prints one line: `node <absolute path>`,
+    /// the binary itself rather than a version manager's shim, which is what a
+    /// service may name; `node-old <version>`; or `node-missing`. It always
+    /// exits 0 and leaves the caller's `PATH` alone, so run it in a subshell.
+    static let nodeOnlyScript = ([
+        "__h_npm=",
+        "__h_old=",
+        "__h_try() { [ -z \"$__h_npm\" ] || return 0; [ -n \"$1\" ] && [ -x \"$1/node\" ] || return 1; "
+            + "__h_p=\"$1${2:+:$2}\"; "
+            + "__h_v=$(PATH=\"$__h_p:$PATH\"; node -p process.versions.node </dev/null 2>/dev/null) "
+            + "|| return 1; "
+            + "if ! [ \"${__h_v%%.*}\" -ge \(minimumMajorVersion) ] 2>/dev/null; then "
+            + "[ -n \"$__h_old\" ] || __h_old=\"$__h_v\"; return 1; fi; "
+            + "__h_npm=\"$__h_p\"; }",
+    ] + searches(for: "node") + [
+        "if [ -n \"$__h_npm\" ]; then "
+            + "printf \"node %s\\n\" \"$(PATH=\"$__h_npm:$PATH\"; node -p process.execPath </dev/null 2>/dev/null)\"; "
+            + "elif [ -n \"$__h_old\" ]; then printf \"node-old %s\\n\" \"$__h_old\"; "
+            + "else printf \"node-missing\\n\"; fi",
+    ]).map { $0 + "; " }.joined()
+
+    /// Tries each common install method's directory for `tool`, in the order
+    /// the type's documentation gives.
+    private static func searches(for tool: String) -> [String] {
+        [
         "__h_data=\"${XDG_DATA_HOME:-$HOME/.local/share}\"",
         "__h_try \"${MISE_DATA_DIR:-$__h_data/mise}/shims\"",
         "__h_try \"${VOLTA_HOME:-$HOME/.volta}/bin\"",
@@ -93,7 +131,7 @@ enum NodeToolchainProbe {
         // Homebrew, the system's packages, and the app's PATH prefixes, then
         // Homebrew itself for a launcher, which gets no prefixes, its
         // versioned formulae, which it keeps off PATH, and the rest.
-        "__h_node=$(command -v npm 2>/dev/null) && __h_try \"${__h_node%/*}\"",
+        "__h_node=$(command -v \(tool) 2>/dev/null) && __h_try \"${__h_node%/*}\"",
         "for __h_d in /opt/homebrew/bin /usr/local/bin /home/linuxbrew/.linuxbrew/bin "
             + "/opt/homebrew/opt/node*/bin /usr/local/opt/node*/bin "
             + "/home/linuxbrew/.linuxbrew/opt/node*/bin \"$HOME/.nix-profile/bin\" "
@@ -114,18 +152,10 @@ enum NodeToolchainProbe {
             + "pkill -9 -P \"$__h_s\"; kill -9 \"$__h_s\" ) </dev/null >/dev/null 2>&1 & __h_w=$!; "
             + "{ wait \"$__h_s\"; kill \"$__h_w\"; wait \"$__h_w\"; } 2>/dev/null; "
             + "__h_lp=$(sed -n \"s/^PATH=//p\" \"$__h_f\" | tail -n 1 | tr -d \"\\r\"); rm -f \"$__h_f\"; "
-            + "__h_node=$(PATH=\"$__h_lp\"; command -v npm 2>/dev/null); "
+            + "__h_node=$(PATH=\"$__h_lp\"; command -v \(tool) 2>/dev/null); "
             + "case \"$__h_node\" in /*) __h_try \"${__h_node%/*}\" \"$__h_lp\";; esac; }; ;; esac; fi",
-        // Without an npm, a node alone still says what to fix.
-        "if [ -z \"$__h_npm\" ]; then if [ -z \"$__h_old\" ]; then "
-            + "__h_v=$(PATH=\"${__h_lp:+$__h_lp:}$PATH\"; node -p process.versions.node </dev/null 2>/dev/null); "
-            + "if [ \"${__h_v%%.*}\" -ge \(minimumMajorVersion) ] 2>/dev/null; then "
-            + "printf \"%s%s\\n\" \(npmMissingMarker) \"$__h_v\" >&2; exit \(failureExitStatus); fi; "
-            + "__h_old=\"$__h_v\"; fi; "
-            + "if [ -n \"$__h_old\" ]; then printf \"%s%s\\n\" \(tooOldMarker) \"$__h_old\" >&2; "
-            + "else printf \"%s\\n\" \(missingMarker) >&2; fi; exit \(failureExitStatus); fi",
-        "PATH=\"$__h_npm:$PATH\"; export PATH",
-    ].map { $0 + "; " }.joined()
+        ]
+    }
 }
 
 /// Why a plugin install stopped before herdr ran: the probe's marker in

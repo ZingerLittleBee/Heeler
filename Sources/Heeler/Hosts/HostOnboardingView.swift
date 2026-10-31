@@ -46,6 +46,7 @@ struct HostOnboardingView: View {
     /// connection once (see `HostOnboardingConsoleRecovery`).
     @State private var isConsoleRecoveryArmed = false
     @State private var isShowingPluginNotice = false
+    @State private var isShowingHostHelper = false
     @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     init(
@@ -108,6 +109,9 @@ struct HostOnboardingView: View {
                 offersHostKeyReplacement = false
                 isConfirmingHostKeyReplacement = store.pendingHostKeyReplacement != nil
             }
+            .sheet(isPresented: $isShowingHostHelper) {
+                if let helper = store.hostHelper { HostHelperSheet(store: helper) }
+            }
             .alert("Could Not Confirm", isPresented: confirmationRefusalPresented) {
                 Button("OK", role: .cancel) { store.dismissConfirmationRefusal() }
             } message: {
@@ -126,6 +130,7 @@ struct HostOnboardingView: View {
         sessionSelectionError = nil
         isConsoleRecoveryArmed = false
         isShowingPluginNotice = false
+        isShowingHostHelper = false
     }
 
     private var page: some View {
@@ -146,6 +151,7 @@ struct HostOnboardingView: View {
                     "Auth",
                     value: authenticationLabel)
                 if store.host.serverKind.isConfirmed { pluginRow }
+                if let helper = store.hostHelper { hostHelperRow(helper) }
             }
 
             if store.host.serverKind.isConfirmed {
@@ -685,6 +691,30 @@ struct HostOnboardingView: View {
             LabeledContent("Heeler Plugin", value: presentation.value)
                 .accessibilityIdentifier("hosts.detail.plugin.version")
         }
+    }
+
+    private func hostHelperRow(_ helper: HostHelperStore) -> some View {
+        Button {
+            isShowingHostHelper = true
+        } label: {
+            LabeledContent {
+                HStack(spacing: 6) {
+                    Text(helper.rowValue)
+                    if helper.running != nil {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else if helper.needsAttention {
+                        PluginNoticeIcon(tone: .warning)
+                    }
+                }
+            } label: {
+                // Not the button tint: the row reads like its neighbors.
+                Text("Host Helper")
+                    .foregroundStyle(Color.primary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("hosts.detail.hostHelper")
     }
 
     @ViewBuilder

@@ -330,4 +330,9 @@ struct PreflightReport: Equatable, Sendable {
     var isFullyPassed: Bool {
         failure == nil
     }
+
+    /// The failed check's fix-it, for a status that went unread because of it.
+    var failureHint: String? {
+        failure?.hint
+    }
 }

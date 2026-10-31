@@ -182,7 +182,7 @@ final actor FakeTransportConnector: TransportConnector {
         case hangs(Duration)
     }
 
-    private let outcome: Outcome
+    private var outcome: Outcome
     /// The host key the fake "server" presents; nil skips host key
     /// evaluation entirely.
     private let presentedKeyBlob: Data?
@@ -212,10 +212,23 @@ final actor FakeTransportConnector: TransportConnector {
         self.pluginSteps = pluginSteps
     }
 
+    /// The Host changes between checks: it goes out of reach, say.
+    func setOutcome(_ outcome: Outcome) {
+        self.outcome = outcome
+    }
+
     /// The real framed transport over a scripted Host, for this Host's session.
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
         capturedSettings.append(settings)
-        if case .connectFails(let error) = outcome { throw error }
+        switch outcome {
+        case .connectFails(let error):
+            throw error
+        case .hangs(let duration):
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+            throw TransportError.timedOut
+        case .connects:
+            break
+        }
         guard let core else {
             throw TransportError.hostFeatureUnavailable(feature: "herdr-core Hosts")
         }
