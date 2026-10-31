@@ -485,6 +485,30 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
+    /// The core's first sample comes up to one period after a launch, and with no
+    /// pid to compare nothing could later show the same Agent still holds on.
+    @Test func aRecordStillWithNoSampleAfterItsReadGetsNothingAndSaysSo() async throws {
+        let fixture = try await Fixture(terminal: Self.record(foreground: nil))
+        let attached = try await fixture.live()
+
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let sending = Task { await composer.send() }
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record(foreground: nil))
+        let result = await sending.value
+
+        guard case .refused(.inputNotReady(let message)) = result else {
+            Issue.record("Expected a refusal, got \(result)")
+            return
+        }
+        #expect(message.contains("still starting"))
+        #expect(fixture.composer.draft == "hello")
+        #expect(fixture.composer.messages.isEmpty)
+        #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
+        await fixture.finish()
+    }
+
     @Test func aTextWithAControlByteIsNeverPasted() async throws {
         let fixture = try await Fixture()
         let attached = try await fixture.live()

@@ -439,7 +439,11 @@ struct HerdrCoreTransportE2ETests {
         defer { store.setHosts([]) }
 
         /// The Composer and Attach of the Agent at `address`, once the program
-        /// has asked for both modes and the Attach has shown it.
+        /// has asked for both modes, the Attach has shown it, and the core has
+        /// sampled its foreground. The core samples every 500 ms on a clock of its
+        /// own, and the modes arrive about 150 ms after the launch, so without the
+        /// last wait the result depends on where the launch fell in that period:
+        /// Send rightly refuses until it has a pid to compare.
         func composer(at address: String) async throws -> (AgentComposerStore, AgentAttachStore) {
             let agent = try await Self.onMainUntilFound("the Agent at \(address)") {
                 store.agents.first { $0.agent.paneID == address }
@@ -452,6 +456,11 @@ struct HerdrCoreTransportE2ETests {
                 let modes = attach.terminal.modes
                 return modes.usesBracketedPaste && modes.kittyKeyboardFlags & 8 != 0 ? true : nil
             }
+            try await eventually {
+                let record: HerdrCoreTerminalRecord = try HerdrCoreWire.typed(
+                    try await fixture.rpc("terminal.get", params: .object(["terminal": .string(address)])))
+                return record.foreground?.pid != nil
+            }
             let composer = store.composerStore(for: agent)
             composer.bindCoreAttach(attach)
             return (composer, attach)
@@ -462,7 +471,8 @@ struct HerdrCoreTransportE2ETests {
         let staying = try await fixture.runTerminal([stays, log], keep: false)
         let (staysComposer, staysAttach) = try await composer(at: staying)
         staysComposer.replaceDraft(with: "hello e2e")
-        #expect(await staysComposer.send() == .submittedViaAttach)
+        let sent = await staysComposer.send()
+        #expect(sent == .submittedViaAttach)
         let expected = Data("\u{1B}[200~hello e2e\u{1B}[201~\u{1B}[13u".utf8)
         try await eventually { try await fixture.contents(of: log) == expected }
         #expect(staysComposer.draft.isEmpty)
