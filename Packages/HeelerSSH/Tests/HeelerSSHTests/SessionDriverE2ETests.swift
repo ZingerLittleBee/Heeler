@@ -755,6 +755,66 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    /// A request cancelled while it waits for the operation mutex never touched
+    /// libssh2. Retiring the session for it replaced a connection that a stalled
+    /// link had not killed (#523).
+    @Test("a cancelled channel open that never reached libssh2 spares the session")
+    func cancelledChannelOpenBeforeNativeCallSparesTheSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+        let opens: [(name: String, open: @Sendable () async throws -> Void)] = [
+            ("execute", { _ = try await connection.execute("printf no", timeout: .seconds(5)) }),
+            ("openExec", { _ = try await connection.openExec(command: "cat", timeout: .seconds(5)) }),
+            ("openPTY", {
+                _ = try await connection.openPTY(
+                    command: "cat", columns: 80, rows: 24, timeout: .seconds(5))
+            }),
+            ("openStreamLocal", {
+                _ = try await connection.openStreamLocal(
+                    socketPath: socketPath, timeout: .seconds(5))
+            }),
+            ("exchangeStreamLocal", {
+                _ = try await connection.exchangeStreamLocal(
+                    socketPath: socketPath,
+                    request: Data(#"{"id":"no","method":"ping"}\#n"#.utf8),
+                    timeout: .seconds(5))
+            }),
+        ]
+
+        for site in opens {
+            let free = Task {
+                withUnsafeCurrentTask { $0?.cancel() }
+                try await site.open()
+            }
+            await #expect(throws: SSHError.cancelled, "\(site.name) with the mutex free") {
+                try await free.value
+            }
+            #expect(await connection.isConnected, "\(site.name) retired on the mutex free")
+
+            let operation = SessionWaitHold()
+            let holder = Task {
+                await connection.holdOperationForTesting(operation.waitUntilReleased)
+            }
+            try await waitUntilTrue("the hold should own the operation mutex") {
+                await operation.hasEntered
+            }
+            let queued = Task { try await site.open() }
+            try await Task.sleep(for: .milliseconds(50))
+            queued.cancel()
+            await operation.release()
+            await holder.value
+            await #expect(throws: SSHError.cancelled, "\(site.name) cancelled in the queue") {
+                try await queued.value
+            }
+            #expect(await connection.isConnected, "\(site.name) retired from the queue")
+        }
+
+        let echo = try await connection.execute("printf survived", timeout: .seconds(5))
+        #expect(echo.stdout == Data("survived".utf8))
+        try await connection.close(timeout: .seconds(2))
+    }
+
     @Test("a teardown that only runs out of its budget spares the session")
     func expiredTeardownBudgetSparesTheSession() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

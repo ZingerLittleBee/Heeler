@@ -3691,6 +3691,9 @@ actor SessionDriver {
         deadline: ContinuousClock.Instant,
         cancellable: Bool
     ) async throws {
+        // Nothing has reached libssh2 yet, so a caller cancelled in the operation
+        // queue leaves no native state behind and must not cost the session.
+        if cancellable, Task.isCancelled { throw SSHError.cancelled }
         while channelOpenInProgress {
             if cancellable {
                 try checkProgress(deadline: deadline)
