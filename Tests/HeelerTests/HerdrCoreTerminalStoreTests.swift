@@ -329,15 +329,23 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    /// The request already went out hidden, so nobody but this report tells the
+    /// core a viewer is looking now.
     @Test func anAttachOpenedHiddenThatComesIntoViewOpeningReportsOnceOpen() async throws {
         let fixture = try await Fixture()
+        await fixture.scripted.holdAttachReplies()
         let store = fixture.store(isViewed: false)
-        store.viewDidResize(cols: 80, rows: 24)
+        let attach = try await fixture.opened(store)
+        #expect(attach.params["resumed"] == .bool(true))
+        #expect(attach.params["display"] == nil)
+
         store.setViewed(true)
-        await fixture.scripted.waitForMethod("terminal.attach")
-        let attach = try #require(await fixture.scripted.attaches.last)
+        await fixture.scripted.releaseAttachReplies()
+
         let focus = await attach.socket.waitForFrame(channel: attach.channel, kind: .focus)
         #expect(focus.payload == Data([1]))
+        store.feed.updateDisplayFacts { $0 = Self.facts }
+        _ = await attach.socket.waitForFrame(channel: attach.channel, kind: .facts)
         await store.stop()
         await fixture.finish()
     }
