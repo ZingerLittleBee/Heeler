@@ -187,6 +187,129 @@ struct HerdrCoreTransportE2ETests {
             #expect(try await fixture.tripwireCalls().isEmpty)
         }
     }
+
+    @Test("labels and a seeded herdr-app document place Terminals, and the app never writes it")
+    func desktopPlacement() async throws {
+        try await CoreSSHFixture.with { fixture in
+            try await fixture.startCore()
+            try await checkDesktopPlacement(fixture)
+            #expect(try await fixture.tripwireCalls().isEmpty)
+        }
+    }
+
+    @MainActor
+    private func checkDesktopPlacement(_ fixture: CoreSSHFixture) async throws {
+        let home = fixture.configuration.homePath
+        let repository = "\(home)/placement/repo"
+        let plain = "\(home)/placement/plain"
+        try await fixture.makeCheckout(at: repository, subdirectory: "src")
+        try await fixture.makeDirectory(plain)
+
+        let program = ["/bin/sleep", "600"]
+        let labeled = try await fixture.runTerminal(program, keep: false)
+        let other = try await fixture.runTerminal(program, keep: false)
+        let child = try await fixture.runTerminal(
+            program, keep: false, cwd: plain, parent: labeled)
+        let lonely = try await fixture.runTerminal(program, keep: false, cwd: "\(repository)/src")
+        let headless = try await fixture.runTerminal(program, keep: false, cwd: plain)
+        try await fixture.label(labeled, space: "s1", tab: "tb1")
+        try await fixture.label(other, space: "s2", tab: "tb2")
+        try await fixture.label(lonely, space: "lonely", tab: "tb7")
+        try await fixture.setDesktopDocument(
+            CoreDesktopJSON.document([
+                CoreDesktopJSON.space(
+                    "s2", name: "Zeta", tabs: [CoreDesktopJSON.tab("tb2", name: "logs")]),
+                CoreDesktopJSON.space(
+                    "s1", name: "Alpha",
+                    tabs: [CoreDesktopJSON.tab("tb1", name: "main", terminals: [labeled])]),
+            ]), version: 0)
+
+        let host = Host(address: "fixture", username: "dev", serverKind: .herdrCore)
+        let store = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(connect: { try await fixture.connectCore() }, keepalive: nil)
+            },
+            coreHostMemory: HerdrCoreHostMemory())
+        let presentation = TerminalListPresentationStore(
+            defaults: UserDefaults(suiteName: "core-\(UUID())") ?? .standard)
+        func cards() -> [String] {
+            presentation.projection(hosts: [host], console: store).workspaces()
+                .map { "\($0.title): \($0.terminals.map(\.paneID).joined(separator: " "))" }
+        }
+        func waitForCards(_ expected: [String]) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+            while cards() != expected, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            #expect(cards() == expected)
+        }
+
+        store.setHosts([host])
+        await store.resume()
+        defer { store.setHosts([]) }
+
+        // The document's names and order, the checkout's folder for a space only
+        // labels know, the child beside its parent, and the rest by directory.
+        try await waitForCards([
+            "Zeta: \(other)", "Alpha: \(labeled) \(child)", "repo: \(lonely)", "plain: \(headless)",
+        ])
+        let rows = Dictionary(store.terminals.map { ($0.paneID, $0) }) { first, _ in first }
+        #expect(rows[child]?.tabID == rows[labeled]?.tabID)
+        #expect(rows[labeled]?.displayTabTitle == "Tab \u{201C}main\u{201D}")
+
+        // A `doc` event and a `labels` event re-place them with no re-list.
+        try await fixture.setDesktopDocument(
+            CoreDesktopJSON.document([
+                CoreDesktopJSON.space(
+                    "s1", name: "Alpha Two",
+                    tabs: [CoreDesktopJSON.tab("tb1", name: "main", terminals: [labeled])]),
+                CoreDesktopJSON.space(
+                    "s2", name: "Zeta", tabs: [CoreDesktopJSON.tab("tb2", name: "logs")]),
+            ]), version: 1)
+        try await fixture.label(headless, space: "s2", tab: "tb2")
+        try await waitForCards([
+            "Alpha Two: \(labeled) \(child)", "Zeta: \(other) \(headless)", "repo: \(lonely)",
+        ])
+
+        // Only the fixture wrote the document: both of its writes, and no more.
+        let document = try await fixture.rpc(
+            "doc.get", params: .object(["name": .string("herdr-app")]))
+        #expect(HerdrCoreWire.integer(document["version"]) == 2)
+
+        try await checkCheckoutRoots(fixture, repository: repository, plain: plain)
+    }
+
+    /// The exec itself, with a directory no shell should read as anything else.
+    private func checkCheckoutRoots(
+        _ fixture: CoreSSHFixture, repository: String, plain: String
+    ) async throws {
+        let home = fixture.configuration.homePath
+        let awkward = "\(home)/placement/it's $(touch \(home)/pwned) `id`\n; x"
+        try await fixture.makeCheckout(at: awkward, subdirectory: "deep")
+
+        let transport = try await fixture.connectCore()
+        do {
+            let services = transport.hostServices
+            let roots = try await services.checkoutRoots(
+                for: ["\(repository)/src", "\(awkward)/deep", plain, "\(home)/placement/missing"])
+            #expect(roots == ["\(repository)/src": repository, "\(awkward)/deep": awkward])
+            #expect(try await fixture.exists("\(home)/pwned") == false)
+
+            let capped = (0..<40).map { "\(repository)/src/../src/\(String(repeating: "./", count: $0))" }
+            let answers = try await services.checkoutRoots(for: capped)
+            #expect(answers.count == GitProbe.checkoutRootsPerCall)
+            try await transport.close()
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+    }
 }
 
 private final class CoreDialCount: @unchecked Sendable {
@@ -358,14 +481,43 @@ private struct CoreSSHFixture: Sendable {
     }
 
     /// Starts a Terminal and returns its address.
-    func runTerminal(_ argv: [String], keep: Bool) async throws -> String {
-        let result = try await rpc(
-            "terminal.run",
-            params: .object([
-                "argv": .array(argv.map(JSONValue.string)), "cwd": .string(configuration.homePath),
-                "keep": .bool(keep),
-            ]))
+    func runTerminal(
+        _ argv: [String], keep: Bool, cwd: String? = nil, parent: String? = nil
+    ) async throws -> String {
+        var params: [String: JSONValue] = [
+            "argv": .array(argv.map(JSONValue.string)),
+            "cwd": .string(cwd ?? configuration.homePath), "keep": .bool(keep),
+        ]
+        if let parent { params["parent"] = .string(parent) }
+        let result = try await rpc("terminal.run", params: .object(params))
         return try #require(result["address"]?.stringValue)
+    }
+
+    /// The desktop app's labels, written as a test client would.
+    func label(_ terminal: String, space: String, tab: String) async throws {
+        _ = try await rpc(
+            "terminal.label",
+            params: .object([
+                "terminal": .string(terminal),
+                "labels": .object(["herdr.space": .string(space), "herdr.tab": .string(tab)]),
+            ]))
+    }
+
+    func setDesktopDocument(_ value: JSONValue, version: Int) async throws {
+        _ = try await rpc(
+            "doc.set",
+            params: .object([
+                "name": .string("herdr-app"), "value": value, "version": .number(Double(version)),
+            ]))
+    }
+
+    func makeDirectory(_ path: String) async throws {
+        _ = try await require("mkdir -p " + GitProbe.singleQuoted(path))
+    }
+
+    func makeCheckout(at path: String, subdirectory: String) async throws {
+        try await makeDirectory("\(path)/\(subdirectory)")
+        _ = try await require("git init -q " + GitProbe.singleQuoted(path))
     }
 
     func exists(_ path: String) async throws -> Bool {

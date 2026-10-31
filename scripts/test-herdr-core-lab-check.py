@@ -95,7 +95,7 @@ class LabCheckTests(unittest.TestCase):
         box = ScriptedBox()
         lab, status, output = self.perform(box)
         self.assertEqual(status, 0, output)
-        for name in ("an hc-serve unit", "an hc-hold unit", "linger", "the five end-to-end methods",
+        for name in ("an hc-serve unit", "an hc-hold unit", "linger", "the six end-to-end methods",
                      "captured frames replay unchanged"):
             self.assertIn(f"PASS {name}", output)
         everything = "\n".join(box.commands)

@@ -3,7 +3,9 @@ import Foundation
 /// A herdr-core Host's share of the Console (ADR 0032). It folds the Host
 /// session's subscribe snapshots and deltas into the Console's models: a snapshot
 /// or `missed` replaces the inventory wholesale, and deltas change one Terminal
-/// in place without asking the core again.
+/// in place without asking the core again. It reads the desktop app's document on
+/// each snapshot and on each `doc` event, and never writes it, and it asks for
+/// the checkout root of a directory that names an unnamed space once.
 ///
 /// Actions a core Host does not offer yet are hidden by `HostCapabilities`. The
 /// ones here that throw are for callers that went around it.
@@ -38,15 +40,30 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var environmentTask: Task<Void, Never>?
     private var hasEnded = false
 
+    private let gitGate: GitExecGate
+    private var document: HerdrCoreDesktopDocument?
+    private var documentVersion: Int?
+    private var documentRead: Task<Void, Never>?
+    private var readsDocumentAgain = false
+    /// A directory's checkout root, itself when it is in no checkout.
+    private var checkouts: [String: String] = [:]
+    private var askedCheckouts: Set<String> = []
+    private var queuedCheckouts: [String] = []
+    private var checkoutTask: Task<Void, Never>?
+    private var home: String?
+    private var hasAskedHome = false
+
     init(
         host: Host,
         session: HerdrCoreHostSession,
         memory: HerdrCoreHostMemory,
+        gitGate: GitExecGate,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
         self.memory = memory
+        self.gitGate = gitGate
         self.onChange = onChange
     }
 
@@ -113,6 +130,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         hasEnded = true
         consumeTask?.cancel()
         latencyTask?.cancel()
+        documentRead?.cancel()
+        checkoutTask?.cancel()
         environmentTask?.cancel()
         consumeTask = nil
         latencyTask = nil
@@ -162,14 +181,23 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         records = []
         terminalsByPane = [:]
         workspaces = []
+        documentRead?.cancel()
+        documentRead = nil
+        readsDocumentAgain = false
+        // What this link did not answer gets one more ask on the next.
+        checkoutTask?.cancel()
+        checkoutTask = nil
+        queuedCheckouts = []
+        askedCheckouts = Set(checkouts.keys)
+        hasAskedHome = home != nil
     }
 
     private func replaceInventory(with snapshot: HerdrCoreSnapshot) {
         memory.noteInventory(snapshot.terminals, for: host.id)
         records = snapshot.terminals
-        isAwaitingSnapshot = false
         transportGeneration = max(transportGeneration, session.currentConnectionGeneration)
         sidebarRevision &+= 1
+        readDocument()
         rebuildRows()
         publish()
     }
@@ -195,6 +223,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             update(terminal) { $0.foreground = foreground }
         case .labels(let terminal, let labels):
             update(terminal) { $0.labels = labels }
+            sidebarRevision &+= 1
         case .keep(let terminal, let keep):
             update(terminal) { $0.keep = keep }
         case .lost(let terminal, let end):
@@ -221,7 +250,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             // These deltas can no longer be trusted: start over from a snapshot.
             Task { [session] in await session.resubscribe() }
             return
-        case .status, .turn, .document, .heartbeat:
+        case .document(let name, let version, let machine):
+            // A read can already be newer than the event that follows it.
+            if name == HerdrCoreDesktopDocument.name, machine == nil,
+                version > documentVersion ?? -1
+            {
+                readDocument()
+            }
+            return
+        case .status, .turn, .heartbeat:
             return
         }
         rebuildRows()
@@ -233,12 +270,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         change(&records[index])
     }
 
+    /// Nothing shows until a link's first document read has settled, so a
+    /// desktop Terminal never flashes through a Workspace it does not belong in.
+    /// A read nobody answers settles at the link's call deadline.
     private func rebuildRows() {
-        let builder = ConsolePaneRowBuilder(
-            host: host,
-            inventory: HerdrCoreOrganization.snapshot(
-                terminals: records,
-                firstSeenDirectories: memory.firstSeenDirectories(for: host.id)))
+        guard !isAwaitingSnapshot else { return }
+        let organization = HerdrCoreOrganization.build(
+            terminals: records, document: document,
+            firstSeenDirectories: memory.firstSeenDirectories(for: host.id),
+            checkouts: checkouts, home: home)
+        let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
         var rows = builder.terminalRows(agents: [:], liveChange: { _ in nil })
         for record in records where rows[record.address] != nil {
             rows[record.address]?.isRestarting = record.isRestarting
@@ -247,6 +288,89 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
         terminalsByPane = rows
         workspaces = builder.workspaceRows()
+        askForCheckouts(organization.checkoutDirectories)
+    }
+
+    // MARK: The desktop app's document
+
+    /// One read at a time. A change seen meanwhile takes one more, so a burst
+    /// of layout writes costs two reads.
+    private func readDocument() {
+        guard documentRead == nil else {
+            readsDocumentAgain = true
+            return
+        }
+        documentRead = Task { [weak self, session] in
+            var read: HerdrCoreDesktopDocumentRead?
+            if let transport = try? await session.withTransport({ $0 }) {
+                read = try? await transport.readDesktopDocument()
+            }
+            guard !Task.isCancelled else { return }
+            self?.finishDocumentRead(read)
+        }
+    }
+
+    /// A failed read keeps what was known: labels still place the Terminals,
+    /// and the next `doc` event or link reads again.
+    private func finishDocumentRead(_ read: HerdrCoreDesktopDocumentRead?) {
+        documentRead = nil
+        guard !hasEnded else { return }
+        if let read {
+            documentVersion = read.version
+            if document != read.document {
+                document = read.document
+                sidebarRevision &+= 1
+            }
+        }
+        if readsDocumentAgain {
+            readsDocumentAgain = false
+            readDocument()
+            guard isAwaitingSnapshot else { return }
+        }
+        isAwaitingSnapshot = false
+        rebuildRows()
+        publish()
+    }
+
+    // MARK: Checkout roots
+
+    /// Each directory is asked about once. A failed ask waits for the next link.
+    private func askForCheckouts(_ directories: [String]) {
+        queuedCheckouts += directories.filter { askedCheckouts.insert($0).inserted }
+        guard checkoutTask == nil, !queuedCheckouts.isEmpty else { return }
+        checkoutTask = Task { [weak self] in await self?.resolveCheckouts() }
+    }
+
+    private func resolveCheckouts() async {
+        let session = session
+        let services = try? await session.withTransport { $0.hostServices }
+        guard !Task.isCancelled else { return }
+        guard let services else {
+            checkoutTask = nil
+            return
+        }
+        if !hasAskedHome {
+            hasAskedHome = true
+            home = try? await services.hostHomeDirectory()
+            guard !Task.isCancelled else { return }
+            // The desktop app does not ask git about the home folder either.
+            queuedCheckouts.removeAll { $0 == home }
+        }
+        while !queuedCheckouts.isEmpty {
+            let batch = Array(queuedCheckouts.prefix(GitProbe.checkoutRootsPerCall))
+            queuedCheckouts.removeFirst(batch.count)
+            let roots = try? await gitGate.run { try await services.checkoutRoots(for: batch) }
+            guard !Task.isCancelled else { return }
+            if let roots {
+                for directory in batch { checkouts[directory] = roots[directory] ?? directory }
+            }
+            rebuildRows()
+            publish()
+        }
+        checkoutTask = nil
+        // A name that only the home folder changed still has to show.
+        rebuildRows()
+        publish()
     }
 
     private func publish() {

@@ -87,6 +87,13 @@ protocol HostServices: Sendable {
     /// for a rename and an empty-file comparison for an untracked file.
     /// Transports without Host git throw `ChangesReadError.unavailable`.
     func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch
+
+    /// The checkout root of each directory, in one git script over one exec.
+    /// Asks about at most `GitProbe.checkoutRootsPerCall` of them, the first
+    /// ones; a directory it asked about and that is in no checkout has no entry.
+    /// Only a herdr-core projection asks, to name a desktop space nobody named.
+    /// A caller goes through the Host's `GitExecGate`, as Changes does.
+    func checkoutRoots(for directories: [String]) async throws -> [String: String]
 }
 
 extension HostServices {
@@ -162,6 +169,11 @@ extension HostServices {
 
     /// A transport without Host commands cannot read a file's patch.
     func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
+        throw ChangesReadError.unavailable
+    }
+
+    /// A transport without Host commands cannot find a checkout.
+    func checkoutRoots(for directories: [String]) async throws -> [String: String] {
         throw ChangesReadError.unavailable
     }
 }

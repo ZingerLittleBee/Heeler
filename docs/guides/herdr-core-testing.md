@@ -34,7 +34,7 @@ covers the fixture and CI.
 make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
 ```
 
-It authorizes a throwaway key through `instabox port-forward`, runs the five
+It authorizes a throwaway key through `instabox port-forward`, runs the six
 methods of `HerdrCoreTransportE2ETests` on the Simulator, then starts a core for a
 unique session and checks:
 
@@ -122,6 +122,27 @@ HC_SESSION=<s> TMUX=/tmp/made-up,1,0 CLAUDE_CODE_CHILD_SESSION=made-up STY= \
 | Leaked variables | The core above, with the Host connected | **Core Environment** names `CLAUDE_CODE_CHILD_SESSION` and `TMUX`, each with what it breaks, and says restarting the core from your own terminal fixes it; blank `STY` is not named, no value appears, and nothing offers a restart |
 | Prefix | Add `HERDR_PANE_ID=made-up` when starting | `HERDR_PANE_ID` is named with the others |
 | Restarted cleanly | `server stop` by absolute path with the same environment, then start again from a clean login shell without those variables | The Host reconnects by itself and **Core Environment** is gone |
+
+## Desktop organization
+
+With a core running in your unique session and the Host connected, open the
+Terminals tab. Set labels with `terminal.label` through
+`scripts/fixtures/herdr-core-rpc.py`, which never starts a core. Only on a throwaway
+session, seed a document with `doc.set`. On a core the desktop app runs on, never
+call `doc.set`: the app answers a conflict by replacing its own layout. Heeler only
+reads `herdr-app`, so `doc.get` shows the same `version` before and after anything
+done in the app.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Labeled Terminals | `herdr.space` and `herdr.tab` naming a space and tab in the document | The space's card under its name, in the document's order, above any derived Workspace, with the row reading **Tab “name”** |
+| Unnamed tab | A tab whose document name is empty | **Tab N**, N being its place among the space's tabs in the document |
+| Label-only space | `herdr.space` naming a space no document lists, in a directory inside a git checkout | A card named for the checkout's folder, after the document's spaces; asked once per directory |
+| Space outside git | The same, in a directory outside any checkout | A card named for that directory, or **~** in the home directory |
+| Child Terminal | `terminal.run` with `parent` and no `herdr.*` label, `heeler.*` labels allowed | Another row in its parent's card, reading the parent's tab |
+| Child with its own labels | The same with `herdr.space` and `herdr.tab` | A row in the space its labels name |
+| Live change | Rename or reorder in the document, or set or clear a label | The cards follow within a moment, without reconnecting |
+| Mac with the desktop app | Add that Mac as a herdr-core Host with the debug launch argument | The same spaces and tabs as the window, in its order and under its names; a space the app has not named reads the same in both |
 
 ## Detection states
 
