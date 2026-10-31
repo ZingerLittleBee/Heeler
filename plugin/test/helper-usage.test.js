@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { followCoreSession } from "../helper/core/follower.js";
 import { agentDirectories } from "../helper/shared/usage/agent-directories.js";
+import { claudeAgentPid } from "../helper/usage/claude-terminal.js";
 import { usageListener } from "../helper/usage/recorder.js";
 import { FakeCore, exchange, waitFor } from "./support/fake-core.js";
 
@@ -267,21 +268,44 @@ suite("Claude Code Account suggestions", () => {
     assert.deepEqual(agentDirectories(stateDir()).sort(), [claude.path, npm.path].sort());
   });
 
-  test("a Terminal reporting Claude Code counts when its foreground is no plain shell", async () => {
+  test("a report of Claude Code counts for nothing while another program holds the foreground", async () => {
     const reporting = await agentDirectory("claude-reporting");
+    const claude = await agentDirectory("claude-running");
     await startCore({
       snapshot: snapshot(
         live("t1", {
-          foreground: { argv: ["some-wrapper"], name: "some-wrapper", pid: reporting.process.pid },
+          foreground: { argv: ["vim"], name: "vim", pid: reporting.process.pid },
           status: { app: "claude-code", state: "working" },
         }),
+        live("t2", { foreground: { argv: ["claude"], name: "claude", pid: claude.process.pid } }),
       ),
     });
 
     follow("work");
-    await waitFor(() => agentDirectories(stateDir()).length === 1, "the Agent's directory", PATIENCE_MS);
+    await waitFor(() => agentDirectories(stateDir()).length > 0, "the Agent's directory", PATIENCE_MS);
 
-    assert.deepEqual(agentDirectories(stateDir()), [reporting.path]);
+    assert.deepEqual(agentDirectories(stateDir()), [claude.path]);
+  });
+
+  test("what it takes for Claude Code, the shared Agent rule does too", () => {
+    const vector = JSON.parse(readFileSync(new URL("../test-vectors/herdr-core-agent-rule-v1.json", import.meta.url), "utf8"));
+    // Launch forms the shared rule reads and this one leaves out, so a suggestion
+    // may be missing but none is wrong. Cases with foreground events are the
+    // inventory's to apply.
+    const notRead = new Set([
+      "the desktop PowerShell local wrapper names its command",
+      "sh -c exec",
+      "sh -c reads through env",
+      "sh -c stops at a pipe",
+      "sh runs a script named for a program",
+      "a first spawn still pending is not a restart",
+    ]);
+    const cases = vector.cases.filter((entry) => !entry.foregroundEvents);
+    assert.ok(cases.length > 100);
+    for (const entry of cases) {
+      const isClaude = entry.expected?.kind === "claude";
+      assert.equal(claudeAgentPid(entry.record) !== null, isClaude && !notRead.has(entry.name), entry.name);
+    }
   });
 
   test("an Agent started after the snapshot counts from its foreground event", async () => {
@@ -514,7 +538,7 @@ suite("the Helper's Usage query", () => {
         channel: 1,
         seq: 1,
         terminals: [
-          { address: "t1", state: "live", foreground: { argv: ["claude"], name: "claude", pid: agent.pid } },
+          { address: "t1", state: "live", pid: 1, foreground: { argv: ["claude"], name: "claude", pid: agent.pid } },
         ],
       },
     });
