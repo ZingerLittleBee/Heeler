@@ -44,6 +44,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var latencyTask: Task<Void, Never>?
     private var environmentTask: Task<Void, Never>?
     private var hasEnded = false
+    private var shownAgents: Set<String> = []
 
     private let gitGate: GitExecGate
     private var document: HerdrCoreDesktopDocument?
@@ -61,6 +62,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var hasInventory = false
     /// Terminals waiting to hear what became of a program.
     private var programWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    /// OpenCode's own words from the last discovery, which decide its `-s`.
+    private var openCodeVersion: String?
 
     init(
         host: Host,
@@ -216,6 +219,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         pins.retainPins(hostID: host.id, paneIDs: Set(snapshot.terminals.map(\.address)))
         records = snapshot.terminals
         hasInventory = true
+        for record in records {
+            noteTurns(of: record.address) { state, kind in
+                state.noteSnapshot(
+                    turn: record.turn, word: record.status?.state, kind: kind,
+                    reported: record.reported)
+            }
+        }
         transportGeneration = max(transportGeneration, session.currentConnectionGeneration)
         sidebarRevision &+= 1
         readDocument()
@@ -232,6 +242,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             } else {
                 records.append(record)
             }
+            noteTurns(of: record.address) { state, kind in
+                if case .restarted = event { state.noteRestart(turn: record.turn) }
+                state.noteSnapshot(
+                    turn: record.turn, word: record.status?.state, kind: kind,
+                    reported: record.reported)
+            }
             sidebarRevision &+= 1
         case .size(let terminal, let columns, let rows):
             update(terminal) {
@@ -242,14 +258,20 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             update(terminal) { $0.title = title }
         case .foreground(let terminal, let foreground):
             update(terminal) { $0.noteForeground(foreground) }
+            noteTurns(of: terminal) { _, _ in }
         case .status(let terminal, let status, let records, let reported):
+            let turn = self.records.first { $0.address == terminal }?.turn ?? 0
             update(terminal) {
                 $0.status = status
                 $0.records = records
                 $0.reported = reported
             }
+            noteTurns(of: terminal) { state, kind in
+                state.noteStatus(word: status?.state, turn: turn, kind: kind)
+            }
         case .turn(let terminal, let turn, _):
             update(terminal) { $0.turn = turn }
+            noteTurns(of: terminal) { state, _ in state.noteTurn(turn) }
         case .labels(let terminal, let labels):
             update(terminal) { $0.labels = labels }
             sidebarRevision &+= 1
@@ -261,12 +283,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 $0.foreground = nil
                 $0.reason = end.reason ?? "lost"
             }
+            noteTurns(of: terminal) { _, _ in }
         case .finished(let terminal, _):
             update(terminal) {
                 $0.state = "finished"
                 $0.pid = nil
                 $0.foreground = nil
             }
+            noteTurns(of: terminal) { _, _ in }
             sidebarRevision &+= 1
         case .removed(let terminal):
             memory.forgetTerminal(terminal, for: host.id)
@@ -300,6 +324,41 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         change(&records[index])
     }
 
+    // MARK: Done per device
+
+    /// Marks each newly shown Agent seen. A turn that ends while one stays shown
+    /// is marked as it ends, so it never reads Done.
+    func setShownAgents(_ paneIDs: Set<String>) {
+        let opened = paneIDs.subtracting(shownAgents)
+        shownAgents = paneIDs
+        guard !opened.isEmpty else { return }
+        let wasDone = doneTerminals
+        for address in opened {
+            memory.updateTurnState(of: address, for: host.id) { $0.markSeen() }
+        }
+        guard doneTerminals != wasDone else { return }
+        rebuildRows()
+        publish()
+    }
+
+    private var doneTerminals: Set<String> {
+        Set(memory.turnStates(for: host.id).filter(\.value.isDone).keys)
+    }
+
+    /// Folds one change into a Terminal's turns, with its record already updated.
+    private func noteTurns(
+        of address: String, _ change: (inout HerdrCoreTurnState, _ kind: String?) -> Void
+    ) {
+        guard let record = records.first(where: { $0.address == address }) else { return }
+        let kind = HerdrCoreAgentRule.agent(in: record)?.kind
+        let isShown = shownAgents.contains(address)
+        memory.updateTurnState(of: address, for: host.id) { state in
+            change(&state, kind)
+            if kind == nil { state.noteNoAgent() }
+            if isShown { state.markEndedTurnSeen() }
+        }
+    }
+
     /// Nothing shows until a link's first document read has settled, so a
     /// desktop Terminal never flashes through a Workspace it does not belong in.
     /// A read nobody answers settles at the link's call deadline.
@@ -308,7 +367,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let organization = HerdrCoreOrganization.build(
             terminals: records, document: document,
             firstSeenDirectories: memory.firstSeenDirectories(for: host.id),
-            checkouts: checkouts, home: home)
+            checkouts: checkouts, home: home, doneTerminals: doneTerminals)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
         // Every value comes from the rebuilt records: nothing is carried over.
         let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
@@ -440,42 +499,143 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         terminalsByPane[paneID] != nil
     }
 
+    // MARK: Launches
+
+    /// Through the user's interactive shell, so it finds what an Agent launched
+    /// through that shell would find (ADR 0032).
+    func availableAgentKinds() async throws -> [SupportedAgentKind] {
+        let transport = try await session.withTransport { $0 }
+        let shell = try await transport.launchShell()
+        let nonce = HostProcessReader.makeNonce()
+        let result = try await transport.runAgentDiscovery(
+            HerdrCoreLaunch.discoveryScript(shell: shell, nonce: nonce))
+        guard
+            let installed = try? HerdrCoreLaunch.installedAgents(stdout: result.stdout, nonce: nonce)
+        else {
+            throw TransportError.malformedResponse("The Host's shell did not finish looking for Agents.")
+        }
+        openCodeVersion = installed.openCodeVersion
+        return installed.kinds
+    }
+
+    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
+        try await launch(
+            request,
+            placement: try await placement(workspaceID: request.workspaceID, directory: request.cwd))
+    }
+
+    func startAgentInNewWorkspace(
+        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
+    ) async throws -> Agent {
+        try await launch(request, placement: HerdrCoreLaunch.Placement(cwd: workspace.directory))
+    }
+
+    func createShellTerminal(
+        _ request: ShellTerminalCreationRequest
+    ) async throws -> ShellTerminalIdentity {
+        let placement = try await placement(workspaceID: request.workspaceID, directory: request.cwd)
+        return try await startShell(placement: placement)
+    }
+
+    /// A core has no Workspace to create: a Terminal in a new directory is one
+    /// of its own, and its name comes from the directory.
+    func createShellWorkspace(
+        _ workspace: NewWorkspaceSpec, tabLabel: String?
+    ) async throws -> ShellTerminalIdentity {
+        try await startShell(placement: HerdrCoreLaunch.Placement(cwd: workspace.directory))
+    }
+
+    private func launch(
+        _ request: AgentLaunchRequest, placement: HerdrCoreLaunch.Placement
+    ) async throws -> Agent {
+        guard let kind = SupportedAgentKind(rawValue: request.kind) else {
+            throw unavailable("Starting \(request.kind)")
+        }
+        let transport = try await session.withTransport { $0 }
+        let shell = try await transport.launchShell()
+        let record = try await run(
+            HerdrCoreLaunch.agentRequest(
+                kind: kind, name: request.name, arguments: request.arguments, shell: shell,
+                openCodeVersion: openCodeVersion, placement: placement),
+            on: transport)
+        return agentsByPane[record.address]?.agent
+            ?? Agent(
+                terminalID: record.address, kind: kind.rawValue, title: "", status: .unknown,
+                workspaceID: HerdrCoreOrganization.workspaceID(
+                    of: record, firstSeenDirectories: memory.firstSeenDirectories(for: host.id)),
+                tabID: "tab-\(record.address)", paneID: record.address, cwd: record.cwd, revision: 0,
+                name: record.name)
+    }
+
+    private func startShell(
+        placement: HerdrCoreLaunch.Placement
+    ) async throws -> ShellTerminalIdentity {
+        let transport = try await session.withTransport { $0 }
+        let record = try await run(HerdrCoreLaunch.terminalRequest(placement: placement), on: transport)
+        return ShellTerminalIdentity(
+            paneID: record.address,
+            tabID: terminalsByPane[record.address]?.tabID ?? "tab-\(record.address)",
+            terminalID: record.address)
+    }
+
+    /// One `terminal.run`. Its answer shows at once, so the row a caller opens
+    /// next exists, and the core's own `created` event then changes nothing. An
+    /// answer past reading started something all the same, so it is not a refusal.
+    private func run(
+        _ params: JSONValue, on transport: any HerdrCoreTransport
+    ) async throws -> HerdrCoreTerminalRecord {
+        let reply = try await transport.runTerminal(params: params)
+        guard let record = try? HerdrCoreWire.typed(reply) as HerdrCoreTerminalRecord else {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        if !hasEnded, !records.contains(where: { $0.address == record.address }) {
+            apply(.created(record))
+        }
+        return record
+    }
+
+    /// A desktop space takes the directory asked for, else its own. A derived
+    /// Workspace is its key directory and nothing else, or the Terminal would
+    /// land in another Workspace. A launch that names no Workspace is a derived one.
+    private func placement(
+        workspaceID: String?, directory: String?
+    ) async throws -> HerdrCoreLaunch.Placement {
+        let asked = directory.flatMap { $0.isEmpty ? nil : $0 }
+        guard let workspaceID else {
+            return HerdrCoreLaunch.Placement(cwd: try await directoryOrHome(asked))
+        }
+        if let space = HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID) {
+            let cwd =
+                asked
+                ?? HerdrCoreOrganization.directory(ofSpace: space, terminals: records, document: document)
+            return .desktopSpace(space, cwd: try await directoryOrHome(cwd))
+        }
+        guard
+            let key = HerdrCoreOrganization.keyDirectory(
+                ofWorkspace: workspaceID, terminals: records,
+                firstSeenDirectories: memory.firstSeenDirectories(for: host.id))
+        else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: "This Workspace has no Terminals left")
+        }
+        return HerdrCoreLaunch.Placement(cwd: try await directoryOrHome(key.isEmpty ? nil : key))
+    }
+
+    private func directoryOrHome(_ directory: String?) async throws -> String {
+        if let directory { return directory }
+        return try await remoteHomeDirectory()
+    }
+
     // MARK: Actions not built yet
 
     private func unavailable(_ feature: String) -> TransportError {
         .hostFeatureUnavailable(feature: "\(feature) on a herdr-core Host")
     }
 
-    func availableAgentKinds() async throws -> [SupportedAgentKind] {
-        throw unavailable("Starting Agents")
-    }
-
-    func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
-        throw unavailable("Starting Agents")
-    }
-
     func startAgentInNewWorktree(
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
     ) async throws -> Agent {
         throw unavailable("Worktrees")
-    }
-
-    func startAgentInNewWorkspace(
-        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
-    ) async throws -> Agent {
-        throw unavailable("Starting Agents")
-    }
-
-    func createShellTerminal(
-        _ request: ShellTerminalCreationRequest
-    ) async throws -> ShellTerminalIdentity {
-        throw unavailable("New Terminal")
-    }
-
-    func createShellWorkspace(
-        _ workspace: NewWorkspaceSpec, tabLabel: String?
-    ) async throws -> ShellTerminalIdentity {
-        throw unavailable("New Terminal")
     }
 
     func closePane(_ paneID: String) async throws {
@@ -730,7 +890,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {
-        throw unavailable("New Workspace")
+        try await session.withTransport { $0.hostServices }.listDirectories(at: path)
     }
 
     func withHostServices<Value: Sendable>(

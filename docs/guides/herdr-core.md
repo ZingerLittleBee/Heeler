@@ -51,9 +51,11 @@ A Terminal is an Agent while its foreground program is a known coding program, o
 | Status | What it means |
 | --- | --- |
 | **Unknown** | The program has not reported yet |
-| **Working**, **Idle** | What it reports. A program reporting done reads **Idle** |
+| **Working**, **Idle** | What it reports. A program reporting done reads **Idle**, unless it shows **Done** |
 | **Blocked** | It waits for you |
 | **Error** | It reports an error, and sorts with **Blocked** |
+
+Done is per device. An Agent shows Done when it finished a turn this device was not showing and still reports idle or done. Opening the Agent clears it here, and so does having it open when the turn ends; your other devices keep showing it until you open it there. It leaves on its own when the Agent starts working again. A turn finishes when a program goes from Working to Done. A program not known to report done also finishes one by going from Working to Idle, while Claude Code, Codex, Pi and Oh My Pi do not, so a Codex release too old to report done never shows Done. Removing the Host, or the Host getting a different core, starts over.
 
 A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and no Close.
 
@@ -88,9 +90,29 @@ The new shell is no Agent until you start one in it.
 
 A core started from inside another program can inherit variables that change how its programs behave. Host detail then shows **Core Environment**, naming each variable and what it breaks, never its value. Restarting the core from your own terminal fixes it. Heeler does not restart it.
 
+## New Agent and New Terminal
+
+**New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.
+
+Pick where it starts, for an Agent and for **New Terminal** alike:
+
+| You pick | It starts | It shows |
+| --- | --- | --- |
+| A desktop space | In the directory of the Agent you started from, else the space's folder | In a new tab of that space, here and in the desktop app |
+| A directory's Workspace | In that Workspace's directory, even after a Terminal in it moved elsewhere | In that Workspace, and not in the desktop app's layout until you adopt it there |
+| **Browse Directory…** | In the directory you chose | In a Workspace named for that directory |
+
+Heeler asks for no tab or Workspace name on this kind of Host. Worktrees and Templates are not offered here yet.
+
+Heeler gives an Agent a session of its own from the start where the program takes one, unless your arguments already pick a session, as `--resume` does. Codex runs with `--no-daemon`. OpenCode gets its session only from version 2.1.
+
+If the Host does not confirm a start, Heeler says so and does not try again, since the Agent may already be running. Check the Host before starting another.
+
+**Known limit:** with zsh as your login shell and no startup files, such as no `~/.zshrc`, zsh opens its new-user wizard and the Agent waits behind it. Open the Terminal and answer the wizard once, or create an empty `~/.zshrc` on the Host first.
+
 ## Known limits
 
-- Heeler does not start Agents on a core Host yet, and has no New Terminal, Close or Rename there. Start them on the Host or in the desktop.
+- Heeler has no Close or Rename on a core Host yet. Use the Host or the desktop.
 - Worktrees and Chat are not available yet.
 - An Agent detail's Send and Stop stay hidden. Use Direct Input to type into the terminal.
 - Notifications and Live Activities are not available yet.

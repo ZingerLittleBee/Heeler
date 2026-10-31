@@ -1139,19 +1139,17 @@ struct HerdrCoreTerminalStoreTests {
 
     // MARK: What a core Agent's detail offers
 
-    /// The header's More, and the input chrome's: the Composer's and Direct
-    /// Input's offer the same, since Direct Input's Add entries are hidden too.
+    /// The header's More, and the Composer's, whose Add has a button of its own.
     private static let coreAgentMenus: Set<[String]> = [
         ["Terminals", "Changes", "Collapse"],
-        ["Back to Console", "Open Terminal", "Changes", "Skills", "Snippets"],
+        ["Back to Console", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets"],
     ]
-    /// On screen for a Host that has them; none are built for a core Host yet.
     /// Direct Input has no Add of its own: its More carries the same two items.
     private static let coreDirectInputMenus: Set<[String]> = [
         ["Terminals", "Changes", "Collapse"],
-        ["Back to Console", "Add Image", "Add File", "Open Terminal", "Changes", "Skills", "Snippets"],
+        ["Back to Console", "Add Image", "Add File", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets"],
     ]
-
+    /// On screen for a Host that has them; none are built for a core Host yet.
     private static let notBuiltLabels = ["Send", "Stop", "Take Over", "Take Over Here"]
 
     /// A Composer that cannot send hides Send and Stop, and the Agent is
@@ -1189,6 +1187,75 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .nativeWindows }
         await Task.yield()
         #expect(!detail.offers("Add"))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// Done per device through the real screen: opening clears it, a turn that
+    /// ends with the detail open never reads Done, and one after it left does.
+    @Test func aCoreAgentsDetailClearsItsDoneAndSeesTheTurnsThatEndWhileItIsOpen() async throws {
+        var line = 100
+        func event(_ type: String, _ data: JSONValue) -> Data {
+            line += 1
+            return (try? JSONEncoder().encode(JSONValue.object([
+                "jsonrpc": .string("2.0"), "method": .string("event"),
+                "params": .object([
+                    "seq": .number(Double(line)), "type": .string(type), "terminal": .string("t1"),
+                    "data": data,
+                ]),
+            ]))) ?? Data()
+        }
+        func status(_ word: String) -> Data {
+            event(
+                "status",
+                .object([
+                    "status": .object(["state": .string(word), "app": .string("claude-code")]),
+                    "records": .object([:]), "reported": .bool(true),
+                ]))
+        }
+        func turn(_ count: Int, _ word: String) -> Data {
+            event("turn", .object(["turn": .number(Double(count)), "state": .string(word)]))
+        }
+
+        guard case .object(var finished) = Self.agentRecord else { return }
+        finished["status"] = .object(["state": .string("done"), "app": .string("claude-code")])
+        finished["turn"] = .number(1)
+        finished["reported"] = .bool(true)
+        let fixture = try await Fixture(terminals: [.object(finished)])
+        let agent = try #require(fixture.console.agents.first)
+        #expect(agent.agent.status == .done)
+        func current() -> AgentStatus? { fixture.console.agents.first?.agent.status }
+
+        let detail = try await fixture.showDetail(of: agent)
+        try await Self.until("opening to clear Done") {
+            detail.layOut()
+            return current() == .idle
+        }
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("x", on: attach)
+
+        try await fixture.scripted.deliverEvent(status("working"))
+        try await Self.until("the next turn") { current() == .working }
+        try await fixture.scripted.deliverEvent(status("done"))
+        try await fixture.scripted.deliverEvent(turn(2, "done"))
+        try await fixture.scripted.deliverEvent(event("title", .object(["title": .string("ended")])))
+        try await Self.until("the turn's end") {
+            detail.layOut()
+            return fixture.console.agents.first?.agent.terminalTitle == "ended"
+        }
+        #expect(current() == .idle)
+
+        detail.selection.showsDetail = false
+        try await Self.until("the detail to leave its terminal") {
+            detail.layOut()
+            return await attach.socket.frames(channel: attach.channel, kind: .focus).last?.payload == Data([0])
+        }
+        try await fixture.scripted.deliverEvent(status("working"))
+        try await Self.until("another turn") { current() == .working }
+        try await fixture.scripted.deliverEvent(status("done"))
+        try await fixture.scripted.deliverEvent(turn(3, "done"))
+        try await Self.until("Done for the turn nobody was shown") { current() == .done }
+
         await detail.close()
         await fixture.finish()
     }
@@ -1270,7 +1337,7 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    @Test func aCoreAgentsDrawerCannotStartATerminal() async throws {
+    @Test func aCoreAgentsDrawerOffersNewTerminal() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord, Self.shellRecord(address: "t2")])
         let agent = try #require(fixture.console.agents.first)
         let detail = try await fixture.showDetail(of: agent)
@@ -1280,7 +1347,7 @@ struct HerdrCoreTerminalStoreTests {
         try await HostedMenu.select("Terminals", labeled: "More", in: detail.window)
 
         try await Self.until("the drawer") { detail.offers("Hide Workspace terminals") }
-        #expect(!detail.offers("New Terminal"))
+        #expect(detail.offers("New Terminal"))
         await detail.close()
         await fixture.finish()
     }
@@ -1746,7 +1813,7 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    @Test func aCoreTerminalsMenusHaveNoCloseOrNewTerminalUntilTheyAreBuilt() async throws {
+    @Test func aCoreTerminalsMenusHaveNoCloseUntilItIsBuiltAndItsDrawerOffersNewTerminal() async throws {
         let fixture = try await Fixture(terminals: [Self.shellRecord])
         let terminal = try #require(fixture.console.terminals.first)
         let screen = try await fixture.showShell(of: terminal, sceneID: UUID())
@@ -1759,7 +1826,7 @@ struct HerdrCoreTerminalStoreTests {
 
         try await HostedMenu.select("Terminals", labeled: "More", in: screen.window)
         try await Self.until("the drawer") { screen.offers("Hide Workspace terminals") }
-        #expect(!screen.offers("New Terminal"))
+        #expect(screen.offers("New Terminal"))
         await screen.close()
         await fixture.finish()
     }
@@ -2010,6 +2077,8 @@ private struct HostedCoreDetail: View {
             }
         }
         .environment(\.agentSceneRouting, routing)
+        // A hosting controller has no SwiftUI scene to say so.
+        .environment(\.scenePhase, .active)
     }
 }
 

@@ -1,8 +1,9 @@
 import Foundation
 
 /// What this device remembers of each herdr-core Host: the core it last spoke
-/// to and the directory it first saw each Terminal launched in, which decides
-/// that Terminal's derived Workspace (ADR 0032). None of it is a secret or
+/// to, the directory it first saw each Terminal launched in, which decides that
+/// Terminal's derived Workspace (ADR 0032), and each Terminal's turns and seen
+/// mark, which decide Done on this device (ADR 0033). None of it is a secret or
 /// shared with the Host. It goes with the Host, and starts over when the Host's
 /// core id changes, since addresses belong to one core.
 @MainActor
@@ -10,6 +11,19 @@ final class HerdrCoreHostMemory {
     private struct Entry: Codable, Equatable {
         var coreID: String?
         var directories: [String: String] = [:]
+        var turns: [String: HerdrCoreTurnState] = [:]
+
+        init(coreID: String? = nil) {
+            self.coreID = coreID
+        }
+
+        /// Memory written before seen marks has no `turns`.
+        init(from decoder: any Decoder) throws {
+            let fields = try decoder.container(keyedBy: CodingKeys.self)
+            coreID = try fields.decodeIfPresent(String.self, forKey: .coreID)
+            directories = try fields.decodeIfPresent([String: String].self, forKey: .directories) ?? [:]
+            turns = try fields.decodeIfPresent([String: HerdrCoreTurnState].self, forKey: .turns) ?? [:]
+        }
     }
 
     private static let defaultsKey = "herdr-core.host-memory"
@@ -35,6 +49,22 @@ final class HerdrCoreHostMemory {
         entries[hostID]?.directories ?? [:]
     }
 
+    func turnStates(for hostID: Host.ID) -> [String: HerdrCoreTurnState] {
+        entries[hostID]?.turns ?? [:]
+    }
+
+    func updateTurnState(
+        of address: String, for hostID: Host.ID, _ change: (inout HerdrCoreTurnState) -> Void
+    ) {
+        var entry = entries[hostID] ?? Entry()
+        var state = entry.turns[address] ?? HerdrCoreTurnState()
+        change(&state)
+        guard entry.turns[address] != state else { return }
+        entry.turns[address] = state
+        entries[hostID] = entry
+        save()
+    }
+
     /// The core a `hello` reported. Another core forgets the old one's Terminals.
     func noteCore(_ coreID: String, for hostID: Host.ID) {
         guard entries[hostID]?.coreID != coreID else { return }
@@ -51,6 +81,7 @@ final class HerdrCoreHostMemory {
             directories[terminal.address] = entry.directories[terminal.address] ?? terminal.cwd
         }
         entry.directories = directories
+        entry.turns = entry.turns.filter { directories[$0.key] != nil }
         guard entries[hostID] != entry else { return }
         entries[hostID] = entry
         save()
@@ -66,7 +97,9 @@ final class HerdrCoreHostMemory {
     }
 
     func forgetTerminal(_ address: String, for hostID: Host.ID) {
-        guard entries[hostID]?.directories.removeValue(forKey: address) != nil else { return }
+        let forgotDirectory = entries[hostID]?.directories.removeValue(forKey: address) != nil
+        let forgotTurns = entries[hostID]?.turns.removeValue(forKey: address) != nil
+        guard forgotDirectory || forgotTurns else { return }
         save()
     }
 

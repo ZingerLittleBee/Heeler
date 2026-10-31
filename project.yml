@@ -286,6 +286,9 @@ targets:
       # Shared Agent rule vectors, read by Swift now and the Helper later.
       - path: plugin/test-vectors/herdr-core-agent-rule-v1.json
         buildPhase: resources
+      # Shared turn-end vectors, read by Swift now and the Helper later.
+      - path: plugin/test-vectors/herdr-core-turn-end-v1.json
+        buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json
         buildPhase: resources

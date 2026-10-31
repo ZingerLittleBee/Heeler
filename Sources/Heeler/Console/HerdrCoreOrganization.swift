@@ -38,12 +38,15 @@ enum HerdrCoreOrganization {
 
     /// Finished Terminals stay out, though the core keeps their records until
     /// they are removed, and so does a space with no Terminal left to show.
+    /// `doneTerminals` are those whose Agent reads Done on this device, as long
+    /// as it still reports idle or done.
     static func build(
         terminals: [HerdrCoreTerminalRecord],
         document: HerdrCoreDesktopDocument?,
         firstSeenDirectories: [String: String],
         checkouts: [String: String],
-        home: String?
+        home: String?,
+        doneTerminals: Set<String> = []
     ) -> Result {
         let shown = terminals.filter { !$0.hasFinished }
         let shownByAddress = Dictionary(shown.map { ($0.address, $0) }) { first, _ in first }
@@ -94,7 +97,8 @@ enum HerdrCoreOrganization {
                         number: tabPosition + 1, paneCount: members[tabPosition].count,
                         tabID: tab.id, workspaceID: workspace.id))
                 for record in members[tabPosition] {
-                    let agent = HerdrCoreAgentRule.agent(in: record)
+                    var agent = HerdrCoreAgentRule.agent(in: record)
+                    if doneTerminals.contains(record.address) { agent = agent?.markedDone }
                     panes.append(pane(record, agent: agent, tabID: tab.id, workspaceID: workspace.id))
                     if let agent {
                         agents.append(
@@ -205,6 +209,50 @@ enum HerdrCoreOrganization {
         }.map(\.element)
     }
 
+    // MARK: Launching into a Workspace
+
+    /// The desktop space a Workspace id names; nil for a derived Workspace.
+    static func desktopSpace(ofWorkspace id: String) -> String? {
+        id.hasPrefix(spacePrefix) ? String(id.dropFirst(spacePrefix.count)) : nil
+    }
+
+    /// The directory a derived Workspace is keyed by, which is not any Terminal's
+    /// current one. Nil when no Terminal shown here lands in it.
+    static func keyDirectory(
+        ofWorkspace id: String, terminals: [HerdrCoreTerminalRecord],
+        firstSeenDirectories: [String: String]
+    ) -> String? {
+        for record in terminals where !record.hasFinished && desktopLabel("herdr.space", of: record) == nil {
+            let directory = firstSeenDirectories[record.address] ?? record.cwd
+            if workspaceID(directory: directory) == id { return directory }
+        }
+        return nil
+    }
+
+    /// Where a new Terminal in a space starts when nothing asked for a directory:
+    /// the space's folder, else where its first Terminal is now.
+    static func directory(
+        ofSpace space: String, terminals: [HerdrCoreTerminalRecord],
+        document: HerdrCoreDesktopDocument?
+    ) -> String? {
+        if let folder = document?.spaces.first(where: { $0.id == space })?.folder, !folder.isEmpty {
+            return folder
+        }
+        return
+            terminals
+            .first { !$0.hasFinished && desktopLabel("herdr.space", of: $0) == space }
+            .map(liveDirectory)
+            .flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// The Workspace a Terminal with no parent shown lands in.
+    static func workspaceID(
+        of record: HerdrCoreTerminalRecord, firstSeenDirectories: [String: String]
+    ) -> String {
+        desktopLabel("herdr.space", of: record).map(spaceWorkspaceID)
+            ?? workspaceID(directory: firstSeenDirectories[record.address] ?? record.cwd)
+    }
+
     // MARK: Ids and names
 
     /// Stable and opaque: the same directory is the same Workspace on every
@@ -213,8 +261,10 @@ enum HerdrCoreOrganization {
         "d-" + digest(directory)
     }
 
+    private static let spacePrefix = "space-"
+
     private static func spaceWorkspaceID(_ space: String) -> String {
-        "space-\(space)"
+        spacePrefix + space
     }
 
     /// A Tab's label belongs to its space, and labels can be anything, so the

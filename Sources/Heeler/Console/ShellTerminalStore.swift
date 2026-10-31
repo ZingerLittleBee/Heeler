@@ -249,6 +249,8 @@ final class AgentOpenTerminalStore {
             OpenTerminalFailure(
                 kind: .rejected,
                 message: "herdr couldn't create the terminal: \(message)")
+        case TransportError.hostFeatureUnavailable(let feature):
+            OpenTerminalFailure(kind: .rejected, message: feature)
         default:
             OpenTerminalFailure(
                 kind: .ambiguous,

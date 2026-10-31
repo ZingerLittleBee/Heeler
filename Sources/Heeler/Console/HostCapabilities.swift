@@ -45,7 +45,7 @@ extension HostCapabilities {
     init(serverKind: ServerKind, platform: HostPlatform? = nil) {
         let offered = serverKind == .herdrTUI
         self.init(
-            opensDetail: true, startsAgents: offered, startsTerminals: offered,
+            opensDetail: true, startsAgents: true, startsTerminals: true,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
             uploads: offered || (serverKind == .herdrCore && platform == .posix),
             composerSend: offered, chat: offered, tabNames: offered, closeTab: offered,

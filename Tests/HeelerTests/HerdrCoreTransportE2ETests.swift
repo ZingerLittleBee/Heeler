@@ -282,6 +282,82 @@ struct HerdrCoreTransportE2ETests {
         }
     }
 
+    @Test("a launch through the user's interactive shell gets its PATH from the startup file, is the Terminal's root process, and finishes with it")
+    func launchThroughInteractiveShell() async throws {
+        try await CoreSSHFixture.with { fixture in
+            try await fixture.startCore()
+            let transport = try await fixture.connectCore()
+            do {
+                _ = try await transport.hello()
+                let shell = try await transport.launchShell()
+                let launchHome = fixture.configuration.launchHome ?? fixture.configuration.homePath
+
+                // Discovery runs where a launch would, and finds only what the
+                // startup file puts on PATH.
+                let nonce = HostProcessReader.makeNonce()
+                let discovery = HerdrCoreShellLaunch.discoveryScript(
+                    shell: shell, executables: ["heeler-rc-stub", "heeler-no-such-program"],
+                    versionOf: "heeler-rc-stub", nonce: nonce)
+                let answer = try await transport.runAgentDiscovery(
+                    Data("HOME=\(GitProbe.singleQuoted(launchHome)); export HOME\n".utf8) + discovery)
+                let found = try HerdrCoreShellLaunch.parseDiscovery(stdout: answer.stdout, nonce: nonce)
+                #expect(found.executables == ["heeler-rc-stub"])
+                #expect(found.version == "rc-stub")
+
+                // The pickers' browsing reads the Host over the same connection.
+                try await fixture.makeDirectory("\(launchHome)/browse/inner")
+                let listing = try await transport.hostServices.listDirectories(at: "\(launchHome)/browse")
+                #expect(listing.directories == ["inner"])
+
+                // The `HOME` only keeps a lab account's own startup files out.
+                let arguments = ["two words", "it's", "$HOME"]
+                let reply = try await transport.runTerminal(
+                    params: .object([
+                        "argv": .array(
+                            HerdrCoreShellLaunch.argv(
+                                shell: shell, program: ["heeler-rc-stub", "--wait"] + arguments
+                            ).map(JSONValue.string)),
+                        "cwd": .string(launchHome), "keep": .bool(true),
+                        "env": .object(["HOME": .string(launchHome)]),
+                        "labels": .object([HerdrCoreLaunch.sessionHintLabel: .string("heeler-e2e")]),
+                    ]))
+                let started: HerdrCoreTerminalRecord = try HerdrCoreWire.typed(reply)
+                let terminal = started.address
+                #expect(started.keep)
+                #expect(started.labels[HerdrCoreLaunch.sessionHintLabel] == "heeler-e2e")
+
+                try await eventually {
+                    try await transport.readTerminal(terminal).text.contains("arg=$HOME")
+                }
+                let screen = try await transport.readTerminal(terminal).text
+                #expect(screen.contains("marker=rc-sourced"))
+                for argument in arguments { #expect(screen.contains("arg=\(argument)")) }
+
+                // No shell stays behind: the program holds the process the core started.
+                let record: @Sendable () async throws -> HerdrCoreTerminalRecord = {
+                    try HerdrCoreWire.typed(
+                        try await fixture.rpc("terminal.get", params: .object(["terminal": .string(terminal)])))
+                }
+                let root = try #require(try await record().pid)
+                #expect(screen.contains("pid=\(root)\n"))
+                try await eventually { try await record().foreground?.pid == root }
+                #expect(try await record().foreground?.argv.contains("--wait") == true)
+
+                let session = try await transport.attachTerminal(
+                    TerminalAttachRequest(target: .terminal(terminal), cols: 80, rows: 24))
+                session.send(Data("\n".utf8))
+                try await eventually { try await record().hasFinished }
+                #expect(try await record().exitCode == 0)
+                await session.end()
+                try await transport.close()
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+            #expect(try await fixture.tripwireCalls().isEmpty)
+        }
+    }
+
     @Test("labels and a seeded herdr-app document place Terminals, and the app never writes it")
     func desktopPlacement() async throws {
         try await CoreSSHFixture.with { fixture in
@@ -478,6 +554,8 @@ private struct CoreSSHFixture: Sendable {
         let rpcHelper: String
         let tripwireLog: String
         let legacyLog: String
+        /// Whose startup files a launch reads, where that is not `homePath`.
+        let launchHome: String?
     }
 
     static var isConfigured: Bool {

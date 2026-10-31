@@ -5,7 +5,8 @@
 
 An owner's check, for a box the instabox CLI is signed in to. What it does there,
 all of it undone at the end, also after a failure: authorizes a throwaway key
-through a port-forward, starts cores only by absolute path under unique
+through a port-forward, writes the fixture's startup files into a directory of
+its own for the launch method, starts cores only by absolute path under unique
 HC_SESSION names, reads the systemd units, linger and the socket path, captures
 scrubbed frames and replays them through a decoder, then stops those cores by
 absolute path and removes the key and every file it wrote.
@@ -40,6 +41,14 @@ HEADER = struct.Struct("<IBI")
 def load_keys():
     spec = importlib.util.spec_from_file_location("fixture_keys", HERE.parent / "fixtures/openssh-ed25519-seed.py")
     module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_fixture():
+    spec = importlib.util.spec_from_file_location("herdr_core_ssh", HERE.parent / "fixtures/herdr-core-ssh.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["herdr_core_ssh"] = module
     spec.loader.exec_module(module)
     return module
 
@@ -139,6 +148,16 @@ class Lab:
         self.remote(f"printf %s {encoded} | base64 -d > {shlex.quote(path)} && chmod 700 {shlex.quote(path)}")
         return path
 
+    def write_launch_home(self):
+        """The launch method reads these, so the account's own startup files stay as they are."""
+        home = f"{self.directory}/launch-home"
+        for relative, text in load_fixture().rc_files().items():
+            path = f"{home}/{relative}"
+            encoded = base64.b64encode(text.encode()).decode()
+            self.remote(f"mkdir -p {shlex.quote(path.rsplit('/', 1)[0])} && "
+                        f"printf %s {encoded} | base64 -d > {shlex.quote(path)} && chmod 700 {shlex.quote(path)}")
+        return home
+
     def authorize_throwaway_key(self, directory):
         key = Path(directory) / "key"
         status = self.local(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", self.marker, "-f", str(key)])
@@ -157,11 +176,11 @@ class Lab:
         if not self.wait_for_port(self.port):
             raise RuntimeError(f"the port-forward to {self.box} never opened")
 
-    def configuration(self, seed, helper):
+    def configuration(self, seed, helper, launch_home):
         return {
             "coreFixture": True, "host": "127.0.0.1", "port": self.port, "username": self.user,
             "homePath": self.home, "deviceKeySeed": seed, "coreExecutable": self.executable,
-            "startEnvironment": self.environment, "rpcHelper": helper,
+            "startEnvironment": self.environment, "rpcHelper": helper, "launchHome": launch_home,
             # The box has a real hc, which this check leaves alone: only the fixture
             # can trip on it, so these logs stay empty here by construction.
             "tripwireLog": f"{self.directory}/hc-called.log", "legacyLog": f"{self.directory}/legacy-called",
@@ -175,7 +194,7 @@ class Lab:
             ["xcrun", "simctl", "spawn", self.udid, "launchctl", "unsetenv", CONFIG_VARIABLE]))
         self.local(["xcrun", "simctl", "spawn", self.udid, "launchctl", "setenv", CONFIG_VARIABLE, encoded])
         status = self.local(["make", "test-app", f"SIM_DESTINATION={destination}", f"TEST_SELECTOR={E2E_SUITE}"])
-        self.check("the seven end-to-end methods", status == 0)
+        self.check("the eight end-to-end methods", status == 0)
 
     def check_linux_facts(self, helper):
         self.remote(self.core_command(self.session, ["server", "start"]))
@@ -214,9 +233,10 @@ class Lab:
             try:
                 self.prepare()
                 helper = self.upload(HERE.parent / "fixtures/herdr-core-rpc.py", "herdr-core-rpc")
+                launch_home = self.write_launch_home()
                 seed = self.authorize_throwaway_key(directory)
                 self.forward()
-                self.run_end_to_end(self.configuration(seed, helper))
+                self.run_end_to_end(self.configuration(seed, helper, launch_home))
                 self.check_linux_facts(helper)
                 self.capture_and_replay()
             except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
