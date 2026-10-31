@@ -95,11 +95,11 @@ struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
     var columns: Int
     var rows: Int
     let identity: String?
-    let status: HerdrCoreTerminalStatus?
+    var status: HerdrCoreTerminalStatus?
     let statusMilliseconds: Int?
-    let records: [String: HerdrCoreTerminalStatus]
-    let turn: Int
-    let reported: Bool
+    var records: [String: HerdrCoreTerminalStatus]
+    var turn: Int
+    var reported: Bool
     var title: String
     let parent: String?
     let notify: Bool

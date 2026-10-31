@@ -13,6 +13,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     let session: HerdrCoreHostSession
 
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
+    private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
     /// See Standing Failure in `CONTEXT.md`.
@@ -27,7 +28,6 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     let syncError: String? = nil
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
-    let agentsByPane: [String: ConsoleAgent] = [:]
 
     private let memory: HerdrCoreHostMemory
     private let onChange: @MainActor @Sendable () -> Void
@@ -148,6 +148,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         isAwaitingSnapshot = true
         records = []
         terminalsByPane = [:]
+        agentsByPane = [:]
         workspaces = []
     }
 
@@ -180,6 +181,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             update(terminal) { $0.title = title }
         case .foreground(let terminal, let foreground):
             update(terminal) { $0.foreground = foreground }
+        case .status(let terminal, let status, let records, let reported):
+            update(terminal) {
+                $0.status = status
+                $0.records = records
+                $0.reported = reported
+            }
+        case .turn(let terminal, let turn, _):
+            update(terminal) { $0.turn = turn }
         case .labels(let terminal, let labels):
             update(terminal) { $0.labels = labels }
         case .keep(let terminal, let keep):
@@ -208,7 +217,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             // These deltas can no longer be trusted: start over from a snapshot.
             Task { [session] in await session.resubscribe() }
             return
-        case .status, .turn, .document, .heartbeat:
+        case .document, .heartbeat:
             return
         }
         rebuildRows()
@@ -226,13 +235,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             inventory: HerdrCoreOrganization.snapshot(
                 terminals: records,
                 firstSeenDirectories: memory.firstSeenDirectories(for: host.id)))
-        var rows = builder.terminalRows(agents: [:], liveChange: { _ in nil })
+        // Every value comes from the rebuilt records: nothing is carried over.
+        let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
+        var rows = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         for record in records where rows[record.address] != nil {
             rows[record.address]?.isRestarting = record.isRestarting
             rows[record.address]?.gridColumns = record.columns
             rows[record.address]?.gridRows = record.rows
         }
         terminalsByPane = rows
+        agentsByPane = agents
         workspaces = builder.workspaceRows()
     }
 
