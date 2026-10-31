@@ -174,7 +174,7 @@ final class AgentChatStore {
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let now: @Sendable () -> Date
-    @ObservationIgnored private var agent: Agent
+    @ObservationIgnored private(set) var agent: Agent
     /// Whether this conversation has had a live read. Until then the
     /// Background Work list stays empty: saved work alone could have ended
     /// long ago (ADR 0024).
@@ -405,6 +405,9 @@ final class AgentChatStore {
         stopLoop()
         blocked.hide()
     }
+
+    /// The Chat views on screen, for a store that takes this one's place.
+    var viewerTokens: Set<UUID> { viewers }
 
     /// The app went to the background; Chat keeps its place.
     func suspend() {

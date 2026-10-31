@@ -551,6 +551,10 @@ struct AgentChatSurfaceView: View {
         switch presentation {
         case .timeline:
             EmptyView()
+        case .departed(let departure):
+            ContentUnavailableView(
+                departure.title, systemImage: departure.systemImage, description: Text(departure.explanation))
+            .accessibilityIdentifier("chat.departed")
         case .locating:
             ChatLocatingView()
         case .awaitingHost:
@@ -611,7 +615,8 @@ struct AgentChatSurfaceView: View {
     private var bannerContent: [Banner] {
         let lines = ChatBannerLine.lines(
             hostStatus: console.hostStatuses[agent.hostID], conversation: chat?.conversation,
-            hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.launchNotice)
+            hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.launchNotice,
+            departure: console.chatDeparture(of: agent.id))
         let terminalOffered = lines.contains {
             if case .unavailable(let reason, _) = $0 { !reason.isWaiting } else { false }
         }
@@ -629,6 +634,9 @@ struct AgentChatSurfaceView: View {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
                     banner.action = { showAgentTerminal() }
                 }
+            case .departure:
+                banner.actionTitle = AgentDetailSurface.terminal.showTitle
+                banner.action = { showAgentTerminal() }
             case .launch:
                 if !terminalOffered {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
@@ -644,7 +652,8 @@ struct AgentChatSurfaceView: View {
     private var presentation: ChatSurfacePresentation {
         ChatSurfacePresentation(
             conversation: chat?.conversation, hasPendingEchoes: !pendingEchoes.isEmpty,
-            isHostConnected: isHostConnected, checkingLaunch: chat?.isCheckingLaunch ?? false)
+            isHostConnected: isHostConnected, checkingLaunch: chat?.isCheckingLaunch ?? false,
+            departure: console.chatDeparture(of: agent.id))
     }
 
     /// What the timeline is rebuilt from; anything else it shows comes

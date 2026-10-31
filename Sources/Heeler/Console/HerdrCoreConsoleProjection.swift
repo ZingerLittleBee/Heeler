@@ -1353,6 +1353,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // the snapshot's fresh inventory asks again. A Send here says it couldn't
         // check.
         guard hasInventory else { throw TransportError.cancelled }
+        // An Agent that left has no process to look at, and nothing it left says
+        // which conversation it was in. Its Chat says what became of it.
+        guard departedAgentsByPane[paneID] == nil else { throw TransportError.cancelled }
         guard let record = terminalRecord(at: paneID) else {
             return .unavailable(.cannotTellSession(.claude))
         }

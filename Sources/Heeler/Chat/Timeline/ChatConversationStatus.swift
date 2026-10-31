@@ -194,9 +194,47 @@ extension ChatSessionStoreProblem {
     }
 }
 
+/// What became of a herdr-core Agent that has left a Terminal while its detail
+/// stays open (ADR 0032).
+enum ChatAgentDeparture: Equatable, Sendable {
+    /// The core is bringing the kept Terminal back as a new shell.
+    case restarting
+    /// Its program exited, so nothing comes back.
+    case ended
+    /// A shell runs in its place until an Agent starts there.
+    case shell
+
+    var title: String {
+        switch self {
+        case .restarting: "Restarting…"
+        case .ended: "Agent Ended"
+        case .shell: "Agent Gone"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .restarting: "arrow.clockwise"
+        case .ended: "stop.circle"
+        case .shell: "terminal"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .restarting: "The program was lost. A new shell takes its place in a moment."
+        case .ended: "Its program exited, so it will not come back."
+        case .shell: "A shell runs in its Terminal now. Chat follows the next Claude Code started there."
+        }
+    }
+}
+
 /// What takes the conversation's place, if anything, under the banners.
 enum ChatSurfacePresentation: Equatable {
     case timeline
+    /// The Agent left, with nothing saved to show. Evidence and searches are
+    /// about a program that no longer runs.
+    case departed(ChatAgentDeparture)
     /// Searching the Host for the transcript, with nothing saved to show.
     case locating
     /// Nothing saved to show, and the Host to search isn't connected:
@@ -212,7 +250,7 @@ enum ChatSurfacePresentation: Equatable {
     /// the launch is read (`AgentChatStore.isCheckingLaunch`).
     init(
         conversation: ChatConversationSnapshot?, hasPendingEchoes: Bool, isHostConnected: Bool,
-        checkingLaunch: Bool = false
+        checkingLaunch: Bool = false, departure: ChatAgentDeparture? = nil
     ) {
         guard let conversation else {
             self = .disconnected
@@ -220,6 +258,10 @@ enum ChatSurfacePresentation: Equatable {
         }
         if conversation.showsTimeline(hasPendingEchoes: hasPendingEchoes) {
             self = .timeline
+            return
+        }
+        if let departure {
+            self = .departed(departure)
             return
         }
         switch conversation.phase {
@@ -239,9 +281,11 @@ enum ChatBannerLine: Equatable, Identifiable {
     case readFailure(TransportError)
     case unavailable(ChatUnavailableReason, showingSavedMessages: Bool)
     case launch(ChatLaunchNotice)
+    case departure(ChatAgentDeparture)
 
     var id: String {
         switch self {
+        case .departure: "departure"
         case .connecting, .notConnected: "host"
         case .readFailure: "read"
         case .unavailable: "unavailable"
@@ -254,7 +298,7 @@ enum ChatBannerLine: Equatable, Identifiable {
     /// this device kept; messages sent from it and not yet recorded are not.
     static func lines(
         hostStatus: EventsSessionStatus?, conversation: ChatConversationSnapshot?, hasPendingEchoes: Bool,
-        launchNotice: ChatLaunchNotice? = nil
+        launchNotice: ChatLaunchNotice? = nil, departure: ChatAgentDeparture? = nil
     ) -> [ChatBannerLine] {
         let showingSaved = conversation?.transcript.entries.isEmpty == false
         switch hostStatus {
@@ -265,6 +309,12 @@ enum ChatBannerLine: Equatable, Identifiable {
         guard let conversation else { return [] }
         var lines: [ChatBannerLine] = []
         if let failure = conversation.readFailure { lines.append(.readFailure(failure)) }
+        // What it says outranks a reason about a program no longer there. With no
+        // conversation showing, it says so in the conversation's place.
+        if let departure {
+            if conversation.showsTimeline(hasPendingEchoes: hasPendingEchoes) { lines.append(.departure(departure)) }
+            return lines
+        }
         if case .unavailable(let reason) = conversation.phase,
             conversation.showsTimeline(hasPendingEchoes: hasPendingEchoes)
         {
@@ -299,6 +349,9 @@ enum ChatBannerLine: Equatable, Identifiable {
             reason.bannerText(showingSavedMessages: showingSavedMessages)
         case .launch(.codexSharedServer):
             "This may be another terminal's conversation."
+        case .departure(.restarting): "Restarting… \(ChatAgentDeparture.restarting.explanation)"
+        case .departure(.ended): "The Agent ended. \(ChatAgentDeparture.ended.explanation)"
+        case .departure(.shell): "The Agent is gone. \(ChatAgentDeparture.shell.explanation)"
         }
     }
 
@@ -309,6 +362,7 @@ enum ChatBannerLine: Equatable, Identifiable {
         case .readFailure: "exclamationmark.triangle"
         case .unavailable(let reason, _): reason.systemImage
         case .launch: "exclamationmark.bubble"
+        case .departure(let departure): departure.systemImage
         }
     }
 
@@ -316,6 +370,7 @@ enum ChatBannerLine: Equatable, Identifiable {
         switch self {
         case .connecting: true
         case .unavailable(let reason, _): reason.isWaiting
+        case .departure(let departure): departure == .restarting
         case .notConnected, .readFailure, .launch: false
         }
     }
