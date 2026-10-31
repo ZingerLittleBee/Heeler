@@ -21,13 +21,13 @@ Console previews read the current screen without scrolling the remote program. W
 
 The core CLI reserves its configured detach chord, **Ctrl+backslash** by default. Sending that chord closes the attachment instead of delivering it, and may discard later bytes in the same input chunk. A Host configured to detach on Ctrl+C also reserves the ordinary interrupt key. Reconnect to continue; the underlying program keeps running. Heeler does not override this core configuration.
 
-Chat, the Heeler plugin, notifications, Live Activities, Usage, renaming, and creating/removing Worktrees are unavailable for this backend. Core does not supply the legacy plugin contract or exact transcript identity. Changes, files, and Skills still use the same Host's SSH filesystem. Terminals federated from another machine are omitted: add that machine directly as a Host so its file operations reach the right computer.
+Chat, the Heeler plugin, notifications, Live Activities, renaming, and creating/removing Worktrees are unavailable for this backend. Usage comes through the [Host Helper](#usage). Core does not supply the legacy plugin contract or exact transcript identity. Changes, files, and Skills still use the same Host's SSH filesystem. Terminals federated from another machine are omitted: add that machine directly as a Host so its file operations reach the right computer.
 
 Existing legacy Hosts stay on herdr. A manually configured Host can be edited or duplicated to select core. Before switching a legacy Host, turn off its notifications and wait for the remote update to finish; an unreachable original Host must be recovered before that registration can be removed. Hosts carrying a paired Herdr Endpoint retain that endpoint when edited or duplicated and cannot change backend. Add a new manual core Host for those accounts.
 
 ## Host Helper
 
-The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. In this version it only follows the core: notifications, Live Activities and Usage still read as unavailable until the app connects them to it.
+The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. It follows the core and answers Usage. Notifications and Live Activities still read as unavailable until the app connects them to it.
 
 The Helper never starts a core. It connects to the core's socket directly, and while no core runs it waits and tries again, so a core you stopped stays stopped until you start it. When you do, the Helper connects on its own, without a restart.
 
@@ -51,5 +51,24 @@ Without systemd linger, the Helper stops about ten seconds after your last login
 | **Not Available** | This platform has no Helper |
 
 Native Windows Hosts read **Not Available**, so Agent Notifications (in-app banners included), Live Activity and Usage are not available there yet. macOS Hosts also read **Not Available** in this version, with no install offered.
+
+## Usage
+
+With the Helper installed, a core Host's Usage works as on any other Host, in the Usage tab, the Host's detail and the widgets: Token Usage for Claude Code and Codex, and Claude Code's Usage Limits when you turn them on for that Host.
+
+The **Default Account** follows the core, not your SSH login. A core usually starts from the desktop or a login shell, with an environment SSH never sees, so the Helper reads the variables that locate Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core process. It reads those by name and nothing else, keeps them in a file only your account can read, and reads them again whenever the core restarts. Change `CLAUDE_CONFIG_DIR` and restart the core to move the Default Account.
+
+To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler suggests the directories of the Claude Code Agents running in the core and those it finds in your home folder. Your choices stay in the Helper's directory, so **Remove** deletes them with it.
+
+| Usage reads | What to do |
+| --- | --- |
+| **Usage needs the Host Helper** | Install it from the Host's detail |
+| **Usage needs a newer Host Helper** | Update it from the Host's detail |
+| **The Host Helper has not reached this session's core yet** | Start the core if it is not running. Heeler keeps checking, and the Helper never starts one |
+| **Usage comes with the Host Helper, which is not available on native Windows yet** | Nothing for now |
+
+Usage reaches the Helper over its own SSH connection when the Host's session has none, so these read the same whether the core is running or not. **Not connected** in the Usage tab and the widgets means SSH itself could not reach the Host.
+
+The Usage widgets say the same in a shorter form, such as **Needs the Host Helper**. With a widget installed, Heeler checks each core Host when you open the app, so you do not have to open Usage for the widget to catch up.
 
 **Remove.** In the sheet, tap **Remove**. Heeler disables and stops the service, deletes the files the install recorded, the Pi and Oh My Pi extensions among them, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.

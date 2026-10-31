@@ -30,7 +30,10 @@ that Heeler can read from outside the process.
   it stops, not only on failure. A user service does not start with the
   core's environment, so for Usage the Helper reads the variables that locate
   Accounts, such as `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, from the core
-  process's environment, only those by name.
+  process's environment, only those by name, at the pid `server.status`
+  reports. The record stays per session, `sessions/<session>/runtime.json`,
+  so two cores on one account keep their own Default Account, and each
+  reconnect reads it again.
 - On Linux the Helper needs systemd linger, as the core does, to run while
   nobody is logged in. The install screen checks it and offers to turn it on.
 - The Helper connects to the core's socket directly, never through `hc`, so it
@@ -44,8 +47,13 @@ that Heeler can read from outside the process.
 - It subscribes to status and turn events and sends Agent Notifications for
   Blocked, Error and Done, and Live Activity updates, through the Push Relay,
   to the devices whose Notification Registrations it holds, encrypted with
-  their Notification Keys. It serves Usage reads as the plugin does. Those
-  Notification Registrations live in the Helper's own directory, one entry
+  their Notification Keys. It serves Usage reads as the plugin does: the app
+  runs the Helper's `usage-query.js` by the Node.js the session's record names,
+  in one bounded exec, and the query and worker are the plugin's own modules.
+  The app's Usage read makes the session's folder, and the Helper also follows
+  a session with a folder, since Usage needs a core's environment without any
+  notification registration. A session nobody registered or read stays
+  untouched. Those Notification Registrations live in the Helper's own directory, one entry
   per device for the core session the Host targets, never in the plugin's
   registration file.
 - A turn's end comes from the status word, as in the app: an Agent ends a
@@ -74,8 +82,11 @@ that Heeler can read from outside the process.
   process reader reads it where the platform has one. Only the program holding
   the Terminal writes it, never a subagent or a headless run a tool started.
   The extension runs inside those programs, and the Helper's own process
-  loads no extension and can start no process. The extension's one child is
-  `/bin/ps`, reading its `start` on macOS, which has no `/proc`.
+  loads no extension. The long-running service starts only `/bin/ps`, for the
+  environment read and a Usage lock's owner on macOS, and the query and worker
+  only what the session's record locates, so none of them can start a core.
+  The extension's one child is `/bin/ps`, reading its `start` on macOS, which
+  has no `/proc`.
   Pi and Oh My Pi get the same file, `heeler-session.js`: Pi's version resolves
   only under Pi, so the status part stays silent under Oh My Pi. The profiles
   are read on the Host by the Helper's own `extension-folders.js`, which the

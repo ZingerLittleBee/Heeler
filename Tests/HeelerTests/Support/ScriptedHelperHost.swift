@@ -41,6 +41,9 @@ actor ScriptedHelperHost: HostHelperHost {
     /// Fails the Node.js run that finds the extension folders, with this message.
     var extensionFoldersFailure: String?
 
+    /// What the Helper's Usage query prints, per session.
+    private var usageAnswers: [String: Data] = [:]
+
     private(set) var files: [String: File] = [:]
     private(set) var folders: [String: UInt32] = [:]
     /// Every step, in order.
@@ -84,6 +87,18 @@ actor ScriptedHelperHost: HostHelperHost {
     func seedFile(_ path: String, _ contents: Data, mode: UInt32 = 0o600) {
         seedFolder((path as NSString).deletingLastPathComponent)
         files[path] = File(contents: contents, mode: mode)
+    }
+
+    /// The files a Usage read looks for in an installed Helper.
+    func installApp(usage: Bool = true) {
+        seedFile("\(Self.helperDirectory)/app/main.js", Data())
+        if usage { seedFile("\(Self.helperDirectory)/app/usage-query.js", Data()) }
+    }
+
+    /// What the Helper has for a session once it has recorded its core.
+    func seedUsage(_ report: Data, session: String) {
+        seedFile("\(Self.helperDirectory)/sessions/\(session)/runtime-node", Data((Self.node + "\n").utf8))
+        usageAnswers[session] = report
     }
 
     /// Everything under a folder, for tests of what an install left.
@@ -173,9 +188,25 @@ actor ScriptedHelperHost: HostHelperHost {
             for path in paths where isEmpty(path) { folders[path] = nil }
         case .removeTree(let path):
             removeTree(path)
+        case .usageQuery(_, _, let session):
+            lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", usageBody(session: session), "__HEELER_USAGE_END_\(script.nonce):0"]
         }
         let framed = (["\(script.nonce) begin"] + lines + ["\(script.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: Data(framed.utf8), stderr: Data(stderr.utf8), exitStatus: status)
+    }
+
+    /// Acts as the Usage script does: it checks the Helper's files, makes the
+    /// session's folder, and has no report without the record's Node.js path.
+    private func usageBody(session: String) -> String {
+        let directory = Self.helperDirectory
+        guard files["\(directory)/app/main.js"] != nil else { return "helper-absent" }
+        guard files["\(directory)/app/usage-query.js"] != nil else { return "helper-outdated" }
+        folders["\(directory)/sessions"] = 0o700
+        folders["\(directory)/sessions/\(session)"] = 0o700
+        let missing = #"{"version":1,"runtime":"missing"}"#
+        guard files["\(directory)/sessions/\(session)/runtime-node"] != nil, let report = usageAnswers[session]
+        else { return missing }
+        return String(decoding: report, as: UTF8.self)
     }
 
     private func isEmpty(_ folder: String) -> Bool {
@@ -289,6 +320,7 @@ actor ScriptedHelperHost: HostHelperHost {
         case .removeFiles(let paths): "removeFiles \(paths.joined(separator: " "))"
         case .removeEmptyFolders(let paths): "removeEmptyFolders \(paths.joined(separator: " "))"
         case .removeTree(let path): "removeTree \(path)"
+        case .usageQuery(_, _, let session): "usageQuery \(session)"
         }
     }
 }

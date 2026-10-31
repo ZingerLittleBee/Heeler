@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { followRegisteredSessions } from "./core/follower.js";
+import { usageSessions } from "./usage/layout.js";
+import { usageListener } from "./usage/recorder.js";
 
 const { version } = JSON.parse(readFileSync(new URL("./version.json", import.meta.url), "utf8"));
 
@@ -12,9 +14,13 @@ console.log(`Heeler Host Helper ${version} started`);
 
 // This file is in the Helper directory's `app` folder, which an update replaces.
 // The registrations sit beside that folder.
+const directory = fileURLToPath(new URL("..", import.meta.url));
+const log = (line) => console.log(line);
 followRegisteredSessions({
-  directory: fileURLToPath(new URL("..", import.meta.url)),
-  log: (line) => console.log(line),
+  directory,
+  log,
+  alsoFollow: () => usageSessions(directory),
+  listener: usageListener({ directory, log }),
 });
 
 // A stop asked for is a clean exit, so the service's result stays success.

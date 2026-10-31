@@ -273,7 +273,11 @@ final class ConsoleStore {
             for projection in projections {
                 await projection.resume()
             }
-            guard revalidating else { return }
+            guard revalidating else {
+                // A core Host with no connection never reports coming up.
+                refreshStaleWidgetUsage()
+                return
+            }
             // Every Host, not only one the user has navigated to: recovery
             // that depends on navigation just trades the Retry button for
             // another hidden step, and the Console is a single list across
@@ -1207,11 +1211,18 @@ final class ConsoleStore {
             hostID: hostID,
             onHost: { [weak self] operation in
                 guard let self else { throw TransportError.cancelled }
-                try await self.withNotificationTransport(for: hostID, operation)
+                try await self.withUsageHost(for: hostID, operation)
             },
             accountFileGate: usageAccountFileGate
         ) { [weak self] timeZone, claudeLimits in
             guard let self else { throw TransportError.cancelled }
+            if let host = self.coreHost(hostID) {
+                return try await self.withCoreConnection(host) { transport in
+                    try await AgentUsageStore.reading(
+                        overHelper: transport.hostHelperHost, session: host.sessionName,
+                        timeZone: timeZone, claudeLimits: claudeLimits)
+                }
+            }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
                     over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
@@ -1222,24 +1233,51 @@ final class ConsoleStore {
         return store
     }
 
+    /// One Host as the Usage tab reads it.
+    func agentUsageEntry(for host: Host) -> AgentUsageHostEntry {
+        let store = agentUsageStore(for: host.id)
+        return AgentUsageHostEntry(
+            id: host.id, name: host.displayName, store: store,
+            isConnected: usageHasConnection(host, state: store.state))
+    }
+
+    /// Whether a Host's Usage has a connection to answer over. A Herdr TUI Host
+    /// borrows the Console's. A core Host's read dials one when the Console has
+    /// none: its Helper answers with the core stopped, and a native Windows Host
+    /// says why it has none though its session never connects. So only a read
+    /// that could not reach the Host makes a core Host not connected.
+    private func usageHasConnection(_ host: Host, state: AgentUsageStore.State) -> Bool {
+        if hostStatuses[host.id] == .connected { return true }
+        return host.serverKind == .herdrCore && !state.couldNotReachHost
+    }
+
     /// Hands every catalog Host's current Usage reading to the widgets.
     private func publishUsageWidgets() {
         guard let usageWidgets else { return }
         usageWidgets.publish(catalog.map { host in
             let store = agentUsageStores[host.id]
+            let state = store?.state ?? .idle
             return AgentUsageWidgetReading(
-                id: host.id, name: host.displayName, state: store?.state ?? .idle, readAt: store?.readAt,
-                isConnected: hostStatuses[host.id] == .connected)
+                id: host.id, name: host.displayName, state: state, readAt: store?.readAt,
+                isConnected: usageHasConnection(host, state: state),
+                keepsLastAnswerUntilRead: host.serverKind == .herdrCore)
         })
     }
 
-    /// Reads Usage again for each connected Host whose widget figures went
-    /// stale, so returning to the app updates the widgets without opening
+    /// Whether a read for the widgets can run now. A Herdr TUI Host borrows the
+    /// Console's connection. A core Host's read dials one when the Console has
+    /// none, so a stopped core or a native Windows Host still gets its answer.
+    private func canReadUsageForWidgets(_ id: Host.ID) -> Bool {
+        hostStatuses[id] == .connected || coreHost(id) != nil
+    }
+
+    /// Reads Usage again for each Host that can be read and whose widget figures
+    /// went stale, so returning to the app updates the widgets without opening
     /// Usage. Nothing is read while no Usage widget is installed.
     private func refreshStaleWidgetUsage() {
         guard let usageWidgets, isActive else { return }
         let hostIDs = catalog.map(\.id).filter { id in
-            hostStatuses[id] == .connected && widgetUsageRefreshes[id] == nil
+            canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
                 && agentUsageStores[id]?.isLoading != true
                 && usageWidgets.isStale(id, readAt: agentUsageStores[id]?.readAt)
         }
@@ -1250,7 +1288,7 @@ final class ConsoleStore {
                     if self?.widgetUsageRefreshes[id]?.id == refresh { self?.widgetUsageRefreshes[id] = nil }
                 }
                 guard await usageWidgets.widgetsInstalled(), !Task.isCancelled, let self,
-                    hostStatuses[id] == .connected
+                    canReadUsageForWidgets(id)
                 else { return }
                 await agentUsageStore(for: id).refresh()
             }
@@ -1485,20 +1523,55 @@ extension ConsoleStore: NotificationTransportProvider {
     }
 
     /// The root follows the Server Kind: a herdr-core Host's files are the Host
-    /// Helper's, over a connection of their own; every other Host's are the
-    /// plugin's, over its live connection.
+    /// Helper's, every other Host's the plugin's, over its live connection.
     func withNotificationFiles<Value: Sendable>(
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
     ) async throws -> Value {
-        guard let host = catalog.first(where: { $0.id == hostID }), host.serverKind == .herdrCore else {
+        guard let host = coreHost(hostID) else {
             return try await projection(for: hostID).withNotificationTransport { transport in
                 try await operation(transport)
             }
         }
+        return try await withCoreConnection(host) { transport in
+            try await operation(HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName))
+        }
+    }
+
+    /// What Usage's Account changes run over. It follows the Server Kind too.
+    fileprivate func withUsageHost(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Void
+    ) async throws {
+        guard let host = coreHost(hostID) else {
+            return try await withNotificationTransport(for: hostID) { try await operation($0) }
+        }
+        try await withCoreConnection(host) { transport in
+            try await operation(HostHelperUsageHost(
+                services: transport.hostServices,
+                files: HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName)))
+        }
+    }
+
+    fileprivate func coreHost(_ hostID: Host.ID) -> Host? {
+        catalog.first { $0.id == hostID && $0.serverKind == .herdrCore }
+    }
+
+    /// A core Host's connection for one operation: the Console's own while it
+    /// has one, else one dialed for the operation, since a Helper answers
+    /// whether or not a core runs.
+    fileprivate func withCoreConnection<Value: Sendable>(
+        _ host: Host,
+        _ operation: @escaping @Sendable (any HerdrCoreTransport) async throws -> Value
+    ) async throws -> Value {
+        if let session = (projections[host.id] as? HerdrCoreConsoleProjection)?.session,
+            let live = try? await session.withTransport({ $0 }), await live.isConnected
+        {
+            return try await operation(live)
+        }
         let transport = try await connectCore(host)
         do {
-            let value = try await operation(HostHelperFiles(host: transport.hostHelperHost))
+            let value = try await operation(transport)
             try? await transport.close()
             return value
         } catch {

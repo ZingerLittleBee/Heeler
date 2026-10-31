@@ -106,6 +106,49 @@ class GeneratorTests(unittest.TestCase):
             listed, ["main.js", "shared/delivery/push.js", "shared/seal.js", "version.json"]
         )
 
+    def test_copies_the_data_file_a_shared_module_loads_and_its_license(self):
+        self.write(
+            "src/usage/pricing.js",
+            'const table = new URL("./pricing.json", import.meta.url);\nexport { table };\n',
+        )
+        self.write("src/usage/pricing.json", "{}\n")
+        self.write("src/usage/pricing.LICENSE", "license\n")
+        self.write("src/usage/other.json", "{}\n")
+        self.write("helper/main.js", 'import { table } from "./shared/usage/pricing.js";\ntable;\n')
+        result = generate(self.plugin)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        listed = [entry["path"] for entry in self.manifest()["files"]]
+        self.assertEqual(
+            listed,
+            [
+                "main.js",
+                "shared/usage/pricing.LICENSE",
+                "shared/usage/pricing.js",
+                "shared/usage/pricing.json",
+                "version.json",
+            ],
+        )
+        self.assertEqual(generate(self.plugin, "--check").returncode, 0)
+
+    def test_refuses_a_data_file_with_no_source(self):
+        self.write(
+            "src/usage/pricing.js",
+            'const table = new URL("./pricing.json", import.meta.url);\nexport { table };\n',
+        )
+        self.write("helper/main.js", 'import { table } from "./shared/usage/pricing.js";\ntable;\n')
+        result = generate(self.plugin)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("usage/pricing.json has no source", result.stderr)
+
+    def test_a_helper_module_loading_its_own_file_copies_nothing(self):
+        self.write(
+            "helper/main.js",
+            'const version = new URL("./version.json", import.meta.url);\nconst up = new URL("..", import.meta.url);\nversion; up;\n',
+        )
+        result = generate(self.plugin)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.helper / "shared").exists())
+
     def test_check_fails_when_a_shared_source_moved_on(self):
         self.write("src/seal.js", "export const seal = 1;\n")
         self.write("helper/main.js", 'import { seal } from "./shared/seal.js";\nseal;\n')
