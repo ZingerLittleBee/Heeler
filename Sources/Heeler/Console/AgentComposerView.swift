@@ -32,18 +32,11 @@ enum AgentComposerKeyboardPull {
     private static let travel: CGFloat = 18
     /// `UIScrollView`'s rubber-band coefficient.
     private static let resistance: CGFloat = 0.55
-    private static let tickSpacing: CGFloat = 2
 
     /// Downward only, each point of the finger moving the grabber less.
     static func grabberOffset(translation: CGFloat) -> CGFloat {
         let pull = max(0, translation)
         return (1 - 1 / (pull * resistance / travel + 1)) * travel
-    }
-
-    /// One haptic per step of the grabber's own movement, so they space out
-    /// as the resistance grows.
-    static func tick(translation: CGFloat) -> Int {
-        Int(grabberOffset(translation: translation) / tickSpacing)
     }
 
     static func reachesHidingDistance(translation: CGFloat) -> Bool {
@@ -369,14 +362,7 @@ struct AgentComposerView: View {
             .gesture(
                 DragGesture(minimumDistance: 2, coordinateSpace: .global)
                     .updating($keyboardPull) { value, pull, _ in
-                        let translation = value.translation.height
-                        if isKeyboardPresented,
-                            AgentComposerKeyboardPull.tick(translation: pull)
-                                != AgentComposerKeyboardPull.tick(translation: translation)
-                        {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                        pull = translation
+                        pull = value.translation.height
                     }
                     .onChanged { value in
                         guard AgentComposerKeyboardPull.reachesHidingDistance(translation: value.translation.height)

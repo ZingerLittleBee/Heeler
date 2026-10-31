@@ -94,18 +94,6 @@ struct AgentComposerKeyboardPullTests {
         #expect(!Pull.isFlickDown(translation: 12, predictedTranslation: 60))
         #expect(!Pull.isFlickDown(translation: -10, predictedTranslation: 200))
     }
-
-    @Test func hapticsFollowTheGrabberSoTheySpaceOutUnderResistance() {
-        #expect(Pull.tick(translation: 0) == 0)
-        #expect(Pull.tick(translation: -30) == 0)
-        let ticks = stride(from: CGFloat(0), through: 44, by: 1).map { Pull.tick(translation: $0) }
-        #expect(ticks == ticks.sorted())
-        #expect(ticks.last ?? 0 >= 3, "a pull to the distance should be felt: \(ticks)")
-        // Finger points spent per tick grow along the pull.
-        let spans = Dictionary(grouping: ticks, by: { $0 }).filter { $0.key > 0 }
-            .sorted { $0.key < $1.key }.dropLast().map(\.value.count)
-        #expect(spans == spans.sorted(), "\(spans)")
-    }
 }
 
 /// One Esc per tap, then a wait on Agent Status: an Esc landing after the
