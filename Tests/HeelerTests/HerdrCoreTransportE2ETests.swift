@@ -461,9 +461,13 @@ struct HerdrCoreTransportE2ETests {
                     try await fixture.rpc("terminal.get", params: .object(["terminal": .string(address)])))
                 return record.foreground?.pid != nil
             }
-            let composer = store.composerStore(for: agent)
-            composer.bindCoreAttach(attach)
-            return (composer, attach)
+            return (store.composerStore(for: agent), attach)
+        }
+
+        func policy(typingInto attach: AgentAttachStore) -> ComposerDeliveryPolicy {
+            var policy = ComposerDeliveryPolicy.terminal
+            policy.coreAttach = attach
+            return policy
         }
 
         // The passing path: the markers, then Enter as the program asked for it.
@@ -471,7 +475,7 @@ struct HerdrCoreTransportE2ETests {
         let staying = try await fixture.runTerminal([stays, log], keep: false)
         let (staysComposer, staysAttach) = try await composer(at: staying)
         staysComposer.replaceDraft(with: "hello e2e")
-        let sent = await staysComposer.send()
+        let sent = await staysComposer.send(policy: policy(typingInto: staysAttach))
         #expect(sent == .submittedViaAttach)
         let expected = Data("\u{1B}[200~hello e2e\u{1B}[201~\u{1B}[13u".utf8)
         try await eventually { try await fixture.contents(of: log) == expected }
@@ -486,14 +490,18 @@ struct HerdrCoreTransportE2ETests {
         let (exitsComposer, exitsAttach) = try await composer(at: exiting)
         let text = "touch \(marker)"
         exitsComposer.replaceDraft(with: text)
-        let result = await exitsComposer.send()
+        let result = await exitsComposer.send(policy: policy(typingInto: exitsAttach))
         guard case .refused(.notSubmitted) = result else {
             Issue.record("A program that exited read \(result)")
             return
         }
         #expect(exitsComposer.draft == text)
-        // Long enough for a shell handed an Enter to have run the line.
-        try await Task.sleep(for: .seconds(1))
+        // The shell reads its input in order, so a line it was handed earlier has run
+        // once this one's file exists. Text it kept would join this line as more
+        // words for `touch`, the marker among them.
+        let barrier = "\(directory)/barrier"
+        exitsAttach.send(Data(" touch \(barrier)\r".utf8))
+        try await eventually { try await fixture.exists(barrier) }
         #expect(try await !fixture.exists(marker))
         #expect(try await fixture.contents(of: exitLog) == Data("\u{1B}[200~".utf8))
         await exitsAttach.leave().value

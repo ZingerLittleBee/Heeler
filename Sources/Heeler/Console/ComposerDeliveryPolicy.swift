@@ -90,6 +90,10 @@ struct ComposerDeliveryPolicy: Sendable {
     /// Runs after `agent.prompt` succeeds with the text it sent; false means
     /// the text never left the Agent's input box. Nothing is resent.
     var verify: (@MainActor (String) async -> Bool)?
+    /// The Attach of the window sending, which a herdr-core Send on this route
+    /// types into: one Agent's Composer can be open in several windows, each with
+    /// a viewer of its own. Nothing on a Herdr TUI Host.
+    var coreAttach: AgentAttachStore?
 
     static let terminal = ComposerDeliveryPolicy(
         route: .terminal, insertsIntoAttachWhenBlocked: true, outgoingText: { $0 },

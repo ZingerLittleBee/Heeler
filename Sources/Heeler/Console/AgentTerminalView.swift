@@ -759,7 +759,6 @@ struct AgentTerminalView: View {
                 jumpNewer: { jumpToNewerMessageOrLive() },
                 lastViewportFrame: { messageJump.lastViewportFrame })
             composer.bindAttachInput(attach.input)
-            composer.bindCoreAttach(attach)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
             if isOnStage() {
@@ -1278,6 +1277,13 @@ struct AgentTerminalView: View {
             }
     }
 
+    /// This window's Attach, since another window can show the same Agent's Composer.
+    private var sendPolicy: ComposerDeliveryPolicy {
+        var policy = ComposerDeliveryPolicy.terminal
+        policy.coreAttach = attach
+        return policy
+    }
+
     private var composerChrome: some View {
         AgentComposerView(
             store: composer,
@@ -1304,6 +1310,7 @@ struct AgentTerminalView: View {
             },
             onFirstResponderRequest: composerFirstResponderRequest,
             onKeyboardHandoffSettled: composerKeyboardHandoffSettled,
+            sendPolicy: sendPolicy,
             collapsesWithoutKeyboard: false,
             interrupt: stopInterrupt,
             offersSend: console.capabilities(for: agent.hostID).composerSend)

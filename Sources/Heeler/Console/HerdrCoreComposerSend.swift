@@ -10,6 +10,8 @@ protocol HerdrCoreTypingSeat: AnyObject, Sendable {
     /// have; anything else says they never did.
     func write(_ data: Data, indexedAs source: AttachUserMessageIndex.OutgoingSource?) async throws
     func recordSubmitted(_ text: String)
+    /// `data` left and now waits, unsubmitted, for the user to finish it.
+    func notePendingInsert(_ data: Data)
     func leave()
 }
 
@@ -70,6 +72,10 @@ private final class ViewedAttachSeat: HerdrCoreTypingSeat {
         attach.input.recordSubmitted(text, generation: session)
     }
 
+    func notePendingInsert(_ data: Data) {
+        attach.input.notePendingInsert(data, generation: session)
+    }
+
     func leave() {}
 }
 
@@ -108,8 +114,10 @@ final class HerdrCoreComposerSend {
     private let address: String
     private let projection: @MainActor () -> HerdrCoreConsoleProjection?
     private let clock: BlockedCardClock
-    private weak var attach: AgentAttachStore?
     private var lastSend: Task<Outcome, Never>?
+    /// A Send ended with bytes nobody answered for. They stay queued however long
+    /// that takes, so another paste would line up behind them under one submit.
+    private var lastSendHasNoAnswer = false
 
     init(
         address: String,
@@ -121,16 +129,14 @@ final class HerdrCoreComposerSend {
         self.clock = clock
     }
 
-    /// The Attach the user is viewing.
-    func bind(_ attach: AgentAttachStore?) {
-        self.attach = attach
-    }
-
-    func send(_ text: String, route: ComposerRoute = .terminal) async -> Outcome {
+    /// `attach` is the one the user is viewing, in the window sending. Chat has none.
+    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?) async -> Outcome {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
-            return await deliver(text, route: route)
+            let outcome = await deliver(text, route: route, attach: attach)
+            if outcome == .outcomeUnknown { lastSendHasNoAnswer = true }
+            return outcome
         }
         lastSend = send
         return await send.value
@@ -138,8 +144,10 @@ final class HerdrCoreComposerSend {
 
     // MARK: The steps
 
-    private func deliver(_ text: String, route: ComposerRoute) async -> Outcome {
+    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
+        if lastSendHasNoAnswer { return await settleLastSend(in: projection) }
+
         var viewed: ViewedAttachSeat?
         if route == .terminal {
             guard let attach else { return .failed(Self.notConnected) }
@@ -150,9 +158,7 @@ final class HerdrCoreComposerSend {
         let held: HerdrCoreAgentHolder
         switch await HerdrCoreAgentHolder.current(at: address, in: projection, clock: clock) {
         case .success(let holder): held = holder
-        case .failure(.agentLeft): return .refused(.inputNotReady(Self.agentLeft))
-        case .failure(.notSampledYet): return .refused(.inputNotReady(Self.notSampledYet))
-        case .failure(.noAnswer): return .failed(Self.noAnswerBeforePaste)
+        case .failure(let problem): return Self.outcome(of: problem)
         }
         let isBlocked = held.agent.status == .blocked
 
@@ -171,6 +177,10 @@ final class HerdrCoreComposerSend {
             }
         }
         defer { seat.leave() }
+
+        if viewed == nil, let change = await changeWhileViewerOpened(from: held, in: projection) {
+            return change
+        }
 
         let modes = seat.modes
         guard modes.usesBracketedPaste else { return .refused(.programNotAcceptingPaste) }
@@ -195,12 +205,13 @@ final class HerdrCoreComposerSend {
         case .unknown: return .outcomeUnknown
         }
         if isBlocked { return .pasted }
-        wake.yield(.pasteLeft)
 
         switch await sampleAfterPaste(of: held, wakes: wakes, wake: wake, in: projection) {
         case .holds(let record):
             if HerdrCoreAgentRule.agent(in: record)?.status == .blocked {
-                return route == .chat ? .refused(.notSubmitted(Self.becameBlocked)) : .pasted
+                guard route == .terminal else { return .refused(.notSubmitted(Self.becameBlocked)) }
+                seat.notePendingInsert(paste)
+                return .pasted
             }
             guard clock.now() - pasteStart < Self.submitWindow else {
                 return .refused(.notSubmitted(Self.windowPassed))
@@ -215,18 +226,60 @@ final class HerdrCoreComposerSend {
         }
     }
 
-    /// Waits, bounded, for an Attach that can take input, opening one if none is
-    /// on its way.
+    /// Nothing goes while the Host stays silent. Its answer says what was queued has
+    /// left, since the writer keeps order, and so that it may be in the Agent's input,
+    /// where the next submit would take it along. Only the user can see that, so they
+    /// hear it once and the next Send is theirs.
+    private func settleLastSend(in projection: HerdrCoreConsoleProjection) async -> Outcome {
+        do {
+            _ = try await read(in: projection)
+        } catch where Self.saysProgramEnded(error) {
+            lastSendHasNoAnswer = false
+            return .refused(.inputNotReady(Self.agentLeft))
+        } catch {
+            return .failed(Self.noAnswerBeforePaste)
+        }
+        lastSendHasNoAnswer = false
+        return .refused(.inputNotReady(Self.lastSendMayRemain))
+    }
+
+    private static func outcome(of problem: HerdrCoreAgentHolder.Problem) -> Outcome {
+        switch problem {
+        case .agentLeft: .refused(.inputNotReady(agentLeft))
+        case .notSampledYet: .refused(.inputNotReady(notSampledYet))
+        case .noAnswer: .failed(noAnswerBeforePaste)
+        }
+    }
+
+    /// Opening Chat's viewer can take seconds, and a paste goes only while the same
+    /// process holds the foreground and has no dialog up. Why not, or nil to go on.
+    private func changeWhileViewerOpened(
+        from held: HerdrCoreAgentHolder, in projection: HerdrCoreConsoleProjection
+    ) async -> Outcome? {
+        switch await HerdrCoreAgentHolder.current(at: address, in: projection, clock: clock) {
+        case .failure(let problem):
+            return Self.outcome(of: problem)
+        case .success(let now):
+            guard Self.holdsTheSameProgram(now.foreground, as: held) else {
+                return .refused(.inputNotReady(Self.holderChangedWhileOpening))
+            }
+            return now.agent.status == .blocked ? .refused(.agentBlocked) : nil
+        }
+    }
+
+    /// Waits, bounded, for an Attach whose first paint is in, so that its modes are
+    /// the program's, opening one if none is on its way.
     private func liveSession(
         of attach: AgentAttachStore
     ) async -> TerminalInputController.SessionGeneration? {
         let input = attach.input
-        if let ready = input.readySession { return ready }
-        attach.openForSend()
+        if let painted = input.paintedSession { return painted }
+        if input.readySession == nil { attach.openForSend() }
         try? await AsyncDeadline.run(for: Self.liveAttachTimeout, sleep: clock.sleep) {
             await input.untilSessionIsReady()
+            await input.untilSessionHasPainted()
         }
-        return input.readySession
+        return input.paintedSession
     }
 
     private enum Write {
@@ -277,15 +330,16 @@ final class HerdrCoreComposerSend {
 
     private enum Wake: Sendable {
         case program(HerdrCoreProgramChange)
-        case pasteLeft
         case sampleDelayPassed
         case read(Result<HerdrCoreTerminalRecord, any Error>)
     }
 
-    /// Waits for a foreground sample taken after the paste: the next event, or
-    /// the sample delay followed by a read. An event that shows the Agent gone
-    /// ends the wait at once; one that shows it still there does not hurry the
-    /// submit, which keeps the full delay.
+    /// Waits for a foreground sample taken after the paste: the sample delay
+    /// followed by a read, which the core answers at least that long after the
+    /// paste reached it. An event that shows the Agent gone ends the wait at once.
+    /// One that shows it still there says nothing about after the paste: the core
+    /// may have sampled it before the paste arrived, and it sends no other until
+    /// the foreground changes.
     private func sampleAfterPaste(
         of held: HerdrCoreAgentHolder, wakes: AsyncStream<Wake>, wake: AsyncStream<Wake>.Continuation,
         in projection: HerdrCoreConsoleProjection
@@ -301,21 +355,13 @@ final class HerdrCoreComposerSend {
             reading?.cancel()
         }
 
-        var hasPasteLeft = false
-        var sawSampleAfterPaste = false
         for await event in wakes {
             switch event {
             case .program(.ended):
                 return .ended
             case .program(.sample(let foreground)):
                 guard Self.holdsTheSameProgram(foreground, as: held) else { return .changed(foreground) }
-                sawSampleAfterPaste = hasPasteLeft
-            case .pasteLeft:
-                hasPasteLeft = true
             case .sampleDelayPassed:
-                if sawSampleAfterPaste {
-                    return .holds(projection.terminalRecord(at: address) ?? held.record)
-                }
                 reading = Task {
                     do {
                         wake.yield(.read(.success(try await read(in: projection))))
@@ -397,7 +443,11 @@ final class HerdrCoreComposerSend {
     private static let becameBlocked =
         "The Agent started asking something before the message was submitted, so nothing was submitted. The text may still be in the Agent's input."
     private static let noAnswerBeforePaste = "The Host did not answer, so nothing was sent. Check the connection and retry."
+    private static let lastSendMayRemain =
+        "The last message may still be in the Agent's input, so nothing was sent. Check the terminal, then send again."
     private static let agentLeft = "The Agent no longer holds this terminal, so nothing was sent."
+    private static let holderChangedWhileOpening =
+        "Another process took over the terminal as Heeler reached it, so nothing was sent."
     private static let notSampledYet = "The Agent is still starting, so nothing was sent. Try again in a moment."
     private static let unknownSubmitKey = "This Terminal's Template names a submit key Heeler cannot press, so nothing was sent."
     private static let windowPassed =

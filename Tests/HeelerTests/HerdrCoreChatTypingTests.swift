@@ -546,6 +546,93 @@ struct HerdrCoreChatTypingTests {
         fixture.finish()
     }
 
+    // MARK: A Send's viewer takes seconds to open
+
+    /// A Send past its checks, its viewer's attach not answered.
+    private static func sendWaitingForItsViewer(
+        _ fixture: Fixture
+    ) async throws -> (sending: Task<AgentComposerStore.SendResult, Never>, viewer: Attached) {
+        await fixture.scripted.holdAttachReplies(onlyViewers: true)
+        let sending = fixture.startSend()
+        return (sending, try await fixture.viewer())
+    }
+
+    /// Nothing reached the program, the draft is back, and the viewer went.
+    private static func expectNothingTyped(on viewer: Attached, _ fixture: Fixture) async {
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        #expect(fixture.composer.draft == "hello")
+        #expect(fixture.composer.messages.isEmpty)
+    }
+
+    @Test(arguments: [(41, "bash"), (40, "bash"), (40, "vim")])
+    func aSendTypesNothingOnceTheAgentLeavesWhileItsViewerOpens(pid: Int, program: String) async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await Self.sendWaitingForItsViewer(fixture)
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: pid, argv: [program]))
+        try await Self.until("the Agent to go") { fixture.console.agents.isEmpty }
+        await fixture.scripted.releaseAttachReplies()
+
+        guard case .refused(.inputNotReady(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("no longer holds this terminal"))
+        await Self.expectNothingTyped(on: viewer, fixture)
+        fixture.finish()
+    }
+
+    @Test func aSendTypesNothingOnAnotherProcessThatTookOverWhileItsViewerOpened() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await Self.sendWaitingForItsViewer(fixture)
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41))
+        try await fixture.untilEventsApplied()
+        await fixture.scripted.releaseAttachReplies()
+
+        guard case .refused(.inputNotReady(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("Another process took over"))
+        await Self.expectNothingTyped(on: viewer, fixture)
+        fixture.finish()
+    }
+
+    /// Chat answers a dialog with its card, and never types into one.
+    @Test func aSendTypesNothingIntoADialogThatCameUpWhileItsViewerOpened() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await Self.sendWaitingForItsViewer(fixture)
+
+        try await fixture.deliverEvent(
+            "status",
+            data: .object([
+                "status": .object(["state": .string("blocked"), "app": .string("claude-code")]),
+                "reported": .bool(true),
+            ]))
+        try await fixture.untilEventsApplied()
+        await fixture.scripted.releaseAttachReplies()
+
+        #expect(await sending.value == .refused(.agentBlocked))
+        await Self.expectNothingTyped(on: viewer, fixture)
+        fixture.finish()
+    }
+
+    /// The other side of those: an open with nothing changed still sends.
+    @Test func aSendGoesOnceItsViewerOpensOnTheSameProgram() async throws {
+        let fixture = try await Fixture()
+        let (sending, viewer) = try await Self.sendWaitingForItsViewer(fixture)
+
+        await fixture.scripted.releaseAttachReplies()
+        await viewer.socket.waitForData(channel: viewer.channel, count: 1)
+        await fixture.answerSample()
+
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await fixture.written(on: viewer) == [Self.pasteOfSend, Self.enter])
+        fixture.finish()
+    }
+
     // MARK: A step with no answer
 
     private static func expectUnknownAndNoRetry(_ fixture: Fixture) async throws {

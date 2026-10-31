@@ -216,6 +216,10 @@ struct TerminalModeTracker: Equatable {
     /// DECSET 2004. When the remote application has asked for it, pasted text
     /// can be framed as a paste instead of arriving as a run of keystrokes.
     private(set) var usesBracketedPaste = false
+    /// Whether the stream has said anything of DECSET 9001. A herdr-core viewer's
+    /// first paint ends by saying whether the program wants win32 key events, and
+    /// always does, so on such a stream this means that paint is in.
+    private(set) var hasNamedWin32InputMode = false
 
     var tracksMouse: Bool {
         !mouseTrackingModes.isEmpty
@@ -290,6 +294,8 @@ struct TerminalModeTracker: Equatable {
             usesSGRMouseEncoding = enabled
         case 2004:
             usesBracketedPaste = enabled
+        case 9001:
+            hasNamedWin32InputMode = true
         default:
             break
         }

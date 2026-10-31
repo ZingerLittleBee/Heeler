@@ -14,6 +14,8 @@ struct HerdrCoreComposerSendTests {
     private static let ctrlC = "\u{3}"
     private static let bracketedPasteOn = "\u{1B}[?2004h"
     private static let kittyAllKeys = "\u{1B}[>8u"
+    /// The win32 input mode's sequence: every first paint ends with it.
+    private static let paintEnd = "\u{1B}[?9001l"
 
     private static func foreground(pid: Int = 40, argv: [String] = ["claude"]) -> JSONValue {
         .object([
@@ -52,7 +54,7 @@ struct HerdrCoreComposerSendTests {
         let attach: AgentAttachStore
         private let box: SessionBox
 
-        init(terminal: JSONValue = HerdrCoreComposerSendTests.record(), bindsAttach: Bool = true) async throws {
+        init(terminal: JSONValue = HerdrCoreComposerSendTests.record()) async throws {
             let scripted = ScriptedCoreHost(channel: .core(.init(id: "c1", terminals: [terminal])))
             self.scripted = scripted
             let box = SessionBox()
@@ -88,7 +90,6 @@ struct HerdrCoreComposerSendTests {
             attach = AgentAttachStore(
                 target: agent.agent.paneID, paneTitle: "", transportGeneration: nil, isOnStage: { true },
                 runTerminal: console.terminalRunner(for: host.id), closePane: {})
-            if bindsAttach { composer.bindCoreAttach(attach) }
         }
 
         func finish() async {
@@ -102,17 +103,40 @@ struct HerdrCoreComposerSendTests {
             _ = try await session.withTransport { try await $0.serverStatus() }
         }
 
+        /// What a window sends with: its own Attach.
+        var policy: ComposerDeliveryPolicy {
+            var policy = ComposerDeliveryPolicy.terminal
+            policy.coreAttach = attach
+            return policy
+        }
+
         /// The Attach, once the core answered it and its output set `modes`.
         @discardableResult
         func live(
             modes: String = HerdrCoreComposerSendTests.bracketedPasteOn
         ) async throws -> (channel: UInt32, socket: FakeCoreSocket) {
+            try await open(attach, modes: modes)
+        }
+
+        /// Another window's viewer of the same Agent, sharing its Composer.
+        func openOtherWindow() async throws -> (attach: AgentAttachStore, channel: UInt32, socket: FakeCoreSocket) {
+            let other = AgentAttachStore(
+                target: "t1", paneTitle: "", transportGeneration: nil, isOnStage: { true },
+                runTerminal: console.terminalRunner(for: host.id), closePane: {})
+            let opened = try await open(other, attachCount: 2)
+            return (other, opened.channel, opened.socket)
+        }
+
+        private func open(
+            _ attach: AgentAttachStore, modes: String = HerdrCoreComposerSendTests.bracketedPasteOn,
+            attachCount: Int = 1
+        ) async throws -> (channel: UInt32, socket: FakeCoreSocket) {
             attach.viewDidResize(cols: 80, rows: 24)
-            await scripted.waitForMethod("terminal.attach")
+            await scripted.waitForMethod("terminal.attach", count: attachCount)
             let opened = try #require(await scripted.attaches.last)
             try await opened.socket.deliver(
-                HerdrCoreFrame(channel: opened.channel, kind: .data, payload: Data((modes + "x").utf8)))
-            try await until("the Attach's output") { [attach] in attach.input.readySession != nil }
+                HerdrCoreFrame(channel: opened.channel, kind: .data, payload: Data((modes + "x" + HerdrCoreComposerSendTests.paintEnd).utf8)))
+            try await until("the Attach's output") { attach.input.readySession != nil }
             return (opened.channel, opened.socket)
         }
 
@@ -122,7 +146,8 @@ struct HerdrCoreComposerSendTests {
         ) async -> Task<AgentComposerStore.SendResult, Never> {
             composer.replaceDraft(with: "hello")
             let composer = composer
-            let sending = Task { await composer.send() }
+            let policy = policy
+            let sending = Task { await composer.send(policy: policy) }
             await attached.socket.waitForData(channel: attached.channel, count: writtenBefore + 1)
             return sending
         }
@@ -135,6 +160,20 @@ struct HerdrCoreComposerSendTests {
 
         func deliverForeground(_ data: JSONValue, sequence: Int = 101) async throws {
             try await deliverEvent("foreground", data: data, sequence: sequence)
+        }
+
+        /// Events apply in order, so a status showing means those before it applied.
+        func untilEventsFolded() async throws {
+            try await deliverEvent(
+                "status",
+                data: .object([
+                    "status": .object(["state": .string("working"), "app": .string("claude-code")]),
+                    "reported": .bool(true),
+                ]),
+                sequence: 102)
+            try await HerdrCoreComposerSendTests.until("the events to fold") { [console] in
+                console.agents.first?.agent.status == .working
+            }
         }
 
         func deliverEvent(_ type: String, data: JSONValue, sequence: Int = 101) async throws {
@@ -220,31 +259,49 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
-    /// The event is the fresh sample, so no read is needed, and the submit still
-    /// waits out the full delay.
-    @Test func aForegroundEventBeforeTheDelaySparesTheReadAndDoesNotHurryTheSubmit() async throws {
+    /// An event can have been sampled before the paste reached the core, so only
+    /// the read says the Agent still holds the terminal after it.
+    @Test func aForegroundEventOfTheSameProgramNeitherHurriesNorSparesTheRead() async throws {
         let fixture = try await Fixture()
         let attached = try await fixture.live()
         let sending = await fixture.sendPastingHello(on: attached)
 
         await fixture.clock.untilParked(for: HerdrCoreComposerSend.sampleDelay)
         try await fixture.deliverForeground(Self.foreground())
-        // The status behind it shows both events have been folded.
-        try await fixture.deliverEvent(
-            "status",
-            data: .object([
-                "status": .object(["state": .string("working"), "app": .string("claude-code")]),
-                "reported": .bool(true),
-            ]),
-            sequence: 102)
-        try await Self.until("the events to fold") { fixture.console.agents.first?.agent.status == .working }
+        try await fixture.untilEventsFolded()
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
 
         fixture.clock.advance(HerdrCoreComposerSend.sampleDelay)
-        await attached.socket.waitForData(channel: attached.channel, count: 2)
+        await fixture.scripted.waitForMethod("terminal.get")
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+
+        await fixture.scripted.answerTerminalReads(with: Self.record())
         #expect(await sending.value == .submittedViaAttach)
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.enter])
-        #expect(await !fixture.scripted.methods.contains("terminal.get"))
+        await fixture.finish()
+    }
+
+    /// The Agent exits right after an event sampled before the paste arrived: the
+    /// read is what stops the Enter that would run the paste in the shell.
+    @Test func aReadAfterAnEventOfTheSameProgramStillStopsTheSubmit() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        let sending = await fixture.sendPastingHello(on: attached)
+
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.sampleDelay)
+        try await fixture.deliverForeground(Self.foreground())
+        try await fixture.untilEventsFolded()
+        fixture.clock.advance(HerdrCoreComposerSend.sampleDelay)
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(
+            with: Self.record(foreground: Self.foreground(argv: ["bash", "-i"])))
+
+        guard case .refused(.notSubmitted(let reason)) = await sending.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("no longer in the terminal"))
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.ctrlC])
         await fixture.finish()
     }
 
@@ -438,7 +495,7 @@ struct HerdrCoreComposerSendTests {
         let attached = try await fixture.live(modes: "")
 
         fixture.composer.replaceDraft(with: "hello")
-        let result = await fixture.composer.send()
+        let result = await fixture.composer.send(policy: fixture.policy)
 
         #expect(result == .refused(.programNotAcceptingPaste))
         #expect(fixture.composer.draft == "hello")
@@ -455,7 +512,7 @@ struct HerdrCoreComposerSendTests {
         try await Self.until("the Agent to leave") { fixture.console.agents.isEmpty }
 
         fixture.composer.replaceDraft(with: "hello")
-        let result = await fixture.composer.send()
+        let result = await fixture.composer.send(policy: fixture.policy)
 
         guard case .refused(.inputNotReady) = result else {
             Issue.record("Expected a refusal, got \(result)")
@@ -472,7 +529,7 @@ struct HerdrCoreComposerSendTests {
 
         fixture.composer.replaceDraft(with: "hello")
         let composer = fixture.composer
-        let sending = Task { await composer.send() }
+        let sending = Task { await composer.send(policy: fixture.policy) }
         await fixture.scripted.waitForMethod("terminal.get")
         #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
         await fixture.scripted.answerTerminalReads(with: Self.record())
@@ -493,7 +550,7 @@ struct HerdrCoreComposerSendTests {
 
         fixture.composer.replaceDraft(with: "hello")
         let composer = fixture.composer
-        let sending = Task { await composer.send() }
+        let sending = Task { await composer.send(policy: fixture.policy) }
         await fixture.scripted.waitForMethod("terminal.get")
         await fixture.scripted.answerTerminalReads(with: Self.record(foreground: nil))
         let result = await sending.value
@@ -514,7 +571,7 @@ struct HerdrCoreComposerSendTests {
         let attached = try await fixture.live()
 
         fixture.composer.replaceDraft(with: "a\u{1B}[201~b")
-        let result = await fixture.composer.send()
+        let result = await fixture.composer.send(policy: fixture.policy)
 
         #expect(result == .failed)
         #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
@@ -526,7 +583,7 @@ struct HerdrCoreComposerSendTests {
         let attached = try await fixture.live()
 
         fixture.composer.replaceDraft(with: "hello")
-        guard case .refused(.inputNotReady) = await fixture.composer.send() else {
+        guard case .refused(.inputNotReady) = await fixture.composer.send(policy: fixture.policy) else {
             Issue.record("Expected a refusal")
             return
         }
@@ -543,7 +600,7 @@ struct HerdrCoreComposerSendTests {
         fixture.attach.viewDidResize(cols: 80, rows: 24)
         fixture.composer.replaceDraft(with: "hello")
         let composer = fixture.composer
-        let sending = Task { await composer.send() }
+        let sending = Task { await composer.send(policy: fixture.policy) }
 
         await fixture.clock.untilParked(for: HerdrCoreComposerSend.liveAttachTimeout)
         fixture.clock.advance(HerdrCoreComposerSend.liveAttachTimeout)
@@ -558,10 +615,10 @@ struct HerdrCoreComposerSendTests {
         await fixture.scripted.releaseAttachReplies()
         let attached = try #require(await fixture.scripted.attaches.last)
         try await attached.socket.deliver(
-            HerdrCoreFrame(channel: attached.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "x").utf8)))
+            HerdrCoreFrame(channel: attached.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "x" + Self.paintEnd).utf8)))
         try await Self.until("the Attach's output") { fixture.attach.input.readySession != nil }
 
-        let retrying = Task { await composer.retry(failed.id) }
+        let retrying = Task { await composer.retry(failed.id, policy: fixture.policy) }
         await attached.socket.waitForData(channel: attached.channel, count: 1)
         await fixture.passSampleDelay()
         await fixture.scripted.waitForMethod("terminal.get")
@@ -583,11 +640,11 @@ struct HerdrCoreComposerSendTests {
 
         fixture.composer.replaceDraft(with: "hello")
         let composer = fixture.composer
-        let sending = Task { await composer.send() }
+        let sending = Task { await composer.send(policy: fixture.policy) }
         await fixture.scripted.waitForMethod("terminal.attach", count: 2)
         let second = try #require(await fixture.scripted.attaches.last)
         try await second.socket.deliver(
-            HerdrCoreFrame(channel: second.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "x").utf8)))
+            HerdrCoreFrame(channel: second.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "x" + Self.paintEnd).utf8)))
 
         await second.socket.waitForData(channel: second.channel, count: 1)
         await fixture.passSampleDelay()
@@ -599,10 +656,113 @@ struct HerdrCoreComposerSendTests {
     }
 
     @Test func aComposerWithNoAttachFailsWithNothingSent() async throws {
-        let fixture = try await Fixture(bindsAttach: false)
+        let fixture = try await Fixture()
         fixture.composer.replaceDraft(with: "hello")
-        #expect(await fixture.composer.send() == .failed)
+        #expect(await fixture.composer.send(policy: .terminal) == .failed)
         #expect(await fixture.scripted.attaches.isEmpty)
+        await fixture.finish()
+    }
+
+    // MARK: The paint
+
+    /// The Attach, with the start of its paint: every mode off, and some of the
+    /// screen. It has output, so it takes input, and its modes say nothing yet.
+    private static func paintingAttach(_ fixture: Fixture) async throws -> (channel: UInt32, socket: FakeCoreSocket) {
+        fixture.attach.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let opened = try #require(await fixture.scripted.attaches.last)
+        try await opened.socket.deliver(
+            HerdrCoreFrame(channel: opened.channel, kind: .data, payload: Data("\u{1B}[?2004lhistory".utf8)))
+        try await Self.until("the Attach's output") { fixture.attach.input.readySession != nil }
+        return (opened.channel, opened.socket)
+    }
+
+    /// The core's writer can cut a paint anywhere, its last sequence included.
+    @Test func aSendWaitsForThePaintBeforeItBelievesTheModes() async throws {
+        let fixture = try await Fixture()
+        let attached = try await Self.paintingAttach(fixture)
+
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let sending = Task { await composer.send(policy: fixture.policy) }
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.liveAttachTimeout)
+        #expect(fixture.composer.notice == nil)
+        #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
+
+        try await attached.socket.deliver(
+            HerdrCoreFrame(
+                channel: attached.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "\u{1B}[?90").utf8)))
+        try await attached.socket.deliver(
+            HerdrCoreFrame(channel: attached.channel, kind: .data, payload: Data("01l".utf8)))
+        await attached.socket.waitForData(channel: attached.channel, count: 1)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.enter])
+        await fixture.finish()
+    }
+
+    /// The wait is bounded, and says the terminal did not connect, not that the
+    /// program takes no paste.
+    @Test func aPaintThatDoesNotFinishInTimeFailsWithNothingSent() async throws {
+        let fixture = try await Fixture()
+        let attached = try await Self.paintingAttach(fixture)
+
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let sending = Task { await composer.send(policy: fixture.policy) }
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.liveAttachTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.liveAttachTimeout)
+
+        #expect(await sending.value == .failed)
+        #expect(fixture.composer.messages.last?.state == .failed(
+            "The terminal did not connect in time, so nothing was sent. Retry when it shows."))
+        #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
+        await fixture.finish()
+    }
+
+    // MARK: Two windows
+
+    /// One Composer per Agent, so the last window to appear must not take the
+    /// other's Send: its bytes, its mode checks or its size lead.
+    @Test func aSendTypesIntoTheAttachOfTheWindowItCameFrom() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        let other = try await fixture.openOtherWindow()
+
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let sending = Task { await composer.send(policy: fixture.policy) }
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.enter])
+        #expect(await other.socket.dataWritten(channel: other.channel).isEmpty)
+        await other.attach.leave().value
+        await fixture.finish()
+    }
+
+    /// The window that left took its viewer with it, and this one's is still live.
+    @Test func aWindowKeepsSendingOnceTheOtherHasLeft() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        let other = try await fixture.openOtherWindow()
+        await other.attach.leave().value
+
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let sending = Task { await composer.send(policy: fixture.policy) }
+        await attached.socket.waitForData(channel: attached.channel, count: 1)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.enter])
         await fixture.finish()
     }
 
@@ -636,13 +796,34 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
+    /// The tools keyboard's Enter submits it, as it does a paste into an Agent that
+    /// was Blocked before the Send, so the message can be jumped to either way.
+    @Test func aPasteTheAgentStartedAskingOverIsIndexedOnceItsEnterGoes() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        fixture.composer.replaceDraft(with: "hello there")
+        let composer = fixture.composer
+        let sending = Task { await composer.send(policy: fixture.policy) }
+        await attached.socket.waitForData(channel: attached.channel, count: 1)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record(status: "blocked"))
+        #expect(await sending.value == .deliveredViaAttach)
+        #expect(fixture.attach.input.userMessageIndex.entries.isEmpty)
+
+        fixture.attach.input.send(Data(Self.enter.utf8))
+
+        #expect(fixture.attach.input.userMessageIndex.entries.map(\.rawText) == ["hello there"])
+        await fixture.finish()
+    }
+
     // MARK: A step with no answer
 
     private static func expectUnknownAndNoRetry(_ fixture: Fixture) async throws {
         let message = try #require(fixture.composer.messages.last)
         #expect(message.state == .outcomeUnknown)
         #expect(fixture.composer.draft.isEmpty)
-        #expect(await fixture.composer.retry(message.id) == .ignored)
+        #expect(await fixture.composer.retry(message.id, policy: fixture.policy) == .ignored)
         #expect(fixture.composer.messages.last?.state == .outcomeUnknown)
     }
 
@@ -653,7 +834,7 @@ struct HerdrCoreComposerSendTests {
 
         fixture.composer.replaceDraft(with: "hello")
         let composer = fixture.composer
-        let sending = Task { await composer.send() }
+        let sending = Task { await composer.send(policy: fixture.policy) }
         await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
         await attached.socket.waitForHeldWrite()
         fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
@@ -759,6 +940,88 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
+    // MARK: After a step with no answer
+
+    /// A held paste stays queued however long nobody answers, so another Send would
+    /// line up behind it, and its Enter would submit both.
+    @Test func aSendAfterAPasteWithNoAnswerGoesOnlyOnceTheHostAnswersAndTheUserHasBeenTold() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        await attached.socket.holdWrites()
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let first = Task { await composer.send(policy: fixture.policy) }
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        await attached.socket.waitForHeldWrite()
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+        #expect(await first.value == .outcomeUnknown)
+
+        // Still stuck: no answer, so nothing more is queued.
+        composer.replaceDraft(with: "again")
+        let second = Task { await composer.send(policy: fixture.policy) }
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+        #expect(await second.value == .failed)
+        await attached.socket.releaseWrites()
+        await attached.socket.waitForData(channel: attached.channel, count: 1)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+
+        // The Host answers, and the first paste may be sitting in the Agent's input.
+        // The read nobody took off the queue never went.
+        let failed = try #require(composer.messages.last)
+        let retrying = Task { await composer.retry(failed.id, policy: fixture.policy) }
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+        guard case .refused(.inputNotReady(let reason)) = await retrying.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("may still be in the Agent's input"))
+        #expect(composer.draft == "again")
+        #expect(composer.notice?.refusal.message == reason)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+
+        // The user was told, so the next Send is theirs.
+        let again = "\u{1B}[200~again\u{1B}[201~"
+        let third = Task { await composer.send(policy: fixture.policy) }
+        await attached.socket.waitForData(channel: attached.channel, count: 2)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get", count: 2)
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+        #expect(await third.value == .submittedViaAttach)
+        #expect(
+            await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, again, Self.enter])
+        await fixture.finish()
+    }
+
+    /// The read before the submit got no answer, so the text is in the Agent's input
+    /// with nothing to say so but the row, and a Terminal gone says it needs no check.
+    @Test func aSendAfterAReadWithNoAnswerPastesNothingOnAProgramThatEnded() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        let first = await fixture.sendPastingHello(on: attached)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+        #expect(await first.value == .outcomeUnknown)
+
+        fixture.composer.replaceDraft(with: "again")
+        let composer = fixture.composer
+        let second = Task { await composer.send(policy: fixture.policy) }
+        await fixture.scripted.waitForMethod("terminal.get", count: 2)
+        await fixture.scripted.refuseTerminalReads(kind: "not_found")
+
+        guard case .refused(.inputNotReady(let reason)) = await second.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("no longer holds this terminal"))
+        #expect(composer.draft == "again")
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+        await fixture.finish()
+    }
+
     // MARK: Two Sends
 
     /// Two pastes under one submit would submit both as one message.
@@ -769,7 +1032,7 @@ struct HerdrCoreComposerSendTests {
 
         fixture.composer.replaceDraft(with: "again")
         let composer = fixture.composer
-        let second = Task { await composer.send() }
+        let second = Task { await composer.send(policy: fixture.policy) }
         try await Self.until("the second echo") { composer.messages.count == 2 }
         #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
 
