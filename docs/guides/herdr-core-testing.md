@@ -324,6 +324,8 @@ done in the app.
 | Child with its own labels | The same with `herdr.space` and `herdr.tab` | A row in the space its labels name |
 | Live change | Rename or reorder in the document, or set or clear a label | The cards follow within a moment, without reconnecting |
 | Mac with the desktop app | Add that Mac as a herdr-core Host | The same spaces and tabs as the window, in its order and under its names; a space the app has not named reads the same in both |
+| New Workspace on that Mac | New Terminal, **New Workspace**, pick a folder, **Open** | A new space appears in the window, unnamed and last, and reads the same in both. `doc.get` shows only the app's own writes |
+| Rename on that Mac, a debug build launched with `--herdr-app-rename` | With the app running: type a name in New Workspace, then **Rename Workspace** from a space's Agent | The typed name lands once after the app adopts the space, and Rename lands in the window and in the Console. With the app quit, the name field and Rename are gone. Turn `HerdrAppControl.isRenameConfirmed` on only when all of this holds over SSH |
 
 ## Detection states
 

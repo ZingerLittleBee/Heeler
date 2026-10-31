@@ -60,6 +60,8 @@ final class ConsoleStore {
     /// across reconnects of one catalog entry, so a reconnect does not take an
     /// open Chat away, and asked again on each new connection.
     private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
+    /// What each core Host's desktop app can name right now.
+    private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
     /// The connection each Host's platform was last asked on.
     @ObservationIgnored private var hostPlatformGenerations: [Host.ID: UInt64] = [:]
 
@@ -107,6 +109,7 @@ final class ConsoleStore {
     @ObservationIgnored private let makeSession:
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
+    @ObservationIgnored private let herdrAppRename: Bool
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
@@ -179,9 +182,11 @@ final class ConsoleStore {
         makeCoreSession: @escaping @Sendable (Host) -> HerdrCoreHostSession =
             ConsoleStore.coreSessionFactory(),
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
-        harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore()
+        harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
+        herdrAppRename: Bool = HerdrAppControl.isRenameOn
     ) {
         self.makeCoreSession = makeCoreSession
+        self.herdrAppRename = herdrAppRename
         self.coreHostMemory = coreHostMemory
         self.harnessEdits = harnessEdits
         self.chatCache = chatCache
@@ -1038,6 +1043,12 @@ final class ConsoleStore {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
     }
 
+    /// Asks a core Host whether its desktop app is running now, for a surface
+    /// about to offer a name.
+    func checkDesktopApp(on hostID: Host.ID) async {
+        await (projections[hostID] as? HerdrCoreConsoleProjection)?.checkDesktopApp()
+    }
+
     /// Each Server Kind has its own projection, behind one seam (ADR 0032).
     private func startProjection(for host: Host) {
         let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.rebuild() }
@@ -1046,7 +1057,8 @@ final class ConsoleStore {
             case .herdrCore:
                 HerdrCoreConsoleProjection(
                     host: host, session: makeCoreSession(host), memory: coreHostMemory, pins: pins,
-                    gitGate: gitExecGate(for: host.id), onChange: onChange)
+                    gitGate: gitExecGate(for: host.id), herdrAppRename: herdrAppRename,
+                    onChange: onChange)
             default:
                 HostConsoleProjection(
                     host: host,
@@ -1109,6 +1121,14 @@ final class ConsoleStore {
                         (ConsoleAgent.ID(hostID: projection.host.id, paneID: $0.key), $0.value)
                     }
                 })
+        let nextDesktopAppNaming = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .compactMap { projection in
+                    projection.desktopAppNaming.map { (projection.host.id, $0) }
+                })
+        if hostDesktopAppNaming != nextDesktopAppNaming {
+            hostDesktopAppNaming = nextDesktopAppNaming
+        }
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
@@ -1230,7 +1250,7 @@ final class ConsoleStore {
             guard hostPlatformGenerations[hostID] != projection.transportGeneration,
                 mayOfferChat(on: projection)
                     || (projection.host.serverKind == .herdrCore
-                        && composerSessions.keys.contains { $0.hostID == hostID })
+                        && (herdrAppRename || composerSessions.keys.contains { $0.hostID == hostID }))
             else { continue }
             Task { [weak self] in await self?.resolveHostPlatform(hostID) }
         }
@@ -1466,7 +1486,8 @@ final class ConsoleStore {
     func capabilities(for hostID: Host.ID) -> HostCapabilities {
         HostCapabilities(
             serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
-            platform: hostPlatforms[hostID])
+            platform: hostPlatforms[hostID],
+            desktopAppNaming: hostDesktopAppNaming[hostID])
     }
 
     // MARK: Harness configuration edits

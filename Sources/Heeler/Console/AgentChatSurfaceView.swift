@@ -888,7 +888,8 @@ struct AgentChatSurfaceView: View {
     }
 
     private var composerActions: AgentComposerActions {
-        AgentComposerActions(
+        let capabilities = console.capabilities(for: agent.hostID)
+        return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
             addImage: { isSelectingPhoto = true },
@@ -905,8 +906,9 @@ struct AgentChatSurfaceView: View {
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
             showWorktreeDetails: nil,
-            renameAgent: { isRenamingAgent = true },
-            renameWorkspace: { isRenamingWorkspace = true },
+            renameAgent: capabilities.renameAgent ? { isRenamingAgent = true } : nil,
+            renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
+                ? { isRenamingWorkspace = true } : nil,
             closeAgent: { isConfirmingClose = true },
             backToConsole: { backToConsole() },
             showAgentTerminal: { showAgentTerminal() },
