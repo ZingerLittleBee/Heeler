@@ -6,9 +6,11 @@ import { afterEach, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { notificationKeyId } from "../src/notification-envelope.js";
 import { FakeCore, exchange, waitFor } from "./support/fake-core.js";
 
 const HELPER = fileURLToPath(new URL("../helper", import.meta.url));
@@ -44,13 +46,11 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function startHelper(sessions) {
+function startHelper(sessions, { devices = sessions.map((session) => ({ session })), config = null } = {}) {
   const directory = join(root, "helper");
   cpSync(HELPER, join(directory, "app"), { recursive: true });
-  writeFileSync(
-    join(directory, "notifications.json"),
-    JSON.stringify({ v: 1, devices: sessions.map((session) => ({ session })) }),
-  );
+  writeFileSync(join(directory, "notifications.json"), JSON.stringify({ v: 1, devices }));
+  if (config !== null) writeFileSync(join(directory, "notify.json"), JSON.stringify(config));
   child = spawn(process.execPath, [join(directory, "app", "main.js")], {
     env: { HOME: home, XDG_RUNTIME_DIR: join(root, "r"), PATH: join(root, "bin") },
     stdio: ["ignore", "pipe", "pipe"],
@@ -78,6 +78,44 @@ function filesUnder(path) {
 }
 
 suite("the Helper's process", () => {
+  test("sends a core's Blocked through the Push Relay, from a bare copy of its files", async () => {
+    const received = [];
+    const relay = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => (body += chunk));
+      request.on("end", () => {
+        received.push(JSON.parse(body));
+        response.writeHead(200).end("{}");
+      });
+    });
+    await new Promise((done) => relay.listen(0, "127.0.0.1", done));
+    try {
+      const key = Buffer.alloc(32, 7);
+      startHelper(["work"], {
+        devices: [{ token: "a".repeat(64), key: key.toString("base64url"), env: "sandbox", session: "work", notify: { blocked: true, done: true } }],
+        config: { relay_url: `http://127.0.0.1:${relay.address().port}`, debounce_ms: 10, retry_delay_ms: 1 },
+      });
+      const terminal = {
+        address: "t1", state: "live", pid: 7, argv: ["/bin/zsh"], cwd: "/work/app", turn: 0, reported: true,
+        foreground: { pid: 8, name: "claude", argv: ["claude"], cwd: "/work/app" },
+        status: { state: "working", app: "claude-code" },
+      };
+      const fake = await core("work", { snapshot: { seq: 1, channel: exchange("events-subscribe").result.channel, terminals: [terminal] } });
+      await waitFor(() => stdout.includes("connected to core pid"), "the connection", PATIENCE_MS);
+
+      const data = { status: { state: "blocked", app: "claude-code" }, records: {}, reported: true };
+      fake.last.sendEvents(`${JSON.stringify({ jsonrpc: "2.0", method: "event", params: { seq: 2, type: "status", terminal: "t1", data } })}\n`);
+      await waitFor(() => received.length > 0, "the notification", PATIENCE_MS);
+
+      assert.equal(received[0].token, "a".repeat(64));
+      assert.equal(JSON.parse(received[0].envelope).kid, notificationKeyId(key));
+      assert.equal(existsSync(tripwire), false);
+    } finally {
+      relay.closeAllConnections();
+      await new Promise((done) => relay.close(done));
+    }
+  });
+
   test("waits with no core, then connects and follows a restart, running no program", async () => {
     startHelper(["work"]);
     await waitFor(() => stdout.includes("waiting for a core"), "the waiting line", PATIENCE_MS);

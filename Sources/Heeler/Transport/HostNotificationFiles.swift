@@ -46,6 +46,17 @@ protocol HostNotificationFiles: Sendable {
     /// rename, file 0600 in a 0700 directory), creating it when absent. Same
     /// plugin gate as the registration write.
     func replaceUsageAccountFile(_ contents: Data) async throws
+
+    /// What this Host's Helper stands as, on a herdr-core Host. Nil on a Host
+    /// whose notifications come from the plugin.
+    func readHostHelper() async throws -> HostHelperReading?
+
+    /// Replaces this device's seen marks (`HerdrCoreSeenMarkFile`). Only a Host
+    /// Helper reads them, so a Host with the plugin has none.
+    func replaceSeenMarks(_ contents: Data, keyID: String) async throws
+
+    /// Removes this device's seen marks, which is nothing to do when it has none.
+    func removeSeenMarks(keyID: String) async throws
 }
 
 extension HostNotificationFiles {
@@ -80,4 +91,10 @@ extension HostNotificationFiles {
     func replaceUsageAccountFile(_ contents: Data) async throws {
         throw NotificationRegistrationError.pluginNotInstalled
     }
+
+    func readHostHelper() async throws -> HostHelperReading? { nil }
+
+    func replaceSeenMarks(_ contents: Data, keyID: String) async throws {}
+
+    func removeSeenMarks(keyID: String) async throws {}
 }
