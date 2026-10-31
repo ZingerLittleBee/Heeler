@@ -626,6 +626,40 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return try await remoteHomeDirectory()
     }
 
+    // MARK: Closing
+
+    /// The core reports the end in a `finished` event, which takes the row away.
+    func closePane(_ paneID: String) async throws {
+        try await endTerminals([paneID])
+    }
+
+    /// With no inventory, as across a reconnect, nothing says what the Tab holds.
+    func closeTab(_ tabID: String) async throws {
+        guard !isAwaitingSnapshot else {
+            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+        }
+        try await endTerminals(
+            records.map(\.address).filter { terminalsByPane[$0]?.tabID == tabID })
+    }
+
+    /// Each Terminal gets its one kill whatever became of the others, so a kill
+    /// nobody answered leaves no Terminal unasked. That uncertainty is what the
+    /// caller hears over any refusal, since it is what to check before trying again.
+    private func endTerminals(_ addresses: [String]) async throws {
+        let transport = try await session.withTransport { $0 }
+        var failure: (any Error)?
+        for address in addresses {
+            do {
+                try await transport.killTerminal(address)
+            } catch TransportError.coreMutationOutcomeUnknown {
+                failure = TransportError.coreMutationOutcomeUnknown
+            } catch {
+                failure = failure ?? error
+            }
+        }
+        if let failure { throw failure }
+    }
+
     // MARK: Actions not built yet
 
     private func unavailable(_ feature: String) -> TransportError {
@@ -636,14 +670,6 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
     ) async throws -> Agent {
         throw unavailable("Worktrees")
-    }
-
-    func closePane(_ paneID: String) async throws {
-        throw unavailable("Closing a Terminal")
-    }
-
-    func closeTab(_ tabID: String) async throws {
-        throw unavailable("Close Tab")
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
