@@ -234,6 +234,29 @@ If it keeps the text, amend [ADR 0035](../adr/0035-herdr-core-composer-sends-thr
 so Send skips Ctrl+C under zsh while still saying so. Either way, record the result in
 [herdr compatibility](../agents/herdr-compatibility.md).
 
+## Chat evidence
+
+Run Claude Code against the mock API in core Terminals of a throwaway session on a
+Linux box, signed in to nothing. Record its version, and the raw value beside each
+check that asks for one. The binder's tests read a fake process tree, and these are
+the facts they took on trust, so correct
+[herdr compatibility](../agents/herdr-compatibility.md) with whatever differs.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Binds at its prompt | Start Claude Code from New Agent, wait for its prompt, send one message from the terminal, open Chat | The conversation shows. Record `procStart` in `<config dir>/sessions/<pid>.json` beside field 22 of `/proc/<pid>/stat`: they are equal |
+| Started by hand | Start `claude` from a shell in a Terminal the Agents tab lists, then open Chat | The same conversation binding, with no `heeler.*` label on the Terminal |
+| Launchers | Run an npm-installed `claude`, through `npx` too, and a shell script that runs it, then open Chat | It binds. Record each process's name from `/proc/<pid>/stat`, and that each shares the Terminal's `HC_SCOPE`. Record what the native installer's binary calls itself |
+| Before its prompt | Use a fresh config dir and stop at the trust dialog, then open Chat | **Can't Tell the Conversation**. No `*.key` file is read. Answer the dialog: Chat follows on the status change, with no Retry |
+| `/clear` and `/resume` | In an open Chat, run each in the terminal | Chat shows the new conversation by the next status change |
+| Own config dir | Start with `CLAUDE_CONFIG_DIR` naming a scratch folder, while `~/.claude` holds other sessions | Chat reads from the scratch folder |
+| Leaked variable | Start `CLAUDE_CODE_CHILD_SESSION=1 claude`, then `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1 claude`, each with the mock API | **Transcript Saving Is Off** names the variable, and the sessions folder and project folder hold what it says they do |
+| Carried by the core | Use the core from [Leaked environment](#leaked-environment), then start `claude` by hand | The same reason, also pointing at the Host's details, where **Core Environment** names it |
+| Stale hint | Set the label `heeler.session` on the Terminal with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show the label's session |
+| No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
+| Typing hidden | In Chat, with the Agent idle and then Blocked on a permission | No Composer, no Stop, no Blocked card. The terminal still answers |
+| Off elsewhere | A Codex Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
+
 ## Done per device
 
 Run this for Claude Code and Codex against the mock API, Pi, and OpenCode 2.x, with
