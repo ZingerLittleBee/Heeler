@@ -38,12 +38,15 @@ enum HerdrCoreOrganization {
 
     /// Finished Terminals stay out, though the core keeps their records until
     /// they are removed, and so does a space with no Terminal left to show.
+    /// `doneTerminals` are those whose Agent reads Done on this device, as long
+    /// as it still reports idle or done.
     static func build(
         terminals: [HerdrCoreTerminalRecord],
         document: HerdrCoreDesktopDocument?,
         firstSeenDirectories: [String: String],
         checkouts: [String: String],
-        home: String?
+        home: String?,
+        doneTerminals: Set<String> = []
     ) -> Result {
         let shown = terminals.filter { !$0.hasFinished }
         let shownByAddress = Dictionary(shown.map { ($0.address, $0) }) { first, _ in first }
@@ -94,7 +97,8 @@ enum HerdrCoreOrganization {
                         number: tabPosition + 1, paneCount: members[tabPosition].count,
                         tabID: tab.id, workspaceID: workspace.id))
                 for record in members[tabPosition] {
-                    let agent = HerdrCoreAgentRule.agent(in: record)
+                    var agent = HerdrCoreAgentRule.agent(in: record)
+                    if doneTerminals.contains(record.address) { agent = agent?.markedDone }
                     panes.append(pane(record, agent: agent, tabID: tab.id, workspaceID: workspace.id))
                     if let agent {
                         agents.append(

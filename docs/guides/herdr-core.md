@@ -51,9 +51,11 @@ A Terminal is an Agent while its foreground program is a known coding program, o
 | Status | What it means |
 | --- | --- |
 | **Unknown** | The program has not reported yet |
-| **Working**, **Idle** | What it reports. A program reporting done reads **Idle** |
+| **Working**, **Idle** | What it reports. A program reporting done reads **Idle**, unless it shows **Done** |
 | **Blocked** | It waits for you |
 | **Error** | It reports an error, and sorts with **Blocked** |
+
+Done is per device. An Agent shows Done when it finished a turn this device was not showing and still reports idle or done. Opening the Agent clears it here, and so does having it open when the turn ends; your other devices keep showing it until you open it there. It leaves on its own when the Agent starts working again. A turn finishes when a program goes from Working to Done. A program not known to report done also finishes one by going from Working to Idle, while Claude Code, Codex, Pi and Oh My Pi do not, so a Codex release too old to report done never shows Done. Removing the Host, or the Host getting a different core, starts over.
 
 A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and no Close.
 

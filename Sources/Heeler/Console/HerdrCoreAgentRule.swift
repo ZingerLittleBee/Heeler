@@ -7,6 +7,13 @@ struct HerdrCoreAgent: Equatable, Sendable {
     let kind: String
     let isKnownProgram: Bool
     let status: AgentStatus
+
+    /// This Agent if it finished a turn this device has not seen. Only one that
+    /// reads idle, which a report of idle or done does, can still be Done.
+    var markedDone: HerdrCoreAgent {
+        guard status == .idle else { return self }
+        return HerdrCoreAgent(kind: kind, isKnownProgram: isKnownProgram, status: .done)
+    }
 }
 
 /// Which Terminal is an Agent (ADR 0032). A Terminal is one while a known agent
@@ -60,7 +67,8 @@ enum HerdrCoreAgentRule {
         return agentStatus(report.state)
     }
 
-    /// Done on herdr-core is per device. Until that arrives a reported done reads Idle.
+    /// Done on herdr-core is per device (`HerdrCoreTurnState`), so a report of
+    /// done reads Idle here.
     private static func agentStatus(_ state: String) -> AgentStatus {
         switch state {
         case "idle", "done": .idle
