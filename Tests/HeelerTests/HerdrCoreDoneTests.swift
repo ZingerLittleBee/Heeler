@@ -335,7 +335,18 @@ struct HerdrCoreDoneTests {
         store.setAgentShown(id("t1"), viewer: viewer, scene: window)
 
         store.sceneDidEnd(window)
-        // A late update from the screen of a window that already ended.
+        await deliverEnd(transport, "t1", turn: 1)
+        try await waitUntil("Done") { status(store, "t1") == .done }
+    }
+
+    @Test func aLateUpdateFromAClosedWindowShowsNothing() async throws {
+        let transport = ScriptedCoreTransport(subscribeResults: [
+            Self.subscribeResult([Self.claude("t1", state: "working")])
+        ])
+        let store = try await store(transport)
+        defer { store.setHosts([]) }
+
+        store.sceneDidEnd(window)
         store.setAgentShown(id("t1"), viewer: viewer, scene: window)
         await deliverEnd(transport, "t1", turn: 1)
         try await waitUntil("Done") { status(store, "t1") == .done }
