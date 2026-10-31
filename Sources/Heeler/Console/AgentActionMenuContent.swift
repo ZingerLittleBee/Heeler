@@ -136,6 +136,13 @@ enum AgentActionMenuPolicy {
         }
     }
 
+    static func title(
+        of item: AgentActionMenuItem,
+        actions: AgentComposerActions
+    ) -> String {
+        item == .closeAgent && actions.removesSavedChat ? SavedChatRemovalCopy.action : item.title
+    }
+
     static func isEnabled(
         _ item: AgentActionMenuItem,
         actions: AgentComposerActions
@@ -233,7 +240,7 @@ struct AgentActionMenuContent: View {
                 actions: actions,
                 restoreComposerThen: restoreComposerThen)
         } label: {
-            Label(item.title, glyph: item.glyph)
+            Label(AgentActionMenuPolicy.title(of: item, actions: actions), glyph: item.glyph)
         }
         .disabled(!AgentActionMenuPolicy.isEnabled(item, actions: actions))
     }

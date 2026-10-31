@@ -932,7 +932,8 @@ struct AgentTerminalView: View {
     /// `anchorsClose` is true for the one input chrome on screen; during the
     /// Direct-to-Composer handoff both are mounted and Direct Input shows.
     private func composerActions(anchorsClose: Bool) -> AgentComposerActions {
-        AgentComposerActions(
+        let removesSavedChat = console.isSavedChat(agent.id)
+        return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
             addImage: { isSelectingPhoto = true },
@@ -971,8 +972,16 @@ struct AgentTerminalView: View {
                 ? AgentCloseConfirmation(
                     title: title,
                     isPresented: $isConfirmingClose,
-                    close: { Task { await performClose() } })
-                : nil)
+                    removesSavedChat: removesSavedChat,
+                    close: {
+                        if removesSavedChat {
+                            if console.removeSavedChat(agent) { onClosed() }
+                        } else {
+                            Task { await performClose() }
+                        }
+                    })
+                : nil,
+            removesSavedChat: removesSavedChat)
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that

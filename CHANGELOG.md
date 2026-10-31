@@ -66,6 +66,10 @@ Entries reference the pull request that made the change.
   Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
   Duo's inner display or a Pro Max in landscape, instead of closing it to
   No Agent Selected. The sidebar now follows the finger, on iPad too. (#592)
+- Remove a Saved Chat while its Host is not connected. Closing one always
+  failed with "The Host is not connected"; its row and More menu now offer
+  Remove, which takes it and its saved messages off this device and leaves
+  the Host alone.
 - Keep each row's fields in Agent List Fields on their own line. The last
   one, often the add button, could drop below the row onto the next.
   (#591)

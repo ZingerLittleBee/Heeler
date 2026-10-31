@@ -127,6 +127,9 @@ struct ConsoleView: View {
     /// The Agent whose tab the swipe action would close; non-nil shows the
     /// close confirmation.
     @State private var pendingTabClose: ConsoleAgent?
+    /// The saved Chat entry the swipe action would remove from this device;
+    /// separate from a close, which asks the Host and says so.
+    @State private var pendingSavedChatRemoval: ConsoleAgent?
     /// Owns presentation mode and Host/Workspace collapse state.
     @State private var listPresentation = ConsoleListPresentationStore()
     /// Outlives the detail column's rebuilds, which is the whole point: it
@@ -229,6 +232,10 @@ struct ConsoleView: View {
         } message: {
             Text(tabCloseError ?? "")
         }
+        .modifier(SavedChatRemovalAlert(
+            pending: $pendingSavedChatRemoval,
+            message: savedChatRemovalMessage(for:),
+            remove: removeSavedChat))
         .sheet(isPresented: $isStartingTerminal) {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // NewTerminalView brings its own NavigationStack.
@@ -1650,6 +1657,7 @@ struct ConsoleView: View {
         case .agent(let agent, let section, let standsAlone):
             agentLink(
                 agent,
+                isSaved: saved[agent.id] != nil,
                 background: ConsoleWorkspaceCardRow(
                     placed: placed, indent: .icon,
                     top: standsAlone ? (placed.followsHeader ? 0 : 6) : 2, bottom: standsAlone ? 6 : 4,
@@ -1824,6 +1832,7 @@ struct ConsoleView: View {
     private func agentRow(_ agent: ConsoleAgent, qualifier: String?, saved: HostReadiness?) -> some View {
         agentLink(
             agent,
+            isSaved: saved != nil,
             background: ConsoleRowSelectionBackground(
                 isSelected: notificationRouter.path.last == agent.id)
         ) {
@@ -1852,7 +1861,7 @@ struct ConsoleView: View {
     /// and window actions. `background` draws the row's place in the list;
     /// `preview` is what a lifted card shows (see `ConsoleRowContextMenu`).
     private func agentLink<RowContent: View, Background: ViewModifier, Preview: View>(
-        _ agent: ConsoleAgent, background: Background,
+        _ agent: ConsoleAgent, isSaved: Bool, background: Background,
         @ViewBuilder label: () -> RowContent, @ViewBuilder preview: () -> Preview
     ) -> some View {
         NavigationLink(value: ConsoleSelection.agent(agent.id)) {
@@ -1888,11 +1897,17 @@ struct ConsoleView: View {
                 // Asks first, like the swipe. A menu item can be destructive:
                 // the row stays put until the close succeeds.
                 Divider()
-                Button(
-                    "Close \(closeScope(for: agent))", systemImage: "trash",
-                    role: .destructive
-                ) {
-                    pendingTabClose = agent
+                if isSaved {
+                    Button(SavedChatRemovalCopy.action, systemImage: "trash", role: .destructive) {
+                        pendingSavedChatRemoval = agent
+                    }
+                } else {
+                    Button(
+                        "Close \(closeScope(for: agent))", systemImage: "trash",
+                        role: .destructive
+                    ) {
+                        pendingTabClose = agent
+                    }
                 }
             } preview: {
                 preview()
@@ -1919,9 +1934,13 @@ struct ConsoleView: View {
         // while the confirmation is still up, even if the user cancels.
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button {
-                pendingTabClose = agent
+                if isSaved {
+                    pendingSavedChatRemoval = agent
+                } else {
+                    pendingTabClose = agent
+                }
             } label: {
-                Label("Close", systemImage: "trash")
+                Label(isSaved ? SavedChatRemovalCopy.confirm : "Close", systemImage: "trash")
             }
             .tint(.red)
         }
@@ -1969,6 +1988,19 @@ struct ConsoleView: View {
         guard let agent = pendingTabClose else { return }
         pendingTabClose = nil
         closeTabNow(agent)
+    }
+
+    private func savedChatRemovalMessage(for agent: ConsoleAgent) -> String {
+        SavedChatRemovalCopy.message(
+            naming: AgentCardPresentation(
+                agent: agent, layout: console.rowLayout(for: agent.hostID)
+            ).switcherTitle)
+    }
+
+    /// An open detail goes with its entry, which it can no longer show.
+    private func removeSavedChat(_ agent: ConsoleAgent) {
+        let isSelected = notificationRouter.path.last == agent.id
+        if console.removeSavedChat(agent), isSelected { clearSelection() }
     }
 
     /// What closing this Agent takes down, widest first.
@@ -2658,6 +2690,30 @@ struct MissingAgentPresentation: Equatable {
             hosts: hosts.hosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostStandingFailures: console.hostStandingFailures)
+    }
+}
+
+/// A saved Chat row's swipe or context menu asks here before removing it.
+private struct SavedChatRemovalAlert: ViewModifier {
+    @Binding var pending: ConsoleAgent?
+    let message: (ConsoleAgent) -> String
+    let remove: (ConsoleAgent) -> Void
+
+    func body(content: Content) -> some View {
+        content.alert(
+            SavedChatRemovalCopy.question,
+            isPresented: Binding(
+                get: { pending != nil },
+                set: { if !$0 { pending = nil } })
+        ) {
+            Button(SavedChatRemovalCopy.confirm, role: .destructive) {
+                if let pending { remove(pending) }
+                pending = nil
+            }
+            Button("Cancel", role: .cancel) { pending = nil }
+        } message: {
+            Text(pending.map(message) ?? "")
+        }
     }
 }
 

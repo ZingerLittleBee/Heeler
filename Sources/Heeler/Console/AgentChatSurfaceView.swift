@@ -921,7 +921,8 @@ struct AgentChatSurfaceView: View {
     }
 
     private var composerActions: AgentComposerActions {
-        AgentComposerActions(
+        let removesSavedChat = console.isSavedChat(agent.id)
+        return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
             addImage: { isSelectingPhoto = true },
@@ -946,7 +947,15 @@ struct AgentChatSurfaceView: View {
             closeConfirmation: AgentCloseConfirmation(
                 title: title,
                 isPresented: $isConfirmingClose,
-                close: { Task { await performClose() } }))
+                removesSavedChat: removesSavedChat,
+                close: {
+                    if removesSavedChat {
+                        if console.removeSavedChat(agent) { onClosed() }
+                    } else {
+                        Task { await performClose() }
+                    }
+                }),
+            removesSavedChat: removesSavedChat)
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that

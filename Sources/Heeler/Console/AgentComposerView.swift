@@ -123,6 +123,21 @@ struct AgentComposerActions {
     /// Close Agent's confirmation, set only on the More menu that is on
     /// screen so the dialog has a single anchor.
     var closeConfirmation: AgentCloseConfirmation? = nil
+    /// A saved Chat entry has no pane to close while its Host is away: the
+    /// close entry removes it from this device instead.
+    var removesSavedChat = false
+}
+
+/// What removing a saved Chat entry says, from its row or its detail.
+enum SavedChatRemovalCopy {
+    static let action = "Remove Saved Chat"
+    static let question = "Remove Saved Chat?"
+    static let confirm = "Remove"
+
+    static func message(naming name: String) -> String {
+        "Removes \u{201C}\(name)\u{201D} and its saved messages from this device. "
+            + "If the Agent is still running, it returns when the Host connects."
+    }
 }
 
 /// Close Agent's confirmation, hung off the More button that asked for it:
@@ -131,13 +146,27 @@ struct AgentComposerActions {
 struct AgentCloseConfirmation {
     let title: String
     let isPresented: Binding<Bool>
+    /// Decided when the dialog renders, with the words it shows: a Host that
+    /// connects behind it must not turn this removal into a remote close.
+    var removesSavedChat = false
     let close: () -> Void
 }
 
 extension View {
     @ViewBuilder
     func agentCloseConfirmation(_ confirmation: AgentCloseConfirmation?) -> some View {
-        if let confirmation {
+        if let confirmation, confirmation.removesSavedChat {
+            confirmationDialog(
+                SavedChatRemovalCopy.question,
+                isPresented: confirmation.isPresented,
+                titleVisibility: .visible
+            ) {
+                Button(SavedChatRemovalCopy.confirm, role: .destructive) { confirmation.close() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(SavedChatRemovalCopy.message(naming: confirmation.title))
+            }
+        } else if let confirmation {
             confirmationDialog(
                 "Close \(confirmation.title)?",
                 isPresented: confirmation.isPresented,
