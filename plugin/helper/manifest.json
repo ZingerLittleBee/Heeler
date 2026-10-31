@@ -50,20 +50,92 @@
       "sha256": "e27e055e882a665fb01058eb9f18604595204ae4efe2bd56d2262187ad921a52"
     },
     {
+      "path": "shared/usage/account-suggestions.js",
+      "sha256": "0ad997f5b2de1879f507676b22593869b586040f0886ceff023de9a7d31c85eb"
+    },
+    {
+      "path": "shared/usage/accounts.js",
+      "sha256": "be9a0934ba0da5056062edc0ef82c3da9849150eb1ffc8ac0f2cbf96e52c61f0"
+    },
+    {
       "path": "shared/usage/agent-directories.js",
       "sha256": "27badcf037e5fac089760bdf1836c32416b47a214b568e5ec5f88227aaf38577"
+    },
+    {
+      "path": "shared/usage/buckets.js",
+      "sha256": "f954342971ffa608cbd32539157839aba5997c9f0ac74248b9f4f451d5c147a0"
     },
     {
       "path": "shared/usage/cache.js",
       "sha256": "174b15738163a8fda024d339b1bf529ff32e901a213a2c07da789e3edfaf3f7a"
     },
     {
+      "path": "shared/usage/checkpoint.js",
+      "sha256": "186cfa8bb510d5730cf891598480a8847c825f6e3ac7b4a4cefb229b8deb8883"
+    },
+    {
+      "path": "shared/usage/claude-limits.js",
+      "sha256": "2c2d8f979314ef78203698884babcc52aa81455965bb366422998e3982bbeb4d"
+    },
+    {
+      "path": "shared/usage/claude-scanner.js",
+      "sha256": "07a220f8c11b5c9d92b65e02de793f2ae432547d43866659276316ef659d9ddd"
+    },
+    {
+      "path": "shared/usage/codex-files.js",
+      "sha256": "d20ac4dbbac0355059213d9a178a7d37054215b4ee2b8862933a4f8bd8eb1c0e"
+    },
+    {
+      "path": "shared/usage/codex-limits.js",
+      "sha256": "71e65a5226e0effb2beaeaf30c41a0c3a532132a2ce4dbd8ad4d83bc0f2884c8"
+    },
+    {
+      "path": "shared/usage/codex-scanner.js",
+      "sha256": "e00e6eb7565d4b5fd6faf5c670c2531e3684a7a7e920101ca03b8c9c3ded0cab"
+    },
+    {
+      "path": "shared/usage/json-lines.js",
+      "sha256": "0e5ed1151e673118ed55232d5f8054307225a1a36a69fd3c760a2705580bf720"
+    },
+    {
+      "path": "shared/usage/limits-process.js",
+      "sha256": "4910c81cc9fb46ae7b161f86ff19aa06d08b7480930fa03ce601b4eeb2672c59"
+    },
+    {
+      "path": "shared/usage/pricing.LICENSE",
+      "sha256": "ffc002f1bdb3bed8f6349b8ec04c682eb90819b71dbaa53b77c1bf6683aa5572"
+    },
+    {
+      "path": "shared/usage/pricing.js",
+      "sha256": "fa3419168c395514f8f3c1bf8dd9960173c170ad0df04ed4b1f748cfa2b0bc56"
+    },
+    {
+      "path": "shared/usage/pricing.json",
+      "sha256": "b9f1e8b5c4bf8543385542f27e5220da5fd3c6dc5e7f5b9dd69233feb0409450"
+    },
+    {
       "path": "shared/usage/process-environment.js",
       "sha256": "d947513f4c02e1f93f1421f53a6e705b8a4dfcdaaf3f1d941394cd6078eb32f7"
     },
     {
+      "path": "shared/usage/query.js",
+      "sha256": "09986b1c6685e6033eba40ffc35c62ba19a18712ef41158ba0a9f7c5378965cb"
+    },
+    {
       "path": "shared/usage/runtime-record.js",
       "sha256": "85f3ee71cbc03f09cd6be2b5ffed4dfe3ed147ed81177535110fc70760688df7"
+    },
+    {
+      "path": "shared/usage/worker.js",
+      "sha256": "3bf605fb153d8ff3b77b907f9ef44a9751f45f431485d9a4c4cc715b6db1d91f"
+    },
+    {
+      "path": "usage-query.js",
+      "sha256": "d07b25edf833c4d7acfd714614348c522fa3455b6fbe2f87b6580a0032b27a9f"
+    },
+    {
+      "path": "usage-worker.js",
+      "sha256": "6c46176b11a0fb73dd54ae05d9c50d5700ff8d7f351f2d41f35c3aab7fa18509"
     },
     {
       "path": "usage/claude-terminal.js",

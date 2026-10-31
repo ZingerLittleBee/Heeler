@@ -4,7 +4,8 @@
 //
 //   - plugin/helper/shared/ mirrors what Helper code imports of plugin/src, at
 //     the same relative paths. Helper code imports "./shared/delivery/push.js",
-//     and this copies plugin/src/delivery/push.js and what that reaches.
+//     and this copies plugin/src/delivery/push.js and what that reaches, including
+//     data files a module loads with `new URL("./x", import.meta.url)`.
 //   - plugin/helper/manifest.json holds the version and every other file's
 //     SHA-256, which the app checks after an upload and whenever it reads a
 //     Host's Helper.
@@ -31,6 +32,18 @@ const IMPORT_SPECIFIERS = [
 
 function specifiersIn(source) {
   return IMPORT_SPECIFIERS.flatMap((pattern) => [...source.matchAll(pattern)].map((match) => match[1]));
+}
+
+// A data file a module loads beside itself, which no import names.
+const DATA_FILE = /\bnew URL\(\s*["'`](\.\/[^"'`]+)["'`]\s*,\s*import\.meta\.url\s*\)/g;
+
+/** A shared module's data files, each with the license file beside it, if any. */
+function dataFilesOf(source, modulePath) {
+  const paths = [...source.matchAll(DATA_FILE)].map((match) => resolve(dirname(modulePath), match[1]));
+  return paths.flatMap((path) => {
+    const license = path.replace(/\.[^./]+$/, ".LICENSE");
+    return existsSync(license) ? [path, license] : [path];
+  });
 }
 
 function filesUnder(directory) {
@@ -64,6 +77,12 @@ function sharedMirror(helper, src) {
     if (seen.has(path)) continue;
     seen.add(path);
     if (source.includes("HERDR_")) throw new HelperTreeError(`${relative(helper, path)} names a HERDR_ variable`);
+    if (isInside(shared, path)) {
+      for (const original of dataFilesOf(source, join(src, relative(shared, path)))) {
+        if (!existsSync(original)) throw new HelperTreeError(`${relative(src, original)} has no source in plugin/src`);
+        mirror.set(`${SHARED}/${relative(src, original).split(sep).join("/")}`, readFileSync(original));
+      }
+    }
     for (const specifier of specifiersIn(source)) {
       if (!specifier.startsWith(".")) {
         if (!isBuiltin(specifier)) throw new HelperTreeError(`${relative(helper, path)} imports the package ${specifier}`);

@@ -5,9 +5,10 @@
 
 import { afterEach, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { followCoreSession } from "../helper/core/follower.js";
 import { agentDirectories } from "../helper/shared/usage/agent-directories.js";
@@ -18,6 +19,7 @@ const STATUS = exchange("server-status").result;
 const FAST = { retryDelayMs: 10, pollMs: 10 };
 const PATIENCE_MS = 5000;
 // The plugin's named list, written out so the record cannot drift by importing it.
+const HELPER = fileURLToPath(new URL("../helper", import.meta.url));
 const NAMED = [
   "PATH", "HOME", "USER", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME",
   "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy",
@@ -339,6 +341,185 @@ suite("Claude Code Account suggestions", () => {
     await waitFor(() => agentDirectories(stateDir()).length > 0, "a directory", PATIENCE_MS);
 
     assert.deepEqual(agentDirectories(stateDir()), [last.path]);
+  });
+});
+
+suite("the Helper's Usage query", () => {
+  /**
+   * A Host as an install leaves it: a bare copy of the Helper, its real service
+   * following a core, and `hc`, `herdr-core` and `herdr` as tripwires. What the
+   * query is run with stands for the SSH session, which lacks the core's variables.
+   */
+  async function host({ registered = ["work"], claude = false } = {}) {
+    const coreHome = join(root, "core-home");
+    const config = join(root, "core-claude");
+    const bin = join(root, "bin");
+    const tripwire = join(root, "tripwire");
+    const claudeLog = join(root, "claude-log");
+    mkdirSync(coreHome);
+    mkdirSync(bin);
+    for (const name of ["hc", "herdr-core", "herdr"]) {
+      writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${tripwire}"\n`);
+      chmodSync(join(bin, name), 0o755);
+    }
+    if (claude) {
+      writeFileSync(join(bin, "claude"), `#!/bin/sh\necho "$*" >> "${claudeLog}"\n`);
+      chmodSync(join(bin, "claude"), 0o755);
+    }
+    mkdirSync(join(config, "projects", "-work"), { recursive: true });
+    writeFileSync(
+      join(config, "projects", "-work", "a.jsonl"),
+      `${JSON.stringify({
+        type: "assistant",
+        timestamp: new Date().toISOString(),
+        sessionId: "s",
+        requestId: "r",
+        cwd: "/work",
+        message: { id: "m", model: "claude-opus-4-1", usage: { input_tokens: 7, output_tokens: 5 } },
+      })}\n`,
+    );
+    cpSync(HELPER, join(directory, "app"), { recursive: true });
+    writeFileSync(
+      join(directory, "notifications.json"),
+      JSON.stringify({ v: 1, devices: registered.map((session) => ({ session })) }),
+    );
+    const core = await coreProcess({ PATH: bin, HOME: coreHome, CLAUDE_CONFIG_DIR: config });
+    await fakeCore("work", core.pid);
+    const service = spawn(process.execPath, [join(directory, "app", "main.js")], {
+      env: { HOME: root, XDG_RUNTIME_DIR: join(root, "r"), PATH: bin },
+      stdio: "ignore",
+    });
+    running.push(async () => {
+      service.kill("SIGKILL");
+    });
+
+    const run = (name, ...args) =>
+      spawnSync(process.execPath, [join(directory, "app", name), ...args], {
+        env: { HOME: join(root, "ssh-home"), USER: "ssh-account", PATH: bin },
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+    const query = (...args) => {
+      const result = run("usage-query.js", "--tz", "UTC", "--session", "work", ...args);
+      assert.equal(result.status, 0, result.stderr);
+      return JSON.parse(result.stdout);
+    };
+    const settled = async (...args) => {
+      for (let attempt = 0; attempt < 600; attempt += 1) {
+        const report = query(...args);
+        if (report.runtime === "recorded" && report.refreshing === false) return report;
+        await new Promise((done) => setTimeout(done, 25));
+      }
+      assert.fail("the worker did not finish");
+    };
+    const tripped = () => (existsSync(tripwire) ? readFileSync(tripwire, "utf8") : "");
+    const claudeCalls = () => (existsSync(claudeLog) ? readFileSync(claudeLog, "utf8") : "");
+    return { config, query, run, settled, tripped, claudeCalls };
+  }
+
+  const claudeProgram = (report) => report.programs.find((program) => program.program === "claude");
+
+  test("counts the Default Account the core's environment names, from a bare copy", async () => {
+    const { config, settled, tripped } = await host();
+    await waitFor(() => existsSync(recordPath("work")), "the record", PATIENCE_MS);
+
+    const report = await settled();
+
+    assert.equal(report.version, 1);
+    const program = claudeProgram(report);
+    assert.equal(program.tokenUsage.state, "ok");
+    assert.equal(program.tokenUsage.totals.last30Days.tokens.total, 12);
+    const fallback = program.accounts.find((account) => account.isDefault);
+    assert.equal(fallback.directory, config);
+    assert.equal(tripped(), "");
+  });
+
+  test("reads as missing while the Helper holds no record of the session", async () => {
+    const { query } = await host({ registered: [] });
+    assert.deepEqual(query(), { version: 1, runtime: "missing" });
+  });
+
+  test("refuses a session name the core refuses", async () => {
+    const { run } = await host();
+    const result = run("usage-query.js", "--tz", "UTC", "--session", "../work");
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr.includes("work"), false);
+  });
+
+  test("reads the Account file from the Helper's directory", async () => {
+    const { settled } = await host();
+    await waitFor(() => existsSync(recordPath("work")), "the record", PATIENCE_MS);
+    const added = join(root, "added-claude");
+    mkdirSync(join(added, "projects"), { recursive: true });
+    writeFileSync(
+      join(directory, "usage-accounts.json"),
+      JSON.stringify({
+        version: 1,
+        claude: { defaultName: "Lab", accounts: [{ id: "added-one", directory: added, name: "Added" }], ignored: [] },
+      }),
+    );
+
+    const report = await settled();
+
+    const accounts = claudeProgram(report).accounts;
+    assert.deepEqual(accounts.map((account) => account.name), ["Lab", "Added"]);
+    assert.deepEqual(accounts.map((account) => account.state), ["ok", "ok"]);
+  });
+
+  test("runs Claude Code for its Usage Limits only when asked", async () => {
+    const { settled, tripped, claudeCalls } = await host({ claude: true });
+    await waitFor(() => existsSync(recordPath("work")), "the record", PATIENCE_MS);
+
+    await settled();
+    assert.equal(claudeCalls(), "");
+
+    await settled("--claude-limits");
+    assert.match(claudeCalls(), /--version/);
+    assert.equal(tripped(), "");
+  });
+
+  test("suggests the directories of the Claude Code Agents the service saw", async () => {
+    const agentHome = join(root, "agent-claude");
+    mkdirSync(agentHome);
+    const agent = await coreProcess({ HOME: root, CLAUDE_CONFIG_DIR: agentHome });
+    const bin = join(root, "plain");
+    mkdirSync(bin);
+    cpSync(HELPER, join(directory, "app"), { recursive: true });
+    writeFileSync(join(directory, "notifications.json"), JSON.stringify({ v: 1, devices: [{ session: "work" }] }));
+    const self = await coreProcess({ HOME: join(root, "core-home"), PATH: bin });
+    await fakeCore("work", self.pid, {
+      snapshot: {
+        channel: 1,
+        seq: 1,
+        terminals: [
+          { address: "t1", state: "live", foreground: { argv: ["claude"], name: "claude", pid: agent.pid } },
+        ],
+      },
+    });
+    const service = spawn(process.execPath, [join(directory, "app", "main.js")], {
+      env: { HOME: root, XDG_RUNTIME_DIR: join(root, "r"), PATH: bin },
+      stdio: "ignore",
+    });
+    running.push(async () => {
+      service.kill("SIGKILL");
+    });
+    await waitFor(() => existsSync(recordPath("work")), "the record", PATIENCE_MS);
+    await waitFor(() => existsSync(join(directory, "state", "usage", "claude-agents.json")), "the note", PATIENCE_MS);
+
+    let report;
+    for (let attempt = 0; attempt < 600 && report?.refreshing !== false; attempt += 1) {
+      const result = spawnSync(process.execPath, [join(directory, "app", "usage-query.js"), "--tz", "UTC", "--session", "work"], {
+        env: { HOME: root, PATH: bin },
+        encoding: "utf8",
+      });
+      report = JSON.parse(result.stdout);
+      await new Promise((done) => setTimeout(done, 25));
+    }
+
+    assert.deepEqual(claudeProgram(report).accountSuggestions, [
+      { directory: agentHome, name: "agent-claude", source: "agent" },
+    ]);
   });
 });
 

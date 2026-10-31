@@ -100,6 +100,13 @@ suite("Host Helper closure", () => {
     }
   });
 
+  test("the Usage query and worker start only recorded programs, so never a core", () => {
+    // `executable` is a Usage Limits request's recorded program, or the zstd on the
+    // recorded PATH. Naming a new program here is a decision, not a test to update.
+    const started = new Set(helperModules().flatMap((path) => programsStarted(readFileSync(path, "utf8"))));
+    assert.deepEqual([...started].sort(), ['"/bin/ps"', '"security"', "executable", "runtime.claude", "runtime.node"]);
+  });
+
   test("a shared module is the plugin's own source, byte for byte", () => {
     for (const path of filesUnder(HELPER).filter((name) => name.startsWith("shared/"))) {
       assert.deepEqual(
