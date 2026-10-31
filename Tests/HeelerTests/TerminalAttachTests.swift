@@ -677,6 +677,87 @@ struct TerminalAttachTests {
         }
     }
 
+    /// An acknowledged write answers when the writer has written it, in the
+    /// order of everything else in the queue.
+    @Test func anAcknowledgedWriteReturnsOnceWrittenAndInOrder() async throws {
+        let input = TerminalAttachInputQueue()
+        let (written, onWrite) = AsyncStream.makeStream(of: Data.self)
+        let (releases, release) = AsyncStream.makeStream(of: Void.self)
+        let pump = Task {
+            var nextRelease = releases.makeAsyncIterator()
+            try await input.pump(
+                write: { data in
+                    onWrite.yield(data)
+                    await nextRelease.next()
+                },
+                resize: { _, _ in })
+        }
+        defer { pump.cancel() }
+
+        input.send(Data("a".utf8))
+        let acknowledged = Task { try await input.sendAcknowledged(Data("b".utf8)) }
+        var seen = written.makeAsyncIterator()
+        #expect(await seen.next() == Data("a".utf8))
+        release.yield()
+        #expect(await seen.next() == Data("b".utf8))
+        release.yield()
+        try await acknowledged.value
+        input.finish()
+    }
+
+    @Test func anAcknowledgedWriteThrowsWhatTheWriterThrew() async {
+        let input = TerminalAttachInputQueue()
+        let pump = Task {
+            try await input.pump(
+                write: { _ in throw TransportError.coreMutationOutcomeUnknown }, resize: { _, _ in })
+        }
+        defer { pump.cancel() }
+        await #expect(throws: TransportError.coreMutationOutcomeUnknown) {
+            try await input.sendAcknowledged(Data("a".utf8))
+        }
+    }
+
+    /// Bytes no writer will take: queued behind a write that failed, or sent
+    /// after the session ended, hear so rather than wait.
+    @Test func anAcknowledgedWriteThatNeverLeftSaysSo() async {
+        let input = TerminalAttachInputQueue()
+        let (entered, onEnter) = AsyncStream.makeStream(of: Void.self)
+        let (fails, fail) = AsyncStream.makeStream(of: Void.self)
+        let pump = Task {
+            var nextFailure = fails.makeAsyncIterator()
+            try await input.pump(
+                write: { _ in
+                    onEnter.yield()
+                    await nextFailure.next()
+                    throw WriterProbeError.rejectedResize
+                },
+                resize: { _, _ in })
+        }
+        defer { pump.cancel() }
+
+        let writing = Task { try await input.sendAcknowledged(Data("a".utf8)) }
+        var didEnter = entered.makeAsyncIterator()
+        await didEnter.next()
+        let queued = Task { try await input.sendAcknowledged(Data("b".utf8)) }
+        // The second write has joined the queue once this one follows it.
+        await Task.yield()
+        fail.yield()
+
+        await #expect(throws: WriterProbeError.self) { try await writing.value }
+        await #expect(throws: TerminalAttachInputError.self) { try await queued.value }
+        await #expect(throws: TerminalAttachInputError.sessionEnded) {
+            try await input.sendAcknowledged(Data("c".utf8))
+        }
+    }
+
+    @Test func anAcknowledgedWriteAfterFinishIsRefused() async {
+        let input = TerminalAttachInputQueue()
+        input.finish()
+        await #expect(throws: TerminalAttachInputError.sessionEnded) {
+            try await input.sendAcknowledged(Data("a".utf8))
+        }
+    }
+
     /// A slow SSH writer must not let lossy momentum-scroll input hold
     /// reliable keyboard input hostage. Sixty rows model one ordinary flick;
     /// the 20 ms drain delay makes the old unbounded FIFO take about 1.2 s.

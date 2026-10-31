@@ -99,6 +99,15 @@ extension HerdrCoreTransport {
                 isMutation: false))
     }
 
+    /// The Terminal's record as the core knows it now, foreground included.
+    func terminalRecord(_ address: String) async throws -> HerdrCoreTerminalRecord {
+        try HerdrCoreWire.typed(
+            await call(
+                "terminal.get",
+                params: .object(["terminal": .string(try HerdrCoreWire.address(address))]),
+                isMutation: false))
+    }
+
     /// Ends a Terminal for good with `terminal.kill`, sent once as a mutation. A
     /// kill is final even on a kept Terminal, so keep stays as it is. Unless the
     /// core says the Terminal ended, or no longer knows it, this throws

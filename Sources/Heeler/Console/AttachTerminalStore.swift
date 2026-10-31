@@ -557,7 +557,8 @@ final class AttachTerminalStore {
             writer: { data in session.send(data) },
             scroller: { sequence, rows in
                 session.scroll(sequence, rows: rows)
-            })
+            },
+            acknowledgedWriter: { data in try await session.sendAcknowledged(data) })
         self.inputGeneration = inputGeneration
         if let latestCols = cols, let latestRows = rows,
             latestCols != initialCols || latestRows != initialRows

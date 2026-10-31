@@ -503,6 +503,11 @@ enum TerminalAttachInput: Sendable, Equatable {
     case resize(cols: Int, rows: Int)
 }
 
+enum TerminalAttachInputError: Error, Equatable {
+    /// The session ended with these bytes still on this side.
+    case sessionEnded
+}
+
 /// The live PTY's mixed-reliability input queue.
 ///
 /// Keystrokes and resizes are reliable and ordered. Touch scrolling is an
@@ -521,11 +526,22 @@ final class TerminalAttachInputQueue: Sendable {
         var rows: Int
     }
 
+    private typealias Acknowledgement = CheckedContinuation<Void, any Error>
+
+    private struct ReliableItem: Sendable {
+        let input: TerminalAttachInput
+        var acknowledgement: Acknowledgement?
+    }
+
     private struct State: ~Copyable {
-        var reliable: [TerminalAttachInput] = []
+        var reliable: [ReliableItem] = []
         var pendingScroll: PendingScroll?
         var waiter: CheckedContinuation<TerminalAttachInput?, Never>?
         var isFinished = false
+        /// The item the writer is working on, when someone waits to hear of it.
+        var inFlightAcknowledgement: Acknowledgement?
+        /// Nothing will write what is queued from now on.
+        var hasStoppedPumping = false
     }
 
     private enum NextDecision {
@@ -537,7 +553,24 @@ final class TerminalAttachInputQueue: Sendable {
 
     func send(_ keystrokes: Data) {
         guard !keystrokes.isEmpty else { return }
-        enqueueReliable(.keystrokes(keystrokes), discardingPendingScroll: true)
+        enqueueReliable(ReliableItem(input: .keystrokes(keystrokes)), discardingPendingScroll: true)
+    }
+
+    /// `send` that returns once the writer has written the bytes, in the same
+    /// order as everything else. It throws what the write threw, or
+    /// `TerminalAttachInputError.sessionEnded` when the bytes were never written.
+    /// Cancelling the caller changes nothing: the bytes stay queued.
+    func sendAcknowledged(_ keystrokes: Data) async throws {
+        try await withCheckedThrowingContinuation { (continuation: Acknowledgement) in
+            let isOpen = state.withLock { !$0.isFinished && !$0.hasStoppedPumping }
+            guard isOpen else {
+                continuation.resume(throwing: TerminalAttachInputError.sessionEnded)
+                return
+            }
+            enqueueReliable(
+                ReliableItem(input: .keystrokes(keystrokes), acknowledgement: continuation),
+                discardingPendingScroll: true)
+        }
     }
 
     func scroll(_ sequence: Data, rows: Int) {
@@ -580,14 +613,16 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     func resize(cols: Int, rows: Int) {
-        enqueueReliable(.resize(cols: cols, rows: rows), discardingPendingScroll: false)
+        enqueueReliable(ReliableItem(input: .resize(cols: cols, rows: rows)), discardingPendingScroll: false)
     }
 
     func next() async -> TerminalAttachInput? {
         await withCheckedContinuation { continuation in
             let decision = state.withLock { state -> NextDecision in
                 if !state.reliable.isEmpty {
-                    return .resume(state.reliable.removeFirst())
+                    let item = state.reliable.removeFirst()
+                    state.inFlightAcknowledgement = item.acknowledgement
+                    return .resume(item.input)
                 }
                 if let scroll = state.pendingScroll {
                     let deliveredRows = min(scroll.rows, Self.maximumScrollRowsPerWrite)
@@ -628,23 +663,52 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     private func enqueueReliable(
-        _ input: TerminalAttachInput,
+        _ item: ReliableItem,
         discardingPendingScroll: Bool
     ) {
         var waiter: CheckedContinuation<TerminalAttachInput?, Never>?
+        var refused: Acknowledgement?
         state.withLock { state in
-            guard !state.isFinished else { return }
+            guard !state.isFinished, !state.hasStoppedPumping else {
+                refused = item.acknowledgement
+                return
+            }
             if discardingPendingScroll {
                 state.pendingScroll = nil
             }
             if state.reliable.isEmpty, let waiting = state.waiter {
                 state.waiter = nil
+                state.inFlightAcknowledgement = item.acknowledgement
                 waiter = waiting
             } else {
-                state.reliable.append(input)
+                state.reliable.append(item)
             }
         }
-        waiter?.resume(returning: input)
+        refused?.resume(throwing: TerminalAttachInputError.sessionEnded)
+        waiter?.resume(returning: item.input)
+    }
+
+    private func finishInFlight(_ result: Result<Void, any Error>) {
+        let acknowledgement = state.withLock { state in
+            defer { state.inFlightAcknowledgement = nil }
+            return state.inFlightAcknowledgement
+        }
+        acknowledgement?.resume(with: result)
+    }
+
+    /// Whoever waits on bytes no writer will take hears so now.
+    private func stopPumping() {
+        let abandoned = state.withLock { state -> [Acknowledgement] in
+            state.hasStoppedPumping = true
+            defer {
+                state.inFlightAcknowledgement = nil
+                state.reliable.removeAll()
+            }
+            return ([state.inFlightAcknowledgement] + state.reliable.map(\.acknowledgement)).compactMap { $0 }
+        }
+        for acknowledgement in abandoned {
+            acknowledgement.resume(throwing: TerminalAttachInputError.sessionEnded)
+        }
     }
 
     /// Drains the queue onto a live PTY channel until the queue finishes or
@@ -654,11 +718,18 @@ final class TerminalAttachInputQueue: Sendable {
         write: (Data) async throws -> Void,
         resize: (Int, Int) async throws -> Void
     ) async throws {
+        defer { stopPumping() }
         while let item = await next() {
             guard !Task.isCancelled else { return }
             switch item {
             case .keystrokes(let data):
-                try await write(data)
+                do {
+                    try await write(data)
+                    finishInFlight(.success(()))
+                } catch {
+                    finishInFlight(.failure(error))
+                    throw error
+                }
             case .scroll(let data):
                 try await write(data)
                 try await Task.sleep(for: Self.scrollPacingInterval)
@@ -742,6 +813,11 @@ final class TerminalAttachSession: Sendable {
     /// dead channel drops them, and the death surfaces on `output`.
     func send(_ keystrokes: Data) {
         input.send(keystrokes)
+    }
+
+    /// `send` for a caller that has to know the bytes left.
+    func sendAcknowledged(_ keystrokes: Data) async throws {
+        try await input.sendAcknowledged(keystrokes)
     }
 
     /// Coalesces touch-scroll rows behind at most one small in-flight batch.

@@ -147,6 +147,16 @@ actor FakeCoreSocket: HeelerSSHAPIChannel {
         }
     }
 
+    /// What the client wrote on `channel` so far, each DATA frame as text.
+    func dataWritten(channel: UInt32) -> [String] {
+        frames(channel: channel, kind: .data).map { String(decoding: $0.payload, as: UTF8.self) }
+    }
+
+    /// Returns once `count` DATA frames have reached the wire on `channel`.
+    func waitForData(channel: UInt32, count: Int) async {
+        while frames(channel: channel, kind: .data).count < count { await waitForChange() }
+    }
+
     func waitForCredit(channel: UInt32, total: Int) async {
         while creditTotal(channel: channel) < total { await waitForChange() }
     }

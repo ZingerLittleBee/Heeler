@@ -198,6 +198,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var runReply: JSONValue?
     private var isHoldingAttachReplies = false
     private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
+    private var heldTerminalReads: [(socket: FakeCoreSocket, id: String)] = []
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
@@ -378,6 +379,9 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             // A real core's answer for a name nobody wrote.
             case "doc.get" where core.answersDocumentReads:
                 try? await socket.reply(to: request.id, result: .object(["version": .number(0), "value": .null]))
+            // Nobody answers until the test says what the core knows.
+            case "terminal.get":
+                heldTerminalReads.append((socket, request.id))
             case "terminal.read":
                 try? await socket.reply(
                     to: request.id,
@@ -444,6 +448,20 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         for reply in held {
             try? await reply.socket.reply(to: reply.id, result: reply.result)
         }
+    }
+
+    /// Answers every `terminal.get` waiting so far with this record.
+    func answerTerminalReads(with record: JSONValue) async {
+        let held = heldTerminalReads
+        heldTerminalReads = []
+        for read in held { try? await read.socket.reply(to: read.id, result: record) }
+    }
+
+    /// Answers every `terminal.get` waiting so far with this error kind.
+    func refuseTerminalReads(kind: String) async {
+        let held = heldTerminalReads
+        heldTerminalReads = []
+        for read in held { try? await read.socket.replyError(to: read.id, kind: kind) }
     }
 
     /// What the Host's git answers a Changes read with. Nil keeps the seam's

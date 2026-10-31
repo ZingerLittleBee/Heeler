@@ -29,6 +29,8 @@ struct HostCapabilities: Equatable, Sendable {
     /// herdr-core Terminal has no such thing: every viewer may type (ADR 0031).
     var takeOver = true
     var desktopAppNaming: HerdrAppNaming?
+    /// The Composer's Stop. A herdr-core Host offers Send and not this yet.
+    var composerStop = true
 
     func renameWorkspace(id: String) -> Bool {
         renamesWorkspaces || desktopAppNaming?.workspaceIDs.contains(id) == true
@@ -56,19 +58,22 @@ extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
     /// core Host offers uploads once it is known to take them over SFTP: native
     /// Windows stages through the core's `terminal.put` instead (ADR 0032), and
-    /// has no Rename until one passes a test there.
+    /// has no Rename until one passes a test there. It offers Send once it is
+    /// known to be POSIX too, because the foreground that Send checks takes
+    /// another form on native Windows (ADRs 0032 and 0035).
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
         desktopAppNaming: HerdrAppNaming? = nil
     ) {
         let offered = serverKind == .herdrTUI
+        let coreOnPosix = serverKind == .herdrCore && platform == .posix
         self.init(
             opensDetail: true, startsAgents: true, startsTerminals: true,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
-            uploads: offered || (serverKind == .herdrCore && platform == .posix),
-            composerSend: offered, chat: offered, tabNames: offered, closeTab: true,
+            uploads: offered || coreOnPosix,
+            composerSend: offered || coreOnPosix, chat: offered, tabNames: offered, closeTab: true,
             syncLayoutFromPlugin: offered, takeOver: offered,
-            desktopAppNaming: serverKind == .herdrCore && platform == .posix ? desktopAppNaming : nil)
+            desktopAppNaming: coreOnPosix ? desktopAppNaming : nil, composerStop: offered)
     }
 }
 
