@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 
 @testable import Heeler
 
@@ -112,7 +113,14 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     }
 
     nonisolated let routeID: UUID? = nil
-    nonisolated let hostServices: any HostServices
+    private nonisolated let services: any HostServices
+    /// Each borrow of the Host's exec and SFTP services, from anything above.
+    private let borrows = OSAllocatedUnfairLock(initialState: 0)
+    nonisolated var hostServicesBorrows: Int { borrows.withLock { $0 } }
+    nonisolated var hostServices: any HostServices {
+        borrows.withLock { $0 += 1 }
+        return services
+    }
     nonisolated var hostHelperHost: any HostHelperHost { ScriptedHelperHost() }
 
     private let coreID: String
@@ -140,7 +148,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     ) {
         self.coreID = coreID
         self.subscribeResults = subscribeResults
-        hostServices = services
+        self.services = services
     }
 
     var isConnected: Bool { !isClosed }

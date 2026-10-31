@@ -36,6 +36,26 @@ extension Host {
     var capabilities: HostCapabilities { HostCapabilities(serverKind: serverKind) }
 }
 
+/// What an Agent's row offers besides its pin, by what its Host can do.
+struct ConsoleAgentRowOffers: Equatable {
+    let opensDetail: Bool
+    let opensInNewWindow: Bool
+    let closes: Bool
+
+    init(opensDetail: Bool, opensInNewWindow: Bool, closes: Bool) {
+        self.opensDetail = opensDetail
+        self.opensInNewWindow = opensInNewWindow
+        self.closes = closes
+    }
+
+    init(capabilities: HostCapabilities, supportsMultipleWindows: Bool) {
+        self.init(
+            opensDetail: capabilities.opensDetail,
+            opensInNewWindow: capabilities.opensDetail && supportsMultipleWindows,
+            closes: capabilities.closeTab)
+    }
+}
+
 extension Collection<Host> {
     /// The Hosts a list's New button can start something on: Agents, or
     /// Terminals on the Terminals tab. With none, it is not offered.

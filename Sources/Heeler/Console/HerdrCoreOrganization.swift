@@ -68,6 +68,7 @@ enum HerdrCoreOrganization {
         var workspaces: [WorkspaceInfo] = []
         var tabs: [TabInfo] = []
         var panes: [PaneInfo] = []
+        var agents: [AgentInfo] = []
         var checkoutDirectories: [String] = []
         let listed = (spaces + derived).filter { workspace in
             workspace.tabs.contains { !$0.panes.isEmpty }
@@ -92,8 +93,13 @@ enum HerdrCoreOrganization {
                         agentStatus: .unknown, focused: false, label: tab.label,
                         number: tabPosition + 1, paneCount: members[tabPosition].count,
                         tabID: tab.id, workspaceID: workspace.id))
-                panes += members[tabPosition].map {
-                    pane($0, tabID: tab.id, workspaceID: workspace.id)
+                for record in members[tabPosition] {
+                    let agent = HerdrCoreAgentRule.agent(in: record)
+                    panes.append(pane(record, agent: agent, tabID: tab.id, workspaceID: workspace.id))
+                    if let agent {
+                        agents.append(
+                            agentInfo(record, agent: agent, tabID: tab.id, workspaceID: workspace.id))
+                    }
                 }
             }
             workspaces.append(
@@ -106,8 +112,8 @@ enum HerdrCoreOrganization {
         }
         return Result(
             snapshot: SessionSnapshot(
-                agents: [], layouts: [], panes: panes, protocolVersion: 0, tabs: tabs, version: "",
-                workspaces: workspaces),
+                agents: agents, layouts: [], panes: panes, protocolVersion: 0, tabs: tabs,
+                version: "", workspaces: workspaces),
             checkoutDirectories: checkoutDirectories)
     }
 
@@ -248,14 +254,29 @@ enum HerdrCoreOrganization {
         return parts.last.map(String.init) ?? String(folder)
     }
 
+    /// An Agent with no title yet reads as its program, so its first row says
+    /// something before the program sets one.
+    private static func agentInfo(
+        _ record: HerdrCoreTerminalRecord, agent: HerdrCoreAgent, tabID: String, workspaceID: String
+    ) -> AgentInfo {
+        let terminalTitle = record.title.isEmpty ? nil : record.title
+        let stripped = terminalTitle.map(TerminalTitleGlyphs.strip).flatMap { $0.isEmpty ? nil : $0 }
+        return AgentInfo(
+            agentStatus: agent.status, focused: false, paneID: record.address, revision: 0, tabID: tabID,
+            terminalID: record.address, workspaceID: workspaceID, agent: agent.kind, cwd: record.cwd,
+            foregroundCwd: record.foreground?.cwd, name: record.name, terminalTitle: terminalTitle,
+            terminalTitleStripped: stripped ?? AgentNotificationIdentity.kindLabel(agent.kind),
+            tokens: record.labels)
+    }
+
     private static func pane(
-        _ record: HerdrCoreTerminalRecord, tabID: String, workspaceID: String
+        _ record: HerdrCoreTerminalRecord, agent: HerdrCoreAgent?, tabID: String, workspaceID: String
     ) -> PaneInfo {
         let terminalTitle = record.title.isEmpty ? nil : record.title
         return PaneInfo(
-            agentStatus: .unknown, focused: false, paneID: record.address, revision: 0, tabID: tabID,
-            terminalID: record.address, workspaceID: workspaceID, cwd: record.cwd,
-            foregroundCwd: record.foreground?.cwd, label: record.name,
+            agentStatus: agent?.status ?? .unknown, focused: false, paneID: record.address, revision: 0,
+            tabID: tabID, terminalID: record.address, workspaceID: workspaceID, agent: agent?.kind,
+            cwd: record.cwd, foregroundCwd: record.foreground?.cwd, label: record.name,
             terminalTitle: terminalTitle,
             terminalTitleStripped: terminalTitle.map(TerminalTitleGlyphs.strip),
             title: programName(record))

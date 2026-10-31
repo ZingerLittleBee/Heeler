@@ -106,6 +106,53 @@ yet, and read each pid from `server.status` or `terminal.list`.
 | Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | The Host stays Connected in the Hosts list and every row stays in its card |
 | Stopped core | `server stop` by absolute path | The Host reads **herdr-core is not running** and retries; no core process appears until you start it |
 
+## Program Status
+
+With the Host connected, start each harness in its own Terminal on the box, and
+compare the Agents tab with the event log `scripts/lab/herdr-core-capture.py` records
+for the session. Use the mock API or a harness's local model, and never a real
+credential. Which harness reports what is what this section finds out, so record the
+version beside each result. Add any case the
+[Agent-rule vector](../../plugin/test-vectors/herdr-core-agent-rule-v1.json) lacks,
+with its source, and clear the vector's `provisional` flag once the captures are in.
+
+| Harness | Start it | Its `app` | Agent kind | Heeler shows |
+| --- | --- | --- | --- | --- |
+| Claude Code | `claude` against the mock API | `claude-code` | `claude` | **Unknown** until its first report, then each report as the log has it. A permission prompt reads **Blocked** |
+| Codex | `codex` against the mock API | `codex` | `codex` | The same |
+| Pi | `pi`, from each package name you can install (`@mariozechner/pi-coding-agent`, `@earendil-works/pi-coding-agent`) | `pi` | `pi` | The same. A Node launch resolves to `pi` |
+| OpenCode 2.x | `opencode` | `opencode` | `opencode` | The same |
+| Oh My Pi | `omp` | `omp` | `omp` | The same |
+| Grok Build | `grok` | `grok-build` | `grok` | The same. Without hooks set up it stays **Unknown** |
+
+Each Agent lists on Agents, By Host and By Workspace, and under the Host filter. It
+leaves the Terminals tab while it holds the foreground, its row opens nothing, and its
+menu offers no Open in New Window or Close.
+
+Then check what no harness needs to be signed in for, from an inert program in a
+Terminal. A status report is `printf '\033]7501;state=working:app=x\007'`, as the
+[capture scenario](../../scripts/fixtures/herdr-core-capture-scenario.py) writes them.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Error | A running program reports `state=error` | **Error**, sorted with Blocked |
+| Reported done | A running program reports `state=done` | **Idle**. Done per device is a later check |
+| Unknown app | A program that is not a shell reports an `app` Heeler does not know, or none | An Agent with a generic glyph and the program's word as its kind, and no Chat |
+| Shell exit | Quit a harness back to its shell | The Agent ends and the row returns to the Terminals tab, whatever it last reported |
+| Wrappers | A harness started through `bash -lc`, and through the desktop app's fish wrapper | The Agent is the harness underneath. New arguments on the fish wrapper's pid end it |
+| Cleared foreground | Quit a harness started through the desktop app's bash wrapper, then run `printf x \| less` in the shell it left, and background and reopen Heeler while it runs | No Agent comes back, at the capture's `null` `foreground` event or after the reconnect |
+| Kept restart | `kill -9` a harness started with `keep` | No Agent between `lost` and `restarted` |
+
+## Agent Row Layout
+
+Open **Settings**, then **Agent List Fields**, and the Host.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Starting rows | Open a Host you have never edited | **Heeler's fields**, Row 1 `terminal_title_stripped`, Row 2 `directory`, Row 3 empty. No **Sync from plugin**, and no word of Sync or the plugin on the page |
+| Labels | Label a Terminal on the box, then add a field to a row | The label is offered under **Terminal labels**, and the Agents tab shows its value. No `$` field and no `state_text` is offered |
+| Herdr TUI beside it | Open a Herdr TUI Host | **Sync from plugin**, its copy and its fields as before |
+
 ## Leaked environment
 
 On a throwaway session, start the core by absolute path with made-up values for

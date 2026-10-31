@@ -15,6 +15,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     let session: HerdrCoreHostSession
 
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
+    private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var status: EventsSessionStatus?
     /// See Standing Failure in `CONTEXT.md`.
@@ -30,7 +31,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     let syncError: String? = nil
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
-    let agentsByPane: [String: ConsoleAgent] = [:]
+    var terminalLabelKeys: [String] {
+        Set(records.flatMap(\.labels.keys)).sorted()
+    }
 
     private let memory: HerdrCoreHostMemory
     private let onChange: @MainActor @Sendable () -> Void
@@ -180,6 +183,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         isAwaitingSnapshot = true
         records = []
         terminalsByPane = [:]
+        agentsByPane = [:]
         workspaces = []
         documentRead?.cancel()
         documentRead = nil
@@ -220,7 +224,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         case .title(let terminal, let title):
             update(terminal) { $0.title = title }
         case .foreground(let terminal, let foreground):
-            update(terminal) { $0.foreground = foreground }
+            update(terminal) { $0.noteForeground(foreground) }
+        case .status(let terminal, let status, let records, let reported):
+            update(terminal) {
+                $0.status = status
+                $0.records = records
+                $0.reported = reported
+            }
+        case .turn(let terminal, let turn, _):
+            update(terminal) { $0.turn = turn }
         case .labels(let terminal, let labels):
             update(terminal) { $0.labels = labels }
             sidebarRevision &+= 1
@@ -258,7 +270,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 readDocument()
             }
             return
-        case .status, .turn, .heartbeat:
+        case .heartbeat:
             return
         }
         rebuildRows()
@@ -280,13 +292,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             firstSeenDirectories: memory.firstSeenDirectories(for: host.id),
             checkouts: checkouts, home: home)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
-        var rows = builder.terminalRows(agents: [:], liveChange: { _ in nil })
+        // Every value comes from the rebuilt records: nothing is carried over.
+        let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
+        var rows = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         for record in records where rows[record.address] != nil {
             rows[record.address]?.isRestarting = record.isRestarting
             rows[record.address]?.gridColumns = record.columns
             rows[record.address]?.gridRows = record.rows
         }
         terminalsByPane = rows
+        agentsByPane = agents
         workspaces = builder.workspaceRows()
         askForCheckouts(organization.checkoutDirectories)
     }

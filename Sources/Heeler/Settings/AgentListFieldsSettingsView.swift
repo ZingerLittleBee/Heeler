@@ -10,7 +10,8 @@ struct AgentListFieldsSettingsView: View {
         self.hosts = hosts
         _editor = State(initialValue: AgentListFieldsEditor(
             layouts: console.rowLayouts, snapshots: console.sidebarSnapshots,
-            fetch: { [console] hostID in await console.refreshSidebarLayout(for: hostID) }))
+            fetch: { [console] hostID in await console.refreshSidebarLayout(for: hostID) },
+            followsPlugin: { [console] hostID in console.capabilities(for: hostID).syncLayoutFromPlugin }))
     }
 
     var body: some View {
@@ -81,7 +82,8 @@ struct AgentListFieldsSettingsView: View {
 }
 
 /// One Host's rows as three fixed slots, edited in place. Row 1 and Row 2
-/// start from herdr's sidebar fields; Row 3 is Heeler's own row. Slots are never
+/// start from herdr's sidebar fields; Row 3 is Heeler's own row. A Host with no
+/// plugin starts from Heeler's own fields instead. Slots are never
 /// added, moved, or deleted, so a row's index is its identity everywhere on
 /// this screen. Every change saves immediately through the editor. Every
 /// Agent on the Host shares these rows; there are no per-kind overrides.
@@ -107,13 +109,18 @@ struct AgentListFieldsHostDetailView: View {
             }
             .sheet(item: $addingField) { destination in
                 AgentListFieldsAddFieldSheet(
-                    editor: editor, destination: destination, hostName: host.displayName)
+                    editor: editor, destination: destination, hostName: host.displayName,
+                    followsPlugin: followsPlugin,
+                    labelKeys: console.terminalLabelKeys(on: host.id))
             }
-            .task { await console.refreshPluginStatuses(for: [host.id]) }
+            .task {
+                if followsPlugin { await console.refreshPluginStatuses(for: [host.id]) }
+            }
     }
 
     private var layout: AgentRowLayout { editor.layout(for: host.id) }
     private var isSyncing: Bool { editor.syncStates[host.id] == .syncing }
+    private var followsPlugin: Bool { host.capabilities.syncLayoutFromPlugin }
 
     private var hostList: some View {
         List {
@@ -122,7 +129,7 @@ struct AgentListFieldsHostDetailView: View {
                 previewRow
                 hostRows
                 slotsNote
-                if host.capabilities.syncLayoutFromPlugin { syncRow }
+                if followsPlugin { syncRow }
             }
             .listSectionSeparator(.hidden)
             AgentLayoutErrorView(editor: editor)
@@ -148,8 +155,9 @@ struct AgentListFieldsHostDetailView: View {
                 Text(AgentListFieldsCopy.detailIntro)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                if let requirement = console.pluginStatuses.status(for: host.id)?
-                    .requirements(for: [.sidebarFields]).first
+                if followsPlugin,
+                    let requirement = console.pluginStatuses.status(for: host.id)?
+                        .requirements(for: [.sidebarFields]).first
                 {
                     // Without a snapshot, Sync from plugin silently fills
                     // fallback fields; say why before the user tries it.
@@ -175,7 +183,8 @@ struct AgentListFieldsHostDetailView: View {
                 .tracking(0.5)
                 .foregroundStyle(.tertiary)
                 .textCase(.uppercase)
-            AgentListFieldsPreview(layout: layout, hostName: host.displayName)
+            AgentListFieldsPreview(
+                layout: layout, hostName: host.displayName, followsPlugin: followsPlugin)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .listRowInsets(AgentListFieldsChrome.previewInsets)
@@ -189,7 +198,8 @@ struct AgentListFieldsHostDetailView: View {
         ForEach(Array(slotRows.enumerated()), id: \.offset) { @Sendable index, row in
             MainActorContent {
                 AgentListFieldsRowEditor(
-                    index: index, row: row, isEnabled: !isSyncing && !editor.isCatalogUnreadable,
+                    index: index, row: row, followsPlugin: followsPlugin,
+                    isEnabled: !isSyncing && !editor.isCatalogUnreadable,
                     onAdd: {
                         addingField = AgentListFieldsEditorDestination(
                             hostID: host.id, rowIndex: index)
@@ -204,14 +214,14 @@ struct AgentListFieldsHostDetailView: View {
     }
 
     private var slotsNote: some View {
-        Text(AgentListFieldsCopy.rowSlots)
+        Text(AgentListFieldsCopy.rowSlots(followsPlugin: followsPlugin))
             .font(.footnote)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .listRowInsets(AgentListFieldsChrome.slotsNoteInsets)
             .listRowSeparator(.hidden)
-            .agentListHostSurface(isFirst: false, isLast: !host.capabilities.syncLayoutFromPlugin)
+            .agentListHostSurface(isFirst: false, isLast: !followsPlugin)
     }
 
     @ViewBuilder
@@ -313,6 +323,7 @@ struct AgentListFieldsHostDetailView: View {
 private struct AgentListFieldsRowEditor: View {
     let index: Int
     let row: AgentRow
+    let followsPlugin: Bool
     let isEnabled: Bool
     let onAdd: () -> Void
     let onToggleStyle: (Int) -> Void
@@ -335,7 +346,8 @@ private struct AgentListFieldsRowEditor: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row))
+        .accessibilityLabel(
+            AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row, followsPlugin: followsPlugin))
     }
 
     private func fieldChip(_ token: AgentRowStyledToken, at offset: Int) -> some View {
@@ -478,6 +490,7 @@ enum AgentListFieldsSourceCaption {
         case .loading: "Reading herdr fields…"
         case .missing: "No herdr fields snapshot"
         case .unavailable: "herdr fields unavailable"
+        case .heeler: "Heeler's fields"
         }
     }
 }
@@ -506,6 +519,13 @@ enum AgentListFieldsCopy {
         "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "
         + "The status badge always ends Row 1."
+
+    static func rowSlots(followsPlugin: Bool) -> String {
+        guard !followsPlugin else { return rowSlots }
+        return "Row 1 starts from the terminal's title and Row 2 from its directory. "
+            + "Any row can use these fields and your Terminals' labels. "
+            + "The status badge always ends Row 1."
+    }
 }
 
 enum AgentListFieldsChipLabel {
@@ -520,8 +540,8 @@ enum AgentListFieldsRowLabel {
         slot == .heeler ? "Not configured" : "No fields"
     }
 
-    static func accessibilityLabel(index: Int, row: AgentRow) -> String {
-        let slot = AgentRowSlot.forRow(index)
+    static func accessibilityLabel(index: Int, row: AgentRow, followsPlugin: Bool = true) -> String {
+        let slot = followsPlugin ? AgentRowSlot.forRow(index) : nil
         var parts = ["Row \(index + 1)"]
         if let slot { parts.append("\(slot.label) row") }
         if row.isEmpty {
