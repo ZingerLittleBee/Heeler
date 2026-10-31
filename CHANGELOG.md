@@ -39,6 +39,13 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep an Agent's terminal and draft on screen while its connection recovers,
+  with the status and a loading indicator in the title, even when the title is
+  folded. New input waits until the Host is ready, and the keyboard stays up.
+  A slow request no longer replaces a connection that still answers, and a
+  send whose reply was lost is never sent twice. Scrolling queued for more than
+  200 ms is dropped, so old gestures don't run after the connection comes back.
+  (refs #523)
 - Keep the paste button on a terminal's keyboard row visible: it could
   appear as an empty space when the terminal opened. In light mode it is
   now a plain glyph like the row's other buttons, without a gray backing.

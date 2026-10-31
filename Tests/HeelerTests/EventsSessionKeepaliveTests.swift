@@ -110,6 +110,250 @@ struct EventsSessionKeepaliveTests {
         await session.end()
     }
 
+    @Test func requestTimeoutKeepsAConnectionThatStillAnswersWithoutReplayingTheRequest() async throws {
+        let first = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        await first.setPaneReadFailure(.timedOut)
+        await replacement.setPaneReadFailure(.timedOut)
+        let connector = SequencedTransportConnector([first, replacement])
+        let session = EventsSession(
+            subscriptions: subscriptions,
+            connect: { try await connector.connect() },
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        await #expect(throws: TransportError.timedOut) {
+            try await session.withTransport {
+                try await $0.readPane(PaneReadParams(paneID: "w1:p1", source: .recent))
+            }
+        }
+        #expect(await connector.connectCount == 1)
+        #expect(await !first.isClosed)
+        #expect(await first.paneReadParams.count == 1)
+        #expect(await replacement.paneReadParams.isEmpty)
+        await session.end()
+    }
+
+    /// herdr closes an accepted API socket after five seconds without a request
+    /// line, so a stall can end one channel while the SSH connection survives.
+    @Test func probeRetriesAClosedChannelWithoutReplacingTheConnection() async throws {
+        let transport = ScriptedTransport()
+        let connector = SequencedTransportConnector([transport, ScriptedTransport()])
+        let session = makeSession(
+            connector: connector,
+            keepalive: KeepalivePolicy(
+                interval: .seconds(60), warningDelay: .seconds(5), timeout: .seconds(5),
+                probeRetryDelay: .milliseconds(10)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        await transport.failPing(atCall: 2, with: .channelFailed(detail: "closed before a reply"))
+        #expect(await session.startRevalidation()?.value == true)
+        #expect(await transport.pingCount == 3)
+        #expect(await connector.connectCount == 1)
+        #expect(await !transport.isClosed)
+        await session.end()
+    }
+
+    @Test func aClosedChannelStillRunsOutTheProbeDeadline() async throws {
+        let first = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, ScriptedTransport()])
+        let session = makeSession(
+            connector: connector,
+            keepalive: KeepalivePolicy(
+                interval: .seconds(60), warningDelay: .seconds(5), timeout: .milliseconds(100),
+                probeRetryDelay: .milliseconds(10)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        for call in 2...40 {
+            await first.failPing(atCall: call, with: .channelFailed(detail: "closed before a reply"))
+        }
+        #expect(await session.startRevalidation()?.value == false)
+        try await waitUntil("the exhausted probe must replace the connection") {
+            await connector.connectCount == 2
+        }
+        await session.end()
+    }
+
+    @Test(arguments: [
+        TransportError.timedOut, TransportError.sshUnreachable(detail: "connection lost"),
+    ])
+    func anOperationThatChangesHostStateNeverRunsOnTheReplacement(
+        failure: TransportError
+    ) async throws {
+        let first = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        await first.setPaneReadFailure(failure)
+        // Only a request timeout probes, and this one finds the link dead.
+        await first.failPing(atCall: 2, with: .timedOut)
+        let connector = SequencedTransportConnector([first, replacement])
+        let session = EventsSession(
+            subscriptions: subscriptions,
+            connect: { try await connector.connect() },
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        await #expect(throws: failure) {
+            try await session.withTransportOnce {
+                try await $0.readPane(PaneReadParams(paneID: "w1:p1", source: .recent))
+            }
+        }
+        try await waitUntil("the lost connection must still be replaced") {
+            await connector.connectCount == 2
+        }
+        #expect(await first.paneReadParams.count == 1)
+        #expect(await replacement.paneReadParams.isEmpty)
+        await session.end()
+    }
+
+    @Test func slowProbeWarnsThenRecoversWithoutReplacingTheConnection() async throws {
+        let transport = ScriptedTransport()
+        let connector = SequencedTransportConnector([transport])
+        let session = makeSession(
+            connector: connector,
+            keepalive: KeepalivePolicy(
+                interval: .seconds(60), warningDelay: .milliseconds(20), timeout: .seconds(2)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextPing(using: gate)
+        let check = Task { await session.startRevalidation()?.value }
+        await gate.waitForEntry()
+        #expect(await updates.next() == .connectionHealthChanged)
+        #expect(session.isCheckingConnection)
+        #expect(session.currentLatency == nil)
+        #expect(await connector.connectCount == 1)
+        #expect(await !transport.isClosed)
+
+        // Another foreground activation joins the probe. A same-connection
+        // pane subscription refresh must neither cancel it nor prove it healthy.
+        await session.startRevalidation()
+        await session.updateSubscriptions(subscriptions + [.global(.paneUpdated)])
+        #expect(await updates.next() == .status(.connected))
+        #expect(session.isCheckingConnection)
+        #expect(await transport.pingCount == 2)
+
+        await gate.open()
+        await check.value
+        #expect(await updates.next() == .connectionHealthChanged)
+        #expect(!session.isCheckingConnection)
+        #expect(session.currentLatency != nil)
+        #expect(await connector.connectCount == 1)
+        #expect(await !transport.isClosed)
+        await session.end()
+    }
+
+    @Test func unansweredProbeHasAHardDeadlineAndLateReplyCannotRestoreItsHealth() async throws {
+        let first = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, replacement])
+        let session = makeSession(
+            connector: connector,
+            keepalive: KeepalivePolicy(
+                interval: .seconds(60), warningDelay: .milliseconds(20), timeout: .milliseconds(200)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        let gate = ScriptedTransportCallGate()
+        await first.gateNextPing(using: gate)
+        let check = Task { await session.startRevalidation()?.value }
+        await gate.waitForEntry()
+        #expect(await updates.next() == .connectionHealthChanged)
+        #expect(session.isCheckingConnection)
+        await check.value
+        try await waitUntil("the hard deadline must replace the unanswered connection") {
+            let connections = await connector.connectCount
+            let pings = await replacement.pingCount
+            return connections == 2 && pings == 1 && session.currentLatency != nil
+        }
+        let replacementLatency = session.currentLatency
+        await gate.open()
+        #expect(await first.isClosed)
+        #expect(!session.isCheckingConnection)
+        #expect(session.currentLatency == replacementLatency)
+        await session.end()
+    }
+
+    @Test func probeFailureDuringResubscriptionKeepsInputPausedAndPreservesItsCause() async throws {
+        let transport = ScriptedTransport()
+        let connector = SequencedTransportConnector([transport])
+        let session = makeSession(
+            connector: connector, keepalive: KeepalivePolicy(interval: .seconds(60)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        let failure = TransportError.socketNotFound(path: "/tmp/herdr.sock")
+        await transport.failPing(atCall: 2, with: failure)
+        let pingGate = ScriptedTransportCallGate()
+        await transport.gateNextPing(using: pingGate)
+        let check = Task { await session.startRevalidation()?.value }
+        await pingGate.waitForEntry()
+        let subscriptionGate = ScriptedTransportCallGate()
+        await transport.gateNextSubscription(using: subscriptionGate)
+        await session.updateSubscriptions(subscriptions + [.global(.paneUpdated)])
+        await subscriptionGate.waitForEntry()
+
+        await pingGate.open()
+        await check.value
+        #expect(session.isCheckingConnection)
+        #expect(session.currentLatency == nil)
+        #expect(await updates.next() == .connectionHealthChanged)
+        await subscriptionGate.open()
+        #expect(await updates.next() == .status(.failed(failure)))
+        #expect(await connector.connectCount == 1)
+        await session.end()
+    }
+
+    @Test func probeFailureWhileEndingForResubscriptionPreservesItsCause() async throws {
+        let transport = ScriptedTransport()
+        let connector = SequencedTransportConnector([transport, ScriptedTransport()])
+        let session = makeSession(
+            connector: connector, keepalive: KeepalivePolicy(interval: .seconds(60)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        let failure = TransportError.socketNotFound(path: "/tmp/herdr.sock")
+        await transport.failPing(atCall: 2, with: failure)
+        let pingGate = ScriptedTransportCallGate()
+        await transport.gateNextPing(using: pingGate)
+        let check = Task { await session.startRevalidation()?.value }
+        await pingGate.waitForEntry()
+        let endGate = ScriptedTransportCallGate()
+        await transport.gateNextEventEnd(using: endGate)
+        let resubscribe = Task {
+            await session.updateSubscriptions(subscriptions + [.global(.paneUpdated)])
+        }
+        await endGate.waitForEntry()
+
+        await pingGate.open()
+        await check.value
+        #expect(await updates.next() == .status(.failed(failure)))
+        #expect(await connector.connectCount == 1)
+        await endGate.open()
+        await resubscribe.value
+        await session.end()
+    }
+
     private func waitUntil(
         _ message: String,
         timeout: Duration = .seconds(3),

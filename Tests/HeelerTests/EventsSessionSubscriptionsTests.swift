@@ -629,7 +629,9 @@ struct EventsSessionSubscriptionsTests {
         }
         #expect(reattach.0 == "replacement")
         #expect(reattach.1 == 1)
+        #expect(await updates.next() == .connectionHealthChanged)
         #expect(await updates.next() == .status(.connected))
+        #expect(!session.isCheckingConnection)
 
         await session.end()
     }

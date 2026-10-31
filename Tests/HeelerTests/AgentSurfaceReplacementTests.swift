@@ -737,6 +737,96 @@ struct AgentSurfaceReplacementTests {
         await Task.yield()
     }
 
+    @Test(arguments: [false, true])
+    func recoveryUsesTheTitleAndRestoresItsVisibility(expanded: Bool) async throws {
+        let suite = "recovery-title-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(expanded, forKey: "agent.back-header-expanded")
+        let transport = ScriptedTransport()
+        let session = Self.makeSession(transport: transport)
+        session.composer.replaceDraft(with: "Keep this draft during recovery")
+        let owner = AgentAttachStore(
+            target: "w1:p1", paneTitle: "pane", transportGeneration: 1,
+            isOnStage: { true },
+            runTerminal: { request, handler in
+                await handler.transportDidBecomeReady(1)
+                let attachment = try await transport.attachTerminal(request)
+                try await handler.runEndingSession(attachment)
+            },
+            closePane: {})
+        let agent = Self.makeAgent(pane: "w1:p1", title: "Connection recovery")
+        let title = AgentDetailHeaderTitle(agent)
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                agent: agent, activity: AppActivityCoordinator(),
+                attachStore: owner, session: session)
+                .defaultAppStorage(defaults))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        try await Self.withClosingAttachOwner(owner, window: window) {
+            controller.view.layoutIfNeeded()
+            try #require(await Self.eventually { await transport.hasLiveAttachSession })
+            #expect(await transport.emitAttachOutput(Data(
+                "\u{1B}[?1049h\u{1B}[?1000;1006hRetained terminal output\r\n".utf8)))
+            try #require(await Self.eventually { owner.terminalStatus == .live })
+            @MainActor func hasTaskTitle() -> Bool {
+                Self.accessibilityLabels(in: controller.view).contains {
+                    $0.contains(title.title) && $0.contains(title.harness)
+                }
+            }
+            try #require(await Self.eventually {
+                controller.view.layoutIfNeeded()
+                return hasTaskTitle() == expanded
+            })
+            let surface = try #require(Self.terminals(in: controller.view).first)
+            try #require(await Self.eventually { surface.remoteTracksMouse })
+            surface.startTouchScrollMomentum(velocityY: 2_000)
+            #expect(surface.isTouchScrollMomentumRunning)
+            owner.input.isEnabled = false
+            try #require(await Self.eventually {
+                controller.view.layoutIfNeeded()
+                return !surface.isTouchScrollMomentumRunning
+            })
+            #expect(surface.scrollTouch(translationY: 960) == 0)
+            owner.input.isEnabled = true
+            try #require(await Self.eventually {
+                controller.view.layoutIfNeeded()
+                return surface.scrollTouch(translationY: 32) > 0
+            })
+            surface.startTouchScrollMomentum(velocityY: 2_000)
+            #expect(surface.isTouchScrollMomentumRunning)
+
+            await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+            try #require(await Self.eventually {
+                controller.view.layoutIfNeeded()
+                let labels = Self.accessibilityLabels(in: controller.view)
+                return owner.terminalStatus == .reconnecting
+                    && labels.contains { $0.contains("Reconnecting…") && $0.contains(title.harness) }
+            }, "recovery must appear in the title even when the header is folded")
+            #expect(!surface.isTouchScrollMomentumRunning)
+            #expect(surface.scrollTouch(translationY: 960) == 0)
+            #expect(!hasTaskTitle())
+            #expect(defaults.bool(forKey: "agent.back-header-expanded") == expanded)
+            #expect(!Self.accessibilityLabels(in: controller.view).contains { $0.contains("Updates paused") })
+
+            try #require(await Self.eventually { await transport.hasLiveAttachSession })
+            #expect(await transport.emitAttachOutput(Data("Recovered terminal output\r\n".utf8)))
+            try #require(await Self.eventually {
+                controller.view.layoutIfNeeded()
+                let labels = Self.accessibilityLabels(in: controller.view)
+                return owner.terminalStatus == .live && hasTaskTitle() == expanded
+                    && !labels.contains { $0.contains("Reconnecting…") }
+            })
+            #expect(Self.terminals(in: controller.view).first === surface)
+            #expect(!surface.isTouchScrollMomentumRunning)
+            #expect(surface.scrollTouch(translationY: 32) > 0)
+            #expect(session.composer.draft == "Keep this draft during recovery")
+            #expect(defaults.bool(forKey: "agent.back-header-expanded") == expanded)
+        }
+    }
+
     // MARK: Fixtures
 
     /// Every accessibility label reachable from `root`, through both the view
@@ -787,12 +877,12 @@ struct AgentSurfaceReplacementTests {
         return window
     }
 
-    static func makeAgent(pane: String, host: UUID = UUID()) -> ConsoleAgent {
+    static func makeAgent(pane: String, host: UUID = UUID(), title: String = "") -> ConsoleAgent {
         ConsoleAgent(
             hostID: host,
             hostName: "devbox",
             agent: Agent(
-                terminalID: "term_\(pane)", kind: "claude", title: "",
+                terminalID: "term_\(pane)", kind: "claude", title: title,
                 status: .idle, workspaceID: "w", tabID: "w:t", paneID: pane,
                 cwd: "/work", revision: 1, name: nil),
             workspaceLabel: nil,
