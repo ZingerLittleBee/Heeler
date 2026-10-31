@@ -226,18 +226,20 @@ struct HerdrCoreConsoleProjectionTests {
         #expect(store.terminals.map(\.paneID) == ["t1"])
     }
 
-    @Test func anEventKindThisAppDoesNotKnowTakesAFreshSnapshot() async throws {
+    @Test func anEventKindThisAppDoesNotKnowLeavesTheInventoryAlone() async throws {
         let transport = ScriptedCoreTransport(subscribeResults: [
-            Self.subscribeResult([Self.record("t1")]),
-            Self.subscribeResult(sequence: 9, [Self.record("t2")]),
+            Self.subscribeResult([Self.record("t1"), Self.record("t2")]),
+            Self.subscribeResult(sequence: 9, [Self.record("t3")]),
         ])
         let store = try await started(transport)
         defer { store.setHosts([]) }
 
         await transport.deliver(Self.event(sequence: 2, type: "brand-new", terminal: "t1", data: .object([:])))
-        await transport.waitForSubscribe(count: 2)
-        try await waitUntil("the fresh snapshot") { row(store, "t2") != nil }
-        #expect(store.terminals.map(\.paneID) == ["t2"])
+        // The next event in order proves the unknown one went by.
+        await transport.deliver(Self.event(sequence: 3, type: "removed", terminal: "t2", data: .object([:])))
+        try await waitUntil("the event after it") { row(store, "t2") == nil }
+        #expect(store.terminals.map(\.paneID) == ["t1"])
+        #expect(await transport.subscribeCount == 1)
         #expect(store.hostStatuses[host.id] == .connected)
     }
 
