@@ -227,6 +227,13 @@ struct HerdrCoreChatTypingTests {
             }
             return chat.blocked
         }
+
+        /// An answer past its check of the screen, its viewer's attach not answered.
+        func answerWaitingForItsViewer(on card: BlockedCardStore) async throws -> (Task<Void, Never>, Attached) {
+            await scripted.holdAttachReplies(onlyViewers: true)
+            let answering = Task { await card.perform(.choose(ordinal: 1)) }
+            return (answering, try await viewer())
+        }
     }
 
     private static func noAuthoredInputRPC(_ scripted: ScriptedCoreHost) async -> Bool {
@@ -720,6 +727,178 @@ struct HerdrCoreChatTypingTests {
         fixture.finish()
     }
 
+    // MARK: While an answer's viewer opens
+
+    /// Opening a viewer can take seconds, and each of these changes during it.
+    @Test func anAnswerGoesOnceItsViewerOpensOnTheSameDialog() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: Self.dialogScreen, modes: "")
+        let card = try await fixture.blockedCard()
+        let (answering, viewer) = try await fixture.answerWaitingForItsViewer(on: card)
+
+        await fixture.scripted.releaseAttachReplies()
+        await viewer.socket.waitForData(channel: viewer.channel, count: 1)
+        await fixture.scripted.setAttachPaint(try Self.paint(Self.readyScreen))
+        await answering.value
+
+        #expect(await fixture.written(on: viewer) == ["1"])
+        #expect(card.notice == nil)
+        fixture.finish()
+    }
+
+    @Test func aShellTakingTheForegroundWhileAnAnswersViewerOpensGetsNoAnswer() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: Self.dialogScreen, modes: "")
+        let card = try await fixture.blockedCard()
+        let (answering, viewer) = try await fixture.answerWaitingForItsViewer(on: card)
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: ["bash"]))
+        try await Self.until("the Agent to go") { fixture.console.agents.isEmpty }
+        await fixture.scripted.releaseAttachReplies()
+        await answering.value
+
+        #expect(card.notice?.contains("no longer holds this terminal") == true, "\(card.notice ?? "")")
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    /// Another pid, or another program behind the pid a wrapper keeps.
+    @Test(arguments: [(41, ["claude"]), (40, ["codex"])])
+    func anotherProcessTakingTheForegroundWhileAnAnswersViewerOpensGetsNoAnswer(pid: Int, argv: [String]) async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: Self.dialogScreen, modes: "")
+        let card = try await fixture.blockedCard()
+        let (answering, viewer) = try await fixture.answerWaitingForItsViewer(on: card)
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: pid, argv: argv))
+        try await fixture.untilEventsApplied()
+        await fixture.scripted.releaseAttachReplies()
+        await answering.value
+
+        #expect(card.notice?.contains("Another process took over") == true, "\(card.notice ?? "")")
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    /// The attach has its answer, and the paint is still on its way.
+    @Test func anotherProcessTakingTheForegroundBeforeAViewersPaintGetsNoAnswer() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: Self.dialogScreen, modes: "")
+        let card = try await fixture.blockedCard()
+        let paint = try Self.paint(Self.dialogScreen, modes: "")
+        await fixture.scripted.setAttachPaint(paint, viewers: false)
+        let answering = Task { await card.perform(.choose(ordinal: 1)) }
+        let viewer = try await fixture.viewer()
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41))
+        try await fixture.untilEventsApplied()
+        try await viewer.socket.deliver(HerdrCoreFrame(channel: viewer.channel, kind: .data, payload: paint))
+        await answering.value
+
+        #expect(card.notice?.contains("Another process took over") == true, "\(card.notice ?? "")")
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    /// Another client answered it, or the next dialog took its place. The viewer's
+    /// paint is the newest screen there is, so that is what the answer goes by.
+    @Test(arguments: ["claude-01-ready", "claude-31-par-second"])
+    func aDialogThatChangedWhileAnAnswersViewerOpenedGetsNoAnswer(now: String) async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), screen: "claude-30-par-first", modes: "")
+        let card = try await fixture.blockedCard()
+        let (answering, viewer) = try await fixture.answerWaitingForItsViewer(on: card)
+
+        await fixture.scripted.setAttachPaint(try Self.paint(now, modes: ""))
+        await fixture.scripted.releaseAttachReplies()
+        await answering.value
+
+        #expect(card.notice == "This prompt changed. Check it before answering.")
+        #expect(card.progress == .ready)
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    /// A note goes in as a paste and an Enter, each opening a viewer of its own.
+    @Test func everyStepOfAnAnswerGoesOnlyOverTheDialogItAnswers() async throws {
+        let note = "Do not create it; reply with the single word skipped"
+        let pane = NoteDialogPane(
+            showing: try ScreenFixture.screen("claude-04-c1-tab-on-no"),
+            afterPaste: try ScreenFixture.screen("claude-05-c1-pasted-feedback"),
+            afterEnter: try ScreenFixture.screen(Self.readyScreen),
+            anotherDialog: try ScreenFixture.screen("claude-31-par-second"))
+        let card = BlockedCardStore(
+            program: .claude,
+            io: BlockedScreenIO(
+                readScreen: { await pane.screen },
+                sendKeys: { _ in Issue.record("A step went with no check of the screen") },
+                paste: { _ in Issue.record("A step went with no check of the screen") },
+                typeWhileShowing: { await pane.type($0, whileShowing: $1) }),
+            clock: ManualClock().clock)
+        card.update(activity: .blocked)
+        await card.refresh()
+
+        await card.perform(.amend(ordinal: 4, note: note))
+
+        #expect(await pane.typed == ["paste \(note)", "keys enter"])
+        #expect(await pane.answersOnItsDialog == [true, true])
+        #expect(await pane.answersOnAnotherDialog == [false, false])
+    }
+
+    @Test func stopPressesNothingOnceTheAgentLeavesWhileItsViewerOpens() async throws {
+        let fixture = try await Fixture()
+        await fixture.scripted.holdAttachReplies(onlyViewers: true)
+        let stopping = Task { await fixture.stop(as: .claude) }
+        let viewer = try await fixture.viewer()
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: ["bash"]))
+        try await Self.until("the Agent to go") { fixture.console.agents.isEmpty }
+        await fixture.scripted.releaseAttachReplies()
+
+        guard case .failed(let reason) = await stopping.value else {
+            Issue.record("Expected Stop to press nothing")
+            return
+        }
+        #expect(reason.contains("no longer holds this terminal"))
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    /// The turn Stop was tapped for was the other process's.
+    @Test func stopPressesNothingOnAnotherProcessThatTookOverWhileItsViewerOpened() async throws {
+        let fixture = try await Fixture()
+        await fixture.scripted.holdAttachReplies(onlyViewers: true)
+        let stopping = Task { await fixture.stop(as: .claude) }
+        let viewer = try await fixture.viewer()
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41))
+        try await fixture.untilEventsApplied()
+        await fixture.scripted.releaseAttachReplies()
+
+        guard case .failed(let reason) = await stopping.value else {
+            Issue.record("Expected Stop to press nothing")
+            return
+        }
+        #expect(reason.contains("Another process took over"))
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    @Test func aPasteGoesNowhereOnceTheAgentLeavesWhileItsViewerOpens() async throws {
+        let fixture = try await Fixture()
+        await fixture.scripted.holdAttachReplies(onlyViewers: true)
+        let console = fixture.console
+        let hostID = fixture.host.id
+        let pasting = Task { try await console.pasteIntoAgent("hello", paneID: "t1", on: hostID) }
+        let viewer = try await fixture.viewer()
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: ["bash"]))
+        try await Self.until("the Agent to go") { fixture.console.agents.isEmpty }
+        await fixture.scripted.releaseAttachReplies()
+
+        await #expect(throws: HerdrCoreChatTyping.Refusal.self) { try await pasting.value }
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
     // MARK: Keys and text
 
     @Test func aPasteGoesThroughAViewerInTheFormTheProgramTakes() async throws {
@@ -747,6 +926,38 @@ struct HerdrCoreChatTypingTests {
 
     @Test func aNameThatIsNoKeyHasNoBytes() {
         #expect(HerdrCoreChatTyping.bytes(forKeyNamed: "hyper+nothing", modes: TerminalModeTracker()) == nil)
+    }
+}
+
+/// A dialog that takes a note: what a card's steps type, and what each one's check
+/// says of the screen it would go over.
+private actor NoteDialogPane {
+    private(set) var screen: ANSIScreen
+    private(set) var typed: [String] = []
+    private(set) var answersOnItsDialog: [Bool] = []
+    private(set) var answersOnAnotherDialog: [Bool] = []
+    private let afterPaste: ANSIScreen
+    private let afterEnter: ANSIScreen
+    private let anotherDialog: ANSIScreen
+
+    init(showing: ANSIScreen, afterPaste: ANSIScreen, afterEnter: ANSIScreen, anotherDialog: ANSIScreen) {
+        screen = showing
+        self.afterPaste = afterPaste
+        self.afterEnter = afterEnter
+        self.anotherDialog = anotherDialog
+    }
+
+    func type(_ typing: BlockedScreenIO.Typing, whileShowing check: @Sendable (ANSIScreen) -> Bool) {
+        answersOnItsDialog.append(check(screen))
+        answersOnAnotherDialog.append(check(anotherDialog))
+        switch typing {
+        case .paste(let text):
+            typed.append("paste \(text)")
+            screen = afterPaste
+        case .keys(let keys):
+            typed.append("keys \(keys.joined(separator: " "))")
+            screen = afterEnter
+        }
     }
 }
 

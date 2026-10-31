@@ -7,9 +7,31 @@ import Observation
 /// paint and an attach of Chat's own (ADR 0035), which refuses a key once the
 /// Agent no longer holds the foreground the screen was read under.
 struct BlockedScreenIO: Sendable {
+    /// What a step of an answer types.
+    enum Typing: Sendable {
+        case keys([String])
+        case paste(String)
+    }
+
     var readScreen: @Sendable () async throws -> ANSIScreen
     var sendKeys: @Sendable ([String]) async throws -> Void
     var paste: @Sendable (String) async throws -> Void
+    /// Where getting ready to type shows the screen again and can take seconds, as
+    /// a viewer's paint on herdr-core does: types only if that screen passes the
+    /// check, and throws why not. nil where a key is one request, and the card's
+    /// read just before it stands.
+    var typeWhileShowing: (@Sendable (Typing, @escaping @Sendable (ANSIScreen) -> Bool) async throws -> Void)? = nil
+
+    func type(_ typing: Typing, whileShowing check: @escaping @Sendable (ANSIScreen) -> Bool) async throws {
+        if let typeWhileShowing {
+            try await typeWhileShowing(typing, check)
+            return
+        }
+        switch typing {
+        case .keys(let keys): try await sendKeys(keys)
+        case .paste(let text): try await paste(text)
+        }
+    }
 
     /// For a Chat that cannot reach the pane: every call fails.
     static let unavailable = BlockedScreenIO(
@@ -552,10 +574,10 @@ final class BlockedCardStore {
             do {
                 switch step {
                 case .keys(let keys):
-                    try await io.sendKeys(keys)
+                    try await type(.keys(keys), over: fingerprint)
                     checked = nil
                 case .paste(let text):
-                    try await io.paste(text)
+                    try await type(.paste(text), over: fingerprint)
                     checked = nil
                 case .expect(let expectation):
                     let check = await poll(within: timing.expectationWindow) {
@@ -579,6 +601,13 @@ final class BlockedCardStore {
             }
         }
         return .sent(checked)
+    }
+
+    private func type(_ typing: BlockedScreenIO.Typing, over fingerprint: DialogFingerprint) async throws {
+        let program = program
+        try await io.type(typing) { screen in
+            DialogObservation(screen: screen, program: program).result.fingerprint?.matches(fingerprint) == true
+        }
     }
 
     /// Watches for the plan's effect on the dialog with `fingerprint`, and
@@ -777,7 +806,7 @@ final class BlockedCardStore {
         return notice.title
     }
 
-    private static let changedMessage = "This prompt changed. Check it before answering."
+    static let changedMessage = "This prompt changed. Check it before answering."
     private static let unreadMessage = "Heeler couldn't read the Agent's screen, so nothing was sent."
     private static let finishThere = "Finish here or in the terminal."
     private static let stoppedMessage =
