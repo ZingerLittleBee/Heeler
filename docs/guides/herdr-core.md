@@ -130,6 +130,8 @@ On a native Windows Host, Stop is not available yet.
 
 The new shell is no Agent until you start one in it.
 
+Another core at the same socket, such as one started under another state directory, has its own Terminals, even at the same address. A terminal you had open shows as ended, and anything you tap waits for the new core's list. Open the Terminal again from that list.
+
 ## Close
 
 Closing a Tab on a core Host ends its Terminals for good, and closing a Pane ends that one Terminal. A kept Terminal does not come back as a shell, and it leaves the Console once the core reports it ended. Close works the same from an Agent's or a Terminal's row, Agent detail and a Shell Terminal.

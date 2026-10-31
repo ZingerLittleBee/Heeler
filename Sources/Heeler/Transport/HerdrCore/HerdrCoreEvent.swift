@@ -419,16 +419,20 @@ final class HerdrCoreEventStream: Sendable {
     static let bufferLimit = 256
 
     let snapshot: HerdrCoreSnapshot
+    /// The core of the link this subscription is on, which is the one `snapshot`
+    /// lists and the addresses in it mean something to.
+    let coreID: String
     /// Finishes without error after `end()` or a server CLOSE, and throws if the link dies.
     let events: AsyncThrowingStream<HerdrCoreEvent, any Error>
     private let source: any HerdrCoreEventBytes
     private let pump: Task<Void, Never>
 
     init(
-        snapshot: HerdrCoreSnapshot, source: any HerdrCoreEventBytes,
+        snapshot: HerdrCoreSnapshot, coreID: String, source: any HerdrCoreEventBytes,
         bufferLimit: Int = HerdrCoreEventStream.bufferLimit
     ) {
         self.snapshot = snapshot
+        self.coreID = coreID
         self.source = source
         let (events, continuation) = AsyncThrowingStream<HerdrCoreEvent, any Error>.makeStream(
             bufferingPolicy: .bufferingNewest(bufferLimit))

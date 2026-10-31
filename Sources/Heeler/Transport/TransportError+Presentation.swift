@@ -30,13 +30,14 @@ struct TransportErrorPresentation: Equatable, Sendable {
 }
 
 extension TransportError {
-    /// A core that stopped with SSH still up, in the words every surface shares.
-    /// Nil for any other error, whose surface keeps its own copy.
-    static func herdrCoreNotRunningMessage(for error: any Error) -> String? {
-        guard let transportError = error as? TransportError,
-            case .herdrCoreNotRunning = transportError
-        else { return nil }
-        return transportError.presentation.message
+    /// A core stopped or replaced with SSH still up, in the words every surface
+    /// shares. Nil for any other error, whose surface keeps its own copy.
+    static func herdrCoreLinkMessage(for error: any Error) -> String? {
+        guard let transportError = error as? TransportError else { return nil }
+        switch transportError {
+        case .herdrCoreNotRunning, .herdrCoreInventoryStale: return transportError.presentation.message
+        default: return nil
+        }
     }
 
     var presentation: TransportErrorPresentation {
@@ -148,6 +149,11 @@ extension TransportError {
                 summary: "The Host did not confirm the action",
                 detail: "It may still complete. Check the Terminal before trying again.",
                 recoverySuggestion: nil)
+        case .herdrCoreInventoryStale:
+            TransportErrorPresentation(
+                summary: "The Host's Terminals are being read again",
+                detail: "Nothing was sent",
+                recoverySuggestion: "Try again once they are back.")
         case .herdrCoreNotInstalled:
             TransportErrorPresentation(
                 summary: "herdr-core is not installed",

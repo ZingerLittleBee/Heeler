@@ -413,14 +413,16 @@ final class ConsoleStore {
     /// The returned runner resolves the Host's live projection on every
     /// call: editing a Host replaces its projection (and session), and a
     /// runner captured by a long-lived Attach screen must follow it there
-    /// instead of staying bound to the ended session.
+    /// instead of staying bound to the ended session. Its pipeline keeps to one
+    /// core, for a Server Kind that has them, however many projections it sees.
     func terminalRunner(for hostID: Host.ID) -> TerminalSessionRunner {
-        { [weak self] request, handler in
+        let pin = TerminalCorePin()
+        return { [weak self] request, handler in
             guard let runner = await self?.liveTerminalRunner(for: hostID) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
-            try await runner(request, handler)
+            try await runner(request, handler.keeping(to: pin))
         }
     }
 
@@ -1110,7 +1112,7 @@ final class ConsoleStore {
         case TransportError.apiRejected(_, let message):
             "herdr rejected the close: \(message)"
         default:
-            TransportError.herdrCoreNotRunningMessage(for: error) ?? "Closing failed: \(error)"
+            TransportError.herdrCoreLinkMessage(for: error) ?? "Closing failed: \(error)"
         }
     }
 

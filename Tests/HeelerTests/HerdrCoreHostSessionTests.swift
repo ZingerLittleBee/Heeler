@@ -342,7 +342,7 @@ struct HerdrCoreHostSessionTests {
         let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
         let session = session(on: host)
         let asked = Task {
-            try await session.withTerminalTransport { _, generation in generation }
+            try await session.withTerminalTransport { _, generation, _ in generation }
         }
         await untilATerminalWaits(on: session)
         await session.resume()
@@ -364,7 +364,7 @@ struct HerdrCoreHostSessionTests {
             throws: TransportError.herdrCoreUpdateRequired(
                 command: "\(ScriptedCoreHost.installedPath) update")
         ) {
-            try await session.withTerminalTransport { _, _ in }
+            try await session.withTerminalTransport { _, _, _ in }
         }
         await session.end()
     }
@@ -373,7 +373,7 @@ struct HerdrCoreHostSessionTests {
         let host = ScriptedCoreHost(
             channel: .answersHello(ScriptedCoreHost.helloReply(errorKind: "unsupported_generation")))
         let session = session(on: host)
-        let waiting = Task { try await session.withTerminalTransport { _, _ in } }
+        let waiting = Task { try await session.withTerminalTransport { _, _, _ in } }
         await untilATerminalWaits(on: session)
         await session.resume()
         await #expect(
@@ -422,6 +422,52 @@ struct HerdrCoreHostSessionTests {
         await session.end()
     }
 
+    // MARK: Which core an action means
+
+    @Test func anActionOnAnotherCoresInventoryIsRefusedBeforeItsSnapshotIsRead() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+        #expect(try #require(await reader.nextSnapshot()).coreID == "c1")
+        try await session.withTransport(servingCore: "c1") { _ in }
+
+        let first = try #require(await host.socket)
+        await host.setChannel(.core(.init(id: "c2")))
+        await first.deliverEndOfFile()
+        // The session has this snapshot and the Console, which asks, has not read it.
+        #expect(try #require(await reader.nextSnapshot()).coreID == "c2")
+
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            try await session.withTransport(servingCore: "c1") { _ in }
+        }
+        try await session.withTransport(servingCore: "c2") { _ in }
+        await session.end()
+    }
+
+    @Test func anActionWaitsForTheSnapshotOfANewConnection() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        await host.holdHellos()
+        let session = session(on: host)
+        await session.resume()
+        // The connection is up, and no snapshot has said which core is behind it.
+        while await !host.log.contains(where: { $0.hasPrefix("open ") }) { await Task.yield() }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            try await session.withTransport(servingCore: "c1") { _ in }
+        }
+        await host.releaseHellos()
+        await session.end()
+    }
+
+    @Test func aTerminalIsToldWhichCoreItsLinkReaches() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let session = session(on: host)
+        await session.resume()
+        let coreID = try await session.withTerminalTransport { _, _, coreID in coreID }
+        #expect(coreID == "c1")
+        await session.end()
+    }
+
     @Test func aTerminalWaitingWhenTheSessionSuspendsReadsAsALostConnection() async throws {
         let host = ScriptedCoreHost(channel: .refused)
         let session = session(on: host)
@@ -430,7 +476,7 @@ struct HerdrCoreHostSessionTests {
         while let status = await reader.nextStatus() {
             if case .reconnecting = status { break }
         }
-        let waiting = Task { try await session.withTerminalTransport { _, _ in } }
+        let waiting = Task { try await session.withTerminalTransport { _, _, _ in } }
         await untilATerminalWaits(on: session)
         await session.suspend()
         await #expect(throws: TransportError.cancelled) { try await waiting.value }
@@ -443,14 +489,14 @@ struct HerdrCoreHostSessionTests {
         await session.resume()
         await session.end()
         await #expect(throws: TransportError.cancelled) {
-            try await session.withTerminalTransport { _, _ in }
+            try await session.withTerminalTransport { _, _, _ in }
         }
     }
 
     @Test func aCancelledTerminalStopsWaiting() async throws {
         let host = ScriptedCoreHost(channel: .refused)
         let session = session(on: host)
-        let waiting = Task { try await session.withTerminalTransport { _, _ in } }
+        let waiting = Task { try await session.withTerminalTransport { _, _, _ in } }
         await untilATerminalWaits(on: session)
         waiting.cancel()
         await #expect(throws: CancellationError.self) { try await waiting.value }

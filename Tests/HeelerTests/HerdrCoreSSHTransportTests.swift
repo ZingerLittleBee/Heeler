@@ -377,6 +377,90 @@ import Testing
         }
     }
 
+    // MARK: Addresses belong to one core
+
+    /// A transport subscribed to `c1`, whose link ended with `c2` now at the socket.
+    private func transportWhoseCoreChanged(
+        _ host: ScriptedCoreHost
+    ) async throws -> HerdrCoreSSHTransport {
+        let transport = host.transport()
+        let stream = try await transport.subscribeEvents()
+        #expect(stream.coreID == "c1")
+        let socket = try #require(await host.socket)
+        await host.setChannel(.core(.init(id: "c2", terminals: [])))
+        await socket.deliverEndOfFile()
+        while await !socket.isClosed { await Task.yield() }
+        return transport
+    }
+
+    @Test func aSubscriptionSaysTheCoreOfTheLinkItIsOnNotOfAnEarlierHello() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let transport = host.transport()
+        #expect(try await transport.hello().coreID == "c1")
+        let first = try #require(await host.socket)
+
+        await host.setChannel(.core(.init(id: "c2")))
+        await first.deliverEndOfFile()
+        while await !first.isClosed { await Task.yield() }
+
+        #expect(try await transport.subscribeEvents().coreID == "c2")
+        #expect(await host.sockets.count == 2)
+    }
+
+    @Test func nothingAddressedCrossesToAnotherCoreBeforeItsSnapshot() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let transport = try await transportWhoseCoreChanged(host)
+        let before = await host.methods
+
+        await #expect(throws: TransportError.herdrCoreInventoryStale) { try await transport.killTerminal("t3") }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            try await transport.interruptTerminal("t3", timeout: .seconds(1))
+        }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) { try await transport.terminalRecord("t3") }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            try await transport.runTerminal(params: .object([:]))
+        }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            try await transport.runTemplate(params: .object([:]))
+        }
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            _ = try await transport.attachTerminal(
+                TerminalAttachRequest(target: .terminal("t3"), cols: 80, rows: 24))
+        }
+        #expect(await host.methods == before)
+
+        // The new core's own snapshot makes its addresses good.
+        #expect(try await transport.subscribeEvents().coreID == "c2")
+        let server = try await transport.serverStatus()
+        #expect(server.coreID == "c2")
+    }
+
+    @Test func theSameCoreRestartedKeepsItsAddresses() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let transport = host.transport()
+        _ = try await transport.subscribeEvents()
+        let first = try #require(await host.socket)
+        await first.deliverEndOfFile()
+        while await !first.isClosed { await Task.yield() }
+
+        _ = try await transport.readTerminal("t3")
+        #expect(await host.methods.contains("terminal.read"))
+        #expect(await host.sockets.count == 2)
+    }
+
+    @Test func anAttachNamingItsCoreGoesToNoOther() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c2")))
+        let transport = host.transport()
+        _ = try await transport.subscribeEvents()
+        var request = TerminalAttachRequest(target: .terminal("t3"), cols: 80, rows: 24)
+        request.coreID = "c1"
+
+        await #expect(throws: TransportError.herdrCoreInventoryStale) {
+            _ = try await transport.attachTerminal(request)
+        }
+        #expect(await host.attaches.isEmpty)
+    }
+
     private func waitForSocket(_ host: ScriptedCoreHost) async throws -> FakeCoreSocket {
         var budget = PollBudget(.seconds(10))
         while budget.hasTimeLeft {

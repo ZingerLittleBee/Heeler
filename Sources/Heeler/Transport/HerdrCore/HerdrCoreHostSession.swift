@@ -85,6 +85,9 @@ actor HerdrCoreHostSession {
     private var isAnnouncedConnected = false
     private var resubscribeRequested = false
     private var liveStream: HerdrCoreEventStream?
+    /// Whose snapshot came last on this connection, which outlasts a link that
+    /// ended. Nil on a connection with none yet.
+    private var liveCoreID: String?
     /// A line arrived since the keepalive last looked, heartbeats included.
     private(set) var hasTrafficSinceLastKeepalive = false
     private var activationGeneration: UInt64 = 0
@@ -103,7 +106,7 @@ actor HerdrCoreHostSession {
         /// Otherwise pinned to the one it asked in, as `EventsSession` pins
         /// them, so a retry never hands it a later connection unasked.
         let activationGeneration: UInt64?
-        let continuation: CheckedContinuation<(any HerdrCoreTransport, UInt64), any Error>
+        let continuation: CheckedContinuation<(any HerdrCoreTransport, UInt64, String), any Error>
     }
 
     init(
@@ -188,18 +191,33 @@ actor HerdrCoreHostSession {
         return try await operation(currentTransport)
     }
 
-    /// Runs one terminal's whole session once this Host has a live link, on
-    /// that link and no other. It gets the connection's generation, and waits
-    /// out a reconnect, since a terminal opened meanwhile has nothing else to
-    /// do. It fails with whatever stopped the session.
-    func withTerminalTransport<Value: Sendable>(
-        _ operation: @Sendable (any HerdrCoreTransport, UInt64) async throws -> Value
+    /// `withTransport` for an action on an address `coreID`'s inventory listed.
+    /// The Console reads a snapshot after this session has it, so a tap can still
+    /// mean the core before. A connection with no snapshot yet may reach any core.
+    /// Throws `.herdrCoreInventoryStale`, with nothing sent, for both. A link that
+    /// reopens under the call is the transport's own check.
+    func withTransport<Value: Sendable>(
+        servingCore coreID: String?,
+        _ operation: @Sendable (any HerdrCoreTransport) async throws -> Value
     ) async throws -> Value {
-        let (transport, generation) = try await awaitTerminalTransport()
-        return try await operation(transport, generation)
+        guard currentTransport == nil || (coreID != nil && coreID == liveCoreID) else {
+            throw TransportError.herdrCoreInventoryStale
+        }
+        return try await withTransport(operation)
     }
 
-    private func awaitTerminalTransport() async throws -> (any HerdrCoreTransport, UInt64) {
+    /// Runs one terminal's whole session once this Host has a live link, on
+    /// that link and no other. It gets the connection's generation and the core
+    /// behind the link, and waits out a reconnect, since a terminal opened
+    /// meanwhile has nothing else to do. It fails with whatever stopped the session.
+    func withTerminalTransport<Value: Sendable>(
+        _ operation: @Sendable (any HerdrCoreTransport, UInt64, String) async throws -> Value
+    ) async throws -> Value {
+        let (transport, generation, coreID) = try await awaitTerminalTransport()
+        return try await operation(transport, generation, coreID)
+    }
+
+    private func awaitTerminalTransport() async throws -> (any HerdrCoreTransport, UInt64, String) {
         let id = UUID()
         try Task.checkCancellation()
         return try await withTaskCancellationHandler {
@@ -208,8 +226,10 @@ actor HerdrCoreHostSession {
                     continuation.resume(throwing: CancellationError())
                 } else if phase == .ended {
                     continuation.resume(throwing: TransportError.cancelled)
-                } else if phase == .active, liveStream != nil, !transportSuspect, let currentTransport {
-                    continuation.resume(returning: (currentTransport, currentConnectionGeneration))
+                } else if phase == .active, liveStream != nil, !transportSuspect, let currentTransport,
+                    let liveCoreID
+                {
+                    continuation.resume(returning: (currentTransport, currentConnectionGeneration, liveCoreID))
                 } else if phase == .active, let terminalTransportFailure {
                     continuation.resume(throwing: terminalTransportFailure)
                 } else {
@@ -233,14 +253,14 @@ actor HerdrCoreHostSession {
         terminalTransportWaiters.remove(at: index).continuation.resume(throwing: CancellationError())
     }
 
-    private func resumeTerminalTransportWaiters(with transport: any HerdrCoreTransport) {
+    private func resumeTerminalTransportWaiters(with transport: any HerdrCoreTransport, coreID: String) {
         let waiters = terminalTransportWaiters
         terminalTransportWaiters = []
         for waiter in waiters {
             if let pinned = waiter.activationGeneration, pinned != activationGeneration {
                 waiter.continuation.resume(throwing: TransportError.cancelled)
             } else {
-                waiter.continuation.resume(returning: (transport, currentConnectionGeneration))
+                waiter.continuation.resume(returning: (transport, currentConnectionGeneration, coreID))
             }
         }
     }
@@ -348,16 +368,14 @@ actor HerdrCoreHostSession {
         while activationIsCurrent(generation) {
             let transport: any HerdrCoreTransport
             let stream: HerdrCoreEventStream
-            let coreID: String
             do {
                 transport = try await ensureTransport(for: generation)
-                let info: HerdrCoreServerInfo
                 if mayAwaitHolder {
-                    info = try await transport.helloAcrossHolderRestart(
+                    _ = try await transport.helloAcrossHolderRestart(
                         policy: holderRestart, sleep: sleep,
                         isWanted: { await self.activationIsCurrent(generation) })
                 } else {
-                    info = try await transport.hello()
+                    _ = try await transport.hello()
                 }
                 guard activationIsCurrent(generation) else { break }
                 if !isAnnouncedConnected {
@@ -370,7 +388,6 @@ actor HerdrCoreHostSession {
                 }
                 checkLeakedEnvironment(on: transport, generation: generation)
                 stream = try await transport.subscribeEvents()
-                coreID = info.coreID
             } catch {
                 guard activationIsCurrent(generation) else { break }
                 let failure = Self.transportFailure(error)
@@ -390,11 +407,12 @@ actor HerdrCoreHostSession {
             }
             mayAwaitHolder = true
             liveStream = stream
+            liveCoreID = stream.coreID
             pendingKeepaliveFailure = nil
             hasTrafficSinceLastKeepalive = false
-            yieldUpdate(.snapshot(stream.snapshot, coreID: coreID))
+            yieldUpdate(.snapshot(stream.snapshot, coreID: stream.coreID))
             startKeepalive(stream: stream, transport: transport)
-            resumeTerminalTransportWaiters(with: transport)
+            resumeTerminalTransportWaiters(with: transport, coreID: stream.coreID)
 
             var linkCarriedTraffic = false
             var streamFailure: TransportError?
@@ -466,6 +484,7 @@ actor HerdrCoreHostSession {
         if let transport = currentTransport {
             if !transportSuspect, await transport.isConnected { return transport }
             currentTransport = nil
+            liveCoreID = nil
             isAnnouncedConnected = false
             try? await transport.close()
         }
@@ -517,6 +536,7 @@ actor HerdrCoreHostSession {
         task?.cancel()
         let stream = liveStream
         liveStream = nil
+        liveCoreID = nil
         await stream?.end()
         if let transport = currentTransport {
             currentTransport = nil

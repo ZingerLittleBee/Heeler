@@ -56,7 +56,10 @@ protocol HerdrCoreTransport: Sendable {
     func leakedEnvironmentNames() async -> Set<String>?
 
     /// Subscribes to every Terminal's events. Each subscription has a fresh
-    /// cursor from its own snapshot, and no event number outlives the link.
+    /// cursor from its own snapshot, and no event number outlives the link. Its
+    /// snapshot is what the addresses in later calls come from, so once a
+    /// reopened link reaches another core those calls throw
+    /// `.herdrCoreInventoryStale`, with nothing sent, until the next subscribe.
     func subscribeEvents() async throws -> HerdrCoreEventStream
 
     /// Opens a live terminal as a channel of its own on the link, so several
@@ -241,6 +244,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private var opening: Task<Opened, any Error>?
     private var located: HerdrCoreLocator.Location?
     private var environmentCheck: (link: HerdrCoreLink, answer: Task<Set<String>, Never>)?
+    /// The core of the last subscribe. Nil before one, as on a preflight.
+    private var inventoryCoreID: String?
 
     private struct Opened {
         let link: HerdrCoreLink
@@ -380,17 +385,19 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     }
 
     func subscribeEvents() async throws -> HerdrCoreEventStream {
-        try await onLink { link in try await link.subscribeEvents(deadline: Self.callDeadline) }
+        let stream = try await onLink { link in try await link.subscribeEvents(deadline: Self.callDeadline) }
+        inventoryCoreID = stream.coreID
+        return stream
     }
 
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
-        try await onLink { link in
+        try await onInventoryLink(meaning: request.coreID) { link in
             try await HerdrCoreAttach.open(on: link, request: request, deadline: Self.callDeadline)
         }
     }
 
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
-        try await onLink { link in
+        try await onInventoryLink { link in
             try await link.call(method, params: params, deadline: Self.callDeadline, isMutation: isMutation)
         }
     }
@@ -418,13 +425,13 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     }
 
     func runTerminal(params: JSONValue) async throws -> JSONValue {
-        try await onLink { link in
+        try await onInventoryLink { link in
             try await link.call("terminal.run", params: params, deadline: Self.runDeadline, isMutation: true)
         }
     }
 
     func runTemplate(params: JSONValue) async throws -> JSONValue {
-        try await onLink { link in
+        try await onInventoryLink { link in
             try await link.call(
                 "terminal.run", params: params, deadline: Self.templateRunDeadline, isMutation: true)
         }
@@ -469,7 +476,27 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private func onLink<Value: Sendable>(
         _ operation: @Sendable (HerdrCoreLink) async throws -> Value
     ) async throws -> Value {
+        try await run(operation, on: try await open(reusingLocation: false))
+    }
+
+    /// For anything an inventory led to. Opening may reopen a link that ended, and
+    /// another core can answer there, where the same address is another Terminal.
+    /// `coreID` names the core when the caller knows it; otherwise it is the last
+    /// subscribe's, which is compared after the wait so a subscribe in between counts.
+    private func onInventoryLink<Value: Sendable>(
+        meaning coreID: String? = nil,
+        _ operation: @Sendable (HerdrCoreLink) async throws -> Value
+    ) async throws -> Value {
         let opened = try await open(reusingLocation: false)
+        if let expected = coreID ?? inventoryCoreID, opened.info.coreID != expected {
+            throw TransportError.herdrCoreInventoryStale
+        }
+        return try await run(operation, on: opened)
+    }
+
+    private func run<Value: Sendable>(
+        _ operation: @Sendable (HerdrCoreLink) async throws -> Value, on opened: Opened
+    ) async throws -> Value {
         do {
             return try await operation(opened.link)
         } catch is HerdrCoreUpdateRequired {

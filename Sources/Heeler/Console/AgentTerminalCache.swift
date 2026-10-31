@@ -69,6 +69,7 @@ final class AgentTerminalCache {
         holder: AnyObject? = nil, isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry {
         if let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
+            !isOverAndLeft(current),
             !current.lifetime.visible || current.presentationOwnerID == ownerID
                 || isSameWindow(current, sceneID: sceneID)
         {
@@ -105,6 +106,12 @@ final class AgentTerminalCache {
             attach: attach, lifetime: lifetime, ownerID: ownerID, sceneID: sceneID, holder: holder)
         entries[agent.id] = entry
         return entry
+    }
+
+    /// Only a core Terminal ends this way. Nobody is looking at it, so opening its
+    /// address again means whatever runs there now, on another core if need be.
+    private func isOverAndLeft(_ entry: Entry) -> Bool {
+        !entry.lifetime.visible && entry.attach.terminalStatus == .finished
     }
 
     /// Another detail shows this Agent's retained terminal, or has it hidden

@@ -198,3 +198,8 @@ confirm or refine these points with test clients, not the app.
 - A Host's core identity is `core.id` in the `hello` reply. Terminal addresses
   are never reused across core restarts, so a restart keeps Pins; a changed id
   is a different core and drops them.
+- An address means another Terminal on another core, so nothing crosses from one
+  to the next. A snapshot takes its id from its own link's `hello`. A link that
+  reopens onto another id refuses anything an older inventory addressed, with
+  nothing sent, until that core's snapshot arrives. An open terminal stays on the
+  core it first joined and ends there, and opening the address again starts fresh.
