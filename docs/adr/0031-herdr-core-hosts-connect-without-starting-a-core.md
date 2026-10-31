@@ -161,9 +161,8 @@ confirm or refine these points with test clients, not the app.
   before removing the shared entry, so an interruption reloads as herdr-core.
 - Detection is one exec holding the Herdr TUI session read and the locator for the
   typed session. Neither starts a server
-  ([observation](../agents/herdr-compatibility.md)). Until herdr-core is released,
-  the confirmation offers Herdr TUI only; `--offer-herdr-core-hosts` offers
-  herdr-core for lab and Simulator work.
+  ([observation](../agents/herdr-compatibility.md)). The confirmation offers
+  herdr-core with no launch argument, now that a framed attach works.
 - Add Host and preflight need a read-only exec probe (`command -v`,
   `--version`, read `core.lock`) to tell not installed, not running, and a
   wrong path apart; a refused channel alone cannot. SSH reports a missing

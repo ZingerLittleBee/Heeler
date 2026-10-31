@@ -210,7 +210,10 @@ with test clients, not the app.
   clearing the foreground, so the app clears it, and reattaches after the
   restart, since the loss closes the attach. A kept Terminal whose program
   exits with a code, including a user's `exit`, ends for good; only a lost
-  program restarts.
+  program restarts. An Agent detail open on either stays on screen, showing
+  restarting or ended, though the Terminal has stopped being an Agent. The app
+  keeps that departed Agent for the detail alone, so no list shows it, and a
+  reconnect forgets it.
 - A Template launch returns once the program first reports, which can take
   30 seconds, and the record carries the Template's submit and stop keys.
 - A subagent started with `hc run` gets the core's environment, not its

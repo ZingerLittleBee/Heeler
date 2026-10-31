@@ -226,43 +226,25 @@ struct ServerKindDetectionTests {
 
     // MARK: What is offered
 
-    @Test func withoutTheLaunchArgumentOnlyHerdrTUIIsOffered() async throws {
-        for detection in [
-            try await detect(herdr: .answers(Self.sessionsJSON)),
-            try await detect(),
-            try await detect(locator: ScriptedCoreHost.locatorLines(executable: nil)),
-        ] {
-            #expect(detection.offeredKinds(offersCore: false) == [.herdrTUI])
-        }
-        #expect(ServerKindDetection.offeredWithoutFindings(offersCore: false) == [.herdrTUI])
-    }
-
-    @Test func withTheLaunchArgumentTheFoundKindsAreOffered() async throws {
+    @Test func theFoundKindsAreOffered() async throws {
         let both = try await detect(herdr: .answers(Self.sessionsJSON))
-        #expect(both.offeredKinds(offersCore: true) == [.herdrTUI, .herdrCore])
+        #expect(both.offeredKinds == [.herdrTUI, .herdrCore])
 
         let tui = try await detect(
             herdr: .answers(Self.sessionsJSON),
             locator: ScriptedCoreHost.locatorLines(executable: nil))
-        #expect(tui.offeredKinds(offersCore: true) == [.herdrTUI])
+        #expect(tui.offeredKinds == [.herdrTUI])
 
         let core = try await detect()
-        #expect(core.offeredKinds(offersCore: true) == [.herdrCore])
+        #expect(core.offeredKinds == [.herdrCore])
 
         // Nothing there yet: the user may be about to install either.
         let neither = try await detect(locator: ScriptedCoreHost.locatorLines(executable: nil))
-        #expect(neither.offeredKinds(offersCore: true) == [.herdrTUI, .herdrCore])
-        #expect(ServerKindDetection.offeredWithoutFindings(offersCore: true) == [.herdrTUI, .herdrCore])
+        #expect(neither.offeredKinds == [.herdrTUI, .herdrCore])
+        #expect(ServerKindDetection.offeredWithoutFindings == [.herdrTUI, .herdrCore])
 
         // Offered, so that confirming it says why it cannot be.
         let refused = try await detect(herdr: .answers(Self.sessionsJSON), session: "a/b")
-        #expect(refused.offeredKinds(offersCore: true) == [.herdrTUI, .herdrCore])
-    }
-
-    @Test func theLaunchArgumentOffersHerdrCore() {
-        #expect(ServerKind.herdrCore.isOfferedOnAdd(arguments: ["Heeler", "--offer-herdr-core-hosts"]))
-        #expect(!ServerKind.herdrCore.isOfferedOnAdd(arguments: ["Heeler"]))
-        #expect(ServerKind.herdrTUI.isOfferedOnAdd(arguments: ["Heeler"]))
-        #expect(!ServerKind.unconfirmed.isOfferedOnAdd(arguments: ["Heeler", "--offer-herdr-core-hosts"]))
+        #expect(refused.offeredKinds == [.herdrTUI, .herdrCore])
     }
 }

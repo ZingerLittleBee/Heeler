@@ -98,22 +98,18 @@ struct ServerKindDetection: Equatable, Sendable {
         return kinds
     }
 
-    /// What the user may confirm. A target running nothing yet offers every kind
-    /// on offer: the user may be about to install one, and its preflight says how.
-    /// A session name hc refuses keeps herdr-core on offer, since only the name
-    /// stands in its way and confirming says why.
-    func offeredKinds(offersCore: Bool) -> [ServerKind] {
-        let everyKind = Self.offeredWithoutFindings(offersCore: offersCore)
-        guard offersCore else { return everyKind }
-        if case .sessionRefused = herdrCore { return everyKind }
-        return foundKinds.isEmpty ? everyKind : foundKinds
+    /// What the user may confirm. A target running nothing yet offers every kind:
+    /// the user may be about to install one, and its preflight says how. A session
+    /// name hc refuses keeps herdr-core on offer, since only the name stands in its
+    /// way and confirming says why.
+    var offeredKinds: [ServerKind] {
+        if case .sessionRefused = herdrCore { return Self.offeredWithoutFindings }
+        return foundKinds.isEmpty ? Self.offeredWithoutFindings : foundKinds
     }
 
     /// What is on offer when a reached Host could not be read: the exec failed,
     /// or the Host's platform has no probe yet.
-    static func offeredWithoutFindings(offersCore: Bool) -> [ServerKind] {
-        offersCore ? [.herdrTUI, .herdrCore] : [.herdrTUI]
-    }
+    static let offeredWithoutFindings: [ServerKind] = [.herdrTUI, .herdrCore]
 }
 
 extension ServerKindDetection.HerdrTUIFinding {
@@ -133,20 +129,6 @@ extension ServerKindDetection.CoreFinding {
         case .notRunning(let version, _): "\(version), not running"
         case .socketFilePresent(let version, _): "\(version), socket found"
         case .socketPathTooLong(let version, _, _): "\(version), socket path too long"
-        }
-    }
-}
-
-extension ServerKind {
-    /// Offers herdr-core when adding a Host, for lab and Simulator work.
-    static let offerCoreHostsArgument = "--offer-herdr-core-hosts"
-
-    /// Whether the confirmation offers this kind when adding a Host.
-    func isOfferedOnAdd(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-        switch self {
-        case .herdrTUI: true
-        case .herdrCore: arguments.contains(Self.offerCoreHostsArgument)
-        case .unconfirmed: false
         }
     }
 }
