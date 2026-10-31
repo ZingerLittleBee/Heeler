@@ -683,11 +683,11 @@ struct HostOnboardingStoreTests {
         #expect(await core.log.isEmpty)
     }
 
-    /// A reached Host that could not be read, such as native Windows until it has
-    /// a probe of its own, can still be confirmed, and its preflight then runs.
+    /// A reached Host that could not be read can still be confirmed, and its
+    /// preflight then runs.
     @Test func aDetectionThatFailsStillOffersWhatIsOnOffer() async throws {
         let core = ScriptedCoreHost(
-            detectionFailure: .hostFeatureUnavailable(feature: "Server Kind detection is not yet supported"),
+            detectionFailure: .malformedResponse("Server Kind detection's output is unreadable."),
             channel: .refused)
         let (store, connector, catalog) = try unconfirmedStore(core)
 
@@ -704,6 +704,30 @@ struct HostOnboardingStoreTests {
         #expect(store.detectionFailure == nil)
         #expect(store.report?.isFullyPassed == true)
         #expect(await connector.transports.count == 1)
+    }
+
+    /// Native Windows has no core path yet, and a confirmed Server Kind is final,
+    /// so herdr-core would be a choice that can only ever fail its checks.
+    @Test func aHostWithNoProbeOffersOnlyHerdrTUI() async throws {
+        let core = ScriptedCoreHost(
+            detectionFailure: .hostFeatureUnavailable(
+                feature: "Server Kind detection is not yet supported on native Windows"),
+            channel: .refused)
+        let (store, _, catalog) = try unconfirmedStore(core)
+
+        await store.runChecks()
+
+        #expect(store.offeredKinds == [.herdrTUI])
+        #expect(store.confirmationNote?.contains("the choice is yours") == false)
+        #expect(store.confirmationNote?.contains("native Windows") == true)
+
+        await store.confirmServerKind(.herdrCore, in: catalog)
+        #expect(store.host.serverKind == .unconfirmed)
+        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
+
+        await store.confirmServerKind(.herdrTUI, in: catalog)
+        #expect(store.host.serverKind == .herdrTUI)
+        #expect(store.report?.isFullyPassed == true)
     }
 
     @Test func confirmingHerdrCoreWithASocketPathOverTheLimitSaysWhy() async throws {

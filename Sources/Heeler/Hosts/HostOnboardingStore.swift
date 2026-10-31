@@ -83,6 +83,8 @@ final class HostOnboardingStore {
     private(set) var detection: ServerKindDetection?
     /// Why a reached Host could not be read, which leaves its kind to the user.
     private(set) var detectionFailure: String?
+    /// The Host's platform has no probe, and so no herdr-core path, yet.
+    private var hostHasNoProbe = false
     /// Why the last confirmation was refused, for the user to read.
     private(set) var confirmationRefusal: String?
     /// What the locator found on a core Host the last checks read as not running.
@@ -144,6 +146,7 @@ final class HostOnboardingStore {
         overlayLoginURL = nil
         detection = nil
         detectionFailure = nil
+        hostHasNoProbe = false
         confirmationRefusal = nil
         notRunningCore = nil
         coreStartConfirmation = nil
@@ -362,6 +365,7 @@ final class HostOnboardingStore {
             } catch {
                 if !Task.isCancelled {
                     detectionFailure = (error as? TransportError)?.presentation.message ?? "\(error)"
+                    if case TransportError.hostFeatureUnavailable = error { hostHasNoProbe = true }
                 }
             }
             try? await connection.close()
@@ -376,12 +380,14 @@ final class HostOnboardingStore {
     var offeredKinds: [ServerKind] {
         guard host.serverKind == .unconfirmed else { return [] }
         if let detection { return detection.offeredKinds }
+        if hostHasNoProbe { return [.herdrTUI] }
         return detectionFailure == nil ? [] : ServerKindDetection.offeredWithoutFindings
     }
 
     /// What the confirmation adds to the findings it lists, if anything.
     var confirmationNote: String? {
         if let detectionFailure {
+            if hostHasNoProbe { return detectionFailure }
             return "Heeler could not read what this Host runs, so the choice is yours. \(detectionFailure)"
         }
         guard let detection else { return nil }
