@@ -35,6 +35,38 @@ enum AgentLayoutTokenStyle: Equatable {
     }
 }
 
+/// The fields one row can still add. A Host following a plugin splits them
+/// into herdr's and Heeler's and takes `$` plugin names; any other Host offers
+/// one list and its Terminals' labels.
+struct AgentLayoutFieldOffer: Equatable {
+    let herdrFields: [AgentRowToken]
+    let heelerFields: [AgentRowToken]
+    let hostFields: [AgentRowToken]
+    let labelFields: [AgentRowToken]
+    let acceptsPluginFields: Bool
+
+    init(row: AgentRow, followsPlugin: Bool, labelKeys: [String]) {
+        let available = { AgentLayoutTokensEditing.availableBuiltins(in: row, from: $0) }
+        if followsPlugin {
+            herdrFields = available(AgentRowToken.herdrBuiltins)
+            heelerFields = available(AgentRowToken.heelerBuiltins)
+            hostFields = []
+            labelFields = []
+        } else {
+            herdrFields = []
+            heelerFields = []
+            // `state_text` names herdr's status column; the badge owns status.
+            hostFields = available(AgentRowToken.builtins.filter { $0 != .stateText })
+            labelFields = available(labelKeys.compactMap(AgentRowToken.terminalLabel))
+        }
+        acceptsPluginFields = followsPlugin
+    }
+
+    var hasBuiltins: Bool {
+        !herdrFields.isEmpty || !heelerFields.isEmpty || !hostFields.isEmpty
+    }
+}
+
 /// Field mutations over the Console's three row slots, each persisted at
 /// once through `AgentListFieldsEditor.commit`. A row index outside those
 /// slots is a no-op: it never inserts a row or writes another Host. Editing
@@ -51,16 +83,21 @@ enum AgentLayoutTokensEditing {
         rows.indices.contains(rowIndex) ? rows[rowIndex] : []
     }
 
-    static func navigationSubtitle(hostName: String, rowIndex: Int? = nil) -> String {
+    static func navigationSubtitle(
+        hostName: String, rowIndex: Int? = nil, followsPlugin: Bool = true
+    ) -> String {
         var parts: [String] = []
         if !hostName.isEmpty { parts.append(hostName) }
-        if let rowIndex, let slot = AgentRowSlot.forRow(rowIndex) { parts.append("\(slot.label) row") }
+        if followsPlugin, let rowIndex, let slot = AgentRowSlot.forRow(rowIndex) {
+            parts.append("\(slot.label) row")
+        }
         return parts.joined(separator: " · ")
     }
 
     /// Footer of the Add Field sheet.
-    static func addFieldFooter(rowIndex: Int) -> String {
-        switch AgentRowSlot.forRow(rowIndex) {
+    static func addFieldFooter(rowIndex: Int, followsPlugin: Bool = true) -> String {
+        guard followsPlugin else { return "" }
+        return switch AgentRowSlot.forRow(rowIndex) {
         case .herdr?:
             "This row starts from herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too."
         case .heeler?:
@@ -100,6 +137,8 @@ enum AgentLayoutTokensEditing {
             "Working directory"
         case .custom:
             "Plugin field. Values come from herdr plugins and display as plain text."
+        case .label:
+            "Terminal label"
         }
     }
 
@@ -132,6 +171,13 @@ enum AgentLayoutTokensEditing {
             return nil
         }
         guard !row.contains(where: { $0.token == token }) else { return nil }
+        return token
+    }
+
+    static func labelToken(from raw: String, alreadyIn row: AgentRow) -> AgentRowToken? {
+        guard let token = AgentRowToken.terminalLabel(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+            !row.contains(where: { $0.token == token })
+        else { return nil }
         return token
     }
 

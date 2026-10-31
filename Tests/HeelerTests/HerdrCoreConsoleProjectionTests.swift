@@ -143,7 +143,8 @@ struct HerdrCoreConsoleProjectionTests {
         await transport.deliver(try vectors.event("title"))
         try await waitUntil("t3's title") { row(store, "t3")?.title == "Working" }
 
-        // Kinds the Console has no use for yet change no row and stop nothing.
+        // A report from a program that does not hold the foreground, and kinds
+        // the Console has no use for yet, change no row and stop nothing.
         await transport.deliver(try vectors.event("status"))
         await transport.deliver(try vectors.event("turn"))
         await transport.deliver(try vectors.event("labels"))

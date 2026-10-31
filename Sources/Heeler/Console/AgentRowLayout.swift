@@ -2,7 +2,8 @@ import Foundation
 
 /// Field names. herdr sidebar.json builtins and `$custom` plugin keys, plus
 /// Heeler-only names (`host`, `status`, `directory`) that exist in the app
-/// layout, not as authored plugin fields.
+/// layout, not as authored plugin fields. A herdr-core Terminal's labels are
+/// fields too, as `label:<key>`.
 ///
 /// `state_icon` still parses so herdr snapshots and older saved layouts keep
 /// decoding, but Console layouts drop it (`normalizedForConsole`) and the
@@ -12,6 +13,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case terminalTitle, terminalTitleStripped
     case host, status, directory
     case custom(String)
+    case label(String)
 
     /// herdr fields the Field Editor offers. Excludes `state_icon`.
     static let herdrBuiltins: [Self] = [
@@ -24,6 +26,16 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     ]
 
     static let builtins: [Self] = herdrBuiltins + heelerBuiltins
+
+    /// A Terminal's label as a field; nil for a key core would refuse (empty,
+    /// or holding `=`) or one a row cannot show.
+    static func terminalLabel(_ key: String) -> Self? {
+        guard !key.isEmpty, key.utf8.count <= 64, !key.contains("="),
+            key.contains(where: { !$0.isWhitespace }),
+            !key.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+        else { return nil }
+        return .label(key)
+    }
 
     init?(rawValue: String) {
         switch rawValue {
@@ -39,6 +51,13 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case "status": self = .status
         case "directory": self = .directory
         default:
+            if rawValue.hasPrefix("label:") {
+                guard let label = Self.terminalLabel(String(rawValue.dropFirst("label:".count))) else {
+                    return nil
+                }
+                self = label
+                return
+            }
             guard rawValue.first == "$" else { return nil }
             let name = rawValue.dropFirst()
             guard (1...32).contains(name.utf8.count), name.utf8.allSatisfy({
@@ -63,6 +82,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case .status: "status"
         case .directory: "directory"
         case .custom(let name): "$\(name)"
+        case .label(let key): "label:\(key)"
         }
     }
 
@@ -158,6 +178,11 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     ])
     /// Fallback sidebar fields with Heeler's default directory row.
     static let consoleDefault = heelerDefault.withHeelerRow()
+    /// Where a Host with no plugin starts: the terminal's title, then its
+    /// directory.
+    static let hostWithoutPluginDefault = AgentRowLayout(rows: [
+        [.init(.terminalTitleStripped)], [.init(.directory)],
+    ])
 
     var rowGap: Int
     var rows: [AgentRow]

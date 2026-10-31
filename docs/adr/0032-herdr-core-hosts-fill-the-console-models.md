@@ -52,7 +52,10 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   a known `app` counts only while that `app` names the foreground program. A
   shell in the foreground ends the Agent, whatever was reported last. The
   foreground is read after unwrapping: the desktop app's wrapper forms, `sh -c
-  <command line>`, and interpreters running an agent's script.
+  <command line>`, and interpreters running an agent's script. A cleared
+  foreground names no program, so the last sample stands until the next. With
+  no sample the launch arguments stand in, except a desktop wrapper that
+  continues as a shell, which only a sample can name.
 - Heeler starts an Agent as a kept Terminal, as the desktop app does, whose
   argv is the user's interactive shell replacing itself with the agent:
   `$SHELL -ic 'exec "$@"' $SHELL <agent> ...`, or for fish
@@ -192,6 +195,14 @@ with test clients, not the app.
   as new arguments on the same pid. Debian's `/bin/sh` runs a Template's
   command as a child, so a Template Agent's foreground is `sh -c` for its
   whole life.
+- The core clears the foreground when it cannot read the group's leader: one
+  that left while a member stays (`printf x | less`), or any failed read of the
+  process. A record omits a cleared foreground, so a snapshot cannot tell it
+  from one not sampled yet. Keeping the last sample means a shell stays a shell
+  and a launch never brings back an Agent that left. In exchange, an Agent whose
+  own group lost its leader stays, with its last report, until the group ends,
+  and a reconnect during that shows no Agent until the next sample. A desktop
+  wrapper's Terminal is an Agent from its first sample, about half a second in.
 - An Agent whose `app` Heeler does not know keeps its status when the user
   runs another program in the shell it left, until something reports again.
 - A kept Terminal between losing its program and restarting has no foreground;

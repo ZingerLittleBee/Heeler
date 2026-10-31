@@ -8,11 +8,13 @@ import SwiftUI
 struct AgentListFieldsPreview: View {
     let layout: AgentRowLayout
     let hostName: String
+    var followsPlugin = true
 
     var body: some View {
         AgentCardView(
-            agent: Self.sampleAgent(hostName: hostName), layout: layout,
-            sampleChanges: Self.sampleChanges)
+            agent: Self.sampleAgent(hostName: hostName, layout: layout, followsPlugin: followsPlugin),
+            layout: layout,
+            sampleChanges: Self.sampleChanges(followsPlugin: followsPlugin))
             .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isStaticText)
@@ -21,18 +23,26 @@ struct AgentListFieldsPreview: View {
 
     /// Same presentation the Console card uses for this sample.
     static func presentation(layout: AgentRowLayout, hostName: String) -> AgentCardPresentation {
-        AgentCardPresentation(agent: sampleAgent(hostName: hostName), layout: layout)
+        AgentCardPresentation(agent: sampleAgent(hostName: hostName, layout: layout), layout: layout)
     }
 
-    /// Deterministic sample values for built-in and custom tokens; not a live Agent.
-    static func sampleAgent(hostName: String) -> ConsoleAgent {
-        ConsoleAgent(
+    /// Deterministic sample values for built-in and custom tokens, and each
+    /// label `layout` names, shown by its key; not a live Agent.
+    static func sampleAgent(
+        hostName: String, layout: AgentRowLayout? = nil, followsPlugin: Bool = true
+    ) -> ConsoleAgent {
+        let title = followsPlugin ? "fix sidebar sync" : "fix login redirect"
+        var tokens = ["branch": "feat/sidebar"]
+        for case .label(let key) in (layout?.rows ?? []).joined().map(\.token) {
+            tokens[key] = key
+        }
+        return ConsoleAgent(
             hostID: sampleHostID,
             hostName: hostName,
             agent: Agent(
                 terminalID: "preview-terminal",
                 kind: "claude",
-                title: "fix sidebar sync",
+                title: title,
                 status: .idle,
                 workspaceID: "preview-workspace",
                 tabID: "preview-tab",
@@ -40,10 +50,10 @@ struct AgentListFieldsPreview: View {
                 cwd: "/work/heeler",
                 revision: 1,
                 name: "claude",
-                terminalTitle: "fix sidebar sync",
-                terminalTitleStripped: "fix sidebar sync",
+                terminalTitle: title,
+                terminalTitleStripped: title,
                 paneTitle: "claude",
-                tokens: ["branch": "feat/sidebar"]),
+                tokens: tokens),
             workspaceLabel: "heeler",
             repositoryCheckout: nil,
             tabLabel: "1",
@@ -54,6 +64,11 @@ struct AgentListFieldsPreview: View {
     /// Where the list shows a Checkout's line totals, with sample counts.
     static let sampleChanges = ChangesBadge(
         totals: ChangesTotals(trackedFiles: 3, added: 12, removed: 7))
+
+    /// A row with no plugin to follow is on a Host whose rows read no Changes yet.
+    static func sampleChanges(followsPlugin: Bool) -> ChangesBadge? {
+        followsPlugin ? sampleChanges : nil
+    }
 
     private static let sampleHostID = UUID(uuid: (
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
