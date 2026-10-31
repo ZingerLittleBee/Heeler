@@ -1,4 +1,5 @@
 import Foundation
+import GhosttyTerminal
 import Testing
 import UIKit
 
@@ -8,6 +9,65 @@ import UIKit
 @MainActor
 @Suite("Terminal key modifiers", .serialized)
 struct TerminalKeyModifiersTests {
+    /// Every key of herdr-core's `submit` grammar, under every combination of
+    /// modifiers and in each keyboard mode, against what Ghostty sends for it.
+    /// The Ghostty the core embeds encodes a press the same way (`keys.rs`).
+    @Test func theKeyEncoderMatchesGhosttyAcrossTheSubmitGrammar() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.close() }
+        let named: [(String, TerminalKey)] = [
+            ("backspace", .backspace), ("enter", .enter), ("tab", .tab), ("delete", .delete), ("end", .end),
+            ("home", .home), ("insert", .insert), ("pagedown", .pageDown), ("pageup", .pageUp),
+            ("down", .arrowDown), ("left", .arrowLeft), ("right", .arrowRight), ("up", .arrowUp), ("esc", .escape),
+            ("f1", .f1), ("f2", .f2), ("f3", .f3), ("f4", .f4), ("f5", .f5), ("f6", .f6), ("f7", .f7), ("f8", .f8),
+            ("f9", .f9), ("f10", .f10), ("f11", .f11), ("f12", .f12),
+        ]
+        let typed = Array("abcdefghijklmnopqrstuvwxyz0123456789`\\[],=-.';/ ")
+        let modifiers: [(String, TerminalInputModifiers)] = [
+            ("shift", .shift), ("ctrl", .ctrl), ("alt", .alt), ("super", .super_),
+        ]
+        let combinations: [(spec: String, flags: TerminalInputModifiers)] = (0..<16).map { bits in
+            let chosen = modifiers.enumerated().filter { bits & (1 << $0.offset) != 0 }.map(\.element)
+            var flags: TerminalInputModifiers = []
+            for modifier in chosen { flags.insert(modifier.1) }
+            return (chosen.map { "\($0.0)+" }.joined(), flags)
+        }
+        for mode in ["", "\u{1B}[?1h"] + [1, 2, 4, 8, 16, 3, 5, 7, 9, 15, 24, 31].map({ "\u{1B}[=\($0);1u" }) {
+            fixture.receive("\u{1B}[=0;1u\u{1B}[?1l")
+            fixture.receive(mode)
+            var tracker = TerminalModeTracker()
+            tracker.receive(Data(mode.utf8))
+            for (prefix, flags) in combinations {
+                var presses: [(spec: String, press: TerminalKeyPress)] = named.map {
+                    ("\(prefix)\($0.0)", TerminalKeyPress($0.1, modifiers: flags))
+                }
+                for character in typed {
+                    let press = try #require(TerminalKeyPress(typing: character, modifiers: flags))
+                    presses.append(("\(prefix)\(character == " " ? "space" : String(character))", press))
+                }
+                // One drain per group: a drain per key would take a minute.
+                for (_, press) in presses { fixture.terminal.sendKey(press) }
+                let sent = try await fixture.drain()
+                let encoded = presses.reduce(into: Data()) {
+                    $0.append(TerminalKeyEncoder.encode($1.spec, modes: tracker) ?? Data())
+                }
+                guard sent != encoded else { continue }
+                for (spec, press) in presses {
+                    fixture.terminal.sendKey(press)
+                    let ghostty = try await fixture.drain()
+                    let mine = TerminalKeyEncoder.encode(spec, modes: tracker) ?? Data()
+                    #expect(
+                        mine == ghostty,
+                        "\(spec) in mode \(mode.debugDescription): \(Self.hex(mine)) vs Ghostty's \(Self.hex(ghostty))")
+                }
+            }
+        }
+    }
+
+    private static func hex(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
+    }
+
     @Test func failedFixturePreparationDetachesItsWindow() async throws {
         var window: UIWindow?
         do {

@@ -254,6 +254,7 @@
 		4934C8086D2B27A7F07391E5 /* EventsSessionBufferingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE302F516B139F4BADCEC6CB /* EventsSessionBufferingTests.swift */; };
 		49924070055C376D1C0E2A8E /* ComposerDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = D663C74D9F4453BB34CA7A36 /* ComposerDrop.swift */; };
 		49C023510B428B3E9FB51BCB /* ClaudeDialogParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15E1799026D6E39B76BE80C2 /* ClaudeDialogParserTests.swift */; };
+		4A3E4522975C1442711223F5 /* TerminalKeyEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 169277FED2503B6264F3696C /* TerminalKeyEncoder.swift */; };
 		4A81FB588B49EDE873586129 /* HerdrCoreStartSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55E70552115069109E2E2CB /* HerdrCoreStartSection.swift */; };
 		4AF54D36B8F0639880713FD1 /* AgentActivityLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E303FCB86A19CCBBF79E15A /* AgentActivityLink.swift */; };
 		4AFE5695C525C757B991D658 /* ClaudeAccountsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA053A3B96F8C4D0917D82E9 /* ClaudeAccountsSheet.swift */; };
@@ -672,6 +673,7 @@
 		BE92EAF1AB7A7A6B6E65170F /* TerminalMessageJumpControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98C291FF5279ECEDF232B5D /* TerminalMessageJumpControllerTests.swift */; };
 		BF22FFBA362B7389807D12D0 /* GrokToolSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B1ABD77CFF84CDB66BA6EA /* GrokToolSummary.swift */; };
 		BF34AFDEB274D8503D59FB05 /* HerdrCoreEventCursorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6D00C5E1D095E6FD02BD1F /* HerdrCoreEventCursorTests.swift */; };
+		BFD16454AE4CC2E7D764586F /* TerminalKeyEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F92B6C7B2265DE1822819EF3 /* TerminalKeyEncoderTests.swift */; };
 		BFD46C3E11710F91B39D1186 /* ChangesFailureViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D52F3F413A577A7598C79CE /* ChangesFailureViewTests.swift */; };
 		BFE02F9C58F080B95770E878 /* WakeCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C2343D5ED9436077682CD1 /* WakeCommandTests.swift */; };
 		BFFC881E19AD745075F7155E /* HeelerSSHNativeRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75E8F9733C77314E6D222AC /* HeelerSSHNativeRuntimeTests.swift */; };
@@ -1062,6 +1064,7 @@
 		1663C1C0B0B2174068B2B915 /* HerdrCoreAgentRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreAgentRule.swift; sourceTree = "<group>"; };
 		1674575F15764AB318626947 /* PairingScanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanView.swift; sourceTree = "<group>"; };
 		1687276C209247FF9FC1534A /* RequestFailurePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestFailurePresentationTests.swift; sourceTree = "<group>"; };
+		169277FED2503B6264F3696C /* TerminalKeyEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyEncoder.swift; sourceTree = "<group>"; };
 		16A6D0F6E54809BDE46AC1AE /* HerdrEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrEventsTests.swift; sourceTree = "<group>"; };
 		16EE4454BBBF8D354C1360DF /* AgentRowLayoutResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRowLayoutResolver.swift; sourceTree = "<group>"; };
 		17292F6548C42EE456D6A397 /* WorkspaceTerminalPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceTerminalPresentationTests.swift; sourceTree = "<group>"; };
@@ -1851,6 +1854,7 @@
 		F85C32E88AD6C31495BF28F5 /* ChatImagePreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatImagePreviewTests.swift; sourceTree = "<group>"; };
 		F90E77FA4275B5056D4C0808 /* HerdrCommandLineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCommandLineTests.swift; sourceTree = "<group>"; };
 		F9255BA36958DA6DB7BF58CF /* ChatTextSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTextSettings.swift; sourceTree = "<group>"; };
+		F92B6C7B2265DE1822819EF3 /* TerminalKeyEncoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyEncoderTests.swift; sourceTree = "<group>"; };
 		F9807494CCCB18E9C9E43662 /* RSAKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RSAKeyStore.swift; sourceTree = "<group>"; };
 		F9D664871CA1A56418C106BC /* HostDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDraftTests.swift; sourceTree = "<group>"; };
 		F9EF9F515ABC98C4B0B483C0 /* pairing-code-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pairing-code-v1.json"; sourceTree = "<group>"; };
@@ -2246,6 +2250,7 @@
 				4C07BE449E30F431C247AF01 /* TerminalFullKeyboardLayoutTests.swift */,
 				05AD61D4FA60884234EA856C /* TerminalInputControllerTests.swift */,
 				5B393A4DA056DD5941212E67 /* TerminalInputTraitsTests.swift */,
+				F92B6C7B2265DE1822819EF3 /* TerminalKeyEncoderTests.swift */,
 				1B99CB61015DC220A2D9306A /* TerminalKeyModifiersTests.swift */,
 				7CCE32D8F2A1A12B183B3DA5 /* TerminalKeysKeyboardTests.swift */,
 				C0EAAEDF57252FEA74A93C6A /* TerminalListPresentationTests.swift */,
@@ -2322,6 +2327,7 @@
 				247FF74AD248F26A072EA263 /* TerminalKeyboard.swift */,
 				DAAA775A929F4FA4C419DE4A /* TerminalKeyboardHolder.swift */,
 				7CF0F9F0EDF8757DC1D275D2 /* TerminalKeyboardInset.swift */,
+				169277FED2503B6264F3696C /* TerminalKeyEncoder.swift */,
 				BC019B4A164A7B01F1D46344 /* TerminalKeysKeyboard.swift */,
 				698E712B4BE15626800C366F /* TerminalMessageJumpController.swift */,
 				4997A79DA8D98F7BA97E60F6 /* TerminalMouseReporting.swift */,
@@ -3866,6 +3872,7 @@
 				C1B2B4664800E7E80FB02EBD /* TerminalFontSettings.swift in Sources */,
 				444BB2CD46ED2175D8993860 /* TerminalFullKeyboard.swift in Sources */,
 				74257FA18D6431785BFECE9A /* TerminalInputController.swift in Sources */,
+				4A3E4522975C1442711223F5 /* TerminalKeyEncoder.swift in Sources */,
 				8F91EAC7F32AA058E7F23394 /* TerminalKeyboard.swift in Sources */,
 				D3373034F3B20022C0886AD6 /* TerminalKeyboardHolder.swift in Sources */,
 				DB28307A5B8386139CA7EDEE /* TerminalKeyboardInset.swift in Sources */,
@@ -4282,6 +4289,7 @@
 				845B6E45C06C55CCC011D6F0 /* TerminalGridReportPhaseRecorder.swift in Sources */,
 				31E4ADB22D4D655E7CFDB749 /* TerminalInputControllerTests.swift in Sources */,
 				A40851D640AB870EC1DB334D /* TerminalInputTraitsTests.swift in Sources */,
+				BFD16454AE4CC2E7D764586F /* TerminalKeyEncoderTests.swift in Sources */,
 				D6FBEC56A26E35A32CF2417A /* TerminalKeyModifiersTests.swift in Sources */,
 				96C9E9E62BB96A66A68570E9 /* TerminalKeysKeyboardTests.swift in Sources */,
 				EF663876192D96DA70D28A97 /* TerminalListPresentationTests.swift in Sources */,
