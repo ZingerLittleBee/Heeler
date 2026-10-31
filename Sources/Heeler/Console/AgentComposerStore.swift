@@ -325,11 +325,6 @@ final class AgentComposerStore: ComposerDraftOperations {
         attachInput = input
     }
 
-    /// The Attach a herdr-core Send writes into. Nothing on a Herdr TUI Host.
-    func bindCoreAttach(_ attach: AgentAttachStore?) {
-        coreSend?.bind(attach)
-    }
-
     @discardableResult
     func send(policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
         let revision = statusRevision
@@ -495,7 +490,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard TerminalTextSafety.containsOnlySafeScalars(outgoing) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
-        let outcome = await coreSend.send(outgoing, route: policy.route)
+        let outcome = await coreSend.send(outgoing, route: policy.route, attach: policy.coreAttach)
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         switch outcome {
         case .submitted:

@@ -114,7 +114,6 @@ final class HerdrCoreComposerSend {
     private let address: String
     private let projection: @MainActor () -> HerdrCoreConsoleProjection?
     private let clock: BlockedCardClock
-    private weak var attach: AgentAttachStore?
     private var lastSend: Task<Outcome, Never>?
     /// A Send ended with bytes nobody answered for. They stay queued however long
     /// that takes, so another paste would line up behind them under one submit.
@@ -130,16 +129,12 @@ final class HerdrCoreComposerSend {
         self.clock = clock
     }
 
-    /// The Attach the user is viewing.
-    func bind(_ attach: AgentAttachStore?) {
-        self.attach = attach
-    }
-
-    func send(_ text: String, route: ComposerRoute = .terminal) async -> Outcome {
+    /// `attach` is the one the user is viewing, in the window sending. Chat has none.
+    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?) async -> Outcome {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
-            let outcome = await deliver(text, route: route)
+            let outcome = await deliver(text, route: route, attach: attach)
             if outcome == .outcomeUnknown { lastSendHasNoAnswer = true }
             return outcome
         }
@@ -149,7 +144,7 @@ final class HerdrCoreComposerSend {
 
     // MARK: The steps
 
-    private func deliver(_ text: String, route: ComposerRoute) async -> Outcome {
+    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
         if lastSendHasNoAnswer { return await settleLastSend(in: projection) }
 
