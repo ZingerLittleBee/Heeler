@@ -173,18 +173,25 @@ struct ConsoleStoreTests {
         #expect(store.agents.map(\.hostID) == [id])
     }
 
-    /// A core Host has no plugin to read through its connection, and its
-    /// plugin surfaces keep saying why rather than blaming the link.
-    @Test func aCoreHostsUsageStaysUnsupported() async {
+    /// A core Host has no plugin to read: its Usage comes from its Host Helper,
+    /// and with none it says so rather than blaming the link.
+    @Test func aCoreHostsUsageNeedsTheHostHelper() async {
+        let helper = ScriptedCoreHost(channel: .refused)
         let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
-        let store = makeStore(transports: [:])
+        let store = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { ScriptedTransport(snapshot: .fixture(agents: [])) }, keepalive: nil)
+            },
+            connectCore: { _ in helper.transport() })
         defer { store.setHosts([]) }
         store.setHosts([core])
 
         let usage = store.agentUsageStore(for: core.id)
         await usage.refresh()
 
-        #expect(usage.state == .unsupportedBackend)
+        #expect(usage.state == .hostHelper(.notInstalled))
 
         store.setHosts([])
         #expect(store.agentUsageStore(for: core.id) !== usage)

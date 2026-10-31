@@ -2,11 +2,35 @@ import Foundation
 
 /// Notification and Usage files on a herdr-core Host, rooted at the Host Helper's
 /// directory and never at the plugin's configuration directory (ADR 0033). Each
-/// call finds the directory afresh, in one small exec. The Usage query itself
-/// stays unavailable until the Helper can answer it.
+/// file call finds the directory afresh, in one small exec, and a Usage read runs
+/// the Helper's own query in one bounded exec.
 struct HostHelperFiles: HostNotificationFiles {
     let host: any HostHelperHost
+    /// The Host's core session, as the user wrote it. Usage is read per session.
+    var session = ""
     var nonce: @Sendable () -> String = { UUID().uuidString }
+
+    /// The Helper's report for this session. Throws `AgentUsageHostHelperNeed`
+    /// when no Helper here can answer.
+    func readUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport {
+        guard AgentUsageProbe.isQueryableTimeZone(timeZone) else {
+            throw TransportError.malformedResponse("The Usage query arguments are invalid.")
+        }
+        let script = HostHelperScript(
+            .usageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits,
+                session: HerdrCoreSessionName.normalized(session)),
+            nonce: nonce())
+        let result = try await host.runHostHelperScript(script)
+        return try AgentUsageProbe.parseHelper(stdout: result.stdout, nonce: script.nonce)
+    }
+
+    /// The query is the Helper's own, wherever a plugin would sit.
+    func readAgentUsage(
+        timeZone: String, claudeLimits: Bool, pluginRoot: String
+    ) async throws -> AgentUsageReport {
+        try await readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+    }
 
     func readNotificationRegistration() async throws -> Data? {
         try await read(HeelerSSHTransport.notificationRegistrationFileName)
@@ -52,5 +76,32 @@ struct HostHelperFiles: HostNotificationFiles {
         } catch {
             throw HostHelperError.unreadableHost
         }
+    }
+}
+
+/// A core Host as Usage's Account changes see it: the Helper's Account file, and
+/// the Host's own file services for checking and browsing directories.
+struct HostHelperUsageHost: HostServices, HostNotificationFiles {
+    let services: any HostServices
+    let files: any HostNotificationFiles
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        try await services.fileStatus(atPath: path)
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        try await services.listFiles(request)
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        try await services.hostHomeDirectory()
+    }
+
+    func readUsageAccountFile() async throws -> Data? {
+        try await files.readUsageAccountFile()
+    }
+
+    func replaceUsageAccountFile(_ contents: Data) async throws {
+        try await files.replaceUsageAccountFile(contents)
     }
 }

@@ -66,32 +66,31 @@ extension AgentUsageBackgroundRefresh {
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) -> Self {
         Self(read: { host, claudeLimits in
-            guard host.serverKind == .herdrTUI else { return .unsupportedBackend }
+            // Nothing says what a Host of an unconfirmed Server Kind runs.
+            guard host.serverKind != .unconfirmed else { return nil }
             var host = host
             host.routes.removeAll { $0.overlayNetworkID != nil }
             guard !host.routes.isEmpty, let resolved = try? credentials.credentials(for: host) else { return nil }
             let timeZone = TimeZone.current.identifier
+            let settings = SSHTransportSettings(
+                host: host, credentials: resolved,
+                hostKeyPolicy: HostKeyPolicy(knownHosts: knownHosts) { _ in false })
             do {
-                let transport = try await connector.connect(settings: SSHTransportSettings(
-                    host: host, credentials: resolved,
-                    hostKeyPolicy: HostKeyPolicy(knownHosts: knownHosts) { _ in false }))
-                func readOnce() async -> AgentUsageStore.State {
-                    do {
-                        return try await AgentUsageStore.read(
-                            over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
-                    } catch {
-                        return AgentUsageStore.state(for: error)
+                if host.serverKind == .herdrCore {
+                    let transport = try await connector.connectCore(settings: settings)
+                    let helper = transport.hostHelperHost
+                    let state = await readWithRereads(sleep: sleep) {
+                        try await AgentUsageStore.reading(
+                            overHelper: helper, session: host.sessionName,
+                            timeZone: timeZone, claudeLimits: claudeLimits
+                        ).state
                     }
+                    try? await transport.close()
+                    return state
                 }
-                var state = await readOnce()
-                // A failed re-read keeps the report already read.
-                for _ in 0..<refreshingRereads {
-                    guard case .available(let report) = state, report.refreshing == true,
-                        (try? await sleep(AgentUsageStore.pollInterval)) != nil
-                    else { break }
-                    let next = await readOnce()
-                    if case .failed = next { break }
-                    state = next
+                let transport = try await connector.connect(settings: settings)
+                let state = await readWithRereads(sleep: sleep) {
+                    try await AgentUsageStore.read(over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
                 }
                 try? await transport.close()
                 return state
@@ -99,5 +98,36 @@ extension AgentUsageBackgroundRefresh {
                 return AgentUsageStore.state(for: error)
             }
         }, defaults: defaults)
+    }
+
+    /// One read, and a few more while its answer says another is worth waiting
+    /// for. A failed re-read keeps the state already read.
+    private static func readWithRereads(
+        sleep: @Sendable (Duration) async throws -> Void,
+        read: () async throws -> AgentUsageStore.State
+    ) async -> AgentUsageStore.State {
+        func readOnce() async -> AgentUsageStore.State {
+            do {
+                return try await read()
+            } catch {
+                return AgentUsageStore.state(for: error)
+            }
+        }
+        var state = await readOnce()
+        for _ in 0..<refreshingRereads {
+            guard wantsAnotherRead(state), (try? await sleep(AgentUsageStore.pollInterval)) != nil else { break }
+            let next = await readOnce()
+            if case .failed = next { break }
+            state = next
+        }
+        return state
+    }
+
+    private static func wantsAnotherRead(_ state: AgentUsageStore.State) -> Bool {
+        switch state {
+        case .available(let report): report.refreshing == true
+        case .hostHelper(.waitingForCore): true
+        default: false
+        }
     }
 }

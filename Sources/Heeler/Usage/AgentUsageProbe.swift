@@ -81,6 +81,21 @@ enum AgentUsageProbe {
     }
 
     static func parse(stdout: Data, nonce: String) throws -> AgentUsageReport {
+        try AgentUsageReport.decode(try framedBody(stdout: stdout, nonce: nonce))
+    }
+
+    /// What the Host Helper's Usage script prints: a report, or a word saying
+    /// the Helper cannot answer yet.
+    static func parseHelper(stdout: Data, nonce: String) throws -> AgentUsageReport {
+        let body = try framedBody(stdout: stdout, nonce: nonce)
+        switch String(decoding: body, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "helper-absent": throw AgentUsageHostHelperNeed.notInstalled
+        case "helper-outdated": throw AgentUsageHostHelperNeed.outdated
+        default: return try AgentUsageReport.decode(body)
+        }
+    }
+
+    private static func framedBody(stdout: Data, nonce: String) throws -> Data {
         let beginBytes = Data("__HEELER_USAGE_BEGIN_\(nonce)\n".utf8)
         let endBytes = Data("\n__HEELER_USAGE_END_\(nonce):".utf8)
         guard let begin = stdout.range(of: beginBytes),
@@ -90,6 +105,6 @@ enum AgentUsageProbe {
         else {
             throw TransportError.malformedResponse("The Host did not finish its Usage response.")
         }
-        return try AgentUsageReport.decode(Data(stdout[begin.upperBound..<end.lowerBound]))
+        return Data(stdout[begin.upperBound..<end.lowerBound])
     }
 }

@@ -163,7 +163,7 @@ struct AgentUsageScope: Equatable {
         case .idle, .loading: "Loading…"
         case .requirement: "Needs the Heeler plugin"
         case .unsupportedPlatform: "Not supported on Windows"
-        case .unsupportedBackend: "Not supported on herdr-core"
+        case .hostHelper(let need): need.reason
         case .runtimeMissing: "No Agent activity yet"
         case .updateRequired: "Update Heeler"
         case .failed: "Could not read Usage"

@@ -1199,11 +1199,18 @@ final class ConsoleStore {
             hostID: hostID,
             onHost: { [weak self] operation in
                 guard let self else { throw TransportError.cancelled }
-                try await self.withNotificationTransport(for: hostID, operation)
+                try await self.withUsageHost(for: hostID, operation)
             },
             accountFileGate: usageAccountFileGate
         ) { [weak self] timeZone, claudeLimits in
             guard let self else { throw TransportError.cancelled }
+            if let host = self.coreHost(hostID) {
+                return try await self.withCoreConnection(host) { transport in
+                    try await AgentUsageStore.reading(
+                        overHelper: transport.hostHelperHost, session: host.sessionName,
+                        timeZone: timeZone, claudeLimits: claudeLimits)
+                }
+            }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
                     over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
@@ -1477,20 +1484,55 @@ extension ConsoleStore: NotificationTransportProvider {
     }
 
     /// The root follows the Server Kind: a herdr-core Host's files are the Host
-    /// Helper's, over a connection of their own; every other Host's are the
-    /// plugin's, over its live connection.
+    /// Helper's, every other Host's the plugin's, over its live connection.
     func withNotificationFiles<Value: Sendable>(
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
     ) async throws -> Value {
-        guard let host = catalog.first(where: { $0.id == hostID }), host.serverKind == .herdrCore else {
+        guard let host = coreHost(hostID) else {
             return try await projection(for: hostID).withNotificationTransport { transport in
                 try await operation(transport)
             }
         }
+        return try await withCoreConnection(host) { transport in
+            try await operation(HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName))
+        }
+    }
+
+    /// What Usage's Account changes run over. It follows the Server Kind too.
+    fileprivate func withUsageHost(
+        for hostID: Host.ID,
+        _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Void
+    ) async throws {
+        guard let host = coreHost(hostID) else {
+            return try await withNotificationTransport(for: hostID) { try await operation($0) }
+        }
+        try await withCoreConnection(host) { transport in
+            try await operation(HostHelperUsageHost(
+                services: transport.hostServices,
+                files: HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName)))
+        }
+    }
+
+    fileprivate func coreHost(_ hostID: Host.ID) -> Host? {
+        catalog.first { $0.id == hostID && $0.serverKind == .herdrCore }
+    }
+
+    /// A core Host's connection for one operation: the Console's own while it
+    /// has one, else one dialed for the operation, since a Helper answers
+    /// whether or not a core runs.
+    fileprivate func withCoreConnection<Value: Sendable>(
+        _ host: Host,
+        _ operation: @escaping @Sendable (any HerdrCoreTransport) async throws -> Value
+    ) async throws -> Value {
+        if let session = (projections[host.id] as? HerdrCoreConsoleProjection)?.session,
+            let live = try? await session.withTransport({ $0 }), await live.isConnected
+        {
+            return try await operation(live)
+        }
         let transport = try await connectCore(host)
         do {
-            let value = try await operation(HostHelperFiles(host: transport.hostHelperHost))
+            let value = try await operation(transport)
             try? await transport.close()
             return value
         } catch {

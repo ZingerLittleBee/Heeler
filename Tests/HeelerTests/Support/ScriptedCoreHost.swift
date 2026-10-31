@@ -405,6 +405,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     /// The transport the app gets for this Host, with a nonce the script knows.
+    func hostHomeDirectory() async throws -> String { ScriptedHelperHost.home }
+
     nonisolated func transport(session: String = "work") -> HerdrCoreSSHTransport {
         HerdrCoreSSHTransport(connection: self, session: session, nonce: { Self.nonce })
     }

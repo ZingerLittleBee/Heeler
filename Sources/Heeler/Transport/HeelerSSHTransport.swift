@@ -3567,7 +3567,13 @@ extension HeelerSSHTransport: ServerKindDetectionConnection {
 extension HeelerSSHTransport: HostHelperHost {
     /// One bounded exec, long enough for the Node.js search's login shell.
     func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
-        try await runBoundedScript(
+        // A Usage read searches for nothing, and a screen is waiting on it.
+        if case .usageQuery = script.step {
+            return try await runBoundedScript(
+                Data(script.text.utf8), feature: "Usage", deadline: .seconds(10), remoteSeconds: 8,
+                timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
+        }
+        return try await runBoundedScript(
             Data(script.text.utf8), feature: "The Host Helper", deadline: .seconds(40), remoteSeconds: 30,
             timeoutMarkerPrefix: "__HEELER_HOST_HELPER_TIMEOUT_", timedOut: .timedOut)
     }

@@ -51,13 +51,19 @@ struct AgentUsageWidgetTests {
         #expect(unsupported.hosts.first?.programs.isEmpty == true)
     }
 
-    @Test func aCoreHostDropsOldFiguresAndExplainsItsUnsupportedBackend() throws {
+    @Test(arguments: [
+        (AgentUsageHostHelperNeed.notInstalled, "Needs the Host Helper"),
+        (AgentUsageHostHelperNeed.outdated, "Update the Host Helper"),
+        (AgentUsageHostHelperNeed.waitingForCore, "Waiting for the core"),
+        (AgentUsageHostHelperNeed.notOnWindows, "Comes with the Host Helper, not available yet"),
+    ])
+    func aCoreHostDropsOldFiguresAndSaysWhatItsHelperNeeds(need: AgentUsageHostHelperNeed, reason: String) throws {
         let first = UsageWidgetSnapshot(
             readings: [reading(studio, "Studio Mac", .available(try Self.report()), readAt: Self.now)],
             previous: nil, now: Self.now)
         let core = UsageWidgetSnapshot(
-            readings: [reading(studio, "Studio Mac", .unsupportedBackend)], previous: first, now: Self.now)
-        #expect(core.hosts.first?.excludedReason == "Not supported on herdr-core")
+            readings: [reading(studio, "Studio Mac", .hostHelper(need))], previous: first, now: Self.now)
+        #expect(core.hosts.first?.excludedReason == reason)
         #expect(core.hosts.first?.programs.isEmpty == true)
         #expect(core.hosts.first?.limits.isEmpty == true)
         #expect(core.hosts.first?.reports == false)

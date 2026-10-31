@@ -48,6 +48,9 @@ struct Input: Decodable {
     var arguments: [String]?
     var user: String?
     var files: [String]?
+    var timeZone: String?
+    var claudeLimits: Bool?
+    var session: String?
 }
 
 let arguments = CommandLine.arguments
@@ -68,6 +71,9 @@ case "enableLinger": step = .enableLinger(user: input.user ?? "")
 case "removeFiles": step = .removeFiles(input.files ?? [])
 case "removeEmptyFolders": step = .removeEmptyFolders(input.folders ?? [])
 case "removeTree": step = .removeTree(input.path ?? "")
+case "usageQuery":
+    step = .usageQuery(
+        timeZone: input.timeZone ?? "", claudeLimits: input.claudeLimits ?? false, session: input.session ?? "")
 default: exit(64)
 }
 let script = HostHelperScript(step, nonce: nonce)
@@ -439,6 +445,136 @@ class RemovalStepTests(HelperScriptCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.helper_dir.exists())
         self.assertTrue(self.helper_dir.parent.exists())
+
+
+class UsageQueryTests(HelperScriptCase):
+    MISSING = '{"version":1,"runtime":"missing"}'
+    BEGIN = f"__HEELER_USAGE_BEGIN_{NONCE}\n"
+    END = f"\n__HEELER_USAGE_END_{NONCE}:"
+
+    def query(self, shell: str = "/bin/sh", session: str = "work", limits: bool = False) -> tuple[str, str]:
+        result = self.run_script(
+            shell, step="usageQuery", timeZone="Asia/Kolkata", claudeLimits=limits, session=session)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        start = result.stdout.find(self.BEGIN)
+        self.assertGreaterEqual(start, 0, result.stdout)
+        body_start = start + len(self.BEGIN)
+        end = result.stdout.find(self.END, body_start)
+        if end < 0:
+            return result.stdout[body_start:], "unfinished"
+        status = result.stdout[end + len(self.END):].split("\n", 1)[0]
+        return result.stdout[body_start:end].strip(), status
+
+    def installed(self, query: str | None = "x\n") -> None:
+        app = self.helper_dir / "app"
+        app.mkdir(parents=True)
+        (app / "main.js").write_text("")
+        if query is not None:
+            (app / "usage-query.js").write_text(query)
+
+    def record(self, node_body: str, session: str = "work") -> Path:
+        node = self.bin / "recorded-node"
+        node.write_text(node_body)
+        node.chmod(0o755)
+        folder = self.helper_dir / "sessions" / session
+        folder.mkdir(parents=True)
+        (folder / "runtime-node").write_text(f"{node}\n")
+        return node
+
+    def test_a_host_without_the_helper_says_so_and_makes_nothing(self) -> None:
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.query(shell), ("helper-absent", "0"))
+                self.assertFalse(self.helper_dir.exists())
+
+    def test_a_helper_from_before_usage_says_so(self) -> None:
+        self.installed(query=None)
+        self.assertEqual(self.query(), ("helper-outdated", "0"))
+        self.assertFalse((self.helper_dir / "sessions").exists())
+
+    def test_no_record_reads_as_missing_and_makes_the_sessions_private_folder(self) -> None:
+        self.installed()
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.query(shell, session="my 'work'"), (self.MISSING, "0"))
+                folder = self.helper_dir / "sessions" / "my 'work'"
+                self.assertEqual(stat.S_IMODE(folder.stat().st_mode), 0o700)
+                self.assertEqual(stat.S_IMODE(folder.parent.stat().st_mode), 0o700)
+
+    def test_runs_the_helpers_query_with_the_recorded_node(self) -> None:
+        self.installed()
+        self.record(f"""#!/bin/sh
+printf '%s\\n' "$@" >> "{self.log}"
+printf '{{"version":1,"runtime":"recorded"}}\\n'
+""")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.log.write_text("")
+                self.assertEqual(self.query(shell), ('{"version":1,"runtime":"recorded"}', "0"))
+                self.assertEqual(
+                    self.log.read_text().splitlines(),
+                    [str(self.helper_dir / "app/usage-query.js"), "--tz", "Asia/Kolkata", "--session", "work"],
+                )
+
+    def test_asks_for_claude_codes_limits_only_when_told(self) -> None:
+        self.installed()
+        self.record(f"""#!/bin/sh
+printf '%s\\n' "$*" >> "{self.log}"
+printf '{{}}\\n'
+""")
+        self.query(limits=False)
+        self.query(limits=True)
+        calls = self.log.read_text().splitlines()
+        self.assertNotIn("--claude-limits", calls[0])
+        self.assertTrue(calls[1].endswith("--claude-limits"))
+
+    def test_follows_xdg_data_home_and_ignores_a_relative_one(self) -> None:
+        data = self.root / "data"
+        self.env["XDG_DATA_HOME"] = str(data)
+        app = data / "heeler/host-helper/app"
+        app.mkdir(parents=True)
+        (app / "main.js").write_text("")
+        (app / "usage-query.js").write_text("")
+        self.assertEqual(self.query(), (self.MISSING, "0"))
+        self.assertTrue((data / "heeler/host-helper/sessions/work").is_dir())
+
+        self.env["XDG_DATA_HOME"] = "relative"
+        self.assertEqual(self.query(), ("helper-absent", "0"))
+
+    def test_a_query_that_fails_reports_its_status(self) -> None:
+        self.installed()
+        self.record("#!/bin/sh\nexit 1\n")
+        self.assertEqual(self.query(), ("", "1"))
+
+    def test_a_node_that_cannot_run_reads_as_missing(self) -> None:
+        self.installed()
+        node = self.record("#!/bin/sh\nexit 127\n")
+        self.assertEqual(self.query(), (self.MISSING, "0"))
+        node.unlink()
+        self.assertEqual(self.query(), (self.MISSING, "0"))
+
+    def test_a_relative_node_is_never_run(self) -> None:
+        self.installed()
+        folder = self.helper_dir / "sessions/work"
+        folder.mkdir(parents=True)
+        (folder / "runtime-node").write_text("relative-node\n")
+        self.assertEqual(self.query(), (self.MISSING, "0"))
+
+    def test_an_answer_past_the_cap_never_reads_as_finished(self) -> None:
+        self.installed()
+        self.record("#!/bin/sh\nhead -c 1100000 /dev/zero | tr '\\0' x\n")
+        _, status = self.query()
+        self.assertEqual(status, "unfinished")
+
+    def test_the_real_helper_answers_from_a_bare_copy(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not found")
+        shutil.copytree(ROOT / "plugin/helper", self.helper_dir / "app")
+        folder = self.helper_dir / "sessions/work"
+        folder.mkdir(parents=True)
+        (folder / "runtime-node").write_text(f"{node}\n")
+        self.assertEqual(self.query(), (self.MISSING, "0"))
 
 
 if __name__ == "__main__":

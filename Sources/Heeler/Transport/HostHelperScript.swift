@@ -25,6 +25,10 @@ struct HostHelperScript: Sendable, Equatable {
         /// Removes each folder that is empty, in the order given.
         case removeEmptyFolders([String])
         case removeTree(String)
+        /// Runs the Helper's own Usage query for a session, whose folder it makes
+        /// so the Helper comes to follow that session's core. The whole answer
+        /// is framed and capped, so a cut-off report can never read as complete.
+        case usageQuery(timeZone: String, claudeLimits: Bool, session: String)
     }
 
     /// The unit's name, one per SSH user.
@@ -101,19 +105,55 @@ struct HostHelperScript: Sendable, Equatable {
             lines = folders.isEmpty ? [":"] : folders.map { "rmdir -- \(quote($0)) 2>/dev/null || :" }
         case .removeTree(let path):
             lines = ["rm -rf -- \(quote(path))"]
+        case .usageQuery(let timeZone, let claudeLimits, let session):
+            lines = usageQuery(timeZone: timeZone, claudeLimits: claudeLimits, session: session, nonce: nonce)
         }
         return (["printf '%s begin\\n' \(quote(nonce))"] + lines
             + ["__h_status=$?", "printf '%s end\\n' \(quote(nonce))", "exit \"$__h_status\""])
             .joined(separator: "\n") + "\n"
     }
 
+    private static let dataHome =
+        "case \"$XDG_DATA_HOME\" in /*) __h_data=\"$XDG_DATA_HOME\";; *) __h_data=\"$HOME/.local/share\";; esac"
+
     private static let locations = [
-        "case \"$XDG_DATA_HOME\" in /*) __h_data=\"$XDG_DATA_HOME\";; *) __h_data=\"$HOME/.local/share\";; esac",
+        dataHome,
         "case \"$XDG_CONFIG_HOME\" in /*) __h_config=\"$XDG_CONFIG_HOME\";; *) __h_config=\"$HOME/.config\";; esac",
         "printf 'home %s\\n' \"$HOME\"",
         "printf 'data %s\\n' \"$__h_data\"",
         "printf 'config %s\\n' \"$__h_config\"",
     ]
+
+    private static func usageQuery(
+        timeZone: String, claudeLimits: Bool, session: String, nonce: String
+    ) -> [String] {
+        let missing = "printf '%s\\n' '{\"version\":1,\"runtime\":\"missing\"}'"
+        let flags = claudeLimits ? " --claude-limits" : ""
+        return [
+            "LC_ALL=C; export LC_ALL",
+            "umask 077",
+            "(",
+            "printf '%s\\n' \(quote("__HEELER_USAGE_BEGIN_\(nonce)"))",
+            dataHome,
+            "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
+            "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
+            "__h_session=\"$__h_dir\"/sessions/\(quote(session))",
+            "__h_usage() {",
+            "  [ -f \"$__h_app/main.js\" ] || { printf 'helper-absent\\n'; return 0; }",
+            "  [ -f \"$__h_app/usage-query.js\" ] || { printf 'helper-outdated\\n'; return 0; }",
+            "  mkdir -p -- \"$__h_session\" || return 1",
+            "  if ! IFS= read -r __h_node < \"$__h_session/runtime-node\"; then \(missing); return 0; fi 2>/dev/null",
+            "  case \"$__h_node\" in /*) ;; *) \(missing); return 0 ;; esac",
+            "  \"$__h_node\" \"$__h_app/usage-query.js\" --tz \(quote(timeZone)) --session \(quote(session))\(flags)",
+            "  __h_result=$?",
+            "  case \"$__h_result\" in 126|127) \(missing); return 0 ;; *) return \"$__h_result\" ;; esac",
+            "}",
+            "__h_usage",
+            "__h_result=$?",
+            "printf '\\n%s:%s\\n' \(quote("__HEELER_USAGE_END_\(nonce)")) \"$__h_result\"",
+            ") | head -c 1048576",
+        ]
+    }
 
     /// A tree's hashes as `hash <sum> <path under root>` lines, or one
     /// `hash-tool-missing` line on a Host with neither tool.
