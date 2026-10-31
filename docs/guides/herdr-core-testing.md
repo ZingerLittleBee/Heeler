@@ -34,9 +34,10 @@ covers the fixture and CI.
 make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
 ```
 
-It authorizes a throwaway key through `instabox port-forward`, runs the seven
-methods of `HerdrCoreTransportE2ETests` on the Simulator, then starts a core for a
-unique session and checks:
+It authorizes a throwaway key through `instabox port-forward`, writes the fixture's
+startup files into its own directory for the launch method, so the account's own
+stay as they are, runs the eight methods of `HerdrCoreTransportE2ETests` on the
+Simulator, then starts a core for a unique session and checks:
 
 - the `hc-serve-*` and `hc-hold-*` user units
 - `loginctl show-user <user> -p Linger`
@@ -96,8 +97,8 @@ Stop the session by absolute path when you finish, as the safety rules say.
 ## Console
 
 With a core running in your unique session and the Host connected, open the
-Terminals tab. Start Terminals on the box, since a core Host offers no New Terminal
-yet, and read each pid from `server.status` or `terminal.list`.
+Terminals tab. Start Terminals on the box, and read each pid from `server.status` or
+`terminal.list`.
 
 | Check | How to get there | Heeler shows |
 | --- | --- | --- |
@@ -166,6 +167,28 @@ Terminal. A status report is `printf '\033]7501;state=working:app=x\007'`, as th
 | Wrappers | A harness started through `bash -lc`, and through the desktop app's fish wrapper | The Agent is the harness underneath. New arguments on the fish wrapper's pid end it |
 | Cleared foreground | Quit a harness started through the desktop app's bash wrapper, then run `printf x \| less` in the shell it left, and background and reopen Heeler while it runs | No Agent comes back, at the capture's `null` `foreground` event or after the reconnect |
 | Kept restart | `kill -9` a harness started with `keep` | No Agent between `lost` and `restarted` |
+
+## New Agent and New Terminal
+
+Use three throwaway accounts on hc-lab whose login shells are bash, zsh and fish, and
+in each put a harmless stub on `PATH` only through the shell's own startup file
+(`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`), with a marker variable beside
+it. Never sign in to a harness: an Agent that stops at its sign-in has already shown
+its flags. Read each launch with `terminal.get` through
+`scripts/fixtures/herdr-core-rpc.py`.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Startup files | Open **New Agent** on each account, with a stub named as an agent | That agent is listed, and an agent only on the SSH exec's `PATH` is not. `argv` reads the shell replacing itself, fish's own form on fish, and `env` holds no `PATH` |
+| The Agent's environment | Start the stub, and print the marker in it | The startup file's marker and `PATH`. `pid` and `foreground.pid` are the same, with no shell left behind |
+| OpenCode 1.19.5 | Install it, then start it | `argv` has no `-s`, and no `heeler.launch-session` label |
+| OpenCode 2.2.2 | Install it, then start it | `argv` has `-s ses_…`, and the label `heeler.launch-session` holds the same id |
+| zsh with no startup files | Remove `~/.zshrc` on the zsh account, then start an Agent | It waits at zsh's new-user wizard. Answering it in the terminal lets the Agent start |
+| Shell from the core | A blank shell field for the account in `/etc/passwd`, and a core started with `SHELL` set | `argv` uses the core's `SHELL`. With it unset too, **New Agent** says the Host does not report your login shell, and nothing starts |
+| Derived Workspace | **New Terminal** in a directory's Workspace, then `cd` elsewhere in a Terminal there and start another | Both land in that card, both with the Workspace's own directory, and no `herdr.*` label |
+| Browsing | **Browse Directory…** in **New Agent** and in **New Terminal** | Remote folders list, and the launch lands in a card named for the one chosen |
+| Mac with the desktop app | On a Mac running the Herdr desktop app, **New Terminal** in one of its spaces | It shows in a new tab of that space in the window, and `terminal.get` has `herdr.space` and a new `herdr.tab`. Never `doc.set` on this core |
+| No answer | Cut the route just after tapping **Start** | Heeler says the Host did not confirm the launch, and `terminal.list` shows at most one new Terminal |
 
 ## Agent Row Layout
 

@@ -13,7 +13,7 @@ Heeler runs `hc connect` and `hc attach` over SSH, verifying the core executable
 
 Recognized coding programs appear in Agents; ordinary shells and other programs appear in Terminals. A custom reported program name does not by itself add Agent support. Status comes from the program's core report, so an unreported program remains Unknown; Error keeps its own wording and asks for attention. A confirmed foreground shell removes an exited Agent despite its retained status report.
 
-Terminals are grouped by their launch directory, independently of the desktop's layout. Live attachment supports input and resize. You can start Agents and open or close terminals in an existing or new directory. A terminal created from Heeler is not automatically placed in the desktop layout: adopt it there when you want it in a desktop pane. Closing it ends its program on the desktop too.
+Terminals labeled by the desktop app show under its spaces and tabs, and the rest are grouped by the directory they first launched in. Live attachment supports input and resize. Closing a terminal ends its program on the desktop too.
 
 Composer's **Insert into Terminal** action accepts one line without control characters. It inserts that line into the already connected live terminal without Enter. Check the terminal and press Enter yourself when ready to submit. Multiline or control-containing drafts stay local; copy multiline text and use the Terminal's reviewed **Paste** action. If the live terminal is unavailable, connect it before inserting. Core's queued send API cannot bind a submission to the same Agent process, so Heeler does not use it for automatic submission.
 
@@ -24,6 +24,26 @@ The core CLI reserves its configured detach chord, **Ctrl+backslash** by default
 Chat, the Heeler plugin, notifications, Live Activities, renaming, and creating/removing Worktrees are unavailable for this backend. Usage comes through the [Host Helper](#usage). Core does not supply the legacy plugin contract or exact transcript identity. Changes, files, and Skills still use the same Host's SSH filesystem. Terminals federated from another machine are omitted: add that machine directly as a Host so its file operations reach the right computer.
 
 Existing legacy Hosts stay on herdr. A manually configured Host can be edited or duplicated to select core. Before switching a legacy Host, turn off its notifications and wait for the remote update to finish; an unreachable original Host must be recovered before that registration can be removed. Hosts carrying a paired Herdr Endpoint retain that endpoint when edited or duplicated and cannot change backend. Add a new manual core Host for those accounts.
+
+## New Agent and New Terminal
+
+**New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.
+
+Pick where it starts, for an Agent and for **New Terminal** alike:
+
+| You pick | It starts | It shows |
+| --- | --- | --- |
+| A desktop space | In the directory of the Agent you started from, else the space's folder | In a new tab of that space, here and in the desktop app |
+| A directory's Workspace | In that Workspace's directory, even after a Terminal in it moved elsewhere | In that Workspace, and not in the desktop app's layout until you adopt it there |
+| **Browse Directory…** | In the directory you chose | In a Workspace named for that directory |
+
+Heeler asks for no tab or Workspace name on this kind of Host. Worktrees and Templates are not offered here yet.
+
+Heeler gives an Agent a session of its own from the start where the program takes one, unless your arguments already pick a session, as `--resume` does. Codex runs with `--no-daemon`. OpenCode gets its session only from version 2.1.
+
+If the Host does not confirm a start, Heeler says so and does not try again, since the Agent may already be running. Check the Host before starting another.
+
+**Known limit:** with zsh as your login shell and no startup files, such as no `~/.zshrc`, zsh opens its new-user wizard and the Agent waits behind it. Open the Terminal and answer the wizard once, or create an empty `~/.zshrc` on the Host first.
 
 ## Host Helper
 
