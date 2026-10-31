@@ -265,6 +265,44 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    /// The core paints no history unless asked (`history` defaults to 0), and
+    /// its own client asks only once: a surface that took output keeps its
+    /// scrollback, so asking again would repeat every line.
+    @Test func aFreshSurfaceAsksForScrollbackAndAReattachOntoOneThatHasItDoesNot() async throws {
+        let fixture = try await Fixture()
+        let store = fixture.store()
+        let first = try await fixture.opened(store)
+        #expect(first.params["history"] == .number(10_000))
+        try await fixture.deliverOutput("x", on: first)
+        try await Self.until("the first output") { store.status == .live }
+
+        await first.socket.deliverEndOfFile()
+        let second = try await fixture.opened(store, count: 2)
+        #expect(second.params["history"] == nil)
+        await store.stop()
+        await fixture.finish()
+    }
+
+    @Test func aReattachBeforeAnyOutputStillAsksForScrollback() async throws {
+        let fixture = try await Fixture()
+        let store = fixture.store()
+        let first = try await fixture.opened(store)
+        await first.socket.deliverEndOfFile()
+        let second = try await fixture.opened(store, count: 2)
+        #expect(second.params["history"] == .number(10_000))
+        await store.stop()
+        await fixture.finish()
+    }
+
+    @Test func aHiddenAttachAsksForScrollbackToo() async throws {
+        let fixture = try await Fixture()
+        let store = fixture.store(isViewed: false)
+        let attach = try await fixture.opened(store)
+        #expect(attach.params["history"] == .number(10_000))
+        await store.stop()
+        await fixture.finish()
+    }
+
     @Test func aLinkThatDropsReattachesOnTheNextOneAsAResumedViewerOnTheSameConnection() async throws {
         let fixture = try await Fixture()
         let store = fixture.store()

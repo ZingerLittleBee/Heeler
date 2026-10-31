@@ -217,6 +217,9 @@ final class AttachTerminalStore {
     private let takeover: Bool
     /// How the next attach joins a herdr-core Terminal.
     private var nextViewer: TerminalViewerRole
+    /// Once output has reached this pipeline its surface holds the scrollback,
+    /// and a reattach asking for it again would repeat every line.
+    private var hasTakenOutput = false
     /// Whether anyone is looking at this pipeline's surface. A hidden core
     /// attach reports neither focus nor display facts.
     private(set) var isViewed: Bool
@@ -446,7 +449,8 @@ final class AttachTerminalStore {
         let reportsOnceOpen = !isViewed || viewer == .interactive
         let request = TerminalAttachRequest(
             target: target, takeover: takeover, viewer: viewer,
-            displayFacts: isViewed ? feed.displayFacts : nil, cols: cols, rows: rows)
+            displayFacts: isViewed ? feed.displayFacts : nil,
+            surfaceHasHistory: hasTakenOutput, cols: cols, rows: rows)
         let operation: TerminalSessionOperation = { [weak self] session in
             guard let self else {
                 await session.end()
@@ -539,6 +543,7 @@ final class AttachTerminalStore {
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
                 #endif
                 observeOutput(bytes)
+                hasTakenOutput = true
                 feed.write(bytes, consumed: { session.outputConsumed($0) })
             }
         } catch {

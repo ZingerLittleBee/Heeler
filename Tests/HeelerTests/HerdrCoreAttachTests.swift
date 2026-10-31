@@ -27,14 +27,15 @@ struct HerdrCoreAttachTests {
         /// Opens an attach whose reply names `channel`.
         func attach(
             _ address: String = "t3", channel: UInt32 = 2, viewer: TerminalViewerRole = .interactive,
-            displayFacts: TerminalDisplayFacts? = nil
+            displayFacts: TerminalDisplayFacts? = nil, surfaceHasHistory: Bool = false
         ) async throws -> (session: TerminalAttachSession, params: JSONValue) {
             let link = link
             let opened = Task {
                 try await HerdrCoreAttach.open(
                     on: link,
                     request: TerminalAttachRequest(
-                        target: .terminal(address), viewer: viewer, displayFacts: displayFacts, cols: 80, rows: 24),
+                        target: .terminal(address), viewer: viewer, displayFacts: displayFacts,
+                        surfaceHasHistory: surfaceHasHistory, cols: 80, rows: 24),
                     deadline: .seconds(5))
             }
             let request = await socket.nextRequest()
@@ -88,6 +89,16 @@ struct HerdrCoreAttachTests {
         let (session, params) = try await harness.attach(viewer: role)
         #expect(params[key] == .bool(true))
         await session.end()
+    }
+
+    @Test func anAttachAsksForScrollbackOnlyForASurfaceThatHasNone() async throws {
+        let harness = try await Harness()
+        let (fresh, asked) = try await harness.attach()
+        #expect(asked["history"] == .number(10_000))
+        await fresh.end()
+        let (back, plain) = try await harness.attach(channel: 4, surfaceHasHistory: true)
+        #expect(plain["history"] == nil)
+        await back.end()
     }
 
     @Test func anAttachCarriesTheDisplayFactsItWasGiven() async throws {

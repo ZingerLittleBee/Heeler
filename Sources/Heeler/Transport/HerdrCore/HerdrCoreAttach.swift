@@ -48,6 +48,8 @@ enum HerdrCoreAttach {
         }
     }
 
+    private static let firstPaintHistory = 10_000
+
     static func params(for request: TerminalAttachRequest) throws -> JSONValue {
         guard isValidGeometry(columns: request.cols, rows: request.rows) else {
             throw TransportError.channelFailed(detail: "Invalid herdr-core terminal geometry.")
@@ -64,6 +66,10 @@ enum HerdrCoreAttach {
         }
         if let facts = request.displayFacts {
             params["display"] = displayValue(facts)
+        }
+        // The core paints no history unless asked. Its own client asks once too.
+        if !request.surfaceHasHistory {
+            params["history"] = .number(Double(firstPaintHistory))
         }
         return .object(params)
     }

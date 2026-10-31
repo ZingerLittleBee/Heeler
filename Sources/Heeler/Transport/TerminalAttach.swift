@@ -64,6 +64,9 @@ struct TerminalAttachRequest: Sendable, Equatable {
     let takeover: Bool
     let viewer: TerminalViewerRole
     let displayFacts: TerminalDisplayFacts?
+    /// The surface this attach paints already holds its scrollback, so a server
+    /// that can send it should not send it again.
+    let surfaceHasHistory: Bool
     let cols: Int
     let rows: Int
 
@@ -72,6 +75,7 @@ struct TerminalAttachRequest: Sendable, Equatable {
         takeover: Bool = false,
         viewer: TerminalViewerRole = .interactive,
         displayFacts: TerminalDisplayFacts? = nil,
+        surfaceHasHistory: Bool = false,
         cols: Int,
         rows: Int
     ) {
@@ -79,6 +83,7 @@ struct TerminalAttachRequest: Sendable, Equatable {
         self.takeover = takeover
         self.viewer = viewer
         self.displayFacts = displayFacts
+        self.surfaceHasHistory = surfaceHasHistory
         self.cols = cols
         self.rows = rows
     }
