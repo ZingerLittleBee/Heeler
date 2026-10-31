@@ -225,6 +225,7 @@ its flags. Read each launch with `terminal.get` through
 | Browsing | **Browse Directory…** in **New Agent** and in **New Terminal** | Remote folders list, and the launch lands in a card named for the one chosen |
 | Mac with the desktop app | On a Mac running the Herdr desktop app, **New Terminal** in one of its spaces | It shows in a new tab of that space in the window, and `terminal.get` has `herdr.space` and a new `herdr.tab`. Never `doc.set` on this core |
 | No answer | Cut the route just after tapping **Start** | Heeler says the Host did not confirm the launch, and `terminal.list` shows at most one new Terminal |
+| Template with a slow first report | A file in `~/.config/herdr-core/templates/` with a body, whose `command` is a harmless stub that sends its first OSC 7501 report after about 28 seconds and keeps reading its input, then pick it under **Templates** in **New Agent** and start it | **New Agent** shows it starting for the whole wait of about 33 seconds, then opens it as an Agent with the Template's body typed. `terminal.get` has `argv` reading `sh -c <command>`, its `template`, `submit` and `stop`, and no `heeler.launch-session` label, and `terminal.list` shows one new Terminal. A stub that reports at 30 seconds or later still opens, but with no body typed |
 
 ## Agent Row Layout
 

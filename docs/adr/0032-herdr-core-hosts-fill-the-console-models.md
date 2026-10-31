@@ -215,7 +215,9 @@ with test clients, not the app.
   keeps that departed Agent for the detail alone, so no list shows it, and a
   reconnect forgets it.
 - A Template launch returns once the program first reports, which can take
-  30 seconds, and the record carries the Template's submit and stop keys.
+  35 seconds, and the record carries the Template's submit and stop keys. A
+  program Heeler does not know is no Agent until it reports, so a Template
+  whose program never does stays a Terminal.
 - A subagent started with `hc run` gets the core's environment, not its
   parent shell's.
 - Any process on the core can rewrite any Terminal's labels, desktop labels
