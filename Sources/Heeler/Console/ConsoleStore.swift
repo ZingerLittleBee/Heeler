@@ -511,6 +511,29 @@ final class ConsoleStore {
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
         try await projection(for: hostID).availableAgentKinds()
     }
+
+    func availableTemplates(on hostID: Host.ID) async throws -> [AgentTemplate] {
+        try await projection(for: hostID).availableTemplates()
+    }
+
+    @discardableResult
+    func startTemplate(
+        _ request: TemplateLaunchRequest, on hostID: Host.ID
+    ) async throws -> Agent {
+        try await projection(for: hostID).startTemplate(request)
+    }
+
+    /// See `ConsoleHostProjection.programExit(ofPane:)`.
+    func programExit(of id: ConsoleAgent.ID) -> ProgramExit? {
+        projections[id.hostID]?.programExit(ofPane: id.paneID)
+    }
+
+    /// The names a new Agent's generated default keeps clear of on `hostID`.
+    func takenAgentNames(on hostID: Host.ID) -> Set<String> {
+        Set(agents.filter { $0.hostID == hostID }.compactMap { $0.agent.name })
+            .union(projections[hostID]?.heldTerminalNames ?? [])
+    }
+
     /// Resolves the Host's remote home directory for the New Workspace
     /// directory browser (#280). Throws the error's own presentation,
     /// including homeDirectoryUnresolvable when the probe fails.
@@ -872,15 +895,15 @@ final class ConsoleStore {
             request, workspace: workspace)
     }
 
-    /// Suspends until `id` is reported by its Host's sync machinery, or the
-    /// timeout elapses. The new-agent flow (#12) opens the started Agent's
+    /// Suspends until `id` is reported by its Host's sync machinery, its program
+    /// has ended for good, or the timeout elapses. The new-agent flow (#12) opens the started Agent's
     /// terminal, and the row it navigates to exists only once the post-start
     /// resync lands — waiting keeps the detail column from flashing its
     /// missing-Agent placeholder over a launch that just succeeded.
     func waitForAgent(_ id: ConsoleAgent.ID, timeout: Duration = .seconds(5)) async {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
-        while !agents.contains(where: { $0.id == id }) {
+        while !agents.contains(where: { $0.id == id }), programExit(of: id) == nil {
             guard clock.now < deadline,
                 (try? await Task.sleep(for: .milliseconds(50))) != nil
             else { return }

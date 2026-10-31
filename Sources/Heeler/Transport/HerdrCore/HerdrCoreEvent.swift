@@ -86,7 +86,7 @@ struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
     var keep: Bool
     var state: String
     var pid: Int?
-    let exitCode: Int?
+    var exitCode: Int?
     let signal: Int?
     var reason: String?
     let createdMilliseconds: Int?

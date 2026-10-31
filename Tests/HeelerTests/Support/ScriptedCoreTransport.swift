@@ -160,6 +160,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var documentWrites: [JSONValue] = []
     /// The exact params of every `terminal.run`, oldest first.
     private(set) var runs: [JSONValue] = []
+    /// How many of `runs` asked for a Template's long deadline.
+    private(set) var templateRuns = 0
     /// The method of every call sent as a mutation, oldest first.
     private(set) var mutations: [String] = []
     /// The Terminal of every `terminal.kill`, oldest first.
@@ -180,6 +182,10 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var discoveredPrograms: [String] = []
     private var openCodeVersionOutput: String?
     private var runFailure: (any Error)?
+    private var heldNames: Set<String> = []
+    private var templateList: JSONValue = .object(["templates": .array([])])
+    private var templateListFailure: (any Error)?
+    private var templateCommand = "pi --thinking high"
     private var isDesktopAppRunning = false
     private var desktopAppRenameFailure: (any Error)?
 
@@ -303,6 +309,9 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
             documentWrites.append(params)
             Issue.record("A code path wrote a document: \(params)")
             throw TransportError.hostFeatureUnavailable(feature: method)
+        case "templates.list":
+            if let templateListFailure { throw templateListFailure }
+            return templateList
         default:
             throw TransportError.hostFeatureUnavailable(feature: method)
         }
@@ -334,7 +343,36 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     func runTerminal(params: JSONValue) async throws -> JSONValue {
         runs.append(params)
         if let runFailure { throw runFailure }
+        try holdName(in: params)
         return Self.runReply(address: "t\(100 + runs.count)", params: params)
+    }
+
+    /// The core's rule for a name a live Terminal holds. Every Terminal started
+    /// here stays live as far as this knows.
+    private func holdName(in params: JSONValue) throws {
+        guard let name = params["name"]?.stringValue else { return }
+        guard heldNames.insert(name).inserted else {
+            throw HerdrAPIError(
+                code: "name_taken", message: "a live terminal is already named \"\(name)\"")
+        }
+    }
+
+    /// What a core answers for a Template: its command under `sh -c`, with its
+    /// name and keys on the record.
+    func runTemplate(params: JSONValue) async throws -> JSONValue {
+        templateRuns += 1
+        runs.append(params)
+        if let runFailure { throw runFailure }
+        try holdName(in: params)
+        var reply = Self.runReply(address: "t\(100 + runs.count)", params: params)
+        if case .object(var fields) = reply {
+            fields["argv"] = .array(["sh", "-c", templateCommand].map(JSONValue.string))
+            if case .array(let argv)? = params["argv"] { fields["template"] = argv.first }
+            fields["submit"] = .string("ctrl+j")
+            fields["stop"] = .string("ctrl+c")
+            reply = .object(fields)
+        }
+        return reply
     }
 
     /// What a core answers: the Terminal it started from these params.
@@ -390,6 +428,21 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// Every run fails with this until it is called with nil.
     func setRunFailure(_ failure: (any Error)?) {
         runFailure = failure
+    }
+
+    /// What `templates.list` answers, as the core shapes it.
+    func setTemplates(_ templates: [JSONValue]) {
+        templateList = .object(["templates": .array(templates)])
+    }
+
+    /// The command line a Template's Terminal runs.
+    func setTemplateCommand(_ command: String) {
+        templateCommand = command
+    }
+
+    /// `templates.list` fails with this until it is called with nil.
+    func setTemplateListFailure(_ failure: (any Error)?) {
+        templateListFailure = failure
     }
 
     /// What `herdr-app status` says from now on.

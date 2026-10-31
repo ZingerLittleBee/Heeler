@@ -63,6 +63,14 @@ enum HerdrCoreLaunch {
             name: name, environment: blankedVariables(kind), placement: labeled)
     }
 
+    /// A Template by its name, as the core runs it: no shell, session flags or
+    /// hint label (ADR 0032, ADR 0034).
+    static func templateRequest(
+        template: String, name: String?, placement: Placement
+    ) -> JSONValue {
+        request(argv: [template], name: name, environment: [:], placement: placement)
+    }
+
     private static func request(
         argv: [String]?, name: String?, environment: [String: String], placement: Placement
     ) -> JSONValue {
@@ -164,6 +172,19 @@ enum HerdrCoreLaunch {
         let alphabet = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
         let random = (0..<14).compactMap { _ in alphabet.randomElement() }
         return "ses_\(time)\(String(random))"
+    }
+
+    // MARK: Templates
+
+    /// What `templates.list` answers, without the files the core says it cannot use.
+    static func templates(result: JSONValue) -> [AgentTemplate] {
+        guard case .array(let entries)? = result["templates"] else { return [] }
+        return entries.compactMap { entry in
+            guard entry["error"]?.stringValue == nil,
+                let name = entry["name"]?.stringValue, !name.isEmpty
+            else { return nil }
+            return AgentTemplate(name: name, description: entry["description"]?.stringValue ?? "")
+        }
     }
 
     // MARK: Discovery
