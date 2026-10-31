@@ -114,10 +114,12 @@ export class FakeCore {
   eventsChannel = exchange("events-subscribe").result.channel;
   helloReply = vectors.hello.reply;
   answersHello = true;
-  /** `{id, ...}` replies replace the vector's bytes; lines here go out before the subscribe reply. */
+  /** A result to answer with in place of the vector's captured reply. */
   status = null;
   snapshot = null;
+  /** Lines to send on the events channel ahead of the subscribe reply. */
   earlyEvents = [];
+  /** Per method, what to send in place of a reply: `(id) => bytes`. */
   answers = {};
   #server;
   #path;
@@ -140,7 +142,7 @@ export class FakeCore {
 
   answer(connection, { id, method }) {
     if (this.answers[method] !== undefined) {
-      if (this.answers[method] !== null) connection.write(this.answers[method](id));
+      connection.write(this.answers[method](id));
       return;
     }
     if (method === "server.status") {

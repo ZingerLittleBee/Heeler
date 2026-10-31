@@ -294,9 +294,9 @@ suite("the events stream", () => {
 
   test("a heartbeat holds the idle limit off", async () => {
     const core = await fakeCore({ snapshot: { channel: 1, seq: 1, terminals: [] } });
-    const { connection } = await connect(recorder(), { idleTimeoutMs: 150 });
+    const { connection } = await connect(recorder(), { idleTimeoutMs: 500 });
     const started = Date.now();
-    while (Date.now() - started < 300) {
+    while (Date.now() - started < 800) {
       core.last.sendEvents(`${JSON.stringify({ method: "heartbeat", params: { seq: 2 } })}\n`);
       await new Promise((done) => setTimeout(done, 20));
     }
@@ -310,7 +310,7 @@ suite("the events stream", () => {
     await connection.close();
     await connection.close();
     assert.equal((await connection.closed).message, "closed");
-    await waitFor(() => core.last.closed || core.connections.length === 1, "the close");
+    await waitFor(() => core.last.closed, "the close");
   });
 });
 

@@ -124,7 +124,7 @@ suite("waiting for a core", () => {
     const { handle } = follow("work");
     await waitFor(() => fake.last?.helloLine != null, "hello");
     await handle.stop();
-    await waitFor(() => fake.last.closed || fake.connections.length === 1, "the close");
+    await waitFor(() => fake.last.closed, "the close");
   });
 });
 
@@ -307,7 +307,7 @@ suite("sessions from the registrations", () => {
     const { handle, seen } = followAll();
     await waitFor(() => seen.connected.length === 1, "the connection");
     await handle.stop();
-    await waitFor(() => work.last.closed || seen.ended.length === 1, "the close");
+    await waitFor(() => work.last.closed, "the close");
     assert.equal(seen.ended.length, 1);
   });
 });

@@ -198,6 +198,8 @@ Native fixture success on macOS and the Linux lab check are separate evidence. `
 
 The Host Helper's Swift tests run through `ScriptedHelperHost`, an in-memory Host that acts on each script's `step`, so they pin what is asked and in what order but no shell text. `scripts/test-host-helper-scripts.py` (in `make test-tools`) runs the same scripts through every POSIX shell on the machine with a fake `systemctl`, `loginctl` and `node`. Neither reaches a real systemd: restart, linger and start-limit behaviour are the [lab checklist](../guides/herdr-core-testing.md)'s. Run `node scripts/generate-host-helper-manifest.mjs` after any change under `plugin/helper`, because `plugin/test/helper-closure.test.js` fails on a stale manifest.
 
+The Helper's core connection is tested in Node against `plugin/test/support/fake-core.js`, a real Unix socket that answers with the captured bytes of `plugin/test-vectors/herdr-core-frames-v1.json` and records each connection's bytes and credit (`helper-core-frames`, `-socket`, `-client`, `-follower`). `helper-core-process.test.js` runs the real `main.js` from a bare copy with `hc`, `herdr-core` and `herdr` on its `PATH` as tripwires. `node --test` also runs the fake's own file, which defines no tests, and counts it as one passing test. None of them reaches a real core or systemd.
+
 ## Host and platform acceptance
 
 Local real-SSH tests may skip without a configured sshd/key. The CI runner
