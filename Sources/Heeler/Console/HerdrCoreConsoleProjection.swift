@@ -272,6 +272,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// Nothing shows until a link's first document read has settled, so a
     /// desktop Terminal never flashes through a Workspace it does not belong in.
+    /// A read nobody answers settles at the link's call deadline.
     private func rebuildRows() {
         guard !isAwaitingSnapshot else { return }
         let organization = HerdrCoreOrganization.build(
@@ -324,7 +325,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         if readsDocumentAgain {
             readsDocumentAgain = false
             readDocument()
-            return
+            guard isAwaitingSnapshot else { return }
         }
         isAwaitingSnapshot = false
         rebuildRows()

@@ -80,7 +80,9 @@ struct HerdrCoreConsolePlacementTests {
         CoreDesktopJSON.space("s1", name: "Alpha", tabs: [CoreDesktopJSON.tab("tb1", name: "main")]),
     ])
 
-    private func makeStore(_ transport: ScriptedCoreTransport) -> ConsoleStore {
+    private func makeStore(
+        _ transport: ScriptedCoreTransport, memory: HerdrCoreHostMemory = HerdrCoreHostMemory()
+    ) -> ConsoleStore {
         ConsoleStore(
             makeSession: { _, subscriptions in
                 EventsSession(
@@ -91,7 +93,7 @@ struct HerdrCoreConsolePlacementTests {
             makeCoreSession: { _ in
                 HerdrCoreHostSession(connect: { transport }, keepalive: nil)
             },
-            coreHostMemory: HerdrCoreHostMemory())
+            coreHostMemory: memory)
     }
 
     private func started(_ transport: ScriptedCoreTransport) async throws -> ConsoleStore {
@@ -164,6 +166,83 @@ struct HerdrCoreConsolePlacementTests {
         try await waitUntil("the placed row") { !store.terminals.isEmpty }
         #expect(cards(store) == ["Alpha: t1"])
         #expect(!store.hostsAwaitingSnapshot.contains(host.id))
+    }
+
+    /// Over the real link, whose deadline is what ends the wait.
+    @Test func aDocumentReadNobodyAnswersLeavesLoadingAtTheCallDeadline() async throws {
+        let clock = ManualClock()
+        let core = ScriptedCoreHost(
+            channel: .core(
+                .init(
+                    terminals: [Self.record("t1", cwd: "/work/one", labels: Self.desktop("s1", "tb1"))],
+                    answersDocumentReads: false)))
+        let store = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(
+                    connect: {
+                        await core.setConnected(true)
+                        return core.transport(sleep: clock.parkedSleep(for:))
+                    },
+                    keepalive: nil)
+            },
+            coreHostMemory: HerdrCoreHostMemory())
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+
+        await core.waitForMethod("doc.get")
+        #expect(store.hostsAwaitingSnapshot.contains(host.id))
+        #expect(store.terminals.isEmpty)
+
+        try await waitUntil("the deadline") {
+            clock.advance(.seconds(10))
+            return !store.hostsAwaitingSnapshot.contains(host.id)
+        }
+        #expect(store.hostStatuses[host.id] == .connected)
+        #expect(cards(store) == ["one: t1"])
+    }
+
+    /// The Host's first read has settled, so a change it did not cover is an
+    /// ordinary re-placement, not more loading.
+    @Test func aDocumentChangeDuringTheFirstReadDoesNotHoldTheRowsBack() async throws {
+        let transport = ScriptedCoreTransport(subscribeResults: [
+            Self.subscribeResult([Self.record("t1", labels: Self.desktop("s1", "tb1"))])
+        ])
+        await transport.setDocument(Self.twoSpaces, version: 3)
+        let firstRead = ScriptedTransportCallGate()
+        await transport.holdDocumentReads(using: firstRead)
+        let memory = HerdrCoreHostMemory()
+        let store = makeStore(transport, memory: memory)
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        await firstRead.waitForEntry()
+
+        await transport.setDocument(
+            CoreDesktopJSON.document([
+                CoreDesktopJSON.space("s1", name: "Four", tabs: [CoreDesktopJSON.tab("tb1", name: "main")])
+            ]), version: 4)
+        await transport.deliver(Self.documentEvent(sequence: 2, version: 4))
+        // Events apply in order: once t2 is remembered, the change is known.
+        await transport.deliver(
+            Self.createdEvent(sequence: 3, Self.record("t2", labels: Self.desktop("s1", "tb1"))))
+        try await waitUntil("the events") { memory.firstSeenDirectories(for: host.id)["t2"] != nil }
+
+        let secondRead = ScriptedTransportCallGate()
+        await transport.holdDocumentReads(using: secondRead)
+        await firstRead.open()
+        await secondRead.waitForEntry()
+        try await waitUntil("the rows") { cards(store) == ["Alpha: t1 t2"] }
+        #expect(!store.hostsAwaitingSnapshot.contains(host.id))
+
+        await secondRead.open()
+        try await waitUntil("the change") { cards(store) == ["Four: t1 t2"] }
     }
 
     @Test func aDocumentThatCannotBeReadLeavesLabelsPlacingTerminals() async throws {

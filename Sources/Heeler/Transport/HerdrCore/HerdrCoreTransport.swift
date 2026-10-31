@@ -104,6 +104,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private nonisolated let connection: any HerdrCoreHostConnection
     private let session: String
     private let nonce: @Sendable () -> String
+    private let sleep: HerdrCoreLink.Sleep
     /// Callers that race share one opening. A failed one is not kept, so the
     /// next call looks at the Host again.
     private var opening: Task<Opened, any Error>?
@@ -119,12 +120,14 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     init(
         connection: any HerdrCoreHostConnection,
         session: String,
-        nonce: @escaping @Sendable () -> String = { UUID().uuidString }
+        nonce: @escaping @Sendable () -> String = { UUID().uuidString },
+        sleep: @escaping HerdrCoreLink.Sleep = { try await Task.sleep(for: $0) }
     ) {
         routeID = connection.routeID
         self.connection = connection
         self.session = session
         self.nonce = nonce
+        self.sleep = sleep
     }
 
     func locate() async throws -> HerdrCoreLocator.Location {
@@ -287,7 +290,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
                 socketPath: location.socketPath, socketFilePresent: location.socketFilePresent)
         }
         do {
-            let (link, info) = try await HerdrCoreLink.connect(over: channel, helloDeadline: Self.callDeadline)
+            let (link, info) = try await HerdrCoreLink.connect(
+                over: channel, helloDeadline: Self.callDeadline, sleep: sleep)
             return Opened(link: link, info: info, executablePath: executablePath)
         } catch is HerdrCoreUpdateRequired {
             throw TransportError.herdrCoreUpdateRequired(command: Self.updateCommand(executablePath))
