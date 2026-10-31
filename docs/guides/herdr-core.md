@@ -65,11 +65,11 @@ If the file changed after Heeler read it, Heeler writes nothing and says so. If 
 
 **Undo** in the same sheet, or under **Harness Edits** in the Host's detail, puts the file back exactly as it was. It writes nothing if the file has changed since the edit. In that case undo the edit by hand, and **Stop Listing** drops it from the list. Each sheet speaks for the file its Agent reads, so Agents with different `GROK_HOME` values each get their own change and **Undo**, and each row under **Harness Edits** undoes the file it shows. The list belongs to the device that made the edit. Heeler never edits Claude Code's settings, Codex's hooks or trusted hashes, or Grok Build's global hooks.
 
-A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and no Close.
+A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and Close.
 
 **Agent List Fields** in Settings sets a core Host's rows, starting from Heeler's own fields. It offers the labels of the Host's Terminals, and no Sync from plugin, since no plugin runs there.
 
-**Pins** are per Host and survive a core restart. A Pin goes when its Terminal is removed, and all of a Host's Pins go when its core was wiped and started new.
+**Pins** are per Host and survive a core restart. A Pin goes when you close the Agent from its row, or close the Tab it is in, and when its Terminal is removed. All of a Host's Pins go when its core was wiped and started new.
 
 ## Terminal
 
@@ -113,6 +113,14 @@ Add appears once the connection has told Heeler the Host's platform, a moment af
 
 The new shell is no Agent until you start one in it.
 
+## Close
+
+Closing a Tab on a core Host ends its Terminals for good, and closing a Pane ends that one Terminal. A kept Terminal does not come back as a shell, and it leaves the Console once the core reports it ended. Close works the same from an Agent's or a Terminal's row, Agent detail and a Shell Terminal.
+
+The Host keeps the ended Terminal's record, and Heeler does not show it.
+
+If the Host does not confirm a close, Heeler says so and does not send it again, since the Terminal may already have ended. Check it before trying again.
+
 ## Core Environment
 
 A core started from inside another program can inherit variables that change how its programs behave. Host detail then shows **Core Environment**, naming each variable and what it breaks, never its value. Restarting the core from your own terminal fixes it. Heeler does not restart it.
@@ -139,7 +147,7 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 
 ## Known limits
 
-- Heeler has no Close or Rename on a core Host yet. Use the Host or the desktop.
+- Heeler has no Rename on a core Host yet. Use the Host or the desktop.
 - Worktrees and Chat are not available yet.
 - An Agent detail's Stop stays hidden, and native Windows core Hosts offer no Send yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
 - Notifications and Live Activities are not available yet.

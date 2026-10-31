@@ -160,6 +160,11 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var documentWrites: [JSONValue] = []
     /// The exact params of every `terminal.run`, oldest first.
     private(set) var runs: [JSONValue] = []
+    /// The method of every call sent as a mutation, oldest first.
+    private(set) var mutations: [String] = []
+    /// The Terminal of every `terminal.kill`, oldest first.
+    private(set) var kills: [String] = []
+    private var killAnswers: [String: Result<JSONValue, any Error>] = [:]
     /// The script of every agent discovery, oldest first.
     private(set) var discoveryScripts: [String] = []
     private var shell: String?
@@ -247,7 +252,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     }
 
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
+        if isMutation { mutations.append(method) }
         switch method {
+        case "terminal.kill":
+            let terminal = params["terminal"]?.stringValue ?? ""
+            kills.append(terminal)
+            return try (killAnswers[terminal] ?? .success(Self.killReply(address: terminal))).get()
         case "doc.get":
             documentReads.append(params["name"]?.stringValue ?? "")
             let answer: JSONValue = .object([
@@ -304,6 +314,16 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         ])
     }
 
+    /// What a core answers a kill: the record, already ended.
+    private static func killReply(address: String) -> JSONValue {
+        .object([
+            "address": .string(address), "cwd": .string("/"), "state": .string("finished"),
+            "argv": .array([.string("/bin/zsh")]), "keep": .bool(true), "title": .string(""),
+            "labels": .object([:]), "cols": .number(80), "rows": .number(24),
+            "reason": .string("killed"), "signal": .number(1),
+        ])
+    }
+
     func close() async throws {
         isClosed = true
         await bytes?.close()
@@ -326,6 +346,11 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// Every run fails with this until it is called with nil.
     func setRunFailure(_ failure: (any Error)?) {
         runFailure = failure
+    }
+
+    /// What a kill of this Terminal gets back instead of its ended record.
+    func setKillAnswer(_ answer: Result<JSONValue, any Error>, for terminal: String) {
+        killAnswers[terminal] = answer
     }
 
     /// What the next document read answers, as `doc.get` shapes it.

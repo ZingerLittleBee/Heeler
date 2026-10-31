@@ -22,8 +22,8 @@ final class ClosePaneStore {
         case idle
         /// A `pane.close` RPC is in flight.
         case closing
-        /// The last close failed; the message is user-facing and the pane is
-        /// left untouched.
+        /// The last close failed; the message is user-facing. The pane is left
+        /// untouched, unless the message says the Host did not confirm.
         case failed(String)
         /// The close succeeded; the screen dismisses.
         case closed
@@ -47,8 +47,8 @@ final class ClosePaneStore {
     }
 
     /// Fires `pane.close` after the user confirms. On success the state flips
-    /// to `.closed` for the screen to dismiss; on failure the pane is left
-    /// untouched and the error surfaces.
+    /// to `.closed` for the screen to dismiss; on failure the error surfaces
+    /// and nothing is sent again.
     func confirmClose() async {
         guard !isClosing else { return }
         isClosing = true
@@ -68,6 +68,8 @@ final class ClosePaneStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.coreMutationOutcomeUnknown:
+            ConsoleStore.closeUnconfirmedMessage
         case let apiError as HerdrAPIError:
             "herdr rejected the close: \(apiError.message)"
         default:

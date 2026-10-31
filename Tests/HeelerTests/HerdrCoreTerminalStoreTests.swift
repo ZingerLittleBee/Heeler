@@ -1142,12 +1142,12 @@ struct HerdrCoreTerminalStoreTests {
     /// The header's More, and the Composer's, whose Add has a button of its own.
     private static let coreAgentMenus: Set<[String]> = [
         ["Terminals", "Changes", "Collapse"],
-        ["Back to Console", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets"],
+        ["Back to Console", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
     ]
     /// Direct Input has no Add of its own: its More carries the same two items.
     private static let coreDirectInputMenus: Set<[String]> = [
         ["Terminals", "Changes", "Collapse"],
-        ["Back to Console", "Add Image", "Add File", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets"],
+        ["Back to Console", "Add Image", "Add File", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.
     private static let notBuiltLabels = ["Stop", "Take Over", "Take Over Here"]
@@ -1816,7 +1816,7 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    @Test func aCoreTerminalsMenusHaveNoCloseUntilItIsBuiltAndItsDrawerOffersNewTerminal() async throws {
+    @Test func aCoreTerminalsMenusOfferCloseAndItsDrawerOffersNewTerminal() async throws {
         let fixture = try await Fixture(terminals: [Self.shellRecord])
         let terminal = try #require(fixture.console.terminals.first)
         let screen = try await fixture.showShell(of: terminal, sceneID: UUID())
@@ -1825,7 +1825,7 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the terminal's menu") { screen.offers("More") }
 
         let menus = try await HostedMenu.items(labeled: "More", in: screen.window)
-        #expect(menus == [["Terminals", "Collapse"], ["Back to Console"]], "\(menus)")
+        #expect(menus == [["Terminals", "Collapse"], ["Back to Console", "Close Terminal"]], "\(menus)")
 
         try await HostedMenu.select("Terminals", labeled: "More", in: screen.window)
         try await Self.until("the drawer") { screen.offers("Hide Workspace terminals") }

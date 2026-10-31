@@ -167,7 +167,7 @@ The [Done step](#done-per-device) below does the same for the turn-end vector.
 
 Each Agent lists on Agents, By Host and By Workspace, and under the Host filter. It
 leaves the Terminals tab while it holds the foreground, its row opens its detail, and
-its menu offers Open in New Window where the device has windows, and no Close.
+its menu offers Open in New Window where the device has windows, and Close.
 
 Then check what no harness needs to be signed in for, from an inert program in a
 Terminal. A status report is `printf '\033]7501;state=working:app=x\007'`, as the
@@ -276,6 +276,19 @@ its flags. Read each launch with `terminal.get` through
 | Browsing | **Browse Directory…** in **New Agent** and in **New Terminal** | Remote folders list, and the launch lands in a card named for the one chosen |
 | Mac with the desktop app | On a Mac running the Herdr desktop app, **New Terminal** in one of its spaces | It shows in a new tab of that space in the window, and `terminal.get` has `herdr.space` and a new `herdr.tab`. Never `doc.set` on this core |
 | No answer | Cut the route just after tapping **Start** | Heeler says the Host did not confirm the launch, and `terminal.list` shows at most one new Terminal |
+
+## Close
+
+With a kept Terminal and two pinned Agents, from inert programs if you like. `terminal.get` still answers for a closed Terminal.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| A kept Terminal | Swipe its row, **Close**, then confirm | The row goes and stays gone. `terminal.get` reads `finished` with reason `killed`, and it does not come back as a shell |
+| Between programs | `kill -9` a kept Terminal's program, then close it while it reads **Restarting** | The row goes, with no restart |
+| An Agent's row | Close a pinned Agent from its row | Its Pin is gone. The other Agent's Pin stays |
+| A Tab with two Terminals in a desktop space | Close one, then the other | The first closes as a Pane and the second as the Tab. No shell stays in the desktop app's layout |
+| Agent detail, Shell Terminal | **Close Agent**, **Close Terminal** in the More menu | Back at the list, with the same `terminal.get` |
+| No answer | Cut the route just after confirming | Heeler says the Host did not confirm the close, and `terminal.kill` is not sent again after the route returns |
 
 ## Agent Row Layout
 

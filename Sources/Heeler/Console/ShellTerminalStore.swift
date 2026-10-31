@@ -194,6 +194,9 @@ final class AgentOpenTerminalStore {
                 // outcome the user asked for.
             } catch TransportError.apiRejected {
                 // Same definitive answer, surfaced through the other layer.
+            } catch TransportError.coreMutationOutcomeUnknown {
+                self.closeFailureMessage = ConsoleStore.closeUnconfirmedMessage
+                return
             } catch {
                 self.closeFailureMessage =
                     "The Host couldn't be reached. The tab is still open there."

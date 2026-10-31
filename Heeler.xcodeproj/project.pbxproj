@@ -82,6 +82,7 @@
 		172661D829E18F72C75B4F13 /* NotificationKeyMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */; };
 		1747A0F8594C0F27B0740AD8 /* GrokTranscriptLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215ABB7E9355C37B919A81F7 /* GrokTranscriptLocator.swift */; };
 		179292D9C3E605BC46282FE0 /* ComposerAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4616CECA2722086A6B8B490 /* ComposerAttachmentTests.swift */; };
+		179E5731501163CFB7E15DDB /* HerdrCoreCloseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9FD9D3F622DF65FB055AB4B /* HerdrCoreCloseTests.swift */; };
 		17D1240218F42353E594D354 /* HerdrCoreStartTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 223213BE55DB0EF568EC4279 /* HerdrCoreStartTests.swift */; };
 		17F313D8AE9647F8F5D4DBFD /* AgentAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F8ED10B8A8A33D307789E6 /* AgentAttachStore.swift */; };
 		18266687C19C47984496DD47 /* HostLiveActivityCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A7DD50C003CDD7220D86CE /* HostLiveActivityCoordinatorTests.swift */; };
@@ -1670,6 +1671,7 @@
 		B9B88D8BE1FE537385292162 /* UsageWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWidgets.swift; sourceTree = "<group>"; };
 		B9C748FEA81DE5C4EC9F8DB4 /* GitProbeRecordings+Failures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbeRecordings+Failures.swift"; sourceTree = "<group>"; };
 		B9E6F1DD7869853EF91C15A0 /* AgentUsagePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsagePresentationTests.swift; sourceTree = "<group>"; };
+		B9FD9D3F622DF65FB055AB4B /* HerdrCoreCloseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreCloseTests.swift; sourceTree = "<group>"; };
 		BA19EBFFFA8676C3B3DE0A31 /* helper */ = {isa = PBXFileReference; lastKnownFileType = folder; name = helper; path = plugin/helper; sourceTree = SOURCE_ROOT; };
 		BA34B35B5CAE41E2AAC2DF75 /* ReadableColumn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadableColumn.swift; sourceTree = "<group>"; };
 		BA34D745573850A936E1ED40 /* OpenCodeSQLiteHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeSQLiteHarness.swift; sourceTree = "<group>"; };
@@ -2173,6 +2175,7 @@
 				F0007B79F239CF92B099AA57 /* HerdrCoreAgentRuleTests.swift */,
 				2D6BF7D35D794A652042DED1 /* HerdrCoreAgentsTests.swift */,
 				7E8AB621459A7895E1AA969B /* HerdrCoreAttachTests.swift */,
+				B9FD9D3F622DF65FB055AB4B /* HerdrCoreCloseTests.swift */,
 				33C78F399DC6F97E21C33BE7 /* HerdrCoreComposerSendTests.swift */,
 				3C4EC4891D805C617F78CF27 /* HerdrCoreConsolePlacementTests.swift */,
 				79887E955BAAF7654E81B1ED /* HerdrCoreConsoleProjectionTests.swift */,
@@ -4216,6 +4219,7 @@
 				AE075BA6F9825B6AAE63D059 /* HerdrCoreAgentRuleTests.swift in Sources */,
 				A4F4E69A83004B52C56C67A2 /* HerdrCoreAgentsTests.swift in Sources */,
 				0D1C15B6F74323AECFF7595E /* HerdrCoreAttachTests.swift in Sources */,
+				179E5731501163CFB7E15DDB /* HerdrCoreCloseTests.swift in Sources */,
 				AA9D11EBAD8E2CCB6E643F5B /* HerdrCoreComposerSendTests.swift in Sources */,
 				FA7D19F205871831CCD506C4 /* HerdrCoreConsolePlacementTests.swift in Sources */,
 				2DBFA48945D299B45EA7BDEC /* HerdrCoreConsoleProjectionTests.swift in Sources */,

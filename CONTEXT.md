@@ -169,7 +169,7 @@ core until removed; the Console hides it, and an Agent detail open on it says
 it ended. A kept Terminal is one the core restores when its program is lost
 rather than exited, as when the machine restarts: it comes back as a fresh
 shell at the same address, and until then shows as restarting and hosts no
-Agent. Only the Host's own core's Terminals are shown, not those it reaches on
+Agent. Closing a Terminal ends it for good, kept or not. Only the Host's own core's Terminals are shown, not those it reaches on
 other machines. An Agent Heeler starts on herdr-core ends its Terminal when it
 exits, instead of leaving a shell (ADR 0032).
 _Avoid_: pane (for the core's record), session

@@ -53,7 +53,7 @@ extension HostCapabilities {
             opensDetail: true, startsAgents: true, startsTerminals: true,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
             uploads: offered || coreOnPosix,
-            composerSend: offered || coreOnPosix, chat: offered, tabNames: offered, closeTab: offered,
+            composerSend: offered || coreOnPosix, chat: offered, tabNames: offered, closeTab: true,
             syncLayoutFromPlugin: offered, takeOver: offered, composerStop: offered)
     }
 }
