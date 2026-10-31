@@ -52,7 +52,9 @@ the shell that stays behind, and a retry can deliver it twice.
   a long read, and writes it once it finishes, so a paste or Enter can still
   reach the program after the connection is gone. Input held by a stitch
   arrives about a second late with no echo meanwhile, and ends the read, so
-  a step's timeout allows for it.
+  a step's timeout allows for it. In Chat its message says the outcome is unknown,
+  and the Transcript recording it settles that, so nothing invites a second send
+  of a message that arrived.
 - The next Send after an unknown outcome pastes nothing until the Host answers
   a read, because its paste would line up behind the unanswered one and its
   submit would take both. The answer says what was queued has left, so the first
