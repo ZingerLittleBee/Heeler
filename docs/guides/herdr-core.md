@@ -17,7 +17,7 @@ Tap **Unknown** on an Agent's status line to see why it reads that way. Each pro
 
 **Grok Build's status.** Grok Build's automatic check leaves its status off where its query cannot run, such as under a core started with `TMUX` set. On a Grok Build Agent with no status, that same sheet offers **Turn On Grok Build's Status**. It shows the file and the exact lines, `program_status = "on"` under `[ui.notifications]` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`, and writes nothing until you tap **Apply This Change**. Start Grok Build again to see its status. A managed configuration or a `GROK_CONFIG` overlay can still override this file.
 
-If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler cannot be sure how to change a file, it writes nothing and tells you what to add by hand. A native Windows Host takes this change by hand too.
+If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler cannot read the Agent's environment, it cannot tell which file that Agent uses, so it writes nothing and says so. If Heeler cannot be sure how to change a file, it writes nothing and tells you what to add by hand. A native Windows Host takes this change by hand too.
 
 **Undo** in the same sheet, or under **Harness Edits** in the Host's detail, puts the file back exactly as it was. It writes nothing if the file has changed since the edit. In that case undo the edit by hand, and **Stop Listing** drops it from the list. The list belongs to the device that made the edit. Heeler never edits Claude Code's settings, Codex's hooks or trusted hashes, or Grok Build's global hooks.
 
