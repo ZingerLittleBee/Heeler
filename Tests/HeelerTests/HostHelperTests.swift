@@ -24,6 +24,8 @@ struct HostHelperBundleTests {
         #expect(bundle.manifest.version == HostHelperCompatibility.bundled.description)
         #expect(bundle.files.keys.contains("main.js"))
         #expect(bundle.files.keys.contains("package.json"))
+        #expect(bundle.files.keys.contains(HostHelperScript.extensionPath))
+        #expect(bundle.files.keys.contains(HostHelperScript.extensionFoldersPath))
         for file in bundle.manifest.files {
             let contents = try #require(bundle.files[file.path])
             let sum = SHA256.hash(data: contents).map { String(format: "%02x", $0) }.joined()
@@ -111,11 +113,17 @@ struct HostHelperInstallTests {
         _ = try await install()
         let data = try #require(await host.files["\(ScriptedHelperHost.helperDirectory)/installed.json"]?.contents)
         let record = try JSONDecoder().decode(HostHelperInstallRecord.self, from: data)
-        #expect(record.files == [ScriptedHelperHost.unitLink, ScriptedHelperHost.unit].sorted())
+        #expect(record.files == [
+            ScriptedHelperHost.unitLink, ScriptedHelperHost.unit,
+            "/home/me/.omp/agent/extensions/heeler-session.js",
+            "/home/me/.pi/agent/extensions/heeler-session.js",
+        ].sorted())
         #expect(record.folders == [
             "/home/me/.config/systemd", "/home/me/.config/systemd/user",
             "/home/me/.config/systemd/user/default.target.wants",
             "/home/me/.local", "/home/me/.local/share", "/home/me/.local/share/heeler",
+            "/home/me/.omp", "/home/me/.omp/agent", "/home/me/.omp/agent/extensions",
+            "/home/me/.pi", "/home/me/.pi/agent", "/home/me/.pi/agent/extensions",
         ])
     }
 
@@ -147,7 +155,8 @@ struct HostHelperInstallTests {
         #expect(plan.files.contains(ScriptedHelperHost.unit))
         #expect(plan.files.contains(ScriptedHelperHost.unitLink))
         #expect(plan.files.contains("\(app)/main.js"))
-        #expect(plan.files.count == bundle.files.count + 4)
+        // The manifest, the record, the unit, its link, and the two default extensions.
+        #expect(plan.files.count == bundle.files.count + 6)
     }
 
     @Test func refusesToReplaceANewerHelper() async throws {
@@ -169,7 +178,8 @@ struct HostHelperInstallTests {
         }
         #expect(await host.files["\(app)/version.json"] == main)
         #expect(await host.writes.isEmpty)
-        #expect(await host.journal == ["probe"])
+        // Only the read's two steps, neither of which changes anything.
+        #expect(await host.journal == ["probe", "listExtensionFolders"])
     }
 
     @Test func aDamagedNewerHelperIsStillNotDowngraded() async throws {
@@ -575,6 +585,181 @@ struct HostHelperRemovalTests {
             folders: ["/", "/home/me/../x", "/home/me/ok-folder"])
         #expect(record.safeFiles == ["/home/me/ok"])
         #expect(record.safeFolders == ["/home/me/ok-folder"])
+    }
+}
+
+@Suite("Host Helper extensions for Pi and Oh My Pi")
+struct HostHelperExtensionTests {
+    private let host = ScriptedHelperHost()
+    private let bundle = HostHelperFixture.bundle()
+    private let directory = ScriptedHelperHost.helperDirectory
+    private var installer: HostHelperInstaller { HostHelperInstaller(host: host, bundle: { [bundle] in bundle }) }
+
+    private static let piFile = "/home/me/.pi/agent/extensions/heeler-session.js"
+    private static let ompFile = "/home/me/.omp/agent/extensions/heeler-session.js"
+    private static let workFile = "/home/me/.omp/profiles/work/agent/extensions/heeler-session.js"
+    private static let sideFile = "/home/me/.omp/profiles/side/agent/extensions/heeler-session.js"
+
+    private func withProfiles() async {
+        await host.seedFolder("/home/me/.omp/profiles/work")
+        await host.seedFolder("/home/me/.omp/profiles/side")
+    }
+
+    private func install() async throws {
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle)
+    }
+
+    private func record() async throws -> HostHelperInstallRecord {
+        let data = try #require(await host.files["\(directory)/installed.json"]?.contents)
+        return try JSONDecoder().decode(HostHelperInstallRecord.self, from: data)
+    }
+
+    @Test func asksTheHostsOwnNodeWithTheBundledScriptAndItsHome() async throws {
+        _ = try await installer.read()
+        let lister = try #require(bundle.files[HostHelperScript.extensionFoldersPath])
+        let expected = HostHelperScript.Step.listExtensionFolders(
+            node: ScriptedHelperHost.node, lister: String(decoding: lister, as: UTF8.self),
+            home: ScriptedHelperHost.home)
+        #expect(await host.steps.contains(expected))
+    }
+
+    @Test func theSheetListsEveryExtensionFileAndTheInstallWritesThem() async throws {
+        await withProfiles()
+        let before = await host.filePaths()
+        let plan = try HostHelperInstallPlan(reading: try await installer.read(), bundle: bundle)
+        for file in [Self.piFile, Self.ompFile, Self.workFile, Self.sideFile] {
+            #expect(plan.files.contains(file), "\(file)")
+        }
+        try await install()
+        #expect(await host.filePaths().subtracting(before) == Set(plan.files))
+        let extensionText = try #require(bundle.files[HostHelperScript.extensionPath])
+        for file in [Self.piFile, Self.ompFile, Self.workFile, Self.sideFile] {
+            #expect(await host.files[file]?.contents == extensionText, "\(file)")
+        }
+    }
+
+    @Test func theRecordListsEachFileAndEveryFolderTheInstallCreated() async throws {
+        await host.seedFolder("/home/me/.omp/profiles/work")
+        await host.seedFolder("/home/me/.pi/agent")
+        try await install()
+        let record = try await record()
+        for file in [Self.piFile, Self.ompFile, Self.workFile] {
+            #expect(record.files.contains(file), "\(file)")
+        }
+        for folder in [
+            "/home/me/.pi/agent/extensions", "/home/me/.omp/agent", "/home/me/.omp/agent/extensions",
+            "/home/me/.omp/profiles/work/agent", "/home/me/.omp/profiles/work/agent/extensions",
+        ] {
+            #expect(record.folders.contains(folder), "\(folder)")
+        }
+        // The user's, from before the install.
+        for folder in ["/home/me/.pi", "/home/me/.pi/agent", "/home/me/.omp", "/home/me/.omp/profiles/work"] {
+            #expect(!record.folders.contains(folder), "\(folder)")
+        }
+    }
+
+    @Test func aHostWithNeitherProgramGetsBothFoldersAndRemovalTakesThemAgain() async throws {
+        let foldersBefore = await host.folders
+        try await install()
+        #expect(await host.files[Self.piFile] != nil)
+        #expect(await host.files[Self.ompFile] != nil)
+        try await installer.remove(over: try await installer.read())
+        #expect(await host.filePaths().isEmpty)
+        #expect(await host.folders == foldersBefore)
+    }
+
+    @Test func removalDeletesTheFilesThenOnlyCreatedFoldersThatAreNowEmpty() async throws {
+        await withProfiles()
+        await host.seedFolder("/home/me/.pi/agent/extensions")
+        try await install()
+        // Another extension of the user's, in a folder the install created.
+        let mine = "/home/me/.omp/agent/extensions/mine.js"
+        await host.seedFile(mine, Data("mine".utf8))
+        await host.configure { $0.clearLog() }
+
+        try await installer.remove(over: try await installer.read())
+
+        let left = await host.filePaths()
+        #expect(left == [mine])
+        let folders = await host.folders
+        // Holds the user's file.
+        #expect(folders["/home/me/.omp/agent/extensions"] != nil)
+        // Created by the install and now empty.
+        #expect(folders["/home/me/.omp/profiles/work/agent"] == nil)
+        // From before the install, even though empty now.
+        #expect(folders["/home/me/.pi/agent/extensions"] != nil)
+        #expect(folders["/home/me/.omp/profiles/work"] != nil)
+        let steps = await host.journal
+        let files = try #require(steps.firstIndex { $0.hasPrefix("removeFiles") && $0.contains(Self.piFile) })
+        let emptied = try #require(steps.firstIndex { $0.hasPrefix("removeEmptyFolders") && $0.contains("/.omp/agent") })
+        #expect(files < emptied)
+    }
+
+    @Test func aRecordThatIsGoneStillClearsTheExtensions() async throws {
+        await withProfiles()
+        try await install()
+        await host.removeFile("\(directory)/installed.json")
+        try await installer.remove(over: try await installer.read())
+        #expect(await host.filePaths().isEmpty)
+    }
+
+    @Test func aProfileAddedAfterTheInstallIsOfferedARepairThatOnlyAddsIt() async throws {
+        try await install()
+        #expect(try await installer.read().installAction == nil)
+        await host.seedFolder("/home/me/.omp/profiles/work")
+        await host.configure { $0.clearLog() }
+
+        let reading = try await installer.read()
+        #expect(reading.installAction == .repair)
+        #expect(reading.status == .installed(version: HostHelperCompatibility.bundled, updateAvailable: false))
+        _ = try await installer.install(over: reading, bundle: bundle)
+
+        #expect(await host.files[Self.workFile] != nil)
+        #expect(await !host.journal.contains("promote"))
+        let record = try await record()
+        #expect(record.files.contains(Self.workFile))
+        #expect(record.files.contains(Self.piFile))
+        #expect(try await installer.read().installAction == nil)
+    }
+
+    @Test func anExtensionFileTheUserDeletedComesBackWithARepair() async throws {
+        try await install()
+        await host.removeFile(Self.piFile)
+        let reading = try await installer.read()
+        #expect(reading.installAction == .repair)
+        _ = try await installer.install(over: reading, bundle: bundle)
+        #expect(await host.files[Self.piFile] != nil)
+    }
+
+    @Test func aHostThatCannotListItsFoldersIsNotInstalledOnBlindly() async throws {
+        await withProfiles()
+        await host.configure { $0.extensionFoldersFailure = "node: bad option" }
+        let reading = try await installer.read()
+        #expect(throws: HostHelperError.extensionFoldersUnreadable) {
+            _ = try HostHelperInstallPlan(reading: reading, bundle: bundle)
+        }
+        await #expect(throws: HostHelperError.extensionFoldersUnreadable) {
+            _ = try await installer.install(over: reading, bundle: bundle)
+        }
+        #expect(await host.writes.isEmpty)
+    }
+
+    @Test func removalWorksEvenIfTheFoldersCannotBeListed() async throws {
+        await withProfiles()
+        try await install()
+        await host.configure { $0.extensionFoldersFailure = "node: gone" }
+        try await installer.remove(over: try await installer.read())
+        #expect(await host.filePaths().isEmpty)
+    }
+
+    @Test func aHostWithoutNodeIsNotAskedForFolders() async throws {
+        await host.configure { $0.node = .missing }
+        _ = try await installer.read()
+        #expect(await !host.journal.contains("listExtensionFolders"))
+    }
+
+    @Test func theRemovalConfirmationMentionsTheExtensions() {
+        #expect(HostHelperSheet.removalMessage.contains("Pi and Oh My Pi extensions"))
     }
 }
 

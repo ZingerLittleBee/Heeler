@@ -26,6 +26,14 @@
       "sha256": "30d724c74f7e472635262c38c3bede1fb3e6e2901bc8852c6d01f196cd952ea0"
     },
     {
+      "path": "extensions/extension-folders.js",
+      "sha256": "4133fcfa4749a1799e297dd3113dea7c11d703c487770b55e006cb19d756001c"
+    },
+    {
+      "path": "extensions/heeler-session.js",
+      "sha256": "a31a9ef002fe0fc7e40440d7aa0a518ae1c11e8566132299ab1ed84513d9deed"
+    },
+    {
       "path": "main.js",
       "sha256": "401ee0b99606918427a7e2e4ed53f6d68118caf5eb1114ccfbe5fd399188e54c"
     },

@@ -13,6 +13,9 @@ import { fileURLToPath } from "node:url";
 
 const HELPER = fileURLToPath(new URL("../helper", import.meta.url));
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
+const EXTENSIONS = join(HELPER, "extensions");
+/** Runs inside Pi and Oh My Pi, not the Helper's process, and reads its own start on macOS (ADR 0033). */
+const SESSION_EXTENSION = join(EXTENSIONS, "heeler-session.js");
 const MANIFEST = "manifest.json";
 const GENERATOR = "scripts/generate-host-helper-manifest.mjs";
 
@@ -66,11 +69,31 @@ suite("Host Helper closure", () => {
   });
 
   test("can start no process, so it can never start a core", () => {
-    for (const path of helperModules()) {
+    for (const path of helperModules().filter((module) => module !== SESSION_EXTENSION)) {
       for (const specifier of specifiersIn(readFileSync(path, "utf8"))) {
         assert.notEqual(specifier.replace(/^node:/, ""), "child_process", `${path} imports ${specifier}`);
       }
     }
+  });
+
+  test("the Helper's own process never loads an extension", () => {
+    for (const path of helperModules().filter((module) => !module.startsWith(`${EXTENSIONS}${sep}`))) {
+      for (const specifier of specifiersIn(readFileSync(path, "utf8")).filter((name) => name.startsWith("."))) {
+        const target = resolve(dirname(path), specifier);
+        assert.equal(target.startsWith(`${EXTENSIONS}${sep}`), false, `${path} imports ${specifier}`);
+      }
+    }
+  });
+
+  test("the session extension starts only /bin/ps, for its own process start", () => {
+    const source = readFileSync(SESSION_EXTENSION, "utf8");
+    // The lookbehind leaves RegExp's own `.exec` out.
+    const named = [...source.matchAll(/(?<![.\w$])(?:exec|execSync|execFile|execFileSync|fork|spawn|spawnSync)\b/g)];
+    assert.deepEqual(named.map((match) => match[0]), ["execFile", "execFile"], "one import and one call");
+    const imports = specifiersIn(source).filter((name) => name.replace(/^node:/, "") === "child_process");
+    assert.equal(imports.length, 1);
+    assert.match(source, /^import \{ execFile \} from "node:child_process";$/m);
+    assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "lstart=", "-p", String\(pid\)\],/);
   });
 
   test("a shared module is the plugin's own source, byte for byte", () => {
@@ -96,6 +119,12 @@ suite("Host Helper manifest", () => {
     for (const { path, sha256: expected } of manifest().files) {
       assert.equal(sha256(join(HELPER, path)), expected, `${path} changed; run ${GENERATOR}`);
     }
+  });
+
+  test("covers the Pi and Oh My Pi extension and what finds its folders", () => {
+    const listed = manifest().files.map((file) => file.path);
+    assert.ok(listed.includes("extensions/heeler-session.js"));
+    assert.ok(listed.includes("extensions/extension-folders.js"));
   });
 
   test("the shared version vector pins the Helper's version", () => {
