@@ -441,7 +441,7 @@ no user logs in, this user-level tunnel is not yet running.
 
 ## 9. Configure Heeler
 
-In **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the tunnel and Jump Host fields, save the route, and fill in the Host fields:
+In **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the tunnel and Jump Host fields, tap **Save** on the route page, and fill in the remaining Host fields:
 
 | Field | Value |
 |---|---|
@@ -453,7 +453,7 @@ In **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the tunnel 
 | Jump Host user (in Route) | `herdr-jump` |
 | Authentication | `Device Key` |
 
-Confirm both host keys independently:
+Tap **Save** on **Add Host** to start the **Preflight** checks, and confirm both host keys independently:
 
 - the public VPS endpoint;
 - the Mac host key presented through `127.0.0.1:2222`.
@@ -579,8 +579,7 @@ The route target and Host user remain:
 | Port (in Route) | `2222` |
 | User | `MAC_USER` |
 
-Confirm the new VPS fingerprint when prompted, then complete app preflight and
-open an Agent through Attach. This is the functional cutover point.
+Tap **Save** on the route (if adding a new route) and tap **Save** on **Edit Host**. Confirm the new VPS fingerprint when prompted, then complete the **Preflight** checks and open an Agent through Attach. This is the functional cutover point.
 
 ### Phase 4: Retire the Old VPS
 

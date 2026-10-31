@@ -113,8 +113,8 @@ struct AgentComposerActions {
     let renameAgent: () -> Void
     let renameWorkspace: () -> Void
     let closeAgent: () -> Void
-    /// Leaves the Agent the way its edge swipe does: back to the Console
-    /// list, or out to the sidebar beside an iPad's detail column.
+    /// Leaves the Agent: back to the Console list, or out to the sidebar
+    /// beside a regular-width detail column.
     let backToConsole: () -> Void
     /// Swaps the detail to Chat or back to the Agent terminal. Nil hides the
     /// entry: the surface already showing it, or an Agent without Chat.

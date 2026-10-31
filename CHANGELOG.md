@@ -62,6 +62,10 @@ Entries reference the pull request that made the change.
   height while Hosts connect, so the list below no longer jumps. Statuses
   stay on one line; those that do not fit fold into a count, and the row's
   sheet lists every Host.
+- Bring out the Agents list when swiping in from the left edge of an
+  Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
+  Duo's inner display or a Pro Max in landscape, instead of closing it to
+  No Agent Selected. The sidebar now follows the finger, on iPad too. (#592)
 - Keep each row's fields in Agent List Fields on their own line. The last
   one, often the add button, could drop below the row onto the next.
   (#591)

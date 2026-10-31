@@ -357,13 +357,6 @@ struct AgentChatSurfaceView: View {
                 }
             }
         }
-        // Below the Composer, like the terminal's, so its transparent hit
-        // region never covers the Composer's leading controls.
-        .overlay(alignment: .leading) {
-            if !showsBackButton {
-                AgentEdgeBackGesture { backToConsole() }
-            }
-        }
         // Above the staging bar, which stays next to the Composer it feeds.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             backgroundWorkStrip
@@ -956,7 +949,8 @@ struct AgentChatSurfaceView: View {
                 close: { Task { await performClose() } }))
     }
 
-    /// The edge swipe's destination, shared with the More menu's entry.
+    /// The More menu's Back to Console: the sidebar beside a detail that
+    /// stands next to its list, the list otherwise.
     private func backToConsole() {
         if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
     }
