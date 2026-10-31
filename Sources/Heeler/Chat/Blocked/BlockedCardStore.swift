@@ -423,20 +423,34 @@ final class BlockedCardStore {
     }
 
     /// The key pad: keys the user picks, sent as they are, then a fresh read.
+    /// Without options to press they answer the dialog, so they go only over what
+    /// the card shows: its dialog, or still none where it could read none.
     func sendKeys(_ keys: [String]) async {
         guard progress != .acting else { return }
         progress = .acting
         notice = nil
+        var failure: String?
         do {
-            try await io.sendKeys(keys)
+            try await type(.keys(keys), over: shownFingerprint)
         } catch {
-            notice = Self.sendFailure(error)
+            failure = Self.sendFailure(error)
         }
         try? await clock.sleep(timing.pollInterval)
         progress = unconfirmedFingerprint == nil ? .ready : .unconfirmed
         if let observation = await observe() {
             releaseIfChanged(observation)
             present(observation)
+        }
+        // A read that shows another dialog clears the notice: this one is about it.
+        if let failure { notice = failure }
+    }
+
+    /// The dialog the card shows, nil when it shows none.
+    private var shownFingerprint: DialogFingerprint? {
+        switch content {
+        case .card(let card): card.dialog.fingerprint
+        case .generic(let excerpt): excerpt.fingerprint
+        case .unreadable, .none: nil
         }
     }
 
@@ -603,10 +617,13 @@ final class BlockedCardStore {
         return .sent(checked)
     }
 
-    private func type(_ typing: BlockedScreenIO.Typing, over fingerprint: DialogFingerprint) async throws {
+    /// Types over the dialog with `fingerprint`, or over a screen that shows none.
+    private func type(_ typing: BlockedScreenIO.Typing, over fingerprint: DialogFingerprint?) async throws {
         let program = program
         try await io.type(typing) { screen in
-            DialogObservation(screen: screen, program: program).result.fingerprint?.matches(fingerprint) == true
+            let now = DialogObservation(screen: screen, program: program).result.fingerprint
+            guard let fingerprint else { return now == nil }
+            return now?.matches(fingerprint) == true
         }
     }
 

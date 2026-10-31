@@ -30,6 +30,20 @@ struct HerdrCoreChatTypingTests {
         return Data(captured.replacingOccurrences(of: end, with: modes + end).utf8)
     }
 
+    /// A question Heeler can't name, so its card has only the key pad. No core paint
+    /// of it was captured: this wraps the capture's rows in the end of a paint, which
+    /// `HerdrCoreFirstPaintTests` shows reads as the capture does.
+    private static func previewsPaint(
+        asking question: String = "Which layout?", previewing preview: String = "header"
+    ) throws -> Data {
+        let captured = try ScreenFixture.text("claude-42-c8-phone-question-previews")
+        let drawn =
+            captured
+            .replacingOccurrences(of: "Which layout?", with: question)
+            .replacingOccurrences(of: "header", with: preview)
+        return Data((drawn + "\u{1B}[1;1H\u{1B}[?9001l").utf8)
+    }
+
     private static func foreground(pid: Int = 40, argv: [String] = ["claude"]) -> JSONValue {
         .object([
             "pid": .number(Double(pid)), "name": .string(argv.first ?? ""),
@@ -233,6 +247,32 @@ struct HerdrCoreChatTypingTests {
             await scripted.holdAttachReplies(onlyViewers: true)
             let answering = Task { await card.perform(.choose(ordinal: 1)) }
             return (answering, try await viewer())
+        }
+
+        /// The card of a Chat that has read `paint`, whatever that shows.
+        func keyPadCard(showing paint: Data) async throws -> BlockedCardStore {
+            await scripted.setAttachPaint(paint)
+            try await until("Chat") { [console, agent] in console.chatProgram(for: agent) != nil }
+            let chat = try #require(console.chatStore(for: agent, program: .claude))
+            chat.blocked.update(activity: .blocked)
+            await chat.blocked.refresh()
+            return chat.blocked
+        }
+
+        /// The card of a Chat whose Blocked Agent has shown no dialog for long enough.
+        func unreadableCard() async throws -> BlockedCardStore {
+            let card = try await keyPadCard(showing: try HerdrCoreChatTypingTests.paint(readyScreen, modes: ""))
+            try await Task.sleep(for: BlockedCardStore.Timing().unreadableAfter)
+            await card.refresh()
+            #expect(card.content == .unreadable)
+            return card
+        }
+
+        /// An Enter from the key pad, its viewer's attach not answered.
+        func keyWaitingForItsViewer(on card: BlockedCardStore) async throws -> (Task<Void, Never>, Attached) {
+            await scripted.holdAttachReplies(onlyViewers: true)
+            let pressing = Task { await card.sendKeys(["enter"]) }
+            return (pressing, try await viewer())
         }
     }
 
@@ -896,6 +936,196 @@ struct HerdrCoreChatTypingTests {
 
         await #expect(throws: HerdrCoreChatTyping.Refusal.self) { try await pasting.value }
         #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    // MARK: The key pad
+
+    /// Where a card has no options to press, its key pad is how the dialog gets
+    /// answered, so an Enter here takes whatever the dialog has as its default.
+    @Test func aKeyPadKeyGoesOnceItsViewerOpensOnTheSameDialog() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.keyPadCard(showing: try Self.previewsPaint())
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(await fixture.written(on: viewer) == [Self.enter])
+        #expect(card.notice == nil)
+        #expect(card.progress == .ready)
+        fixture.finish()
+    }
+
+    /// Another client answered it, and the same Agent shows the next dialog, one
+    /// of those Heeler can't name.
+    @Test func aKeyPadKeyPressesNothingOnAnotherGenericDialog() async throws {
+        let next = try Self.previewsPaint(asking: "Which theme?")
+        try await Self.expectKeyPadPressesNothing(onceThePaintIs: next)
+    }
+
+    /// The next dialog is one Heeler can name, or there is none any more.
+    @Test(arguments: ["claude-31-par-second", "claude-01-ready"])
+    func aKeyPadKeyPressesNothingOnAScreenThatChangedWhileItsViewerOpened(now: String) async throws {
+        try await Self.expectKeyPadPressesNothing(onceThePaintIs: try Self.paint(now, modes: ""))
+    }
+
+    /// A dialog that stopped part way shows on the generic card by its own
+    /// fingerprint, and a tap can land just as a known dialog's card replaces the
+    /// generic one, so the key pad goes by a known dialog too.
+    @Test func aKeyPadKeyPressesNothingOverACardWhoseDialogChanged() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.keyPadCard(showing: try Self.paint("claude-30-par-first", modes: ""))
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        await fixture.scripted.setAttachPaint(try Self.paint("claude-31-par-second", modes: ""))
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(card.notice == BlockedCardStore.changedMessage)
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    @Test func aKeyPadKeyPressesNothingOnceTheAgentLeavesWhileItsViewerOpens() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.keyPadCard(showing: try Self.previewsPaint())
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: ["bash"]))
+        try await Self.until("the Agent to go") { fixture.console.agents.isEmpty }
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(card.notice?.contains("no longer holds this terminal") == true, "\(card.notice ?? "")")
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    /// Another pid, or another program behind the pid a wrapper keeps.
+    @Test(arguments: [(41, ["claude"]), (40, ["codex"])])
+    func aKeyPadKeyPressesNothingOnAnotherProcessThatTookOverWhileItsViewerOpened(pid: Int, argv: [String]) async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.keyPadCard(showing: try Self.previewsPaint())
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: pid, argv: argv))
+        try await fixture.untilEventsApplied()
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(card.notice?.contains("Another process took over") == true, "\(card.notice ?? "")")
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    /// The read after a key redraws the card, and must not take the reason with it.
+    @Test func aKeyPadKeySaysWhyItPressedNothingOnceTheDialogHasGoneToo() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.keyPadCard(showing: try Self.previewsPaint())
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41))
+        try await fixture.untilEventsApplied()
+        await fixture.scripted.setAttachPaint(try Self.paint(Self.readyScreen, modes: ""))
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(card.notice?.contains("Another process took over") == true, "\(card.notice ?? "")")
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    /// Moving through a dialog can change what it shows, as a preview beside its
+    /// options does. The read after each key is what the next key goes by.
+    @Test func theKeyPadKeepsMovingThroughADialogItsKeysChange() async throws {
+        let moved = try Self.previewsPaint(previewing: "footer")
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.keyPadCard(showing: try Self.previewsPaint())
+
+        let moving = Task { await card.sendKeys(["down"]) }
+        let first = try await fixture.viewer()
+        await first.socket.waitForData(channel: first.channel, count: 1)
+        await fixture.scripted.setAttachPaint(moved)
+        await moving.value
+        #expect(await fixture.written(on: first) == ["\u{1B}[B"])
+        #expect(card.notice == nil)
+
+        await card.sendKeys(["enter"])
+
+        let viewers = await fixture.viewers
+        #expect(viewers.count == 2)
+        let second = try #require(viewers.last)
+        #expect(await fixture.written(on: second) == [Self.enter])
+        #expect(card.notice == nil)
+        fixture.finish()
+    }
+
+    @Test func anUnreadableCardsKeyGoesWhileItsScreenStillShowsNoDialog() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.unreadableCard()
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(await fixture.written(on: viewer) == [Self.enter])
+        #expect(card.notice == nil)
+        fixture.finish()
+    }
+
+    /// A card with nothing to read has still told the user there is no dialog.
+    @Test func anUnreadableCardsKeyPressesNothingOnADialogDrawnWhileItsViewerOpened() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.unreadableCard()
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        await fixture.scripted.setAttachPaint(try Self.paint(Self.dialogScreen, modes: ""))
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(card.notice == BlockedCardStore.changedMessage)
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    @Test func anUnreadableCardsKeyPressesNothingOnceTheAgentLeavesWhileItsViewerOpens() async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.unreadableCard()
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        try await fixture.deliverEvent("foreground", data: Self.foreground(pid: 41, argv: ["bash"]))
+        try await Self.until("the Agent to go") { fixture.console.agents.isEmpty }
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(card.notice?.contains("no longer holds this terminal") == true, "\(card.notice ?? "")")
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty)
+        fixture.finish()
+    }
+
+    private static func expectKeyPadPressesNothing(
+        onceThePaintIs next: Data, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        let fixture = try await Fixture(terminal: Self.record(status: "blocked"), modes: "")
+        let card = try await fixture.keyPadCard(showing: try Self.previewsPaint())
+        let shown = card.content
+        let (pressing, viewer) = try await fixture.keyWaitingForItsViewer(on: card)
+
+        await fixture.scripted.setAttachPaint(next)
+        await fixture.scripted.releaseAttachReplies()
+        await pressing.value
+
+        #expect(card.notice == BlockedCardStore.changedMessage, sourceLocation: sourceLocation)
+        #expect(card.progress == .ready, sourceLocation: sourceLocation)
+        #expect(card.content != shown, "The card shows what the key would have gone over", sourceLocation: sourceLocation)
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        #expect(await fixture.written(on: viewer).isEmpty, sourceLocation: sourceLocation)
         fixture.finish()
     }
 

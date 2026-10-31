@@ -121,28 +121,22 @@ final class HerdrCoreChatTyping {
     }
 
     /// A Blocked Card's way to the Agent: its keys must reach the process whose
-    /// screen it answered.
+    /// screen it answered, over that screen. Nothing types without that check, so
+    /// the unchecked ways in are left unavailable.
     var blockedScreen: BlockedScreenIO {
-        BlockedScreenIO(
-            readScreen: { [weak self] in
-                guard let self else { throw TransportError.cancelled }
-                return try await self.readScreen()
-            },
-            sendKeys: { [weak self] keys in
-                guard let self else { throw TransportError.cancelled }
-                try await self.press(keys, heldSinceScreenRead: true)
-            },
-            paste: { [weak self] text in
-                guard let self else { throw TransportError.cancelled }
-                try await self.paste(text, heldSinceScreenRead: true)
-            },
-            typeWhileShowing: { [weak self] typing, stillShows in
-                guard let self else { throw TransportError.cancelled }
-                switch typing {
-                case .keys(let keys): try await self.press(keys, heldSinceScreenRead: true, whileShowing: stillShows)
-                case .paste(let text): try await self.paste(text, heldSinceScreenRead: true, whileShowing: stillShows)
-                }
-            })
+        var screen = BlockedScreenIO.unavailable
+        screen.readScreen = { [weak self] in
+            guard let self else { throw TransportError.cancelled }
+            return try await self.readScreen()
+        }
+        screen.typeWhileShowing = { [weak self] typing, stillShows in
+            guard let self else { throw TransportError.cancelled }
+            switch typing {
+            case .keys(let keys): try await self.press(keys, heldSinceScreenRead: true, whileShowing: stillShows)
+            case .paste(let text): try await self.paste(text, heldSinceScreenRead: true, whileShowing: stillShows)
+            }
+        }
+        return screen
     }
 
     // MARK: Reading

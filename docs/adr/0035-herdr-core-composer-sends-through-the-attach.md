@@ -70,8 +70,10 @@ the shell that stays behind, and a retry can deliver it twice.
   Agent still holds the foreground, the same process as when that screen was read.
   Opening the viewer can take seconds, so Chat checks again once its paint is in:
   a key or a paste goes only if the same process holds the foreground as before it
-  opened, and an answer only if that paint shows the same dialog. A viewer that
-  only observes cannot type.
+  opened, and an answer only if that paint shows the same dialog. The card's key
+  pad counts as an answer, since it is the only one a dialog without options has:
+  its keys go only if the paint shows the dialog the card shows, or still none on
+  a card that could read none. A viewer that only observes cannot type.
 - Chat's screen checks read a viewer's first paint. `terminal.read` has text
   only, and the emulator Heeler embeds reads text only, while every attach
   starts with the styled screen. Each read is an observing attach of its own
