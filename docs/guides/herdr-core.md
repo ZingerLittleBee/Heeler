@@ -184,6 +184,8 @@ To remove one, open an Agent in it, then **Worktree Details** in the More menu. 
 
 If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout in place. Check the Host before trying again. The same goes if the checkout changed while its Terminals were ending: they have ended, the checkout stays, and the next confirmation warns about what it holds now. Removing ends only that Workspace. Another Workspace on the same checkout keeps running in the deleted folder, whether it started there or a Terminal moved in, so the confirmation names any it can tell. Close those first.
 
+If the connection drops with **Worktree Details** open, the sheet goes with the Agent's screen. Whatever stopped the removal, or the Host not confirming it, then shows as an alert over the Console, and so does a Close that ends the same way from an Agent's screen. Check the Host before trying again.
+
 Native Windows core Hosts do not offer Worktrees yet.
 
 ## Chat

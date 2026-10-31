@@ -430,6 +430,70 @@ struct HerdrCoreCloseTests {
         #expect(closes == 1)
     }
 
+    // MARK: With the screen gone
+
+    private final class Reports {
+        var messages: [String] = []
+    }
+
+    /// Agent detail went with the link while the kill was on its way.
+    @Test func aCloseThatFailsAfterItsScreenLeftIsHandedOver() async {
+        let reports = Reports()
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+
+        await store.confirmClose()
+
+        #expect(reports.messages == [Self.unconfirmed])
+        #expect(store.state == .idle)
+    }
+
+    @Test func aFailureStillOnScreenWhenItLeavesIsHandedOverOnce() async {
+        let reports = Reports()
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        await store.confirmClose()
+        #expect(store.state == .failed(Self.unconfirmed))
+
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+
+        #expect(reports.messages == [Self.unconfirmed])
+    }
+
+    @Test func aFailureAlreadyDismissedIsNotHandedOver() async {
+        let reports = Reports()
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        await store.confirmClose()
+        store.dismissFailure()
+
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+
+        #expect(reports.messages.isEmpty)
+    }
+
+    @Test func aScreenThatCameBackKeepsItsFailureAndNoReportersMeansItStays() async {
+        let reports = Reports()
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+        store.didReturnToScreen()
+
+        await store.confirmClose()
+
+        #expect(reports.messages.isEmpty)
+        #expect(store.state == .failed(Self.unconfirmed))
+
+        store.didLeaveScreen(reportingTo: nil)
+        #expect(store.state == .failed(Self.unconfirmed))
+    }
+
     // MARK: What a core Host offers
 
     @Test func aCoreHostOffersCloseOnItsRowsAndDetails() {

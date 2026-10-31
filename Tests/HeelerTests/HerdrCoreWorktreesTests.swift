@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 import os
 
 @testable import Heeler
@@ -1115,6 +1117,185 @@ struct HerdrCoreWorktreesTests {
         #expect(!message.contains("keep running"))
     }
 
+    // MARK: With the sheet gone
+
+    private func reporter(_ fixture: Fixture) -> ((String) -> Void)? {
+        fixture.store.outcomeReporter(on: fixture.host.id, title: "Couldn't Remove Worktree")
+    }
+
+    /// The link drops, which takes Agent detail and its sheet away, and the kill
+    /// then comes back unanswered. What stopped still has to be said.
+    @Test func aRemovalThatStopsAfterItsSheetLeftTellsTheConsole() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.transport.setKillAnswer(.failure(TransportError.coreMutationOutcomeUnknown), for: "t2")
+        let request = try await fixture.removal()
+        let detail = makeDetail(fixture, request: request)
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+        let begun = try #require(detail.beginRemoval())
+        detail.didLeaveScreen(reportingTo: reporter(fixture))
+
+        await detail.finishRemoval(begun)
+
+        let notice = try #require(fixture.store.outcomeNotices.first)
+        #expect(fixture.store.outcomeNotices.count == 1)
+        #expect(notice.title == "Couldn't Remove Worktree")
+        #expect(notice.message == WorktreeRemovalError.terminalsNotEnded.message)
+        #expect(!detail.showsFeedback)
+
+        fixture.store.dismissOutcomeNotice(notice)
+        #expect(fixture.store.outcomeNotices.isEmpty)
+    }
+
+    /// git's answer lost with the link: the checkout may or may not be there.
+    @Test func aRemoveNobodyConfirmedAfterItsSheetLeftSaysWhatToCheck() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.services.setGitAnswer(
+            .failure(TransportError.gitTimedOut), for: ["worktree", "remove", Self.linked])
+        let request = try await fixture.removal()
+        let detail = makeDetail(fixture, request: request)
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+        let begun = try #require(detail.beginRemoval())
+        detail.didLeaveScreen(reportingTo: reporter(fixture))
+
+        await detail.finishRemoval(begun)
+
+        #expect(
+            fixture.store.outcomeNotices.map(\.message)
+                == [WorktreeRemovalError.removeUnconfirmed(path: Self.linked).message])
+    }
+
+    /// The alert was still up when the sheet went, so nobody has read it.
+    @Test func aFailureStillOnTheSheetWhenItLeavesTellsTheConsoleOnce() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.transport.setKillAnswer(.failure(TransportError.coreMutationOutcomeUnknown), for: "t2")
+        let request = try await fixture.removal()
+        let detail = makeDetail(fixture, request: request)
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+        await detail.finishRemoval(try #require(detail.beginRemoval()))
+        #expect(detail.showsFeedback)
+        #expect(fixture.store.outcomeNotices.isEmpty)
+
+        detail.didLeaveScreen(reportingTo: reporter(fixture))
+        detail.didLeaveScreen(reportingTo: reporter(fixture))
+
+        #expect(fixture.store.outcomeNotices.count == 1)
+        #expect(!detail.showsFeedback)
+    }
+
+    @Test func aFailureTheUserDismissedTellsTheConsoleNothing() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.transport.setKillAnswer(.failure(TransportError.coreMutationOutcomeUnknown), for: "t2")
+        let request = try await fixture.removal()
+        let detail = makeDetail(fixture, request: request)
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+        await detail.finishRemoval(try #require(detail.beginRemoval()))
+        detail.dismissFeedback()
+
+        detail.didLeaveScreen(reportingTo: reporter(fixture))
+
+        #expect(fixture.store.outcomeNotices.isEmpty)
+    }
+
+    /// A sheet that came back says it itself, and a removal that worked needs no word.
+    @Test func aSheetBackOnScreenAndARemovalThatWorkedTellTheConsoleNothing() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.transport.setKillAnswer(.failure(TransportError.coreMutationOutcomeUnknown), for: "t2")
+        let request = try await fixture.removal()
+        let detail = makeDetail(fixture, request: request)
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+        let begun = try #require(detail.beginRemoval())
+        detail.didLeaveScreen(reportingTo: reporter(fixture))
+        detail.didReturnToScreen()
+
+        await detail.finishRemoval(begun)
+
+        #expect(fixture.store.outcomeNotices.isEmpty)
+        #expect(detail.showsFeedback)
+
+        let clean = try await Fixture()
+        defer { clean.finish() }
+        let worked = makeDetail(clean, request: try await clean.removal())
+        await worked.loadRemovalRiskIfNeeded()
+        worked.prepareConfirmation()
+        let removing = try #require(worked.beginRemoval())
+        worked.didLeaveScreen(reportingTo: reporter(clean))
+
+        await worked.finishRemoval(removing)
+
+        #expect(clean.store.outcomeNotices.isEmpty)
+    }
+
+    /// Herdr TUI settles its own unconfirmed removals on the next snapshot.
+    @Test func aHerdrTUIHostHasNoReporter() throws {
+        let store = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "no link") },
+                    keepalive: nil)
+            })
+        defer { store.setHosts([]) }
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrTUI)
+        store.setHosts([host])
+
+        #expect(store.outcomeReporter(on: host.id, title: "x") == nil)
+    }
+
+    /// What decides the behaviour above: the view tells the store when its
+    /// presenter goes away with the sheet up, as a dropped link does.
+    private struct SheetOverDetail: View {
+        let presence: SheetPresence
+        let detail: WorktreeDetailStore
+        let report: ((String) -> Void)?
+
+        var body: some View {
+            if presence.isDetailShown {
+                Color.clear.sheet(isPresented: .constant(true)) {
+                    WorktreeDetailView(store: detail, reportAfterLeaving: report) { _ in }
+                }
+            } else {
+                Color.clear
+            }
+        }
+    }
+
+    @Test func aSheetTakenAwayWithItsPresenterTellsTheConsole() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.transport.setKillAnswer(.failure(TransportError.coreMutationOutcomeUnknown), for: "t2")
+        let request = try await fixture.removal()
+        let detail = makeDetail(fixture, request: request)
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+        let presence = SheetPresence()
+        let controller = UIHostingController(
+            rootView: SheetOverDetail(presence: presence, detail: detail, report: reporter(fixture)))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await fixture.until("the sheet") { controller.presentedViewController != nil }
+            let begun = try #require(detail.beginRemoval())
+            presence.isDetailShown = false
+            try await fixture.until("the sheet to go") { controller.presentedViewController == nil }
+            await detail.finishRemoval(begun)
+            try await fixture.until("the notice") { !fixture.store.outcomeNotices.isEmpty }
+        }
+
+        #expect(
+            fixture.store.outcomeNotices.map(\.message) == [WorktreeRemovalError.terminalsNotEnded.message])
+    }
+
     // MARK: What the Terminals leave behind
 
     private func setDirtyOnKill(_ fixture: Fixture) async {
@@ -1222,6 +1403,12 @@ struct HerdrCoreWorktreesTests {
         #expect(thrown?.message.contains("Terminals have ended") == true)
         #expect(await fixture.git("worktree").isEmpty)
     }
+}
+
+/// Whether Agent detail is still there to present the Worktree sheet.
+@MainActor @Observable
+private final class SheetPresence {
+    var isDetailShown = true
 }
 
 /// What a Herdr TUI Host's confirmation keeps saying, with no risk to warn of.

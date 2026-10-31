@@ -661,7 +661,11 @@ struct AgentTerminalView: View {
             }
         }) {
             if let worktreeStore {
-                WorktreeDetailView(store: worktreeStore) { _ in
+                WorktreeDetailView(
+                    store: worktreeStore,
+                    reportAfterLeaving: console.outcomeReporter(
+                        on: agent.hostID, title: "Couldn't Remove Worktree")
+                ) { _ in
                     isShowingWorktree = false
                 }
                 .modifier(ConsoleSheetPresentationModifier(
@@ -684,7 +688,11 @@ struct AgentTerminalView: View {
             "Couldn't Close Agent",
             isPresented: Binding(
                 get: { closeErrorMessage != nil },
-                set: { if !$0 { closeErrorMessage = nil } })
+                set: { presented in
+                    guard !presented else { return }
+                    closeErrorMessage = nil
+                    attach.close.dismissFailure()
+                })
         ) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -771,8 +779,12 @@ struct AgentTerminalView: View {
                 armDirectKeyboardClaimIfNeeded()
             }
             attach.rejoin()
+            attach.close.didReturnToScreen()
         }
         .onDisappear {
+            attach.close.didLeaveScreen(
+                reportingTo: console.outcomeReporter(
+                    on: agent.hostID, title: "Couldn't Close Agent"))
             interactionProbe?.value?.disconnect()
             messageJump.resetSession()
             if let onRetainDeparture {

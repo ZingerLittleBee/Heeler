@@ -40,6 +40,8 @@ final class ClosePaneStore {
     /// double-tap cannot fire the close twice through the window before
     /// `state == .closing` disables the button (mirrors #10/#12).
     private var isClosing = false
+    /// Set while the screen is away, where a failure's alert would reach nobody.
+    private var reportAfterLeaving: ((String) -> Void)?
 
     init(paneTitle: String, close: @escaping () async throws -> Void) {
         self.paneTitle = paneTitle
@@ -59,7 +61,30 @@ final class ClosePaneStore {
             state = .closed
         } catch {
             state = .failed(Self.message(for: error))
+            handOverFailure()
         }
+    }
+
+    /// The screen went away, perhaps with the link and with a failure on it. A
+    /// failure from now on goes to `report`; with no `report` it stays here.
+    func didLeaveScreen(reportingTo report: ((String) -> Void)?) {
+        reportAfterLeaving = report
+        handOverFailure()
+    }
+
+    func didReturnToScreen() {
+        reportAfterLeaving = nil
+    }
+
+    /// The user read it.
+    func dismissFailure() {
+        if case .failed = state { state = .idle }
+    }
+
+    private func handOverFailure() {
+        guard let reportAfterLeaving, case .failed(let message) = state else { return }
+        state = .idle
+        reportAfterLeaving(message)
     }
 
     private static func message(for error: any Error) -> String {
