@@ -81,6 +81,7 @@ struct ContentView: View {
         }
         .onDisappear {
             app.sceneDirectory.unregister(sceneID: sceneID)
+            app.console.agentTerminals.sceneDidEnd(sceneID)
         }
         // A foreground return is not the user choosing this window; see
         // `SceneActivationTracker`. Moving between windows arrives through

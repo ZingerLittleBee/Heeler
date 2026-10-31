@@ -13,6 +13,8 @@ final class AgentTerminalCache {
         fileprivate let lifetime: Lifetime
         fileprivate var expiry: Task<Void, Never>?
         fileprivate var presentationOwnerID: UUID
+        /// The window the owner shows in; see `isSameWindow`.
+        fileprivate var presentationSceneID: UUID?
         /// The detail that retains this entry. It comes back to the entry for
         /// as long as it lives, hidden or not.
         fileprivate weak var holder: AnyObject?
@@ -20,13 +22,15 @@ final class AgentTerminalCache {
 
         fileprivate init(
             agentID: ConsoleAgent.ID, terminalID: String,
-            attach: AgentAttachStore, lifetime: Lifetime, ownerID: UUID, holder: AnyObject?
+            attach: AgentAttachStore, lifetime: Lifetime, ownerID: UUID, sceneID: UUID?,
+            holder: AnyObject?
         ) {
             self.agentID = agentID
             self.terminalID = terminalID
             self.attach = attach
             self.lifetime = lifetime
             self.presentationOwnerID = ownerID
+            self.presentationSceneID = sceneID
             self.holder = holder
         }
     }
@@ -54,14 +58,20 @@ final class AgentTerminalCache {
 
     /// Only the window holding the Host's Agent presentation may acquire.
     /// Offstage details keep private stores until they are activated.
+    ///
+    /// `sceneID` is passed for a core Terminal only, whose entry the detail's
+    /// replacement takes over; see `isSameWindow`. A Herdr TUI Terminal has one
+    /// owner at a time, so its replacement closes the entry and attaches anew.
     func acquire(
-        agent: ConsoleAgent, console: ConsoleStore, ownerID: UUID, holder: AnyObject? = nil,
-        isPresented: @escaping @MainActor () -> Bool = { true }
+        agent: ConsoleAgent, console: ConsoleStore, ownerID: UUID, sceneID: UUID? = nil,
+        holder: AnyObject? = nil, isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry {
         if let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
             !current.lifetime.visible || current.presentationOwnerID == ownerID
+                || isSameWindow(current, sceneID: sceneID)
         {
             current.presentationOwnerID = ownerID
+            current.presentationSceneID = sceneID
             current.holder = holder
             activate(current, ownerID: ownerID, isPresented: isPresented)
             return current
@@ -90,18 +100,41 @@ final class AgentTerminalCache {
             })
         let entry = Entry(
             agentID: agent.id, terminalID: agent.agent.terminalID,
-            attach: attach, lifetime: lifetime, ownerID: ownerID, holder: holder)
+            attach: attach, lifetime: lifetime, ownerID: ownerID, sceneID: sceneID, holder: holder)
         entries[agent.id] = entry
         return entry
     }
 
     /// Another detail shows this Agent's retained terminal, or has it hidden
     /// and will come back to it: its surface can only be in one window.
-    func isHeldByAnotherDetail(_ agent: ConsoleAgent, ownerID: UUID) -> Bool {
+    func isHeldByAnotherDetail(_ agent: ConsoleAgent, ownerID: UUID, sceneID: UUID? = nil) -> Bool {
         guard let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
-            current.presentationOwnerID != ownerID
+            current.presentationOwnerID != ownerID, !isSameWindow(current, sceneID: sceneID)
         else { return false }
         return current.lifetime.visible || current.holder != nil
+    }
+
+    /// A window mounts one detail, so another detail in the owner's window is
+    /// the one SwiftUI replaced it with, as a size-class change does. The
+    /// replaced detail still reads as selected when it disappears, so it never
+    /// releases; its late release, keyed to its own `ownerID`, finds nothing
+    /// to undo.
+    private func isSameWindow(_ entry: Entry, sceneID: UUID?) -> Bool {
+        sceneID != nil && entry.presentationSceneID == sceneID
+    }
+
+    /// A closed window's detail still reads as selected when it disappears,
+    /// so it never releases, and with core Terminals no other window's
+    /// acquire closes the entry instead. Nothing there comes back to what it
+    /// retains, so another window may take it; an entry it had already left
+    /// keeps the timer it started.
+    func sceneDidEnd(_ sceneID: UUID) {
+        for entry in entries.values where entry.presentationSceneID == sceneID {
+            entry.holder = nil
+            if entry.lifetime.visible {
+                release(entry, ownerID: entry.presentationOwnerID)
+            }
+        }
     }
 
     private func admit(agentID: ConsoleAgent.ID, lifetime: Lifetime) async throws {

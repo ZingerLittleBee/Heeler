@@ -125,6 +125,8 @@ many are open.
 | End of a program | `exit` in a Terminal that was not started with `keep` | The session ends with no error |
 | Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send, Stop and Add stay hidden; Direct Input types into the terminal |
 | Two windows | On an iPad, show one core Agent in two windows, open Changes in the first and come back | Each window keeps a live terminal of its own, and typing in either reaches the program |
+| Window size | On an iPad, resize a window showing a core Agent across compact and regular widths, then leave the Agent | The same terminal and scrollback stay on screen with one viewer, and the viewer closes five minutes after you leave |
+| Closed window | On an iPad, close one of two windows showing the same core Agent | The other window's terminal stays live; if the closed window retained the Terminal, its viewer stops being reported and closes after five minutes |
 
 ## Program Status
 

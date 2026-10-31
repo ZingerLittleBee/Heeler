@@ -297,10 +297,13 @@ struct AgentDetailView: View {
             console.agentTerminals.activate(retainedAgent, ownerID: retentionOwnerID, isPresented: { isOnStage() })
             return
         }
-        // A core Terminal takes any number of viewers, so another detail
-        // keeps the one it retains, and this one is a viewer of its own.
-        if !console.capabilities(for: agent.hostID).takeOver,
-            console.agentTerminals.isHeldByAnotherDetail(agent, ownerID: retentionOwnerID)
+        // A core Terminal takes any number of viewers, so another window's
+        // detail keeps the one it retains, and this one is a viewer of its own.
+        let takesViewers = !console.capabilities(for: agent.hostID).takeOver
+        let sceneID = takesViewers ? sceneRouting?.sceneID : nil
+        if takesViewers,
+            console.agentTerminals.isHeldByAnotherDetail(
+                agent, ownerID: retentionOwnerID, sceneID: sceneID)
         {
             guard !isOwnViewer else { return }
             if retainedAgent == nil { attach.leaveForTerminalHandoff() }
@@ -312,8 +315,8 @@ struct AgentDetailView: View {
         }
         if retainedAgent == nil { attach.leaveForTerminalHandoff() }
         let entry = console.agentTerminals.acquire(
-            agent: agent, console: console, ownerID: retentionOwnerID, holder: retentionHolder,
-            isPresented: { isOnStage() })
+            agent: agent, console: console, ownerID: retentionOwnerID, sceneID: sceneID,
+            holder: retentionHolder, isPresented: { isOnStage() })
         retainedAgent = entry
         isOwnViewer = false
         attach = entry.attach

@@ -23,6 +23,7 @@ struct HerdrCoreTerminalStoreTests {
     private struct Fixture {
         let scripted: ScriptedCoreHost
         private let box = SessionBox()
+        private let directory = AgentSceneDirectory()
         let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let console: ConsoleStore
 
@@ -91,7 +92,8 @@ struct HerdrCoreTerminalStoreTests {
         }
 
         /// A window showing `agent`'s detail, built as the Console builds it.
-        func showDetail(of agent: ConsoleAgent) async throws -> CoreDetailWindow {
+        /// `sceneID` puts it under a scene root, as a real window is.
+        func showDetail(of agent: ConsoleAgent, sceneID: UUID? = nil) async throws -> CoreDetailWindow {
             let suite = "core-detail-\(UUID().uuidString)"
             let defaults = try #require(UserDefaults(suiteName: suite))
             let selection = HostedDetailSelection()
@@ -102,8 +104,9 @@ struct HerdrCoreTerminalStoreTests {
             let activity = AppActivityCoordinator()
             let handoff = TerminalKeyboardHandoff()
             let inset = TerminalKeyboardInset()
+            let routing = sceneID.map { AgentSceneRouting(directory: directory, sceneID: $0) }
             let controller = UIHostingController(
-                rootView: HostedCoreDetail(selection: selection) {
+                rootView: HostedCoreDetail(selection: selection, routing: routing) {
                     AgentDetailView(
                         agent: agent,
                         console: console,
@@ -524,6 +527,100 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    /// The replaced detail's late release finds nothing to undo, and the
+    /// timer runs from the release of the detail that took over.
+    @Test func aDetailInTheOwnersWindowTakesTheEntryAndAnotherWindowDoesNot() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let cache = AgentTerminalCache(idleTimeout: .milliseconds(20))
+        let scene = UUID()
+        let replaced = UUID()
+        let entry = cache.acquire(agent: agent, console: fixture.console, ownerID: replaced, sceneID: scene)
+        entry.attach.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let attach = try #require(await fixture.scripted.attaches.last)
+
+        let replacement = UUID()
+        #expect(cache.isHeldByAnotherDetail(agent, ownerID: replacement))
+        #expect(cache.isHeldByAnotherDetail(agent, ownerID: replacement, sceneID: UUID()))
+        #expect(!cache.isHeldByAnotherDetail(agent, ownerID: replacement, sceneID: scene))
+
+        let taken = cache.acquire(agent: agent, console: fixture.console, ownerID: replacement, sceneID: scene)
+        #expect(taken === entry)
+        cache.release(entry, ownerID: replaced)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(entry.isRetained)
+        #expect(await attach.socket.frames(channel: attach.channel, kind: .close).isEmpty)
+
+        cache.release(entry, ownerID: replacement)
+        _ = await attach.socket.waitForFrame(channel: attach.channel, kind: .close)
+        #expect(cache.entries.isEmpty)
+        await fixture.finish()
+    }
+
+    /// A Herdr TUI detail passes no window, so its replacement closes the
+    /// entry and attaches anew, as it always has.
+    @Test func aDetailWithNoWindowClosesTheEntryItReplaces() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let cache = AgentTerminalCache(idleTimeout: .seconds(300))
+        let entry = cache.acquire(agent: agent, console: fixture.console, ownerID: UUID())
+        let replacement = cache.acquire(agent: agent, console: fixture.console, ownerID: UUID())
+        #expect(replacement !== entry)
+        #expect(!entry.isRetained)
+        await cache.suspend()
+        await fixture.finish()
+    }
+
+    @Test func aWindowThatEndsStartsTheRetentionOfWhatItShows() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let cache = AgentTerminalCache(idleTimeout: .milliseconds(20))
+        let scene = UUID()
+        let entry = cache.acquire(agent: agent, console: fixture.console, ownerID: UUID(), sceneID: scene)
+        entry.attach.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let attach = try #require(await fixture.scripted.attaches.last)
+
+        cache.sceneDidEnd(UUID())
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(entry.isRetained)
+        #expect(await attach.socket.frames(channel: attach.channel, kind: .close).isEmpty)
+
+        cache.sceneDidEnd(scene)
+        _ = await attach.socket.waitForFrame(channel: attach.channel, kind: .close)
+        #expect(cache.entries.isEmpty)
+        await fixture.finish()
+    }
+
+    /// Going under Changes starts the five minutes; the window closing later
+    /// must not start them again.
+    @Test func aWindowThatEndsLeavesARunningTimerAlone() async throws {
+        final class Detail {}
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let cache = AgentTerminalCache(idleTimeout: .seconds(1))
+        let owner = UUID()
+        let scene = UUID()
+        let detail = Detail()
+        let entry = cache.acquire(
+            agent: agent, console: fixture.console, ownerID: owner, sceneID: scene, holder: detail)
+        entry.attach.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let attach = try #require(await fixture.scripted.attaches.last)
+
+        let released = ContinuousClock.now
+        cache.release(entry, ownerID: owner)
+        try await Task.sleep(for: .milliseconds(900))
+        #expect(cache.isHeldByAnotherDetail(agent, ownerID: UUID()))
+        cache.sceneDidEnd(scene)
+        #expect(!cache.isHeldByAnotherDetail(agent, ownerID: UUID()))
+        _ = await attach.socket.waitForFrame(channel: attach.channel, kind: .close)
+        #expect(ContinuousClock.now - released < .milliseconds(1800))
+        withExtendedLifetime(detail) {}
+        await fixture.finish()
+    }
+
     @Test func theFiveDefaultMinutesAreWhatTheConsoleRetainsFor() async throws {
         let fixture = try await Fixture()
         #expect(fixture.console.terminalConnections.idleTimeout == .seconds(300))
@@ -663,6 +760,104 @@ struct HerdrCoreTerminalStoreTests {
         await second.close()
         await fixture.finish()
     }
+
+    /// A size-class change replaces the detail while the Agent stays selected,
+    /// so the old one never releases. The new one must take its place, or the
+    /// old viewer outlives it with no timer running.
+    @Test func aDetailRemountedInItsWindowTakesItsTerminalOver() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let window = try await fixture.showDetail(of: agent, sceneID: UUID())
+        let held = try await fixture.waitForAttach(1, laying: window)
+        try await fixture.deliverOutput("x", on: held)
+        let surface = try #require(window.surface)
+
+        window.selection.detailGeneration += 1
+        try await Self.until("the new detail's terminal") {
+            window.layOut()
+            return window.surface != nil
+        }
+        await window.settle()
+        #expect(window.surface === surface)
+        #expect(await fixture.scripted.attaches.count == 1)
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+
+        let resizes = await held.socket.frames(channel: held.channel, kind: .resize).count
+        window.window.frame = CGRect(x: 0, y: 0, width: 744, height: 874)
+        try await Self.until("the new size on the one channel") {
+            window.layOut()
+            return await held.socket.frames(channel: held.channel, kind: .resize).count > resizes
+        }
+
+        window.selection.showsDetail = false
+        try await Self.until("the terminal to go quiet when its Agent is left") {
+            window.layOut()
+            return await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
+        }
+        try await Self.until("the old and new details to be gone") {
+            window.layOut()
+            return !fixture.console.agentTerminals.isHeldByAnotherDetail(agent, ownerID: UUID())
+        }
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+        await window.close()
+        await fixture.finish()
+    }
+
+    /// Closing a window ends its detail with the Agent still selected, so the
+    /// detail never releases; the scene root says so instead. The terminal
+    /// then retains as any other, for another window to come back to.
+    @Test func aWindowClosedOnItsAgentLeavesItsTerminalRetained() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let closing = UUID()
+        let first = try await fixture.showDetail(of: agent, sceneID: closing)
+        let held = try await fixture.waitForAttach(1, laying: first)
+        try await fixture.deliverOutput("x", on: held)
+
+        await first.close()
+        fixture.console.agentTerminals.sceneDidEnd(closing)
+        try await Self.until("the closed window's terminal to go quiet") {
+            await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
+        }
+
+        #expect(!fixture.console.agentTerminals.isHeldByAnotherDetail(agent, ownerID: UUID()))
+
+        let second = try await fixture.showDetail(of: agent, sceneID: UUID())
+        try await Self.until("the retained terminal in the other window") {
+            second.layOut()
+            return second.surface != nil
+        }
+        await second.settle()
+        #expect(await fixture.scripted.attaches.count == 1)
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+        try await Self.until("the terminal to be viewed again") {
+            await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([1])
+        }
+        await second.close()
+        await fixture.finish()
+    }
+
+    /// A second viewer holds nothing back: it leaves with its detail, however
+    /// the detail goes, and the retained terminal beside it stays.
+    @Test func aSecondViewerEndsWithItsDetailAndLeavesTheRetainedTerminal() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let first = try await fixture.showDetail(of: agent, sceneID: UUID())
+        let held = try await fixture.waitForAttach(1, laying: first)
+        let second = try await fixture.showDetail(of: agent, sceneID: UUID())
+        let viewer = try await fixture.waitForAttach(2, laying: second)
+
+        second.selection.detailGeneration += 1
+        _ = await viewer.socket.waitForFrame(channel: viewer.channel, kind: .close)
+        let replacement = try await fixture.waitForAttach(3, laying: second)
+        #expect(replacement.channel != viewer.channel)
+
+        await second.close()
+        _ = await replacement.socket.waitForFrame(channel: replacement.channel, kind: .close)
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+        await first.close()
+        await fixture.finish()
+    }
 }
 
 /// Whether a window's selection still shows the Agent, as the router says.
@@ -670,22 +865,28 @@ struct HerdrCoreTerminalStoreTests {
 @Observable
 private final class HostedDetailSelection {
     var showsDetail = true
+    /// Bumped to replace the detail while it stays selected, as a size-class
+    /// change does.
+    var detailGeneration = 0
 }
 
 /// Builds its detail in its body, as the Console does, so nothing outside the
 /// view graph keeps the detail's state alive after it leaves.
 private struct HostedCoreDetail: View {
     let selection: HostedDetailSelection
+    let routing: AgentSceneRouting?
     let makeDetail: @MainActor () -> AgentDetailView
 
     var body: some View {
         NavigationStack {
             if selection.showsDetail {
                 makeDetail()
+                    .id(selection.detailGeneration)
             } else {
                 Text(verbatim: "Agents")
             }
         }
+        .environment(\.agentSceneRouting, routing)
     }
 }
 
