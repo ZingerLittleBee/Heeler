@@ -234,7 +234,9 @@ with test clients, not the app.
   ([window.rs](https://github.com/herdrdev/herdr-app/blob/v0.1.9/src/window.rs#L4363-L4367)),
   so it can show an exited Agent's status that Heeler hides.
 - Renaming over SSH depends on `herdr-app do` reaching the desktop app's
-  socket from an SSH session (unverified).
+  socket from an SSH session (unverified). Rename and applying a typed name
+  therefore ship off, behind `HerdrAppControl.isRenameConfirmed`, until the
+  owner's check on a desktop Mac passes; New Workspace does not depend on it.
 - On Windows a Staged Image or File larger than 8 MiB is refused before it is
   sent. The files sit under the user's profile with whatever access it grants;
   the core does not narrow it (unverified).

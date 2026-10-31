@@ -48,7 +48,8 @@ struct StartAgentView: View {
                 },
                 awaitAgentVisible: { await console.waitForAgent($0) },
                 isAgentListed: { id in console.agents.contains { $0.id == id } },
-                origin: origin))
+                origin: origin,
+                offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces }))
     }
 
     var body: some View {
@@ -92,7 +93,7 @@ struct StartAgentView: View {
                             onSelectNewWorkspace: store.selectNewWorkspace,
                             onNewWorkspace: openDirectoryBrowser)
                         if store.launchTarget == .newWorkspace {
-                            if store.offersWorkspaceAndTabNames {
+                            if store.offersWorkspaceName {
                                 TextField(
                                     "Workspace name (optional)",
                                     text: $store.newWorkspaceLabel)
@@ -118,9 +119,9 @@ struct StartAgentView: View {
                         Text("Workspace")
                     } footer: {
                         if store.launchTarget == .newWorkspace {
-                            Text(store.offersWorkspaceAndTabNames
+                            Text(store.offersWorkspaceName
                                 ? "Creates a fresh Workspace on the Host. An empty name uses the directory's name."
-                                : "Starts the Agent in this directory. Terminals in the same directory are grouped together.")
+                                : "Creates a Workspace in this directory, named after its folder.")
                         }
                     }
                 }
@@ -271,6 +272,9 @@ struct StartAgentView: View {
             // The form grows as a Host adds its Agent and argument rows; a
             // fixed form cut them off under a scroll.
             .consoleSheetPage()
+            .task(id: store.selectedHostID) {
+                if let hostID = store.selectedHostID { await console.checkDesktopApp(on: hostID) }
+            }
             .navigationTitle("New Agent")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

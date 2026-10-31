@@ -79,6 +79,15 @@ protocol HerdrCoreTransport: Sendable {
     /// reports, under the long deadline that wait needs. Otherwise as `runTerminal`.
     func runTemplate(params: JSONValue) async throws -> JSONValue
 
+    /// Whether the Herdr desktop app answers `herdr-app status` on this Host, in
+    /// one bounded exec. Any other outcome reads as false (ADR 0032).
+    func desktopAppIsRunning() async -> Bool
+
+    /// `herdr-app do space.rename` once, in one bounded exec. The app's refusal
+    /// throws `HerdrAppControl.Refused`, and no answer throws
+    /// `.coreMutationOutcomeUnknown`. Nothing here sends it again.
+    func renameDesktopSpace(_ space: String, name: String) async throws
+
     /// Closes the link, then the connection.
     func close() async throws
 }
@@ -142,6 +151,10 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// Runs a script that goes through the user's interactive shell, with room
     /// for its startup files, in one bounded exec.
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult
+
+    /// Runs a `HerdrAppControl` script in one bounded exec, with room for the
+    /// five seconds the app's control socket gives its window to answer.
+    func runHerdrAppControl(_ script: Data) async throws -> GitExecResult
 
     /// Opens a direct-streamlocal channel under the long-lived events slot.
     /// A channel nobody answers throws `TransportError.streamLocalOpenFailed`.
@@ -347,6 +360,34 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         try await onLink { link in
             try await link.call(
                 "terminal.run", params: params, deadline: Self.templateRunDeadline, isMutation: true)
+        }
+    }
+
+    func desktopAppIsRunning() async -> Bool {
+        let nonce = nonce()
+        guard
+            let result = try? await connection.runHerdrAppControl(
+                HerdrAppControl.statusScript(nonce: nonce))
+        else { return false }
+        return HerdrAppControl.isRunning(result, nonce: nonce)
+    }
+
+    func renameDesktopSpace(_ space: String, name: String) async throws {
+        let nonce = nonce()
+        let script = try HerdrAppControl.renameScript(spaceID: space, name: name, nonce: nonce)
+        let result: GitExecResult
+        do {
+            result = try await connection.runHerdrAppControl(script)
+        } catch {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        switch HerdrAppControl.doOutcome(result, nonce: nonce) {
+        case .done:
+            return
+        case .refused(let reason):
+            throw HerdrAppControl.Refused(reason: reason)
+        case .unknown:
+            throw TransportError.coreMutationOutcomeUnknown
         }
     }
 

@@ -17,8 +17,17 @@ enum HerdrCoreLaunch {
             Placement(cwd: cwd, labels: ["herdr.space": space, "herdr.tab": newDesktopTab()])
         }
 
+        /// A space no document lists yet, which the app adopts under this id.
+        static func newDesktopSpaceID() -> String {
+            "sp" + newID()
+        }
+
         private static func newDesktopTab() -> String {
-            "tb" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+            "tb" + newID()
+        }
+
+        private static func newID() -> String {
+            UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         }
     }
 

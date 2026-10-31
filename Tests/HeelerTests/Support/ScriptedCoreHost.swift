@@ -166,6 +166,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var heldProcessReads: [CheckedContinuation<Void, Never>] = []
     private var processReadWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
     private var agentDiscovery = GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 0)
+    private var herdrAppAnswer: Result<GitExecResult, TransportError> = .success(
+        GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 0))
 
     /// Everything that happened, in order.
     private(set) var log: [String] = []
@@ -276,6 +278,17 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         log.append("agent-discovery")
         scripts.append(String(decoding: script, as: UTF8.self))
         return agentDiscovery
+    }
+
+    func runHerdrAppControl(_ script: Data) async throws -> GitExecResult {
+        log.append("herdr-app")
+        scripts.append(String(decoding: script, as: UTF8.self))
+        return try herdrAppAnswer.get()
+    }
+
+    /// What every `herdr-app` exec answers from now on.
+    func setHerdrAppAnswer(_ answer: Result<GitExecResult, TransportError>) {
+        herdrAppAnswer = answer
     }
 
     private var processReadCount: Int { log.filter { $0 == "process-read" }.count }

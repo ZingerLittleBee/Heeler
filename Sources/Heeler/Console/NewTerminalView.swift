@@ -36,7 +36,8 @@ struct NewTerminalView: View {
                             workspace, tabLabel: tabLabel, on: hostID)
                     }
                 },
-                awaitTerminal: { await console.waitForTerminal($0, on: $1) }))
+                awaitTerminal: { await console.waitForTerminal($0, on: $1) },
+                offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces }))
     }
 
     private var selectedWorkspaceTitle: String? {
@@ -70,7 +71,7 @@ struct NewTerminalView: View {
                         onSelectNewWorkspace: store.selectNewWorkspace,
                         onNewWorkspace: openDirectoryBrowser)
                     if store.target == .newWorkspace {
-                        if store.offersWorkspaceAndTabNames {
+                        if store.offersWorkspaceName {
                             TextField("Workspace name (optional)", text: $store.newWorkspaceLabel)
                                 .autocorrectionDisabled()
                         }
@@ -87,10 +88,10 @@ struct NewTerminalView: View {
                     Text("Workspace")
                 } footer: {
                     if store.target == .newWorkspace {
-                        if store.offersWorkspaceAndTabNames {
+                        if store.offersWorkspaceName {
                             Text("Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
                         } else {
-                            Text("Starts a shell in this directory. Terminals in the same directory are grouped together.")
+                            Text("Creates a Workspace in this directory, named after its folder.")
                         }
                     } else if let selectedWorkspaceTitle {
                         Text("Opens a new shell tab in \(selectedWorkspaceTitle). Choose New Workspace in the menu to start somewhere else.")
@@ -123,6 +124,9 @@ struct NewTerminalView: View {
             // empty. The directory browser is a sheet of its own, so a
             // fitted form costs it no room.
             .consoleSheetPage()
+            .task(id: store.selectedHostID) {
+                if let hostID = store.selectedHostID { await console.checkDesktopApp(on: hostID) }
+            }
             .navigationTitle("New Terminal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

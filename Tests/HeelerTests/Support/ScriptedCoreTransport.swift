@@ -176,6 +176,18 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var templateList: JSONValue = .object(["templates": .array([])])
     private var templateListFailure: (any Error)?
     private var templateCommand = "pi --thinking high"
+    private var isDesktopAppRunning = false
+    private var desktopAppRenameFailure: (any Error)?
+
+    struct DesktopAppRename: Equatable {
+        let space: String
+        let name: String
+    }
+
+    /// How many times `herdr-app status` ran.
+    private(set) var desktopAppChecks = 0
+    /// Every `herdr-app do space.rename`, oldest first, failed ones too.
+    private(set) var desktopAppRenames: [DesktopAppRename] = []
 
     init(
         coreID: String = "c1", subscribeResults: [JSONValue],
@@ -339,6 +351,16 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         ])
     }
 
+    func desktopAppIsRunning() async -> Bool {
+        desktopAppChecks += 1
+        return isDesktopAppRunning
+    }
+
+    func renameDesktopSpace(_ space: String, name: String) async throws {
+        desktopAppRenames.append(DesktopAppRename(space: space, name: name))
+        if let desktopAppRenameFailure { throw desktopAppRenameFailure }
+    }
+
     /// What a core answers a kill: the record, already ended.
     private static func killReply(address: String) -> JSONValue {
         .object([
@@ -386,6 +408,16 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// `templates.list` fails with this until it is called with nil.
     func setTemplateListFailure(_ failure: (any Error)?) {
         templateListFailure = failure
+    }
+
+    /// What `herdr-app status` says from now on.
+    func setDesktopApp(running: Bool) {
+        isDesktopAppRunning = running
+    }
+
+    /// Every rename fails with this until it is called with nil.
+    func setDesktopAppRenameFailure(_ failure: (any Error)?) {
+        desktopAppRenameFailure = failure
     }
 
     /// What a kill of this Terminal gets back instead of its ended record.
