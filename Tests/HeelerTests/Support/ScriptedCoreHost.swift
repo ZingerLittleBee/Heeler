@@ -199,6 +199,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var isHoldingAttachReplies = false
     private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
     private var heldTerminalReads: [(socket: FakeCoreSocket, id: String)] = []
+    private var isHoldingHellos = false
+    private var heldHellos: [CheckedContinuation<Void, Never>] = []
     private var heldInterrupts: [(socket: FakeCoreSocket, id: String)] = []
     /// The params of every `terminal.interrupt`, oldest first.
     private(set) var interrupts: [JSONValue] = []
@@ -342,6 +344,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             sockets.append(socket)
             Task {
                 _ = await socket.nextWrittenLine()
+                await self.waitOutHelloHold()
                 await socket.deliver(core.helloReply)
                 await self.answer(on: socket, core: core)
             }
@@ -469,6 +472,25 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         let held = heldTerminalReads
         heldTerminalReads = []
         for read in held { try? await read.socket.replyError(to: read.id, kind: kind) }
+    }
+
+    /// A new link's `hello` waits for its answer until `releaseHellos`, as one
+    /// that is slow to establish does.
+    func holdHellos() {
+        isHoldingHellos = true
+    }
+
+    func releaseHellos() {
+        isHoldingHellos = false
+        let held = heldHellos
+        heldHellos = []
+        for waiter in held { waiter.resume() }
+    }
+
+    private func waitOutHelloHold() async {
+        while isHoldingHellos {
+            await withCheckedContinuation { heldHellos.append($0) }
+        }
     }
 
     /// Answers every `terminal.interrupt` waiting so far, as a core does once its

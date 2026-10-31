@@ -139,6 +139,10 @@ confirm or refine these points with test clients, not the app.
   no Stop. The core's Ctrl+C for such a Terminal is therefore not reached from
   the Composer.
 - Heeler gives the core two seconds to watch for an effect and waits one second
-  more for its answer, then reads the foreground without it. A reply and an
-  event have no order on the link, so a foreground event that lands during the
-  read wins over what the read found.
+  more for its answer, then cancels the call, so the key is never pressed late.
+  A call the link had not handed to its writer never goes, and Stop says it was
+  not sent. Otherwise Stop reads the foreground without the answer, and only that
+  read getting an answer says the key left, since the writer keeps order; with
+  neither, the outcome is unknown. A reply and an event have no order on the
+  link, so a foreground event that lands during the read wins over what the read
+  found.

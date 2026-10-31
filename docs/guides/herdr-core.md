@@ -117,8 +117,9 @@ On a native Windows Host, Stop is not available yet.
 | Notice | What it means | What to do |
 | --- | --- | --- |
 | **still shows Working** | The key went and the Agent is still Working a few seconds later. A background task can do that | Tap **Stop** again if you still want it to stop |
-| **may or may not have reached the Agent** | The connection dropped during Stop, so Heeler cannot tell, and it does not send it again | Look at the terminal first |
-| **did not say whether the Agent still runs** | The key went, and the check after it got no answer | Look at the terminal |
+| **may or may not have reached the Agent** | The connection dropped or went silent during Stop, so Heeler cannot tell, and it does not send it again | Look at the terminal first |
+| **did not say whether the Agent still runs** | The Host answered that it pressed the key, and the check after it got no answer | Look at the terminal |
+| **wasn't sent** | The connection was down, or too busy to take Stop within a few seconds. No key was pressed | Tap **Stop** again |
 
 ## Restarts and ended Terminals
 

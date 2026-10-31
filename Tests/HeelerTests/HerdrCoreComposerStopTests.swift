@@ -182,6 +182,67 @@ struct HerdrCoreComposerStopTests {
         #expect(await methods(started.transport) == ["terminal.interrupt"])
     }
 
+    /// A link that dies without an EOF, as on a network change: the interrupt went
+    /// to the writer, and neither it nor the read that follows hears back. Nothing
+    /// says the key went.
+    @Test func anInterruptAndAReadThatBothGetNoAnswerReadAsOutcomeUnknown() async throws {
+        let started = try await start()
+        defer { started.store.setHosts([]) }
+        await started.transport.holdInterrupts()
+        await started.transport.holdTerminalReads()
+        let interrupt = try coreStop(started)
+
+        let outcome = Task { await interrupt.perform() }
+        await started.clock.untilParked(for: .seconds(3))
+        started.clock.advance(.seconds(3))
+        try await waitUntil("the read") {
+            await methods(started.transport) == ["terminal.interrupt", "terminal.get"]
+        }
+        await started.clock.untilParked(for: HerdrCoreComposerStop.readTimeout)
+        started.clock.advance(HerdrCoreComposerStop.readTimeout)
+
+        #expect(await outcome.value == .failed(HerdrCoreComposerStop.outcomeUnknown))
+        #expect(await started.transport.mutations == ["terminal.interrupt"])
+        await started.transport.releaseTerminalReads()
+        await started.transport.releaseInterrupts()
+    }
+
+    /// The deadline's cancel drops an interrupt still queued behind other writes, so
+    /// no key was pressed. A read would prove nothing about a key that never went.
+    @Test func anInterruptStillQueuedAtItsDeadlineSaysItWasNotSent() async throws {
+        let started = try await start()
+        defer { started.store.setHosts([]) }
+        await started.transport.holdInterrupts(.inTheOutbox)
+        let interrupt = try coreStop(started)
+
+        let outcome = Task { await interrupt.perform() }
+        await started.clock.untilParked(for: .seconds(3))
+        started.clock.advance(.seconds(3))
+
+        #expect(await outcome.value == .failed(HerdrCoreComposerStop.notTakenInTime))
+        #expect(await methods(started.transport) == ["terminal.interrupt"])
+        await started.transport.releaseInterrupts()
+    }
+
+    /// Still waiting for a link, which a cancel cannot end. The call can no longer
+    /// write, so Stop says so without waiting for that link.
+    @Test func anInterruptStillWaitingForALinkAtItsDeadlineSaysItWasNotSent() async throws {
+        let started = try await start()
+        defer { started.store.setHosts([]) }
+        await started.transport.holdInterrupts(.awaitingALink)
+        let interrupt = try coreStop(started)
+
+        let outcome = Task { await interrupt.perform() }
+        await started.clock.untilParked(for: .seconds(3))
+        started.clock.advance(.seconds(3))
+        await started.clock.untilParked(for: HerdrCoreComposerStop.cancelWait)
+        started.clock.advance(HerdrCoreComposerStop.cancelWait)
+
+        #expect(await outcome.value == .failed(HerdrCoreComposerStop.notTakenInTime))
+        #expect(await methods(started.transport) == ["terminal.interrupt"])
+        await started.transport.releaseInterrupts()
+    }
+
     @Test func aRefusedInterruptSaysWhyAndReadsNothing() async throws {
         let started = try await start()
         defer { started.store.setHosts([]) }
@@ -215,7 +276,7 @@ struct HerdrCoreComposerStopTests {
         try await waitUntil("the read") {
             await methods(started.transport) == ["terminal.interrupt", "terminal.get"]
         }
-        await started.clock.untilParked(1)
+        await started.clock.untilParked(for: HerdrCoreComposerStop.readTimeout)
         started.clock.advance(HerdrCoreComposerStop.readTimeout)
 
         #expect(await outcome.value == .failed(HerdrCoreComposerStop.readFailed))
@@ -466,6 +527,85 @@ struct HerdrCoreComposerStopLinkTests {
         #expect(await scripted.interrupts.count == 1)
         #expect(await scripted.interrupts.first?["timeout"] == .number(2))
         #expect(await scripted.sockets.count == 1)
+    }
+
+    /// The link dies with no EOF, past the deadline: nothing answers either call.
+    @Test func aSilentLinkReadsAsOutcomeUnknown() async throws {
+        let (store, scripted, clock, interrupt) = try await started()
+        defer { store.setHosts([]) }
+
+        let outcome = Task { await interrupt.perform() }
+        await scripted.waitForMethod("terminal.interrupt")
+        await clock.untilParked(for: .seconds(3))
+        clock.advance(.seconds(3))
+        await scripted.waitForMethod("terminal.get")
+        await clock.untilParked(for: HerdrCoreComposerStop.readTimeout)
+        clock.advance(HerdrCoreComposerStop.readTimeout)
+
+        #expect(await outcome.value == .failed(HerdrCoreComposerStop.outcomeUnknown))
+        #expect(await scripted.interrupts.count == 1)
+    }
+
+    /// The EOF comes after the deadline, while the read is out.
+    @Test func aLinkLostPastTheInterruptsDeadlineReadsAsOutcomeUnknown() async throws {
+        let (store, scripted, clock, interrupt) = try await started()
+        defer { store.setHosts([]) }
+
+        let outcome = Task { await interrupt.perform() }
+        await scripted.waitForMethod("terminal.interrupt")
+        await clock.untilParked(for: .seconds(3))
+        clock.advance(.seconds(3))
+        await scripted.waitForMethod("terminal.get")
+        await scripted.socket?.deliverEndOfFile()
+
+        #expect(await outcome.value == .failed(HerdrCoreComposerStop.outcomeUnknown))
+        #expect(await scripted.interrupts.count == 1)
+    }
+
+    /// A writer stuck on the first Stop's bytes leaves the second in the outbox. The
+    /// deadline drops it, and only the first reaches the core once writes resume.
+    @Test func anInterruptStillInTheOutboxAtItsDeadlineNeverReachesTheCore() async throws {
+        let (store, scripted, clock, interrupt) = try await started()
+        defer { store.setHosts([]) }
+        let socket = try #require(await scripted.socket)
+        await socket.holdWrites()
+
+        let first = Task { await interrupt.perform() }
+        await socket.waitForHeldWrite()
+        let second = Task { await interrupt.perform() }
+        try await Task.sleep(for: .milliseconds(50))
+        await clock.untilParked(2)
+        clock.advance(.seconds(3))
+
+        #expect(await second.value == .failed(HerdrCoreComposerStop.notTakenInTime))
+        await socket.releaseWrites()
+        await scripted.waitForMethod("terminal.get")
+        await scripted.answerTerminalReads(with: Self.agent)
+        #expect(await first.value == .sent)
+        #expect(await scripted.interrupts.count == 1)
+    }
+
+    /// The link ended and the next is slow to establish. Stop gives up on it, and the
+    /// key is not pressed late on the link that opens after.
+    @Test func anInterruptStillWaitingForALinkNeverReachesTheCore() async throws {
+        let (store, scripted, clock, interrupt) = try await started()
+        defer { store.setHosts([]) }
+        await scripted.holdHellos()
+        await scripted.socket?.deliverEndOfFile()
+        for _ in 0..<500 where await scripted.sockets.count < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let outcome = Task { await interrupt.perform() }
+        await clock.untilParked(for: .seconds(3))
+        clock.advance(.seconds(3))
+        await clock.untilParked(for: HerdrCoreComposerStop.cancelWait)
+        clock.advance(HerdrCoreComposerStop.cancelWait)
+
+        #expect(await outcome.value == .failed(HerdrCoreComposerStop.notTakenInTime))
+        await scripted.releaseHellos()
+        await scripted.waitForMethod("events.subscribe", count: 2)
+        #expect(await scripted.interrupts.isEmpty)
     }
 
     /// A viewer's bytes are Heeler's own keys: Stop writes none on the attach.

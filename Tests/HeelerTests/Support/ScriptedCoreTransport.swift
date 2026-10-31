@@ -169,8 +169,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var stopCalls: [(method: String, params: JSONValue)] = []
     private var interruptAnswer: Result<JSONValue, any Error> = .success(
         .object(["outcome": .string("stopped"), "key": .string("esc")]))
-    private var isHoldingInterrupts = false
-    private var heldInterrupts: [CheckedContinuation<Void, Never>] = []
+    private var interruptHold: InterruptHold?
+    private var heldInterrupts: [UUID: CheckedContinuation<Void, Never>] = [:]
     private var terminalRecords: [Result<JSONValue, any Error>] = []
     private var isHoldingTerminalReads = false
     private var heldTerminalReads: [CheckedContinuation<Void, Never>] = []
@@ -277,9 +277,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         switch method {
         case "terminal.interrupt":
             stopCalls.append((method, params))
-            while isHoldingInterrupts {
-                await withCheckedContinuation { heldInterrupts.append($0) }
-            }
+            if let hold = interruptHold { try await waitOutInterruptHold(hold) }
             return try interruptAnswer.get()
         case "terminal.get":
             stopCalls.append((method, params))
@@ -414,16 +412,50 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         interruptAnswer = answer
     }
 
+    /// Where a held `terminal.interrupt` is, which decides what cancelling it does,
+    /// as `HerdrCoreLink` and `HerdrCoreTransport.onLink` do.
+    enum InterruptHold {
+        /// With the writer or past it: cancelling says the outcome is unknown.
+        case handedToTheWriter
+        /// Queued behind other writes: cancelling drops it, and it never goes.
+        case inTheOutbox
+        /// Waiting for a link to open, which cancelling does not end. Once it
+        /// ends, the cancelled call writes nothing.
+        case awaitingALink
+    }
+
     /// Each `terminal.interrupt` waits, answerless, until `releaseInterrupts`.
-    func holdInterrupts() {
-        isHoldingInterrupts = true
+    func holdInterrupts(_ hold: InterruptHold = .handedToTheWriter) {
+        interruptHold = hold
     }
 
     func releaseInterrupts() {
-        isHoldingInterrupts = false
+        interruptHold = nil
         let held = heldInterrupts
-        heldInterrupts = []
-        for waiter in held { waiter.resume() }
+        heldInterrupts = [:]
+        for waiter in held.values { waiter.resume() }
+    }
+
+    private func waitOutInterruptHold(_ hold: InterruptHold) async throws {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if hold != .awaitingALink, Task.isCancelled {
+                    continuation.resume()
+                } else {
+                    heldInterrupts[id] = continuation
+                }
+            }
+        } onCancel: {
+            if hold != .awaitingALink { Task { await self.releaseInterrupt(id) } }
+        }
+        guard Task.isCancelled else { return }
+        if hold == .handedToTheWriter { throw TransportError.coreMutationOutcomeUnknown }
+        throw CancellationError()
+    }
+
+    private func releaseInterrupt(_ id: UUID) {
+        heldInterrupts.removeValue(forKey: id)?.resume()
     }
 
     /// What each `terminal.get` answers. The last one repeats.
