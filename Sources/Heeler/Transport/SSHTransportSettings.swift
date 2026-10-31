@@ -41,6 +41,9 @@ struct SSHTransportSettings: Sendable {
     /// Changes reads have a separate, shorter budget. Calibrate this value
     /// against large repositories and weak networks without changing RPCs.
     static let defaultGitExecTimeout: Duration = .seconds(10)
+    /// `git worktree add` and `remove` write a whole checkout, which a large
+    /// repository takes tens of seconds over.
+    static let defaultGitMutationTimeout: Duration = .seconds(120)
     /// Chat's store queries (ADR 0025) have their own budget, so calibrating
     /// one feature leaves the other alone.
     static let defaultChatQueryTimeout: Duration = .seconds(10)

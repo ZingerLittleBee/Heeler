@@ -93,12 +93,18 @@ protocol HostServices: Sendable {
     /// Transports without Host git throw `ChangesReadError.unavailable`.
     func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch
 
-    /// The checkout root of each directory, in one git script over one exec.
-    /// Asks about at most `GitProbe.checkoutRootsPerCall` of them, the first
-    /// ones; a directory it asked about and that is in no checkout has no entry.
-    /// Only a herdr-core projection asks, to name a desktop space nobody named.
-    /// A caller goes through the Host's `GitExecGate`, as Changes does.
-    func checkoutRoots(for directories: [String]) async throws -> [String: String]
+    /// The Checkout of each directory, in one git script over one exec. Asks
+    /// about at most `GitProbe.checkoutRootsPerCall` of them, the first ones; a
+    /// directory it asked about and that is in no checkout has no entry. Only a
+    /// herdr-core projection asks, to name a desktop space nobody named and to
+    /// know a Worktree. A caller goes through the Host's `GitExecGate`, as
+    /// Changes does.
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout]
+
+    /// One git command in one exec, the same way. A refusal comes back as its
+    /// status. A mutation past its deadline throws `TransportError.gitTimedOut`
+    /// and is not sent again. Only a herdr-core Worktree calls this.
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult
 
     /// Replaces one Host text file only while it still holds `expected`, or while
     /// there is none when `expected` is nil, and otherwise throws
@@ -194,7 +200,12 @@ extension HostServices {
     }
 
     /// A transport without Host commands cannot find a checkout.
-    func checkoutRoots(for directories: [String]) async throws -> [String: String] {
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        throw ChangesReadError.unavailable
+    }
+
+    /// A transport without Host commands cannot run git.
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
         throw ChangesReadError.unavailable
     }
 

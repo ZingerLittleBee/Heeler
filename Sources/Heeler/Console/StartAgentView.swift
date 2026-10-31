@@ -45,7 +45,8 @@ struct StartAgentView: View {
                 isAgentListed: { id in console.agents.contains { $0.id == id } },
                 programExit: { console.programExit(of: $0) },
                 origin: origin,
-                offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces }))
+                offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
+                offersConnectedWorktrees: { console.capabilities(for: $0).worktrees }))
     }
 
     var body: some View {
@@ -127,14 +128,18 @@ struct StartAgentView: View {
                         Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
                             .disabled(store.selectedWorkspaceID == nil)
                         if store.startsInNewWorktree {
-                            TextField("Branch (optional)", text: $store.worktreeBranch)
+                            TextField(
+                                store.worktreeNeedsBranch ? "Branch" : "Branch (optional)",
+                                text: $store.worktreeBranch)
                                 .font(.callout.monospaced())
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
-                            TextField("Base (optional)", text: $store.worktreeBase)
-                                .font(.callout.monospaced())
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
+                            if !store.worktreeNeedsBranch {
+                                TextField("Base (optional)", text: $store.worktreeBase)
+                                    .font(.callout.monospaced())
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                            }
                         }
                     } header: {
                         Text("Worktree")
@@ -142,6 +147,10 @@ struct StartAgentView: View {
                         if let message = store.worktreeBranchErrorMessage {
                             Text(message)
                                 .foregroundStyle(.red)
+                        } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
+                            Text(
+                                "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD."
+                            )
                         } else if store.startsInNewWorktree {
                             Text(
                                 "A fresh checkout of the workspace's repository. Empty fields use a generated worktree/ branch off HEAD."
@@ -269,7 +278,7 @@ struct StartAgentView: View {
             // fixed form cut them off under a scroll.
             .consoleSheetPage()
             .task(id: store.selectedHostID) {
-                if let hostID = store.selectedHostID { await console.checkDesktopApp(on: hostID) }
+                if let hostID = store.selectedHostID { await console.checkNewAgentOffers(on: hostID) }
             }
             .navigationTitle("New Agent")
             .navigationBarTitleDisplayMode(.inline)

@@ -74,6 +74,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func closeTab(_ tabID: String) async throws
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse
     func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
+    /// What removing this Worktree would lose, to warn of. Nil where the Host
+    /// refuses such a removal instead.
+    func worktreeRemovalRisk(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?
     func focusAgent(_ paneID: String) async throws
     /// The Agents some Agent detail on this device shows now.
     func setShownAgents(_ paneIDs: Set<String>)

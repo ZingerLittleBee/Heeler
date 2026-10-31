@@ -79,7 +79,11 @@ struct HostServicesSeamTests {
                 FilePatchRequest(topLevel: topLevel, path: Data("a.swift".utf8), isUntracked: false))
         }
         await #expect(throws: ChangesReadError.unavailable) {
-            _ = try await services.checkoutRoots(for: ["/home/dev/src/app"])
+            _ = try await services.checkouts(for: ["/home/dev/src/app"])
+        }
+        await #expect(throws: ChangesReadError.unavailable) {
+            _ = try await services.runGitCommand(
+                GitCommand(arguments: ["status"], directory: "/home/dev/src/app", isMutation: false))
         }
     }
 

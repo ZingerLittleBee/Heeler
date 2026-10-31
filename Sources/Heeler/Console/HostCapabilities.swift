@@ -65,10 +65,10 @@ extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
     /// core Host offers uploads once it is known to take them over SFTP: native
     /// Windows stages through the core's `terminal.put` instead (ADR 0032), and
-    /// has no Rename until one passes a test there. It offers Send and Stop once it
-    /// is known to be POSIX too, because the foreground that Send checks takes
-    /// another form on native Windows (ADRs 0032 and 0035). `coreKernel` is the
-    /// core Host's `uname -s`: its Chat opens on Linux, whose process reads a
+    /// has no Rename or Worktrees until each passes a test there. It offers Send
+    /// and Stop once it is known to be POSIX too, because the foreground that Send
+    /// checks takes another form on native Windows (ADRs 0032 and 0035). `coreKernel`
+    /// is the core Host's `uname -s`: its Chat opens on Linux, whose process reads a
     /// check of an Agent's session uses, for the one program built so far.
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
@@ -79,7 +79,7 @@ extension HostCapabilities {
         let coreChat = coreOnPosix && coreKernel == "Linux"
         self.init(
             opensDetail: true, startsAgents: true, startsTerminals: true,
-            renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
+            renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
             uploads: offered || coreOnPosix,
             composerSend: offered || coreOnPosix, chat: offered || coreChat,
             tabNames: offered, closeTab: true,

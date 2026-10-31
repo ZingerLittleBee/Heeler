@@ -968,9 +968,15 @@ final actor ScriptedTransport: Transport {
         return try outcome.get()
     }
 
-    /// Only a herdr-core projection asks for checkout roots.
-    func checkoutRoots(for directories: [String]) async throws -> [String: String] {
-        Issue.record("A Herdr TUI path asked for checkout roots: \(directories)")
+    /// Only a herdr-core projection asks for Checkouts.
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        Issue.record("A Herdr TUI path asked for Checkouts: \(directories)")
+        throw ChangesReadError.unavailable
+    }
+
+    /// Only a herdr-core Worktree runs git commands: herdr runs its own.
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
+        Issue.record("A Herdr TUI path ran git: \(command.arguments)")
         throw ChangesReadError.unavailable
     }
 

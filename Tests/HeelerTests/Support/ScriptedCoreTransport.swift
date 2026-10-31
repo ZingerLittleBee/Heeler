@@ -37,29 +37,61 @@ enum CoreDesktopJSON {
     }
 }
 
-/// The Host's exec side for store tests: checkout roots, the home directory and
-/// directory listings, recording every ask. Everything else keeps the seam's
-/// refusal.
+/// The Host's exec side for store tests: Checkouts, git commands, the home
+/// directory and directory listings, recording every ask. Everything else keeps
+/// the seam's refusal.
 actor ScriptedCoreServices: HostServices {
     private var roots: [String: String]
+    private var checkouts: [String: HostCheckout]
     private let home: String?
+    private let platform: HostPlatform
     private var failure: (any Error)?
     private var gate: ScriptedTransportCallGate?
 
     private let listings: [String: RemoteDirectoryListing]
 
-    /// The directories of each `checkoutRoots` call.
+    /// The directories of each `checkouts` call.
     private(set) var checkoutCalls: [[String]] = []
     /// The path of each directory listing.
     private(set) var listedPaths: [String] = []
+    /// Every git command, oldest first.
+    private(set) var gitCommands: [GitCommand] = []
+    private var gitAnswers: [[String]: Result<GitCommandResult, any Error>] = [:]
+    private var gitObserver: (@Sendable (GitCommand) async -> Void)?
 
+    /// `roots` name a directory's top level and nothing more. `checkouts` say
+    /// which repository too.
     init(
-        roots: [String: String] = [:], home: String? = nil,
+        roots: [String: String] = [:], checkouts: [String: HostCheckout] = [:],
+        home: String? = nil, platform: HostPlatform = .posix,
         listings: [String: RemoteDirectoryListing] = [:]
     ) {
         self.roots = roots
+        self.checkouts = checkouts
         self.home = home
+        self.platform = platform
         self.listings = listings
+    }
+
+    func hostPlatform() async throws -> HostPlatform { platform }
+
+    /// What a command with exactly these arguments answers from now on. Others
+    /// succeed with no output, as `show-ref` does not: it answers "no such branch".
+    func setGitAnswer(_ answer: Result<GitCommandResult, any Error>, for arguments: [String]) {
+        gitAnswers[arguments] = answer
+    }
+
+    /// Hears each git command as it runs, to see what had happened by then.
+    func observeGit(_ observer: @escaping @Sendable (GitCommand) async -> Void) {
+        gitObserver = observer
+    }
+
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
+        gitCommands.append(command)
+        await gitObserver?(command)
+        if let answer = gitAnswers[command.arguments] { return try answer.get() }
+        let status: Int32 = command.arguments.first == "show-ref" ? 1 : 0
+        return GitCommandResult(status: status, output: "", message: nil)
     }
 
     func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
@@ -84,12 +116,17 @@ actor ScriptedCoreServices: HostServices {
         self.gate = gate
     }
 
-    func checkoutRoots(for directories: [String]) async throws -> [String: String] {
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
         #expect(directories.count <= GitProbe.checkoutRootsPerCall)
         checkoutCalls.append(directories)
         if let gate { await gate.waitUntilOpen() }
         if let failure { throw failure }
-        return roots.filter { directories.contains($0.key) }
+        let named = roots.filter { directories.contains($0.key) }.mapValues { HostCheckout(root: $0) }
+        return named.merging(checkouts.filter { directories.contains($0.key) }) { _, full in full }
+    }
+
+    func setCheckouts(_ checkouts: [String: HostCheckout]) {
+        self.checkouts = checkouts
     }
 
     func hostHomeDirectory() async throws -> String {
@@ -170,6 +207,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// The Terminal of every `terminal.kill`, oldest first.
     private(set) var kills: [String] = []
     private var killAnswers: [String: Result<JSONValue, any Error>] = [:]
+    private var killObserver: (@Sendable (String) async -> Void)?
     /// Each `terminal.interrupt` and `terminal.get`, with its params, oldest first.
     private(set) var stopCalls: [(method: String, params: JSONValue)] = []
     private var interruptAnswer: Result<JSONValue, any Error> = .success(
@@ -328,6 +366,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         case "terminal.kill":
             let terminal = params["terminal"]?.stringValue ?? ""
             kills.append(terminal)
+            await killObserver?(terminal)
             return try (killAnswers[terminal] ?? .success(Self.killReply(address: terminal))).get()
         case "doc.get":
             documentReads.append(params["name"]?.stringValue ?? "")
@@ -492,6 +531,11 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// What a kill of this Terminal gets back instead of its ended record.
     func setKillAnswer(_ answer: Result<JSONValue, any Error>, for terminal: String) {
         killAnswers[terminal] = answer
+    }
+
+    /// Hears each kill before it is answered, while the caller still waits on it.
+    func observeKill(_ observer: @escaping @Sendable (String) async -> Void) {
+        killObserver = observer
     }
 
     /// What `terminal.interrupt` gets back.

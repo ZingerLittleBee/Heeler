@@ -92,6 +92,7 @@ struct WorktreeDetailView: View {
                 dismiss()
             }
             .task { await store.loadBranchIfNeeded() }
+            .task { await store.loadRemovalRiskIfNeeded() }
         }
     }
 

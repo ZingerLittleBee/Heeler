@@ -42,7 +42,7 @@ struct HerdrCoreOrganizationTests {
     ) -> HerdrCoreOrganization.Result {
         HerdrCoreOrganization.build(
             terminals: terminals, document: document, firstSeenDirectories: firstSeen,
-            checkouts: checkouts, home: home)
+            checkouts: checkouts.mapValues { HostCheckout(root: $0) }, home: home)
     }
 
     /// Each Workspace's name, then its Tabs' names, then each Tab's Panes.
@@ -76,8 +76,8 @@ struct HerdrCoreOrganizationTests {
 
         #expect(Self.outline(result) == ["Zeta: logs(t3), build(t2)", "Alpha: main(t1)"])
         #expect(result.snapshot.workspaces.map(\.number) == [1, 2])
-        // Named spaces need no checkout.
-        #expect(result.checkoutDirectories.isEmpty)
+        // A name needs no checkout, but knowing a Worktree does.
+        #expect(result.checkoutDirectories == ["/work/app"])
     }
 
     @Test func aTabHoldsItsPanesInTheDocumentsTreeOrder() throws {
@@ -170,7 +170,7 @@ struct HerdrCoreOrganizationTests {
             ], document: document, checkouts: ["/work/repo/src/deep": "/work/repo"])
 
         #expect(Self.outline(result) == ["Alpha: main(t2)", "repo: (t1 t3)"])
-        #expect(result.checkoutDirectories == ["/work/repo/src/deep"])
+        #expect(result.checkoutDirectories == ["/work/app", "/work/repo/src/deep"])
     }
 
     @Test func aSpaceTheDocumentLeftUnnamedIsNamedTheSameWay() throws {

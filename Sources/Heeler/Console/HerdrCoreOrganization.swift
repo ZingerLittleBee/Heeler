@@ -15,7 +15,8 @@ import Foundation
 enum HerdrCoreOrganization {
     struct Result: Sendable {
         let snapshot: SessionSnapshot
-        /// The directories whose checkout roots name an unnamed space here.
+        /// The directories whose Checkouts these Workspaces are in: one for each
+        /// Workspace, which also names an unnamed space.
         let checkoutDirectories: [String]
     }
 
@@ -33,6 +34,8 @@ enum HerdrCoreOrganization {
         let label: String
         var folder = ""
         var isDesktopSpace = false
+        /// The directory a derived Workspace is keyed by.
+        var keyDirectory = ""
         var tabs: [PlannedTab] = []
     }
 
@@ -44,7 +47,7 @@ enum HerdrCoreOrganization {
         terminals: [HerdrCoreTerminalRecord],
         document: HerdrCoreDesktopDocument?,
         firstSeenDirectories: [String: String],
-        checkouts: [String: String],
+        checkouts: [String: HostCheckout],
         home: String?,
         doneTerminals: Set<String> = []
     ) -> Result {
@@ -80,14 +83,18 @@ enum HerdrCoreOrganization {
             let members = workspace.tabs.map { tab in
                 ordered(tab).flatMap { [$0] + (children[$0.address] ?? []) }
             }
+            // Where the desktop app looks for a space's checkout too.
+            let directory =
+                workspace.isDesktopSpace
+                ? members.joined().first.map(liveDirectory) ?? "" : workspace.keyDirectory
+            let isCheckout = !directory.isEmpty && directory != home
+            if isCheckout, !checkoutDirectories.contains(directory) {
+                checkoutDirectories.append(directory)
+            }
+            let checkout = isCheckout ? checkouts[directory] : nil
             var label = workspace.label
-            if workspace.isDesktopSpace, label.isEmpty, let first = members.joined().first {
-                let directory = liveDirectory(of: first)
-                let isCheckout = !directory.isEmpty && directory != home
-                if isCheckout, !checkoutDirectories.contains(directory) {
-                    checkoutDirectories.append(directory)
-                }
-                let folder = isCheckout ? checkouts[directory] ?? directory : directory
+            if workspace.isDesktopSpace, label.isEmpty {
+                let folder = isCheckout ? checkout?.root ?? directory : directory
                 label = folderName(folder.isEmpty ? workspace.folder : folder, home: home)
             }
             for (tabPosition, tab) in workspace.tabs.enumerated() {
@@ -112,13 +119,24 @@ enum HerdrCoreOrganization {
                     agentStatus: .unknown, focused: false, label: label,
                     number: position + 1, paneCount: members.joined().count,
                     tabCount: members.filter { !$0.isEmpty }.count,
-                    workspaceID: workspace.id))
+                    workspaceID: workspace.id, worktree: checkout.flatMap(worktreeInfo)))
         }
         return Result(
             snapshot: SessionSnapshot(
                 agents: agents, layouts: [], panes: panes, protocolVersion: 0, tabs: tabs,
                 version: "", workspaces: workspaces),
             checkoutDirectories: checkoutDirectories)
+    }
+
+    /// The main checkout is the repository's identity, as a core has no other.
+    private static func worktreeInfo(_ checkout: HostCheckout) -> WorkspaceWorktreeInfo? {
+        checkout.mainCheckout.map { mainCheckout in
+            WorkspaceWorktreeInfo(
+                checkoutPath: checkout.root, isLinkedWorktree: checkout.isLinkedWorktree,
+                repoKey: mainCheckout,
+                repoName: HerdrCoreWorktrees.repositoryName(mainCheckout: mainCheckout),
+                repoRoot: mainCheckout)
+        }
     }
 
     // MARK: Placing one Terminal
@@ -194,7 +212,8 @@ enum HerdrCoreOrganization {
             derived[index].tabs.append(tab)
         } else {
             derived.append(
-                PlannedWorkspace(id: id, label: label(directory: directory), tabs: [tab]))
+                PlannedWorkspace(
+                    id: id, label: label(directory: directory), keyDirectory: directory, tabs: [tab]))
         }
     }
 

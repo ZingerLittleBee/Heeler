@@ -2744,13 +2744,31 @@ actor HeelerSSHTransport: Transport {
     }
 
     /// One script, one bounded exec, however many directories it was given.
-    func checkoutRoots(for directories: [String]) async throws -> [String: String] {
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
         guard !GitProbe.checkoutRootDirectories(directories).isEmpty else { return [:] }
         let nonce = GitProbe.makeNonce()
         let result = try await runGitScript(
             GitProbe.checkoutRootsScript(directories: directories, nonce: nonce))
         return try GitProbe.parseCheckoutRoots(
             stdout: result.stdout, stderr: result.stderr, nonce: nonce, directories: directories)
+    }
+
+    /// A checkout takes far longer to write than a read has to answer, and the
+    /// watchdog ending git partway through leaves a partial checkout behind.
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
+        let nonce = GitProbe.makeNonce()
+        let script = GitProbe.commandScript(command, nonce: nonce)
+        let result: GitExecResult
+        if command.isMutation {
+            let deadline = SSHTransportSettings.defaultGitMutationTimeout
+            result = try await runBoundedScript(
+                script, feature: "Worktrees", deadline: deadline,
+                remoteSeconds: max(1, deadline.components.seconds),
+                timeoutMarkerPrefix: "__HEELER_GIT_TIMEOUT_", timedOut: .gitTimedOut)
+        } else {
+            result = try await runGitScript(script)
+        }
+        return try GitProbe.parseCommand(stdout: result.stdout, stderr: result.stderr, nonce: nonce)
     }
 
     func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {

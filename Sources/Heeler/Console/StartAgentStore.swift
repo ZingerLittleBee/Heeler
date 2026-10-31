@@ -265,6 +265,9 @@ final class StartAgentStore {
     private let remoteHome: (Host.ID) async throws -> String
     /// Whether a Host's desktop app could apply a typed Workspace name now.
     private let offersDesktopAppNames: (Host.ID) -> Bool
+    /// Whether a connected Host serves Worktrees, which a herdr-core Host's
+    /// platform decides.
+    private let offersConnectedWorktrees: (Host.ID) -> Bool
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
@@ -298,9 +301,11 @@ final class StartAgentStore {
         programExit: @escaping (ConsoleAgent.ID) -> ProgramExit? = { _ in nil },
         origin: LaunchOrigin? = nil,
         recents: RecentWorkspaceStore = RecentWorkspaceStore(),
-        offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false }
+        offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false },
+        offersConnectedWorktrees: @escaping (Host.ID) -> Bool = { _ in false }
     ) {
         self.offersDesktopAppNames = offersDesktopAppNames
+        self.offersConnectedWorktrees = offersConnectedWorktrees
         self.hosts = hosts
         self.origin = origin
         self.workspacesProvider = workspaces
@@ -326,7 +331,15 @@ final class StartAgentStore {
     /// source Workspace to branch from.
     var offersWorktree: Bool {
         origin == nil && launchTarget == .existingWorkspace
-            && selectedHost?.capabilities.worktrees != false
+            && (selectedHost?.capabilities.worktrees != false
+                || selectedHostID.map(offersConnectedWorktrees) == true)
+    }
+
+    /// A herdr-core Host has no generated branch or base: Heeler makes the
+    /// Worktree as the Herdr desktop app does, on the branch the user names, from
+    /// the Workspace's HEAD (ADR 0032).
+    var worktreeNeedsBranch: Bool {
+        selectedHost?.serverKind == .herdrCore
     }
 
     /// Whether the form asks for Workspace and tab names. Its Agent name is
@@ -407,7 +420,13 @@ final class StartAgentStore {
             && nameErrorMessage == nil
             && hasCompleteAgentChoice
             && worktreeBranchErrorMessage == nil
+            && !isMissingNeededBranch
             && state != .starting
+    }
+
+    private var isMissingNeededBranch: Bool {
+        offersWorktree && startsInNewWorktree && worktreeNeedsBranch
+            && Self.nonEmptyTrimmed(worktreeBranch) == nil
     }
 
     /// A Template goes through no shell, so it stays open when discovery failed.
@@ -491,6 +510,7 @@ final class StartAgentStore {
             let hostID = selectedHostID,
             let launch = pendingLaunch,
             worktreeBranchErrorMessage == nil,
+            !isMissingNeededBranch,
             nameErrorMessage == nil
         else { return }
         isStarting = true
@@ -551,10 +571,12 @@ final class StartAgentStore {
             case .template(let template, let agentName):
                 var newWorkspace: NewWorkspaceSpec?
                 if case .newWorkspace(let spec) = destination { newWorkspace = spec }
+                var worktree: WorktreeSpec?
+                if case .newWorktree(let spec) = destination { worktree = spec }
                 agent = try await startTemplate(
                     TemplateLaunchRequest(
                         template: template.name, name: agentName, workspaceID: workspaceID,
-                        cwd: origin?.cwd, newWorkspace: newWorkspace),
+                        cwd: origin?.cwd, newWorkspace: newWorkspace, worktree: worktree),
                     hostID)
             }
             if case .newWorkspace = destination {
@@ -597,7 +619,7 @@ final class StartAgentStore {
                 return .newWorktree(
                     WorktreeSpec(
                         branch: Self.nonEmptyTrimmed(worktreeBranch),
-                        base: Self.nonEmptyTrimmed(worktreeBase)))
+                        base: worktreeNeedsBranch ? nil : Self.nonEmptyTrimmed(worktreeBase)))
             }
             return .existingWorkspace
         case .newWorkspace:
@@ -816,11 +838,18 @@ final class StartAgentStore {
             "The Host is not connected."
         case TransportError.timedOut:
             "The Host did not answer in time."
+        case TransportError.gitTimedOut:
+            "The Host's git did not answer in time."
         case TransportError.coreMutationOutcomeUnknown:
             "The Host did not confirm the launch. The Agent may still have started, "
                 + "so check the Host before trying again."
         case TransportError.hostFeatureUnavailable(let feature):
             feature
+        case let worktree as HerdrCoreWorktreeError:
+            worktree.message
+        case let failure as WorktreeAgentStartFailure:
+            "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. "
+                + message(for: failure.underlying, launchedKind: launchedKind)
         case let apiError as HerdrAPIError where apiError.code == "not_git_worktree":
             // The one dedicated worktree.create error code (#97); everything
             // else collapses into worktree_create_failed with raw git stderr,
