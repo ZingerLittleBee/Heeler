@@ -117,3 +117,23 @@ before confirming. Tap **Run Checks Again** after changing a state.
 | Not running | `server stop` by absolute path, or a session never used | The core's version, then **not running** |
 
 Detection must leave the Host as it found it too: no core or herdr server started.
+
+## Host Helper
+
+Use a Host whose user has never had the Helper, with linger off. Before installing,
+save `find ~/.local/share ~/.config/systemd -print 2>/dev/null | sort` so the end of
+the run can compare against it.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Install | Open the Host's detail, tap **Host Helper**, read the sheet, and tap **Install** | The sheet lists every file, the unit included, and those are the files on the Host. `XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status heeler-host-helper` is active, with the absolute Node.js path in its `ExecStart` |
+| Privacy | `ls -la` the Helper directory, its `app` folder and the unit | Directories `0700`, files `0600` |
+| Linger | Read the row with linger off, then tap **Turn On Linger** | The row reads **Linger Off**, the sheet offers linger, and `loginctl show-user $USER -p Linger` then reads `yes`. On a Host that asks for an administrator, the sheet shows the Host's reason |
+| Log out | End every login to the Host, wait a minute, and log back in | The Helper kept running: the same main PID, with no restart counted |
+| Restart | `kill -9` the Helper's Node.js process | systemd starts it again within seconds, `NRestarts` goes up by one, and the row still reads the version |
+| Node.js moved | Rename the Node.js executable, kill the Helper, wait past the start limit, then check the Host | The unit is `failed` with result `start-limit-hit`, and the row reads **Service Failed** or **Node.js Missing**. Restore Node.js and tap **Repair**: it runs again |
+| Damage | Change a byte in `app/main.js`, then check the Host | The row reads **Damaged**, and **Repair** puts the file back and keeps `notifications.json` |
+| Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched |
+
+Every step must leave the core as it found it: the Helper in this version only starts
+and stays running, and never connects to a core or starts one.
