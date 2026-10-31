@@ -9,7 +9,7 @@ import { checkpointCurrent } from "./usage/checkpoint.js";
 import { readUsageRuntime } from "./usage-runtime.js";
 import { claudeAccounts, readAccountFile } from "./usage/accounts.js";
 import { accountSuggestions } from "./usage/account-suggestions.js";
-import { agentDirectories } from "./usage/claude-agents.js";
+import { agentDirectories } from "./usage/agent-directories.js";
 
 /**
  * Start one detached worker unless another holds the lock; true while one runs.

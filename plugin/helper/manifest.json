@@ -50,6 +50,14 @@
       "sha256": "e27e055e882a665fb01058eb9f18604595204ae4efe2bd56d2262187ad921a52"
     },
     {
+      "path": "shared/usage/agent-directories.js",
+      "sha256": "27badcf037e5fac089760bdf1836c32416b47a214b568e5ec5f88227aaf38577"
+    },
+    {
+      "path": "shared/usage/cache.js",
+      "sha256": "174b15738163a8fda024d339b1bf529ff32e901a213a2c07da789e3edfaf3f7a"
+    },
+    {
       "path": "shared/usage/process-environment.js",
       "sha256": "d947513f4c02e1f93f1421f53a6e705b8a4dfcdaaf3f1d941394cd6078eb32f7"
     },
@@ -58,12 +66,16 @@
       "sha256": "85f3ee71cbc03f09cd6be2b5ffed4dfe3ed147ed81177535110fc70760688df7"
     },
     {
+      "path": "usage/claude-terminal.js",
+      "sha256": "1988bc703c77f73bfb38af0e2f80b68863fa5050399ecb3d0186e00ff842ea35"
+    },
+    {
       "path": "usage/layout.js",
       "sha256": "1590b6688dc07608b45438fbac5caaa0dc0464aeb6c705fa4f9268a37efacdd2"
     },
     {
       "path": "usage/recorder.js",
-      "sha256": "dc4b1877c7f8e907a8af0135db9c03ca6a209988d329ae40ad542a92ae67e10c"
+      "sha256": "de4207a03676239275e66a37ac07be64479d3fb18922a58385f076a4b830a16c"
     },
     {
       "path": "version.json",

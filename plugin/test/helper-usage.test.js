@@ -10,6 +10,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { join } from "node:path";
 
 import { followCoreSession } from "../helper/core/follower.js";
+import { agentDirectories } from "../helper/shared/usage/agent-directories.js";
 import { usageListener } from "../helper/usage/recorder.js";
 import { FakeCore, exchange, waitFor } from "./support/fake-core.js";
 
@@ -213,6 +214,131 @@ suite("the Helper's runtime record", () => {
     await waitFor(() => logs.some((line) => line.includes("cannot read")), "the log line", PATIENCE_MS);
 
     assert.equal(readRecord("work").env.CODEX_HOME, "/kept/codex");
+  });
+});
+
+suite("Claude Code Account suggestions", () => {
+  const stateDir = () => join(directory, "state");
+  const live = (address, fields) => ({ address, state: "live", pid: 1, ...fields });
+  const snapshot = (...terminals) => ({ channel: 1, seq: 1, terminals });
+
+  async function agentDirectory(name) {
+    const path = join(root, name);
+    mkdirSync(path);
+    return { path, process: await coreProcess({ HOME: root, CLAUDE_CONFIG_DIR: path }) };
+  }
+
+  async function startCore(options) {
+    const self = await coreProcess({ HOME: root });
+    const fake = await fakeCore("work", self.pid, options);
+    return fake;
+  }
+
+  test("come from the configuration directories of the Claude Code Agents the inventory holds", async () => {
+    const claude = await agentDirectory("claude-work");
+    const npm = await agentDirectory("claude-npm");
+    const ordinary = await agentDirectory("claude-ordinary");
+    const shell = await agentDirectory("claude-shell");
+    await startCore({
+      snapshot: snapshot(
+        live("t1", { foreground: { argv: ["/usr/local/bin/claude"], name: "claude", pid: claude.process.pid } }),
+        live("t2", {
+          foreground: {
+            argv: ["node", "/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js"],
+            name: "node",
+            pid: npm.process.pid,
+          },
+        }),
+        // Named no Agent: its environment says nothing about an Account.
+        live("t3", { foreground: { argv: ["vim", "claude"], name: "vim", pid: ordinary.process.pid } }),
+        // Claude Code exited: its report stays behind a plain shell.
+        live("t4", {
+          foreground: { argv: ["/bin/zsh"], name: "zsh", pid: shell.process.pid },
+          status: { app: "claude-code", state: "idle" },
+        }),
+      ),
+    });
+
+    follow("work");
+    await waitFor(() => agentDirectories(stateDir()).length === 2, "the Agents' directories", PATIENCE_MS);
+
+    assert.deepEqual(agentDirectories(stateDir()).sort(), [claude.path, npm.path].sort());
+  });
+
+  test("a Terminal reporting Claude Code counts when its foreground is no plain shell", async () => {
+    const reporting = await agentDirectory("claude-reporting");
+    await startCore({
+      snapshot: snapshot(
+        live("t1", {
+          foreground: { argv: ["some-wrapper"], name: "some-wrapper", pid: reporting.process.pid },
+          status: { app: "claude-code", state: "working" },
+        }),
+      ),
+    });
+
+    follow("work");
+    await waitFor(() => agentDirectories(stateDir()).length === 1, "the Agent's directory", PATIENCE_MS);
+
+    assert.deepEqual(agentDirectories(stateDir()), [reporting.path]);
+  });
+
+  test("an Agent started after the snapshot counts from its foreground event", async () => {
+    const claude = await agentDirectory("claude-later");
+    const fake = await startCore({ snapshot: snapshot(live("t1", {})) });
+
+    follow("work");
+    await waitFor(() => existsSync(recordPath("work")), "the connection", PATIENCE_MS);
+    assert.deepEqual(agentDirectories(stateDir()), []);
+
+    const line = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "event",
+      params: {
+        seq: 9,
+        terminal: "t1",
+        type: "foreground",
+        data: { argv: ["claude"], name: "claude", pid: claude.process.pid, cwd: root },
+      },
+    });
+    fake.last.sendEvents(`${line}\n`);
+
+    await waitFor(() => agentDirectories(stateDir()).length === 1, "the Agent's directory", PATIENCE_MS);
+    assert.deepEqual(agentDirectories(stateDir()), [claude.path]);
+  });
+
+  test("a reconnect looks at the Agents again, each pid once", async () => {
+    const claude = await agentDirectory("claude-again");
+    const terminal = live("t1", { foreground: { argv: ["claude"], name: "claude", pid: claude.process.pid } });
+    const fake = await startCore({ snapshot: snapshot(terminal) });
+    follow("work");
+    await waitFor(() => agentDirectories(stateDir()).length === 1, "the Agent's directory", PATIENCE_MS);
+    const noted = () => JSON.parse(readFileSync(join(stateDir(), "usage", "claude-agents.json"), "utf8"));
+    const first = noted();
+
+    fake.last.destroy();
+    await waitFor(() => fake.connections.length === 2, "the reconnection", PATIENCE_MS);
+    await waitFor(() => fake.last.methods.includes("events.subscribe"), "the subscribe", PATIENCE_MS);
+
+    assert.deepEqual(noted(), first);
+  });
+
+  test("an unset, relative or missing directory suggests nothing", async () => {
+    const unset = await coreProcess({ HOME: root });
+    const relative = await coreProcess({ HOME: root, CLAUDE_CONFIG_DIR: "relative/claude" });
+    const missing = await coreProcess({ HOME: root, CLAUDE_CONFIG_DIR: join(root, "no-such-directory") });
+    const last = await agentDirectory("claude-last");
+    await startCore({
+      snapshot: snapshot(
+        ...[unset, relative, missing, last.process].map((child, index) =>
+          live(`t${index}`, { foreground: { argv: ["claude"], name: "claude", pid: child.pid } }),
+        ),
+      ),
+    });
+
+    follow("work");
+    await waitFor(() => agentDirectories(stateDir()).length > 0, "a directory", PATIENCE_MS);
+
+    assert.deepEqual(agentDirectories(stateDir()), [last.path]);
   });
 });
 
