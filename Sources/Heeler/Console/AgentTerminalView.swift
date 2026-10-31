@@ -759,6 +759,7 @@ struct AgentTerminalView: View {
                 jumpNewer: { jumpToNewerMessageOrLive() },
                 lastViewportFrame: { messageJump.lastViewportFrame })
             composer.bindAttachInput(attach.input)
+            composer.bindCoreAttach(attach)
             // Arm before rejoin so a full pipeline replacement can claim the
             // keyboard while Direct Input still owns raised intent.
             if isOnStage() {

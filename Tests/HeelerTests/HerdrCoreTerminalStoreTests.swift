@@ -1150,10 +1150,10 @@ struct HerdrCoreTerminalStoreTests {
         ["Back to Console", "Add Image", "Add File", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.
-    private static let notBuiltLabels = ["Send", "Take Over", "Take Over Here"]
+    private static let notBuiltLabels = ["Take Over", "Take Over Here"]
 
-    /// A Composer that cannot send hides Send and the Stop in its place. Add
-    /// waits for the platform the connection reports.
+    /// The Agent is working and the draft blank, so Stop has Send's place. Add and
+    /// Send (ADR 0035) wait for the platform the connection reports.
     @Test func aCoreAgentsDetailShowsItsTerminalAndOffersOnlyWhatIsBuilt() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
@@ -1167,6 +1167,12 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the Composer") { detail.offers("Message the Agent") }
         for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
         try await Self.until("Add") { detail.offers("Add") }
+        #expect(detail.offers("Stop"))
+        #expect(!detail.offers("Send"))
+        fixture.console.composerStore(for: agent).replaceDraft(with: "and the tests")
+        try await Self.until("Send") { detail.offers("Send") }
+        #expect(!detail.offers("Stop"))
+        fixture.console.composerStore(for: agent).replaceDraft(with: "")
 
         let menus = try await HostedMenu.items(labeled: "More", in: detail.window)
         #expect(Set(menus) == Self.coreAgentMenus, "\(menus)")
@@ -1174,8 +1180,9 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    /// Native Windows stages through the core, which is not built yet.
-    @Test func aNativeWindowsCoreAgentsComposerOffersNoAdd() async throws {
+    /// Native Windows stages through the core and has its own Send ticket,
+    /// neither built yet.
+    @Test func aNativeWindowsCoreAgentsComposerOffersNoAddAndNoSend() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         await fixture.scripted.helper.configure { $0.platform = .nativeWindows }
         let agent = try #require(fixture.console.agents.first)
@@ -1186,13 +1193,14 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .nativeWindows }
         await Task.yield()
         #expect(!detail.offers("Add"))
+        #expect(!detail.offers("Send"))
         await detail.close()
         await fixture.finish()
     }
 
     /// Stop takes Send's place, through the core and no key of Heeler's, and goes
     /// with the Agent even for a detail still on it.
-    @Test(.enabled(if: coreComposerOffersSend))
+    @Test
     func aWorkingCoreAgentsStopGoesThroughTheCoreUntilAShellHoldsTheForeground() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
@@ -1228,7 +1236,7 @@ struct HerdrCoreTerminalStoreTests {
     }
 
     /// Esc does not stop Grok Build's turns, so its terminal Composer keeps Send.
-    @Test(.enabled(if: coreComposerOffersSend))
+    @Test
     func aWorkingGrokBuildAgentsComposerKeepsSend() async throws {
         guard case .object(var grok) = Self.agentRecord else { return }
         grok["argv"] = .array([.string("grok")])
@@ -2150,10 +2158,6 @@ private final class HostedDetailSelection {
     /// change does.
     var detailGeneration = 0
 }
-
-/// Stop shows in Send's place, so a test of it needs the Composer to offer Send on
-/// a core Host, which 'Composer Send on herdr-core' turns on.
-private let coreComposerOffersSend = HostCapabilities(serverKind: .herdrCore, platform: .posix).composerSend
 
 /// Builds its detail in its body, as the Console does, so nothing outside the
 /// view graph keeps the detail's state alive after it leaves.

@@ -110,6 +110,7 @@ final class ConsoleStore {
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
     @ObservationIgnored private let herdrAppRename: Bool
+    @ObservationIgnored private let coreSendClock: BlockedCardClock
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     @ObservationIgnored private let coreStopClock: BlockedCardClock
     /// A core Host's connection for the files rooted at its Host Helper, dialed
@@ -185,8 +186,10 @@ final class ConsoleStore {
         coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
-        herdrAppRename: Bool = HerdrAppControl.isRenameOn
+        herdrAppRename: Bool = HerdrAppControl.isRenameOn,
+        coreSendClock: BlockedCardClock = .live
     ) {
+        self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.coreStopClock = coreStopClock
         self.herdrAppRename = herdrAppRename
@@ -635,10 +638,18 @@ final class ConsoleStore {
     func composerSession(for agent: ConsoleAgent) -> AgentComposerSession {
         if let existing = composerSessions[agent.id] { return existing }
         let hostID = agent.hostID
+        let coreSend =
+            projections[hostID] is HerdrCoreConsoleProjection
+            ? HerdrCoreComposerSend(
+                address: agent.agent.paneID,
+                projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
+                clock: coreSendClock)
+            : nil
         let composer = AgentComposerStore(
             target: agent.agent.paneID,
             initialStatus: agent.agent.status,
-            statusUpdates: agentStatusUpdates(for: agent.id)
+            statusUpdates: agentStatusUpdates(for: agent.id),
+            coreSend: coreSend
         ) { [weak self] params in
             guard let self else { throw TransportError.cancelled }
             return try await self.promptAgent(params, on: hostID)

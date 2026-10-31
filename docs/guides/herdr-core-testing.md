@@ -36,7 +36,7 @@ make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
 
 It authorizes a throwaway key through `instabox port-forward`, writes the fixture's
 startup files into its own directory for the launch method, so the account's own
-stay as they are, runs the eight methods of `HerdrCoreTransportE2ETests` on the
+stay as they are, runs the nine methods of `HerdrCoreTransportE2ETests` on the
 Simulator, then starts a core for a unique session and checks:
 
 - the `hc-serve-*` and `hc-hold-*` user units
@@ -122,7 +122,7 @@ many are open.
 | Second viewer | `hc attach <terminal>` on the box at another size, then type in Heeler | The program takes Heeler's size when you type; no Take Over appears anywhere on the Host |
 | Retained terminals | Open six Terminals in turn and go back | Five stay retained for five minutes and come back at once; the sixth detaches the least recently viewed idle one, which attaches afresh when you return to it |
 | End of a program | `exit` in a Terminal, kept or not | **Terminal Closed** with **Back to Console**, and no error or **Reattach** |
-| Agent detail | Open a core Agent | Live terminal, Changes, Skills and Stop work; Add stages an image and a file on macOS and Linux and is hidden on native Windows; Direct Input types into the terminal |
+| Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send and Stop work, and Add stages an image and a file, on macOS and Linux, and all three are hidden on native Windows; Direct Input types into the terminal |
 | Two windows | On an iPad, show one core Agent in two windows, open Changes in the first and come back | Each window keeps a live terminal of its own, and typing in either reaches the program |
 | Window size | On an iPad, resize a window showing a core Agent across compact and regular widths, then leave the Agent | The same terminal and scrollback stay on screen with one viewer, and the viewer closes five minutes after you leave |
 | Closed window | On an iPad, close one of two windows showing the same core Agent | The other window's terminal stays live; if the closed window retained the Terminal, its viewer stops being reported and closes after five minutes; if it held the second viewer, that viewer closes at once and `terminal.get` shows the size follows the window left |
@@ -205,6 +205,34 @@ account.
 | A second file | With the edit applied, start another `grok` with `GROK_HOME` naming a scratch folder, and tap its **Unknown** | The offer shows, not the first file's edit. Apply shows that folder's `config.toml`, and **Harness Edits** lists both files. **Undo** on the first file's row restores that file and leaves the other |
 | Symlink | Make the file a symlink and repeat Apply and Undo | It stays a symlink, and the target takes the change |
 | Others untouched | Compare Claude Code's settings, Codex's hooks and `~/.grok`'s global hooks before and after | No change |
+
+## Composer Send
+
+`composerPasteThenSubmit` holds the bytes against a stub on the scripted check's real
+core. These steps need the harnesses themselves, a real account's shell, or a slow
+link. Record each version, and each result beside the check it answers.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Claude Code, Codex, Pi | Run Claude Code and Codex against the mock API, and Pi, each in a core Terminal. Send a multi-line message from the Composer | The whole message reaches the Agent as one message and it starts working. The Composer shows it delivered |
+| Blocked | Make Claude Code ask for permission, then Send | The text appears in its input, nothing answers the dialog, and the tools keyboard comes up to submit or cancel |
+| Not accepting a paste | A program in a core Terminal with bracketed paste off, as `cat`, then Send | Nothing reaches it. The draft stays and the notice says **not accepting a paste** |
+| Exit race | Under each of bash, fish and dash, start an Agent stand-in that exits as it reads a paste, with the desktop app's wrapper so its shell continues under the same pid (`composerPasteThenSubmit` has the program), then Send `touch /tmp/sent-to-shell` | No file. The shell's line is empty, the draft stays, and the notice says **no longer in the terminal**. Note any shell whose line keeps the text |
+| Child note | With a Claude Code parent, make an `hc run` child exit during the two seconds after a Send, so the core types its note | Record what reached the Agent: the message, the note, and whether the note's Enter submitted them together. ADR 0035's two seconds exist to bound this |
+| Slow link | Run Heeler through a weak-network proxy that delays each way by more than two seconds, then Send to an idle Agent | Nothing is submitted, the text stays in the Agent's input, and the notice says **stayed in the Agent's input unsubmitted**. With replies dropped entirely, the Composer shows the unanswered row, with **Edit Draft** and no Retry, and nothing arrives twice |
+
+### zsh and one Ctrl+C
+
+Use a throwaway account whose login shell is zsh. It needs a real account because what
+zsh does with a paste it is still reading depends on its line editor. Run the exit race
+above, and look at the prompt line after Send's Ctrl+C.
+
+Until this is recorded, Send presses Ctrl+C under zsh and always says **may still be in
+the terminal**. The conservative part is that notice, never skipping the Ctrl+C. If zsh
+drops the text, add it to `shellsDroppingPasteOnInterrupt` in `HerdrCoreComposerSend`.
+If it keeps the text, amend [ADR 0035](../adr/0035-herdr-core-composer-sends-through-the-attach.md)
+so Send skips Ctrl+C under zsh while still saying so. Either way, record the result in
+[herdr compatibility](../agents/herdr-compatibility.md).
 
 ## Done per device
 

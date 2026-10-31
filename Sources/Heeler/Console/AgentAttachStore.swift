@@ -488,6 +488,16 @@ final class AgentAttachStore {
         terminal.retry()
     }
 
+    /// A Composer Send needs a live Attach: brings back one that ended or left.
+    /// Any other state is already on its way, or has nothing to attach to.
+    func openForSend() {
+        if lifecycleState != .active {
+            rejoin()
+        } else {
+            retryTerminal()
+        }
+    }
+
     func confirmClose() async -> Bool {
         await close.confirmClose()
         guard close.state == .closed else { return false }
