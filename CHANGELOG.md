@@ -9,6 +9,8 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Pull the Composer down by the grabber along its top edge to hide the
+  keyboard.
 - Pair a herdr that runs with its own config home, such as a per-project
   instance or a profile started by a wrapper script. Its pairing popup now
   shows a Pairing Code v2 that names its socket and a launcher the plugin

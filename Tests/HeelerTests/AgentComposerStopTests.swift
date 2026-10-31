@@ -65,6 +65,31 @@ struct AgentComposerCollapseTests {
     }
 }
 
+@Suite("Agent Composer keyboard pull")
+struct AgentComposerKeyboardPullTests {
+    @Test func theCardFollowsDownwardOnlyAndStopsAtItsLimit() {
+        #expect(AgentComposerKeyboardPull.offset(translation: -30) == 0)
+        #expect(AgentComposerKeyboardPull.offset(translation: 0) == 0)
+        #expect(AgentComposerKeyboardPull.offset(translation: 20) == 10)
+        #expect(AgentComposerKeyboardPull.offset(translation: 400) == 44)
+    }
+
+    @Test func aFarEnoughReleaseHidesTheKeyboard() {
+        #expect(AgentComposerKeyboardPull.hidesKeyboard(translation: 44, predictedTranslation: 44))
+        #expect(!AgentComposerKeyboardPull.hidesKeyboard(translation: 43, predictedTranslation: 43))
+    }
+
+    @Test func aShortFlickDownHidesTheKeyboard() {
+        #expect(AgentComposerKeyboardPull.hidesKeyboard(translation: 12, predictedTranslation: 200))
+        #expect(!AgentComposerKeyboardPull.hidesKeyboard(translation: 12, predictedTranslation: 60))
+    }
+
+    @Test func flingingBackUpOrEndingAboveTheStartCancels() {
+        #expect(!AgentComposerKeyboardPull.hidesKeyboard(translation: 90, predictedTranslation: -40))
+        #expect(!AgentComposerKeyboardPull.hidesKeyboard(translation: -10, predictedTranslation: 200))
+    }
+}
+
 /// One Esc per tap, then a wait on Agent Status: an Esc landing after the
 /// turn ended can open the program's own history menus.
 @MainActor

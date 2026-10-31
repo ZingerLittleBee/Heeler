@@ -13,6 +13,37 @@ enum AgentComposerKeyboardPresentation: Equatable {
     }
 }
 
+/// Pulling the Composer's grabber down to hide the keyboard. The system's
+/// interactive dismissal belongs to scroll views and starts only once the
+/// finger reaches the keyboard, a whole card away from here, so the card
+/// follows the finger itself and the keyboard goes on release.
+enum AgentComposerKeyboardPull {
+    /// The grabber's touch area: it reaches this far above the card, into
+    /// the gap under the status line, and stops short of the input's text.
+    static let touchOverhang: CGFloat = 6
+    static let touchHeight: CGFloat = 22
+    /// Narrower than the card, clear of the screen edge's back gesture.
+    static let touchWidth: CGFloat = 160
+
+    private static let hidingDistance: CGFloat = 44
+    private static let flickDistance: CGFloat = 120
+    private static let followFactor: CGFloat = 0.5
+    private static let maximumOffset: CGFloat = 44
+
+    /// Downward only, and slower than the finger: the card is sliding behind
+    /// the keyboard.
+    static func offset(translation: CGFloat) -> CGFloat {
+        min(max(0, translation) * followFactor, maximumOffset)
+    }
+
+    /// Far enough on release, or flicked down. Flinging back up, or letting
+    /// go above the start, cancels.
+    static func hidesKeyboard(translation: CGFloat, predictedTranslation: CGFloat) -> Bool {
+        guard translation > 0, predictedTranslation >= hidingDistance else { return false }
+        return translation >= hidingDistance || predictedTranslation >= flickDistance
+    }
+}
+
 struct AgentComposerKeyboardLayout: Equatable {
     /// Used only when `lastPresentedHeight` is still zero. Any positive
     /// measurement is the tools footprint as-is, even when it is shorter
@@ -202,6 +233,10 @@ struct AgentComposerView: View {
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
     @State private var isDropTargeted = false
+    /// How far the card follows a pull on its grabber; the Composer's layout,
+    /// and so the terminal's size, stays put.
+    @GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.3)))
+    private var keyboardPullOffset: CGFloat = 0
 
     private var isToolsKeyboardPresented: Bool {
         keyboardPresentation == .tools
@@ -246,12 +281,14 @@ struct AgentComposerView: View {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .stroke(composerCardStroke, lineWidth: dropHighlight.strokeWidth)
                 }
+                .overlay(alignment: .top) { keyboardGrabber }
                 .composerDropDestination(
                     isEnabled: ComposerDropPolicy.acceptsDrops(in: inputMode),
                     isTargeted: $isDropTargeted,
                     accept: { store.acceptDrop($0) }
                 )
                 .padding(.horizontal, 12)
+                .offset(y: keyboardPullOffset)
             }
             .padding(.vertical, 8)
 
@@ -298,6 +335,42 @@ struct AgentComposerView: View {
                 Task { await skills.loadIfNeeded() }
             }
         }
+    }
+
+    /// Pull down to hide the keyboard. It sits in the card's top inset, so
+    /// showing it moves nothing, and shows only while there is a keyboard to
+    /// hide. The Switcher row's keyboard button does the same for VoiceOver.
+    private var keyboardGrabber: some View {
+        Capsule()
+            .fill(keyboardPullOffset > 0 ? HierarchicalShapeStyle.secondary : .tertiary)
+            .frame(width: 36, height: 5)
+            .padding(.top, 5 + AgentComposerKeyboardPull.touchOverhang)
+            .frame(
+                width: AgentComposerKeyboardPull.touchWidth,
+                height: AgentComposerKeyboardPull.touchHeight,
+                alignment: .top
+            )
+            .contentShape(Rectangle())
+            .offset(y: -AgentComposerKeyboardPull.touchOverhang)
+            .opacity(isKeyboardPresented ? 1 : 0)
+            .animation(.easeOut(duration: 0.2), value: isKeyboardPresented)
+            .allowsHitTesting(isKeyboardPresented)
+            .gesture(
+                // Global, since the card moves under the finger.
+                DragGesture(minimumDistance: 6, coordinateSpace: .global)
+                    .updating($keyboardPullOffset) { value, offset, _ in
+                        offset = AgentComposerKeyboardPull.offset(translation: value.translation.height)
+                    }
+                    .onEnded { value in
+                        guard
+                            AgentComposerKeyboardPull.hidesKeyboard(
+                                translation: value.translation.height,
+                                predictedTranslation: value.predictedEndTranslation.height)
+                        else { return }
+                        hideKeyboard()
+                    }
+            )
+            .accessibilityHidden(true)
     }
 
     /// The input with its suggestions, notices and actions; a card in its
@@ -587,18 +660,17 @@ struct AgentComposerView: View {
     }
 
     private func dismissOrPresentKeyboard() {
-        if isToolsKeyboardPresented {
-            setKeyboardPresentation(.hidden)
-            isInputFocused = false
+        if isKeyboardPresented {
+            hideKeyboard()
         } else {
-            if isInputFocused {
-                setKeyboardPresentation(.hidden)
-                isInputFocused = false
-            } else {
-                setKeyboardPresentation(.system)
-                isInputFocused = true
-            }
+            setKeyboardPresentation(.system)
+            isInputFocused = true
         }
+    }
+
+    private func hideKeyboard() {
+        setKeyboardPresentation(.hidden)
+        isInputFocused = false
     }
 
     private func switchKeyboard() {
