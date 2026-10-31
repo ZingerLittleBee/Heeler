@@ -73,6 +73,9 @@ that Heeler can read from outside the process.
   `session`, `file` when the session has one, `pid`, and `start` as the app's
   process reader reads it where the platform has one. Only the program holding
   the Terminal writes it, never a subagent or a headless run a tool started.
+  The extension runs inside those programs, and the Helper's own process
+  loads no extension and can start no process. The extension's one child is
+  `/bin/ps`, reading its `start` on macOS, which has no `/proc`.
   Pi and Oh My Pi get the same file, `heeler-session.js`: Pi's version resolves
   only under Pi, so the status part stays silent under Oh My Pi. The profiles
   are read on the Host by the Helper's own `extension-folders.js`, which the
