@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0",
+  "version": "0.5.0",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -30,6 +30,10 @@
       "sha256": "30d724c74f7e472635262c38c3bede1fb3e6e2901bc8852c6d01f196cd952ea0"
     },
     {
+      "path": "core/turn-fold.js",
+      "sha256": "4a835f1dbef3a20782a4b1376fd8d8cd33d63ebff1f423eab1279e50acf90cf9"
+    },
+    {
       "path": "core/turn-state.js",
       "sha256": "cd0d5caa0a5051661a4a4d6b34d421f68efd5dd38f67d1b6c8bb00e5c71c3eca"
     },
@@ -43,23 +47,39 @@
     },
     {
       "path": "main.js",
-      "sha256": "f452e8153eefa71150cc35b5fc49818a99eceb8aab593272f03f8edad9f3f808"
+      "sha256": "381fc7e363fe93b3651b87d643adce54eab8dfacc9c1521703679521628343bc"
+    },
+    {
+      "path": "notifications/activity.js",
+      "sha256": "d90e2e2497d7be5a794e9cdfa49cdadabc00f48fb182af1e6b9cd0d41183e7b9"
     },
     {
       "path": "notifications/notifier.js",
-      "sha256": "1e27800e88bdc06200f33c862c42640402625252c0b13b01233e5036d4dcd6a5"
+      "sha256": "2814024d37f11db6c6a786dc8ebb74dde638f6aad12677a23d40daab1a7e1369"
     },
     {
       "path": "notifications/seen-marks.js",
-      "sha256": "0b1ddc4b3be8aa898745069d03592d6111dcc257733e3256fc5b1056256eec8c"
+      "sha256": "ca6873fa7e48e8b1eafc2143a8189dff796a51d3b1b62afd9a238ed518e30439"
     },
     {
       "path": "package.json",
       "sha256": "1ddf832cd627a5c8a58aaee4a2788a2b3a9f23d86d6c3183d56d1c34f7955930"
     },
     {
+      "path": "shared/activity-envelope.js",
+      "sha256": "5744f5f3bb68c948123bb8742dfa5e6b7526873341157070105ae64844ecded0"
+    },
+    {
       "path": "shared/activity-rows.js",
-      "sha256": "4219ba8aa21e9d8fd2a734a8c87c2fe9845280ef95beb1b9e19bafa8a32643be"
+      "sha256": "0369ceab019c883ba4e724b68f812830342576101a7b6f05cce30eb356fc46a1"
+    },
+    {
+      "path": "shared/activity-state.js",
+      "sha256": "9e6fc10bacccd383edf55ccc2f4c64b39f52c2dad2fa2a462f0910e730944ae0"
+    },
+    {
+      "path": "shared/delivery/activity-seal.js",
+      "sha256": "07b26ef76df758b34822e6502d3a37636efd3981e286aec2daa72e0c1b4e5bc1"
     },
     {
       "path": "shared/delivery/push.js",
@@ -187,7 +207,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "da9da2c003b8eee13e6a8b295dadb7e37740a6616eadf890d60a353cc33d37d1"
+      "sha256": "bc865168af566e72b6c4d06c64c92bdb4a5c705faee7d8ca8a33e6bf4306d866"
     }
   ]
 }

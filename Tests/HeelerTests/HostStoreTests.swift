@@ -509,7 +509,7 @@ struct HostStoreTests {
         #expect(store.consoleHosts == [tui, core])
         #expect(store.supportsLiveActivities(for: tui.id))
         #expect(!store.supportsLiveActivities(for: unconfirmed.id))
-        #expect(!store.supportsLiveActivities(for: core.id))
+        #expect(store.supportsLiveActivities(for: core.id))
         #expect(!store.supportsLiveActivities(for: UUID()))
 
         let confirmed = try store.confirmServerKind(.herdrTUI, for: unconfirmed.id)

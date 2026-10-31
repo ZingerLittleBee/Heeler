@@ -476,6 +476,26 @@ to a harness for this: use a throwaway program that reports status, or the mock 
 | Helper states | Stop the service, then hide Node.js from it | **Settings > Notifications** names **Service Failed**, then **Node.js Missing** |
 | Native Windows | Open **Settings > Notifications** with a native Windows core Host | It reads that Agent Notifications, in-app banners included, and Live Activity come with the Host Helper and are not available there yet |
 
+### Banners and Live Activity
+
+Keep the fake relay for the first table. `activity_debounce_ms` in `notify.json` sets the Live Activity debounce, 1500 by default. A fake relay's log shows `kind: liveactivity` bodies beside the alert bodies, and the counts in them are plaintext.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Blocked banner | With Heeler open on the Console and this device registered, make an Agent ask for permission | A banner after about three seconds, reading **Blocked — waiting for input** |
+| Error banner | Make an Agent report error | A banner reading **Error**. With the Blocked switch's entry flag off in `notifications.json` and the app refreshed, none |
+| Done banner | Let an Agent finish a turn while you are on the Console | A banner reading **Done**. Repeat with the Agent open: none |
+| No registration | Turn the Host off in **Settings > Notifications**, repeat the steps above | No banners, and any activity for the Host ends |
+| No Helper | Remove the Helper with the Host still known | No banners and no **Live Activity** switch |
+| Token | Turn on **Live Activity** for the Host with an Agent Working | `live_activity.token` appears in this device's entry in the Helper directory. `~/.config/herdr/plugins` has no change |
+| Update | Move an Agent from Working to Blocked with Heeler suspended | One `update` body with priority 10 and `blocked` 1. Decrypting the envelope with the device's key gives the Agent as `blocked` |
+| Error count | Make an Agent report error with Heeler suspended | `blocked` counts it, the body has no other count, and its entry reads `blocked`. Moving it from Blocked to Error sends nothing |
+| Per-device Done | With two devices registered, open the Agent on one until its turn ends | The other device's body counts `done` 1, this one's `done` 0 |
+| End | Let the last Agent go idle with no Done left for the device | One `end` body with zero counts and a `dismissal_date`, and none after it |
+| Dismissed (real relay) | Dismiss the activity on a real device, change an Agent's status | The relay's 410 removes `live_activity` from the entry. Its `token`, `key` and `notify` stay |
+| Older Helper | Register on Host Helper 0.4.0 | Notifications work, no **Live Activity** switch, and a note asks for a newer Helper |
+| Suspended (real relay) | Start an activity on a real device, suspend Heeler, change statuses | The Lock Screen updates, then ends when nothing is left |
+
 ### Usage
 
 Use a throwaway `CLAUDE_CONFIG_DIR`, for example `~/heeler-usage-lab`, that the SSH session's environment lacks, and put a small Transcript with known token counts under its `projects/`. Add a unique marker to the core's environment, `HEELER_LAB_MARKER=not-listed`. Add the Host with the session you start. Never sign in to a harness for these steps, and leave out **Claude Code limits** unless the Host has a throwaway sign-in. Remove the directory when done.
