@@ -483,6 +483,17 @@ struct HerdrCoreAgentsTests {
         #expect(tui.terminalAccess(nil) == .holds)
     }
 
+    @Test func newTerminalIsOfferedBesideATerminalOnlyWhereItCanBeStarted() {
+        let core = HostCapabilities(serverKind: .herdrCore)
+        #expect(core.newTerminalRequest(workspaceID: "w1", cwd: "/srv/app") == nil)
+
+        let tui = HostCapabilities(serverKind: .herdrTUI)
+        #expect(
+            tui.newTerminalRequest(workspaceID: "w1", cwd: "/srv/app")
+                == ShellTerminalCreationRequest(workspaceID: "w1", cwd: "/srv/app"))
+        #expect(tui.newTerminalRequest(workspaceID: "w1", cwd: "") == nil)
+    }
+
     /// What the menus offer on a core Host, from the capabilities that build
     /// them: live terminal tools stay, and what is not built yet is gone.
     @Test func aCoreAgentsMenusHideWhatIsNotBuiltYet() {

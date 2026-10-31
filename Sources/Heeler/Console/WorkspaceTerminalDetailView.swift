@@ -188,13 +188,10 @@ struct WorkspaceTerminalDetailView: View {
             isCreatingTerminal: isCreatingTerminal)
     }
 
-    /// A new tab opens beside this one, in its directory. Like Agent
-    /// detail's Open Terminal, a pane without a usable directory offers no
-    /// New Terminal rather than letting herdr pick some other Pane's cwd.
+    /// A new tab opens beside this one, in its directory.
     private var creationRequest: ShellTerminalCreationRequest? {
-        let cwd = terminal.cwd
-        guard cwd.hasPrefix("/") else { return nil }
-        return ShellTerminalCreationRequest(workspaceID: terminal.workspaceID, cwd: cwd)
+        console.capabilities(for: terminal.hostID)
+            .newTerminalRequest(workspaceID: terminal.workspaceID, cwd: terminal.cwd)
     }
 
     private func createTerminal() {

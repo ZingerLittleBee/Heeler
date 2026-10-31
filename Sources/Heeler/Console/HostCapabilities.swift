@@ -23,6 +23,14 @@ struct HostCapabilities: Equatable, Sendable {
 
     func renameWorkspace(id: String) -> Bool { renamesWorkspaces }
 
+    /// What New Terminal asks for beside a Terminal in this directory. Nil on a
+    /// Host that starts none, and for a directory that is not usable, rather
+    /// than letting the server pick some other Pane's.
+    func newTerminalRequest(workspaceID: String, cwd: String) -> ShellTerminalCreationRequest? {
+        guard startsTerminals, cwd.hasPrefix("/") else { return nil }
+        return ShellTerminalCreationRequest(workspaceID: workspaceID, cwd: cwd)
+    }
+
     /// What a window may do with this Host's terminals. Windows only take
     /// turns where a terminal has one holder.
     func terminalAccess(_ sceneAccess: HostTerminalAccess?) -> HostTerminalAccess {
