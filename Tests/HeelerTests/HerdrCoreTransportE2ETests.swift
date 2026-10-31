@@ -304,6 +304,11 @@ struct HerdrCoreTransportE2ETests {
                 #expect(found.executables == ["heeler-rc-stub"])
                 #expect(found.version == "rc-stub")
 
+                // The pickers' browsing reads the Host over the same connection.
+                try await fixture.makeDirectory("\(launchHome)/browse/inner")
+                let listing = try await transport.hostServices.listDirectories(at: "\(launchHome)/browse")
+                #expect(listing.directories == ["inner"])
+
                 // The `HOME` only keeps a lab account's own startup files out.
                 let arguments = ["two words", "it's", "$HOME"]
                 let reply = try await transport.runTerminal(
