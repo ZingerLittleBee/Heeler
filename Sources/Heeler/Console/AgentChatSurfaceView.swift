@@ -313,6 +313,10 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
+        .onChange(of: chat?.sendStatuses, initial: true) { _, statuses in
+            guard let statuses else { return }
+            composer.settleUnknownOutcomes(recorded: Set(statuses.filter { $0.value == .recorded }.keys))
+        }
         .onChange(of: chat.map { $0.blocked.content != .none } ?? false) { _, isReplaced in
             // A Blocked card takes the Composer's place and the tools dock
             // with it. iPad keeps `.tools` without focus, so nothing else

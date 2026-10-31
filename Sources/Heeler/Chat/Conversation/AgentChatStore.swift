@@ -87,7 +87,8 @@ final class AgentChatStore {
         let id: UUID
         /// What herdr typed: the draft after Chat's rewrite.
         let text: String
-        /// `agent.prompt` took it, so the program may record it.
+        /// `agent.prompt` took it, or a herdr-core step got no answer: either
+        /// way the program may record it.
         let isDelivered: Bool
     }
 

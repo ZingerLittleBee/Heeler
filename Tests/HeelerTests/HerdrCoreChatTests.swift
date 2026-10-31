@@ -599,6 +599,36 @@ struct HerdrCoreChatTests {
         #expect(await table.requests.count == 2)
     }
 
+    /// A Send whose answer was lost, once the Transcript shows the core delivered it.
+    @Test func aSendWithNoAnswerSettlesWhenTheTranscriptRecordsIt() async throws {
+        let table = ScriptedProcessTable()
+        await table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, name: "claude", start: Self.start, environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        let files = VirtualHostFiles(home: Self.home)
+        await files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await files.write(try Self.transcript(), at: Self.transcriptPath())
+        let chat = try evidenceStore(table: table, files: files)
+        await chat.step()
+
+        let id = UUID()
+        let text = "the answer to this was lost"
+        chat.updateSends([AgentChatStore.SentMessage(id: id, text: text, isDelivered: false)])
+        chat.updateSends([AgentChatStore.SentMessage(id: id, text: text, isDelivered: true)])
+        await chat.step()
+        #expect(chat.sendStatuses[id] == .awaiting)
+
+        await files.append(Self.userLine(text), to: Self.transcriptPath())
+        await chat.step()
+        #expect(chat.sendStatuses[id] == .recorded)
+    }
+
+    private static func userLine(_ text: String) -> String {
+        let uuid = UUID().uuidString.lowercased()
+        return #"{"type":"user","uuid":"\#(uuid)","timestamp":"2026-11-01T00:00:00.000Z","sessionId":"\#(first)","message":{"role":"user","content":"\#(text)"}}"#
+            + "\n"
+    }
+
     /// `/clear` while Chat reads the old conversation's file, and that read fails:
     /// the turn it reported still gets its check.
     @Test func anEventDuringAFailedOpenStillChecks() async throws {
