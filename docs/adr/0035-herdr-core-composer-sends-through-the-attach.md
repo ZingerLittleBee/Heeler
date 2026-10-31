@@ -68,7 +68,10 @@ the shell that stays behind, and a retry can deliver it twice.
   after, so it holds the Terminal's size no longer than it types. A Blocked Card
   answer is sent only while the dialog it answers is still on screen and the
   Agent still holds the foreground, the same process as when that screen was read.
-  A viewer that only observes cannot type.
+  Opening the viewer can take seconds, so Chat checks again once its paint is in:
+  a key or a paste goes only if the same process holds the foreground as before it
+  opened, and an answer only if that paint shows the same dialog. A viewer that
+  only observes cannot type.
 - Chat's screen checks read a viewer's first paint. `terminal.read` has text
   only, and the emulator Heeler embeds reads text only, while every attach
   starts with the styled screen. Each read is an observing attach of its own
@@ -144,6 +147,10 @@ confirm or refine these points with test clients, not the app.
   Chat's actions opens one more attach and closes it, so it costs a paint too.
 - Chat's foreground checks before a key use the record the core's events keep,
   up to one sampling period old, as a read would be only a round trip fresher.
+  A process can still take over in that period, as a dialog can change between
+  the paint and the key. Chat's Stop guards (OpenCode, Grok Build) go by the read
+  before the viewer opens, not by its paint, so a screen that changes as it opens
+  gets the key; a foreground change does not.
 - A person typing into the same Terminal on another client at that moment can
   interleave with the paste, as on Herdr TUI.
 - Typing through a viewer makes it the Terminal's size leader; the viewed
