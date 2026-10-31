@@ -11,8 +11,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         case refused
         /// Answers the plain `hello` line with these bytes.
         case answersHello(Data)
-        /// A core that answers `hello`, `events.subscribe` and `server.status`,
-        /// as `ScriptedCoreHost.Core` scripts them.
+        /// A core that answers `hello`, `events.subscribe`, `server.status` and
+        /// `doc.get`, as `ScriptedCoreHost.Core` scripts them.
         case core(Core)
     }
 
@@ -308,6 +308,9 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 try? await socket.reply(to: request.id, result: core.subscribeResult(channel: eventsChannel))
                 eventsChannel += 1
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
+            // A real core's answer for a name nobody wrote.
+            case "doc.get":
+                try? await socket.reply(to: request.id, result: .object(["version": .number(0), "value": .null]))
             case "terminal.read":
                 try? await socket.reply(
                     to: request.id,
