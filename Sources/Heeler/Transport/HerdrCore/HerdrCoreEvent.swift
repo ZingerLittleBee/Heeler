@@ -269,6 +269,11 @@ struct HerdrCoreTypedEventCursor {
         return try Self.event(from: params)
     }
 
+    private static let terminalKinds: Set<String> = [
+        "created", "restarted", "size", "title", "foreground", "status", "turn", "labels", "keep",
+        "lost", "finished", "removed",
+    ]
+
     private static func event(from params: JSONValue) throws -> HerdrCoreEvent? {
         guard let type = params["type"]?.stringValue else {
             throw TransportError.malformedResponse("herdr-core: An event has no type.")
@@ -281,6 +286,8 @@ struct HerdrCoreTypedEventCursor {
                 machine: params["machine"]?.stringValue)
         }
         guard let terminal = params["terminal"]?.stringValue, !terminal.isEmpty else {
+            // A newer core's kind need not be about one Terminal, as `doc` is not.
+            guard terminalKinds.contains(type) else { return .unknown(type: type) }
             throw TransportError.malformedResponse("herdr-core: A terminal event has no terminal address.")
         }
         guard !terminal.contains("/") else { return nil }

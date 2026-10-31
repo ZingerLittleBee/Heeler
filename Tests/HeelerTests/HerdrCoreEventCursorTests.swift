@@ -82,9 +82,22 @@ import Testing
         #expect(cursor.sequence == 1)
     }
 
-    @Test func anUnknownEventKindAsksForAResync() throws {
+    @Test func anUnknownEventKindWithNoTerminalReadsAsUnknown() throws {
         var cursor = HerdrCoreTypedEventCursor(sequence: 0)
-        #expect(try cursor.decode(line: notification(type: "future", target: "t3", sequence: 1)) == .unknown(type: "future"))
+        let line = #"{"jsonrpc":"2.0","method":"event","params":{"seq":1,"type":"machine","data":{}}}"#
+        #expect(try cursor.decode(line: Data(line.utf8)) == .unknown(type: "machine"))
+        #expect(cursor.sequence == 1)
+    }
+
+    @Test func aKnownEventKindWithNoTerminalIsMalformed() {
+        for type in [
+            "created", "restarted", "size", "title", "foreground", "status", "turn", "labels", "keep",
+            "lost", "finished", "removed",
+        ] {
+            var cursor = HerdrCoreTypedEventCursor(sequence: 0)
+            let line = #"{"jsonrpc":"2.0","method":"event","params":{"seq":1,"type":"\#(type)","data":{}}}"#
+            #expect(throws: TransportError.self, "\(type)") { try cursor.decode(line: Data(line.utf8)) }
+        }
     }
 
     @Test func aKnownEventMissingItsDataIsMalformed() {
