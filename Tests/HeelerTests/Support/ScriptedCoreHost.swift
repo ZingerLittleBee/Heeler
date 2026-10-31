@@ -179,6 +179,9 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private(set) var changesReads: [ChangesReadRequest] = []
     /// Every skills probe that reached the Host's services, oldest first.
     private(set) var skillQueries: [SkillListQuery] = []
+    /// Every file staged over the Host's SFTP, oldest first, where it landed.
+    private(set) var stagedFiles: [(path: String, contents: Data)] = []
+    private var stagingFailures: [AttachmentStagingError] = []
     private var changes: CheckoutChangesRead?
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
@@ -418,6 +421,33 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
         skillQueries.append(query)
         return skills
+    }
+
+    /// The next stages fail with these, in order, and later ones succeed.
+    func failStages(with failures: [AttachmentStagingError]) {
+        stagingFailures = failures
+    }
+
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        try StagedImage(
+            path: try stage(image.fileURL, named: "image.\(image.format.fileExtension)"))
+    }
+
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedFile {
+        try StagedFile(path: try stage(file.fileURL, named: file.remoteFilename))
+    }
+
+    private func stage(_ source: URL, named name: String) throws -> String {
+        if !stagingFailures.isEmpty { throw stagingFailures.removeFirst() }
+        let path = "/tmp/heeler-stage/stage-\(stagedFiles.count)/\(name)"
+        stagedFiles.append((path, try Data(contentsOf: source)))
+        return path
     }
 
     /// Process reads start and then wait, as one on a slow link does.
