@@ -430,6 +430,7 @@ struct ConsoleView: View {
             latencies: console.hostLatencies,
             routeIDs: console.hostRouteIDs,
             syncIssues: console.hostSyncErrors,
+            coreEnvironmentNotices: console.hostCoreEnvironmentNotices,
             manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
             retryConnection: { await reconnectHost($0) },
             stopConnecting: { await console.cancelHostConnection($0) },

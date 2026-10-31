@@ -15,6 +15,8 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     var latency: Duration? { get }
     var routeID: UUID? { get }
     var syncError: String? { get }
+    /// What the connected core inherited, by name only (ADR 0034).
+    var leakedEnvironmentNames: Set<String> { get }
     var transportGeneration: UInt64 { get }
     var isAwaitingSnapshot: Bool { get }
     var workspaces: [ConsoleWorkspace] { get }

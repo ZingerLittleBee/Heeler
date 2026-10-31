@@ -20,6 +20,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var standingFailure: TransportError?
     private(set) var latency: Duration?
     private(set) var routeID: UUID?
+    private(set) var leakedEnvironmentNames: Set<String> = []
     private(set) var transportGeneration: UInt64 = 0
     private(set) var sidebarRevision: UInt64 = 0
     /// `.connected` precedes the subscribe snapshot, so an empty projection in
@@ -37,6 +38,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var records: [HerdrCoreTerminalRecord] = []
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
+    private var environmentTask: Task<Void, Never>?
     private var hasEnded = false
 
     init(
@@ -66,6 +68,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             for await _ in session.latencyUpdates {
                 guard !Task.isCancelled, let self else { return }
                 self.latency = session.currentLatency
+                self.publish()
+            }
+        }
+        environmentTask = Task { [weak self, session] in
+            for await _ in session.leakedEnvironmentUpdates {
+                guard !Task.isCancelled, let self else { return }
+                self.leakedEnvironmentNames = session.currentLeakedEnvironment
                 self.publish()
             }
         }
@@ -107,8 +116,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         hasEnded = true
         consumeTask?.cancel()
         latencyTask?.cancel()
+        environmentTask?.cancel()
         consumeTask = nil
         latencyTask = nil
+        environmentTask = nil
         Task { [session] in await session.end() }
     }
 
@@ -116,6 +127,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         status = .connecting
         latency = nil
         routeID = nil
+        leakedEnvironmentNames = []
         invalidateInventory()
         publish()
     }
@@ -129,6 +141,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             self.status = status
             latency = session.currentLatency
             routeID = session.currentRouteID
+            leakedEnvironmentNames = session.currentLeakedEnvironment
             switch status {
             case .failed(let failure):
                 standingFailure = failure

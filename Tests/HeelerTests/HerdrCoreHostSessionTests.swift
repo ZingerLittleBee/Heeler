@@ -139,7 +139,8 @@ struct HerdrCoreHostSessionTests {
         try await host.deliverEvent(Data(#"{"jsonrpc":"2.0","method":"heartbeat","params":{"seq":9}}"#.utf8))
         while await !session.hasTrafficSinceLastKeepalive { await Task.yield() }
         clock.advance(.seconds(30))
-        await host.waitForMethod("server.status", count: 2)
+        // Connected's round trip, the environment check's pid, and this one.
+        await host.waitForMethod("server.status", count: 3)
 
         // The next interval passes with nothing on the channel.
         await clock.untilParked(1)

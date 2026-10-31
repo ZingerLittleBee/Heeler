@@ -152,6 +152,23 @@ Open **Settings**, then **Agent List Fields**, and the Host.
 | Labels | Label a Terminal on the box, then add a field to a row | The label is offered under **Terminal labels**, and the Agents tab shows its value. No `$` field and no `state_text` is offered |
 | Herdr TUI beside it | Open a Herdr TUI Host | **Sync from plugin**, its copy and its fields as before |
 
+## Leaked environment
+
+On a throwaway session, start the core by absolute path with made-up values for
+variables that break things, then read Host detail. Never use a real value of
+these, and never use a session you did not start.
+
+```sh
+HC_SESSION=<s> TMUX=/tmp/made-up,1,0 CLAUDE_CODE_CHILD_SESSION=made-up STY= \
+  ~/.local/bin/herdr-core server start
+```
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Leaked variables | The core above, with the Host connected | **Core Environment** names `CLAUDE_CODE_CHILD_SESSION` and `TMUX`, each with what it breaks, and says restarting the core from your own terminal fixes it; blank `STY` is not named, no value appears, and nothing offers a restart |
+| Prefix | Add `HERDR_PANE_ID=made-up` when starting | `HERDR_PANE_ID` is named with the others |
+| Restarted cleanly | `server stop` by absolute path with the same environment, then start again from a clean login shell without those variables | The Host reconnects by itself and **Core Environment** is gone |
+
 ## Detection states
 
 Add a Host by hand, with `--offer-herdr-core-hosts`, and read its Server Kind section
