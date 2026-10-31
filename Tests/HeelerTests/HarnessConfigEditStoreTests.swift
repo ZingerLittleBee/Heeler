@@ -206,6 +206,99 @@ import UIKit
         #expect(!flow.canForget)
     }
 
+    // MARK: A write nobody confirmed
+
+    /// The rename happened and its answer was lost: the bytes are there, so the
+    /// edit is listed and can be undone like any other.
+    @Test func aWriteWhoseAnswerWasLostIsRecordedWhenTheFileHoldsIt() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let flow = grokFlow(store, host)
+        await flow.review()
+        await files.loseNextReplaceAnswer(TransportError.hostFileTimedOut)
+
+        await flow.accept()
+
+        #expect(flow.phase == .idle)
+        #expect(flow.applied != nil)
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.config])
+
+        await flow.undo()
+        #expect(await files.files[Self.config] == Self.original)
+        #expect(flow.applied == nil)
+    }
+
+    /// Nothing could be read back, so the next review asks again before it calls
+    /// the file already edited by someone else.
+    @Test func aWriteThatCouldNotBeCheckedIsCheckedAgainByTheNextReview() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let flow = grokFlow(store, host)
+        await flow.review()
+        await files.loseNextReplaceAnswer(TransportError.hostFileTimedOut, andConnection: true)
+
+        await flow.accept()
+
+        guard case .failed = flow.phase else {
+            Issue.record("expected a failure, got \(flow.phase)")
+            return
+        }
+        #expect(flow.applied == nil)
+
+        await files.setFailure(nil)
+        await flow.review()
+
+        #expect(flow.phase == .idle)
+        #expect(flow.applied?.path == Self.config)
+        #expect(await files.replaceCalls == 1)
+    }
+
+    /// The file does not hold the write, so no edit of Heeler's is claimed.
+    @Test func aWriteThatDidNotLandClaimsNoEdit() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let flow = grokFlow(store, host)
+        await flow.review()
+        await files.setReplaceFailure(TransportError.hostFileTimedOut)
+
+        await flow.accept()
+
+        guard case .failed = flow.phase else {
+            Issue.record("expected a failure, got \(flow.phase)")
+            return
+        }
+        #expect(flow.applied == nil)
+        #expect(store.harnessEdits.edits(on: host.id).isEmpty)
+        #expect(await files.files[Self.config] == Self.original)
+
+        await files.setReplaceFailure(nil)
+        await flow.review()
+        guard case .review = flow.phase else {
+            Issue.record("expected a review, got \(flow.phase)")
+            return
+        }
+    }
+
+    /// A refusal says nothing landed, so nothing is checked and nothing is kept.
+    @Test func aRefusedWriteIsNotCheckedAgain() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let flow = grokFlow(store, host)
+        await flow.review()
+        await files.set(Self.config, Self.edited)
+
+        await flow.accept()
+
+        #expect(flow.applied == nil)
+        await flow.review()
+        #expect(flow.phase == .alreadyApplied(path: Self.config))
+        #expect(flow.applied == nil)
+    }
+
     @Test func aFileChangedAfterTheEditRefusesUndoAndCanBeForgotten() async throws {
         let files = InMemoryHostFiles(files: [Self.config: Self.original])
         let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
