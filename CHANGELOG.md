@@ -33,6 +33,7 @@ Entries reference the pull request that made the change.
   environment sets `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward
   it until you add it as an Account. Update the Heeler plugin to 0.8.0 on
   the Host. (#529; PR #533)
+- Open the documentation from About in Settings.
 
 ### Changed
 
