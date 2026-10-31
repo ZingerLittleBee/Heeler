@@ -94,7 +94,7 @@ The submit goes out within two seconds of the paste or not at all, so a slow lin
 
 While the Agent is **Blocked**, Send only pastes. Use the tools keyboard to submit or cancel.
 
-If the Host does not answer a step, Send cannot tell what reached the program. The Composer says so, offers **Edit Draft** instead of Retry, and never sends the message again, because a paste or an Enter the core was holding can still arrive. Look at the terminal first.
+If the Host does not answer a step, Send cannot tell what reached the program. The Composer says so, offers **Edit Draft** instead of Retry, and never sends the message again, because a paste or an Enter the core was holding can still arrive. Look at the terminal first. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**. Check the terminal and send again.
 
 Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
 

@@ -50,6 +50,11 @@ the shell that stays behind, and a retry can deliver it twice.
   reach the program after the connection is gone. Input held by a stitch
   arrives about a second late with no echo meanwhile, and ends the read, so
   a step's timeout allows for it.
+- The next Send after an unknown outcome pastes nothing until the Host answers
+  a read, because its paste would line up behind the unanswered one and its
+  submit would take both. The answer says what was queued has left, so the first
+  text may now be in the Agent's input, which only the user can see: that Send is
+  refused with a notice, the draft stays, and the one after goes as usual.
 - The Composer's Stop is `terminal.interrupt`, which does not wait for typing
   to stop and presses the stop key of the Template on the record, or Esc in
   a Terminal that has had a Program Status and Ctrl+C in one that has not.

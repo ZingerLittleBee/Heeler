@@ -110,6 +110,9 @@ final class HerdrCoreComposerSend {
     private let clock: BlockedCardClock
     private weak var attach: AgentAttachStore?
     private var lastSend: Task<Outcome, Never>?
+    /// A Send ended with bytes nobody answered for. They stay queued however long
+    /// that takes, so another paste would line up behind them under one submit.
+    private var lastSendHasNoAnswer = false
 
     init(
         address: String,
@@ -130,7 +133,9 @@ final class HerdrCoreComposerSend {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
-            return await deliver(text, route: route)
+            let outcome = await deliver(text, route: route)
+            if outcome == .outcomeUnknown { lastSendHasNoAnswer = true }
+            return outcome
         }
         lastSend = send
         return await send.value
@@ -140,6 +145,8 @@ final class HerdrCoreComposerSend {
 
     private func deliver(_ text: String, route: ComposerRoute) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
+        if lastSendHasNoAnswer { return await settleLastSend(in: projection) }
+
         var viewed: ViewedAttachSeat?
         if route == .terminal {
             guard let attach else { return .failed(Self.notConnected) }
@@ -214,6 +221,23 @@ final class HerdrCoreComposerSend {
         case .noAnswer:
             return .outcomeUnknown
         }
+    }
+
+    /// Nothing goes while the Host stays silent. Its answer says what was queued has
+    /// left, since the writer keeps order, and so that it may be in the Agent's input,
+    /// where the next submit would take it along. Only the user can see that, so they
+    /// hear it once and the next Send is theirs.
+    private func settleLastSend(in projection: HerdrCoreConsoleProjection) async -> Outcome {
+        do {
+            _ = try await read(in: projection)
+        } catch where Self.saysProgramEnded(error) {
+            lastSendHasNoAnswer = false
+            return .refused(.inputNotReady(Self.agentLeft))
+        } catch {
+            return .failed(Self.noAnswerBeforePaste)
+        }
+        lastSendHasNoAnswer = false
+        return .refused(.inputNotReady(Self.lastSendMayRemain))
     }
 
     private static func outcome(of problem: HerdrCoreAgentHolder.Problem) -> Outcome {
@@ -415,6 +439,8 @@ final class HerdrCoreComposerSend {
     private static let becameBlocked =
         "The Agent started asking something before the message was submitted, so nothing was submitted. The text may still be in the Agent's input."
     private static let noAnswerBeforePaste = "The Host did not answer, so nothing was sent. Check the connection and retry."
+    private static let lastSendMayRemain =
+        "The last message may still be in the Agent's input, so nothing was sent. Check the terminal, then send again."
     private static let agentLeft = "The Agent no longer holds this terminal, so nothing was sent."
     private static let holderChangedWhileOpening =
         "Another process took over the terminal as Heeler reached it, so nothing was sent."

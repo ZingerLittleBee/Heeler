@@ -791,6 +791,88 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
+    // MARK: After a step with no answer
+
+    /// A held paste stays queued however long nobody answers, so another Send would
+    /// line up behind it, and its Enter would submit both.
+    @Test func aSendAfterAPasteWithNoAnswerGoesOnlyOnceTheHostAnswersAndTheUserHasBeenTold() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        await attached.socket.holdWrites()
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let first = Task { await composer.send() }
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        await attached.socket.waitForHeldWrite()
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+        #expect(await first.value == .outcomeUnknown)
+
+        // Still stuck: no answer, so nothing more is queued.
+        composer.replaceDraft(with: "again")
+        let second = Task { await composer.send() }
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+        #expect(await second.value == .failed)
+        await attached.socket.releaseWrites()
+        await attached.socket.waitForData(channel: attached.channel, count: 1)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+
+        // The Host answers, and the first paste may be sitting in the Agent's input.
+        // The read nobody took off the queue never went.
+        let failed = try #require(composer.messages.last)
+        let retrying = Task { await composer.retry(failed.id) }
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+        guard case .refused(.inputNotReady(let reason)) = await retrying.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("may still be in the Agent's input"))
+        #expect(composer.draft == "again")
+        #expect(composer.notice?.refusal.message == reason)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+
+        // The user was told, so the next Send is theirs.
+        let again = "\u{1B}[200~again\u{1B}[201~"
+        let third = Task { await composer.send() }
+        await attached.socket.waitForData(channel: attached.channel, count: 2)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get", count: 2)
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+        #expect(await third.value == .submittedViaAttach)
+        #expect(
+            await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, again, Self.enter])
+        await fixture.finish()
+    }
+
+    /// The read before the submit got no answer, so the text is in the Agent's input
+    /// with nothing to say so but the row, and a Terminal gone says it needs no check.
+    @Test func aSendAfterAReadWithNoAnswerPastesNothingOnAProgramThatEnded() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        let first = await fixture.sendPastingHello(on: attached)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+        #expect(await first.value == .outcomeUnknown)
+
+        fixture.composer.replaceDraft(with: "again")
+        let composer = fixture.composer
+        let second = Task { await composer.send() }
+        await fixture.scripted.waitForMethod("terminal.get", count: 2)
+        await fixture.scripted.refuseTerminalReads(kind: "not_found")
+
+        guard case .refused(.inputNotReady(let reason)) = await second.value else {
+            Issue.record("Expected a refusal")
+            return
+        }
+        #expect(reason.contains("no longer holds this terminal"))
+        #expect(composer.draft == "again")
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste])
+        await fixture.finish()
+    }
+
     // MARK: Two Sends
 
     /// Two pastes under one submit would submit both as one message.
