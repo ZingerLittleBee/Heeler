@@ -431,6 +431,7 @@ struct ConsoleView: View {
             routeIDs: console.hostRouteIDs,
             syncIssues: console.hostSyncErrors,
             coreEnvironmentNotices: console.hostCoreEnvironmentNotices,
+            harnessEdits: console,
             manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
             retryConnection: { await reconnectHost($0) },
             stopConnecting: { await console.cancelHostConnection($0) },
