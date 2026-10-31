@@ -272,6 +272,27 @@ struct HerdrCoreCloseTests {
         #expect(detail.state == .failed("herdr-core rejected the close: no"))
     }
 
+    /// A core that stopped with SSH still up is said in words.
+    @Test(arguments: [true, false])
+    func aCloseWithNoCoreRunningSaysSo(socketFilePresent: Bool) async {
+        let error = TransportError.herdrCoreNotRunning(
+            socketPath: "/run/core.sock", socketFilePresent: socketFilePresent)
+        let store = ClosePaneStore(paneTitle: "Claude") { throw error }
+
+        await store.confirmClose()
+
+        guard case .failed(let detail) = store.state else {
+            Issue.record("The close ended as \(store.state)")
+            return
+        }
+        let row = ConsoleStore.tabCloseFailureMessage(for: error)
+        for message in [detail, row] {
+            #expect(message.hasPrefix("herdr-core is not running: "), "\(message)")
+            #expect(message.contains("/run/core.sock"))
+            #expect(!message.contains("herdrCoreNotRunning"))
+        }
+    }
+
     /// A row kept from an earlier connection, with no inventory yet on this one.
     @Test func aTabCannotBeClosedWithNoInventoryToSayWhatItHolds() async throws {
         let (store, transport) = makeStore([Self.agent("t1", labels: Self.tab("tb1"))])

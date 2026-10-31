@@ -219,6 +219,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var heldTerminalReads: [CheckedContinuation<Void, Never>] = []
     /// The script of every agent discovery, oldest first.
     private(set) var discoveryScripts: [String] = []
+    private var shellFailure: (any Error)?
     private var shell: String?
     private var discoveredPrograms: [String] = []
     private var openCodeVersionOutput: String?
@@ -411,6 +412,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     }
 
     func launchShell() async throws -> String {
+        if let shellFailure { throw shellFailure }
         guard let shell else {
             throw TransportError.hostFeatureUnavailable(feature: "Starting an Agent")
         }
@@ -509,6 +511,11 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// The shell a launch goes through. Nil: the Host says none.
     func setShell(_ shell: String?) {
         self.shell = shell
+    }
+
+    /// Asking for the login shell fails with this until it is called with nil.
+    func setShellFailure(_ failure: (any Error)?) {
+        shellFailure = failure
     }
 
     /// What discovery finds through the interactive shell: the programs it can

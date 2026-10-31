@@ -389,6 +389,43 @@ struct HerdrCoreLaunchTests {
         #expect(await fixture.transport.discoveryScripts.count == 1)
     }
 
+    /// Discovery goes by exec and a start by the link, so a core that stopped
+    /// with SSH still up reaches the form as this.
+    @Test func aStartWithNoCoreRunningSaysSo() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["claude"])
+        await fixture.transport.setRunFailure(
+            TransportError.herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
+        let form = fixture.startAgentForm()
+        await form.discoverAgents()
+
+        await form.submit()
+
+        #expect(
+            form.state
+                == .failed(
+                    "herdr-core is not running: Nothing is listening at /run/core.sock. "
+                        + "Start the core on the Host, then check again."))
+    }
+
+    /// What the Host reports of its login shell comes over the link.
+    @Test func aDiscoveryWithNoCoreRunningSaysSo() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setShellFailure(
+            TransportError.herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(
+            form.agentDiscoveryState
+                == .failed(
+                    "herdr-core is not running: Nothing is listening at /run/core.sock. "
+                        + "Start the core on the Host, then check again."))
+    }
+
     @Test func aFreshDiscoveryReplacesTheVersionItRemembered() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }

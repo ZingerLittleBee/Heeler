@@ -1089,7 +1089,7 @@ final class ConsoleStore {
         case TransportError.apiRejected(_, let message):
             "herdr rejected the close: \(message)"
         default:
-            "Closing failed: \(error)"
+            TransportError.herdrCoreNotRunningMessage(for: error) ?? "Closing failed: \(error)"
         }
     }
 

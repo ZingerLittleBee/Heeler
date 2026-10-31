@@ -75,7 +75,8 @@ final class ClosePaneStore {
         case let apiError as HerdrAPIError:
             "herdr rejected the close: \(apiError.message)"
         default:
-            "Closing the pane failed: \(error)"
+            TransportError.herdrCoreNotRunningMessage(for: error)
+                ?? "Closing the pane failed: \(error)"
         }
     }
 }
