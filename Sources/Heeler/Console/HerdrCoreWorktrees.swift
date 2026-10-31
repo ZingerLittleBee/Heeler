@@ -182,9 +182,9 @@ struct HerdrCoreWorktreeGit: Sendable {
         return mainCheckout
     }
 
-    /// What a removal would lose. `git submodule status` also lists a submodule
-    /// nobody checked out, which `git worktree remove` refuses just the same, and
-    /// it fails only on a submodule it cannot map.
+    /// What a removal would lose. `git status` says nothing of a submodule, so
+    /// `git submodule status` lists them, checked out or not, as the desktop app's
+    /// `.gitmodules` read does. It fails on one it cannot map, which still counts.
     func removalRisk(ofCheckout path: String) async throws -> WorktreeRemovalRisk {
         let status = try await read(["status", "--porcelain"], in: path)
         guard status.status == 0 || status.isTruncated else {

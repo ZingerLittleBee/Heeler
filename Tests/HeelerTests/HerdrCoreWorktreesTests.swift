@@ -376,6 +376,28 @@ struct HerdrCoreWorktreesTests {
         #expect(await fixture.git("worktree").count == 1)
     }
 
+    /// While a command runs, anything else asking the gate waits. A command that
+    /// went around it would let the probe straight through.
+    @Test func everyGitCommandHoldsTheHostsGateWhileItRuns() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        let gate = fixture.store.gitExecGate(for: fixture.host.id)
+        await fixture.services.observeGit { command in
+            let free = Noted()
+            Task { try await gate.run { free.note(command.arguments) } }
+            try? await Task.sleep(for: .milliseconds(20))
+            if free.value != nil {
+                Issue.record("\(command.arguments) ran with the gate free")
+            }
+        }
+
+        _ = try await fixture.start(branch: "typed")
+        let request = try await fixture.removalAfterHearing()
+        _ = try await fixture.store.removeWorktree(request, on: fixture.host.id)
+
+        #expect(await fixture.git("worktree").count == 2)
+    }
+
     @Test func aWorkspaceOutsideAnyRepositoryGetsNoWorktree() async throws {
         let fixture = try await Fixture(terminals: [Self.shell("t8", cwd: "/plain")])
         defer { fixture.finish() }
@@ -478,10 +500,10 @@ struct HerdrCoreWorktreesTests {
 
     // MARK: Removing one
 
-    private final class KillsAtRemove: Sendable {
-        private let kills = OSAllocatedUnfairLock<[String]?>(initialState: nil)
-        var value: [String]? { kills.withLock { $0 } }
-        func note(_ value: [String]) { kills.withLock { $0 = value } }
+    private final class Noted: Sendable {
+        private let noted = OSAllocatedUnfairLock<[String]?>(initialState: nil)
+        var value: [String]? { noted.withLock { $0 } }
+        func note(_ value: [String]) { noted.withLock { $0 = value } }
     }
 
     /// The membership decides, so the shell with no label goes too and the
@@ -489,7 +511,7 @@ struct HerdrCoreWorktreesTests {
     @Test func removalEndsEachTerminalOfTheWorkspaceBeforeGitRemovesTheCheckout() async throws {
         let fixture = try await Fixture()
         defer { fixture.finish() }
-        let seen = KillsAtRemove()
+        let seen = Noted()
         await fixture.services.observeGit { [transport = fixture.transport] command in
             if command.arguments.starts(with: ["worktree", "remove"]) {
                 seen.note(await transport.kills)
@@ -533,8 +555,7 @@ struct HerdrCoreWorktreesTests {
         ])
     }
 
-    /// `git submodule status` also fails on a submodule it cannot map, and that
-    /// is one git refuses to remove unforced as well.
+    /// `git submodule status` fails on a submodule it cannot map, which still counts.
     @Test func aSubmoduleGitCannotMapStillForces() async throws {
         let fixture = try await Fixture()
         defer { fixture.finish() }

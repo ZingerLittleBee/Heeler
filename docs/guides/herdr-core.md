@@ -118,7 +118,7 @@ Pick where it starts, for an Agent and for **New Terminal** alike:
 | A directory's Workspace | In that Workspace's directory, even after a Terminal in it moved elsewhere | In that Workspace, and not in the desktop app's layout until you adopt it there |
 | **New Workspace** or **Browse Directory…** | In the directory you chose | In a new Workspace of its own, even when another already uses that directory. A running desktop app shows it as a new space. Until the desktop app names it, it is named for its first Terminal's checkout folder |
 
-Heeler asks for no tab or Workspace name on this kind of Host. Worktrees and Templates are not offered here yet.
+Heeler asks for no tab or Workspace name on this kind of Host. Templates are not offered here yet.
 
 Heeler gives an Agent a session of its own from the start where the program takes one, unless your arguments already pick a session, as `--resume` does. Codex runs with `--no-daemon`. OpenCode gets its session only from version 2.1.
 
@@ -126,10 +126,22 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 
 **Known limit:** with zsh as your login shell and no startup files, such as no `~/.zshrc`, zsh opens its new-user wizard and the Agent waits behind it. Open the Terminal and answer the wizard once, or create an empty `~/.zshrc` on the Host first.
 
+## Worktrees
+
+On macOS and Linux, **New Agent** can start in a new Worktree of the Workspace you pick. Turn on **Start in a new worktree** and type a branch. A branch that exists is checked out, and a new one starts from the Workspace's current commit.
+
+The checkout goes to `~/.herdr/worktrees/<repository>/<branch>`, where the desktop app puts its own. `<repository>` is the main checkout's folder name, and in the branch's folder name anything other than letters, digits, `.`, `_` and `-` reads `-`. It opens as a new Workspace, which a running desktop app shows as a new space.
+
+To remove one, open an Agent in it, then **Worktree Details** in the More menu. Heeler first ends every Terminal of that Workspace, as Close does, then removes the checkout. The confirmation warns when uncommitted changes or submodules would go with it. The branch stays.
+
+If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout in place. Check the Host before trying again. A Terminal in another Workspace that has moved into the checkout is not ended, so close it first.
+
+Native Windows core Hosts do not offer Worktrees yet.
+
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the desktop.
-- Worktrees and Chat are not available yet.
+- Chat is not available yet.
 - An Agent detail's Send and Stop stay hidden. Use Direct Input to type into the terminal.
 - Notifications and Live Activities are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.

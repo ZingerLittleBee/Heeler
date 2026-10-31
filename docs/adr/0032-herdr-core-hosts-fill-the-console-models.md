@@ -71,12 +71,16 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
 - Worktrees follow the desktop app's convention. The user names a branch;
   the checkout goes to `~/.herdr/worktrees/<repository>/<branch>`, the branch
   with each run of characters other than letters, digits, `.`, `_` and `-`
-  made one `-`, through `git worktree add <path> <branch>` for a branch that
-  exists and `git worktree add -b <branch> <path> HEAD` otherwise, where
-  `<repository>` is the main checkout's folder name. A labeled new Workspace
-  opens there. Removing one ends that Workspace's Terminals, then runs
+  made one `-` and `-` trimmed from both ends, through
+  `git worktree add <path> <branch>` for a branch that exists and
+  `git worktree add -b <branch> <path> HEAD` otherwise, where `<repository>`
+  is the main checkout's folder name. A labeled new Workspace opens there.
+  Removing one ends that Workspace's Terminals, then runs
   `git worktree remove`, forced only when the checkout has changes or
-  submodules, keeping the branch.
+  submodules, keeping the branch. Those two git commands run as the app's do,
+  with the repository's hooks, while Heeler's git reads stay neutralized. A
+  removal stops before any kill when git reports a risk the confirmation did
+  not name, so force never covers something the user did not hear about.
 - Native Windows herdr-core Hosts get the same Console, with these
   differences. Staged Images and Files are written by the core's
   `terminal.put` into its state directory beside the Terminal, which the core

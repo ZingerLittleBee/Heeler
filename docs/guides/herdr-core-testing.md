@@ -262,6 +262,21 @@ With a kept Terminal and two pinned Agents, from inert programs if you like. `te
 | Agent detail, Shell Terminal | **Close Agent**, **Close Terminal** in the More menu | Back at the list, with the same `terminal.get` |
 | No answer | Cut the route just after confirming | Heeler says the Host did not confirm the close, and `terminal.kill` is not sent again after the route returns |
 
+## Worktrees
+
+With a throwaway git repository on hc-lab, a Workspace in it and an inert program as the Agent. Never sign in to a harness. Read git with plain `git` in a login shell on the box.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| New branch | **New Agent** in the repository's Workspace, **Start in a new worktree**, the branch `lab/new`, which does not exist | The checkout is at `~/.herdr/worktrees/<repository>/lab-new`, on `lab/new` from the Workspace's HEAD, in a new Workspace with the Agent running in it. `terminal.get` has `herdr.space` and `herdr.tab` |
+| Existing branch | The same with a branch `git branch` already lists | That branch is checked out, and no new branch appears |
+| Remove | **Worktree Details** in the Agent's More menu, **Remove Worktree**, with a second Terminal in that Workspace | Both Terminals read `finished` with reason `killed`, no shell is left in the removed checkout (`pgrep -a -f` on its path finds nothing), the folder is gone, and `git branch` still lists the branch |
+| Changes | `touch` a file in a checkout, then remove it | The confirmation says the uncommitted changes will be lost, and removal goes through |
+| Submodules | A checkout with a checked-out submodule, then remove it | The confirmation names submodules, and removal goes through |
+| A Terminal that will not end | Cut the route just after confirming | Heeler says the checkout was not removed, and it is still there after the route returns. A second try finishes it |
+| Native Windows | A native Windows core Host | **New Agent** offers no worktree |
+| Mac with the desktop app | On a Mac running the Herdr desktop app, start a Worktree from Heeler | It shows as a space in the window at the same path the app's worktree mod uses for that branch |
+
 ## Agent Row Layout
 
 Open **Settings**, then **Agent List Fields**, and the Host.
