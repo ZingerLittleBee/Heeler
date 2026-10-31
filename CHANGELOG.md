@@ -65,7 +65,7 @@ Entries reference the pull request that made the change.
   returns. A cut connection on a Unix Host now shows Reconnecting… on a Shell
   instead of flashing Session Ended, and a terminal that is reattaching ignores
   input until the new session paints. Chat shows a query lost to the link only
-  when the next one is lost too. (refs #523)
+  when the next one is lost too. (#523; PR #595)
 - Bring out the Agents list when swiping in from the left edge of an
   Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
   Duo's inner display or a Pro Max in landscape, instead of closing it to
