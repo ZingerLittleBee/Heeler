@@ -14,6 +14,20 @@ starts activities locally and writes the per-activity push token to the
 Host; the plugin drives updates and end over APNs after the app suspends.
 No push-to-start in v1.
 
+On a herdr-core Host the Heeler Host Helper takes the plugin's place (ADR 0033):
+the app writes the push token into the Helper's `notifications.json`, and the
+Helper drives updates and the end through this same relay request. It reads
+every status below from what the core reports, and counts Done per device from
+that device's seen marks, so each device's token has its own counts and list.
+
+herdr-core adds one status, Error, which the wire does not name. **An Error
+Agent counts under `blocked` and carries `"status": "blocked"` in its agent
+entry**, in the app's content and the Helper's updates alike. It sorts with
+Blocked, and entering it can raise priority 10 as entering Blocked does. Only a
+configured `status` row field still says "Error", being display text. No count,
+field or status value is added, and the Push Relay neither changes nor needs a
+redeploy.
+
 ## ContentState
 
 Decoded by ActivityKit's default `JSONDecoder` (no date/key strategies).
@@ -218,5 +232,6 @@ reproduced byte-for-byte by the seal side and opened by the open side;
 `invalid` vectors must fail with the given typed error. Includes the
 cross-AAD case proving domain separation. Pin-order cases also carry
 `inventory`, `pinned_pane_ids`, and `counts` so both suites pin the
-shared sort rule. Consumed by both the Node suite and HeelerTests;
+shared sort rule, and one such case pins Error under `blocked`. Consumed by both
+the Node suite and HeelerTests;
 regenerate only via an independent raw-crypto script.
