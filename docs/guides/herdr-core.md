@@ -20,7 +20,7 @@ A session name the server refuses leaves the Host unconfirmed and says why. The 
 
 ## Not running and Start
 
-Heeler never starts a core by connecting or checking, so a mistyped session name reads **herdr-core is not running** rather than an empty, new core. While the core is not running, the checks try again by themselves.
+Heeler never starts a core by connecting or checking, so a mistyped session name reads **herdr-core is not running** rather than an empty, new core. While the core is not running, Heeler keeps trying to reconnect by itself, and the Host's checks run again when the core stops or comes back.
 
 | Host reads | What to do |
 | --- | --- |
