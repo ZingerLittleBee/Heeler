@@ -15,6 +15,7 @@ import { basename, join } from "node:path";
 
 import { agentIn } from "../core/agent-rule.js";
 import { normalizeSessionName } from "../core/session-name.js";
+import { AGENT_EVENTS, foldEvent, foldRecord } from "../core/turn-fold.js";
 import { TurnState } from "../core/turn-state.js";
 import { collapseKeyFor, sendAlertPush } from "../shared/delivery/push.js";
 import { pruneAlertTokens, readAlertDevices, registeredSessions } from "../shared/delivery/registrations.js";
@@ -24,14 +25,10 @@ import { encryptNotificationEnvelope, notificationKeyId } from "../shared/notifi
 import { readSeenMark, removeSeenMarks } from "./seen-marks.js";
 
 const MEMORY_VERSION = 1;
-// Events that can change what an Agent reads as. Size, title and the like cannot.
-const AGENT_EVENTS = new Set(["created", "restarted", "foreground", "status", "turn", "lost", "finished"]);
 // Error is sent under the Blocked trigger, in its own word.
 const ATTENTION_STATUSES = new Set(["blocked", "error"]);
 
 const sameMark = (left, right) => left?.turn === right?.turn && left?.word === right?.word;
-const statusWord = (record) => record.status?.state ?? null;
-const turnCount = (record) => (Number.isSafeInteger(record.turn) ? record.turn : 0);
 
 class Terminal {
   turns = new TurnState();
@@ -173,16 +170,6 @@ export function notificationListener({ directory, log = () => {} }) {
     terminal.timer.unref?.();
   }
 
-  /** Folds one change into a Terminal's turns, with its record already updated. */
-  function noteTurns(terminal, record, change) {
-    const kind = agentIn(record)?.kind ?? null;
-    change(terminal.turns, kind);
-    if (kind === null) terminal.turns.noteNoAgent();
-  }
-
-  const noteRecord = (turns, record, kind) =>
-    turns.noteSnapshot(turnCount(record), statusWord(record), kind, record.reported === true);
-
   /** A snapshot's Terminals. With `settled`, what they show already counts as notified. */
   function foldSnapshot(session, memory, inventory, { settled }) {
     memory.inventory = inventory;
@@ -197,7 +184,7 @@ export function notificationListener({ directory, log = () => {} }) {
         terminal = new Terminal();
         memory.terminals.set(address, terminal);
       }
-      noteTurns(terminal, record, (turns, kind) => noteRecord(turns, record, kind));
+      foldRecord(terminal.turns, record);
       if (settled) {
         const status = agentIn(record)?.status;
         terminal.notified = ATTENTION_STATUSES.has(status) ? status : null;
@@ -249,14 +236,7 @@ export function notificationListener({ directory, log = () => {} }) {
         terminal = new Terminal();
         memory.terminals.set(event.terminal, terminal);
       }
-      noteTurns(terminal, record, (turns, kind) => {
-        if (event.type === "status") turns.noteStatus(statusWord(record), turnCount(record), kind);
-        else if (event.type === "turn") turns.noteTurn(turnCount(record));
-        else if (event.type === "created" || event.type === "restarted") {
-          if (event.type === "restarted") turns.noteRestart(turnCount(record));
-          noteRecord(turns, record, kind);
-        }
-      });
+      foldEvent(terminal.turns, event, record);
       remember(session, memory);
       decideLater(session, memory, event.terminal);
     }),

@@ -37,7 +37,7 @@ export function parseActivityRowLayout(value) {
 }
 
 /** Same single-glyph fallback as Agent.strippedSidebarTitle. */
-function strippedSidebarTitle(raw) {
+export function strippedSidebarTitle(raw) {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   const [first] = [...trimmed];

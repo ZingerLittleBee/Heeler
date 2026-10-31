@@ -36,7 +36,7 @@ enum AgentActivityContentBuilder {
         for agent in eligible {
             switch agent.agent.status {
             case .working: working += 1
-            case .blocked: blocked += 1
+            case .blocked, .error: blocked += 1
             case .done: done += 1
             default: break
             }
@@ -109,7 +109,12 @@ enum AgentActivityContentBuilder {
     }
 
     private static func isEligible(_ status: AgentStatus) -> Bool {
-        status == .working || status == .blocked || status == .done
+        status == .working || status == .blocked || status == .error || status == .done
+    }
+
+    /// The relay and the widget know three statuses, so Error reads as Blocked.
+    private static func wireStatus(_ status: AgentStatus) -> String {
+        status == .error ? AgentStatus.blocked.rawValue : status.rawValue
     }
 
     /// Pinned eligible agents first, by pin-list index (most recent = 0);
@@ -150,7 +155,7 @@ enum AgentActivityContentBuilder {
             kind: kind,
             name: name?.isEmpty == false ? name : nil,
             workspace: workspace?.isEmpty == false ? workspace : nil,
-            status: agent.agent.status.rawValue,
+            status: wireStatus(agent.agent.status),
             title: trimmed.isEmpty ? nil : trimmed,
             rows: layout.map { layout in
                 AgentRowRenderer.render(layout: layout.normalizedForConsole(), agent: agent).map { row in

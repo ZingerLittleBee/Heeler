@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { combineListeners, followRegisteredSessions } from "./core/follower.js";
+import { liveActivityListener } from "./notifications/activity.js";
 import { notificationListener } from "./notifications/notifier.js";
 import { usageSessions } from "./usage/layout.js";
 import { usageListener } from "./usage/recorder.js";
@@ -21,7 +22,11 @@ followRegisteredSessions({
   directory,
   log,
   alsoFollow: () => usageSessions(directory),
-  listener: combineListeners(usageListener({ directory, log }), notificationListener({ directory, log })),
+  listener: combineListeners(
+    usageListener({ directory, log }),
+    notificationListener({ directory, log }),
+    liveActivityListener({ directory, log }),
+  ),
 });
 
 // A stop asked for is a clean exit, so the service's result stays success.

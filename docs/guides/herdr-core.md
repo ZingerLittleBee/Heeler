@@ -197,13 +197,12 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 - Worktrees are not available yet.
 - Chat opens only for Claude Code on Linux. Other programs, macOS and native Windows core Hosts offer the terminal alone.
 - Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
-- Live Activities and in-app banners for Agent Notifications are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 
 ## Host Helper
 
-The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. It follows the core, sends Agent Notifications and answers Usage. Live Activities still read as unavailable until the app connects them to it.
+The Host Helper is Heeler's own background service on a herdr-core Host. It stands in for the Heeler plugin, which core cannot run, and it runs on the Host's Node.js. It follows the core, sends Agent Notifications and Live Activity updates, and answers Usage.
 
 The Helper never starts a core. It connects to the core's socket directly, and while no core runs it waits and tries again, so a core you stopped stays stopped until you start it. When you do, the Helper connects on its own, without a restart.
 
@@ -240,6 +239,15 @@ With the Host Helper running, a herdr-core Host notifies you as any other Host d
 Turning notifications off, or removing the Host while connected, removes this device's entry and its file from the Host. If you remove a disconnected Host, the entry stays and Heeler says so: reconnect first to stop them.
 
 The switches need the Helper, so **Settings > Notifications** says what the Host's Helper needs, such as **Not Installed**, **Service Failed** or **Node.js Missing**. Fix that from the Host's page in **Hosts**. A device already registered keeps its switches there, so it can still leave. With **Linger Off**, the switches work and a note says the Helper stops about ten seconds after your last login ends, so notifications stop too. Notifications need Host Helper 0.4.0 or newer.
+
+### Banners and Live Activity
+
+Once this device is registered with a Host's Helper, that Host's Agents join the in-app banners and the Live Activity alongside your other Hosts. A Host without the Helper, or without this device's registration, gets neither.
+
+- **Banners** come while Heeler is open, under the same switches: Blocked and Error under the Blocked switch, Error reading as Error, and Done under its own switch. Done is this device's, so an Agent you have open makes no Done banner.
+- **Live Activity** has its own switch for the Host, and needs Host Helper 0.5.0 or newer. Heeler starts the activity and writes its push token into the Helper's directory. After Heeler suspends, the Helper updates and ends it through the Push Relay. Done counts for this device only, and an Error Agent counts under Blocked, as the Live Activity has no count of its own for it.
+
+While Heeler is suspended the activity names each Agent's workspace by its folder, not a desktop app's space name, and a row field for the Tab or Pane stays empty. Opening Heeler brings those back.
 
 ## Usage
 

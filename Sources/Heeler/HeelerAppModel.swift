@@ -132,6 +132,12 @@ final class HeelerAppModel {
             supportsHost: { [weak hostStore] id in
                 hostStore?.supportsLiveActivities(for: id) ?? false
             },
+            registrationGate: { [weak hostStore, weak notificationPreferences] id in
+                guard hostStore?.hosts.first(where: { $0.id == id })?.serverKind == .herdrCore else {
+                    return .open
+                }
+                return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
+            },
             pinnedPaneIDs: { [weak console] id in
                 console?.pins.pinnedPaneIDs(for: id) ?? []
             },
@@ -252,6 +258,7 @@ final class HeelerAppModel {
         let console = self.console
         let activity = self.activity
         let pushRegistration = self.pushRegistration
+        let notificationPreferences = self.notificationPreferences
 
         observe({ hostStore.hosts }) { [weak self] hosts in
             guard let self else { return }
@@ -283,6 +290,9 @@ final class HeelerAppModel {
         }
         observe({ console.hostsAwaitingSnapshot }) { [weak self] _ in
             self?.liveActivities.connectionsDidChange()
+        }
+        observe({ notificationPreferences.coreLiveActivityGates }) { [weak self] _ in
+            self?.liveActivities.registrationsDidChange()
         }
         observe({ activity.activationCount }) { [weak self] _ in
             self?.liveActivities.reconcile()
