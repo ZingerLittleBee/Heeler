@@ -138,6 +138,17 @@ struct HerdrCoreEnvironmentCheckTests {
         let failures: [ScriptedCoreHost.ProcessRead] = [
             .unreadable,
             .exits(status: 1, stdout: ""),
+            // A whole answer from an exec that then failed is no answer.
+            .exits(
+                status: 1,
+                stdout: """
+                    __HEELER_PROC_BEGIN_\(ScriptedCoreHost.nonce)
+                    N 4242 TMUX
+                    E 4242 ok
+
+                    __HEELER_PROC_END_\(ScriptedCoreHost.nonce)
+
+                    """),
             .exits(status: 0, stdout: "TMUX=/tmp/from-a-banner\n"),
             .throwsError(.timedOut),
             .throwsError(.channelFailed(detail: "refused")),
