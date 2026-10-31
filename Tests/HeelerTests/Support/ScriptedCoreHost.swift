@@ -184,6 +184,12 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private(set) var changesReads: [ChangesReadRequest] = []
     /// Every skills probe that reached the Host's services, oldest first.
     private(set) var skillQueries: [SkillListQuery] = []
+    /// Every file staged over the Host's SFTP, oldest first, where it landed.
+    private(set) var stagedFiles: [(path: String, contents: Data)] = []
+    private var stagingFailures: [AttachmentStagingError] = []
+    /// How many times anything asked the Host's platform.
+    private(set) var platformAsks = 0
+    private var platformFailure: TransportError?
     private var changes: CheckoutChangesRead?
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
@@ -467,6 +473,33 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         return skills
     }
 
+    /// The next stages fail with these, in order, and later ones succeed.
+    func failStages(with failures: [AttachmentStagingError]) {
+        stagingFailures = failures
+    }
+
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        try StagedImage(
+            path: try stage(image.fileURL, named: "image.\(image.format.fileExtension)"))
+    }
+
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedFile {
+        try StagedFile(path: try stage(file.fileURL, named: file.remoteFilename))
+    }
+
+    private func stage(_ source: URL, named name: String) throws -> String {
+        if !stagingFailures.isEmpty { throw stagingFailures.removeFirst() }
+        let path = "/tmp/heeler-stage/stage-\(stagedFiles.count)/\(name)"
+        stagedFiles.append((path, try Data(contentsOf: source)))
+        return path
+    }
+
     /// Process reads start and then wait, as one on a slow link does.
     func holdProcessReads() {
         isProcessReadHeld = true
@@ -510,7 +543,14 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     func hostPlatform() async throws -> HostPlatform {
-        try await helper.hostPlatform()
+        platformAsks += 1
+        if let platformFailure { throw platformFailure }
+        return try await helper.hostPlatform()
+    }
+
+    /// Every platform ask fails with this until it is nil.
+    func setPlatformFailure(_ failure: TransportError?) {
+        platformFailure = failure
     }
 
     func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {

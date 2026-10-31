@@ -213,6 +213,8 @@ struct HostListView: View {
     /// Why a connected Host's Agents could not be synced, per Host.
     private let syncIssues: [Host.ID: String]
     private let coreEnvironmentNotices: [Host.ID: HerdrCoreEnvironmentNotice]
+    /// The Console, for the harness edits this device applied on a Host.
+    private let harnessEdits: ConsoleStore?
     /// Hosts whose Host-detail Reconnect request is in flight. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
@@ -259,6 +261,7 @@ struct HostListView: View {
         routeIDs: [Host.ID: HostRoute.ID] = [:],
         syncIssues: [Host.ID: String] = [:],
         coreEnvironmentNotices: [Host.ID: HerdrCoreEnvironmentNotice] = [:],
+        harnessEdits: ConsoleStore? = nil,
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
@@ -276,6 +279,7 @@ struct HostListView: View {
         self.routeIDs = routeIDs
         self.syncIssues = syncIssues
         self.coreEnvironmentNotices = coreEnvironmentNotices
+        self.harnessEdits = harnessEdits
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
         self.stopConnecting = stopConnecting
@@ -370,6 +374,7 @@ struct HostListView: View {
                         connectedRouteID: routeIDs[id],
                         syncIssue: syncIssues[id],
                         coreEnvironmentNotice: coreEnvironmentNotices[id],
+                        harnessEdits: harnessEdits,
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id),
                         stopConnecting: stopAction(for: id),

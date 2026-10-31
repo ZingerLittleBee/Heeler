@@ -32,6 +32,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var latency: Duration?
     private(set) var routeID: UUID?
     private(set) var leakedEnvironmentNames: Set<String> = []
+    /// Why each Agent reading Unknown does, by Terminal address.
+    private(set) var statusExplanations: [String: HerdrCoreStatusExplanation] = [:]
     private(set) var transportGeneration: UInt64 = 0
     private(set) var sidebarRevision: UInt64 = 0
     /// `.connected` precedes the subscribe snapshot, so an empty projection in
@@ -403,6 +405,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         terminalsByPane = rows
         noteDepartedAgents(listed: agents)
         agentsByPane = agents
+        statusExplanations = Dictionary(
+            uniqueKeysWithValues: records.lazy.filter { rows[$0.address]?.isAgent == true }
+                .compactMap { record in
+                    HerdrCoreStatusExplanation(record: record).map { (record.address, $0) }
+                })
         workspaces = builder.workspaceRows()
         askForCheckouts(organization.checkoutDirectories)
     }
@@ -894,13 +901,21 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func imageStager() -> ImageStager {
-        let failure = unavailable("Uploads")
-        return { _, _ in throw failure }
+        let session = session
+        return { image, reporter in
+            try await session.withTransport { $0.hostServices }.stageImage(image) { progress in
+                await reporter.report(progress)
+            }
+        }
     }
 
     func fileStager() -> FileStager {
-        let failure = unavailable("Uploads")
-        return { _, _ in throw failure }
+        let session = session
+        return { file, reporter in
+            try await session.withTransport { $0.hostServices }.stageFile(file) { progress in
+                await reporter.report(progress)
+            }
+        }
     }
 
     func sessionFileReader() -> SessionFileReader {
@@ -944,6 +959,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         _ operation: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {
         try await operation(try await session.withTransport { $0.hostServices })
+    }
+
+    /// One variable of one process on the Host, unavailable with no connection.
+    func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable {
+        guard let transport = try? await session.withTransport({ $0 }) else { return .unavailable }
+        return await transport.processVariable(name, pid: pid)
     }
 
     /// The plugin's files belong to Herdr TUI Hosts, and its surfaces say so.

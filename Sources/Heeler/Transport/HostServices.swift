@@ -1,3 +1,5 @@
+import Foundation
+
 /// The exec and SFTP services a Host offers whichever Server Kind it runs.
 /// `Transport` refines this for Herdr TUI; herdr-core code depends on it
 /// without going through `Transport` (ADR 0032).
@@ -97,6 +99,18 @@ protocol HostServices: Sendable {
     /// Only a herdr-core projection asks, to name a desktop space nobody named.
     /// A caller goes through the Host's `GitExecGate`, as Changes does.
     func checkoutRoots(for directories: [String]) async throws -> [String: String]
+
+    /// Replaces one Host text file only while it still holds `expected`, or while
+    /// there is none when `expected` is nil, and otherwise throws
+    /// `HostTextFileError.changedSinceRead` with nothing written. A nil `contents`
+    /// removes the file. A file keeps its permissions, and a symbolic link stays
+    /// one, with its target replaced. Only a harness configuration edit calls this.
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws
+}
+
+/// Why `replaceHostTextFile` wrote nothing.
+enum HostTextFileError: Error, Equatable {
+    case changedSinceRead
 }
 
 extension HostServices {
@@ -182,5 +196,10 @@ extension HostServices {
     /// A transport without Host commands cannot find a checkout.
     func checkoutRoots(for directories: [String]) async throws -> [String: String] {
         throw ChangesReadError.unavailable
+    }
+
+    /// A transport without Host files writes nothing, and says so.
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
     }
 }

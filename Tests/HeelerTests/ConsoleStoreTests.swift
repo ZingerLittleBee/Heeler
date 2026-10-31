@@ -1180,6 +1180,29 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    /// The explanation and its edit belong to herdr-core: on a Herdr TUI Host an
+    /// Unknown Grok Build Agent has neither, and no edit reaches its files.
+    @Test func aHerdrTUIAgentHasNoStatusExplanationOrHarnessEdit() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .unknown, kind: "grok")]))
+        let store = makeStore(transports: [host.id: transport])
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Agent should list") { !store.agents.isEmpty }
+        #expect(store.coreStatusExplanations.isEmpty)
+
+        let flow = store.grokBuildEditFlow(on: host.id, process: 70)
+        await flow.review()
+        #expect(
+            flow.phase
+                == .failed(
+                    TransportError.hostFeatureUnavailable(feature: "Editing Host files").presentation.message))
+        #expect(store.harnessEdits.edits(on: host.id).isEmpty)
+        store.setHosts([])
+    }
+
     @Test func unknownAgentStatusResnapshotsAndRemovesAReleasedAgent() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
