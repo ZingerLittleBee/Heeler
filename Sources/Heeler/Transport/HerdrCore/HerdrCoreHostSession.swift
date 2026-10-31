@@ -93,6 +93,18 @@ actor HerdrCoreHostSession {
     private var backoffSleep: Task<Void, any Error>?
     private var backoffGeneration: UInt64?
     private var lifecycleTransition: Task<Void, Never>?
+    private var terminalTransportWaiters: [TerminalTransportWaiter] = []
+    /// What stopped this activation, for a terminal asking after it stopped.
+    private var terminalTransportFailure: TransportError?
+
+    private struct TerminalTransportWaiter {
+        let id: UUID
+        /// Nil: asked while suspended, so it belongs to the next activation.
+        /// Otherwise pinned to the one it asked in, as `EventsSession` pins
+        /// them, so a retry never hands it a later connection unasked.
+        let activationGeneration: UInt64?
+        let continuation: CheckedContinuation<(any HerdrCoreTransport, UInt64), any Error>
+    }
 
     init(
         connect: @escaping @Sendable () async throws -> any HerdrCoreTransport,
@@ -176,9 +188,80 @@ actor HerdrCoreHostSession {
         return try await operation(currentTransport)
     }
 
+    /// Runs one terminal's whole session once this Host has a live link, on
+    /// that link and no other. It gets the connection's generation, and waits
+    /// out a reconnect, since a terminal opened meanwhile has nothing else to
+    /// do. It fails with whatever stopped the session.
+    func withTerminalTransport<Value: Sendable>(
+        _ operation: @Sendable (any HerdrCoreTransport, UInt64) async throws -> Value
+    ) async throws -> Value {
+        let (transport, generation) = try await awaitTerminalTransport()
+        return try await operation(transport, generation)
+    }
+
+    private func awaitTerminalTransport() async throws -> (any HerdrCoreTransport, UInt64) {
+        let id = UUID()
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if phase == .ended {
+                    continuation.resume(throwing: TransportError.cancelled)
+                } else if phase == .active, liveStream != nil, !transportSuspect, let currentTransport {
+                    continuation.resume(returning: (currentTransport, currentConnectionGeneration))
+                } else if phase == .active, let terminalTransportFailure {
+                    continuation.resume(throwing: terminalTransportFailure)
+                } else {
+                    terminalTransportWaiters.append(
+                        TerminalTransportWaiter(
+                            id: id,
+                            activationGeneration: phase == .active ? activationGeneration : nil,
+                            continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelTerminalTransportWaiter(id) }
+        }
+    }
+
+    /// Terminals waiting for a link, which tests wait on.
+    var terminalTransportWaiterCount: Int { terminalTransportWaiters.count }
+
+    private func cancelTerminalTransportWaiter(_ id: UUID) {
+        guard let index = terminalTransportWaiters.firstIndex(where: { $0.id == id }) else { return }
+        terminalTransportWaiters.remove(at: index).continuation.resume(throwing: CancellationError())
+    }
+
+    private func resumeTerminalTransportWaiters(with transport: any HerdrCoreTransport) {
+        let waiters = terminalTransportWaiters
+        terminalTransportWaiters = []
+        for waiter in waiters {
+            if let pinned = waiter.activationGeneration, pinned != activationGeneration {
+                waiter.continuation.resume(throwing: TransportError.cancelled)
+            } else {
+                waiter.continuation.resume(returning: (transport, currentConnectionGeneration))
+            }
+        }
+    }
+
+    /// The run stopped for good, so nobody waiting will get a link from it.
+    private func failTerminalTransportWaiters(_ failure: TransportError) {
+        let waiters = terminalTransportWaiters.filter { $0.activationGeneration != nil }
+        terminalTransportWaiters.removeAll { $0.activationGeneration != nil }
+        for waiter in waiters { waiter.continuation.resume(throwing: failure) }
+    }
+
+    private func stopRun(with failure: TransportError) {
+        terminalTransportFailure = failure
+        failTerminalTransportWaiters(failure)
+        yieldUpdate(.status(.failed(failure)))
+    }
+
     private func activate() {
         guard phase == .suspended else { return }
         phase = .active
+        terminalTransportFailure = nil
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldUpdate(.status(.connecting))
@@ -190,6 +273,7 @@ actor HerdrCoreHostSession {
             activate()
             return
         }
+        terminalTransportFailure = nil
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldUpdate(.status(.connecting))
@@ -214,6 +298,9 @@ actor HerdrCoreHostSession {
         guard phase != .ended else { return }
         phase = .ended
         await windDown()
+        let waiters = terminalTransportWaiters
+        terminalTransportWaiters = []
+        for waiter in waiters { waiter.continuation.resume(throwing: TransportError.cancelled) }
         yieldUpdate(.status(.ended))
         updatesContinuation.finish()
         latencyContinuation.finish()
@@ -278,7 +365,7 @@ actor HerdrCoreHostSession {
                 if failure == .timedOut { transportSuspect = true }
                 if case .herdrCoreNotRunning = failure { mayAwaitHolder = false }
                 guard failure.isRetryable else {
-                    yieldUpdate(.status(.failed(failure)))
+                    stopRun(with: failure)
                     return
                 }
                 attempt += 1
@@ -295,6 +382,7 @@ actor HerdrCoreHostSession {
             hasTrafficSinceLastKeepalive = false
             yieldUpdate(.snapshot(stream.snapshot, coreID: coreID))
             startKeepalive(stream: stream, transport: transport)
+            resumeTerminalTransportWaiters(with: transport)
 
             var linkCarriedTraffic = false
             var streamFailure: TransportError?
@@ -336,7 +424,7 @@ actor HerdrCoreHostSession {
             }
             let failure = streamFailure ?? .channelFailed(detail: "The herdr-core link closed.")
             guard failure.isRetryable else {
-                yieldUpdate(.status(.failed(failure)))
+                stopRun(with: failure)
                 return
             }
             if !transportSuspect, await transport.isConnected, silentLinkEnds < 2 { continue }
@@ -428,6 +516,7 @@ actor HerdrCoreHostSession {
     /// not awaited, since a stalled SSH operation may ignore cancellation;
     /// generation checks make any late result harmless.
     private func windDown() async {
+        failTerminalTransportWaiters(.cancelled)
         backoffSleep?.cancel()
         backoffSleep = nil
         backoffGeneration = nil

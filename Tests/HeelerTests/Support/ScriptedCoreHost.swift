@@ -172,6 +172,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private(set) var sockets: [FakeCoreSocket] = []
     /// Every channel-0 method the core received, oldest first.
     private(set) var methods: [String] = []
+    /// Every attach the core received, oldest first, with the channel it named.
+    private(set) var attaches: [(channel: UInt32, params: JSONValue, socket: FakeCoreSocket)] = []
     private var methodWaiters: [(method: String, count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
@@ -308,6 +310,15 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             switch request.method {
             case "events.subscribe":
                 try? await socket.reply(to: request.id, result: core.subscribeResult(channel: eventsChannel))
+                eventsChannel += 1
+            case "terminal.attach":
+                attaches.append((eventsChannel, request.params, socket))
+                try? await socket.reply(
+                    to: request.id,
+                    result: .object([
+                        "channel": .number(Double(eventsChannel)),
+                        "terminal": .object(["address": request.params["terminal"] ?? .null]),
+                    ]))
                 eventsChannel += 1
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
             // A real core's answer for a name nobody wrote.

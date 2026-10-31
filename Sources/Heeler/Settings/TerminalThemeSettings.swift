@@ -171,6 +171,10 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
             dark: configuration(isDark: true))
     }
 
+    func colors(isDark: Bool) -> TerminalThemeColors? {
+        Self.definitions[catalogName(isDark: isDark)].map(TerminalThemeColors.init)
+    }
+
     static var requiredCatalogThemeNames: [String] {
         var seen = Set<String>()
         return allCases.flatMap { option in
@@ -186,6 +190,26 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         GhosttyThemeCatalog.allThemes.reduce(into: [:]) { result, definition in
             result[definition.name] = definition
         }
+}
+
+/// A theme's colors in the `#rrggbb` form a herdr-core attach reports.
+struct TerminalThemeColors: Sendable, Equatable {
+    let foreground: String?
+    let background: String?
+    let cursor: String?
+
+    init(_ definition: GhosttyThemeDefinition) {
+        foreground = Self.normalized(definition.foreground)
+        background = Self.normalized(definition.background)
+        cursor = definition.cursorColor.flatMap(Self.normalized)
+    }
+
+    private static func normalized(_ hex: String) -> String? {
+        var digits = hex.trimmingCharacters(in: .whitespaces).lowercased()
+        if digits.hasPrefix("#") { digits.removeFirst() }
+        guard digits.count == 6, digits.allSatisfy(\.isHexDigit) else { return nil }
+        return "#" + digits
+    }
 }
 
 /// Two independent theme slots, one per system appearance. A paired option in
@@ -225,6 +249,11 @@ final class TerminalThemeSettings {
 
     func selection(for colorScheme: ColorScheme) -> TerminalThemeOption {
         colorScheme == .dark ? darkSelection : lightSelection
+    }
+
+    /// The colors the terminal shows in this appearance.
+    func colors(for colorScheme: ColorScheme) -> TerminalThemeColors? {
+        selection(for: colorScheme).colors(isDark: colorScheme == .dark)
     }
 
     func select(_ option: TerminalThemeOption, for colorScheme: ColorScheme) {

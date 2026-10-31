@@ -115,6 +115,7 @@ final class AgentTerminalCache {
         entry.lifetime.isPresented = isPresented
         budget.touch(key: key(for: entry), ownerID: entry.lifetime.ownerID)
         entry.attach.rejoin()
+        entry.attach.setTerminalViewed(true)
     }
 
     /// `keepingKeyboard` is a departure whose keyboard the next screen takes
@@ -124,6 +125,7 @@ final class AgentTerminalCache {
         entry.lifetime.visible = false
         entry.lifetime.isPresented = nil
         entry.attach.leaveInteractionsForRetention()
+        entry.attach.setTerminalViewed(false)
         entry.surfaceRetention.detachCallbacks(keepingKeyboard: keepingKeyboard)
         budget.markIdle(key: key(for: entry), ownerID: entry.lifetime.ownerID)
         entry.expiry?.cancel()

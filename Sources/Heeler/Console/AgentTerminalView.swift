@@ -527,6 +527,7 @@ struct AgentTerminalView: View {
             }
         }
         screen.theme = terminal.themes.theme
+        screen.displayColors = terminal.themes.colors(for: colorScheme)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { fontSize in terminal.zoom.setFontSize(fontSize) }

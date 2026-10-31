@@ -205,6 +205,7 @@ final class TerminalConnectionPool {
         entry.idleSince = nil
         entry.idleID = nil
         budget.touch(key: budgetKey(key), ownerID: entry.retentionID)
+        entry.store.setTerminalViewed(true)
         entry.store.transportGenerationDidChange(generation)
     }
 
@@ -226,6 +227,7 @@ final class TerminalConnectionPool {
         entry.idleID = idleID
         budget.markIdle(key: budgetKey(key), ownerID: entry.retentionID)
         entry.store.cancelPaste()
+        entry.store.setTerminalViewed(false)
         entry.surfaceRetention.detachCallbacks(keepingKeyboard: keepingKeyboard)
         entry.expiry?.cancel()
         let timeout = idleTimeout

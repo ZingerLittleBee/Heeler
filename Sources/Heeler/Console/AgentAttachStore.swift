@@ -431,6 +431,8 @@ final class AgentAttachStore {
             guard self.terminalRecoveryOwner == recoveryOwner else { return }
             let replacement = Self.makeTerminal(
                 target: self.target,
+                viewer: .resumed,
+                isViewed: previous.isViewed,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -552,6 +554,7 @@ final class AgentAttachStore {
             guard self.terminalRecoveryOwner == recoveryOwner else { return }
             let replacement = Self.makeTerminal(
                 target: self.target,
+                isViewed: self.terminal.isViewed,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -590,6 +593,11 @@ final class AgentAttachStore {
         #endif
         activationRecovery.clear()
         finishTerminalRecovery(ownedBy: owner)
+    }
+
+    /// The retained terminal came on or off screen.
+    func setTerminalViewed(_ viewed: Bool) {
+        terminal.setViewed(viewed)
     }
 
     /// Cancels view-owned interaction while a retained PTY continues receiving
@@ -692,6 +700,8 @@ final class AgentAttachStore {
 
     private static func makeTerminal(
         target: String,
+        viewer: TerminalViewerRole = .interactive,
+        isViewed: Bool = true,
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
@@ -702,8 +712,10 @@ final class AgentAttachStore {
         runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in }
     ) -> AttachTerminalStore {
         AttachTerminalStore(
-            target: target,
+            target: .agentPane(target),
             takeover: true,
+            viewer: viewer,
+            isViewed: isViewed,
             input: input,
             transportGeneration: transportGeneration,
             observeOutput: { data in linkIndex.receive(data) },

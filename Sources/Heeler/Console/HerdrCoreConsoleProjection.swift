@@ -456,9 +456,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         throw unavailable("Worktrees")
     }
 
-    func focusAgent(_ paneID: String) async throws {
-        throw unavailable("Agents")
-    }
+    /// A core has no focused Agent to report: each attach says whether it is
+    /// seen on its own channel.
+    func focusAgent(_ paneID: String) async throws {}
 
     func renameAgent(_ paneID: String, name: String?) async throws {
         throw unavailable("Rename Agent")
@@ -492,9 +492,23 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         throw unavailable("Agents")
     }
 
+    /// Every live terminal is a channel on the Host's one link (ADR 0031): no
+    /// admission to wait for and no further SSH session.
     func terminalRunner() -> TerminalSessionRunner {
-        let failure = unavailable("Opening a Terminal")
-        return { _, _ in throw failure }
+        let session = session
+        return { request, handler in
+            try await session.withTerminalTransport { transport, generation in
+                await handler.transportDidBecomeReady(generation)
+                #if DEBUG
+                await handler.attachRequestDidStart()
+                #endif
+                let terminal = try await transport.attachTerminal(request)
+                #if DEBUG
+                await handler.attachChannelDidOpen()
+                #endif
+                try await handler.runEndingSession(terminal)
+            }
+        }
     }
 
     func imageStager() -> ImageStager {

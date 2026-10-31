@@ -111,6 +111,7 @@ struct ShellTerminalView: View {
             return true
         }
         screen.theme = terminal.themes.theme
+        screen.displayColors = terminal.themes.colors(for: colorScheme)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { terminal.zoom.setFontSize($0) }
