@@ -180,9 +180,9 @@ A herdr-core Host connects over one framed link: a read-only locator exec, then 
 
 The frame vectors are captured: with a fixture started, `scripts/fixtures/herdr-core-capture-scenario.py` drives inert Terminals, and rewrites the file with scrubbed bytes. Every case names its capture, and a case the run did not capture refuses the whole file, so delete a retired case first. Read the output before committing it. `scripts/lab/herdr-core-capture.py` listens on a socket path it is given, starts nothing and never attaches, for a core you started yourself.
 
-`HerdrCoreHostSessionTests` runs the Host session over that real transport with the manual clock, where `ScriptedCoreHost.Core` answers `hello`, `events.subscribe` and `server.status` and `setChannel` changes what the next channel finds. `HerdrCoreConsoleProjectionTests` drives `ConsoleStore` over `ScriptedCoreTransport`, which feeds real event streams from the frame vectors' scrubbed lines.
+`HerdrCoreHostSessionTests` runs the Host session over that real transport with the manual clock, where `ScriptedCoreHost.Core` answers `hello`, `events.subscribe` and `server.status` and `setChannel` changes what the next channel finds. `HerdrCoreConsoleProjectionTests` and `HerdrCoreConsolePlacementTests` drive `ConsoleStore` over `ScriptedCoreTransport`, which feeds real event streams from the frame vectors' scrubbed lines and fails any test that writes a document.
 
-`HerdrCoreTransportE2ETests` runs five methods against a real core and disposable SSH server in the transport CI shard (and the serial lane): `neverStartsACoreAndReadsNotRunning`, `helloFeaturesCoreIDAndNoHC`, `noLegacyFallback`, `coreRestartUnderOneConnection` and `passiveRecentRead`. CI restores the pinned 0.1.13 archive from a cache keyed by its SHA-256 and verifies it again before extraction. The evidence gate requires those passes before accepting their ordinary-lane skips.
+`HerdrCoreTransportE2ETests` runs six methods against a real core and disposable SSH server in the transport CI shard (and the serial lane): `neverStartsACoreAndReadsNotRunning`, `helloFeaturesCoreIDAndNoHC`, `noLegacyFallback`, `coreRestartUnderOneConnection`, `passiveRecentRead` and `desktopPlacement`. CI restores the pinned 0.1.13 archive from a cache keyed by its SHA-256 and verifies it again before extraction. The evidence gate requires those passes before accepting their ordinary-lane skips.
 
 The fixture, `scripts/fixtures/herdr-core-ssh.py`, owns a separate home and session and never updates or stops a user's core. It installs `herdr-core` only at `~/.local/bin`, off the exec's PATH. A core starts only by absolute path in the fixture's explicit environment, and `scripts/fixtures/herdr-core-rpc.py` drives it instead of `hc`. `hc` and `herdr` there are tripwires that log every call. For a local focused run, its `--help` describes setup, the private Simulator configuration and cleanup, from an already installed core:
 
@@ -194,7 +194,7 @@ xcrun simctl spawn <UDID> launchctl unsetenv HEELER_SSH_E2E_CONFIG
 python3 scripts/fixtures/herdr-core-ssh.py stop --root /tmp/hc-heeler
 ```
 
-Native fixture success on macOS and the Linux lab check are separate evidence. `make verify-core-linux-host` runs the same five methods on hc-lab; [the lab checklist](../guides/herdr-core-testing.md) has its setup and safety rules.
+Native fixture success on macOS and the Linux lab check are separate evidence. `make verify-core-linux-host` runs the same six methods on hc-lab; [the lab checklist](../guides/herdr-core-testing.md) has its setup and safety rules.
 
 ## Host and platform acceptance
 
