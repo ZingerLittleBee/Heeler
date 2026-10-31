@@ -392,9 +392,10 @@ actor HerdrCoreHostSession {
                     hasTrafficSinceLastKeepalive = true
                     linkCarriedTraffic = true
                     switch event {
-                    case .heartbeat:
+                    case .heartbeat, .unknown:
+                        // A kind this app does not know says nothing of those it does.
                         break
-                    case .dropped, .unknown:
+                    case .dropped:
                         // Deltas can no longer be trusted: start over from a snapshot.
                         resubscribeRequested = true
                         await stream.end()

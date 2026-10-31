@@ -217,7 +217,8 @@ enum HerdrCoreEvent: Equatable, Sendable {
     case lost(terminal: String, HerdrCoreTerminalEnd)
     case finished(terminal: String, HerdrCoreTerminalEnd)
     case removed(terminal: String)
-    /// A kind this app does not know: the consumer resyncs from a snapshot.
+    /// A kind this app does not know. It says nothing of the kinds this app does
+    /// know, so the deltas stay good and no snapshot is needed.
     case unknown(type: String)
     /// The core dropped this subscriber's backlog and sent this instead.
     case missed(HerdrCoreSnapshot)

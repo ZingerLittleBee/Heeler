@@ -388,7 +388,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         case .missed(let snapshot):
             replaceInventory(with: snapshot)
             return
-        case .dropped, .unknown:
+        case .dropped:
             // These deltas can no longer be trusted: start over from a snapshot.
             Task { [session] in await session.resubscribe() }
             return
@@ -400,7 +400,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 readDocument()
             }
             return
-        case .heartbeat:
+        case .heartbeat, .unknown:
             return
         }
         rebuildRows()

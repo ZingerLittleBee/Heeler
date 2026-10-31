@@ -82,6 +82,11 @@ import Testing
         #expect(cursor.sequence == 1)
     }
 
+    @Test func anUnknownEventKindReadsAsUnknown() throws {
+        var cursor = HerdrCoreTypedEventCursor(sequence: 0)
+        #expect(try cursor.decode(line: notification(type: "future", target: "t3", sequence: 1)) == .unknown(type: "future"))
+    }
+
     @Test func anUnknownEventKindWithNoTerminalReadsAsUnknown() throws {
         var cursor = HerdrCoreTypedEventCursor(sequence: 0)
         let line = #"{"jsonrpc":"2.0","method":"event","params":{"seq":1,"type":"machine","data":{}}}"#

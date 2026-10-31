@@ -369,6 +369,24 @@ struct HerdrCoreHostSessionTests {
         await session.end()
     }
 
+    @Test func anUnknownEventKindNeedsNoNewSnapshot() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1", sequence: 1)))
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+        _ = try #require(await reader.nextSnapshot())
+
+        let future = #"{"jsonrpc":"2.0","method":"event","params":{"seq":2,"type":"machine","data":{}}}"#
+        let terminal = #"{"jsonrpc":"2.0","method":"event","params":{"seq":3,"type":"future","terminal":"t1","data":{}}}"#
+        try await host.deliverEvent(Data(future.utf8))
+        try await host.deliverEvent(Data(terminal.utf8))
+        // The next event in order proves the unknown ones went by.
+        try await host.deliverEvent(Self.sizeLine(sequence: 4))
+        #expect(await reader.next() == .event(.size(terminal: "t1", columns: 90, rows: 30)))
+        #expect(await host.methods.filter { $0 == "events.subscribe" }.count == 1)
+        await session.end()
+    }
+
     @Test func aTerminalWaitingWhenTheSessionSuspendsReadsAsALostConnection() async throws {
         let host = ScriptedCoreHost(channel: .refused)
         let session = session(on: host)
