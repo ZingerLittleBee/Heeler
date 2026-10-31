@@ -571,10 +571,12 @@ final class StartAgentStore {
             case .template(let template, let agentName):
                 var newWorkspace: NewWorkspaceSpec?
                 if case .newWorkspace(let spec) = destination { newWorkspace = spec }
+                var worktree: WorktreeSpec?
+                if case .newWorktree(let spec) = destination { worktree = spec }
                 agent = try await startTemplate(
                     TemplateLaunchRequest(
                         template: template.name, name: agentName, workspaceID: workspaceID,
-                        cwd: origin?.cwd, newWorkspace: newWorkspace),
+                        cwd: origin?.cwd, newWorkspace: newWorkspace, worktree: worktree),
                     hostID)
             }
             if case .newWorkspace = destination {

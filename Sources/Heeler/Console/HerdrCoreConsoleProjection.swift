@@ -652,6 +652,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// shell nor a kind of Heeler's, so the Agent's kind comes from its record.
     /// A program Heeler does not know is no Agent until it reports.
     func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
+        if let worktree = request.worktree {
+            return try await inNewWorktree(worktree, of: request.workspaceID) { placement in
+                try await runTemplate(request, placement: placement)
+            }
+        }
         if let workspace = request.newWorkspace {
             return try await inNewSpace(workspace) { placement in
                 try await runTemplate(request, placement: placement)
@@ -847,22 +852,29 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return HerdrCoreWorktreeGit(services: services, gate: gitGate)
     }
 
-    /// The checkout comes first, then a new Workspace there as New Workspace
-    /// opens one. No git command is sent twice.
     func startAgentInNewWorktree(
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
     ) async throws -> Agent {
+        try await inNewWorktree(worktree, of: request.workspaceID) { placement in
+            try await launch(request, placement: placement)
+        }
+    }
+
+    /// The checkout comes first, then a new Workspace there as New Workspace
+    /// opens one. No git command is sent twice.
+    private func inNewWorktree(
+        _ worktree: WorktreeSpec, of workspaceID: String?,
+        start: (HerdrCoreLaunch.Placement) async throws -> Agent
+    ) async throws -> Agent {
         let git = try await worktreeGit()
-        let source = try await placement(workspaceID: request.workspaceID, directory: nil).cwd
+        let source = try await placement(workspaceID: workspaceID, directory: nil).cwd
         let created = try await git.create(branch: worktree.branch ?? "", from: source)
         // Before the first row shows, so it already reads as the Worktree it is.
         checkouts[created.path] = HostCheckout(
             root: created.path, mainCheckout: created.mainCheckout, isLinkedWorktree: true)
         askedCheckouts.insert(created.path)
         do {
-            return try await inNewSpace(NewWorkspaceSpec(directory: created.path)) { placement in
-                try await launch(request, placement: placement)
-            }
+            return try await inNewSpace(NewWorkspaceSpec(directory: created.path), start: start)
         } catch TransportError.coreMutationOutcomeUnknown {
             throw TransportError.coreMutationOutcomeUnknown
         } catch {

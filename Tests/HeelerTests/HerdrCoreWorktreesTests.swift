@@ -128,6 +128,8 @@ struct HerdrCoreWorktreesTests {
                 workspaces: { store.workspaces(for: $0) },
                 existingAgentNames: { _ in [] },
                 discoverAgentKinds: { try await store.availableAgentKinds(on: $0) },
+                discoverTemplates: { try await store.availableTemplates(on: $0) },
+                startTemplate: { try await store.startTemplate($0, on: $1) },
                 remoteHome: { try await store.remoteHomeDirectory(on: $0) },
                 start: { params, destination, hostID in
                     switch destination {
@@ -236,6 +238,33 @@ struct HerdrCoreWorktreesTests {
         #expect(workspace.label == "feature-login")
         #expect(workspace.checkoutPath == Self.linked)
         #expect(await fixture.services.checkoutCalls.joined().filter { $0 == Self.linked }.isEmpty)
+    }
+
+    /// A Template asked into a Worktree does not stay behind in the source Workspace.
+    @Test func aTemplateStartsInTheNewWorktreeLikeAnyOtherAgent() async throws {
+        let fixture = try await Fixture(terminals: [Self.shell("t9", cwd: Self.main)])
+        defer { fixture.finish() }
+        await fixture.store.checkNewAgentOffers(on: fixture.host.id)
+        await fixture.transport.setTemplates([
+            .object([
+                "name": .string("reviewer"), "description": .string(""),
+                "command": .string("pi --thinking high"),
+            ])
+        ])
+        let form = await fixture.form()
+        form.selectedAgent = .template(try #require(form.availableTemplates.first))
+        form.startsInNewWorktree = true
+        form.worktreeBranch = "feature/login"
+
+        await form.submit()
+
+        #expect(await fixture.git("worktree").map(\.arguments) == [
+            ["worktree", "add", "-b", "feature/login", Self.linked, "HEAD"]
+        ])
+        #expect(await fixture.transport.templateRuns == 1)
+        let run = try #require(await fixture.transport.runs.last)
+        #expect(run["cwd"]?.stringValue == Self.linked)
+        #expect(terminalLabels(run)["herdr.space"]?.hasPrefix("sp") == true)
     }
 
     @Test func aBranchThatExistsIsCheckedOutInsteadOfMade() async throws {
@@ -384,7 +413,7 @@ struct HerdrCoreWorktreesTests {
         let gate = fixture.store.gitExecGate(for: fixture.host.id)
         await fixture.services.observeGit { command in
             let free = Noted()
-            Task { try await gate.run { free.note(command.arguments) } }
+            _ = Task { try await gate.run { free.note(command.arguments) } }
             try? await Task.sleep(for: .milliseconds(20))
             if free.value != nil {
                 Issue.record("\(command.arguments) ran with the gate free")

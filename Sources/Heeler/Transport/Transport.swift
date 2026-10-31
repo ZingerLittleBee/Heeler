@@ -435,23 +435,25 @@ struct ProgramExit: Sendable, Equatable {
 /// A Template launch on a herdr-core Host. Its name goes out as the core's
 /// `terminal.run` wants it, so it has no kind or arguments, and a nil `name` leaves
 /// the Terminal unnamed. `newWorkspace` is a browsed directory, in place of
-/// `workspaceID`.
+/// `workspaceID`, and `worktree` a new checkout of `workspaceID`'s repository.
 struct TemplateLaunchRequest: Sendable, Equatable {
     let template: String
     let name: String?
     let workspaceID: String?
     let cwd: String?
     let newWorkspace: NewWorkspaceSpec?
+    let worktree: WorktreeSpec?
 
     init(
         template: String, name: String?, workspaceID: String?, cwd: String?,
-        newWorkspace: NewWorkspaceSpec? = nil
+        newWorkspace: NewWorkspaceSpec? = nil, worktree: WorktreeSpec? = nil
     ) {
         self.template = template
         self.name = name
         self.workspaceID = workspaceID
         self.cwd = cwd
         self.newWorkspace = newWorkspace
+        self.worktree = worktree
     }
 }
 

@@ -159,7 +159,7 @@ If the program ends during the few seconds New Agent watches it, the form stays 
 
 ## Worktrees
 
-On macOS and Linux, **New Agent** can start in a new Worktree of the Workspace you pick. Turn on **Start in a new worktree** and type a branch. A branch that exists is checked out, and a new one starts from the Workspace's current commit.
+On macOS and Linux, **New Agent** can start an agent or a Template in a new Worktree of the Workspace you pick. Turn on **Start in a new worktree** and type a branch. A branch that exists is checked out, and a new one starts from the Workspace's current commit.
 
 The checkout goes to `~/.herdr/worktrees/<repository>/<branch>`, where the desktop app puts its own. `<repository>` is the main checkout's folder name, and in the branch's folder name anything other than letters, digits, `.`, `_` and `-` reads `-`. It opens as a new Workspace, which a running desktop app shows as a new space.
 
