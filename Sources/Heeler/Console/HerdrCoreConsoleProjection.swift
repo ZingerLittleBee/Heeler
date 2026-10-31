@@ -56,6 +56,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var checkoutTask: Task<Void, Never>?
     private var home: String?
     private var hasAskedHome = false
+    /// Whether `records` is this link's inventory, not yet another's emptied one.
+    private var hasInventory = false
+    /// Terminals waiting to hear what became of a program.
+    private var programWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     init(
         host: Host,
@@ -142,6 +146,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         consumeTask = nil
         latencyTask = nil
         environmentTask = nil
+        wakeProgramWaiters()
         Task { [session] in await session.end() }
     }
 
@@ -188,6 +193,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     private func invalidateInventory() {
         isAwaitingSnapshot = true
+        hasInventory = false
         records = []
         terminalsByPane = [:]
         agentsByPane = [:]
@@ -207,6 +213,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         memory.noteInventory(snapshot.terminals, for: host.id)
         pins.retainPins(hostID: host.id, paneIDs: Set(snapshot.terminals.map(\.address)))
         records = snapshot.terminals
+        hasInventory = true
         transportGeneration = max(transportGeneration, session.currentConnectionGeneration)
         sidebarRevision &+= 1
         readDocument()
@@ -398,6 +405,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     private func publish() {
+        wakeProgramWaiters()
         onChange()
     }
 
@@ -503,21 +511,150 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// Every live terminal is a channel on the Host's one link (ADR 0031): no
     /// admission to wait for and no further SSH session.
+    ///
+    /// The core reports a program's end apart from its attach, so what follows a
+    /// CLOSE comes from the events: a lost program takes the attach with it and
+    /// restarts, an exited one ends the Terminal (ADR 0032).
     func terminalRunner() -> TerminalSessionRunner {
         let session = session
-        return { request, handler in
-            try await session.withTerminalTransport { transport, generation in
-                await handler.transportDidBecomeReady(generation)
-                #if DEBUG
-                await handler.attachRequestDidStart()
-                #endif
-                let terminal = try await transport.attachTerminal(request)
-                #if DEBUG
-                await handler.attachChannelDidOpen()
-                #endif
-                try await handler.runEndingSession(terminal)
+        return { [weak self] request, handler in
+            let address = request.target.identifier
+            let program = try await self?.programToAttach(at: address, handler: handler)
+            do {
+                try await session.withTerminalTransport { transport, generation in
+                    await handler.transportDidBecomeReady(generation)
+                    #if DEBUG
+                    await handler.attachRequestDidStart()
+                    #endif
+                    let terminal = try await transport.attachTerminal(request)
+                    #if DEBUG
+                    await handler.attachChannelDidOpen()
+                    #endif
+                    try await handler.runEndingSession(terminal)
+                }
+            } catch let refusal as HerdrAPIError
+                where refusal.code == "finished" || refusal.code == "not_found"
+            {
+                throw TerminalProgramEnd.finished
+            } catch let refusal as HerdrAPIError where refusal.code == "unavailable" {
+                // Between a loss and its shell, before word of the loss got here.
+            }
+            try await self?.followProgram(
+                at: address, attachedTo: program ?? .unknown, handler: handler)
+        }
+    }
+
+    // MARK: A Terminal's program
+
+    private enum ProgramState: Equatable {
+        /// No inventory on this link yet.
+        case unknown
+        case absent
+        case running(pid: Int?)
+        case restarting
+        case finished
+    }
+
+    /// How long a CLOSE waits for the event that explains it. The core sends the
+    /// event first on the same connection (`runtime.rs` `record_finish`), so only
+    /// this side's scheduling stands between them. A CLOSE nothing explains then
+    /// reads as a session that ended, which offers Reattach.
+    private static let programEndGrace: Duration = .seconds(2)
+
+    private func programState(of address: String) -> ProgramState {
+        guard hasInventory else { return .unknown }
+        guard let record = records.first(where: { $0.address == address }) else { return .absent }
+        if record.hasFinished { return .finished }
+        return record.isRestarting ? .restarting : .running(pid: record.pid)
+    }
+
+    /// What an attach is about to join. A Terminal between programs takes none
+    /// until its new shell, so opening one waits here.
+    private func programToAttach(
+        at address: String, handler: TerminalSessionHandler
+    ) async throws -> ProgramState {
+        while true {
+            try checkStillWaiting()
+            let state = programState(of: address)
+            switch state {
+            case .finished:
+                throw TerminalProgramEnd.finished
+            case .restarting:
+                handler.programWasLost()
+                await nextProgramChange(before: nil)
+            case .unknown, .absent, .running:
+                return state
             }
         }
+    }
+
+    /// The core closed an attach on `program`, or refused one. Returning means
+    /// nothing explains it.
+    private func followProgram(
+        at address: String, attachedTo program: ProgramState, handler: TerminalSessionHandler
+    ) async throws {
+        var deadline: ContinuousClock.Instant? = .now + Self.programEndGrace
+        while true {
+            try checkStillWaiting()
+            switch programState(of: address) {
+            case .finished:
+                throw TerminalProgramEnd.finished
+            case .absent:
+                // Removed, unless this Terminal was never listed to begin with.
+                if case .running = program { throw TerminalProgramEnd.finished }
+                if deadline == nil { throw TerminalProgramEnd.finished }
+                return
+            case .restarting:
+                handler.programWasLost()
+                deadline = nil
+            case .running(let pid):
+                // Another process means the restart went by before this CLOSE.
+                if deadline == nil { throw TerminalProgramEnd.restarted }
+                if case .running(let attached) = program, attached != pid {
+                    throw TerminalProgramEnd.restarted
+                }
+            case .unknown:
+                break
+            }
+            if let deadline, .now >= deadline { return }
+            await nextProgramChange(before: deadline)
+        }
+    }
+
+    private func checkStillWaiting() throws {
+        try Task.checkCancellation()
+        guard !hasEnded else { throw TransportError.cancelled }
+        if case .failed(let failure) = status { throw failure }
+    }
+
+    private func nextProgramChange(before deadline: ContinuousClock.Instant?) async {
+        let id = UUID()
+        let timer = deadline.map { deadline in
+            Task { [weak self] in
+                try? await Task.sleep(until: deadline, clock: .continuous)
+                self?.programWaiters.removeValue(forKey: id)?.resume()
+            }
+        }
+        defer { timer?.cancel() }
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume()
+                } else {
+                    programWaiters[id] = continuation
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.programWaiters.removeValue(forKey: id)?.resume()
+            }
+        }
+    }
+
+    private func wakeProgramWaiters() {
+        let waiters = programWaiters.values
+        programWaiters = [:]
+        for waiter in waiters { waiter.resume() }
     }
 
     func imageStager() -> ImageStager {

@@ -400,6 +400,253 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    // MARK: Kept restarts
+
+    private static func keptRecord(address: String = "t1", argv: String = "vim", pid: Int = 7) -> JSONValue {
+        .object([
+            "address": .string(address), "cwd": .string("/work/app"), "state": .string("live"),
+            "argv": .array([.string(argv)]), "keep": .bool(true), "title": .string(""),
+            "cols": .number(80), "rows": .number(24), "pid": .number(Double(pid)),
+        ])
+    }
+
+    /// A kept Terminal in the middle of a restart, as a snapshot lists it.
+    private static let restartingRecord: JSONValue = .object([
+        "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
+        "argv": .array([.string("vim")]), "keep": .bool(true), "title": .string(""),
+        "cols": .number(80), "rows": .number(24), "reason": .string("signaled"),
+    ])
+
+    private static let finishedRecord: JSONValue = .object([
+        "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("finished"),
+        "argv": .array([.string("vim")]), "keep": .bool(false), "title": .string(""),
+        "cols": .number(80), "rows": .number(24), "reason": .string("exited"), "exit_code": .number(0),
+    ])
+
+    /// The order a program's end comes in, since a cursor drops what is not newer.
+    private static let eventOrder = ["lost", "restarted", "finished", "foreground", "removed"]
+
+    private static func eventLine(_ type: String, data: JSONValue, terminal: String = "t1") throws -> Data {
+        let sequence = 50 + (eventOrder.firstIndex(of: type) ?? 0)
+        return try JSONEncoder().encode(
+            JSONValue.object([
+                "jsonrpc": .string("2.0"), "method": .string("event"),
+                "params": .object([
+                    "seq": .number(Double(sequence)), "type": .string(type), "terminal": .string(terminal),
+                    "data": data,
+                ]),
+            ]))
+    }
+
+    private static let lostEnd: JSONValue = .object([
+        "reason": .string("signaled"), "signal": .number(9),
+    ])
+
+    private static let exitedEnd: JSONValue = .object([
+        "reason": .string("exited"), "exit_code": .number(0),
+    ])
+
+    /// What the core sends a viewer when the program goes.
+    private static func deliverClose(on attach: CoreAttach, end: JSONValue = lostEnd) async throws {
+        try await attach.socket.deliver(
+            HerdrCoreFrame(channel: attach.channel, kind: .close, payload: try JSONEncoder().encode(end)))
+    }
+
+    @Test func aLostProgramShowsRestartingAndTheNewShellComesBackWithNoOneAsking() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        let store = fixture.store()
+        let sink = Sink()
+        store.feed.attach(sink)
+        let first = try await fixture.opened(store)
+        try await fixture.deliverOutput("vim screen", on: first)
+        try await Self.until("the first output") { store.status == .live }
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await Self.deliverClose(on: first)
+        try await Self.until("restarting") { store.status == .restarting }
+        try await fixture.settle()
+        #expect(await fixture.scripted.attaches.count == 1)
+
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine("restarted", data: Self.keptRecord(argv: "/bin/zsh", pid: 99)))
+        let second = try await fixture.opened(store, count: 2)
+        #expect(second.params["resumed"] == .bool(true))
+        #expect(second.params["history"] == nil)
+        #expect(store.status == .restarting)
+        try await fixture.deliverOutput("new shell", on: second)
+        try await Self.until("the new shell") { store.status == .live }
+        #expect(String(data: sink.received, encoding: .utf8) == "vim screennew shell")
+
+        // Typing reaches the shell that came back.
+        store.send(Data("ls".utf8))
+        try await Self.until("the typed bytes") {
+            await second.socket.frames(channel: second.channel, kind: .data).reduce(Data()) { $0 + $1.payload }
+                == Data("ls".utf8)
+        }
+        await store.stop()
+        await fixture.finish()
+    }
+
+    /// Nothing orders the two channels on this side: the CLOSE can be read
+    /// before the event the core sent ahead of it, and neither that wait nor
+    /// the restart ever reads as an ended session.
+    @Test func aCloseReadBeforeWordOfTheLossNeverReadsAsAnEnd() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        let store = fixture.store()
+        let first = try await fixture.opened(store)
+        try await fixture.deliverOutput("x", on: first)
+        try await Self.until("the first output") { store.status == .live }
+
+        try await Self.deliverClose(on: first)
+        try await Task.sleep(for: .milliseconds(200))
+        if case .ended = store.status { Issue.record("read as ended before word of the loss") }
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await Self.until("restarting") { store.status == .restarting }
+        await store.stop()
+        await fixture.finish()
+    }
+
+    /// A slow reader can hear of the whole restart before its CLOSE: the new
+    /// shell's process says this is another program.
+    @Test func aCloseReadAfterTheRestartReattachesAtOnce() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        let store = fixture.store()
+        let first = try await fixture.opened(store)
+        try await fixture.deliverOutput("x", on: first)
+        try await Self.until("the first output") { store.status == .live }
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine("restarted", data: Self.keptRecord(argv: "/bin/zsh", pid: 99)))
+        try await fixture.settle()
+        try await Self.deliverClose(on: first)
+        let second = try await fixture.opened(store, count: 2)
+        try await fixture.deliverOutput("y", on: second)
+        try await Self.until("the reattach") { store.status == .live }
+        await store.stop()
+        await fixture.finish()
+    }
+
+    @Test func aFinishedProgramEndsForGoodWithNoReattach() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        let store = fixture.store()
+        let first = try await fixture.opened(store)
+        try await fixture.deliverOutput("x", on: first)
+        try await Self.until("the first output") { store.status == .live }
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedEnd))
+        try await Self.deliverClose(on: first, end: Self.exitedEnd)
+        try await Self.until("the end") { store.status == .finished }
+
+        store.retry()
+        try await fixture.settle()
+        #expect(store.status == .finished)
+        #expect(await fixture.scripted.attaches.count == 1)
+        await store.stop()
+        await fixture.finish()
+    }
+
+    @Test func openingATerminalBetweenProgramsWaitsForItsShell() async throws {
+        let fixture = try await Fixture(terminals: [Self.restartingRecord])
+        let store = fixture.store()
+        store.viewDidResize(cols: 80, rows: 24)
+        try await Self.until("restarting") { store.status == .restarting }
+        try await fixture.settle()
+        #expect(await fixture.scripted.attaches.isEmpty)
+
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine("restarted", data: Self.keptRecord(argv: "/bin/zsh", pid: 99)))
+        let attach = try await fixture.opened(store)
+        try await fixture.deliverOutput("shell", on: attach)
+        try await Self.until("the shell") { store.status == .live }
+        await store.stop()
+        await fixture.finish()
+    }
+
+    @Test func openingATerminalThatEndedAttachesToNothing() async throws {
+        let fixture = try await Fixture(terminals: [Self.finishedRecord])
+        let store = fixture.store()
+        store.viewDidResize(cols: 80, rows: 24)
+        try await Self.until("the end") { store.status == .finished }
+        try await fixture.settle()
+        #expect(await fixture.scripted.attaches.isEmpty)
+        await store.stop()
+        await fixture.finish()
+    }
+
+    /// A core refuses an attach between a program's loss and its new shell.
+    /// Asked in that moment, before word of the loss, it is the same restart.
+    @Test func anAttachRefusedForALostProgramWaitsForTheShell() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        await fixture.scripted.refuseNextAttach(kind: "unavailable")
+        let store = fixture.store()
+        store.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await Self.until("restarting") { store.status == .restarting }
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine("restarted", data: Self.keptRecord(argv: "/bin/zsh", pid: 99)))
+        await fixture.scripted.waitForMethod("terminal.attach", count: 2)
+        let attach = try #require(await fixture.scripted.attaches.last)
+        try await fixture.deliverOutput("shell", on: attach)
+        try await Self.until("the shell") { store.status == .live }
+        await store.stop()
+        await fixture.finish()
+    }
+
+    @Test func anAttachRefusedForAFinishedTerminalEndsIt() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        await fixture.scripted.refuseNextAttach(kind: "finished")
+        let store = fixture.store()
+        store.viewDidResize(cols: 80, rows: 24)
+        try await Self.until("the end") { store.status == .finished }
+        await store.stop()
+        await fixture.finish()
+    }
+
+    /// Stop must not sit behind the wait for a shell that may never come.
+    @Test func stoppingWhileRestartingLeavesAtOnce() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        let store = fixture.store()
+        let first = try await fixture.opened(store)
+        try await fixture.deliverOutput("x", on: first)
+        try await Self.until("the first output") { store.status == .live }
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await Self.deliverClose(on: first)
+        try await Self.until("restarting") { store.status == .restarting }
+
+        await store.stop()
+        #expect(store.status == .stopped)
+        await fixture.finish()
+    }
+
+    /// A hidden retained terminal comes back too, and stays quiet.
+    @Test func aHiddenAttachComesBackHiddenAfterARestart() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        let store = fixture.store(viewer: .resumed, isViewed: false)
+        let first = try await fixture.opened(store)
+        try await fixture.deliverOutput("x", on: first)
+        try await Self.until("the first output") { store.status == .live }
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
+        try await Self.deliverClose(on: first)
+        try await Self.until("restarting") { store.status == .restarting }
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine("restarted", data: Self.keptRecord(argv: "/bin/zsh", pid: 99)))
+        let second = try await fixture.opened(store, count: 2)
+        #expect(second.params["resumed"] == .bool(true))
+        try await fixture.deliverOutput("y", on: second)
+        try await Self.until("the reattach") { store.status == .live }
+        try await fixture.settle()
+        #expect(await second.socket.frames(channel: second.channel, kind: .focus).isEmpty)
+        await store.stop()
+        await fixture.finish()
+    }
+
+    // MARK: Scrollback
+
     /// The core paints no history unless asked (`history` defaults to 0), and
     /// its own client asks only once: a surface that took output keeps its
     /// scrollback, so asking again would repeat every line.

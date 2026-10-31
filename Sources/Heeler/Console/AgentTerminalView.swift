@@ -1876,6 +1876,13 @@ struct AgentTerminalView: View {
                     Button("Reattach") { attach.retryTerminal() }
                         .buttonStyle(.terminalStatusPrimary)
                 }
+            case .finished:
+                TerminalStatusDialog(
+                    glyph: .symbol("stop.circle"),
+                    title: "Agent Ended",
+                    message: presentation.message,
+                    palette: themePalette,
+                    dimsBackground: presentation.dimsBackground)
             }
         } else {
             // .live needs nothing, and .stopped only reaches the view while the

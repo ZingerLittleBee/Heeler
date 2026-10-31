@@ -181,6 +181,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private(set) var skillQueries: [SkillListQuery] = []
     private var changes: CheckoutChangesRead?
     private var skills: [AgentSkill] = []
+    private var attachRefusals: [String] = []
     private var isHoldingAttachReplies = false
     private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
 
@@ -320,6 +321,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 try? await socket.reply(to: request.id, result: core.subscribeResult(channel: eventsChannel))
                 eventsChannel += 1
             case "terminal.attach":
+                if !attachRefusals.isEmpty {
+                    try? await socket.replyError(to: request.id, kind: attachRefusals.removeFirst())
+                    continue
+                }
                 attaches.append((eventsChannel, request.params, socket))
                 let result: JSONValue = .object([
                     "channel": .number(Double(eventsChannel)),
@@ -375,6 +380,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
 
     /// The core receives each attach and answers nothing until released, while
     /// the rest of channel 0 keeps answering.
+    /// The next `terminal.attach` answers with this error kind.
+    func refuseNextAttach(kind: String) {
+        attachRefusals.append(kind)
+    }
+
     func holdAttachReplies() {
         isHoldingAttachReplies = true
     }

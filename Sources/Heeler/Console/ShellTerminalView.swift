@@ -547,6 +547,13 @@ struct ShellTerminalView: View {
                             .accessibilityHint("Disconnects another client's attachment to this terminal")
                     }
                 }
+            case .finished:
+                TerminalStatusDialog(
+                    glyph: .symbol("stop.circle"),
+                    title: presentation.title,
+                    message: presentation.message,
+                    palette: themePalette,
+                    dimsBackground: presentation.dimsBackground)
             }
         }
     }

@@ -27,6 +27,8 @@ struct TerminalStatusPresentation: Equatable {
     enum Kind: Equatable {
         case connecting
         case ended
+        /// Nothing to come back to, so nothing is offered.
+        case finished
     }
 
     let kind: Kind
@@ -46,6 +48,20 @@ struct TerminalStatusPresentation: Equatable {
         message: nil,
         dimsBackground: false)
 
+    /// The core closed the attach on purpose: this is no failure, and it
+    /// comes back on its own.
+    static let restarting = TerminalStatusPresentation(
+        kind: .connecting,
+        title: "Restarting…",
+        message: "The program was lost. A new shell takes its place in a moment.",
+        dimsBackground: false)
+
+    static let finished = TerminalStatusPresentation(
+        kind: .finished,
+        title: "Terminal Ended",
+        message: "Its program exited, so it will not come back.",
+        dimsBackground: true)
+
     static func ended(message: String) -> TerminalStatusPresentation {
         TerminalStatusPresentation(
             kind: .ended,
@@ -62,6 +78,10 @@ struct TerminalStatusPresentation: Equatable {
             self = .reconnecting
         case .ended(let message):
             self = .ended(message: message)
+        case .restarting:
+            self = .restarting
+        case .finished:
+            self = .finished
         case .live, .stopped:
             return nil
         }
