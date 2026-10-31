@@ -226,6 +226,7 @@ struct ConsoleView: View {
         } message: {
             Text(pendingTabClose.map(tabCloseMessage(for:)) ?? "")
         }
+        .modifier(ConsoleOutcomeNoticeAlert(console: console))
         .alert("Could Not Close", isPresented: tabCloseErrorPresented) {
             Button("OK", role: .cancel) { tabCloseError = nil }
         } message: {
@@ -2894,6 +2895,25 @@ struct NavigationBarBand: Equatable {
 
 /// Reports where the enclosing navigation bar sits within its column, a
 /// frame SwiftUI does not expose.
+/// Says how a close or a removal ended when the screen that asked has gone.
+private struct ConsoleOutcomeNoticeAlert: ViewModifier {
+    let console: ConsoleStore
+
+    func body(content: Content) -> some View {
+        let notice = console.outcomeNotices.first
+        content.alert(
+            notice?.title ?? "",
+            isPresented: Binding(
+                get: { notice != nil },
+                set: { if !$0, let notice { console.dismissOutcomeNotice(notice) } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(notice?.message ?? "")
+        }
+    }
+}
+
 private struct NavigationBarTopReader: UIViewRepresentable {
     let onChange: @MainActor (NavigationBarBand) -> Void
 

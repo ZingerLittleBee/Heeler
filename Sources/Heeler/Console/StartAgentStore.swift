@@ -354,6 +354,12 @@ final class StartAgentStore {
         offersWorkspaceAndTabNames || selectedHostID.map(offersDesktopAppNames) == true
     }
 
+    /// A herdr-core Host finds Agents through the user's interactive shell
+    /// (ADR 0032), not the Host's PATH.
+    var discoversThroughUserShell: Bool {
+        selectedHost?.serverKind == .herdrCore
+    }
+
     private var selectedHost: Host? {
         hosts.first(where: { $0.id == selectedHostID })
     }
@@ -797,7 +803,8 @@ final class StartAgentStore {
         case TransportError.malformedResponse(let detail):
             detail
         default:
-            "Detecting Agents failed: \(error)"
+            TransportError.herdrCoreNotRunningMessage(for: error)
+                ?? "Detecting Agents failed: \(error)"
         }
     }
 
@@ -847,6 +854,8 @@ final class StartAgentStore {
             feature
         case let worktree as HerdrCoreWorktreeError:
             worktree.message
+        case let template as HerdrCoreTemplateError:
+            template.message
         case let failure as WorktreeAgentStartFailure:
             "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. "
                 + message(for: failure.underlying, launchedKind: launchedKind)
@@ -876,7 +885,8 @@ final class StartAgentStore {
         case let apiError as HerdrAPIError:
             "herdr rejected the command: \(apiError.message)"
         default:
-            "Starting the agent failed: \(error)"
+            TransportError.herdrCoreNotRunningMessage(for: error)
+                ?? "Starting the agent failed: \(error)"
         }
     }
 }

@@ -700,8 +700,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// Placed as any other launch is, and started by the core with neither the
     /// shell nor a kind of Heeler's, so the Agent's kind comes from its record.
-    /// A program Heeler does not know is no Agent until it reports.
+    /// A program Heeler does not know is no Agent until it reports. The core runs
+    /// a name with no file as a program, and no call of its asks for a Template
+    /// only, so the list is read again before anything happens and the answer is
+    /// checked after: the file can still go in between.
     func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
+        let templates = try await session.withTransport { $0 }.listTemplates()
+        guard templates.contains(where: { $0.name == request.template }) else {
+            throw HerdrCoreTemplateError.gone(request.template)
+        }
         if let worktree = request.worktree {
             return try await inNewWorktree(worktree, of: request.workspaceID) { placement in
                 try await runTemplate(request, placement: placement)
@@ -725,6 +732,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             runReply: try await transport.runTemplate(
                 params: HerdrCoreLaunch.templateRequest(
                     template: request.template, name: request.name, placement: placement)))
+        guard record.template == request.template else {
+            throw HerdrCoreTemplateError.ranAsProgram(request.template, directory: record.cwd)
+        }
         return agent(at: record, kind: HerdrCoreAgentRule.agent(in: record)?.kind ?? "unknown")
     }
 
@@ -827,6 +837,18 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return record
     }
 
+    /// The directory a launch from an Agent would land in, for the form to show.
+    /// Only a derived Workspace overrides the Agent's directory, as `placement` does.
+    func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String {
+        guard HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID) == nil,
+            let key = HerdrCoreOrganization.keyDirectory(
+                ofWorkspace: workspaceID, terminals: records,
+                firstSeenDirectories: memory.firstSeenDirectories(for: host.id)),
+            !key.isEmpty
+        else { return asked }
+        return key
+    }
+
     /// A desktop space takes the directory asked for, else its own. A derived
     /// Workspace is its key directory and nothing else, or the Terminal would
     /// land in another Workspace. A launch that names no Workspace is a derived one.
@@ -871,21 +893,35 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         guard !isAwaitingSnapshot else {
             throw TransportError.sshUnreachable(detail: "The Host is not connected.")
         }
-        try await endTerminals(
-            records.map(\.address).filter { terminalsByPane[$0]?.tabID == tabID })
+        do {
+            try await endTerminals(
+                records.map(\.address).filter { terminalsByPane[$0]?.tabID == tabID }
+            ) { [pins, host] address in
+                pins.removePin(hostID: host.id, paneID: address)
+            }
+        } catch {
+            // The caller drops no Pin on a throw, and this may have.
+            publish()
+            throw error
+        }
     }
 
     /// Each Terminal gets its one kill whatever became of the others, so a kill
     /// nobody answered leaves no Terminal unasked. That uncertainty is what the
     /// caller hears over any refusal, since it is what to check before trying again.
-    private func endTerminals(_ addresses: [String]) async throws {
+    private func endTerminals(
+        _ addresses: [String], onEnded: (String) -> Void = { _ in }
+    ) async throws {
         let transport = try await session.withTransport { $0 }
         var failure: (any Error)?
         for address in addresses {
             do {
                 try await transport.killTerminal(address)
+                onEnded(address)
             } catch TransportError.coreMutationOutcomeUnknown {
                 failure = TransportError.coreMutationOutcomeUnknown
+            } catch let refusal as HerdrAPIError {
+                failure = failure ?? HerdrCoreCloseRefusal(message: refusal.message)
             } catch {
                 failure = failure ?? error
             }
@@ -947,6 +983,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             return try await inNewSpace(NewWorkspaceSpec(directory: created.path), start: start)
         } catch TransportError.coreMutationOutcomeUnknown {
             throw TransportError.coreMutationOutcomeUnknown
+        } catch let started as HerdrCoreTemplateError {
+            throw started
         } catch {
             throw WorktreeAgentStartFailure(checkoutPath: created.path, underlying: error)
         }
@@ -981,8 +1019,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// the checkout, so nothing keeps running in a deleted folder. Which Terminals
     /// comes from the membership computed here, never from labels alone: any
     /// process can rewrite those. What the checkout would lose is checked against
-    /// what the request's confirmation named before anything ends, and it is what
-    /// forces the removal; anything newer than that check makes git refuse.
+    /// what the request's confirmation named before anything ends, and again once
+    /// the Terminals have ended, since they can write on their way out. That last
+    /// read is what forces the removal, so force covers only what the user heard.
     func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt {
         let identity = request.identity
         guard identity.hostID == host.id else { throw WorktreeRemovalError.staleIdentity }
@@ -1011,8 +1050,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let agents = agentsByPane.values.filter { $0.agent.workspaceID == identity.workspaceID }
         worktreeRemovals[identity, default: []].formUnion(agents.map(\.id))
         try await endTerminals(ofWorkspace: identity.workspaceID)
+        let settled = try await git.riskOnceTerminalsEnded(ofCheckout: identity.checkoutPath)
+        guard settled.isCovered(by: request.toldRisk) else {
+            throw WorktreeRemovalError.changedWhileTerminalsEnded
+        }
         try await git.remove(
-            path: identity.checkoutPath, mainCheckout: mainCheckout, force: risk.requiresForce)
+            path: identity.checkoutPath, mainCheckout: mainCheckout, force: settled.requiresForce)
 
         let receipt = WorktreeRemovalReceipt(
             request: request, affectedAgentIDs: worktreeRemovals[identity] ?? [])

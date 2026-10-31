@@ -144,7 +144,7 @@ A core started from inside another program can inherit variables that change how
 
 ## New Agent and New Terminal
 
-**New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.
+**New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. An alias or a shell function does not count, since a start runs a program on that `PATH`. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.
 
 Pick where it starts, for an Agent and for **New Terminal** alike:
 
@@ -162,7 +162,7 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 
 ### Templates
 
-**New Agent** also lists the Host's Templates, the roles saved under `~/.config/herdr-core/templates` (or `$XDG_CONFIG_HOME/herdr-core/templates`), under the agents your shell can run. A file the core cannot use is not listed.
+**New Agent** also lists the Host's Templates, the roles saved under `~/.config/herdr-core/templates` (or `$XDG_CONFIG_HOME/herdr-core/templates`), under the agents your shell can run. A file the core cannot use is not listed. A Template removed after you opened the form is no longer started: **Detect Again** refreshes the list. If it goes in the moment before the start, the core runs a program of that name instead, and Heeler says so and where.
 
 Pick one and tap **Start**. It lands where any other Agent would, by the table above, and an empty name field names the Agent after the Template, or `reviewer-2` while another live Terminal is named `reviewer`. The core runs the Template's own command, so your shell, your startup files and the session flags above play no part, and the form asks for no arguments. A command that needs a variable from your startup files should set it itself.
 
@@ -182,7 +182,9 @@ The checkout goes to `~/.herdr/worktrees/<repository>/<branch>`, where the deskt
 
 To remove one, open an Agent in it, then **Worktree Details** in the More menu. Heeler first ends every Terminal of that Workspace, as Close does, then removes the checkout. **Remove Worktree** becomes available once Heeler has checked the checkout, and the confirmation warns when uncommitted changes or submodules would go with it. The branch stays.
 
-If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout in place. Check the Host before trying again. A Terminal in another Workspace that has moved into the checkout is not ended, so close it first.
+If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout in place. Check the Host before trying again. The same goes if the checkout changed while its Terminals were ending: they have ended, the checkout stays, and the next confirmation warns about what it holds now. Removing ends only that Workspace. Another Workspace on the same checkout keeps running in the deleted folder, whether it started there or a Terminal moved in, so the confirmation names any it can tell. Close those first.
+
+If the connection drops with **Worktree Details** open, the sheet goes with the Agent's screen. Whatever stopped the removal, or the Host not confirming it, then shows as an alert over the Console, and so does a Close that ends the same way from an Agent's screen. Check the Host before trying again.
 
 Native Windows core Hosts do not offer Worktrees yet.
 

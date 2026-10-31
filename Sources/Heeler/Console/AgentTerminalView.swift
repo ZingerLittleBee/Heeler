@@ -586,7 +586,9 @@ struct AgentTerminalView: View {
                 origin: StartAgentStore.LaunchOrigin(
                     hostID: agent.hostID,
                     workspaceID: agent.agent.workspaceID,
-                    cwd: agent.agent.cwd),
+                    cwd: console.launchDirectory(
+                        ofWorkspace: agent.agent.workspaceID, asked: agent.agent.cwd,
+                        on: agent.hostID)),
                 onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
@@ -659,7 +661,11 @@ struct AgentTerminalView: View {
             }
         }) {
             if let worktreeStore {
-                WorktreeDetailView(store: worktreeStore) { _ in
+                WorktreeDetailView(
+                    store: worktreeStore,
+                    reportAfterLeaving: console.outcomeReporter(
+                        on: agent.hostID, title: "Couldn't Remove Worktree")
+                ) { _ in
                     isShowingWorktree = false
                 }
                 .modifier(ConsoleSheetPresentationModifier(
@@ -682,7 +688,11 @@ struct AgentTerminalView: View {
             "Couldn't Close Agent",
             isPresented: Binding(
                 get: { closeErrorMessage != nil },
-                set: { if !$0 { closeErrorMessage = nil } })
+                set: { presented in
+                    guard !presented else { return }
+                    closeErrorMessage = nil
+                    attach.close.dismissFailure()
+                })
         ) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -769,8 +779,12 @@ struct AgentTerminalView: View {
                 armDirectKeyboardClaimIfNeeded()
             }
             attach.rejoin()
+            attach.close.didReturnToScreen()
         }
         .onDisappear {
+            attach.close.didLeaveScreen(
+                reportingTo: console.outcomeReporter(
+                    on: agent.hostID, title: "Couldn't Close Agent"))
             interactionProbe?.value?.disconnect()
             messageJump.resetSession()
             if let onRetainDeparture {
@@ -1022,6 +1036,9 @@ struct AgentTerminalView: View {
                 ? { [console] request in
                     try await console.worktreeRemovalRisk(request, on: hostID)
                 }
+                : nil,
+            otherWorkspaces: host?.serverKind == .herdrCore
+                ? { [console] in console.workspaceLabels(sharingCheckoutOf: request.identity) }
                 : nil)
     }
 

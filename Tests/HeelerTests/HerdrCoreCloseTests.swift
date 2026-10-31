@@ -251,13 +251,46 @@ struct HerdrCoreCloseTests {
         #expect(await transport.kills == ["t1"])
     }
 
+    /// The core is what refused, wherever Close was asked from.
     @Test func aRefusedKillSaysWhatTheCoreSaid() async throws {
         let (store, transport) = try await started([Self.shell("t1")])
         defer { store.setHosts([]) }
-        let refusal = HerdrAPIError(code: "invalid_params", message: "no")
-        await transport.setKillAnswer(.failure(refusal), for: "t1")
+        await transport.setKillAnswer(
+            .failure(HerdrAPIError(code: "invalid_params", message: "no")), for: "t1")
 
-        await #expect(throws: refusal) { try await store.closePane("t1", on: self.host.id) }
+        let refusal = await #expect(throws: (any Error).self) {
+            try await store.closePane("t1", on: self.host.id)
+        }
+        let row = try #require(refusal)
+        #expect(ConsoleStore.tabCloseFailureMessage(for: row) == "herdr-core rejected the close: no")
+
+        let hostID = host.id
+        let detail = ClosePaneStore(paneTitle: "Claude") {
+            try await store.closePane("t1", on: hostID)
+        }
+        await detail.confirmClose()
+        #expect(detail.state == .failed("herdr-core rejected the close: no"))
+    }
+
+    /// A core that stopped with SSH still up is said in words.
+    @Test(arguments: [true, false])
+    func aCloseWithNoCoreRunningSaysSo(socketFilePresent: Bool) async {
+        let error = TransportError.herdrCoreNotRunning(
+            socketPath: "/run/core.sock", socketFilePresent: socketFilePresent)
+        let store = ClosePaneStore(paneTitle: "Claude") { throw error }
+
+        await store.confirmClose()
+
+        guard case .failed(let detail) = store.state else {
+            Issue.record("The close ended as \(store.state)")
+            return
+        }
+        let row = ConsoleStore.tabCloseFailureMessage(for: error)
+        for message in [detail, row] {
+            #expect(message.hasPrefix("herdr-core is not running: "), "\(message)")
+            #expect(message.contains("/run/core.sock"))
+            #expect(!message.contains("herdrCoreNotRunning"))
+        }
     }
 
     /// A row kept from an earlier connection, with no inventory yet on this one.
@@ -348,6 +381,29 @@ struct HerdrCoreCloseTests {
         #expect(isPinned("t1", in: store))
     }
 
+    /// The row read as alone in its Tab, so both go by `closeTab`. The Terminal
+    /// that ended has no reason to keep a Pin because another did not answer.
+    @Test func aTabWithOneKillUnconfirmedKeepsOnlyThatTerminalsPin() async throws {
+        let (store, transport) = try await started([
+            Self.agent("t1", labels: Self.tab("tb1")), Self.agent("t2", labels: Self.tab("tb1")),
+        ])
+        defer { store.setHosts([]) }
+        pin("t1", "t2", in: store)
+        await transport.setKillAnswer(.success(Self.agent("t2", labels: Self.tab("tb1"))), for: "t2")
+        let row = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        let stale = ConsoleAgent(
+            hostID: row.hostID, hostName: row.hostName, agent: row.agent, workspaceLabel: nil,
+            repositoryCheckout: nil)
+
+        await #expect(throws: TransportError.coreMutationOutcomeUnknown) {
+            try await store.closeAgent(stale)
+        }
+
+        #expect(await transport.kills == ["t1", "t2"])
+        #expect(!isPinned("t1", in: store))
+        #expect(isPinned("t2", in: store))
+    }
+
     // MARK: Saying so
 
     private static let unconfirmed =
@@ -372,6 +428,70 @@ struct HerdrCoreCloseTests {
 
         #expect(store.state == .failed(Self.unconfirmed))
         #expect(closes == 1)
+    }
+
+    // MARK: With the screen gone
+
+    private final class Reports {
+        var messages: [String] = []
+    }
+
+    /// Agent detail went with the link while the kill was on its way.
+    @Test func aCloseThatFailsAfterItsScreenLeftIsHandedOver() async {
+        let reports = Reports()
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+
+        await store.confirmClose()
+
+        #expect(reports.messages == [Self.unconfirmed])
+        #expect(store.state == .idle)
+    }
+
+    @Test func aFailureStillOnScreenWhenItLeavesIsHandedOverOnce() async {
+        let reports = Reports()
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        await store.confirmClose()
+        #expect(store.state == .failed(Self.unconfirmed))
+
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+
+        #expect(reports.messages == [Self.unconfirmed])
+    }
+
+    @Test func aFailureAlreadyDismissedIsNotHandedOver() async {
+        let reports = Reports()
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        await store.confirmClose()
+        store.dismissFailure()
+
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+
+        #expect(reports.messages.isEmpty)
+    }
+
+    @Test func aScreenThatCameBackKeepsItsFailureAndNoReportersMeansItStays() async {
+        let reports = Reports()
+        let store = ClosePaneStore(paneTitle: "Claude") {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+        store.didLeaveScreen(reportingTo: { reports.messages.append($0) })
+        store.didReturnToScreen()
+
+        await store.confirmClose()
+
+        #expect(reports.messages.isEmpty)
+        #expect(store.state == .failed(Self.unconfirmed))
+
+        store.didLeaveScreen(reportingTo: nil)
+        #expect(store.state == .failed(Self.unconfirmed))
     }
 
     // MARK: What a core Host offers

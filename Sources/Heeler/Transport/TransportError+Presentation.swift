@@ -30,6 +30,15 @@ struct TransportErrorPresentation: Equatable, Sendable {
 }
 
 extension TransportError {
+    /// A core that stopped with SSH still up, in the words every surface shares.
+    /// Nil for any other error, whose surface keeps its own copy.
+    static func herdrCoreNotRunningMessage(for error: any Error) -> String? {
+        guard let transportError = error as? TransportError,
+            case .herdrCoreNotRunning = transportError
+        else { return nil }
+        return transportError.presentation.message
+    }
+
     var presentation: TransportErrorPresentation {
         switch self {
         case .hostFeatureUnavailable(let feature):

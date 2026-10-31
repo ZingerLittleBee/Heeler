@@ -389,6 +389,43 @@ struct HerdrCoreLaunchTests {
         #expect(await fixture.transport.discoveryScripts.count == 1)
     }
 
+    /// Discovery goes by exec and a start by the link, so a core that stopped
+    /// with SSH still up reaches the form as this.
+    @Test func aStartWithNoCoreRunningSaysSo() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setDiscovery(programs: ["claude"])
+        await fixture.transport.setRunFailure(
+            TransportError.herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
+        let form = fixture.startAgentForm()
+        await form.discoverAgents()
+
+        await form.submit()
+
+        #expect(
+            form.state
+                == .failed(
+                    "herdr-core is not running: Nothing is listening at /run/core.sock. "
+                        + "Start the core on the Host, then check again."))
+    }
+
+    /// What the Host reports of its login shell comes over the link.
+    @Test func aDiscoveryWithNoCoreRunningSaysSo() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        await fixture.transport.setShellFailure(
+            TransportError.herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(
+            form.agentDiscoveryState
+                == .failed(
+                    "herdr-core is not running: Nothing is listening at /run/core.sock. "
+                        + "Start the core on the Host, then check again."))
+    }
+
     @Test func aFreshDiscoveryReplacesTheVersionItRemembered() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
@@ -762,6 +799,87 @@ struct HerdrCoreLaunchTests {
         return form
     }
 
+    // MARK: A Template that has gone
+
+    /// The core would run a program of that name without a word.
+    @Test func aTemplateGoneByStartSendsNoRun() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        let form = try await formWithTemplatePicked(on: fixture)
+        await fixture.transport.setTemplates([Self.template("planner")])
+
+        await form.submit()
+
+        #expect(await fixture.transport.templateRuns == 0)
+        #expect(await fixture.transport.runs.isEmpty)
+        #expect(
+            form.state
+                == .failed(
+                    "reviewer is no longer a Template on this Host, so nothing started. Detect Again refreshes the list."
+                ))
+    }
+
+    /// Which name is a Template is not known, so nothing runs under it.
+    @Test func aListThatCannotBeReadAtStartSendsNoRun() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        let form = try await formWithTemplatePicked(on: fixture)
+        await fixture.transport.setTemplateListFailure(TransportError.timedOut)
+
+        await form.submit()
+
+        #expect(await fixture.transport.templateRuns == 0)
+        #expect(form.state == .failed("The Host did not answer in time."))
+    }
+
+    /// The file can go between the check and the run, and no core call rules that
+    /// out, so the answer is read and the program is left for the user to judge.
+    @Test func aRunThatNamesNoTemplateSaysWhatStartedAndWhere() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+        let form = try await formWithTemplatePicked(on: fixture)
+        form.selectExistingWorkspace(fixture.derived)
+        await fixture.transport.runTemplatesAsPrograms()
+
+        await form.submit()
+
+        #expect(await fixture.transport.templateRuns == 1)
+        #expect(
+            form.state
+                == .failed(
+                    "reviewer is no longer a Template on this Host, so the core ran a program of that name in a Terminal at /work/app. Close it if you did not mean to run it."
+                ))
+    }
+
+    // MARK: Where it starts
+
+    /// A derived Workspace is its key directory, wherever its Terminal has gone.
+    @Test func theOriginFormShowsADerivedWorkspacesKeyDirectory() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+
+        #expect(
+            fixture.store.launchDirectory(
+                ofWorkspace: fixture.derived, asked: "/work/app/sub", on: host.id) == "/work/app")
+
+        _ = try await fixture.store.startAgent(
+            AgentLaunchRequest(
+                kind: "claude", name: "claude", arguments: [], workspaceID: fixture.derived,
+                cwd: "/work/app/sub"),
+            on: host.id)
+        #expect(await fixture.transport.runs.last?["cwd"]?.stringValue == "/work/app")
+    }
+
+    /// A desktop space takes the directory it is given.
+    @Test func theOriginFormShowsTheAskedDirectoryInADesktopSpace() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+
+        #expect(
+            fixture.store.launchDirectory(
+                ofWorkspace: "space-s1", asked: "/work/alpha/sub", on: host.id) == "/work/alpha/sub")
+    }
+
     @Test func aTemplateInADerivedWorkspaceIsRunByNameAndNothingElse() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
@@ -802,6 +920,7 @@ struct HerdrCoreLaunchTests {
     @Test func aTemplateFromAnAgentInADesktopSpaceStartsInThatAgentsDirectory() async throws {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
+        await fixture.transport.setTemplates([Self.template("reviewer")])
 
         _ = try await fixture.store.startTemplate(
             TemplateLaunchRequest(
@@ -849,6 +968,7 @@ struct HerdrCoreLaunchTests {
         let fixture = try await Fixture(host: host)
         defer { fixture.finish() }
         await fixture.transport.setTemplateCommand("/opt/mytool --flag")
+        await fixture.transport.setTemplates([Self.template("reviewer")])
 
         let agent = try await fixture.store.startTemplate(
             TemplateLaunchRequest(

@@ -200,7 +200,9 @@ struct AgentChatSurfaceView: View {
                 origin: StartAgentStore.LaunchOrigin(
                     hostID: agent.hostID,
                     workspaceID: agent.agent.workspaceID,
-                    cwd: agent.agent.cwd),
+                    cwd: console.launchDirectory(
+                        ofWorkspace: agent.agent.workspaceID, asked: agent.agent.cwd,
+                        on: agent.hostID)),
                 onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass),
@@ -267,7 +269,11 @@ struct AgentChatSurfaceView: View {
             "Couldn't Close Agent",
             isPresented: Binding(
                 get: { closeErrorMessage != nil },
-                set: { if !$0 { closeErrorMessage = nil } })
+                set: { presented in
+                    guard !presented else { return }
+                    closeErrorMessage = nil
+                    closer.dismissFailure()
+                })
         ) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -278,6 +284,7 @@ struct AgentChatSurfaceView: View {
     private var lifecycleSurface: some View {
         chatSurface
         .onAppear {
+            closer.didReturnToScreen()
             stageExit?.cancel()
             stageExit = nil
             if isOnStage() {
@@ -291,6 +298,9 @@ struct AgentChatSurfaceView: View {
             if presentation != .timeline { detailCrossfade?.contentDidAppear() }
         }
         .onDisappear {
+            closer.didLeaveScreen(
+                reportingTo: console.outcomeReporter(
+                    on: agent.hostID, title: "Couldn't Close Agent"))
             // SwiftUI also hands out disappears nobody caused; the router
             // says whether Chat really left.
             stageExit?.cancel()

@@ -828,6 +828,27 @@ struct ShellTerminalStoreTests {
         #expect(forgets == 0)
     }
 
+    /// A core that refused the kill left the Shell running. A Herdr TUI answer of
+    /// the same kind means the tab is gone, which the test above keeps.
+    @Test func closeTerminalStaysInTheShellWhenTheCoreRefusedTheKill() async throws {
+        let transport = ScriptedTransport()
+        var forgets = 0
+        let store = makeOpenStore(
+            agent: makeAgent(),
+            transport: transport,
+            forgetTerminal: { forgets += 1 },
+            closeRemoteTerminal: { _ in throw HerdrCoreCloseRefusal(message: "no") })
+        store.open()
+        _ = try await shell(in: store)
+
+        store.closeTerminal()
+
+        try #require(await eventually { store.closeFailureMessage != nil })
+        #expect(store.closeFailureMessage == "herdr-core rejected the close: no")
+        #expect(store.shell != nil)
+        #expect(forgets == 0)
+    }
+
     private func makeOpenStore(
         agent: ConsoleAgent,
         transport: ScriptedTransport,

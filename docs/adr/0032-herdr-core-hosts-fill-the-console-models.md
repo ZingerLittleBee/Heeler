@@ -63,7 +63,9 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   `-Command "& '<agent>' ...; exit $LASTEXITCODE"`, which runs the agent as
   its child and exits with it. The interactive shell
   supplies the user's own PATH and variables, and then no shell stays: the
-  Terminal ends when the Agent exits. A kept Terminal whose program is lost
+  Terminal ends when the Agent exits. Discovery goes through the same shell and
+  asks a child `/bin/sh` to look on that PATH, so an alias or function, which
+  `exec` cannot run, is not listed as installed. A kept Terminal whose program is lost
   rather than exited still comes back as a shell, one that has reported
   nothing. The launch request adds no PATH of its own. A Template is launched
   by name, as the core runs it, without the shell or the session flags of
@@ -80,7 +82,10 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   submodules, keeping the branch. Those two git commands run as the app's do,
   with the repository's hooks, while Heeler's git reads stay neutralized. A
   removal stops before any kill when git reports a risk the confirmation did
-  not name, so force never covers something the user did not hear about. Remove
+  not name, so force never covers something the user did not hear about. The
+  Terminals can write as they end, so git is read again once they have, and that
+  read decides force: a risk the confirmation did not name stops the removal
+  there, with the Terminals ended and the checkout kept. Remove
   waits for the read of those risks, as the desktop's mod does, and the
   confirmation carries what it named to the removal, so a read nobody was shown
   covers nothing.

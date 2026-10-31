@@ -151,6 +151,31 @@ class ShellLaunchTests(unittest.TestCase):
                 self.assertEqual(found["executables"], ["claude", "opencode"])
                 self.assertEqual(found["version"], "opencode v2.2.2")
 
+    def test_discovery_lists_only_what_the_launch_can_exec(self):
+        # A launch's `exec` finds programs on PATH, so an alias or a function of the
+        # shell's reads as not installed, and asking for its version runs nothing.
+        (self.home / "elsewhere").mkdir()
+        target = self.home / "elsewhere/real"
+        target.write_text(VERSION_STUB)
+        target.chmod(0o700)
+        posix = f"alias codex='{target}'\nopencode-fn() {{ echo 'opencode v9'; }}\n"
+        with open(self.home / ".bashrc", "a") as rc:
+            rc.write(f"shopt -s expand_aliases\n{posix}")
+        with open(self.home / ".zshrc", "a") as rc:
+            rc.write(posix)
+        with open(self.home / ".config/fish/config.fish", "a") as rc:
+            rc.write(f"alias codex '{target}'\nfunction opencode-fn\n  echo 'opencode v9'\nend\n")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                script = self.drive("script", shell, "opencode-fn", "claude", "codex", "opencode-fn")
+                result = subprocess.run(
+                    ["/bin/sh", "-s"], input=script, env=self.environment(), capture_output=True,
+                    timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                found = json.loads(self.drive("parse", stdin=result.stdout))
+                self.assertEqual(found["executables"], ["claude"])
+                self.assertIsNone(found["version"])
+
     def test_discovery_with_no_such_program_reads_no_version(self):
         for shell in shells():
             with self.subTest(shell=shell):

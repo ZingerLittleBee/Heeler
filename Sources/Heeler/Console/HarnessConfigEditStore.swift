@@ -96,6 +96,9 @@ final class HarnessConfigEditFlow {
 
     private let hostID: Host.ID
     private var subject: Subject
+    /// A write whose answer never came. It may be on the Host, and with no record
+    /// Heeler would read its own edit as one the file already had.
+    private var unconfirmedWrite: HarnessConfigPendingChange?
     private let store: HarnessConfigEditStore
     private let makeEdit: @MainActor @Sendable () async throws -> HarnessConfigEdit
     private let services: @MainActor @Sendable () async throws -> any HostServices
@@ -147,6 +150,7 @@ final class HarnessConfigEditFlow {
     func review() async {
         phase = .reading
         canForget = false
+        await settleUnconfirmedWrite()
         do {
             let edit = try await makeEdit()
             remember(edit)
@@ -170,11 +174,31 @@ final class HarnessConfigEditFlow {
         guard case .review(let change) = phase else { return }
         phase = .writing
         do {
-            let applied = try await HarnessConfigEditor(files: try await services()).apply(change)
-            store.note(applied, on: hostID)
-            phase = .idle
+            let files = try await services()
+            do {
+                let applied = try await HarnessConfigEditor(files: files).apply(change)
+                store.note(applied, on: hostID)
+                phase = .idle
+            } catch let lost as TransportError {
+                unconfirmedWrite = change
+                await settleUnconfirmedWrite()
+                phase = applied == nil ? .failed(HarnessConfigEditMessage.text(for: lost)) : .idle
+            }
         } catch {
             phase = .failed(HarnessConfigEditMessage.text(for: error))
+        }
+    }
+
+    /// Reads the file for the write nobody confirmed.
+    private func settleUnconfirmedWrite() async {
+        guard let change = unconfirmedWrite else { return }
+        do {
+            let written = try await HarnessConfigEditor(files: try await services())
+                .record(ofWritten: change)
+            unconfirmedWrite = nil
+            if let written { store.note(written, on: hostID) }
+        } catch {
+            // Still unknown, so the next review asks again.
         }
     }
 

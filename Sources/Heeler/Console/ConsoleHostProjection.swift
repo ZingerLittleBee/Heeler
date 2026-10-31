@@ -77,6 +77,8 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// What removing this Worktree would lose, to warn of. Nil where the Host
     /// refuses such a removal instead.
     func worktreeRemovalRisk(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?
+    /// Where a launch asked into this directory of this Workspace would start.
+    func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String
     func focusAgent(_ paneID: String) async throws
     /// The Agents some Agent detail on this device shows now.
     func setShownAgents(_ paneIDs: Set<String>)
@@ -119,6 +121,8 @@ extension ConsoleHostProjection {
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
 
     func availableTemplates() async throws -> [AgentTemplate] { [] }
+
+    func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String { asked }
 
     func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
         throw TransportError.hostFeatureUnavailable(feature: "Templates")

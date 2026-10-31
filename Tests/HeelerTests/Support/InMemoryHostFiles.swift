@@ -16,6 +16,9 @@ actor InMemoryHostFiles: HostServices {
     private(set) var replaceCalls = 0
     private var beforeNextReplace: (@Sendable (InMemoryHostFiles) async -> Void)?
     private var failure: (any Error)?
+    private var lostReplaceAnswer: (any Error)?
+    private var losesConnectionWithAnswer = false
+    private var replaceFailure: (any Error)?
     private let home: String
 
     init(files: [String: Data] = [:], home: String = "/home/dev") {
@@ -36,6 +39,19 @@ actor InMemoryHostFiles: HostServices {
         self.failure = failure
     }
 
+    /// The next replace takes effect and its answer is lost, with this as the
+    /// error. With `andConnection`, everything after it fails the same way until
+    /// `setFailure(nil)`.
+    func loseNextReplaceAnswer(_ failure: any Error, andConnection: Bool = false) {
+        lostReplaceAnswer = failure
+        losesConnectionWithAnswer = andConnection
+    }
+
+    /// Every replace fails with this before it writes, while reads still work.
+    func setReplaceFailure(_ failure: (any Error)?) {
+        replaceFailure = failure
+    }
+
     func hostHomeDirectory() async throws -> String { home }
 
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
@@ -53,8 +69,14 @@ actor InMemoryHostFiles: HostServices {
             await change(self)
         }
         if let failure { throw failure }
+        if let replaceFailure { throw replaceFailure }
         guard files[path] == expected else { throw HostTextFileError.changedSinceRead }
         files[path] = contents
         writes.append(Write(path: path, contents: contents))
+        if let lost = lostReplaceAnswer {
+            lostReplaceAnswer = nil
+            if losesConnectionWithAnswer { failure = lost }
+            throw lost
+        }
     }
 }

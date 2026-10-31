@@ -4,6 +4,13 @@ import Observation
 /// The Console aggregate: reconciles the Host catalog and publishes one
 /// Agent list with independent Pin and per-Host sidebar ordering. Each ConsoleHostProjection
 /// owns its own convergence, retry, snippets and Host-scoped RPC behavior.
+/// How a close or a removal ended, for the Console to say with its screen gone.
+struct ConsoleOutcomeNotice: Identifiable, Equatable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
 @MainActor
 @Observable
 final class ConsoleStore {
@@ -52,6 +59,9 @@ final class ConsoleStore {
     /// Successful or snapshot-reconciled removals keyed by the exact Agents
     /// that belonged to the validated worktree. This survives their rows
     /// disappearing so Agent detail can show a stable result.
+    /// Outcomes whose screen had gone by the time they came. Off the Console's
+    /// projections on purpose: a reconnect that clears an inventory leaves these.
+    private(set) var outcomeNotices: [ConsoleOutcomeNotice] = []
     private(set) var removedWorktreesByAgent: [
         ConsoleAgent.ID: WorktreeRemovalReceipt
     ] = [:]
@@ -529,6 +539,11 @@ final class ConsoleStore {
         _ request: TemplateLaunchRequest, on hostID: Host.ID
     ) async throws -> Agent {
         try await projection(for: hostID).startTemplate(request)
+    }
+
+    /// See `ConsoleHostProjection.launchDirectory(ofWorkspace:asked:)`.
+    func launchDirectory(ofWorkspace workspaceID: String, asked: String, on hostID: Host.ID) -> String {
+        projections[hostID]?.launchDirectory(ofWorkspace: workspaceID, asked: asked) ?? asked
     }
 
     /// See `ConsoleHostProjection.programExit(ofPane:)`.
@@ -1082,12 +1097,14 @@ final class ConsoleStore {
             "The Host did not answer in time."
         case TransportError.coreMutationOutcomeUnknown:
             closeUnconfirmedMessage
+        case let refusal as HerdrCoreCloseRefusal:
+            "herdr-core rejected the close: \(refusal.message)"
         case let apiError as HerdrAPIError:
             "herdr rejected the close: \(apiError.message)"
         case TransportError.apiRejected(_, let message):
             "herdr rejected the close: \(message)"
         default:
-            "Closing failed: \(error)"
+            TransportError.herdrCoreNotRunningMessage(for: error) ?? "Closing failed: \(error)"
         }
     }
 
@@ -1101,6 +1118,29 @@ final class ConsoleStore {
         _ request: WorktreeRemovalRequest, on hostID: Host.ID
     ) async throws -> WorktreeRemovalReceipt {
         try await projection(for: hostID).removeWorktree(request)
+    }
+
+    /// Where a core Host's close or removal says how it ended once the screen that
+    /// asked has gone. Nil on a Herdr TUI Host, whose screens stay as they were.
+    func outcomeReporter(on hostID: Host.ID, title: String) -> ((String) -> Void)? {
+        guard catalog.contains(where: { $0.id == hostID && $0.serverKind == .herdrCore }) else {
+            return nil
+        }
+        return { [weak self] message in
+            self?.outcomeNotices.append(ConsoleOutcomeNotice(title: title, message: message))
+        }
+    }
+
+    func dismissOutcomeNotice(_ notice: ConsoleOutcomeNotice) {
+        outcomeNotices.removeAll { $0.id == notice.id }
+    }
+
+    /// The other Workspaces on this Worktree's checkout. Removing it ends only its
+    /// own Workspace (ADR 0032), so the confirmation names these.
+    func workspaceLabels(sharingCheckoutOf identity: WorktreeIdentity) -> [String] {
+        workspaces(for: identity.hostID)
+            .filter { $0.id != identity.workspaceID && $0.checkoutPath == identity.checkoutPath }
+            .map(\.label)
     }
 
     func worktreeRemovalRisk(

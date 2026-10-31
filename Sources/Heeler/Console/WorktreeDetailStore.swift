@@ -46,6 +46,9 @@ final class WorktreeDetailStore {
     /// Nil where nothing forces one: Herdr TUI Hosts refuse instead.
     private let readRemovalRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)?
     private var removalRisk: WorktreeRemovalRisk?
+    /// The other Workspaces on this checkout, whose Terminals a removal leaves
+    /// running. Nil where a removal closes the checkout's one Workspace.
+    private let otherWorkspaces: (() -> [String])?
     /// Remove waits while this holds, since a confirmation can only warn of what
     /// has been read.
     private var awaitsRemovalRisk: Bool
@@ -53,6 +56,8 @@ final class WorktreeDetailStore {
     /// The confirmed request, captured synchronously by the confirmation action
     /// and consumed exactly once when its asynchronous removal task starts.
     private var pendingRemoval: WorktreeRemovalRequest?
+    /// Set while the sheet is away, where its alert would reach nobody.
+    private var reportAfterLeaving: ((String) -> Void)?
 
     init(
         request: WorktreeRemovalRequest,
@@ -64,9 +69,11 @@ final class WorktreeDetailStore {
         remove: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt,
         hasWorkingAgent: @escaping () -> Bool,
         showChanges: ((String) -> Void)? = nil,
-        readRemovalRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)? = nil
+        readRemovalRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)? = nil,
+        otherWorkspaces: (() -> [String])? = nil
     ) {
         self.readRemovalRisk = readRemovalRisk
+        self.otherWorkspaces = otherWorkspaces
         awaitsRemovalRisk = readRemovalRisk != nil
         self.request = request
         self.workspaceLabel = workspaceLabel
@@ -171,7 +178,8 @@ final class WorktreeDetailStore {
             workspaceLabel: workspaceLabel,
             branch: confirmationBranch,
             hasWorkingAgent: hasWorkingAgent(),
-            risk: removalRisk)
+            risk: removalRisk,
+            otherWorkspaces: otherWorkspaces?() ?? [])
     }
 
     func cancelConfirmation() {
@@ -212,10 +220,38 @@ final class WorktreeDetailStore {
             removalPhase = .failed(refusal.message)
             showsFeedback = true
             // The next confirmation has to warn of what stopped this one.
-            if error as? WorktreeRemovalError == .changedSinceConfirmation {
+            if (error as? WorktreeRemovalError)?.isNewerThanConfirmation == true {
                 awaitsRemovalRisk = readRemovalRisk != nil
                 await loadRemovalRiskIfNeeded()
             }
+        }
+        handOverFeedback()
+    }
+
+    /// The sheet went away, perhaps with the link and with a failure on it. A
+    /// failure from now on goes to `report`; with no `report` it stays here.
+    func didLeaveScreen(reportingTo report: ((String) -> Void)?) {
+        reportAfterLeaving = report
+        handOverFeedback()
+    }
+
+    func didReturnToScreen() {
+        reportAfterLeaving = nil
+    }
+
+    private func handOverFeedback() {
+        guard let reportAfterLeaving, showsFeedback else { return }
+        let message = feedbackMessage
+        dismissFeedback()
+        reportAfterLeaving(message)
+    }
+
+    var feedbackMessage: String {
+        switch removalPhase {
+        case .failed(let message): message
+        case .stale(let message): message
+        case .unconfirmed: WorktreeRemovalError.outcomeUnconfirmed.message
+        default: ""
         }
     }
 
