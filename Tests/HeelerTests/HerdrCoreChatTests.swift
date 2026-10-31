@@ -468,59 +468,100 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
-    /// Everything that polls runs far faster than any real timer here.
-    @Test func noTimerEverChecks() async throws {
-        let table = ScriptedProcessTable()
-        await table.add(
-            ScriptedProcessTable.Process(
-                pid: Self.pid, name: "claude", start: Self.start, environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
-        let files = VirtualHostFiles(home: Self.home)
+    private final class ManualDate: @unchecked Sendable {
+        var now = Date(timeIntervalSince1970: 1_791_266_400)
+    }
+
+    /// Counts what would only run again if the loop went round again.
+    private actor Rounds {
+        private(set) var count = 0
+
+        func note() {
+            count += 1
+        }
+    }
+
+    /// A core Chat outside `ConsoleStore`, so its `now` and pace are the test's.
+    private func evidenceStore(
+        table: ScriptedProcessTable, files: VirtualHostFiles, rounds: Rounds? = nil,
+        timing: AgentChatStore.Timing = AgentChatStore.Timing(), now: @escaping @Sendable () -> Date = { Date() }
+    ) throws -> AgentChatStore {
         let record = try HerdrCoreSessionBinderTests.record(pid: Self.pid, foreground: Self.pid)
         let binder = HerdrCoreSessionBinder(
             processes: { try await table.read($0) }, files: files.hostFiles(), clearLabels: { _ in })
         let agent = Agent(
             terminalID: "t1", kind: "claude", title: "", status: .idle, workspaceID: "w1", tabID: "t1",
             paneID: "t1", cwd: "/work/app", revision: 1, agentSession: nil)
-        func make() -> AgentChatStore {
-            AgentChatStore(
-                agentID: ConsoleAgent.ID(hostID: host.id, paneID: "t1"), agent: agent, program: .claude,
-                source: AgentChatSource(
-                    hostID: host.id, socketLocation: .defaultSession, files: files.hostFiles(),
-                    agentInfo: {
-                        Issue.record("A core Chat asked for the Agent's record")
-                        return agent
-                    },
-                    cache: VolatileChatTranscriptCache(),
-                    adapter: try! #require(ChatTranscriptAdapter.standard(for: .claude)),
-                    sessionEvidence: { try await binder.check(record) }),
-                timing: AgentChatStore.Timing(
-                    activeInterval: .milliseconds(2), idleInterval: .milliseconds(2),
-                    locateBackoff: [0.001], sessionRecheck: 0.001, idleSessionRecheck: 0.001))
-        }
+        return AgentChatStore(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "t1"), agent: agent, program: .claude,
+            source: AgentChatSource(
+                hostID: host.id, socketLocation: .defaultSession, files: files.hostFiles(),
+                agentInfo: {
+                    Issue.record("A core Chat asked for the Agent's record")
+                    return agent
+                },
+                cache: VolatileChatTranscriptCache(),
+                adapter: try #require(ChatTranscriptAdapter.standard(for: .claude)),
+                cachedSession: { _ in
+                    await rounds?.note()
+                    return nil
+                },
+                sessionEvidence: { try await binder.check(record) }),
+            timing: timing, now: now)
+    }
 
-        // With nothing to bind.
-        let waiting = make()
+    private static func eventually(
+        _ what: String, _ condition: @MainActor () async -> Bool, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        for _ in 0..<1000 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+    }
+
+    /// Everything that polls runs far faster than any real timer here, and each
+    /// stage ends after the loop has gone round many times, however long that took.
+    @Test func noTimerEverChecks() async throws {
+        let table = ScriptedProcessTable()
+        await table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, name: "claude", start: Self.start, environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        let files = VirtualHostFiles(home: Self.home)
+        let timing = AgentChatStore.Timing(
+            activeInterval: .milliseconds(2), idleInterval: .milliseconds(2),
+            locateBackoff: [0.001], sessionRecheck: 0.001, idleSessionRecheck: 0.001)
+        let enoughRounds = 20
+
+        // With nothing to bind: each round looks for a saved binding.
+        let rounds = Rounds()
+        let waiting = try evidenceStore(table: table, files: files, rounds: rounds, timing: timing)
         waiting.show()
-        try await Task.sleep(for: .milliseconds(200))
+        try await Self.eventually("the rounds") { await rounds.count >= enoughRounds }
         #expect(await table.requests.count == 1)
         waiting.end()
 
-        // Bound to a conversation whose file is not there.
+        // Bound to a conversation whose file is not there: each round that opens
+        // looks for the file.
         await files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
-        let bound = make()
+        let bound = try evidenceStore(table: table, files: files, timing: timing)
+        await files.clearRecords()
         bound.show()
-        try await Task.sleep(for: .milliseconds(200))
+        try await Self.eventually("the opens") { await files.statuses.count >= enoughRounds }
         #expect(await table.requests.count == 2)
         bound.end()
 
         // Bound to a conversation whose file cannot be read, opening again as it
         // backs off.
+        let faults = 500
         await files.failNext(
-            .status, path: Self.transcriptPath(), with: TransportError.channelFailed(detail: "read"), count: 500)
-        let failing = make()
+            .status, path: Self.transcriptPath(), with: TransportError.channelFailed(detail: "read"), count: faults)
+        let failing = try evidenceStore(table: table, files: files, timing: timing)
         failing.show()
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(failing.conversation.readFailure != nil)
+        try await Self.eventually("the failed opens") {
+            let left = await files.faultsLeft(.status, path: Self.transcriptPath())
+            return failing.conversation.readFailure != nil && left <= faults - enoughRounds
+        }
         #expect(await table.requests.count == 3)
         failing.end()
     }
