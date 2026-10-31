@@ -17,7 +17,8 @@ core runs only from an explicit `server start` by absolute path in the isolated
 environment, with its own session (the start-core command, or a test doing the
 same over SSH). herdr-core sits only at ~/.local/bin, off the exec's PATH. `hc`
 and `herdr` are tripwires that log every call, and the rc files carry a PATH
-stub and a marker that a launch through a login shell can be checked by.
+stub and a marker that a launch through a login shell can be checked by, for
+bash, zsh and fish alike.
 """
 import argparse
 import base64
@@ -98,16 +99,36 @@ def write_tripwire(path, log, status):
     path.chmod(0o700)
 
 
+def rc_files():
+    """Each startup file and the program only it puts on PATH, by path under a home.
+
+    With `--wait` the program reports what a launch gave it, then ends on a line.
+    """
+    posix = f'export PATH="$HOME/.rc-stub/bin:$PATH"\nexport {RC_MARKER}=rc-sourced\n'
+    stub = f"""#!/bin/sh
+echo rc-stub
+if [ "$1" = --wait ]; then
+    shift
+    printf 'marker=%s\\npid=%s\\n' "${RC_MARKER}" "$$"
+    for argument in "$@"; do printf 'arg=%s\\n' "$argument"; done
+    read -r line
+fi
+"""
+    return {
+        ".rc-stub/bin/heeler-rc-stub": stub,
+        ".bashrc": posix,
+        ".zshrc": posix,
+        ".config/fish/config.fish": f'set -gx PATH "$HOME/.rc-stub/bin" $PATH\nset -gx {RC_MARKER} rc-sourced\n',
+    }
+
+
 def write_rc_files(root):
     home = root / "home"
-    stub = home / ".rc-stub/bin"
-    stub.mkdir(parents=True)
-    probe = stub / "heeler-rc-stub"
-    probe.write_text("#!/bin/sh\necho rc-stub\n")
-    probe.chmod(0o700)
-    rc = f'export PATH="$HOME/.rc-stub/bin:$PATH"\nexport {RC_MARKER}=rc-sourced\n'
-    for name in (".bashrc", ".zshrc"):
-        (home / name).write_text(rc)
+    for relative, text in rc_files().items():
+        path = home / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    (home / ".rc-stub/bin/heeler-rc-stub").chmod(0o700)
 
 
 def owned_core_processes(root):

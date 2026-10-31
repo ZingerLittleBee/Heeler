@@ -95,7 +95,7 @@ class LabCheckTests(unittest.TestCase):
         box = ScriptedBox()
         lab, status, output = self.perform(box)
         self.assertEqual(status, 0, output)
-        for name in ("an hc-serve unit", "an hc-hold unit", "linger", "the seven end-to-end methods",
+        for name in ("an hc-serve unit", "an hc-hold unit", "linger", "the eight end-to-end methods",
                      "captured frames replay unchanged"):
             self.assertIn(f"PASS {name}", output)
         everything = "\n".join(box.commands)
@@ -156,7 +156,18 @@ class LabCheckTests(unittest.TestCase):
         self.assertEqual(config["startEnvironment"]["XDG_RUNTIME_DIR"], "/run/user/1000")
         self.assertNotIn("HC_SESSION", config["startEnvironment"])
         self.assertTrue(config["coreFixture"])
+        self.assertEqual(config["launchHome"], f"/home/lab/.cache/{lab.marker}/launch-home")
         self.assertRegex(lab.session, r"^hl[0-9a-f]{8}$")
+
+    def test_the_launch_methods_startup_files_stay_in_its_own_directory(self):
+        box = ScriptedBox()
+        lab, _, _ = self.perform(box)
+        everything = "\n".join(box.commands)
+        home = f"/home/lab/.cache/{lab.marker}/launch-home"
+        for relative in (".bashrc", ".zshrc", ".config/fish/config.fish", ".rc-stub/bin/heeler-rc-stub"):
+            self.assertIn(f"{home}/{relative}", everything)
+        self.assertNotIn("> /home/lab/.bashrc", everything)
+        self.assertNotIn("> /home/lab/.zshrc", everything)
 
     def test_each_run_gets_its_own_session(self):
         self.assertNotEqual(lab_check.unique_session(), lab_check.unique_session())
