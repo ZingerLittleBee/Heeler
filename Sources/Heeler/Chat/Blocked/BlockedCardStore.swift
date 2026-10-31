@@ -429,11 +429,13 @@ final class BlockedCardStore {
         guard progress != .acting else { return }
         progress = .acting
         notice = nil
-        var failure: String?
+        var refusal: String?
         do {
             try await type(.keys(keys), over: shownFingerprint)
+        } catch let error as HerdrCoreChatTyping.Refusal {
+            refusal = error.message
         } catch {
-            failure = Self.sendFailure(error)
+            notice = Self.sendFailure(error)
         }
         try? await clock.sleep(timing.pollInterval)
         progress = unconfirmedFingerprint == nil ? .ready : .unconfirmed
@@ -441,8 +443,9 @@ final class BlockedCardStore {
             releaseIfChanged(observation)
             present(observation)
         }
-        // A read that shows another dialog clears the notice: this one is about it.
-        if let failure { notice = failure }
+        // A read that shows another dialog clears the notice, and a refusal is
+        // about that dialog. A failed send's key may have gone, so it gives way.
+        if let refusal { notice = refusal }
     }
 
     /// The dialog the card shows, nil when it shows none.
