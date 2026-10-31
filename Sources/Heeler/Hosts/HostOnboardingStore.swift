@@ -35,7 +35,6 @@ struct HostOnboardingDependencies: Sendable {
     var connector: any TransportConnector = SSHTransportConnector()
     var knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared
     var credentials = HostCredentialsProvider()
-    var offersHerdrCore = ServerKind.herdrCore.isOfferedOnAdd()
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -96,7 +95,6 @@ final class HostOnboardingStore {
     private(set) var hostHelper: HostHelperStore?
 
     private(set) var host: Host
-    let offersHerdrCore: Bool
 
     @ObservationIgnored private let connector: any TransportConnector
     @ObservationIgnored private let knownHosts: any KnownHostsStore
@@ -119,11 +117,9 @@ final class HostOnboardingStore {
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider(),
         overlays: OverlayNetworkRuntime = .shared,
-        fingerprintTimeout: Duration = .seconds(60),
-        offersHerdrCore: Bool = ServerKind.herdrCore.isOfferedOnAdd()
+        fingerprintTimeout: Duration = .seconds(60)
     ) {
         self.host = host
-        self.offersHerdrCore = offersHerdrCore
         self.connector = connector
         self.knownHosts = knownHosts
         self.credentials = credentials
@@ -379,9 +375,8 @@ final class HostOnboardingStore {
     /// The kinds the user may confirm: none until the Host has been reached.
     var offeredKinds: [ServerKind] {
         guard host.serverKind == .unconfirmed else { return [] }
-        if let detection { return detection.offeredKinds(offersCore: offersHerdrCore) }
-        return detectionFailure == nil
-            ? [] : ServerKindDetection.offeredWithoutFindings(offersCore: offersHerdrCore)
+        if let detection { return detection.offeredKinds }
+        return detectionFailure == nil ? [] : ServerKindDetection.offeredWithoutFindings
     }
 
     /// What the confirmation adds to the findings it lists, if anything.
@@ -390,12 +385,6 @@ final class HostOnboardingStore {
             return "Heeler could not read what this Host runs, so the choice is yours. \(detectionFailure)"
         }
         guard let detection else { return nil }
-        guard offersHerdrCore else {
-            if case .notFound = detection.herdrTUI {
-                return "herdr was not found. Its checks say how to set it up."
-            }
-            return nil
-        }
         if case .sessionRefused(let reason) = detection.herdrCore {
             return reason
         }

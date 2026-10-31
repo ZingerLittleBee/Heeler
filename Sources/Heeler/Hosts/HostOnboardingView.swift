@@ -87,8 +87,7 @@ struct HostOnboardingView: View {
             host: host,
             connector: dependencies.connector,
             knownHosts: dependencies.knownHosts,
-            credentials: dependencies.credentials,
-            offersHerdrCore: dependencies.offersHerdrCore)
+            credentials: dependencies.credentials)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which
@@ -278,17 +277,15 @@ struct HostOnboardingView: View {
     }
 
     /// What detection found on a Host added unconfirmed, and the kinds it may
-    /// be confirmed as (ADR 0031). herdr-core stays out of it until it is on offer.
+    /// be confirmed as (ADR 0031).
     private var serverKindSection: some View {
         Section {
             PreflightCheckRow(title: PreflightCheck.connection.title(for: .unconfirmed), status: reachStatus)
             if let detection = store.detection {
                 LabeledContent(ServerKind.herdrTUI.displayName, value: detection.herdrTUI.summary)
                     .accessibilityIdentifier("hosts.detail.detection.herdrTUI")
-                if store.offersHerdrCore {
-                    LabeledContent(ServerKind.herdrCore.displayName, value: detection.herdrCore.summary)
-                        .accessibilityIdentifier("hosts.detail.detection.herdrCore")
-                }
+                LabeledContent(ServerKind.herdrCore.displayName, value: detection.herdrCore.summary)
+                    .accessibilityIdentifier("hosts.detail.detection.herdrCore")
             }
             ForEach(store.offeredKinds, id: \.self) { @Sendable kind in
                 MainActorContent {

@@ -22,8 +22,7 @@ struct HostOnboardingStoreTests {
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
         pluginSteps: FakePluginSteps = FakePluginSteps(),
         fingerprintTimeout: Duration = .seconds(5),
-        core: ScriptedCoreHost? = nil,
-        offersHerdrCore: Bool = false
+        core: ScriptedCoreHost? = nil
     ) throws -> (HostOnboardingStore, FakeTransportConnector) {
         let connector = FakeTransportConnector(
             outcome: outcome, presentedKeyBlob: presentedKeyBlob,
@@ -42,8 +41,7 @@ struct HostOnboardingStoreTests {
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
                 secrets: secrets),
-            fingerprintTimeout: fingerprintTimeout,
-            offersHerdrCore: offersHerdrCore)
+            fingerprintTimeout: fingerprintTimeout)
         return (store, connector)
     }
 
@@ -430,7 +428,7 @@ struct HostOnboardingStoreTests {
 
     /// An unconfirmed Host in a catalog of its own, with its store.
     private func unconfirmedStore(
-        _ core: ScriptedCoreHost, session: String = "work", offersHerdrCore: Bool = false,
+        _ core: ScriptedCoreHost, session: String = "work",
         outcome: FakeTransportConnector.Outcome = .connects(pingResult: healthyPing),
         presentedKeyBlob: Data? = nil
     ) throws -> (HostOnboardingStore, FakeTransportConnector, HostStore) {
@@ -440,7 +438,7 @@ struct HostOnboardingStoreTests {
         let (store, connector) = try makeStore(
             host: host, outcome: outcome, presentedKeyBlob: presentedKeyBlob,
             sessions: [HerdrSession(name: "tui-only", isDefault: false, isRunning: true)],
-            core: core, offersHerdrCore: offersHerdrCore)
+            core: core)
         return (store, connector, catalog)
     }
 
@@ -473,23 +471,51 @@ struct HostOnboardingStoreTests {
         #expect(await core.scripts.first?.contains("__session='work team'\n") == true)
     }
 
-    @Test func withoutTheLaunchArgumentOnlyHerdrTUIIsOffered() async throws {
-        for lines in [
-            ScriptedCoreHost.locatorLines(),
-            ScriptedCoreHost.locatorLines(socketFile: true),
-            ScriptedCoreHost.locatorLines(executable: nil),
-        ] {
-            let core = ScriptedCoreHost(locator: lines, channel: .refused)
-            let (store, _, _) = try unconfirmedStore(core)
-            #expect(store.offeredKinds.isEmpty)
+    /// Nothing but what detection found decides what is on offer.
+    @Test func detectionOffersHerdrCore() async throws {
+        let core = ScriptedCoreHost(channel: .refused)
+        let (store, _, catalog) = try unconfirmedStore(core)
+        #expect(store.offeredKinds.isEmpty)
 
-            await store.runChecks()
+        await store.runChecks()
 
-            #expect(store.offeredKinds == [.herdrTUI])
-        }
+        #expect(store.offeredKinds == [.herdrCore])
+        await store.confirmServerKind(.herdrCore, in: catalog)
+        #expect(store.host.serverKind == .herdrCore)
     }
 
-    @Test func withTheLaunchArgumentTheFoundKindsAreOffered() async throws {
+    @Test func aTargetRunningOnlyHerdrTUIIsOfferedOnlyHerdrTUI() async throws {
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(executable: nil),
+            herdrRead: .answers(Self.sessionsJSON), channel: .refused)
+        let (store, connector, catalog) = try unconfirmedStore(core)
+
+        await store.runChecks()
+
+        #expect(store.offeredKinds == [.herdrTUI])
+        await store.confirmServerKind(.herdrCore, in: catalog)
+        #expect(store.host.serverKind == .unconfirmed)
+        await store.confirmServerKind(.herdrTUI, in: catalog)
+        #expect(store.host.serverKind == .herdrTUI)
+        #expect(store.report?.isFullyPassed == true)
+        #expect(await connector.transports.count == 1)
+    }
+
+    /// A Pairing Code names a Herdr TUI socket, so its Host is never asked.
+    @Test func aPairedHostIsHerdrTUIAndDetectsNothing() async throws {
+        let core = ScriptedCoreHost(channel: .refused)
+        let host = try endpointHost()
+        #expect(host.serverKind == .herdrTUI)
+        let (store, _) = try makeStore(host: host, core: core)
+
+        await store.runChecks()
+
+        #expect(store.detection == nil)
+        #expect(store.offeredKinds.isEmpty)
+        #expect(await core.log.isEmpty)
+    }
+
+    @Test func theFoundKindsAreOffered() async throws {
         let cases: [(ScriptedCoreHost, [ServerKind])] = [
             (ScriptedCoreHost(herdrRead: .answers(Self.sessionsJSON), channel: .refused), [.herdrTUI, .herdrCore]),
             (ScriptedCoreHost(channel: .refused), [.herdrCore]),
@@ -505,7 +531,7 @@ struct HostOnboardingStoreTests {
             ),
         ]
         for (core, offered) in cases {
-            let (store, _, _) = try unconfirmedStore(core, offersHerdrCore: true)
+            let (store, _, _) = try unconfirmedStore(core)
 
             await store.runChecks()
 
@@ -535,7 +561,7 @@ struct HostOnboardingStoreTests {
 
     @Test func confirmingHerdrCoreRunsItsPreflightAndNamesTheCoreVersion() async throws {
         let core = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
-        let (store, connector, catalog) = try unconfirmedStore(core, offersHerdrCore: true)
+        let (store, connector, catalog) = try unconfirmedStore(core)
         await store.runChecks()
         #expect(store.serverKindSummary == "Not confirmed")
 
@@ -553,7 +579,7 @@ struct HostOnboardingStoreTests {
 
     @Test func aFailedCorePreflightStillNamesTheKind() async throws {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _, catalog) = try unconfirmedStore(core, offersHerdrCore: true)
+        let (store, _, catalog) = try unconfirmedStore(core)
         await store.runChecks()
 
         await store.confirmServerKind(.herdrCore, in: catalog)
@@ -571,7 +597,7 @@ struct HostOnboardingStoreTests {
         let (store, _, catalog) = try unconfirmedStore(core)
         await store.runChecks()
 
-        await store.confirmServerKind(.herdrCore, in: catalog)
+        await store.confirmServerKind(.herdrTUI, in: catalog)
 
         #expect(store.host.serverKind == .unconfirmed)
         #expect(catalog.hosts.first?.serverKind == .unconfirmed)
@@ -590,7 +616,7 @@ struct HostOnboardingStoreTests {
 
     @Test func confirmingHerdrCoreWithASessionNameHCRefusesSaysWhy() async throws {
         let core = ScriptedCoreHost(herdrRead: .answers(Self.sessionsJSON), channel: .refused)
-        let (store, _, catalog) = try unconfirmedStore(core, session: "a/b", offersHerdrCore: true)
+        let (store, _, catalog) = try unconfirmedStore(core, session: "a/b")
         await store.runChecks()
         #expect(store.offeredKinds == [.herdrTUI, .herdrCore])
         guard case .sessionRefused = store.detection?.herdrCore else {
@@ -614,16 +640,14 @@ struct HostOnboardingStoreTests {
     @Test func theConfirmationSaysWhatTheFindingsLeaveOpen() async throws {
         let absent = ScriptedCoreHost.locatorLines(executable: nil)
         let found = HostOnboardingStoreTests.sessionsJSON
-        let cases: [(ScriptedCoreHost, Bool, String?)] = [
-            (ScriptedCoreHost(herdrRead: .answers(found), channel: .refused), true, "This machine runs both"),
-            (ScriptedCoreHost(locator: absent, channel: .refused), true, "Neither was found"),
-            (ScriptedCoreHost(channel: .refused), true, nil),
-            (ScriptedCoreHost(locator: absent, herdrRead: .answers(found), channel: .refused), true, nil),
-            (ScriptedCoreHost(herdrRead: .answers(found), channel: .refused), false, nil),
-            (ScriptedCoreHost(channel: .refused), false, "herdr was not found"),
+        let cases: [(ScriptedCoreHost, String?)] = [
+            (ScriptedCoreHost(herdrRead: .answers(found), channel: .refused), "This machine runs both"),
+            (ScriptedCoreHost(locator: absent, channel: .refused), "Neither was found"),
+            (ScriptedCoreHost(channel: .refused), nil),
+            (ScriptedCoreHost(locator: absent, herdrRead: .answers(found), channel: .refused), nil),
         ]
-        for (core, offersCore, note) in cases {
-            let (store, _, _) = try unconfirmedStore(core, offersHerdrCore: offersCore)
+        for (core, note) in cases {
+            let (store, _, _) = try unconfirmedStore(core)
             await store.runChecks()
             if let note {
                 #expect(store.confirmationNote?.hasPrefix(note) == true)
@@ -636,7 +660,7 @@ struct HostOnboardingStoreTests {
     /// The locator did not run, so "neither was found" would claim too much.
     @Test func aRefusedSessionNameSaysWhyHerdrCoreWasNotRead() async throws {
         let (store, _, _) = try unconfirmedStore(
-            ScriptedCoreHost(channel: .refused), session: "a/b", offersHerdrCore: true)
+            ScriptedCoreHost(channel: .refused), session: "a/b")
 
         await store.runChecks()
 
@@ -646,7 +670,7 @@ struct HostOnboardingStoreTests {
     @Test func anUnreachableHostOffersNothing() async throws {
         let core = ScriptedCoreHost(channel: .refused)
         let (store, _, _) = try unconfirmedStore(
-            core, offersHerdrCore: true, outcome: .connectFails(.authenticationFailed))
+            core, outcome: .connectFails(.authenticationFailed))
 
         await store.runChecks()
 
@@ -671,7 +695,7 @@ struct HostOnboardingStoreTests {
 
         #expect(store.detection == nil)
         #expect(store.detectionFailure?.contains("Server Kind detection") == true)
-        #expect(store.offeredKinds == [.herdrTUI])
+        #expect(store.offeredKinds == [.herdrTUI, .herdrCore])
         #expect(store.report == nil)
         #expect(await core.log == ["detection", "close"])
 
@@ -712,7 +736,7 @@ struct HostOnboardingStoreTests {
 
     @Test func aConfirmedHostNeverDetects() async throws {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _) = try makeStore(core: core, offersHerdrCore: true)
+        let (store, _) = try makeStore(core: core)
 
         await store.runChecks()
 

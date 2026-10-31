@@ -25,8 +25,7 @@ struct HostOnboardingCoreStartTests {
             credentials: HostCredentialsProvider(
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
-                secrets: InMemorySecretStore()),
-            offersHerdrCore: true)
+                secrets: InMemorySecretStore()))
         return (store, HostStore(volatileHosts: [host]))
     }
 
