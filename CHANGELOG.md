@@ -57,10 +57,10 @@ Entries reference the pull request that made the change.
 - Keep an Agent's terminal and draft on screen while its connection recovers,
   with the status and a loading indicator in the title, even when the title is
   folded. New input waits until the Host is ready, and the keyboard stays up.
-  A slow request no longer replaces a connection that still answers, and a
-  send whose reply was lost is never sent twice. Scrolling queued for more than
-  200 ms is dropped, so old gestures don't run after the connection comes back.
-  (refs #523)
+  A stall no longer replaces a connection that still answers, unless a request
+  timed out opening a channel on it, and a send whose reply was lost is never
+  sent twice. Scrolling still queued on the phone after 200 ms is dropped;
+  rows already sent can arrive when the connection comes back. (refs #523)
 - Bring out the Agents list when swiping in from the left edge of an
   Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
   Duo's inner display or a Pro Max in landscape, instead of closing it to

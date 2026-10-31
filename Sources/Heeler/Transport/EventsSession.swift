@@ -406,12 +406,9 @@ actor EventsSession {
             noteConnectionActivity()
             return value
         } catch {
-            // A request deadline is not proof the connection died. If the
-            // driver kept it usable, probe once without replaying the caller's
-            // operation: it may have reached the Host before its reply stalled.
-            if error as? TransportError == .timedOut, await transport.isConnected,
-                await checkConnection(transport, warnImmediately: true)?.value == true
-            {
+            // The operation may have reached the Host before its reply
+            // stalled, so a surviving connection is never a reason to replay it.
+            if await connectionSurvives(error, on: transport) {
                 throw error
             }
             // A degraded SSH link can sit installed-but-dead until the run
@@ -442,6 +439,17 @@ actor EventsSession {
                 throw error
             }
         }
+    }
+
+    /// A deadline is not proof the connection died. A timeout the driver
+    /// survived gets one probe, and only a failed probe replaces the connection.
+    /// A channel-open timeout retires the session in the driver, so it skips the
+    /// probe: that session must not admit more work even if the socket lives.
+    private func connectionSurvives(_ error: any Error, on transport: any Transport) async -> Bool {
+        guard error as? TransportError == .timedOut, await transport.isConnected else {
+            return false
+        }
+        return await checkConnection(transport, warnImmediately: true)?.value == true
     }
 
     /// Link-level failures worth one redial-and-retry: the SSH connection
@@ -538,11 +546,14 @@ actor EventsSession {
             return value
         } catch {
             releaseTerminal(target: target)
-            // A live terminal is often the first to hit a dead link. Distrust
-            // the transport as `withTransport` does, so the run loop redials
-            // now instead of at the next keepalive and a reattach can ride
-            // the replacement (#523).
-            if let acquired, Self.isTransportLinkFailure(error) {
+            // A live terminal is often the first to hit a dead link. Unless it
+            // only ran out a deadline on a connection that still answers,
+            // distrust the transport as `withTransport` does, so the run loop
+            // redials now instead of at the next keepalive and a reattach can
+            // ride the replacement (#523).
+            if let acquired, Self.isTransportLinkFailure(error),
+                await !connectionSurvives(error, on: acquired)
+            {
                 await distrust(acquired)
             }
             throw error

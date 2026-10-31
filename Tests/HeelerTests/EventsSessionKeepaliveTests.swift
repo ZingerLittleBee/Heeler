@@ -160,6 +160,54 @@ struct EventsSessionKeepaliveTests {
         await session.end()
     }
 
+    /// A terminal write can run out its deadline behind a stalled link while the
+    /// SSH connection survives, and the terminal then reattaches on that connection.
+    @Test func aTerminalTimeoutKeepsAConnectionThatStillAnswers() async throws {
+        let transport = ScriptedTransport()
+        let connector = SequencedTransportConnector([transport, ScriptedTransport()])
+        let session = makeSession(
+            connector: connector, keepalive: KeepalivePolicy(interval: .seconds(60)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        await #expect(throws: TransportError.timedOut) {
+            try await session.withTerminalTransport { _, _ in throw TransportError.timedOut }
+        }
+
+        #expect(await connector.connectCount == 1)
+        #expect(await !transport.isClosed)
+        #expect(!session.isCheckingConnection)
+        let reattachGeneration = try await session.withTerminalTransport { _, generation in
+            generation
+        }
+        #expect(reattachGeneration == 0)
+        #expect(await connector.connectCount == 1)
+        await session.end()
+    }
+
+    @Test func aTerminalTimeoutReplacesAConnectionThatStopsAnswering() async throws {
+        let first = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, ScriptedTransport()])
+        let session = makeSession(
+            connector: connector, keepalive: KeepalivePolicy(interval: .seconds(60)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        await first.failPing(atCall: 2, with: .timedOut)
+        await #expect(throws: TransportError.timedOut) {
+            try await session.withTerminalTransport { _, _ in throw TransportError.timedOut }
+        }
+
+        try await waitUntil("the failed probe must replace the connection") {
+            await connector.connectCount == 2
+        }
+        await session.end()
+    }
+
     @Test func aClosedChannelStillRunsOutTheProbeDeadline() async throws {
         let first = ScriptedTransport()
         let connector = SequencedTransportConnector([first, ScriptedTransport()])

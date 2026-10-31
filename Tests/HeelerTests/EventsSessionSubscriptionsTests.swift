@@ -671,10 +671,10 @@ struct EventsSessionSubscriptionsTests {
         }
         await subscribeGate.waitForEntry()
 
-        await #expect(throws: TransportError.timedOut) {
+        await #expect(throws: TransportError.sshUnreachable(detail: "dead link")) {
             try await session.withTerminalTransport { transport, _ in
                 #expect(try await transport.ping().version == "second")
-                throw TransportError.timedOut
+                throw TransportError.sshUnreachable(detail: "dead link")
             }
         }
         await subscribeGate.open()
