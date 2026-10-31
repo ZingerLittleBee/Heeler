@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/usage.md at 462002aa -->
+<!-- Translated from docs/guides/usage.md at ed1e9e66 -->
 # 查看 Usage 与 Usage Limits
 
 Usage 显示你的 Claude Code 和 Codex 账号离 Usage Limits 还有多远，以及每台 Host 上的 Agent 最近 30 天用了多少 token、按 API 标价折算大约值多少钱。小组件把同样的数字放到主屏和锁屏上。
@@ -19,9 +19,9 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 
 ## 查看 Usage
 
-轻点标签栏中的 **Usage**。
+轻点标签栏中的 **Usage**（在 iPad 上也可以从侧边栏顶部菜单选择 **Usage**）。
 
-- 右上角的 **All Hosts** 汇总所有 Host。选择某台 Host 则只看它的数字。
+- 右上角（在 iPad 上位于侧边栏中）的 **All Hosts** 汇总所有 Host。选择某台 Host 则只看它的数字。
 - 可以在 **Est. Cost** 与 **Tokens** 之间切换，也可以在 **Today**、**7 Days** 与 **30 Days** 之间切换。
 - **Usage Limits** 显示每个程序用得最多的窗口及其重置时间。轻点 **Details** 查看所有窗口。Usage Limits 始终属于某台 Host 上登录的账号，所以从不相加。
 - 按住图表，或轻点日历中的某一天，查看当天的数字。
@@ -74,4 +74,4 @@ Account 保存在 Host 上，所以无论从哪台设备连接，看到的都是
 ## 小组件何时更新
 
 - 打开 Heeler 时，如果某台 Host 的小组件数字已经超过 15 分钟，Heeler 会重新读取，不需要打开 Usage。
-- Heeler 关闭时，iOS 会不定期让它在后台读取，最频繁每 30 分钟一次。在 **设置 > 通用 > 后台 App 刷新** 中打开。低电量模式，或在 App 切换器中划掉 Heeler，都会让后台读取停止，直到你再次打开 Heeler。
+- Heeler 关闭时，iOS 会不定期让它在后台读取，最频繁每 30 分钟一次。在 **设置 > 通用 > 后台 App 刷新** 中打开。低电量模式，或在 App 切换器中划掉 Heeler，都会让后台读取停止，直到你再次打开 Heeler。后台读取只走 **Direct** 或 **Jump Host** 路由；只通过 Overlay Network 连接的 Host 会在你打开 Heeler 时更新。

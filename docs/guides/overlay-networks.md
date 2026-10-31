@@ -107,7 +107,7 @@ To fill in the address on the route page, Tailscale offers **Choose from Tailnet
 | Network is connected, but SSH times out | Check the route's Network, address, and port. Make sure the Mac is awake and Remote Login is on. |
 | SSH login fails | Check the username, Remote Login access, and the key or password. |
 | SSH works, herdr checks fail | Read the failing check. Usually herdr isn't installed for this account or the session name is wrong. |
-| Network turns back on after you switch it off | A Host route is using it. To keep it off, change that route's **Network** or delete the Host. |
+| Network turns back on after you switch it off | A Host route is using it. To keep it off, change that route's **Network** or remove the Host. |
 
 Last checked on 2026-10-09 on macOS.
 

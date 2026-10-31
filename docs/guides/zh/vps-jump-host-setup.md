@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/vps-jump-host-setup.md at 2b014a24 -->
+<!-- Translated from docs/guides/vps-jump-host-setup.md at ed1e9e66 -->
 
 # 通过 VPS 配置远程访问
 
@@ -112,7 +112,7 @@ ssh-keygen -lf ~/.ssh/VPS_NAME-tunnel.pub
 
 **运行位置：iOS**
 
-在 Heeler 中开始添加 Host，复制 Device Key（设备密钥）的公钥行。格式形如：
+在 Heeler 中前往 **Hosts > Add Host**，在 **Authentication** 下保持选中 **Device Key**（设备密钥），轻点 **Copy authorized_keys Line** 复制公钥行。格式形如：
 
 ```text
 ssh-ed25519 AAAA... heeler
@@ -511,7 +511,7 @@ tail -n 50 ~/Library/Logs/VPS_NAME-reverse-ssh.error.log
 
 **运行位置：iOS**
 
-前往 **Hosts > Add Host**，在 **Routes** 下轻点 **Add Route** 填写隧道与 Jump Host 字段并保存路由，再填写其余 Host 字段：
+前往 **Hosts > Add Host**，在 **Routes** 下轻点 **Add Route** 填写隧道与 Jump Host 字段并轻点 **Save** 保存路由，再填写其余 Host 字段：
 
 | 字段 | 值 |
 |---|---|
@@ -529,7 +529,7 @@ tail -n 50 ~/Library/Logs/VPS_NAME-reverse-ssh.error.log
 
 将 herdr Session 留空即可使用位于 `~/.config/herdr/herdr.sock` 的默认会话。填写任何值（包括 `default`）都会连接 `~/.config/herdr/sessions/<name>/herdr.sock`。
 
-运行预检（Preflight）。
+在 **Add Host** 页面轻点 **Save** 开始预检（**Preflight**）。
 
 Heeler 会分两次独立询问主机密钥确认：
 
@@ -571,7 +571,7 @@ launchctl print "gui/$(id -u)/dev.herdr.VPS_NAME-reverse-ssh"
 
 输出应显示新的 PID 以及 `state = running`。
 
-再次在 Heeler 中运行预检或打开一个 Agent。仅进程重启而没有验证应用端连接恢复，不足以证明自动重连正常。
+在 Heeler 中轻点 **Preflight** 旁的 **Run Checks Again** 重新运行预检，或打开一个 Agent。仅进程重启而没有验证应用端连接恢复，不足以证明自动重连正常。
 
 ## 步骤 15：加固 Mac 认证配置
 
@@ -740,8 +740,8 @@ scripts/manage-vps-ssh-client.sh revoke \
 3. 将现有的 Device Key 公钥行添加到新 VPS 的 Jump 账户。
 4. 在 Mac 上创建新的 SSH 别名与第二个 LaunchAgent。
 5. 验证新的回环监听端口与自动重连恢复。
-6. 在 Heeler 中打开该 Host 的路由（或新增一条路由），仅修改 Jump Host 相关字段。
-7. 测试预检与 Attach。
+6. 在 Heeler 中打开该 Host 的路由（或新增一条路由），仅修改 Jump Host 相关字段，并轻点 **Save** 保存 Host。
+7. 测试 **Preflight** 预检与 Attach。
 8. 确认新路径工作正常后，再停止并移除旧路径。
 
 完整的分阶段切换与回滚流程，请参阅[添加或迁移到新 VPS](vps-jump-host.md#添加或迁移到新-vps)。
