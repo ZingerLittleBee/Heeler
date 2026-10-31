@@ -160,6 +160,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var documentWrites: [JSONValue] = []
     /// The exact params of every `terminal.run`, oldest first.
     private(set) var runs: [JSONValue] = []
+    /// How many of `runs` asked for a Template's long deadline.
+    private(set) var templateRuns = 0
     /// The script of every agent discovery, oldest first.
     private(set) var discoveryScripts: [String] = []
     private var shell: String?
@@ -168,6 +170,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private var runFailure: (any Error)?
     private var templateList: JSONValue = .object(["templates": .array([])])
     private var templateListFailure: (any Error)?
+    private var templateCommand = "pi --thinking high"
 
     init(
         coreID: String = "c1", subscribeResults: [JSONValue],
@@ -280,6 +283,23 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         return Self.runReply(address: "t\(100 + runs.count)", params: params)
     }
 
+    /// What a core answers for a Template: its command under `sh -c`, with its
+    /// name and keys on the record.
+    func runTemplate(params: JSONValue) async throws -> JSONValue {
+        templateRuns += 1
+        runs.append(params)
+        if let runFailure { throw runFailure }
+        var reply = Self.runReply(address: "t\(100 + runs.count)", params: params)
+        if case .object(var fields) = reply {
+            fields["argv"] = .array(["sh", "-c", templateCommand].map(JSONValue.string))
+            if case .array(let argv)? = params["argv"] { fields["template"] = argv.first }
+            fields["submit"] = .string("ctrl+j")
+            fields["stop"] = .string("ctrl+c")
+            reply = .object(fields)
+        }
+        return reply
+    }
+
     /// What a core answers: the Terminal it started from these params.
     private static func runReply(address: String, params: JSONValue) -> JSONValue {
         .object([
@@ -318,6 +338,11 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// What `templates.list` answers, as the core shapes it.
     func setTemplates(_ templates: [JSONValue]) {
         templateList = .object(["templates": .array(templates)])
+    }
+
+    /// The command line a Template's Terminal runs.
+    func setTemplateCommand(_ command: String) {
+        templateCommand = command
     }
 
     /// `templates.list` fails with this until it is called with nil.

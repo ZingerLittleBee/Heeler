@@ -71,6 +71,10 @@ protocol HerdrCoreTransport: Sendable {
     /// `.coreMutationOutcomeUnknown`, and nothing here sends it again.
     func runTerminal(params: JSONValue) async throws -> JSONValue
 
+    /// `terminal.run` of a Template, which answers only once the program first
+    /// reports, under the long deadline that wait needs. Otherwise as `runTerminal`.
+    func runTemplate(params: JSONValue) async throws -> JSONValue
+
     /// Closes the link, then the connection.
     func close() async throws
 }
@@ -127,6 +131,10 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     /// The core itself gives a program 10 seconds to spawn, after starting a
     /// holder for the first Terminal, and says so when it fails.
     private static let runDeadline: Duration = .seconds(20)
+    /// A Template's call also waits 30 seconds for the program's first report and
+    /// 5 to see it start on the first message, and the spawn's 10 and a person's
+    /// 3 of quiet can add to that. Past a healthy worst case, an expiry means no answer.
+    private static let templateRunDeadline: Duration = .seconds(50)
 
     nonisolated let routeID: UUID?
     nonisolated var hostServices: any HostServices { connection }
@@ -292,6 +300,13 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     func runTerminal(params: JSONValue) async throws -> JSONValue {
         try await onLink { link in
             try await link.call("terminal.run", params: params, deadline: Self.runDeadline, isMutation: true)
+        }
+    }
+
+    func runTemplate(params: JSONValue) async throws -> JSONValue {
+        try await onLink { link in
+            try await link.call(
+                "terminal.run", params: params, deadline: Self.templateRunDeadline, isMutation: true)
         }
     }
 

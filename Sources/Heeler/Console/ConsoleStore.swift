@@ -498,6 +498,13 @@ final class ConsoleStore {
         try await projection(for: hostID).availableTemplates()
     }
 
+    @discardableResult
+    func startTemplate(
+        _ request: TemplateLaunchRequest, on hostID: Host.ID
+    ) async throws -> Agent {
+        try await projection(for: hostID).startTemplate(request)
+    }
+
     /// Resolves the Host's remote home directory for the New Workspace
     /// directory browser (#280). Throws the error's own presentation,
     /// including homeDirectoryUnresolvable when the probe fails.

@@ -33,6 +33,18 @@ final class StartAgentStore {
         case failed(String)
     }
 
+    /// What the form's Agent picker can hold.
+    enum AgentChoice: Hashable {
+        case kind(SupportedAgentKind)
+        case template(AgentTemplate)
+    }
+
+    /// A complete choice, with what it starts under, read once at submit.
+    private enum Launch {
+        case kind(SupportedAgentKind, arguments: [String], name: String)
+        case template(AgentTemplate, name: String?)
+    }
+
     /// Context inherited when the flow opens from an agent's own screen: the
     /// launch reuses that agent's Host, workspace, and working directory
     /// instead of asking for all three again. The new agent lands in a fresh
@@ -153,6 +165,21 @@ final class StartAgentStore {
     var selectedTemplate: AgentTemplate? {
         didSet { if selectedTemplate != nil { selectedAgentKind = nil } }
     }
+    /// Either one, as the form's picker holds it.
+    var selectedAgent: AgentChoice? {
+        get {
+            selectedTemplate.map(AgentChoice.template) ?? selectedAgentKind.map(AgentChoice.kind)
+        }
+        set {
+            switch newValue {
+            case .kind(let kind): selectedAgentKind = kind
+            case .template(let template): selectedTemplate = template
+            case nil:
+                selectedAgentKind = nil
+                selectedTemplate = nil
+            }
+        }
+    }
     /// Optional native arguments, parsed into argv without invoking a shell.
     /// The editor disables smart punctuation at the UIKit input-trait layer;
     /// parsing still normalizes any smart characters supplied by paste or a
@@ -234,6 +261,7 @@ final class StartAgentStore {
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
+    private let startTemplate: (TemplateLaunchRequest, Host.ID) async throws -> Agent
     /// Suspends (bounded) until the started Agent is visible in the Console.
     /// The row the owner navigates to exists only after the post-start resync
     /// lands; waiting here keeps the opened detail from flashing its
@@ -251,6 +279,9 @@ final class StartAgentStore {
         existingAgentNames: @escaping (Host.ID) -> Set<String>,
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
         discoverTemplates: @escaping (Host.ID) async throws -> [AgentTemplate] = { _ in [] },
+        startTemplate: @escaping (TemplateLaunchRequest, Host.ID) async throws -> Agent = { _, _ in
+            throw TransportError.hostFeatureUnavailable(feature: "Templates")
+        },
         remoteHome: @escaping (Host.ID) async throws -> String,
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
@@ -265,6 +296,7 @@ final class StartAgentStore {
         self.discoverTemplates = discoverTemplates
         self.remoteHome = remoteHome
         self.start = start
+        self.startTemplate = startTemplate
         self.awaitAgentVisible = awaitAgentVisible
         self.recents = recents
         // Pre-select when there is no choice to make.
@@ -324,9 +356,20 @@ final class StartAgentStore {
     /// a Host and Agent are selected. Shown as the field's placeholder so the
     /// fallback is never a surprise.
     var defaultAgentName: String? {
-        guard let selectedHostID, let kind = selectedAgentKind else { return nil }
-        return Self.defaultAgentName(for: kind, taken: existingAgentNames(selectedHostID))
+        guard let selectedHostID else { return nil }
+        let taken = existingAgentNames(selectedHostID)
+        if let selectedTemplate {
+            return Self.defaultAgentName(forTemplate: selectedTemplate.name, taken: taken)
+        }
+        return selectedAgentKind.map { Self.defaultAgentName(for: $0, taken: taken) }
     }
+
+    /// A Template's command is its own, so the form asks for no arguments.
+    var offersArguments: Bool { selectedTemplate == nil }
+
+    /// A Template's start can wait out the program's first report, long enough
+    /// for the form to say so.
+    var isStartingTemplate: Bool { state == .starting && selectedTemplate != nil }
 
     /// User-facing branch feedback; nil while the toggle is off or the field
     /// is empty (empty means "use herdr's generated branch").
@@ -341,11 +384,28 @@ final class StartAgentStore {
     var canSubmit: Bool {
         selectedHostID != nil && hasLaunchTarget
             && nameErrorMessage == nil
-            && selectedAgentKind != nil
-            && parsedArguments.isSuccess
+            && hasCompleteAgentChoice
             && worktreeBranchErrorMessage == nil
-            && agentDiscoveryState == .loaded
             && state != .starting
+    }
+
+    /// A Template goes through no shell, so it stays open when discovery failed.
+    private var hasCompleteAgentChoice: Bool {
+        if selectedTemplate != nil { return true }
+        return selectedAgentKind != nil && parsedArguments.isSuccess
+            && agentDiscoveryState == .loaded
+    }
+
+    private var pendingLaunch: Launch? {
+        let typed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typedName = typed.isEmpty ? nil : typed
+        if let selectedTemplate {
+            return .template(selectedTemplate, name: typedName ?? defaultAgentName)
+        }
+        guard let selectedAgentKind, case .success(let arguments) = parsedArguments,
+            let agentName = typedName ?? defaultAgentName
+        else { return nil }
+        return .kind(selectedAgentKind, arguments: arguments, name: agentName)
     }
 
     /// Existing Workspace and origin launches need a reported Workspace;
@@ -389,12 +449,14 @@ final class StartAgentStore {
             guard selectedHostID == hostID else { return }
             availableAgentKinds = kinds
             selectedAgentKind = kinds.first
+            if kinds.isEmpty { selectedTemplate = templates.first }
             agentDiscoveryState = .loaded
         } catch is CancellationError {
             guard selectedHostID == hostID else { return }
             agentDiscoveryState = .idle
         } catch {
             guard selectedHostID == hostID else { return }
+            selectedTemplate = templates.first
             agentDiscoveryState = .failed(Self.discoveryMessage(for: error))
         }
     }
@@ -406,16 +468,10 @@ final class StartAgentStore {
         guard
             !isStarting,
             let hostID = selectedHostID,
-            let kind = selectedAgentKind,
-            case .success(let arguments) = parsedArguments,
+            let launch = pendingLaunch,
             worktreeBranchErrorMessage == nil,
             nameErrorMessage == nil
         else { return }
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let agentName =
-            trimmedName.isEmpty
-            ? Self.defaultAgentName(for: kind, taken: existingAgentNames(hostID))
-            : trimmedName
         isStarting = true
         defer { isStarting = false }
         // A name-only New Workspace launch has no browsed directory: fall
@@ -458,15 +514,28 @@ final class StartAgentStore {
         case .existingWorkspace, .newWorktree:
             workspaceID = selectedWorkspaceID
         }
-        let request = AgentLaunchRequest(
-            kind: kind.rawValue,
-            name: agentName,
-            arguments: arguments,
-            workspaceID: workspaceID,
-            cwd: origin?.cwd,
-            tabLabel: offersWorkspaceAndTabNames ? Self.nonEmptyTrimmed(tabLabel) : nil)
         do {
-            let agent = try await start(request, destination, hostID)
+            let agent: Agent
+            switch launch {
+            case .kind(let kind, let arguments, let agentName):
+                agent = try await start(
+                    AgentLaunchRequest(
+                        kind: kind.rawValue,
+                        name: agentName,
+                        arguments: arguments,
+                        workspaceID: workspaceID,
+                        cwd: origin?.cwd,
+                        tabLabel: offersWorkspaceAndTabNames ? Self.nonEmptyTrimmed(tabLabel) : nil),
+                    destination, hostID)
+            case .template(let template, let agentName):
+                var newWorkspace: NewWorkspaceSpec?
+                if case .newWorkspace(let spec) = destination { newWorkspace = spec }
+                agent = try await startTemplate(
+                    TemplateLaunchRequest(
+                        template: template.name, name: agentName, workspaceID: workspaceID,
+                        cwd: origin?.cwd, newWorkspace: newWorkspace),
+                    hostID)
+            }
             if case .newWorkspace = destination {
                 recents.remember(agent.workspaceID, for: hostID)
             } else if let workspaceID {
@@ -478,6 +547,8 @@ final class StartAgentStore {
             await awaitAgentVisible(startedID)
             state = .started(startedID)
         } catch {
+            var kind: SupportedAgentKind?
+            if case .kind(let launched, _, _) = launch { kind = launched }
             state = .failed(Self.message(for: error, launchedKind: kind))
         }
     }
@@ -603,10 +674,21 @@ final class StartAgentStore {
     /// `kind-3`, … skipping names already live on the Host. Kind identifiers
     /// are lowercase ASCII, so the result always passes herdr's name rule.
     static func defaultAgentName(for kind: SupportedAgentKind, taken: Set<String>) -> String {
-        guard taken.contains(kind.rawValue) else { return kind.rawValue }
+        firstFreeName(from: kind.rawValue, taken: taken)
+    }
+
+    /// A Template's file name may be no agent name, or leave no room for a
+    /// suffix: that Agent goes unnamed, and its row shows what it runs.
+    static func defaultAgentName(forTemplate template: String, taken: Set<String>) -> String? {
+        let name = firstFreeName(from: template, taken: taken)
+        return AgentName.validationError(name) == nil ? name : nil
+    }
+
+    private static func firstFreeName(from base: String, taken: Set<String>) -> String {
+        guard taken.contains(base) else { return base }
         var suffix = 2
-        while taken.contains("\(kind.rawValue)-\(suffix)") { suffix += 1 }
-        return "\(kind.rawValue)-\(suffix)"
+        while taken.contains("\(base)-\(suffix)") { suffix += 1 }
+        return "\(base)-\(suffix)"
     }
 
     /// Normalizes smart punctuation that arrives through paste or a
@@ -682,7 +764,7 @@ final class StartAgentStore {
     }
 
     private static func message(
-        for error: any Error, launchedKind: SupportedAgentKind
+        for error: any Error, launchedKind: SupportedAgentKind?
     ) -> String {
         switch error {
         case TransportError.sshUnreachable:

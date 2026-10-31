@@ -534,6 +534,24 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         try await launch(request, placement: HerdrCoreLaunch.Placement(cwd: workspace.directory))
     }
 
+    /// Placed as any other launch is, and started by the core with neither the
+    /// shell nor a kind of Heeler's, so the Agent's kind comes from its record.
+    /// A program Heeler does not know is no Agent until it reports.
+    func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
+        let target =
+            if let workspace = request.newWorkspace {
+                HerdrCoreLaunch.Placement(cwd: workspace.directory)
+            } else {
+                try await placement(workspaceID: request.workspaceID, directory: request.cwd)
+            }
+        let transport = try await session.withTransport { $0 }
+        let record = try fold(
+            runReply: try await transport.runTemplate(
+                params: HerdrCoreLaunch.templateRequest(
+                    template: request.template, name: request.name, placement: target)))
+        return agent(at: record, kind: HerdrCoreAgentRule.agent(in: record)?.kind ?? "unknown")
+    }
+
     func createShellTerminal(
         _ request: ShellTerminalCreationRequest
     ) async throws -> ShellTerminalIdentity {
@@ -557,14 +575,19 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
         let transport = try await session.withTransport { $0 }
         let shell = try await transport.launchShell()
-        let record = try await run(
-            HerdrCoreLaunch.agentRequest(
-                kind: kind, name: request.name, arguments: request.arguments, shell: shell,
-                openCodeVersion: openCodeVersion, placement: placement),
-            on: transport)
-        return agentsByPane[record.address]?.agent
+        let record = try fold(
+            runReply: try await transport.runTerminal(
+                params: HerdrCoreLaunch.agentRequest(
+                    kind: kind, name: request.name, arguments: request.arguments, shell: shell,
+                    openCodeVersion: openCodeVersion, placement: placement)))
+        return agent(at: record, kind: kind.rawValue)
+    }
+
+    /// The row a launch made, or one to stand in until it shows.
+    private func agent(at record: HerdrCoreTerminalRecord, kind: String) -> Agent {
+        agentsByPane[record.address]?.agent
             ?? Agent(
-                terminalID: record.address, kind: kind.rawValue, title: "", status: .unknown,
+                terminalID: record.address, kind: kind, title: "", status: .unknown,
                 workspaceID: HerdrCoreOrganization.workspaceID(
                     of: record, firstSeenDirectories: memory.firstSeenDirectories(for: host.id)),
                 tabID: "tab-\(record.address)", paneID: record.address, cwd: record.cwd, revision: 0,
@@ -575,20 +598,19 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         placement: HerdrCoreLaunch.Placement
     ) async throws -> ShellTerminalIdentity {
         let transport = try await session.withTransport { $0 }
-        let record = try await run(HerdrCoreLaunch.terminalRequest(placement: placement), on: transport)
+        let record = try fold(
+            runReply: try await transport.runTerminal(
+                params: HerdrCoreLaunch.terminalRequest(placement: placement)))
         return ShellTerminalIdentity(
             paneID: record.address,
             tabID: terminalsByPane[record.address]?.tabID ?? "tab-\(record.address)",
             terminalID: record.address)
     }
 
-    /// One `terminal.run`. Its answer shows at once, so the row a caller opens
+    /// One `terminal.run`'s answer. It shows at once, so the row a caller opens
     /// next exists, and the core's own `created` event then changes nothing. An
     /// answer past reading started something all the same, so it is not a refusal.
-    private func run(
-        _ params: JSONValue, on transport: any HerdrCoreTransport
-    ) async throws -> HerdrCoreTerminalRecord {
-        let reply = try await transport.runTerminal(params: params)
+    private func fold(runReply reply: JSONValue) throws -> HerdrCoreTerminalRecord {
         guard let record = try? HerdrCoreWire.typed(reply) as HerdrCoreTerminalRecord else {
             throw TransportError.coreMutationOutcomeUnknown
         }

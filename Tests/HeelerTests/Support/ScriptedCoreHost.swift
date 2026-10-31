@@ -194,6 +194,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
     private var runReply: JSONValue?
+    private var unansweredRuns: [(socket: FakeCoreSocket, id: String)] = []
     private var templateList: JSONValue?
     private var isHoldingAttachReplies = false
     private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
@@ -361,7 +362,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 }
             case "terminal.run":
                 runs.append(request.params)
-                if let runReply { try? await socket.reply(to: request.id, result: runReply) }
+                if let runReply {
+                    try? await socket.reply(to: request.id, result: runReply)
+                } else {
+                    unansweredRuns.append((socket, request.id))
+                }
             case "templates.list":
                 if let templateList { try? await socket.reply(to: request.id, result: templateList) }
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
@@ -404,6 +409,14 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// What each `terminal.run` answers. Nil leaves it unanswered.
     func setRunReply(_ reply: JSONValue?) {
         runReply = reply
+    }
+
+    /// Answers each `terminal.run` still waiting, as a core does once the
+    /// program first reports.
+    func answerWaitingRuns(with reply: JSONValue) async {
+        let waiting = unansweredRuns
+        unansweredRuns = []
+        for run in waiting { try? await run.socket.reply(to: run.id, result: reply) }
     }
 
     /// What each `templates.list` answers. Nil leaves it unanswered.
