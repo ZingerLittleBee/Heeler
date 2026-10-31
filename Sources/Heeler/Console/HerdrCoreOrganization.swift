@@ -205,6 +205,50 @@ enum HerdrCoreOrganization {
         }.map(\.element)
     }
 
+    // MARK: Launching into a Workspace
+
+    /// The desktop space a Workspace id names; nil for a derived Workspace.
+    static func desktopSpace(ofWorkspace id: String) -> String? {
+        id.hasPrefix(spacePrefix) ? String(id.dropFirst(spacePrefix.count)) : nil
+    }
+
+    /// The directory a derived Workspace is keyed by, which is not any Terminal's
+    /// current one. Nil when no Terminal shown here lands in it.
+    static func keyDirectory(
+        ofWorkspace id: String, terminals: [HerdrCoreTerminalRecord],
+        firstSeenDirectories: [String: String]
+    ) -> String? {
+        for record in terminals where !record.hasFinished && desktopLabel("herdr.space", of: record) == nil {
+            let directory = firstSeenDirectories[record.address] ?? record.cwd
+            if workspaceID(directory: directory) == id { return directory }
+        }
+        return nil
+    }
+
+    /// Where a new Terminal in a space starts when nothing asked for a directory:
+    /// the space's folder, else where its first Terminal is now.
+    static func directory(
+        ofSpace space: String, terminals: [HerdrCoreTerminalRecord],
+        document: HerdrCoreDesktopDocument?
+    ) -> String? {
+        if let folder = document?.spaces.first(where: { $0.id == space })?.folder, !folder.isEmpty {
+            return folder
+        }
+        return
+            terminals
+            .first { !$0.hasFinished && desktopLabel("herdr.space", of: $0) == space }
+            .map(liveDirectory)
+            .flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// The Workspace a Terminal with no parent shown lands in.
+    static func workspaceID(
+        of record: HerdrCoreTerminalRecord, firstSeenDirectories: [String: String]
+    ) -> String {
+        desktopLabel("herdr.space", of: record).map(spaceWorkspaceID)
+            ?? workspaceID(directory: firstSeenDirectories[record.address] ?? record.cwd)
+    }
+
     // MARK: Ids and names
 
     /// Stable and opaque: the same directory is the same Workspace on every
@@ -213,8 +257,10 @@ enum HerdrCoreOrganization {
         "d-" + digest(directory)
     }
 
+    private static let spacePrefix = "space-"
+
     private static func spaceWorkspaceID(_ space: String) -> String {
-        "space-\(space)"
+        spacePrefix + space
     }
 
     /// A Tab's label belongs to its space, and labels can be anything, so the
