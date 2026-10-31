@@ -220,6 +220,8 @@ final class StartAgentStore {
     /// Resolves the Host's home directory for a name-only New Workspace
     /// launch; fetched at submit so an unreachable Host never blocks editing.
     private let remoteHome: (Host.ID) async throws -> String
+    /// Whether a Host's desktop app could apply a typed Workspace name now.
+    private let offersDesktopAppNames: (Host.ID) -> Bool
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
@@ -243,8 +245,10 @@ final class StartAgentStore {
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
         awaitAgentVisible: @escaping (ConsoleAgent.ID) async -> Void,
         origin: LaunchOrigin? = nil,
-        recents: RecentWorkspaceStore = RecentWorkspaceStore()
+        recents: RecentWorkspaceStore = RecentWorkspaceStore(),
+        offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false }
     ) {
+        self.offersDesktopAppNames = offersDesktopAppNames
         self.hosts = hosts
         self.origin = origin
         self.workspacesProvider = workspaces
@@ -273,6 +277,12 @@ final class StartAgentStore {
     /// independent of them.
     var offersWorkspaceAndTabNames: Bool {
         selectedHost?.capabilities.tabNames != false
+    }
+
+    /// Whether New Workspace asks for a name. A herdr-core Host has none of its
+    /// own, so only while its desktop app can apply one.
+    var offersWorkspaceName: Bool {
+        offersWorkspaceAndTabNames || selectedHostID.map(offersDesktopAppNames) == true
     }
 
     private var selectedHost: Host? {
@@ -489,7 +499,7 @@ final class StartAgentStore {
             return .newWorkspace(
                 NewWorkspaceSpec(
                     directory: directory,
-                    label: offersWorkspaceAndTabNames ? Self.nonEmptyTrimmed(newWorkspaceLabel) : nil))
+                    label: offersWorkspaceName ? Self.nonEmptyTrimmed(newWorkspaceLabel) : nil))
         }
     }
 

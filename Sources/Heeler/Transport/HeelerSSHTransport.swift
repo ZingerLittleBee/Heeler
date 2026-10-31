@@ -3753,6 +3753,12 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             timeoutMarkerPrefix: "__HEELER_AGENT_DISCOVERY_TIMEOUT_", timedOut: .timedOut)
     }
 
+    func runHerdrAppControl(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "herdr-core Hosts", deadline: .seconds(12), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_HERDR_APP_TIMEOUT_", timedOut: .timedOut)
+    }
+
     /// A channel the link holds for as long as it lives. SSH reports a missing
     /// socket, a refused one and a forbidden path with the same error.
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {

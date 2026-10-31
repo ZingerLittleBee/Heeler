@@ -1,3 +1,11 @@
+/// What the Herdr desktop app on a core Host can name right now (ADR 0032). None
+/// at all while the app cannot be reached or the capability is off.
+struct HerdrAppNaming: Equatable, Sendable {
+    /// The Workspaces it shows, by Workspace id. A derived Workspace, or a space
+    /// it has not adopted yet, is not one of them.
+    let workspaceIDs: Set<String>
+}
+
 /// Which actions a Host can serve. Actions only Herdr TUI can serve are offered
 /// by this rather than attempted and failed; a herdr-core Host offers each one
 /// as it is built (ADR 0032). An action's own conditions, such as a Chat's
@@ -20,8 +28,14 @@ struct HostCapabilities: Equatable, Sendable {
     /// One client at a time holds a terminal, so another may take it over. A
     /// herdr-core Terminal has no such thing: every viewer may type (ADR 0031).
     var takeOver = true
+    var desktopAppNaming: HerdrAppNaming?
 
-    func renameWorkspace(id: String) -> Bool { renamesWorkspaces }
+    func renameWorkspace(id: String) -> Bool {
+        renamesWorkspaces || desktopAppNaming?.workspaceIDs.contains(id) == true
+    }
+
+    /// Whether New Workspace asks for a name it can apply.
+    var namesNewWorkspaces: Bool { tabNames || desktopAppNaming != nil }
 
     /// What New Terminal asks for beside a Terminal in this directory. Nil on a
     /// Host that starts none, and for a directory that is not usable, rather
@@ -41,15 +55,20 @@ struct HostCapabilities: Equatable, Sendable {
 extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
     /// core Host offers uploads once it is known to take them over SFTP: native
-    /// Windows stages through the core's `terminal.put` instead (ADR 0032).
-    init(serverKind: ServerKind, platform: HostPlatform? = nil) {
+    /// Windows stages through the core's `terminal.put` instead (ADR 0032), and
+    /// has no Rename until one passes a test there.
+    init(
+        serverKind: ServerKind, platform: HostPlatform? = nil,
+        desktopAppNaming: HerdrAppNaming? = nil
+    ) {
         let offered = serverKind == .herdrTUI
         self.init(
             opensDetail: true, startsAgents: true, startsTerminals: true,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
             uploads: offered || (serverKind == .herdrCore && platform == .posix),
             composerSend: offered, chat: offered, tabNames: offered, closeTab: offered,
-            syncLayoutFromPlugin: offered, takeOver: offered)
+            syncLayoutFromPlugin: offered, takeOver: offered,
+            desktopAppNaming: serverKind == .herdrCore && platform == .posix ? desktopAppNaming : nil)
     }
 }
 
