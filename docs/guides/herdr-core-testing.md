@@ -106,6 +106,23 @@ yet, and read each pid from `server.status` or `terminal.list`.
 | Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | The Host stays Connected in the Hosts list and every row stays in its card |
 | Stopped core | `server stop` by absolute path | The Host reads **herdr-core is not running** and retries; no core process appears until you start it |
 
+## Leaked environment
+
+On a throwaway session, start the core by absolute path with made-up values for
+variables that break things, then read Host detail. Never use a real value of
+these, and never use a session you did not start.
+
+```sh
+HC_SESSION=<s> TMUX=/tmp/made-up,1,0 CLAUDE_CODE_CHILD_SESSION=made-up STY= \
+  ~/.local/bin/herdr-core server start
+```
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Leaked variables | The core above, with the Host connected | **Core Environment** names `CLAUDE_CODE_CHILD_SESSION` and `TMUX`, each with what it breaks, and says restarting the core from your own terminal fixes it; blank `STY` is not named, no value appears, and nothing offers a restart |
+| Prefix | Add `HERDR_PANE_ID=made-up` when starting | `HERDR_PANE_ID` is named with the others |
+| Restarted cleanly | `server stop` by absolute path with the same environment, then start again from a clean login shell without those variables | The Host reconnects by itself and **Core Environment** is gone |
+
 ## Detection states
 
 Add a Host by hand, with `--offer-herdr-core-hosts`, and read its Server Kind section

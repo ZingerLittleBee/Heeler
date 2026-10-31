@@ -25,6 +25,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
     /// `EventsSession.currentRouteID` exactly as `latency` is.
     private(set) var routeID: UUID?
     private(set) var syncError: String?
+    let leakedEnvironmentNames: Set<String> = []
     private(set) var transportGeneration: UInt64 = 0
     private(set) var sidebarRevision: UInt64 = 0
     /// Whether the Host's current connection generation has produced a
