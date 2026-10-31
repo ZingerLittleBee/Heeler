@@ -2,6 +2,14 @@
   "version": "0.1.0",
   "files": [
     {
+      "path": "core/frames.js",
+      "sha256": "fd99b55ff351d3e8c3dd4458fa2be909c55da47d937f01595b19bc90fe65a869"
+    },
+    {
+      "path": "core/session-name.js",
+      "sha256": "336fc6bdc97770d6a4158f600d4ef35fa3a0e40c6b778250089166a6a7022176"
+    },
+    {
       "path": "main.js",
       "sha256": "aa73a49f572da24a19b654dbe3b01703ac59bc57f82496a0aa1e4f71baea2833"
     },
