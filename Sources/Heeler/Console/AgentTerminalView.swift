@@ -978,7 +978,8 @@ struct AgentTerminalView: View {
                 : nil)
     }
 
-    /// The edge swipe's destination, shared with the More menu's entry.
+    /// The More menu's Back to Console: the sidebar beside a detail that
+    /// stands next to its list, the list otherwise.
     private func backToConsole() {
         if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
     }
@@ -1046,15 +1047,6 @@ struct AgentTerminalView: View {
             }
         }
         .overlay { statusOverlay }
-        // Keep the edge gesture below the input chrome and tools dock so
-        // its transparent hit region cannot intercept their leading keys.
-        // A detail pushed over the list has the back header and the
-        // system's own swipe instead, which follows the finger.
-        .overlay(alignment: .leading) {
-            if !showsBackButton {
-                AgentEdgeBackGesture { backToConsole() }
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
         }
@@ -1125,11 +1117,18 @@ struct AgentTerminalView: View {
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
         .background {
             // Keyboard geometry and the status bar inset follow this view's
-            // own window, not whichever window of the app is key.
-            WindowReader { window in
-                keyboardInset.attach(to: window)
-                mountedWindow.attach(window)
-            }
+            // own window, not whichever window of the app is key. The reader
+            // also anchors the keyboard measurement to this screen's own
+            // bottom edge, which a tab bar can hold above the window's (see
+            // `TerminalKeyboardInset.contentBottomInset`).
+            WindowReader(
+                onWindow: { window in
+                    keyboardInset.attach(to: window)
+                    mountedWindow.attach(window)
+                },
+                onView: { window, view in
+                    keyboardInset.attach(to: window, contentAnchor: view)
+                })
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
@@ -1518,7 +1517,7 @@ struct AgentTerminalView: View {
 
     private func currentWindowKeyboardHeight() -> CGFloat? {
         guard let window = keyboardControl.terminal?.window else { return nil }
-        return TerminalKeyboardInset.layoutGuideHeight(in: window)
+        return keyboardInset.keyboardHeight(in: window)
     }
 
     private func cancelKeyboardHandoffs() {
@@ -1929,30 +1928,6 @@ struct AgentTerminalView: View {
 
     static func displayTitle(for agent: ConsoleAgent) -> String {
         agent.agent.title.isEmpty ? agent.agent.displayName : agent.agent.title
-    }
-}
-
-/// Preserve edge-swipe navigation after the title bar is removed. Beside
-/// an iPad's sidebar the swipe brings the sidebar out instead of going back.
-struct AgentEdgeBackGesture: View {
-    let dismiss: @MainActor () -> Void
-
-    var body: some View {
-        Color.clear
-            .frame(width: 24)
-            .frame(maxHeight: .infinity)
-            .contentShape(.rect)
-            .gesture(
-                DragGesture(minimumDistance: 12, coordinateSpace: .global)
-                    .onEnded { value in
-                        let horizontal = value.translation.width
-                        guard value.startLocation.x <= 24,
-                              horizontal >= 72,
-                              abs(value.translation.height) <= horizontal * 0.75
-                        else { return }
-                        dismiss()
-                    })
-            .accessibilityHidden(true)
     }
 }
 

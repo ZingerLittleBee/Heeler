@@ -24,6 +24,12 @@ its contract.
   consumes [AgentRowLayoutStore](../../Sources/Heeler/Console/AgentRowLayoutStore.swift)
   and [AgentRowLayoutResolver](../../Sources/Heeler/Console/AgentRowLayoutResolver.swift).
   Their matching `AgentRow*Tests` suites cover configuration and rendering.
+  `AgentCardLines` in [AgentCardView](../../Sources/Heeler/Console/AgentCardView.swift)
+  places each row's right side; coverage in `AgentCardChangesTotalsTests`
+  ([ChangesBadgeTests](../../Tests/HeelerTests/ChangesBadgeTests.swift)).
+  [AgentKindMark](../../Sources/Heeler/Console/AgentKindMark.swift) maps kinds to
+  `AgentMarks.xcassets`, and its `AgentStatusAvatar` is the Status Ring that
+  leads each `AgentCardView`. Coverage: [AgentKindMarkTests](../../Tests/HeelerTests/AgentKindMarkTests.swift).
 
 ## Connection, input, and terminals
 

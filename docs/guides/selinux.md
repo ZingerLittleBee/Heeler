@@ -1,6 +1,6 @@
 # SELinux on a Fedora or RHEL Host
 
-On Fedora, RHEL, CentOS Stream, AlmaLinux and Rocky Linux, SELinux can block SSH
+On Fedora, RHEL, CentOS Stream, AlmaLinux, and Rocky Linux, SELinux can block SSH
 from opening herdr's socket. Heeler then reports that it cannot open the socket
 even though herdr is running. This guide shows how to confirm the denial and
 allow it.

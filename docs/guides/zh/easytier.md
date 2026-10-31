@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/easytier.md at 2b014a24 -->
+<!-- Translated from docs/guides/easytier.md at 57da6542 -->
 
 # 通过 EasyTier 连接 Heeler
 
@@ -247,7 +247,7 @@ Host 的地址仍保持为 `10.144.144.2`、端口 `22`，不要改成 VPS 的�
 
 ## 停用或移除配置
 
-- **在 Heeler 中**：关闭网络开关即可断开连接并保留设置。如需删除网络，请先迁移或删除正在使用它的 Host。
+- **在 Heeler 中**：关闭网络开关即可断开连接并保留设置。如需删除网络，请先迁移或移除正在使用它的 Host。
 - **在 Mac 上**：在每个运行 EasyTier 的终端窗口中按 **Control-C**，然后关闭窗口。
 - **在 VPS 上**：以相同方式停止中继进程（或停止对应系统服务），并移除 TCP 21010 防火墙规则。
 

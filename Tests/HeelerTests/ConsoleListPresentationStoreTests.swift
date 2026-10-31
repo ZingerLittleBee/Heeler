@@ -263,7 +263,6 @@ struct ConsoleListPresentationStoreTests {
             let rule = switch placed.rule {
             case .none: ""
             case .full: "—"
-            case .inset: "-"
             }
             return switch placed.row {
             case .header: "\(rule)header"
@@ -295,14 +294,14 @@ struct ConsoleListPresentationStoreTests {
         #expect(repository.primary.checkout?.repoName == "heeler")
         #expect(repository.agents.count == 4)
         #expect(rowShape(repository) == [
-            "header", "alone p1", "—alone p2", "—checkout nest", "agent p3", "-agent p4",
+            "header", "alone p1", "—alone p2", "—checkout nest", "agent p3", "agent p4",
         ])
         #expect(repository.rows.map(\.isFirst) == [true, false, false, false, false, false])
         #expect(repository.rows.map(\.isLast) == [false, false, false, false, false, true])
         #expect(repository.rows.map(\.followsHeader) == [false, true, false, false, true, false])
         // A Workspace with one Agent is that Agent's card; with several, a header leads.
         #expect(rowShape(cards[1]) == ["alone p5"])
-        #expect(rowShape(cards[2]) == ["header", "agent p6", "-agent p7"])
+        #expect(rowShape(cards[2]) == ["header", "agent p6", "agent p7"])
         #expect(cards.flatMap(\.visibleAgentIDs) == agents.map(\.id))
     }
 
@@ -643,6 +642,37 @@ struct AgentCardPresentationTests {
         #expect(qualifiers(.consoleDefault) == [nil, nil, nil])
         let workspaceOnly = AgentRowLayout(rows: [[.init(.workspace)], [.init(.directory)]])
         #expect(qualifiers(workspaceOnly) == ["OMP", "Pi", nil])
+    }
+
+    /// A row that leads with its program's mark is named by it, so only
+    /// kinds without a mark get the program after a shared title.
+    @Test func aMarkNamesItsProgramSoOnlyUnmarkedKindsGetQualified() {
+        let agents = [
+            programAgent(pane: "p1", kind: "claude"),
+            programAgent(pane: "p2", kind: "codex"),
+            programAgent(pane: "p3", kind: "omp"),
+        ]
+        let workspaceOnly = AgentRowLayout(rows: [[.init(.workspace)], [.init(.directory)]])
+        func qualifiers(leadsWithMark: Bool) -> [String?] {
+            let found = AgentTitleQualifier.qualifiers(for: agents) { agent in
+                let card = AgentCardPresentation(agent: agent, layout: workspaceOnly, leadsWithMark: leadsWithMark)
+                return .init(
+                    title: card.headline, namesAgent: card.namesAgent(inFirst: card.rows.count))
+            }
+            return agents.map { found[$0.id] }
+        }
+        #expect(qualifiers(leadsWithMark: false) == ["Claude", "Codex", "OMP"])
+        #expect(qualifiers(leadsWithMark: true) == [nil, nil, "OMP"])
+    }
+
+    /// A card that shows every other field elsewhere keeps the kind word as
+    /// configured, not the unstyled fallback name.
+    @Test func aKindWordLeftAloneByTheCardKeepsItsStyle() {
+        let layout = AgentRowLayout(rows: [[.init(.workspace), .init(.agent, dim: true)]])
+        let card = AgentCardPresentation(
+            agent: programAgent(pane: "p1", kind: "claude"), layout: layout, hiding: [.workspace],
+            leadsWithMark: true)
+        #expect(card.rows == [[RenderedToken(token: .agent, text: "claude", fg: nil, bold: nil, dim: true)]])
     }
 
     private func programAgent(pane: String, kind: String, workspace: String = "proj-omp")

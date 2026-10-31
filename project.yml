@@ -106,7 +106,7 @@ targets:
         # Home-screen name; the App Store listing is "Heeler for herdr".
         INFOPLIST_KEY_CFBundleDisplayName: Heeler
         MARKETING_VERSION: "0.1.16"
-        CURRENT_PROJECT_VERSION: "33"
+        CURRENT_PROJECT_VERSION: "34"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
         # Only exempt encryption is used: standard, published algorithms in
@@ -128,9 +128,10 @@ targets:
         # paths; iOS asks before the first local-network packet.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby."
         HEELER_SOURCE_REVISION: ""
-        # The catalog holds only the app icon's pre-rendered 1024px images;
-        # space-optimized encoding stays lossless and saves ~0.46 MB per
-        # device. Decoding is the system's, at icon render time.
+        # Beside the vector icons and Agent marks, the catalogs hold the app
+        # icon's pre-rendered 1024px images; space-optimized encoding stays
+        # lossless and saves ~0.46 MB per device. Decoding is the system's,
+        # at icon render time.
         ASSETCATALOG_COMPILER_OPTIMIZATION: space
       configs:
         Release:
@@ -187,7 +188,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
         MARKETING_VERSION: "0.1.16"
-        CURRENT_PROJECT_VERSION: "33"
+        CURRENT_PROJECT_VERSION: "34"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -237,7 +238,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.Widgets
         MARKETING_VERSION: "0.1.16"
-        CURRENT_PROJECT_VERSION: "33"
+        CURRENT_PROJECT_VERSION: "34"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 

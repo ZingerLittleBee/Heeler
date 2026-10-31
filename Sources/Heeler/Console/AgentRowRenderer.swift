@@ -16,28 +16,114 @@ struct RenderedToken: Equatable, Sendable {
 
 enum AgentRowRenderer {
     /// `hiding` drops fields the surrounding list already shows; a row left
-    /// empty gives way to the next.
+    /// empty gives way to the next. Where the row leads with the program's
+    /// mark, `omittingMarkedKind` drops an Agent field that only spells out
+    /// the kind from a row with another field on either side: a renamed
+    /// Agent keeps its name, and a row of the Agent field alone keeps it.
     static func render(
-        layout: AgentRowLayout, agent: ConsoleAgent, hiding: Set<AgentRowToken> = []
+        layout: AgentRowLayout, agent: ConsoleAgent, hiding: Set<AgentRowToken> = [],
+        omittingMarkedKind: Bool = false
     ) -> [[RenderedToken]] {
-        layout.rows(forAgentKind: agent.agent.kind).compactMap { row in
+        renderSlots(
+            layout: layout, agent: agent, hiding: hiding, omittingMarkedKind: omittingMarkedKind
+        ).map(\.tokens)
+    }
+
+    /// `render`, with the index of the row each rendered row came from.
+    static func renderSlots(
+        layout: AgentRowLayout, agent: ConsoleAgent, hiding: Set<AgentRowToken> = [],
+        omittingMarkedKind: Bool = false
+    ) -> [(slot: Int, tokens: [RenderedToken])] {
+        let omitting = slotsOmittingAgent(layout: layout, agent: agent, omittingMarkedKind: omittingMarkedKind)
+        return layout.rows(forAgentKind: agent.agent.kind).enumerated().compactMap { slot, row in
             var rendered: [RenderedToken] = []
-            for configured in row where !hiding.contains(configured.token) {
-                guard let text = value(for: configured.token, agent: agent),
-                    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            for configured in row {
+                guard let field = field(configured, agent: agent, hiding: hiding, omittingAgent: omitting.contains(slot))
                 else { continue }
                 if !rendered.isEmpty { rendered.append(.separator) }
-                rendered.append(RenderedToken(
-                    token: configured.token, text: text, fg: configured.fg,
-                    bold: configured.bold, dim: configured.dim))
+                rendered.append(field)
             }
-            return rendered.isEmpty ? nil : rendered
+            return rendered.isEmpty ? nil : (slot, rendered)
         }
+    }
+
+    /// Each Console row slot's right side, or nil where the layout leaves
+    /// it to the list. Text fields render as `render` renders them, one run
+    /// between the entries the card draws: the status badge, the Host, and
+    /// the Checkout's Changes totals, which it shows as its list does, so
+    /// `hiding` leaves them to it.
+    static func renderTrailing(
+        layout: AgentRowLayout, agent: ConsoleAgent, hiding: Set<AgentRowToken> = [],
+        omittingMarkedKind: Bool = false
+    ) -> [[AgentCardTrailing]]? {
+        guard let sides = layout.trailing else { return nil }
+        let omitting = slotsOmittingAgent(layout: layout, agent: agent, omittingMarkedKind: omittingMarkedKind)
+        let slots = AgentRowSlot.slotRows(Array(sides.prefix(AgentRowLayout.maximumConsoleRows)))
+        return slots.enumerated().map { slot, row in
+            var entries: [AgentCardTrailing] = []
+            var fields: [RenderedToken] = []
+            for configured in row {
+                if let drawn = AgentCardTrailing(drawing: configured.token) {
+                    if !fields.isEmpty { entries.append(.fields(fields)) }
+                    fields = []
+                    entries.append(drawn)
+                } else {
+                    guard let field = field(
+                        configured, agent: agent, hiding: hiding, omittingAgent: omitting.contains(slot))
+                    else { continue }
+                    if !fields.isEmpty { fields.append(.separator) }
+                    fields.append(field)
+                }
+            }
+            if !fields.isEmpty { entries.append(.fields(fields)) }
+            return entries
+        }
+    }
+
+    private static func field(
+        _ configured: AgentRowStyledToken, agent: ConsoleAgent, hiding: Set<AgentRowToken>, omittingAgent: Bool
+    ) -> RenderedToken? {
+        guard !hiding.contains(configured.token), !(omittingAgent && configured.token == .agent),
+            let text = value(for: configured.token, agent: agent),
+            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return RenderedToken(
+            token: configured.token, text: text, fg: configured.fg, bold: configured.bold, dim: configured.dim)
+    }
+
+    /// The row slots whose Agent field gives way to the mark: those with
+    /// another field on either side. What the card draws on the right does
+    /// not count, as the list's own Host and totals never did. Judged
+    /// before `hiding`: a field the card shows elsewhere still keeps the
+    /// kind off its row.
+    private static func slotsOmittingAgent(
+        layout: AgentRowLayout, agent: ConsoleAgent, omittingMarkedKind: Bool
+    ) -> Set<Int> {
+        guard omittingMarkedKind, spellsOutMarkedKind(agent) else { return [] }
+        let rows = layout.rows(forAgentKind: agent.agent.kind)
+        let sides = layout.trailing ?? []
+        return Set((0..<max(rows.count, sides.count)).filter { slot in
+            let right = sides.indices.contains(slot) ? sides[slot] : []
+            let fields = (rows.indices.contains(slot) ? rows[slot] : [])
+                + right.filter { AgentCardTrailing(drawing: $0.token) == nil }
+            return fields.contains { configured in
+                configured.token != .agent
+                    && value(for: configured.token, agent: agent).flatMap(nonempty) != nil
+            }
+        })
+    }
+
+    /// The Agent field reads only the kind, which the kind's mark names.
+    private static func spellsOutMarkedKind(_ row: ConsoleAgent) -> Bool {
+        let kind = row.agent.kind.trimmingCharacters(in: .whitespacesAndNewlines)
+        return AgentKindMark.names(kind: kind)
+            && row.agent.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(kind) == .orderedSame
     }
 
     private static func value(for token: AgentRowToken, agent row: ConsoleAgent) -> String? {
         switch token {
-        case .stateIcon, .stateText: nil // The status column owns both.
+        case .stateIcon, .stateText: nil // The Status Badge field or the ring shows both.
         case .workspace: row.workspaceLabel
         case .tab: row.showsTabLabel ? row.tabLabel : nil
         case .pane: row.agent.paneTitle ?? row.paneLabel
@@ -47,6 +133,7 @@ enum AgentRowRenderer {
         case .host: nonempty(row.hostName)
         case .status: row.agent.status.displayTitle.flatMap(nonempty)
         case .directory: nonempty(row.displayCwd)
+        case .statusBadge, .changes: nil // The card draws these, never as text.
         case .custom(let name): row.agent.tokens[name]
         }
     }

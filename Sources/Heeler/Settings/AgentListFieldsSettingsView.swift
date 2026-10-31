@@ -81,9 +81,10 @@ struct AgentListFieldsSettingsView: View {
 }
 
 /// One Host's rows as three fixed slots, edited in place. Row 1 and Row 2
-/// start from herdr's sidebar fields; Row 3 is Heeler's own row. Slots are never
-/// added, moved, or deleted, so a row's index is its identity everywhere on
-/// this screen. Every change saves immediately through the editor. Every
+/// start from herdr's sidebar fields; Row 3 is Heeler's own row. Each slot
+/// has a left side and a right side, which ends its line in the Console.
+/// Slots are never added, moved, or deleted, so a row's index is its
+/// identity everywhere on this screen. Every change saves immediately through the editor. Every
 /// Agent on the Host shares these rows; there are no per-kind overrides.
 struct AgentListFieldsHostDetailView: View {
     let host: Host
@@ -92,6 +93,9 @@ struct AgentListFieldsHostDetailView: View {
     var editor: AgentListFieldsEditor
     @State private var addingField: AgentListFieldsEditorDestination?
     @State private var confirmingSync = false
+    @State private var confirmingApply = false
+    /// Apply to All Hosts' result, until this Host's fields change.
+    @State private var appliedMessage: String?
 
     var body: some View {
         hostList
@@ -110,6 +114,7 @@ struct AgentListFieldsHostDetailView: View {
                     editor: editor, destination: destination, hostName: host.displayName)
             }
             .task { await console.refreshPluginStatuses(for: [host.id]) }
+            .onChange(of: layout) { appliedMessage = nil }
     }
 
     private var layout: AgentRowLayout { editor.layout(for: host.id) }
@@ -175,7 +180,9 @@ struct AgentListFieldsHostDetailView: View {
                 .tracking(0.5)
                 .foregroundStyle(.tertiary)
                 .textCase(.uppercase)
-            AgentListFieldsPreview(layout: layout, hostName: host.displayName)
+            AgentListFieldsPreview(
+                layout: layout, hostName: host.displayName,
+                kind: AgentListFieldsPreview.kind(onHost: host.id, among: console.agents))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .listRowInsets(AgentListFieldsChrome.previewInsets)
@@ -186,17 +193,31 @@ struct AgentListFieldsHostDetailView: View {
     @ViewBuilder
     private var hostRows: some View {
         let slotRows = AgentRowSlot.slotRows(layout.rows)
+        let trailingRows = AgentLayoutTokensEditing.rows(.trailing, of: layout)
         ForEach(Array(slotRows.enumerated()), id: \.offset) { @Sendable index, row in
+            let trailing = AgentLayoutTokensEditing.row(index, in: trailingRows)
             MainActorContent {
                 AgentListFieldsRowEditor(
-                    index: index, row: row, isEnabled: !isSyncing && !editor.isCatalogUnreadable,
-                    onAdd: {
+                    index: index, row: row, trailing: trailing,
+                    isEnabled: !isSyncing && !editor.isCatalogUnreadable,
+                    onAdd: { side in
                         addingField = AgentListFieldsEditorDestination(
-                            hostID: host.id, rowIndex: index)
+                            hostID: host.id, rowIndex: index, side: side)
                     },
-                    onToggleStyle: { fieldIndex in toggleStyle(fieldIndex, rowIndex: index) },
-                    onShift: { fieldIndex, delta in shift(fieldIndex, by: delta, rowIndex: index) },
-                    onRemove: { fieldIndex in remove(fieldIndex, rowIndex: index) })
+                    onToggleStyle: { fieldIndex, side in toggleStyle(fieldIndex, rowIndex: index, side: side) },
+                    onShift: { fieldIndex, delta, side in
+                        AgentLayoutTokensEditing.shift(
+                            fieldIndex, by: delta, editor: editor, hostID: host.id, rowIndex: index, side: side)
+                    },
+                    onMoveAcross: { fieldIndex, side in
+                        AgentLayoutTokensEditing.moveAcross(
+                            fieldIndex, editor: editor, hostID: host.id, rowIndex: index, from: side)
+                    },
+                    onRemove: { fieldIndex, side in
+                        AgentLayoutTokensEditing.delete(
+                            IndexSet(integer: fieldIndex), editor: editor, hostID: host.id, rowIndex: index,
+                            side: side)
+                    })
                     .listRowInsets(AgentListFieldsChrome.rowInsets)
                     .agentListHostSurface(isFirst: false, isLast: false)
             }
@@ -256,6 +277,12 @@ struct AgentListFieldsHostDetailView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if hosts.count > 1 {
+                Rectangle()
+                    .fill(Color(uiColor: .separator))
+                    .frame(height: 0.5)
+                applyRow
+            }
         }
         .disabled(editor.isCatalogUnreadable)
         .listRowInsets(AgentListFieldsChrome.syncInsets)
@@ -288,88 +315,164 @@ struct AgentListFieldsHostDetailView: View {
         await editor.replaceWithPluginFields(host.id, hostName: host.displayName)
     }
 
-    private func toggleStyle(_ fieldIndex: Int, rowIndex: Int) {
-        let row = AgentLayoutTokensEditing.row(rowIndex, in: layout.rows)
+    /// Copies this Host's fields to every other Host, after a confirmation
+    /// anchored to the button, and says how many changed.
+    private var applyRow: some View {
+        let others = hosts.count - 1
+        let isDisabled = isSyncing || editor.isCatalogUnreadable
+        return VStack(alignment: .leading, spacing: 5) {
+            if let appliedMessage {
+                Text(verbatim: appliedMessage)
+                    .font(.footnote)
+                    .foregroundStyle(AgentListFieldsChrome.success)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("settings.agentList.appliedTip.\(host.id.uuidString)")
+            }
+            Button {
+                confirmingApply = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.on.square")
+                        .font(.subheadline.weight(.medium))
+                    Text("Apply to All Hosts")
+                }
+                // Dimmed by hand, as Sync from plugin's: an explicit tint
+                // overrides a disabled button's own dimming.
+                .foregroundStyle(isDisabled ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.tint))
+            }
+            .buttonStyle(.borderless)
+            .disabled(isDisabled)
+            .accessibilityIdentifier("settings.agentList.applyToAll.\(host.id.uuidString)")
+            .confirmationDialog(
+                "Apply these fields to all Hosts?", isPresented: $confirmingApply, titleVisibility: .visible
+            ) {
+                Button(others == 1 ? "Apply to 1 Host" : "Apply to \(others) Hosts") { applyToAllHosts() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(verbatim: AgentListFieldsCopy.applyConfirmation(
+                    hostName: host.displayName, otherHosts: others))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func applyToAllHosts() {
+        appliedMessage = editor.applyToOtherHosts(from: host.id, among: hosts.map(\.id))
+            .map(AgentListFieldsCopy.applied)
+    }
+
+    private func toggleStyle(_ fieldIndex: Int, rowIndex: Int, side: AgentRowSide) {
+        let row = AgentLayoutTokensEditing.row(rowIndex, in: AgentLayoutTokensEditing.rows(side, of: layout))
         guard row.indices.contains(fieldIndex) else { return }
         let next = AgentLayoutTokensEditing.style(of: row[fieldIndex]).toggled
         AgentLayoutTokensEditing.setStyle(
-            next, at: fieldIndex, editor: editor, hostID: host.id, rowIndex: rowIndex)
-    }
-
-    private func shift(_ fieldIndex: Int, by delta: Int, rowIndex: Int) {
-        AgentLayoutTokensEditing.shift(
-            fieldIndex, by: delta, editor: editor, hostID: host.id, rowIndex: rowIndex)
-    }
-
-    private func remove(_ fieldIndex: Int, rowIndex: Int) {
-        AgentLayoutTokensEditing.delete(
-            IndexSet(integer: fieldIndex), editor: editor, hostID: host.id, rowIndex: rowIndex)
+            next, at: fieldIndex, editor: editor, hostID: host.id, rowIndex: rowIndex, side: side)
     }
 }
 
-/// One fixed row slot edited in place: the title, one menu chip per field,
-/// and a trailing add chip. Provenance is explained once by the note under
-/// the rows, not tagged per row.
+/// One fixed row slot edited in place: the title, then the left side's
+/// chips with an add chip after them and, flush right as in the Console, the
+/// right side's. The right side drops under the left where both do not fit
+/// on one line. Provenance is explained once by the note under the rows, not
+/// tagged per row.
 private struct AgentListFieldsRowEditor: View {
     let index: Int
     let row: AgentRow
+    let trailing: AgentRow
     let isEnabled: Bool
-    let onAdd: () -> Void
-    let onToggleStyle: (Int) -> Void
-    let onShift: (Int, Int) -> Void
-    let onRemove: (Int) -> Void
-
-    private var canAdd: Bool { isEnabled && row.count < AgentRowLayout.maximumTokensPerRow }
+    let onAdd: (AgentRowSide) -> Void
+    let onToggleStyle: (Int, AgentRowSide) -> Void
+    let onShift: (Int, Int, AgentRowSide) -> Void
+    let onMoveAcross: (Int, AgentRowSide) -> Void
+    let onRemove: (Int, AgentRowSide) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Row \(index + 1)")
                 .font(.callout)
                 .foregroundStyle(.primary)
-            ChipWrap(spacing: 5) {
-                ForEach(Array(row.enumerated()), id: \.offset) { @Sendable offset, token in
-                    MainActorContent { fieldChip(token, at: offset) }
+            // A wrap fills the width it is offered, so each side keeps its
+            // one-line width wherever that fits, and the right side wraps
+            // from the left only when even one line of its own is too wide.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    chips(.leading).fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 0)
+                    chips(.trailing).fixedSize(horizontal: true, vertical: false)
                 }
-                addChip
+                VStack(alignment: .leading, spacing: 5) {
+                    chips(.leading)
+                    ViewThatFits(in: .horizontal) {
+                        chips(.trailing).fixedSize(horizontal: true, vertical: false)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        chips(.trailing)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row))
+        .accessibilityLabel(
+            AgentListFieldsRowLabel.accessibilityLabel(index: index, row: row, trailing: trailing))
     }
 
-    private func fieldChip(_ token: AgentRowStyledToken, at offset: Int) -> some View {
+    private func fields(_ side: AgentRowSide) -> AgentRow { side == .leading ? row : trailing }
+
+    private func chips(_ side: AgentRowSide) -> some View {
+        let fields = fields(side)
+        return ChipWrap(spacing: 5) {
+            ForEach(Array(fields.enumerated()), id: \.offset) { @Sendable offset, token in
+                MainActorContent { fieldChip(token, at: offset, side: side) }
+            }
+            addChip(side)
+        }
+    }
+
+    private func fieldChip(_ token: AgentRowStyledToken, at offset: Int, side: AgentRowSide) -> some View {
         let style = AgentLayoutTokensEditing.style(of: token)
+        let hasStyle = AgentLayoutTokensEditing.hasStyle(token.token, on: side)
+        let count = fields(side).count
         return Menu {
-            Button(style.toggleActionTitle) { onToggleStyle(offset) }
+            if hasStyle {
+                Button(style.toggleActionTitle) { onToggleStyle(offset, side) }
+            }
             if offset > 0 {
-                Button("Move Left", systemImage: "arrow.left") { onShift(offset, -1) }
+                Button("Move Left", systemImage: "arrow.left") { onShift(offset, -1, side) }
             }
-            if offset < row.count - 1 {
-                Button("Move Right", systemImage: "arrow.right") { onShift(offset, 1) }
+            if offset < count - 1 {
+                Button("Move Right", systemImage: "arrow.right") { onShift(offset, 1, side) }
             }
-            Button("Remove", systemImage: "trash", role: .destructive) { onRemove(offset) }
+            if AgentLayoutTokensEditing.canMoveAcross(token.token, from: side, landing: fields(side.other)) {
+                switch side {
+                case .leading:
+                    Button("Move to Right Side", systemImage: "arrow.right.to.line") { onMoveAcross(offset, side) }
+                case .trailing:
+                    Button("Move to Left Side", systemImage: "arrow.left.to.line") { onMoveAcross(offset, side) }
+                }
+            }
+            Button("Remove", systemImage: "trash", role: .destructive) { onRemove(offset, side) }
         } label: {
-            AgentListFieldsChip(text: token.token.rawValue, isSecondary: style == .secondary)
+            AgentListFieldsChip(text: token.token.rawValue, isSecondary: hasStyle && style == .secondary)
         }
         .disabled(!isEnabled)
         .accessibilityLabel(
-            AgentListFieldsChipLabel.text(index: offset, count: row.count, token: token))
+            AgentListFieldsChipLabel.text(index: offset, count: count, token: token, side: side))
         .accessibilityHint("Opens field actions")
     }
 
-    private var addChip: some View {
-        Button(action: onAdd) {
+    private func addChip(_ side: AgentRowSide) -> some View {
+        let isEmpty = fields(side).isEmpty
+        return Button { onAdd(side) } label: {
             HStack(spacing: 3) {
                 Image(systemName: "plus")
                     .font(.system(.caption2, design: .rounded).weight(.semibold))
-                if row.isEmpty {
-                    Text("Add field")
+                if isEmpty {
+                    Text(side == .leading ? "Add field" : "Right side")
                         .font(.caption2)
                 }
             }
             .foregroundStyle(.tint)
-            .padding(.horizontal, row.isEmpty ? 7 : 6)
+            .padding(.horizontal, isEmpty ? 7 : 6)
             .padding(.vertical, 2)
             .frame(minHeight: AgentListFieldsChrome.chipMinHeight)
             .background(
@@ -378,8 +481,9 @@ private struct AgentListFieldsRowEditor: View {
                         AgentListFieldsChrome.chipStroke, style: StrokeStyle(lineWidth: 0.5, dash: [3, 2])))
         }
         .buttonStyle(.plain)
-        .disabled(!canAdd)
-        .accessibilityLabel("Add field to Row \(index + 1)")
+        .disabled(!isEnabled || fields(side).count >= AgentRowLayout.maximumTokensPerRow)
+        .accessibilityLabel(
+            side == .leading ? "Add field to Row \(index + 1)" : "Add field to the right of Row \(index + 1)")
     }
 }
 
@@ -460,12 +564,13 @@ enum AgentListFieldsChrome {
 }
 
 /// Identity for an Add Field sheet. Row slots are fixed, so the slot index
-/// is stable across every edit and sync.
+/// and side are stable across every edit and sync.
 struct AgentListFieldsEditorDestination: Hashable, Identifiable {
     let hostID: Host.ID
     let rowIndex: Int
+    var side: AgentRowSide = .leading
 
-    var id: String { "\(hostID.uuidString):\(rowIndex)" }
+    var id: String { "\(hostID.uuidString):\(rowIndex):\(side == .leading ? "left" : "right")" }
 }
 
 enum AgentListFieldsSourceCaption {
@@ -489,7 +594,23 @@ enum AgentListFieldsCopy {
     static let detailIntro =
         "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away."
     static let syncConfirmation =
-        "This Host's rows are replaced with its herdr fields and saved right away."
+        "Row 1 and Row 2 are replaced with this Host's herdr fields and saved right away. "
+        + "Row 3 and every row's right side stay as they are."
+    static func applyConfirmation(hostName: String, otherHosts: Int) -> String {
+        let others = otherHosts == 1 ? "The other Host's rows" : "The other \(otherHosts) Hosts' rows"
+        return "\(others), right sides included, are replaced with \(hostName)'s and saved right away. "
+            + "Changes you make here later stay on \(hostName)."
+    }
+
+    /// Apply to All Hosts' result: how many Hosts it changed.
+    static func applied(_ changed: Int) -> String {
+        switch changed {
+        case 0: "Every other Host already uses these fields."
+        case 1: "Applied to 1 other Host."
+        default: "Applied to \(changed) other Hosts."
+        }
+    }
+
     /// Sync's result when the plugin snapshot carries diagnostics.
     static let syncDiagnostics =
         "The Heeler plugin couldn't read this Host's herdr sidebar settings, so herdr's "
@@ -505,13 +626,19 @@ enum AgentListFieldsCopy {
     static let rowSlots =
         "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. "
         + "Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. "
-        + "The status badge always ends Row 1."
+        + "Fields on a row's right side end its line, and Sync from plugin keeps them. "
+        + "The ring around each Agent's mark shows its status; status_badge adds it in a capsule. "
+        + "Where the mark names the program, the Agent field leaves rows with other fields."
 }
 
 enum AgentListFieldsChipLabel {
-    static func text(index: Int, count: Int, token: AgentRowStyledToken) -> String {
-        let style = token.dim == true ? "secondary style" : "default style"
-        return "Field \(index + 1) of \(count): \(token.token.rawValue), \(style)"
+    static func text(
+        index: Int, count: Int, token: AgentRowStyledToken, side: AgentRowSide = .leading
+    ) -> String {
+        let field = side == .leading ? "Field" : "Right side field"
+        let label = "\(field) \(index + 1) of \(count): \(token.token.rawValue)"
+        guard AgentLayoutTokensEditing.hasStyle(token.token, on: side) else { return label }
+        return label + (token.dim == true ? ", secondary style" : ", default style")
     }
 }
 
@@ -520,7 +647,7 @@ enum AgentListFieldsRowLabel {
         slot == .heeler ? "Not configured" : "No fields"
     }
 
-    static func accessibilityLabel(index: Int, row: AgentRow) -> String {
+    static func accessibilityLabel(index: Int, row: AgentRow, trailing: AgentRow = []) -> String {
         let slot = AgentRowSlot.forRow(index)
         var parts = ["Row \(index + 1)"]
         if let slot { parts.append("\(slot.label) row") }
@@ -530,6 +657,9 @@ enum AgentListFieldsRowLabel {
             parts += row.enumerated().map { offset, token in
                 AgentListFieldsChipLabel.text(index: offset, count: row.count, token: token)
             }
+        }
+        parts += trailing.enumerated().map { offset, token in
+            AgentListFieldsChipLabel.text(index: offset, count: trailing.count, token: token, side: .trailing)
         }
         return parts.joined(separator: ", ")
     }

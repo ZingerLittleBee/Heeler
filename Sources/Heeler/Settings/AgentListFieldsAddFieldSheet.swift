@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// Picks one field for a row slot and saves it at once. Every row offers
-/// herdr fields, Heeler fields, and custom `$` plugin fields.
+/// Picks one field for one side of a row slot and saves it at once. Every
+/// side offers herdr fields, Heeler fields, and custom `$` plugin fields,
+/// except those already on either side of the slot; the Changes totals only
+/// on the right.
 struct AgentListFieldsAddFieldSheet: View {
     let editor: AgentListFieldsEditor
     let destination: AgentListFieldsEditorDestination
@@ -9,20 +11,24 @@ struct AgentListFieldsAddFieldSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var customName = ""
 
-    private var rows: [AgentRow] { editor.layout(for: destination.hostID).rows }
+    private var layout: AgentRowLayout { editor.layout(for: destination.hostID) }
+    private var rows: [AgentRow] { AgentLayoutTokensEditing.rows(destination.side, of: layout) }
     private var tokens: AgentRow { AgentLayoutTokensEditing.row(destination.rowIndex, in: rows) }
+    /// Both sides: a field sits on one side of a slot at most.
+    private var slotFields: AgentRow { AgentLayoutTokensEditing.slotFields(destination.rowIndex, of: layout) }
     private var canAddField: Bool {
         editor.syncStates[destination.hostID] != .syncing
             && AgentLayoutTokensEditing.canAddField(to: tokens, rows: rows, rowIndex: destination.rowIndex)
     }
     private var availableHerdrFields: [AgentRowToken] {
-        AgentLayoutTokensEditing.availableBuiltins(in: tokens, from: AgentRowToken.herdrBuiltins)
+        AgentLayoutTokensEditing.availableBuiltins(in: slotFields, from: AgentRowToken.herdrBuiltins)
     }
     private var availableHeelerFields: [AgentRowToken] {
-        AgentLayoutTokensEditing.availableHeelerFields(in: tokens)
+        AgentLayoutTokensEditing.availableHeelerFields(in: slotFields, side: destination.side)
     }
     private var subtitle: String {
-        AgentLayoutTokensEditing.navigationSubtitle(hostName: hostName, rowIndex: destination.rowIndex)
+        AgentLayoutTokensEditing.navigationSubtitle(
+            hostName: hostName, rowIndex: destination.rowIndex, side: destination.side)
     }
 
     var body: some View {
@@ -62,12 +68,12 @@ struct AgentListFieldsAddFieldSheet: View {
                         .fontDesign(.monospaced)
                     Button("Add Custom Field") {
                         guard let token = AgentLayoutTokensEditing.customToken(
-                            from: customName, alreadyIn: tokens)
+                            from: customName, alreadyIn: slotFields)
                         else { return }
                         add(token)
                     }
                     .disabled(
-                        AgentLayoutTokensEditing.customToken(from: customName, alreadyIn: tokens) == nil
+                        AgentLayoutTokensEditing.customToken(from: customName, alreadyIn: slotFields) == nil
                             || !canAddField)
                 } header: {
                     Text("Custom field")
@@ -77,7 +83,8 @@ struct AgentListFieldsAddFieldSheet: View {
                 Section {
                     EmptyView()
                 } footer: {
-                    Text(AgentLayoutTokensEditing.addFieldFooter(rowIndex: destination.rowIndex))
+                    Text(AgentLayoutTokensEditing.addFieldFooter(
+                        rowIndex: destination.rowIndex, side: destination.side))
                 }
             }
             .listSectionSpacing(.compact)
@@ -139,7 +146,8 @@ struct AgentListFieldsAddFieldSheet: View {
     /// waits on the page behind the sheet; a no-op keeps the sheet open.
     private func add(_ token: AgentRowToken) {
         let added = AgentLayoutTokensEditing.add(
-            token, editor: editor, hostID: destination.hostID, rowIndex: destination.rowIndex)
+            token, editor: editor, hostID: destination.hostID, rowIndex: destination.rowIndex,
+            side: destination.side)
         if added || editor.errorMessage != nil {
             dismiss()
         }

@@ -208,11 +208,11 @@ struct ShellTerminalView: View {
             .overlay { statusOverlay }
             // The input row and controls dock must stay above the edge
             // gesture's hit region, including their leftmost buttons.
+            // Beside a sidebar the split view's own swipe brings it out,
+            // following the finger; a strip here would take the touch first.
             .overlay(alignment: .leading) {
-                if !usesSystemBackSwipe {
-                    ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                        if let revealDetailSidebar { revealDetailSidebar() } else { await goBack() }
-                    }
+                if !usesSystemBackSwipe, revealDetailSidebar == nil {
+                    ShellTerminalEdgeBackGesture(isEnabled: !isReturning) { await goBack() }
                 }
             }
             // Always present, keyboard up or down: with no title bar, its
@@ -282,10 +282,17 @@ struct ShellTerminalView: View {
             .background {
                 // Keyboard geometry and the status bar inset follow this
                 // view's own window, not whichever window of the app is key.
-                WindowReader { window in
-                    keyboardInset.attach(to: window)
-                    mountedWindow.attach(window)
-                }
+                // The reader also anchors the keyboard measurement to this
+                // screen's own bottom edge, which a tab bar can hold above
+                // the window's (see `TerminalKeyboardInset.contentBottomInset`).
+                WindowReader(
+                    onWindow: { window in
+                        keyboardInset.attach(to: window)
+                        mountedWindow.attach(window)
+                    },
+                    onView: { window, view in
+                        keyboardInset.attach(to: window, contentAnchor: view)
+                    })
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
@@ -388,7 +395,8 @@ struct ShellTerminalView: View {
     /// A terminal pushed over the Console list goes back the system's way,
     /// following the finger. One opened from an Agent stands in for that
     /// Agent on the same screen, so a system swipe there would leave the
-    /// Agent too; it keeps the edge gesture that returns to it.
+    /// Agent too; it keeps the edge gesture that returns to it. Beside a
+    /// sidebar neither applies: the split view's swipe brings the list out.
     private var usesSystemBackSwipe: Bool {
         showsBackButton && !backReturnsToAgent
     }
@@ -781,8 +789,7 @@ struct ShellTerminalKeysDock: View {
     }
 }
 
-/// Goes back on an edge swipe, or beside an iPad's sidebar brings the
-/// sidebar out instead.
+/// Goes back on an edge swipe.
 private struct ShellTerminalEdgeBackGesture: View {
     let isEnabled: Bool
     let onBack: @MainActor () async -> Void

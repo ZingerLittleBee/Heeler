@@ -18,9 +18,9 @@ If Usage asks you to use an Agent once, start any Agent on that computer, or res
 
 ## Read Usage
 
-Tap **Usage** in the tab bar.
+Tap **Usage** in the tab bar (or choose **Usage** at the top of the sidebar on iPad).
 
-- **All Hosts** at the top right adds up every Host. Choose one Host to see only its figures.
+- **All Hosts** at the top right (or in the sidebar on iPad) adds up every Host. Choose one Host to see only its figures.
 - Switch between **Est. Cost** and **Tokens**, and between **Today**, **7 Days**, and **30 Days**.
 - **Usage Limits** shows each program's tightest window and when it resets. Tap **Details** for every window. Limits always belong to one Host's signed-in account, so they are never added up.
 - Touch and hold the chart, or tap a day in the calendar, to read that day.
@@ -73,4 +73,4 @@ Tap a widget to open the same figures in Usage.
 ## When widgets update
 
 - When you open Heeler, it reads each Host again if its widget figures are 15 minutes old or more. You don't need to open Usage.
-- While Heeler is closed, iOS lets it read in the background now and then, at most every 30 minutes. Turn this on in **Settings > General > Background App Refresh**. Low Power Mode, or swiping Heeler away in the app switcher, stops it until you open Heeler again.
+- While Heeler is closed, iOS lets it read in the background now and then, at most every 30 minutes. Turn this on in **Settings > General > Background App Refresh**. Low Power Mode, or swiping Heeler away in the app switcher, stops it until you open Heeler again. Background reads connect only over **Direct** or **Jump Host** routes; Hosts reached only through an Overlay Network update when you open Heeler.

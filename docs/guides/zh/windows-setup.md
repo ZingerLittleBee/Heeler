@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/windows-setup.md at eb67dbec -->
+<!-- Translated from docs/guides/windows-setup.md at ed1e9e66 -->
 # Windows 配置
 
 为 Heeler 配置原生 Windows Host，包括 SSH 登录以及 SSH 与 herdr 的开机自启。
@@ -6,7 +6,7 @@
 ## 开始之前
 
 - 具备管理员权限的 Windows 11。
-- 原生 herdr 0.9.3 或更高版本，以及包含[原生 Windows Host 支持（#399）](https://github.com/ZingerLittleBee/Heeler/issues/399)的 Heeler 版本。
+- 原生 herdr 0.9.3 或更高版本，以及 Heeler 0.1.13 或更高版本。
 - 请使用同一个 Windows 账户进行 SSH 登录、运行 herdr、运行编程 Agent（coding agent）以及配置开机自启任务。
 - 下文示例使用命名会话 `heeler-win-test`；如果选用其他名称，请保持前后一致。
 
@@ -108,7 +108,7 @@ ipconfig
 | Port（在 Route 中） | `22`（除非配置了其他 SSH 端口） |
 | Authentication | `Password` |
 | Password | Windows 账户密码（而非 Windows Hello PIN 码） |
-| Session name | `heeler-win-test` |
+| herdr Session | `heeler-win-test` |
 
 在信任首次连接之前，请将 Heeler 显示的 SSH 主机密钥指纹与 Windows 上对应的主机公钥进行比对。对于 Ed25519 密钥：
 
@@ -187,6 +187,6 @@ herdr --session heeler-win-test status server --json
 
 ## 支持的功能与进一步检查
 
-原生 Windows 支持手动 SSH 连接、会话选择、实时 Agent（Agents）与终端（Terminals）以及目录浏览。配对（Pairing）、变更（Changes）、技能（Skills）、文件上传和通知注册目前暂不可用。请在连接前保持 herdr 处于运行状态；Heeler 不会自动启动 Windows 服务端。
+原生 Windows 支持手动 SSH 连接、会话选择、实时 Agent（Agents）与终端（Terminals）以及目录浏览。配对（Pairing）、Chat、Usage、变更（Changes）、技能（Skills）、文件上传和通知注册目前暂不可用。请在连接前保持 herdr 处于运行状态；Heeler 不会自动启动 Windows 服务端。
 
 如需进行终端尺寸调整、滚动、重连、会话隔离和认证方面的验收检查，请使用 [Windows 测试清单](../native-windows-testing.md)。
