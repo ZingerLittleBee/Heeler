@@ -560,6 +560,11 @@ final class HostConsoleProjection: ConsoleHostProjection {
         }
     }
 
+    /// herdr refuses a removal that would lose anything, and says so then.
+    func worktreeRemovalRisk(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
+        nil
+    }
+
     private func authorizeWorktreeRemoval(_ request: WorktreeRemovalRequest) throws {
         guard
             var operation = worktreeRemovalOperations[request.id],

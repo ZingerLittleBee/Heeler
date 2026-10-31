@@ -33,7 +33,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var isAwaitingSnapshot = true
 
     let syncError: String? = nil
-    let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
+    /// What a removed Worktree's Agents show. An address is never reused, so no
+    /// later row can inherit one.
+    private(set) var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
     var terminalLabelKeys: [String] {
         Set(records.flatMap(\.labels.keys)).sorted()
     }
@@ -53,8 +55,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var documentVersion: Int?
     private var documentRead: Task<Void, Never>?
     private var readsDocumentAgain = false
-    /// A directory's checkout root, itself when it is in no checkout.
-    private var checkouts: [String: String] = [:]
+    /// A directory's Checkout. Its root is itself when it is in no checkout.
+    private var checkouts: [String: HostCheckout] = [:]
+    private var workspacesByID: [String: WorkspaceInfo] = [:]
+    /// What a removal in progress on each Worktree began with: the Agents it
+    /// ends. It stays after a failure, when its Workspace may have no Terminal
+    /// left to be found by, so that trying again still can.
+    private var worktreeRemovals: [WorktreeIdentity: Set<ConsoleAgent.ID>] = [:]
+    private var worktreesBeingRemoved: Set<WorktreeIdentity> = []
+    /// What the user last heard a removal would lose, by Worktree.
+    private var toldWorktreeRisks: [WorktreeIdentity: WorktreeRemovalRisk] = [:]
     private var askedCheckouts: Set<String> = []
     private var queuedCheckouts: [String] = []
     private var checkoutTask: Task<Void, Never>?
@@ -216,6 +226,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         agentsByPane = [:]
         departedAgentsByPane = [:]
         workspaces = []
+        workspacesByID = [:]
         documentRead?.cancel()
         documentRead = nil
         readsDocumentAgain = false
@@ -405,6 +416,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                     HerdrCoreStatusExplanation(record: record).map { (record.address, $0) }
                 })
         workspaces = builder.workspaceRows()
+        workspacesByID = builder.workspaceByID
         askForCheckouts(organization.checkoutDirectories)
     }
 
@@ -544,10 +556,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         while !queuedCheckouts.isEmpty {
             let batch = Array(queuedCheckouts.prefix(GitProbe.checkoutRootsPerCall))
             queuedCheckouts.removeFirst(batch.count)
-            let roots = try? await gitGate.run { try await services.checkoutRoots(for: batch) }
+            let answers = try? await gitGate.run { try await services.checkouts(for: batch) }
             guard !Task.isCancelled else { return }
-            if let roots {
-                for directory in batch { checkouts[directory] = roots[directory] ?? directory }
+            if let answers {
+                for directory in batch {
+                    checkouts[directory] = answers[directory] ?? HostCheckout(root: directory)
+                }
             }
             rebuildRows()
             publish()
@@ -753,24 +767,140 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         if let failure { throw failure }
     }
 
+    // MARK: Worktrees
+
+    /// Off on native Windows until one passes a test there (ADR 0032).
+    private func worktreeGit() async throws -> HerdrCoreWorktreeGit {
+        let services = try await session.withTransport { $0.hostServices }
+        guard try await services.hostPlatform() == .posix else { throw unavailable("Worktrees") }
+        return HerdrCoreWorktreeGit(services: services, gate: gitGate)
+    }
+
+    /// The checkout comes first, then a new Workspace there as New Workspace
+    /// opens one. No git command is sent twice.
+    func startAgentInNewWorktree(
+        _ request: AgentLaunchRequest, worktree: WorktreeSpec
+    ) async throws -> Agent {
+        let git = try await worktreeGit()
+        let source = try await placement(workspaceID: request.workspaceID, directory: nil).cwd
+        let created = try await git.create(branch: worktree.branch ?? "", from: source)
+        // Before the first row shows, so it already reads as the Worktree it is.
+        checkouts[created.path] = HostCheckout(
+            root: created.path, mainCheckout: created.mainCheckout, isLinkedWorktree: true)
+        askedCheckouts.insert(created.path)
+        do {
+            return try await inNewSpace(NewWorkspaceSpec(directory: created.path)) { placement in
+                try await launch(request, placement: placement)
+            }
+        } catch TransportError.coreMutationOutcomeUnknown {
+            throw TransportError.coreMutationOutcomeUnknown
+        } catch {
+            throw WorktreeAgentStartFailure(checkoutPath: created.path, underlying: error)
+        }
+    }
+
+    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
+        guard let checkout = workspacesByID[workspaceID]?.worktree else {
+            throw WorktreeRemovalError.staleIdentity
+        }
+        let entries = try await worktreeGit().list(in: checkout.checkoutPath)
+        return WorktreeListResponse(
+            source: WorktreeSourceInfo(
+                repoKey: checkout.repoKey, repoName: checkout.repoName, repoRoot: checkout.repoRoot,
+                sourceCheckoutPath: checkout.checkoutPath, sourceWorkspaceID: workspaceID),
+            worktrees: entries.map { entry in
+                let workspace = workspacesByID.values.first {
+                    $0.worktree?.checkoutPath == entry.path
+                }
+                return WorktreeInfo(
+                    isBare: entry.isBare, isDetached: entry.isDetached,
+                    isLinkedWorktree: entry.isLinkedWorktree, isPrunable: entry.isPrunable,
+                    label: entry.label, path: entry.path, branch: entry.branch,
+                    openWorkspaceID: workspace?.workspaceID)
+            })
+    }
+
+    func worktreeRemovalRisk(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
+        let risk = try await worktreeGit().removalRisk(ofCheckout: request.identity.checkoutPath)
+        toldWorktreeRisks[request.identity] = risk
+        return risk
+    }
+
+    /// Every Terminal of the Workspace ends first, and only then does git remove
+    /// the checkout, so nothing keeps running in a deleted folder. Which Terminals
+    /// comes from the membership computed here, never from labels alone: any
+    /// process can rewrite those. What the checkout would lose is checked against
+    /// what the user heard before anything ends, and it is what forces the
+    /// removal; anything newer than that check makes git refuse.
+    func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt {
+        let identity = request.identity
+        guard identity.hostID == host.id else { throw WorktreeRemovalError.staleIdentity }
+        guard !isAwaitingSnapshot else {
+            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+        }
+        guard worktreesBeingRemoved.insert(identity).inserted else {
+            throw WorktreeRemovalError.alreadyInProgress
+        }
+        defer { worktreesBeingRemoved.remove(identity) }
+
+        let git = try await worktreeGit()
+        if worktreeRemovals[identity] == nil {
+            guard
+                let checkout = workspacesByID[identity.workspaceID]?.worktree
+                    .map(RepositoryCheckout.init),
+                identity.matches(checkout)
+            else { throw WorktreeRemovalError.staleIdentity }
+        }
+        let mainCheckout = try await git.verifiedMainCheckout(of: identity)
+        let risk = try await git.removalRisk(ofCheckout: identity.checkoutPath)
+        guard risk.isCovered(by: toldWorktreeRisks[identity]) else {
+            throw WorktreeRemovalError.changedSinceConfirmation
+        }
+
+        let agents = agentsByPane.values.filter { $0.agent.workspaceID == identity.workspaceID }
+        worktreeRemovals[identity, default: []].formUnion(agents.map(\.id))
+        try await endTerminals(ofWorkspace: identity.workspaceID)
+        try await git.remove(
+            path: identity.checkoutPath, mainCheckout: mainCheckout, force: risk.requiresForce)
+
+        let receipt = WorktreeRemovalReceipt(
+            request: request, affectedAgentIDs: worktreeRemovals[identity] ?? [])
+        worktreeRemovals[identity] = nil
+        toldWorktreeRisks[identity] = nil
+        checkouts[identity.checkoutPath] = nil
+        askedCheckouts.remove(identity.checkoutPath)
+        for agent in receipt.affectedAgentIDs { removedWorktreesByAgent[agent] = receipt }
+        publish()
+        return receipt
+    }
+
+    /// A Terminal that joined while the kills were on their way ends too. How
+    /// many more can join is up to whatever starts them, so this stops asking and
+    /// says so after a few rounds. With no inventory, nothing says who is left.
+    private func endTerminals(ofWorkspace workspaceID: String) async throws {
+        var ended: Set<String> = []
+        for _ in 0..<Self.terminalEndingRounds {
+            guard !isAwaitingSnapshot else { throw WorktreeRemovalError.terminalsNotEnded }
+            let left = records.map(\.address).filter {
+                !ended.contains($0) && terminalsByPane[$0]?.workspaceID == workspaceID
+            }
+            guard !left.isEmpty else { return }
+            do {
+                try await endTerminals(left)
+            } catch {
+                throw WorktreeRemovalError.terminalsNotEnded
+            }
+            ended.formUnion(left)
+        }
+        throw WorktreeRemovalError.terminalsNotEnded
+    }
+
+    private static let terminalEndingRounds = 4
+
     // MARK: Actions not built yet
 
     private func unavailable(_ feature: String) -> TransportError {
         .hostFeatureUnavailable(feature: "\(feature) on a herdr-core Host")
-    }
-
-    func startAgentInNewWorktree(
-        _ request: AgentLaunchRequest, worktree: WorktreeSpec
-    ) async throws -> Agent {
-        throw unavailable("Worktrees")
-    }
-
-    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
-        throw unavailable("Worktrees")
-    }
-
-    func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt {
-        throw unavailable("Worktrees")
     }
 
     /// A core has no focused Agent to report: each attach says whether it is

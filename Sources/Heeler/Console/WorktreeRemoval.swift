@@ -64,6 +64,12 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
     case staleIdentity
     case alreadyInProgress
     case outcomeUnconfirmed
+    /// A Terminal of the Workspace may still run, so the checkout stayed.
+    case terminalsNotEnded
+    /// The checkout now holds what the confirmation did not warn about.
+    case changedSinceConfirmation
+    case removeRefused(String)
+    case removeUnconfirmed(path: String)
 
     var message: String {
         switch self {
@@ -73,7 +79,29 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
             "This worktree already has a removal in progress."
         case .outcomeUnconfirmed:
             "The Host did not confirm whether removal completed. Close this sheet, wait for the Console to refresh, then reopen Worktree Details."
+        case .terminalsNotEnded:
+            "A Terminal in this worktree could not be confirmed ended, so the checkout was not removed. Others may have ended. Check the Host, then try again."
+        case .changedSinceConfirmation:
+            "This worktree changed since you confirmed, and nothing was removed. Removing it again deletes what it holds now."
+        case .removeRefused(let reason):
+            "The worktree's Terminals have ended, but git did not remove the checkout: \(reason)"
+        case .removeUnconfirmed(let path):
+            "The worktree's Terminals have ended, but the Host did not confirm the removal. Check whether \(path) is still on the Host before trying again."
         }
+    }
+}
+
+/// What removing a core Host's Worktree would lose, which is what forces it.
+/// Herdr TUI Hosts refuse these removals instead, and have none.
+struct WorktreeRemovalRisk: Equatable, Sendable {
+    let hasChanges: Bool
+    let hasSubmodules: Bool
+
+    var requiresForce: Bool { hasChanges || hasSubmodules }
+
+    /// Whether the user heard about all of this.
+    func isCovered(by told: WorktreeRemovalRisk?) -> Bool {
+        (!hasChanges || told?.hasChanges == true) && (!hasSubmodules || told?.hasSubmodules == true)
     }
 }
 
@@ -92,7 +120,8 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         request: WorktreeRemovalRequest,
         workspaceLabel: String,
         branch: Branch,
-        hasWorkingAgent: Bool
+        hasWorkingAgent: Bool,
+        risk: WorktreeRemovalRisk? = nil
     ) -> WorktreeRemovalConfirmation {
         var sentences = [
             "This deletes \(request.identity.checkoutPath) and closes the whole workspace, ending every Agent and closing every Pane in it."
@@ -107,6 +136,12 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         }
         if hasWorkingAgent {
             sentences.append("An Agent is still working in this worktree.")
+        }
+        if risk?.hasChanges == true {
+            sentences.append("Its uncommitted changes will be lost.")
+        }
+        if risk?.hasSubmodules == true {
+            sentences.append("Its submodules go with it, with any commits in them that were not pushed.")
         }
         sentences.append("This can't be undone.")
         return WorktreeRemovalConfirmation(
@@ -141,7 +176,8 @@ struct WorktreeRemovalRefusal {
     ) {
         switch error {
         case let removal as WorktreeRemovalError:
-            self.init(message: removal.message)
+            self.init(
+                message: removal.message, offersChanges: removal == .changedSinceConfirmation)
         case let api as HerdrAPIError:
             self.init(
                 code: api.code, serverMessage: api.message,

@@ -509,19 +509,67 @@ struct HerdrCoreTransportE2ETests {
         let transport = try await fixture.connectCore()
         do {
             let services = transport.hostServices
-            let roots = try await services.checkoutRoots(
+            let roots = try await services.checkouts(
                 for: ["\(repository)/src", "\(awkward)/deep", plain, "\(home)/placement/missing"])
-            #expect(roots == ["\(repository)/src": repository, "\(awkward)/deep": awkward])
+            #expect(roots.mapValues(\.root) == ["\(repository)/src": repository, "\(awkward)/deep": awkward])
             #expect(try await fixture.exists("\(home)/pwned") == false)
 
             let capped = (0..<40).map { "\(repository)/src/../src/\(String(repeating: "./", count: $0))" }
-            let answers = try await services.checkoutRoots(for: capped)
+            let answers = try await services.checkouts(for: capped)
             #expect(answers.count == GitProbe.checkoutRootsPerCall)
+            try await checkWorktreeGit(fixture, services: services)
             try await transport.close()
         } catch {
             try? await transport.close()
             throw error
         }
+    }
+
+    /// The commands a Worktree comes and goes by, against real git.
+    private func checkWorktreeGit(
+        _ fixture: CoreSSHFixture, services: any HostServices
+    ) async throws {
+        let home = fixture.configuration.homePath
+        let main = "\(home)/placement/wtapp"
+        let git = HerdrCoreWorktreeGit(services: services, gate: GitExecGate())
+        let quoted = GitProbe.singleQuoted(main)
+        try await fixture.makeCheckout(at: main, subdirectory: "src")
+        _ = try await fixture.require(
+            "git -C \(quoted) -c user.name=lab -c user.email=lab@localhost commit -q --allow-empty -m one")
+        _ = try await fixture.require("git -C \(quoted) branch kept")
+        let parent = "\(home)/.herdr/worktrees/wtapp"
+
+        // A branch that does not exist yet, then one that does.
+        let made = try await git.create(branch: "feature/new", from: "\(main)/src")
+        #expect(made == .init(path: "\(parent)/feature-new", mainCheckout: main))
+        let kept = try await git.create(branch: "kept", from: main)
+        #expect(kept.path == "\(parent)/kept")
+        let checkedOut = try await fixture.require("git -C \(GitProbe.singleQuoted(kept.path)) branch --show-current")
+        #expect(String(decoding: checkedOut, as: UTF8.self).contains("kept"))
+
+        let answers = try await services.checkouts(for: [main, made.path])
+        #expect(answers[main] == HostCheckout(root: main, mainCheckout: main))
+        #expect(answers[made.path] == HostCheckout(root: made.path, mainCheckout: main, isLinkedWorktree: true))
+        let listed = try await git.list(in: main)
+        #expect(listed.first { $0.path == made.path }?.branch == "feature/new")
+        #expect(listed.first { $0.path == kept.path }?.branch == "kept")
+
+        // Clean, it goes unforced. With a change, git refuses until forced.
+        #expect(try await git.removalRisk(ofCheckout: kept.path) == .init(hasChanges: false, hasSubmodules: false))
+        try await git.remove(path: kept.path, mainCheckout: main, force: false)
+        #expect(try await fixture.exists(kept.path) == false)
+
+        _ = try await fixture.require("touch \(GitProbe.singleQuoted(made.path))/new.txt")
+        #expect(try await git.removalRisk(ofCheckout: made.path) == .init(hasChanges: true, hasSubmodules: false))
+        await #expect(throws: WorktreeRemovalError.self) {
+            try await git.remove(path: made.path, mainCheckout: main, force: false)
+        }
+        #expect(try await fixture.exists(made.path))
+        try await git.remove(path: made.path, mainCheckout: main, force: true)
+        #expect(try await fixture.exists(made.path) == false)
+
+        // Both branches outlive their checkouts.
+        _ = try await fixture.require("git -C \(quoted) show-ref --verify refs/heads/kept refs/heads/feature/new")
     }
 }
 
@@ -672,7 +720,7 @@ private struct CoreSSHFixture: Sendable {
         try await connection.execute(command, timeout: .seconds(20))
     }
 
-    private func require(_ command: String) async throws -> Data {
+    func require(_ command: String) async throws -> Data {
         let response = try await run(command)
         guard response.exitStatus == 0 else {
             throw CoreSSHFailure.fixture("\(command): \(String(decoding: response.stderr, as: UTF8.self))")

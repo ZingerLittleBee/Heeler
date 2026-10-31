@@ -56,19 +56,20 @@ extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
     /// core Host offers uploads once it is known to take them over SFTP: native
     /// Windows stages through the core's `terminal.put` instead (ADR 0032), and
-    /// has no Rename until one passes a test there.
+    /// has no Rename or Worktrees until each passes a test there.
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
         desktopAppNaming: HerdrAppNaming? = nil
     ) {
         let offered = serverKind == .herdrTUI
+        let posixCore = serverKind == .herdrCore && platform == .posix
         self.init(
             opensDetail: true, startsAgents: true, startsTerminals: true,
-            renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
-            uploads: offered || (serverKind == .herdrCore && platform == .posix),
+            renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || posixCore,
+            uploads: offered || posixCore,
             composerSend: offered, chat: offered, tabNames: offered, closeTab: true,
             syncLayoutFromPlugin: offered, takeOver: offered,
-            desktopAppNaming: serverKind == .herdrCore && platform == .posix ? desktopAppNaming : nil)
+            desktopAppNaming: posixCore ? desktopAppNaming : nil)
     }
 }
 

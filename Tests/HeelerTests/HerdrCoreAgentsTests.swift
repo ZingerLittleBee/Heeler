@@ -443,12 +443,15 @@ struct HerdrCoreAgentsTests {
         #expect(store.chatDisplayAgents.map(\.id) == [row.id])
         #expect(store.savedChatEntries.isEmpty)
 
+        // The Workspace asks which checkout it is once; nothing else borrows them.
+        try await waitUntil("the Workspace's checkout") { transport.hostServicesBorrows == 1 }
+
         // A change republishes every gate's input while the Host is connected.
         await transport.deliver(
             Self.statusEvent(sequence: 2, terminal: "t1", Self.report("idle", app: "claude-code")))
         try await waitUntil("the change") { agent(store, "t1")?.agent.status == .idle }
         await Task.yield()
-        #expect(transport.hostServicesBorrows == 0)
+        #expect(transport.hostServicesBorrows == 1)
     }
 
     // MARK: Agent detail
@@ -465,9 +468,10 @@ struct HerdrCoreAgentsTests {
             capabilities: store.capabilities(for: host.id), supportsMultipleWindows: true)
         #expect(offers == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: true, closes: true))
 
+        try await waitUntil("the Workspace's checkout") { transport.hostServicesBorrows == 1 }
         store.rowChanges.rowAppeared(row)
         #expect(store.rowChanges.store(for: row) != nil)
-        try await waitUntil("a Changes read") { transport.hostServicesBorrows > 0 }
+        try await waitUntil("a Changes read") { transport.hostServicesBorrows > 1 }
     }
 
     @Test func aCoreHostHoldsItsTerminalsInEveryWindowAndNeverOffersTakeOver() {

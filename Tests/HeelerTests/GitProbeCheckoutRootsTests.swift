@@ -63,7 +63,39 @@ struct GitProbeCheckoutRootsTests {
         let roots = try GitProbe.parseCheckoutRoots(
             stdout: stdout, stderr: Data(), nonce: nonce, directories: directories)
 
-        #expect(roots == ["/work/repo/src": "/work/repo", "/work/odd": "/work/od\nd"])
+        #expect(roots.mapValues(\.root) == ["/work/repo/src": "/work/repo", "/work/odd": "/work/od\nd"])
+    }
+
+    @Test func aRepositoryAnswerNamesTheMainCheckoutAndALinkedWorktree() throws {
+        let marker = GitProbe.marker(nonce: nonce)
+        func section(_ name: String, _ body: String, status: Int = 0) -> String {
+            "\n\(marker) \(name) begin\n\(body)\n\(marker) \(name) rc=\(status)\n"
+        }
+        let stdout =
+            section("root0", "/work/app\n") + section("repo0", "main /work/app/.git\n")
+            + section("root1", "/home/dev/.herdr/worktrees/app/x\n")
+            + section("repo1", "linked /work/app/.git\n")
+            // A submodule's common directory holds no `.git` at its end.
+            + section("root2", "/work/app/sub\n")
+            + section("repo2", "main /work/app/.git/modules/sub\n")
+            // Git said where the top level is and then would not say more.
+            + section("root3", "/work/odd\n") + section("repo3", "", status: 128)
+            + "\n\(marker) done\n"
+
+        let checkouts = try GitProbe.parseCheckoutRoots(
+            stdout: Data(stdout.utf8), stderr: Data(), nonce: nonce,
+            directories: ["/work/app", "/home/dev/.herdr/worktrees/app/x", "/work/app/sub", "/work/odd"])
+
+        #expect(checkouts["/work/app"] == HostCheckout(root: "/work/app", mainCheckout: "/work/app"))
+        #expect(
+            checkouts["/home/dev/.herdr/worktrees/app/x"]
+                == HostCheckout(
+                    root: "/home/dev/.herdr/worktrees/app/x", mainCheckout: "/work/app",
+                    isLinkedWorktree: true))
+        #expect(
+            checkouts["/work/app/sub"]
+                == HostCheckout(root: "/work/app/sub", mainCheckout: "/work/app/.git/modules/sub"))
+        #expect(checkouts["/work/odd"] == HostCheckout(root: "/work/odd"))
     }
 
     @Test func aTopLevelCutShortIsNoAnswer() throws {

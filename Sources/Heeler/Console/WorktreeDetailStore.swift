@@ -42,6 +42,9 @@ final class WorktreeDetailStore {
     private let remove: (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
     private let hasWorkingAgent: () -> Bool
     private let showChangesHandler: ((String) -> Void)?
+    /// What removing would lose, read where a removal forces its way past it.
+    private let readRemovalRisk: (WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?
+    private var removalRisk: WorktreeRemovalRisk?
     private var didLoadBranch = false
     /// A token captured synchronously by the confirmation action and consumed
     /// exactly once when its asynchronous removal task starts.
@@ -56,8 +59,10 @@ final class WorktreeDetailStore {
         list: @escaping (String) async throws -> WorktreeListResponse,
         remove: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt,
         hasWorkingAgent: @escaping () -> Bool,
-        showChanges: ((String) -> Void)? = nil
+        showChanges: ((String) -> Void)? = nil,
+        readRemovalRisk: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? = { _ in nil }
     ) {
+        self.readRemovalRisk = readRemovalRisk
         self.request = request
         self.workspaceLabel = workspaceLabel
         self.checkout = checkout
@@ -141,6 +146,12 @@ final class WorktreeDetailStore {
         await loadBranchIfNeeded()
     }
 
+    /// A read that fails warns of nothing, and the removal then reads it again
+    /// itself and stops at anything the user did not hear about.
+    func loadRemovalRisk() async {
+        removalRisk = (try? await readRemovalRisk(request)) ?? nil
+    }
+
     /// Captures one immutable request in the dialog. Final authorization is
     /// deliberately later, immediately before the wire begins writing.
     func prepareConfirmation() {
@@ -149,7 +160,8 @@ final class WorktreeDetailStore {
             request: request,
             workspaceLabel: workspaceLabel,
             branch: confirmationBranch,
-            hasWorkingAgent: hasWorkingAgent())
+            hasWorkingAgent: hasWorkingAgent(),
+            risk: removalRisk)
     }
 
     func cancelConfirmation() {
@@ -189,6 +201,10 @@ final class WorktreeDetailStore {
             refusalCommand = refusal.command
             removalPhase = .failed(refusal.message)
             showsFeedback = true
+            // The next confirmation has to warn of what stopped this one.
+            if error as? WorktreeRemovalError == .changedSinceConfirmation {
+                await loadRemovalRisk()
+            }
         }
     }
 

@@ -31,6 +31,21 @@ struct HerdrCoreConsolePlacementTests {
         return .object(fields)
     }
 
+    private static func agentRecord(
+        _ address: String, cwd: String, labels: [String: String] = [:]
+    ) -> JSONValue {
+        .object([
+            "address": .string(address), "cwd": .string(cwd), "state": .string("live"),
+            "argv": .array([.string("/bin/zsh")]), "cols": .number(80), "rows": .number(24),
+            "pid": .number(7), "labels": .object(labels.mapValues(JSONValue.string)),
+            "foreground": .object([
+                "pid": .number(40), "name": .string("claude"), "argv": .array([.string("claude")]),
+                "cwd": .string(cwd),
+            ]),
+            "status": .object(["state": .string("working"), "app": .string("claude-code")]),
+        ])
+    }
+
     private static func subscribeResult(sequence: Int = 1, _ terminals: [JSONValue]) -> JSONValue {
         .object([
             "seq": .number(Double(sequence)), "terminals": .array(terminals), "channel": .number(1),
@@ -486,8 +501,10 @@ struct HerdrCoreConsolePlacementTests {
         #expect(await services.checkoutCalls == [["/work/plain"]])
     }
 
-    @Test func aSpaceTheDocumentNamesNeverAsksForACheckout() async throws {
-        let services = ScriptedCoreServices()
+    /// It keeps the document's name, and asks only to tell a Worktree from a main
+    /// checkout.
+    @Test func aSpaceTheDocumentNamesKeepsItsNameWhateverItsCheckoutIsCalled() async throws {
+        let services = ScriptedCoreServices(roots: ["/work/app": "/work/other"])
         let transport = ScriptedCoreTransport(
             subscribeResults: [
                 Self.subscribeResult([
@@ -500,8 +517,40 @@ struct HerdrCoreConsolePlacementTests {
 
         await transport.deliver(Self.labelsEvent(sequence: 2, "t2", Self.desktop("s2", "tb2")))
         try await waitUntil("t2 moved") { cards(store) == ["Zeta: t2", "Alpha: t1"] }
+        try await waitUntil("the ask") { await services.checkoutCalls.count == 1 }
 
-        #expect(await services.checkoutCalls.isEmpty)
+        #expect(cards(store) == ["Zeta: t2", "Alpha: t1"])
+    }
+
+    /// Asked once for every Workspace, whatever kind it is, so each row knows its
+    /// repository and Worktree Details is offered on a linked one.
+    @Test func eachWorkspaceLearnsWhichCheckoutItIs() async throws {
+        let linked = "/home/dev/.herdr/worktrees/app/feature"
+        let services = ScriptedCoreServices(checkouts: [
+            "/work/app": HostCheckout(root: "/work/app", mainCheckout: "/work/app"),
+            linked: HostCheckout(root: linked, mainCheckout: "/work/app", isLinkedWorktree: true),
+        ])
+        let transport = ScriptedCoreTransport(
+            subscribeResults: [
+                Self.subscribeResult([
+                    Self.agentRecord("t1", cwd: "/work/app"),
+                    Self.agentRecord("t2", cwd: linked, labels: Self.desktop("s9", "tb9")),
+                ])
+            ], services: services)
+        let store = try await started(transport)
+        defer { store.setHosts([]) }
+
+        try await waitUntil("both checkouts") {
+            store.agents.compactMap(\.repositoryCheckout).count == 2
+        }
+        let main = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        let worktree = try #require(store.agents.first { $0.agent.paneID == "t2" })
+        #expect(!main.isLinkedWorktree)
+        #expect(worktree.isLinkedWorktree)
+        #expect(worktree.repositoryCheckout?.repoKey == main.repositoryCheckout?.repoKey)
+        #expect(worktree.repositoryCheckout?.repoName == "app")
+        #expect(worktree.repositoryCheckout?.checkoutPath == linked)
+        #expect(await Set(services.checkoutCalls.joined()) == ["/work/app", linked])
     }
 
     @Test func manyDirectoriesAreAskedInCappedCalls() async throws {

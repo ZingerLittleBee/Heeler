@@ -1017,7 +1017,10 @@ struct AgentTerminalView: View {
                         && $0.agent.status == .working
                 }
             },
-            showChanges: openWorktreeChanges)
+            showChanges: openWorktreeChanges,
+            readRemovalRisk: { [console] request in
+                try await console.worktreeRemovalRisk(request, on: hostID)
+            })
     }
 
     private var terminalSurface: some View {

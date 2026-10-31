@@ -1009,6 +1009,12 @@ final class ConsoleStore {
         try await projection(for: hostID).removeWorktree(request)
     }
 
+    func worktreeRemovalRisk(
+        _ request: WorktreeRemovalRequest, on hostID: Host.ID
+    ) async throws -> WorktreeRemovalRisk? {
+        try await projection(for: hostID).worktreeRemovalRisk(request)
+    }
+
     func focusAgent(_ paneID: String, on hostID: Host.ID) async throws {
         try await projection(for: hostID).focusAgent(paneID)
     }
@@ -1047,6 +1053,14 @@ final class ConsoleStore {
     /// about to offer a name.
     func checkDesktopApp(on hostID: Host.ID) async {
         await (projections[hostID] as? HerdrCoreConsoleProjection)?.checkDesktopApp()
+    }
+
+    /// What New Agent offers a core Host waits on its platform (Worktrees) and
+    /// its desktop app (names), so the form asks for both as it opens.
+    func checkNewAgentOffers(on hostID: Host.ID) async {
+        guard projections[hostID] is HerdrCoreConsoleProjection else { return }
+        await resolveHostPlatform(hostID)
+        await checkDesktopApp(on: hostID)
     }
 
     /// Each Server Kind has its own projection, behind one seam (ADR 0032).
