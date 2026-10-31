@@ -411,6 +411,15 @@ class CoreFixtureCleanupTests(unittest.TestCase):
                     ["/usr/bin/env", "-i", f"HOME={root / 'home'}", "PATH=/usr/bin:/bin", shutil.which(shell),
                      "-c", f'. "$HOME/{name}"; heeler-rc-stub; printf "%s" "${CORE.RC_MARKER}"'], text=True)
                 self.assertEqual(printed, "rc-stub\nrc-sourced")
+            fish = shutil.which("fish")
+            if fish is not None:
+                printed = subprocess.check_output(
+                    ["/usr/bin/env", "-i", f"HOME={root / 'home'}", "PATH=/usr/bin:/bin", fish, "-ic",
+                     f'heeler-rc-stub; printf "%s" ${CORE.RC_MARKER}'], text=True, stdin=subprocess.DEVNULL)
+                self.assertEqual(printed, "rc-stub\nrc-sourced")
+            config = (root / "home/.config/fish/config.fish").read_text()
+            self.assertIn(".rc-stub/bin", config)
+            self.assertIn(CORE.RC_MARKER, config)
 
     def test_config_names_what_a_test_needs_to_start_and_drive_a_core(self):
         with tempfile.TemporaryDirectory(prefix="hc-s-", dir="/tmp") as directory, \

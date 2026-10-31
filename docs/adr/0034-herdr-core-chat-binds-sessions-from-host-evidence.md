@@ -44,10 +44,16 @@ never show or send into a conversation it has guessed.
   start match the resolved agent process, and clears it when it can.
 - An Agent Heeler starts, other than from a Template (ADR 0032), carries its
   session from the start: `--session-id` for Claude Code and Pi, `-s` for
-  Grok Build, `-s ses…` for OpenCode 2.x, and `--no-daemon` for Codex, which
-  cannot be given an id. Oh My Pi relies on its extension. OpenCode 1.x's `-s`
-  only continues an existing session, so an OpenCode 1.x Agent starts without
-  one, as does a Template Agent, which binds from evidence alone.
+  Grok Build, `-s ses…` for OpenCode from 2.1, and `--no-daemon` for Codex,
+  which cannot be given an id. Oh My Pi relies on its extension. OpenCode 1.x's
+  `-s` only continues an existing session, so an OpenCode Agent older than 2.1,
+  or whose version does not read, starts without one, as does a Template Agent,
+  which binds from evidence alone. Arguments that already pick a session or the
+  mode, such as `--resume`, take no flag, since these programs refuse a second.
+  The generated id is the label `heeler.launch-session`, the id alone. Nothing
+  has started when it is written, so it has no pid or process start, and it stays
+  apart from the extensions' `heeler.session`. The Terminal's launch argv carries
+  the same id, which is what ties the two together.
 - Some variables break session records or Program Status when the core leaks
   them (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY`,
   `CLAUDECODE`, `HERDR_*`, `TMUX`, `STY`, `ZELLIJ`, `CURSOR_TRACE_ID`,

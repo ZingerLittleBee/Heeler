@@ -3641,6 +3641,14 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .timedOut)
     }
 
+    /// One bounded exec, cut off on the Host if a startup file waits for input
+    /// or a program's `--version` hangs.
+    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: "herdr-core Hosts", deadline: .seconds(25), remoteSeconds: 20,
+            timeoutMarkerPrefix: "__HEELER_AGENT_DISCOVERY_TIMEOUT_", timedOut: .timedOut)
+    }
+
     /// A channel the link holds for as long as it lives. SSH reports a missing
     /// socket, a refused one and a forbidden path with the same error.
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {

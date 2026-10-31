@@ -490,10 +490,9 @@ extension HeelerPluginUnavailableError: Equatable {}
     private let core = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
     private let tui = Host(address: "tui.example", username: "dev", serverKind: .herdrTUI)
 
-    @Test func theNewButtonsOfferOnlyHostsThatCanStartIt() {
-        #expect([core, tui].offeringNewItem(listsTerminals: true) == [tui])
-        #expect([core, tui].offeringNewItem(listsTerminals: false) == [tui])
-        #expect([core].offeringNewItem(listsTerminals: true).isEmpty)
+    @Test func theNewButtonsOfferEveryKindOfHost() {
+        #expect([core, tui].offeringNewItem(listsTerminals: true) == [core, tui])
+        #expect([core, tui].offeringNewItem(listsTerminals: false) == [core, tui])
     }
 
     @Test func anEmptyDetailOffersNothingEveryHostCannotStart() {
@@ -505,12 +504,12 @@ extension HeelerPluginUnavailableError: Equatable {}
         #expect(notOffered.message == "Choose a terminal.")
     }
 
-    @Test func aListOffersNewUnlessEveryHostCannotStartIt() {
+    @Test func aListOffersNewOnEveryKindOfHost() {
         for listsTerminals in [false, true] {
             #expect([Host]().offersNewItem(listsTerminals: listsTerminals))
             #expect([tui].offersNewItem(listsTerminals: listsTerminals))
             #expect([core, tui].offersNewItem(listsTerminals: listsTerminals))
-            #expect(![core].offersNewItem(listsTerminals: listsTerminals))
+            #expect([core].offersNewItem(listsTerminals: listsTerminals))
         }
     }
 
@@ -542,7 +541,7 @@ extension HeelerPluginUnavailableError: Equatable {}
 
     /// The File menu and ⌘N read this target, so a mounted Console is what
     /// decides whether New Agent or New Terminal is enabled.
-    @Test(arguments: [(ServerKind.herdrCore, false), (ServerKind.herdrTUI, true)])
+    @Test(arguments: [(ServerKind.herdrCore, true), (ServerKind.herdrTUI, true)])
     func aMountedConsoleOffersTheNewCommandByItsHosts(
         kind: ServerKind, enabled: Bool
     ) async throws {
