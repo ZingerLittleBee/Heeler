@@ -1146,10 +1146,17 @@ struct HerdrCoreTerminalStoreTests {
         ["Back to Console", "Open Terminal", "Changes", "Skills", "Snippets"],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.
-    private static let notBuiltLabels = ["Add", "Send", "Stop", "Take Over", "Take Over Here"]
+    /// Direct Input has no Add of its own: its More carries the same two items.
+    private static let coreDirectInputMenus: Set<[String]> = [
+        ["Terminals", "Changes", "Collapse"],
+        ["Back to Console", "Add Image", "Add File", "Open Terminal", "Changes", "Skills", "Snippets"],
+    ]
 
-    /// A Composer that cannot send hides Send, Stop and Add, and the Agent is
-    /// working, so Stop is what a Host that can would show.
+    private static let notBuiltLabels = ["Send", "Stop", "Take Over", "Take Over Here"]
+
+    /// A Composer that cannot send hides Send and Stop, and the Agent is
+    /// working, so Stop is what a Host that can would show. Add waits for the
+    /// platform the connection reports.
     @Test func aCoreAgentsDetailShowsItsTerminalAndOffersOnlyWhatIsBuilt() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
@@ -1162,9 +1169,26 @@ struct HerdrCoreTerminalStoreTests {
 
         try await Self.until("the Composer") { detail.offers("Message the Agent") }
         for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
+        try await Self.until("Add") { detail.offers("Add") }
 
         let menus = try await HostedMenu.items(labeled: "More", in: detail.window)
         #expect(Set(menus) == Self.coreAgentMenus, "\(menus)")
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// Native Windows stages through the core, which is not built yet.
+    @Test func aNativeWindowsCoreAgentsComposerOffersNoAdd() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        await fixture.scripted.helper.configure { $0.platform = .nativeWindows }
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let hostID = fixture.host.id
+
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .nativeWindows }
+        await Task.yield()
+        #expect(!detail.offers("Add"))
         await detail.close()
         await fixture.finish()
     }
@@ -1177,9 +1201,12 @@ struct HerdrCoreTerminalStoreTests {
         try await fixture.deliverOutput("x", on: attach)
         try await Self.until("Direct Input") { detail.offers("Escape") }
         for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
+        let hostID = fixture.host.id
+        try await Self.until("uploads") { fixture.console.capabilities(for: hostID).uploads }
+        detail.layOut()
 
         let menus = try await HostedMenu.items(labeled: "More", in: detail.window)
-        #expect(Set(menus) == Self.coreAgentMenus, "\(menus)")
+        #expect(Set(menus) == Self.coreDirectInputMenus, "\(menus)")
 
         let escape = try #require(accessibleElement(labeled: "Escape", in: detail.window))
         #expect(escape.accessibilityActivate())

@@ -45,10 +45,10 @@ final class ConsoleStore {
     private(set) var removedWorktreesByAgent: [
         ConsoleAgent.ID: WorktreeRemovalReceipt
     ] = [:]
-    /// Each Host's platform as its connection reported it; Chat offers
-    /// itself only on a Host known to be POSIX. Kept across reconnects of
-    /// one catalog entry, so a reconnect does not take an open Chat away,
-    /// and asked again on each new connection.
+    /// Each Host's platform as its connection reported it; Chat, and a core
+    /// Host's uploads, offer themselves only on a Host known to be POSIX. Kept
+    /// across reconnects of one catalog entry, so a reconnect does not take an
+    /// open Chat away, and asked again on each new connection.
     private(set) var hostPlatforms: [Host.ID: HostPlatform] = [:]
     /// The connection each Host's platform was last asked on.
     @ObservationIgnored private var hostPlatformGenerations: [Host.ID: UInt64] = [:]
@@ -625,6 +625,7 @@ final class ConsoleStore {
         let session = AgentComposerSession(
             composer: composer, stageImage: imageStager(for: hostID), stageFile: fileStager(for: hostID))
         composerSessions[agent.id] = session
+        requestHostPlatforms(Array(projections.values))
         return session
     }
 
@@ -1021,7 +1022,7 @@ final class ConsoleStore {
     private func rebuild() {
         let current = Array(projections.values)
         reconcileTerminalConnections(current)
-        requestChatHostPlatforms(current)
+        requestHostPlatforms(current)
         // A configured Host without a session update is awaiting its first
         // activation, not gone. Publish that pending connection to every
         // surface, including the list and saved Chat banners. Removed Hosts
@@ -1174,18 +1175,25 @@ final class ConsoleStore {
     /// soon as a connection lists a Claude or Codex Agent means a detail
     /// opening on Chat rarely has to show the terminal first. The answer is
     /// usually already known to the transport, which learned it connecting.
-    private func requestChatHostPlatforms(_ current: [any ConsoleHostProjection]) {
+    /// A core Host's Add needs it too, once an Agent has a Composer to show it.
+    private func requestHostPlatforms(_ current: [any ConsoleHostProjection]) {
         for projection in current
         where projection.status == .connected && !projection.isAwaitingSnapshot {
             let hostID = projection.host.id
-            guard projection.host.capabilities.chat,
-                hostPlatformGenerations[hostID] != projection.transportGeneration,
-                projection.agentsByPane.values.contains(where: {
-                    AgentChatAvailability.mayOfferChat(for: $0.agent, hasAdapter: { chatAdapter($0) != nil })
-                })
+            guard hostPlatformGenerations[hostID] != projection.transportGeneration,
+                mayOfferChat(on: projection)
+                    || (projection.host.serverKind == .herdrCore
+                        && composerSessions.keys.contains { $0.hostID == hostID })
             else { continue }
             Task { [weak self] in await self?.resolveHostPlatform(hostID) }
         }
+    }
+
+    private func mayOfferChat(on projection: any ConsoleHostProjection) -> Bool {
+        projection.host.capabilities.chat
+            && projection.agentsByPane.values.contains(where: {
+                AgentChatAvailability.mayOfferChat(for: $0.agent, hasAdapter: { chatAdapter($0) != nil })
+            })
     }
 
     /// All current terminal Panes, including Agents, across the Workspace's Tabs.
@@ -1406,8 +1414,9 @@ final class ConsoleStore {
     }
 
     func capabilities(for hostID: Host.ID) -> HostCapabilities {
-        catalog.first(where: { $0.id == hostID })?.capabilities
-            ?? HostCapabilities(serverKind: .herdrTUI)
+        HostCapabilities(
+            serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
+            platform: hostPlatforms[hostID])
     }
 
     func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {

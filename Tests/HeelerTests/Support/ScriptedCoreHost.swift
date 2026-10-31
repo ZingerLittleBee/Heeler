@@ -182,6 +182,9 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// Every file staged over the Host's SFTP, oldest first, where it landed.
     private(set) var stagedFiles: [(path: String, contents: Data)] = []
     private var stagingFailures: [AttachmentStagingError] = []
+    /// How many times anything asked the Host's platform.
+    private(set) var platformAsks = 0
+    private var platformFailure: TransportError?
     private var changes: CheckoutChangesRead?
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
@@ -493,7 +496,14 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     func hostPlatform() async throws -> HostPlatform {
-        try await helper.hostPlatform()
+        platformAsks += 1
+        if let platformFailure { throw platformFailure }
+        return try await helper.hostPlatform()
+    }
+
+    /// Every platform ask fails with this until it is nil.
+    func setPlatformFailure(_ failure: TransportError?) {
+        platformFailure = failure
     }
 
     func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {

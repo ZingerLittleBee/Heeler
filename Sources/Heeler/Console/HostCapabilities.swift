@@ -39,11 +39,15 @@ struct HostCapabilities: Equatable, Sendable {
 }
 
 extension HostCapabilities {
-    init(serverKind: ServerKind) {
+    /// `platform` is what the Host's connection reported, nil until it has. A
+    /// core Host offers uploads once it is known to take them over SFTP: native
+    /// Windows stages through the core's `terminal.put` instead (ADR 0032).
+    init(serverKind: ServerKind, platform: HostPlatform? = nil) {
         let offered = serverKind == .herdrTUI
         self.init(
             opensDetail: true, startsAgents: offered, startsTerminals: offered,
-            renameAgent: offered, renamesWorkspaces: offered, worktrees: offered, uploads: offered,
+            renameAgent: offered, renamesWorkspaces: offered, worktrees: offered,
+            uploads: offered || (serverKind == .herdrCore && platform == .posix),
             composerSend: offered, chat: offered, tabNames: offered, closeTab: offered,
             syncLayoutFromPlugin: offered, takeOver: offered)
     }

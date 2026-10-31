@@ -126,4 +126,140 @@ struct HerdrCoreStagingTests {
         #expect(await fixture.scripted.attaches.isEmpty)
         await fixture.finish()
     }
+
+    /// macOS and Linux both answer POSIX. Native Windows stages through the
+    /// core's `terminal.put`, which is not built yet (ADR 0032).
+    @Test(arguments: [(HostPlatform.posix, true), (HostPlatform.nativeWindows, false)])
+    func aCoreHostOffersUploadsByThePlatformItsConnectionReports(
+        platform: HostPlatform, offered: Bool
+    ) async throws {
+        let fixture = try await Fixture(platform: platform)
+        let console = fixture.console
+        let hostID = fixture.host.id
+        #expect(!console.capabilities(for: hostID).uploads)
+
+        _ = try fixture.session
+        try await Self.until("the platform") { console.hostPlatforms[hostID] == platform }
+
+        #expect(console.capabilities(for: hostID).uploads == offered)
+        await fixture.finish()
+    }
+
+    @Test func aPlatformChangesNothingForAHerdrTUIHostOrAnUnconfirmedOne() {
+        for platform in [nil, HostPlatform.posix, .nativeWindows] {
+            #expect(HostCapabilities(serverKind: .herdrTUI, platform: platform) == HostCapabilities(serverKind: .herdrTUI))
+            #expect(HostCapabilities(serverKind: .herdrTUI, platform: platform).uploads)
+            #expect(!HostCapabilities(serverKind: .unconfirmed, platform: platform).uploads)
+        }
+    }
+
+    @Test func aPlatformLeftUnknownIsAskedAgainOnTheNextConnection() async throws {
+        let fixture = try await Fixture()
+        let console = fixture.console
+        let hostID = fixture.host.id
+        await fixture.scripted.setPlatformFailure(.timedOut)
+
+        _ = try fixture.session
+        try await Self.until("the first ask") { await fixture.scripted.platformAsks == 1 }
+        #expect(!console.capabilities(for: hostID).uploads)
+
+        await fixture.scripted.setPlatformFailure(nil)
+        await console.suspend()
+        await console.resume()
+        try await Self.until("Add") { console.capabilities(for: hostID).uploads }
+        await fixture.finish()
+    }
+
+    // MARK: Failures
+
+    /// The same refusal under both Server Kinds, for what each one's Composer shows.
+    private static func herdrTUIState(
+        failingWith failure: AttachmentStagingError, source: ComposerStagingStore.Source
+    ) async throws -> ComposerStagingStore.State {
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        await transport.configureFileStaging(outcomes: [.failure(failure)])
+        let console = ConsoleStore { _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+        }
+        console.setHosts([Host.fixture()])
+        await console.resume()
+        try await until("the Agent") { !console.agents.isEmpty }
+        let session = console.composerSession(for: try #require(console.agents.first))
+        try #require(session.staging.begin(source) != nil)
+        try await until("the failure") { hasFailed(session) }
+        let state = session.staging.state
+        console.setHosts([])
+        await console.suspend()
+        return state
+    }
+
+    private static func hasFailed(_ session: AgentComposerSession) -> Bool {
+        if case .failed = session.staging.state { return true }
+        return false
+    }
+
+    @Test(arguments: [
+        (AttachmentStagingError.sftpUnavailable, "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem."),
+        (AttachmentStagingError.transferFailed, "File upload failed."),
+        (AttachmentStagingError.remoteTemporaryDirectoryFailed, "File upload failed."),
+    ])
+    func aStagingFailureOnACoreHostReadsAsItDoesOnHerdrTUI(
+        failure: AttachmentStagingError, message: String
+    ) async throws {
+        let picked = try Self.pickedFile(contents: Data("notes".utf8))
+        defer { try? FileManager.default.removeItem(at: picked.url) }
+        let fixture = try await Fixture()
+        await fixture.scripted.failStages(with: [failure])
+        let session = try fixture.session
+
+        try #require(session.staging.begin(picked.source) != nil)
+        try await Self.until("the failure") { Self.hasFailed(session) }
+
+        #expect(session.staging.presentation?.title == message)
+        #expect(session.staging.state == (try await Self.herdrTUIState(failingWith: failure, source: picked.source)))
+        #expect(session.composer.draft.isEmpty)
+        await fixture.finish()
+    }
+
+    @Test func aHostThatIsNotConnectedSaysSoAndKeepsTheRetry() async throws {
+        let picked = try Self.pickedFile(contents: Data("notes".utf8))
+        defer { try? FileManager.default.removeItem(at: picked.url) }
+        let fixture = try await Fixture()
+        let session = try fixture.session
+        await fixture.console.suspend()
+
+        try #require(session.staging.begin(picked.source) != nil)
+        try await Self.until("the failure") { Self.hasFailed(session) }
+
+        #expect(
+            session.staging.state
+                == .failed(
+                    ComposerStagingStore.Failure(
+                        medium: .file,
+                        message: "The Host is not connected. Reconnect, then retry the upload.",
+                        isRetryable: true)))
+        await fixture.finish()
+    }
+
+    @Test func retryAfterAFailedUploadInsertsThePathOfTheOneThatLanded() async throws {
+        let contents = Data("notes".utf8)
+        let picked = try Self.pickedFile(contents: contents)
+        defer { try? FileManager.default.removeItem(at: picked.url) }
+        let fixture = try await Fixture()
+        await fixture.scripted.failStages(with: [.transferFailed])
+        let session = try fixture.session
+
+        try #require(session.staging.begin(picked.source) != nil)
+        try await Self.until("the failure") { Self.hasFailed(session) }
+        #expect(session.staging.presentation?.commands == [.retry, .dismiss])
+
+        session.staging.perform(.retry)
+        try await Self.until("the file") { Self.hasCompleted(.file, session) }
+
+        let staged = await fixture.scripted.stagedFiles
+        #expect(staged.map(\.path) == ["/tmp/heeler-stage/stage-0/file.txt"])
+        #expect(staged.first?.contents == contents)
+        #expect(session.composer.draft == "/tmp/heeler-stage/stage-0/file.txt ")
+        await fixture.finish()
+    }
 }
