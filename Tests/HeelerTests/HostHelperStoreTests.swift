@@ -40,6 +40,24 @@ struct HostHelperStoreTests {
         #expect(await helper.filePaths().subtracting(before) == Set(listed))
     }
 
+    @Test func theSheetListsTheExtensionsAndRemovalLeavesNoneBehind() async throws {
+        await helper.seedFolder("/home/me/.omp/profiles/work")
+        let store = await refreshed()
+        let listed = try #require(store.plan?.files)
+        let extensions = [
+            "/home/me/.pi/agent/extensions/heeler-session.js",
+            "/home/me/.omp/agent/extensions/heeler-session.js",
+            "/home/me/.omp/profiles/work/agent/extensions/heeler-session.js",
+        ]
+        for file in extensions { #expect(listed.contains(file), "\(file)") }
+        await store.install()
+        #expect(store.failure == nil)
+        for file in extensions { #expect(await helper.files[file] != nil, "\(file)") }
+        await store.remove()
+        #expect(store.failure == nil)
+        #expect(await helper.filePaths().isEmpty)
+    }
+
     @Test func installsAndReadsTheHostBack() async {
         let store = await refreshed()
         await store.install()

@@ -33,17 +33,30 @@ struct HostHelperInstallPlan: Sendable, Equatable {
             throw HostHelperError.unsupportedPlatform
         }
         guard let nodePath = reading.nodePath else { throw HostHelperError.nodeMissing }
+        guard let extensionFolders = reading.probe?.extensionFolders else {
+            throw HostHelperError.extensionFoldersUnreadable
+        }
         self.layout = layout
         self.nodePath = nodePath
+        self.extensionFolders = extensionFolders.map(\.path)
         helperFiles = reading.replacesHelper
             ? (bundle.manifest.files.map(\.path) + [HostHelperScript.manifestFileName]) : []
         replacesHelper = reading.replacesHelper
     }
 
     private let helperFiles: [String]
+    private let extensionFolders: [String]
+
+    /// Heeler's extension in each folder Pi and Oh My Pi load extensions from.
+    var extensionFiles: [String] {
+        extensionFolders.map { "\($0)/\(HostHelperScript.extensionFileName)" }
+    }
 
     /// Files written outside the Helper directory, which the record lists.
-    var outsideFiles: [String] { [layout.unit, layout.unitWantsLink] }
+    var outsideFiles: [String] { [layout.unit, layout.unitWantsLink] + extensionFiles }
+
+    /// Every folder the install needs, parents first.
+    var folderChain: [String] { layout.folderChain(reaching: extensionFolders) }
 
     /// Every file the install leaves on the Host.
     var files: [String] {
@@ -60,6 +73,8 @@ struct HostHelperInstallPlan: Sendable, Equatable {
 struct HostHelperInstaller: Sendable {
     let host: any HostHelperHost
     var nonce: @Sendable () -> String = { UUID().uuidString }
+    /// Holds the script a read runs to find the extension folders.
+    var bundle: @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() }
 
     func read() async throws -> HostHelperReading {
         if try await host.hostPlatform() == .nativeWindows {
@@ -67,11 +82,29 @@ struct HostHelperInstaller: Sendable {
         }
         let script = HostHelperScript(.probe, nonce: nonce())
         let result = try await host.runHostHelperScript(script)
+        var probe: HostHelperProbe
         do {
-            return HostHelperReading(probe: try HostHelperProbe(stdout: result.stdout, nonce: script.nonce))
+            probe = try HostHelperProbe(stdout: result.stdout, nonce: script.nonce)
         } catch {
             throw HostHelperError.unreadableHost
         }
+        probe.extensionFolders = await extensionFolders(probe)
+        return HostHelperReading(probe: probe)
+    }
+
+    /// Asks only a Host that could take an install. Not being able to say
+    /// stands in the way of an install, which then says so, but not of a read
+    /// or a removal.
+    private func extensionFolders(_ probe: HostHelperProbe) async -> [HostHelperProbe.ExtensionFolder]? {
+        guard HostHelperReading(probe: probe).unsupportedPlatform == nil, case .found(let node) = probe.node,
+            let lister = (try? bundle())?.files[HostHelperScript.extensionFoldersPath]
+        else { return nil }
+        let script = HostHelperScript(
+            .listExtensionFolders(
+                node: node, lister: String(decoding: lister, as: UTF8.self), home: probe.locations.home),
+            nonce: nonce())
+        guard let result = try? await host.runHostHelperScript(script), result.exitStatus == 0 else { return nil }
+        return try? HostHelperProbe.parseExtensionFolders(stdout: result.stdout, nonce: script.nonce)
     }
 
     /// Puts a Helper in place if the Host needs one, then sets up its service
@@ -79,7 +112,10 @@ struct HostHelperInstaller: Sendable {
     func install(over reading: HostHelperReading, bundle: HostHelperBundle) async throws -> HostHelperReading {
         let plan = try HostHelperInstallPlan(reading: reading, bundle: bundle)
         let layout = plan.layout
-        let created = try await makeFolders(layout)
+        guard let extensionText = bundle.files[HostHelperScript.extensionPath] else {
+            throw HostHelperError.bundleUnavailable
+        }
+        let created = try await makeFolders(plan)
 
         // Written first, so a failure below leaves removal knowing about them.
         let previous = reading.probe?.record.flatMap {
@@ -91,6 +127,9 @@ struct HostHelperInstaller: Sendable {
 
         if plan.replacesHelper {
             try await placeHelper(bundle, layout: layout)
+        }
+        for file in plan.extensionFiles {
+            try await write(extensionText, to: file, in: nil, step: "Placing the Pi and Oh My Pi extensions")
         }
         try await write(Data(plan.unitText.utf8), to: layout.unit, in: nil, step: "Writing the service unit")
         try await startService()
@@ -110,8 +149,11 @@ struct HostHelperInstaller: Sendable {
             throw HostHelperError.unsupportedPlatform
         }
         let record = probe.record.flatMap { try? JSONDecoder().decode(HostHelperInstallRecord.self, from: $0) }
-            // With no record, only the two files that are certainly Heeler's.
-            ?? HostHelperInstallRecord(files: [layout.unit, layout.unitWantsLink], folders: [])
+            // With no record, only the files that are certainly Heeler's.
+            ?? HostHelperInstallRecord(
+                files: [layout.unit, layout.unitWantsLink]
+                    + (probe.extensionFolders ?? []).map { "\($0.path)/\(HostHelperScript.extensionFileName)" },
+                folders: [])
 
         // No user manager means nothing runs, and nothing can be asked to stop.
         if let health = probe.health, health.isLoaded {
@@ -141,9 +183,10 @@ struct HostHelperInstaller: Sendable {
         }
     }
 
-    private func makeFolders(_ layout: HostHelperLayout) async throws -> [String] {
+    private func makeFolders(_ plan: HostHelperInstallPlan) async throws -> [String] {
+        let layout = plan.layout
         let script = HostHelperScript(
-            .makeFolders(layout.folderChain, privateFolder: layout.directory), nonce: nonce())
+            .makeFolders(plan.folderChain, privateFolder: layout.directory), nonce: nonce())
         let result = try await host.runHostHelperScript(script)
         guard result.exitStatus == 0 else {
             throw HostHelperError.stepFailed(step: "Creating the folders", detail: Self.detail(of: result))

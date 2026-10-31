@@ -34,7 +34,8 @@ struct HostHelperSheet: View {
     }
 
     static let removalMessage =
-        "This stops its service and deletes its files and this Host's notification registrations. "
+        "This stops its service and deletes its files, its Pi and Oh My Pi extensions "
+        + "and this Host's notification registrations. "
         + "Systemd linger and the Grok Build setting stay as they are."
 
     private var statusSection: some View {

@@ -9,6 +9,9 @@ struct HostHelperScript: Sendable, Equatable {
         case probe
         /// Only the directories the Helper's paths come from.
         case locate
+        /// Runs the Helper's `extensions/extension-folders.js`, by its text since
+        /// the Helper may not be on this Host yet.
+        case listExtensionFolders(node: String, lister: String, home: String)
         /// Creates each folder that is missing, parents first, and says which.
         /// `privateFolder` ends at 0700 whether or not it was new.
         case makeFolders([String], privateFolder: String)
@@ -40,6 +43,12 @@ struct HostHelperScript: Sendable, Equatable {
     static let appFolderName = "app"
     static let manifestFileName = "manifest.json"
     static let stagingPrefix = "staging-"
+    /// What the Helper places in each folder Pi and Oh My Pi load extensions from.
+    static let extensionFileName = "heeler-session.js"
+    /// That file in the Helper's tree.
+    static let extensionPath = "extensions/\(extensionFileName)"
+    /// The script that finds those folders, in the Helper's tree.
+    static let extensionFoldersPath = "extensions/extension-folders.js"
 
     let step: Step
     let nonce: String
@@ -68,6 +77,9 @@ struct HostHelperScript: Sendable, Equatable {
         switch step {
         case .probe: lines = probe
         case .locate: lines = locations
+        case .listExtensionFolders(let node, let lister, let home):
+            // The script itself is this shell's stdin, so Node must not read it.
+            lines = ["\(quote(node)) --input-type=module -e \(quote(lister)) \(quote(home)) </dev/null"]
         case .makeFolders(let folders, let privateFolder):
             lines = ["umask 077"]
                 + folders.map { folder in
@@ -232,11 +244,20 @@ struct HostHelperProbe: Sendable, Equatable {
     var record: Data?
     var hashToolMissing = false
     var hashes: [String: String] = [:]
+    /// Nil when nothing asked, or the Host could not say.
+    var extensionFolders: [ExtensionFolder]?
 
     struct Locations: Sendable, Equatable {
         var home: String
         var dataHome: String
         var configHome: String
+    }
+
+    /// A folder Pi or Oh My Pi loads extensions from, which need not exist yet.
+    struct ExtensionFolder: Decodable, Sendable, Equatable {
+        var path: String
+        /// Whether Heeler's extension is in it.
+        var installed: Bool
     }
 
     struct Unreadable: Error, Equatable {}
@@ -327,6 +348,16 @@ struct HostHelperProbe: Sendable, Equatable {
             index = next
         }
         return data
+    }
+
+    /// The JSON line of a `.listExtensionFolders` run.
+    static func parseExtensionFolders(stdout: Data, nonce: String) throws -> [ExtensionFolder] {
+        struct Listing: Decodable { let folders: [ExtensionFolder] }
+        let line = try framedLines(stdout: stdout, nonce: nonce).first { $0.hasPrefix("{") }
+        guard let line, let listing = try? JSONDecoder().decode(Listing.self, from: Data(line.utf8)),
+            listing.folders.allSatisfy({ $0.path.hasPrefix("/") })
+        else { throw Unreadable() }
+        return listing.folders
     }
 
     /// `hash <sum> <path>` lines of a `.hashTree` run.

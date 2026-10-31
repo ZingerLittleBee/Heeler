@@ -51,6 +51,9 @@ struct Input: Decodable {
     var timeZone: String?
     var claudeLimits: Bool?
     var session: String?
+    var node: String?
+    var lister: String?
+    var home: String?
 }
 
 let arguments = CommandLine.arguments
@@ -60,6 +63,8 @@ let step: HostHelperScript.Step
 switch input.step {
 case "probe": step = .probe
 case "locate": step = .locate
+case "listExtensionFolders":
+    step = .listExtensionFolders(node: input.node ?? "", lister: input.lister ?? "", home: input.home ?? "")
 case "makeFolders": step = .makeFolders(input.folders ?? [], privateFolder: input.privateFolder ?? "")
 case "prepareStaging":
     step = .prepareStaging(
@@ -104,6 +109,12 @@ case "parse-probe":
         "hashes": probe.hashes,
         "hashToolMissing": probe.hashToolMissing,
     ]
+    let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
+    print(String(decoding: data, as: UTF8.self))
+case "parse-extension-folders":
+    let folders = try HostHelperProbe.parseExtensionFolders(
+        stdout: FileHandle.standardInput.readDataToEndOfFile(), nonce: nonce)
+    let summary = folders.map { [$0.path, $0.installed ? "installed" : "absent"] }
     let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))
 case "unit":
@@ -412,6 +423,47 @@ class InstallStepTests(HelperScriptCase):
         self.assertIn('ExecStart="/opt/no de/bin/node" "/home/100%%/app/main.js"\n', text)
         self.assertIn("Restart=always\n", text)
         self.assertIn("WantedBy=default.target\n", text)
+
+
+class ExtensionFolderStepTests(HelperScriptCase):
+    """The real script text through a real Node.js, which only this step runs."""
+
+    LISTER = ROOT / "plugin/helper/extensions/extension-folders.js"
+
+    def list_folders(self, shell: str = "/bin/sh") -> list:
+        node = shutil.which("node")
+        self.assertIsNotNone(node, "this test needs Node.js")
+        result = self.run_script(
+            shell, step="listExtensionFolders", node=node,
+            lister=self.LISTER.read_text(), home=str(self.home),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = subprocess.run(
+            [str(self.binary), "parse-extension-folders", json.dumps({"step": "probe"})],
+            input="a line from .bashrc\n" + result.stdout,
+            capture_output=True, text=True, check=True,
+        )
+        return json.loads(parsed.stdout)
+
+    def test_finds_every_profile_under_every_shell_in_a_home_with_a_space(self) -> None:
+        (self.home / ".omp/profiles/work").mkdir(parents=True)
+        (self.home / ".omp/profiles/it's").mkdir()
+        (self.home / ".omp/profiles/side").mkdir()
+        installed = self.home / ".pi/agent/extensions"
+        installed.mkdir(parents=True)
+        (installed / "heeler-session.js").write_text("")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.list_folders(shell), [
+                    [f"{self.home}/.pi/agent/extensions", "installed"],
+                    [f"{self.home}/.omp/agent/extensions", "absent"],
+                    [f"{self.home}/.omp/profiles/side/agent/extensions", "absent"],
+                    [f"{self.home}/.omp/profiles/work/agent/extensions", "absent"],
+                ])
+
+    def test_changes_nothing_on_the_host(self) -> None:
+        self.list_folders()
+        self.assertEqual(list(self.home.iterdir()), [])
 
 
 class RemovalStepTests(HelperScriptCase):
