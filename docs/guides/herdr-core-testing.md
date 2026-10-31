@@ -124,6 +124,7 @@ many are open.
 | Retained terminals | Open six Terminals in turn and go back | Five stay retained for five minutes and come back at once; the sixth detaches the least recently viewed idle one, which attaches afresh when you return to it |
 | End of a program | `exit` in a Terminal that was not started with `keep` | The session ends with no error |
 | Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send, Stop and Add stay hidden; Direct Input types into the terminal |
+| Two windows | On an iPad, show one core Agent in two windows, open Changes in the first and come back | Each window keeps a live terminal of its own, and typing in either reaches the program |
 
 ## Program Status
 

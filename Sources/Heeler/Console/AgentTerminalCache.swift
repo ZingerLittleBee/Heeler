@@ -13,17 +13,21 @@ final class AgentTerminalCache {
         fileprivate let lifetime: Lifetime
         fileprivate var expiry: Task<Void, Never>?
         fileprivate var presentationOwnerID: UUID
+        /// The detail that retains this entry. It comes back to the entry for
+        /// as long as it lives, hidden or not.
+        fileprivate weak var holder: AnyObject?
         var isRetained: Bool { lifetime.retained }
 
         fileprivate init(
             agentID: ConsoleAgent.ID, terminalID: String,
-            attach: AgentAttachStore, lifetime: Lifetime, ownerID: UUID
+            attach: AgentAttachStore, lifetime: Lifetime, ownerID: UUID, holder: AnyObject?
         ) {
             self.agentID = agentID
             self.terminalID = terminalID
             self.attach = attach
             self.lifetime = lifetime
             self.presentationOwnerID = ownerID
+            self.holder = holder
         }
     }
 
@@ -51,13 +55,14 @@ final class AgentTerminalCache {
     /// Only the window holding the Host's Agent presentation may acquire.
     /// Offstage details keep private stores until they are activated.
     func acquire(
-        agent: ConsoleAgent, console: ConsoleStore, ownerID: UUID,
+        agent: ConsoleAgent, console: ConsoleStore, ownerID: UUID, holder: AnyObject? = nil,
         isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry {
         if let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
             !current.lifetime.visible || current.presentationOwnerID == ownerID
         {
             current.presentationOwnerID = ownerID
+            current.holder = holder
             activate(current, ownerID: ownerID, isPresented: isPresented)
             return current
         }
@@ -85,17 +90,18 @@ final class AgentTerminalCache {
             })
         let entry = Entry(
             agentID: agent.id, terminalID: agent.agent.terminalID,
-            attach: attach, lifetime: lifetime, ownerID: ownerID)
+            attach: attach, lifetime: lifetime, ownerID: ownerID, holder: holder)
         entries[agent.id] = entry
         return entry
     }
 
-    /// Another window shows this Agent's retained terminal right now.
-    func isShownByAnotherOwner(_ agent: ConsoleAgent, ownerID: UUID) -> Bool {
-        guard let current = entries[agent.id], current.terminalID == agent.agent.terminalID else {
-            return false
-        }
-        return current.lifetime.visible && current.presentationOwnerID != ownerID
+    /// Another detail shows this Agent's retained terminal, or has it hidden
+    /// and will come back to it: its surface can only be in one window.
+    func isHeldByAnotherDetail(_ agent: ConsoleAgent, ownerID: UUID) -> Bool {
+        guard let current = entries[agent.id], current.terminalID == agent.agent.terminalID,
+            current.presentationOwnerID != ownerID
+        else { return false }
+        return current.lifetime.visible || current.holder != nil
     }
 
     private func admit(agentID: ConsoleAgent.ID, lifetime: Lifetime) async throws {

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -87,6 +88,57 @@ struct HerdrCoreTerminalStoreTests {
             for _ in 0..<2 {
                 _ = try await session.withTransport { try await $0.serverStatus() }
             }
+        }
+
+        /// A window showing `agent`'s detail, built as the Console builds it.
+        func showDetail(of agent: ConsoleAgent) async throws -> CoreDetailWindow {
+            let suite = "core-detail-\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            let selection = HostedDetailSelection()
+            let changes = AgentChangesPresentation {
+                ChangesStore(directory: { "/work/app" }) { _ in throw ChangesReadError.unavailable }
+            }
+            let console = console
+            let activity = AppActivityCoordinator()
+            let handoff = TerminalKeyboardHandoff()
+            let inset = TerminalKeyboardInset()
+            let controller = UIHostingController(
+                rootView: HostedCoreDetail(selection: selection) {
+                    AgentDetailView(
+                        agent: agent,
+                        console: console,
+                        terminal: TerminalSettings(
+                            themes: TerminalThemeSettings(defaults: defaults),
+                            zoom: TerminalZoomSettings(defaults: defaults),
+                            fonts: TerminalFontSettings(defaults: defaults),
+                            snippets: SnippetStore(defaults: defaults)),
+                        inputMode: AgentInputModeSettings(defaults: defaults),
+                        detailSurface: AgentDetailSurfaceSettings(defaults: defaults),
+                        hosts: [],
+                        activity: activity,
+                        keyboardHandoff: handoff,
+                        keyboardInset: inset,
+                        stage: AgentDetailStage(
+                            isVisible: { [selection] in selection.showsDetail },
+                            terminalAccess: { .holds }),
+                        onSwitch: { _ in },
+                        onClosed: {},
+                        changesPresentation: changes)
+                })
+            let window = try await makeTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+            return CoreDetailWindow(selection: selection, changes: changes, window: window)
+        }
+
+        /// The `count`th attach on the Host, once `detail` has asked for it.
+        func waitForAttach(_ count: Int, laying detail: CoreDetailWindow) async throws
+            -> (channel: UInt32, params: JSONValue, socket: FakeCoreSocket)
+        {
+            try await HerdrCoreTerminalStoreTests.until("attach \(count)") {
+                detail.layOut()
+                return await scripted.attaches.count >= count
+            }
+            return try #require(await scripted.attaches.dropFirst(count - 1).first)
         }
 
         func finish() async {
@@ -454,16 +506,21 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    @Test func anAgentShownInOneWindowIsNotTakenByASecondOne() async throws {
+    @Test func anAgentIsHeldWhileItsDetailLivesAndFreeOnceItIsGone() async throws {
+        final class Detail {}
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
         let cache = fixture.console.agentTerminals
         let first = UUID()
-        let entry = cache.acquire(agent: agent, console: fixture.console, ownerID: first)
-        #expect(!cache.isShownByAnotherOwner(agent, ownerID: first))
-        #expect(cache.isShownByAnotherOwner(agent, ownerID: UUID()))
+        var detail: Detail? = Detail()
+        let entry = cache.acquire(agent: agent, console: fixture.console, ownerID: first, holder: detail)
+        #expect(!cache.isHeldByAnotherDetail(agent, ownerID: first))
+        #expect(cache.isHeldByAnotherDetail(agent, ownerID: UUID()))
         cache.release(entry, ownerID: first)
-        #expect(!cache.isShownByAnotherOwner(agent, ownerID: UUID()))
+        #expect(!cache.isHeldByAnotherDetail(agent, ownerID: first))
+        #expect(cache.isHeldByAnotherDetail(agent, ownerID: UUID()))
+        detail = nil
+        #expect(!cache.isHeldByAnotherDetail(agent, ownerID: UUID()))
         await fixture.finish()
     }
 
@@ -510,5 +567,162 @@ struct HerdrCoreTerminalStoreTests {
         _ = await attach.socket.waitForFrame(channel: attach.channel, kind: .close)
         #expect(await fixture.scripted.log.filter { $0.hasPrefix("open ") }.count == 1)
         await fixture.finish()
+    }
+
+    // MARK: Windows
+
+    @Test func aSecondWindowOnAnAgentAlreadyShownIsASecondViewer() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let first = try await fixture.showDetail(of: agent)
+        let held = try await fixture.waitForAttach(1, laying: first)
+
+        let second = try await fixture.showDetail(of: agent)
+        let viewer = try await fixture.waitForAttach(2, laying: second)
+
+        #expect(viewer.channel != held.channel)
+        #expect(viewer.params["terminal"] == .string("t1"))
+        #expect(viewer.params["observe"] == nil)
+        #expect(viewer.params["takeover"] == nil)
+        #expect(first.surface != nil)
+        #expect(first.surface !== second.surface)
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+        await first.close()
+        await second.close()
+        await fixture.finish()
+    }
+
+    /// Changes leaves the first window's terminal hidden, not gone. The
+    /// second window must not walk off with it, or both windows would share
+    /// one surface once the first comes back.
+    @Test func aWindowBackFromChangesFindsItsOwnTerminalBesideASecondViewer() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let first = try await fixture.showDetail(of: agent)
+        let held = try await fixture.waitForAttach(1, laying: first)
+        try await fixture.deliverOutput("x", on: held)
+        let surface = try #require(first.surface)
+
+        first.changes.open()
+        try await Self.until("the terminal to go quiet under Changes") {
+            first.layOut()
+            return await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
+        }
+
+        let second = try await fixture.showDetail(of: agent)
+        let viewer = try await fixture.waitForAttach(2, laying: second)
+        #expect(second.surface != nil)
+        #expect(second.surface !== surface)
+
+        first.changes.close()
+        try await Self.until("the first window's terminal to come back") {
+            first.layOut()
+            return first.surface != nil
+        }
+        await first.settle()
+        #expect(first.surface === surface)
+        #expect(second.surface != nil)
+        #expect(second.surface !== surface)
+        #expect(await fixture.scripted.attaches.count == 2)
+        try await Self.until("the first terminal to be viewed again") {
+            await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([1])
+        }
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+        #expect(await viewer.socket.frames(channel: viewer.channel, kind: .close).isEmpty)
+        await first.close()
+        await second.close()
+        await fixture.finish()
+    }
+
+    @Test func aWindowTakesTheRetainedTerminalOfADetailThatIsGone() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let first = try await fixture.showDetail(of: agent)
+        let held = try await fixture.waitForAttach(1, laying: first)
+        try await fixture.deliverOutput("x", on: held)
+
+        first.selection.showsDetail = false
+        try await Self.until("the detail to leave its terminal") {
+            first.layOut()
+            return await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
+        }
+        try await Self.until("the detail to be gone") {
+            first.layOut()
+            return !fixture.console.agentTerminals.isHeldByAnotherDetail(agent, ownerID: UUID())
+        }
+
+        let second = try await fixture.showDetail(of: agent)
+        try await Self.until("the retained terminal to come back") {
+            second.layOut()
+            return second.surface != nil
+        }
+        await second.settle()
+        #expect(await fixture.scripted.attaches.count == 1)
+        #expect(await held.socket.frames(channel: held.channel, kind: .close).isEmpty)
+        await first.close()
+        await second.close()
+        await fixture.finish()
+    }
+}
+
+/// Whether a window's selection still shows the Agent, as the router says.
+@MainActor
+@Observable
+private final class HostedDetailSelection {
+    var showsDetail = true
+}
+
+/// Builds its detail in its body, as the Console does, so nothing outside the
+/// view graph keeps the detail's state alive after it leaves.
+private struct HostedCoreDetail: View {
+    let selection: HostedDetailSelection
+    let makeDetail: @MainActor () -> AgentDetailView
+
+    var body: some View {
+        NavigationStack {
+            if selection.showsDetail {
+                makeDetail()
+            } else {
+                Text(verbatim: "Agents")
+            }
+        }
+    }
+}
+
+/// One iPad window showing a core Agent's detail.
+@MainActor
+private final class CoreDetailWindow {
+    let selection: HostedDetailSelection
+    let changes: AgentChangesPresentation
+    let window: UIWindow
+
+    init(selection: HostedDetailSelection, changes: AgentChangesPresentation, window: UIWindow) {
+        self.selection = selection
+        self.changes = changes
+        self.window = window
+    }
+
+    func layOut() { window.layoutIfNeeded() }
+
+    /// The terminal this window shows, while one is in its hierarchy.
+    var surface: HeelerTerminalView? {
+        AgentSurfaceReplacementTests.terminals(in: window).first
+    }
+
+    /// Lets a pop finish and the view updates it set off land.
+    func settle() async {
+        var budget = PollBudget(.seconds(2))
+        while !isNavigationSettled(window.rootViewController), budget.hasTimeLeft {
+            try? await Task.sleep(for: .milliseconds(10))
+            budget.charge()
+        }
+        layOut()
+        try? await Task.sleep(for: .milliseconds(100))
+        layOut()
+    }
+
+    func close() async {
+        await hideTestWindowWhenSettled(window)
+        window.rootViewController = nil
     }
 }

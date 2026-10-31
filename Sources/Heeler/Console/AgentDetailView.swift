@@ -43,6 +43,12 @@ struct AgentDetailView: View {
     @State private var changes: AgentChangesPresentation
     @State private var retainedAgent: AgentTerminalCache.Entry?
     @State private var retentionOwnerID: UUID
+    /// Lives as long as this detail does, which tells the cache whether a
+    /// retained terminal hidden here will be wanted back.
+    @State private var retentionHolder = AgentDetailRetentionHolder()
+    /// `attach` is this detail's own viewer of a core Terminal another
+    /// detail retains.
+    @State private var isOwnViewer = false
     @State private var attachReference: AgentDetailAttachReference
     private let permitsRetention: Bool
     @State private var isResolvingTerminal = false
@@ -291,17 +297,25 @@ struct AgentDetailView: View {
             console.agentTerminals.activate(retainedAgent, ownerID: retentionOwnerID, isPresented: { isOnStage() })
             return
         }
-        // A core Terminal takes any number of viewers, so another window
-        // showing this one keeps it, and this detail stays a viewer of its own.
+        // A core Terminal takes any number of viewers, so another detail
+        // keeps the one it retains, and this one is a viewer of its own.
         if !console.capabilities(for: agent.hostID).takeOver,
-            console.agentTerminals.isShownByAnotherOwner(agent, ownerID: retentionOwnerID)
+            console.agentTerminals.isHeldByAnotherDetail(agent, ownerID: retentionOwnerID)
         {
+            guard !isOwnViewer else { return }
+            if retainedAgent == nil { attach.leaveForTerminalHandoff() }
+            retainedAgent = nil
+            isOwnViewer = true
+            attach = makePrivateAttach()
+            attachReference.store = attach
             return
         }
         if retainedAgent == nil { attach.leaveForTerminalHandoff() }
         let entry = console.agentTerminals.acquire(
-            agent: agent, console: console, ownerID: retentionOwnerID, isPresented: { isOnStage() })
+            agent: agent, console: console, ownerID: retentionOwnerID, holder: retentionHolder,
+            isPresented: { isOnStage() })
         retainedAgent = entry
+        isOwnViewer = false
         attach = entry.attach
         attachReference.store = attach
     }
@@ -428,7 +442,7 @@ struct AgentDetailView: View {
                     // Retention swaps `attach` on appear and rebuilds this
                     // view; the build before that swap is a placeholder and
                     // must not spend the keyboard handoff meant for the real one.
-                    inheritsKeyboardHandoff: !permitsRetention || retainedAgent != nil)
+                    inheritsKeyboardHandoff: !permitsRetention || retainedAgent != nil || isOwnViewer)
                 .id(ObjectIdentifier(attach))
             }
         }
@@ -745,6 +759,8 @@ struct AgentShellRoute: Equatable {
     let agentID: ConsoleAgent.ID
     let route: WorkspaceTerminalRoute
 }
+
+private final class AgentDetailRetentionHolder {}
 
 @MainActor
 private final class AgentDetailAttachReference {
