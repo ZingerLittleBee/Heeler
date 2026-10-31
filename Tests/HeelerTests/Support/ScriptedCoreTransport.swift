@@ -138,7 +138,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         borrows.withLock { $0 += 1 }
         return services
     }
-    nonisolated var hostHelperHost: any HostHelperHost { ScriptedHelperHost() }
+    private nonisolated let helper: ScriptedHelperHost
+    nonisolated var hostHelperHost: any HostHelperHost { helper }
 
     private var coreID: String
     /// What each subscribe answers. The last one repeats.
@@ -201,11 +202,13 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
 
     init(
         coreID: String = "c1", subscribeResults: [JSONValue],
-        services: any HostServices = ScriptedCoreServices()
+        services: any HostServices = ScriptedCoreServices(),
+        helper: ScriptedHelperHost = ScriptedHelperHost()
     ) {
         self.coreID = coreID
         self.subscribeResults = subscribeResults
         self.services = services
+        self.helper = helper
     }
 
     var isConnected: Bool { !isClosed }

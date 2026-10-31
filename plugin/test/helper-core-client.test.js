@@ -332,7 +332,8 @@ suite("the inventory follows events", () => {
       { address: "t3" },
       { foreground: { argv: ["/bin/zsh"], cwd: "/home/user", name: "zsh", pid: 8805 } },
     ],
-    ["foreground-cleared", { address: "t6", foreground: { pid: 1 } }, { foreground: null }],
+    // A cleared one names no program, so the last sample stands, as in the app.
+    ["foreground-cleared", { address: "t6", foreground: { pid: 1 } }, {}],
     [
       "status",
       { address: "t3" },

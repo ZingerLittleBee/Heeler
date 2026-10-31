@@ -287,19 +287,11 @@ suite("Claude Code Account suggestions", () => {
     assert.deepEqual(agentDirectories(stateDir()), [claude.path]);
   });
 
-  test("what it takes for Claude Code, the shared Agent rule does too", () => {
+  test("what it takes for Claude Code is the shared Agent rule's answer", () => {
     const vector = JSON.parse(readFileSync(new URL("../test-vectors/herdr-core-agent-rule-v1.json", import.meta.url), "utf8"));
-    // Launch forms the shared rule reads and this one leaves out, so a suggestion
-    // may be missing but none is wrong. Cases with foreground events are the
-    // inventory's to apply.
-    const notRead = new Set([
-      "the desktop PowerShell local wrapper names its command",
-      "sh -c exec",
-      "sh -c reads through env",
-      "sh -c stops at a pipe",
-      "sh runs a script named for a program",
-      "a first spawn still pending is not a restart",
-    ]);
+    // Only a process can be read, and a first spawn still pending has none. Cases
+    // with foreground events are the inventory's to apply.
+    const notRead = new Set(["a first spawn still pending is not a restart"]);
     const cases = vector.cases.filter((entry) => !entry.foregroundEvents);
     assert.ok(cases.length > 100);
     for (const entry of cases) {

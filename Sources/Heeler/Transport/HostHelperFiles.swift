@@ -56,6 +56,26 @@ struct HostHelperFiles: HostNotificationFiles {
         try await replace(UsageAccountFile.fileName, contents)
     }
 
+    /// One read of the Helper, without the Node.js run that finds the extension
+    /// folders: only an install's list needs those.
+    func readHostHelper() async throws -> HostHelperReading? {
+        try await HostHelperInstaller(
+            host: host, nonce: nonce, bundle: { throw HostHelperBundle.LoadError.missing }
+        ).read()
+    }
+
+    func replaceSeenMarks(_ contents: Data, keyID: String) async throws {
+        try await replace(HerdrCoreSeenMarkFile.fileName(keyID: keyID), contents)
+    }
+
+    func removeSeenMarks(keyID: String) async throws {
+        let path = try await layout().file(named: HerdrCoreSeenMarkFile.fileName(keyID: keyID))
+        let result = try await host.runHostHelperScript(HostHelperScript(.removeFiles([path]), nonce: nonce()))
+        guard result.exitStatus == 0 else {
+            throw NotificationRegistrationError.writeFailed(detail: String(decoding: result.stderr, as: UTF8.self))
+        }
+    }
+
     private func read(_ name: String) async throws -> Data? {
         let layout = try await layout()
         return try await host.readHostHelperFile(at: layout.file(named: name), privateDirectory: layout.directory)

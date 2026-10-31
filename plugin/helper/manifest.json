@@ -1,13 +1,17 @@
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "files": [
+    {
+      "path": "core/agent-rule.js",
+      "sha256": "e615e9e00df3f135a7040a3c5e79db568785d2cc1e4d04548791789a317d3ed2"
+    },
     {
       "path": "core/client.js",
       "sha256": "2a5735881b4eee4ec987eea41795588d90d04c2ce0833b84a9061b8da72e8e5b"
     },
     {
       "path": "core/follower.js",
-      "sha256": "88366b23481c3f9a19846906766e335e77884bc2f5ff156215f2694370abf8c7"
+      "sha256": "880e505a9f0dcb8db4236adf45a8a07ee3dfb73c563119a405a0b72833a75e4b"
     },
     {
       "path": "core/frames.js",
@@ -15,7 +19,7 @@
     },
     {
       "path": "core/inventory.js",
-      "sha256": "1873ae76f6c97c89f8d2b5197000baf6da8cf6ef8b4b55e411040f4dccc89143"
+      "sha256": "59c1e1702625e38df60b7bc40a5b97f6a921879f062091877d24297998c09206"
     },
     {
       "path": "core/session-name.js",
@@ -24,6 +28,10 @@
     {
       "path": "core/socket.js",
       "sha256": "30d724c74f7e472635262c38c3bede1fb3e6e2901bc8852c6d01f196cd952ea0"
+    },
+    {
+      "path": "core/turn-state.js",
+      "sha256": "cd0d5caa0a5051661a4a4d6b34d421f68efd5dd38f67d1b6c8bb00e5c71c3eca"
     },
     {
       "path": "extensions/extension-folders.js",
@@ -35,7 +43,15 @@
     },
     {
       "path": "main.js",
-      "sha256": "97e19eb08eca4c0cee2679cd76fc1b514d39148500f26c767d6ba115e94bceb6"
+      "sha256": "f452e8153eefa71150cc35b5fc49818a99eceb8aab593272f03f8edad9f3f808"
+    },
+    {
+      "path": "notifications/notifier.js",
+      "sha256": "1e27800e88bdc06200f33c862c42640402625252c0b13b01233e5036d4dcd6a5"
+    },
+    {
+      "path": "notifications/seen-marks.js",
+      "sha256": "0b1ddc4b3be8aa898745069d03592d6111dcc257733e3256fc5b1056256eec8c"
     },
     {
       "path": "package.json",
@@ -46,12 +62,24 @@
       "sha256": "4219ba8aa21e9d8fd2a734a8c87c2fe9845280ef95beb1b9e19bafa8a32643be"
     },
     {
+      "path": "shared/delivery/push.js",
+      "sha256": "9cbec4370b580eabf3a708264fd862fd2fc82d88c823a33fb00b14900399746b"
+    },
+    {
       "path": "shared/delivery/registrations.js",
       "sha256": "5803a9f5181aa4d6920e90e4b99411bb37ebb4cd415df3dbe0b2aa4eb7ae4b26"
     },
     {
       "path": "shared/display-text.js",
       "sha256": "df9a931a239c0f5e544ec9510d51867ca11d44c7403bd9dff39ae387ea7f0126"
+    },
+    {
+      "path": "shared/notification-config.js",
+      "sha256": "40fc8dfc11a344159c4146c48a33625da88b586e738b9010361e9ab7c68b3e93"
+    },
+    {
+      "path": "shared/notification-envelope.js",
+      "sha256": "87351f0a432d780a373eef1d592aad3c556c5e5c3e99b9b6f3219c8d6ec9a5fc"
     },
     {
       "path": "shared/seal-envelope.js",
@@ -147,7 +175,7 @@
     },
     {
       "path": "usage/claude-terminal.js",
-      "sha256": "dc91a838e048c0b12b2f49532679cd4bd152f449a89123907a7c2dc0144914c0"
+      "sha256": "e8ffc2110035b5fcc488464abcf1ef11ff392ded0133c6c09c74dbd71e7d7b47"
     },
     {
       "path": "usage/layout.js",
@@ -159,7 +187,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "03eada1f990a27a1357eb782c4320727d973f1ed51155b8b082dd8ea99b9ae19"
+      "sha256": "da9da2c003b8eee13e6a8b295dadb7e37740a6616eadf890d60a353cc33d37d1"
     }
   ]
 }

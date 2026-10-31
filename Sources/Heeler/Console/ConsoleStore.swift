@@ -136,6 +136,9 @@ final class ConsoleStore {
     /// Hosts that share a plugin config directory share its Account file,
     /// so every Host's Account changes take turns.
     @ObservationIgnored private let usageAccountFileGate = GitExecGate()
+    /// Hears what this device has seen on a core Host, for its Host Helper.
+    @ObservationIgnored var onCoreSeenMarksChanged:
+        (@MainActor (Host.ID, String, [String: HerdrCoreTurnState.Mark]) -> Void)?
     /// Writes the widgets' snapshot of those readings. Only the app passes
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
@@ -1116,6 +1119,9 @@ final class ConsoleStore {
                 HerdrCoreConsoleProjection(
                     host: host, session: makeCoreSession(host), memory: coreHostMemory, pins: pins,
                     gitGate: gitExecGate(for: host.id), herdrAppRename: herdrAppRename,
+                    onSeenMarksChanged: { [weak self, id = host.id] core, marks in
+                        self?.onCoreSeenMarksChanged?(id, core, marks)
+                    },
                     onChange: onChange)
             default:
                 HostConsoleProjection(
