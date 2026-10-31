@@ -199,6 +199,10 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         return HerdrCoreEventStream(snapshot: try HerdrCoreSnapshot(result: result), source: source)
     }
 
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        throw TransportError.hostFeatureUnavailable(feature: "terminal.attach")
+    }
+
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
         switch method {
         case "doc.get":

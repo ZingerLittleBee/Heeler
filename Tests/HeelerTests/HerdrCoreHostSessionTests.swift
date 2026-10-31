@@ -331,4 +331,76 @@ struct HerdrCoreHostSessionTests {
             #expect(script.contains("'hc '[0-9]*"))
         }
     }
+
+    // MARK: Terminals
+
+    private func untilATerminalWaits(on session: HerdrCoreHostSession) async {
+        while await session.terminalTransportWaiterCount == 0 { await Task.yield() }
+    }
+
+    @Test func aTerminalAskedForBeforeTheLinkIsUpWaitsAndThenUsesThatLink() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let session = session(on: host)
+        let asked = Task {
+            try await session.withTerminalTransport { _, generation in generation }
+        }
+        await untilATerminalWaits(on: session)
+        await session.resume()
+        #expect(try await asked.value == 0)
+        await session.end()
+        #expect(await host.log.filter { $0.hasPrefix("open ") }.count == 1)
+    }
+
+    @Test func aTerminalWaitingOnAHostThatStopsGetsWhatStoppedIt() async throws {
+        let host = ScriptedCoreHost(
+            channel: .answersHello(ScriptedCoreHost.helloReply(errorKind: "unsupported_generation")))
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+        while let status = await reader.nextStatus() {
+            if case .failed = status { break }
+        }
+        await #expect(
+            throws: TransportError.herdrCoreUpdateRequired(
+                command: "\(ScriptedCoreHost.installedPath) update")
+        ) {
+            try await session.withTerminalTransport { _, _ in }
+        }
+        await session.end()
+    }
+
+    @Test func aTerminalWaitingWhenTheSessionSuspendsReadsAsALostConnection() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+        while let status = await reader.nextStatus() {
+            if case .reconnecting = status { break }
+        }
+        let waiting = Task { try await session.withTerminalTransport { _, _ in } }
+        await untilATerminalWaits(on: session)
+        await session.suspend()
+        await #expect(throws: TransportError.cancelled) { try await waiting.value }
+        await session.end()
+    }
+
+    @Test func aTerminalAskedForAfterTheEndIsCancelled() async throws {
+        let host = ScriptedCoreHost(channel: .core(.init(id: "c1")))
+        let session = session(on: host)
+        await session.resume()
+        await session.end()
+        await #expect(throws: TransportError.cancelled) {
+            try await session.withTerminalTransport { _, _ in }
+        }
+    }
+
+    @Test func aCancelledTerminalStopsWaiting() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+        let session = session(on: host)
+        let waiting = Task { try await session.withTerminalTransport { _, _ in } }
+        await untilATerminalWaits(on: session)
+        waiting.cancel()
+        await #expect(throws: CancellationError.self) { try await waiting.value }
+        await session.end()
+    }
 }

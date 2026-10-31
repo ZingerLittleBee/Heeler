@@ -205,6 +205,7 @@ final class TerminalConnectionPool {
         entry.idleSince = nil
         entry.idleID = nil
         budget.touch(key: budgetKey(key), ownerID: entry.retentionID)
+        entry.store.setTerminalViewed(true)
         entry.store.transportGenerationDidChange(generation)
     }
 
@@ -226,6 +227,7 @@ final class TerminalConnectionPool {
         entry.idleID = idleID
         budget.markIdle(key: budgetKey(key), ownerID: entry.retentionID)
         entry.store.cancelPaste()
+        entry.store.setTerminalViewed(false)
         entry.surfaceRetention.detachCallbacks(keepingKeyboard: keepingKeyboard)
         entry.expiry?.cancel()
         let timeout = idleTimeout
@@ -237,6 +239,17 @@ final class TerminalConnectionPool {
                     self.entries[key] === entry else { return }
                 await self.removeEntry(key)
             }
+        }
+    }
+
+    /// A closed window's screen still reads as selected when it disappears,
+    /// so it never releases. Left alone, its terminal would read as open in a
+    /// window that no longer exists, hold its slot, and never start its timer.
+    /// `applies` names the Hosts whose terminals follow their window.
+    func sceneDidEnd(_ sceneID: UUID, where applies: (Host.ID) -> Bool) {
+        for (key, entry) in entries where entry.ownerSceneID == sceneID && applies(key.hostID) {
+            guard let ownerID = entry.ownerID else { continue }
+            release(hostID: key.hostID, identity: key.identity, ownerID: ownerID)
         }
     }
 

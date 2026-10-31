@@ -527,6 +527,7 @@ struct AgentTerminalView: View {
             }
         }
         screen.theme = terminal.themes.theme
+        screen.displayColors = terminal.themes.colors(for: colorScheme)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { fontSize in terminal.zoom.setFontSize(fontSize) }
@@ -936,8 +937,8 @@ struct AgentTerminalView: View {
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
-            addImage: { isSelectingPhoto = true },
-            addFile: { isSelectingFile = true },
+            addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
+            addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal
                 ? {
@@ -946,7 +947,7 @@ struct AgentTerminalView: View {
                 } : nil,
             isOpeningTerminal: isOpeningTerminal,
             showChanges: showChanges,
-            startAgent: { isStartingAgent = true },
+            startAgent: capabilities.startsAgents ? { isStartingAgent = true } : nil,
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
             showWorktreeDetails: agent.isLinkedWorktree && capabilities.worktrees
@@ -960,7 +961,7 @@ struct AgentTerminalView: View {
                 ? { isRenamingAgent = true } : nil,
             renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
                 ? { isRenamingWorkspace = true } : nil,
-            closeAgent: { isConfirmingClose = true },
+            closeAgent: capabilities.closeTab ? { isConfirmingClose = true } : nil,
             backToConsole: { backToConsole() },
             showChat: showChat.map { showChat in
                 {
@@ -970,7 +971,7 @@ struct AgentTerminalView: View {
                     showChat()
                 }
             },
-            closeConfirmation: anchorsClose
+            closeConfirmation: anchorsClose && capabilities.closeTab
                 ? AgentCloseConfirmation(
                     title: title,
                     isPresented: $isConfirmingClose,
@@ -1298,13 +1299,15 @@ struct AgentTerminalView: View {
             onFirstResponderRequest: composerFirstResponderRequest,
             onKeyboardHandoffSettled: composerKeyboardHandoffSettled,
             collapsesWithoutKeyboard: false,
-            interrupt: stopInterrupt)
+            interrupt: stopInterrupt,
+            offersSend: console.capabilities(for: agent.hostID).composerSend)
     }
 
     /// The Composer's Stop: one Esc over the Attach PTY, or nil to keep Send
     /// for a kind Esc doesn't stop (`AgentComposerInterrupt.terminal`).
     private var stopInterrupt: AgentComposerInterrupt? {
-        .terminal(forAgentKind: agent.agent.kind) { interruptAgent() }
+        guard console.capabilities(for: agent.hostID).composerSend else { return nil }
+        return .terminal(forAgentKind: agent.agent.kind) { interruptAgent() }
     }
 
     /// The interaction probe's Stop, as the Composer's button runs it: the
@@ -1834,7 +1837,8 @@ struct AgentTerminalView: View {
     @ViewBuilder
     private var statusOverlay: some View {
         if let away = LiveInAnotherWindowPresentation(
-            access: sceneRouting?.terminalAccess(for: agent.hostID) ?? .holds)
+            access: console.capabilities(for: agent.hostID)
+                .terminalAccess(sceneRouting?.terminalAccess(for: agent.hostID)))
         {
             // Ahead of the terminal status: this window released its Attach
             // on purpose, so its stopped terminal says nothing useful.

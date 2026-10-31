@@ -53,6 +53,11 @@ struct WorkspaceTerminalDetailView: View {
         }
     }
 
+    /// Closing a window changes nothing `isSelected` reads.
+    private var windowHasEnded: Bool {
+        console.hasSceneEnded(sceneRouting?.sceneID, on: terminal.hostID)
+    }
+
     private var isMissing: Bool {
         console.hostStatuses[terminal.hostID] == .connected
             && !console.hostsAwaitingSnapshot.contains(terminal.hostID)
@@ -82,8 +87,10 @@ struct WorkspaceTerminalDetailView: View {
                     activity: activity,
                     isReturning: false,
                     isClosingTerminal: isClosing,
-                    onCloseTerminal: { closeTerminal() },
+                    onCloseTerminal: console.capabilities(for: terminal.hostID).closeTab
+                        ? { @MainActor @Sendable in closeTerminal() } : nil,
                     managesLifecycle: false,
+                    offersTakeOver: console.capabilities(for: terminal.hostID).takeOver,
                     surfaceRetention: entry.surfaceRetention,
                     title: terminal.displayTitle,
                     backTitle: backTitle,
@@ -186,13 +193,10 @@ struct WorkspaceTerminalDetailView: View {
             isCreatingTerminal: isCreatingTerminal)
     }
 
-    /// A new tab opens beside this one, in its directory. Like Agent
-    /// detail's Open Terminal, a pane without a usable directory offers no
-    /// New Terminal rather than letting herdr pick some other Pane's cwd.
+    /// A new tab opens beside this one, in its directory.
     private var creationRequest: ShellTerminalCreationRequest? {
-        let cwd = terminal.cwd
-        guard cwd.hasPrefix("/") else { return nil }
-        return ShellTerminalCreationRequest(workspaceID: terminal.workspaceID, cwd: cwd)
+        console.capabilities(for: terminal.hostID)
+            .newTerminalRequest(workspaceID: terminal.workspaceID, cwd: terminal.cwd)
     }
 
     private func createTerminal() {
@@ -234,7 +238,7 @@ struct WorkspaceTerminalDetailView: View {
     }
 
     private func load() async {
-        guard !isMissing else { return }
+        guard !isMissing, !windowHasEnded else { return }
         failure = nil
         if let entry, entry.store.identity != identity {
             console.terminalConnections.release(
@@ -250,6 +254,12 @@ struct WorkspaceTerminalDetailView: View {
                 runTerminal: console.terminalRunner(for: terminal.hostID))
             guard !Task.isCancelled else {
                 retryAfterSpuriousDisappear()
+                return
+            }
+            // The window closed while this waited, past its `sceneDidEnd`.
+            guard !windowHasEnded else {
+                console.terminalConnections.release(
+                    hostID: terminal.hostID, identity: identity, ownerID: ownerID)
                 return
             }
             entry = selected

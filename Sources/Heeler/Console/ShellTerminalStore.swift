@@ -344,6 +344,11 @@ final class ShellTerminalStore {
 
     func retryTerminal() { terminal.retry() }
 
+    /// The retained terminal came on or off screen.
+    func setTerminalViewed(_ viewed: Bool) {
+        terminal.setViewed(viewed)
+    }
+
     /// Explicitly displaces another writable attach owner after a normal
     /// attachment was refused. Merely viewing an existing shell never does.
     func takeOverTerminal() {
@@ -445,6 +450,8 @@ final class ShellTerminalStore {
             let replacement = Self.makeTerminal(
                 terminalID: self.identity.terminalID,
                 takeover: self.takeover,
+                viewer: .resumed,
+                isViewed: previous.isViewed,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -490,6 +497,7 @@ final class ShellTerminalStore {
             let replacement = Self.makeTerminal(
                 terminalID: self.identity.terminalID,
                 takeover: self.takeover,
+                isViewed: self.terminal.isViewed,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -559,6 +567,8 @@ final class ShellTerminalStore {
     private static func makeTerminal(
         terminalID: String,
         takeover: Bool,
+        viewer: TerminalViewerRole = .interactive,
+        isViewed: Bool = true,
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
@@ -570,6 +580,8 @@ final class ShellTerminalStore {
         AttachTerminalStore(
             target: .terminal(terminalID),
             takeover: takeover,
+            viewer: viewer,
+            isViewed: isViewed,
             input: input,
             transportGeneration: transportGeneration,
             transportReady: transportReady,

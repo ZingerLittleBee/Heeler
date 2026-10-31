@@ -19,22 +19,71 @@ enum TerminalAttachTarget: Sendable, Hashable {
     }
 }
 
-/// One interactive terminal request: its typed remote target, herdr's
-/// takeover flag, and the initial PTY geometry.
+/// How a viewer joins a herdr-core Terminal, which has no Take Over: any viewer
+/// that is not only observing may type, and the last one to type, resize or
+/// take focus sets the Terminal's size.
+enum TerminalViewerRole: Sendable, Equatable {
+    /// Sets the Terminal's size on arrival.
+    case interactive
+    /// Back after a dropped line: sets the size only once it is active again.
+    case resumed
+    /// Watches only: its input and size count for nothing.
+    case observe
+}
+
+/// What a viewer's own terminal looks like, which a core uses to answer the
+/// program's display queries.
+struct TerminalDisplayFacts: Sendable, Equatable {
+    struct CellPixels: Sendable, Equatable {
+        let width: Int
+        let height: Int
+    }
+
+    /// Default foreground as `#rrggbb`.
+    var foreground: String?
+    /// Default background as `#rrggbb`.
+    var background: String?
+    /// Cursor color as `#rrggbb`.
+    var cursor: String?
+    var cell: CellPixels?
+}
+
+/// Whether anyone is looking at a retained terminal. Only a herdr-core attach
+/// passes this on: a hidden one reports neither focus nor display facts.
+enum TerminalViewerPresence: Sendable, Equatable {
+    case viewed(TerminalDisplayFacts?)
+    case hidden
+    case factsChanged(TerminalDisplayFacts)
+}
+
+/// One interactive terminal request: its typed remote target, how it joins
+/// (herdr's takeover flag, a core's viewer role and display facts), and the
+/// initial geometry.
 struct TerminalAttachRequest: Sendable, Equatable {
     let target: TerminalAttachTarget
     let takeover: Bool
+    let viewer: TerminalViewerRole
+    let displayFacts: TerminalDisplayFacts?
+    /// The surface this attach paints already holds its scrollback, so a server
+    /// that can send it should not send it again.
+    let surfaceHasHistory: Bool
     let cols: Int
     let rows: Int
 
     init(
         target: TerminalAttachTarget,
         takeover: Bool = false,
+        viewer: TerminalViewerRole = .interactive,
+        displayFacts: TerminalDisplayFacts? = nil,
+        surfaceHasHistory: Bool = false,
         cols: Int,
         rows: Int
     ) {
         self.target = target
         self.takeover = takeover
+        self.viewer = viewer
+        self.displayFacts = displayFacts
+        self.surfaceHasHistory = surfaceHasHistory
         self.cols = cols
         self.rows = rows
     }
@@ -654,18 +703,39 @@ final class TerminalAttachSession: Sendable {
     private let makeOutput: @Sendable () -> AsyncThrowingStream<Data, any Error>
     private let input: TerminalAttachInputQueue
     private let onEndStarted: @Sendable () -> Void
+    private let onConsumed: (@Sendable (Int) -> Void)?
+    private let onPresence: (@Sendable (TerminalViewerPresence) -> Void)?
     private let ender: @Sendable () async -> Void
 
     init(
         output makeOutput: @escaping @Sendable () -> AsyncThrowingStream<Data, any Error>,
         input: TerminalAttachInputQueue,
         onEndStarted: @escaping @Sendable () -> Void = {},
+        onConsumed: (@Sendable (Int) -> Void)? = nil,
+        onPresence: (@Sendable (TerminalViewerPresence) -> Void)? = nil,
         ender: @escaping @Sendable () async -> Void
     ) {
         self.makeOutput = makeOutput
         self.input = input
         self.onEndStarted = onEndStarted
+        self.onConsumed = onConsumed
+        self.onPresence = onPresence
         self.ender = ender
+    }
+
+    /// The view took `count` bytes of `output`. A herdr-core attach returns
+    /// their credit now, never on receipt.
+    func outputConsumed(_ count: Int) {
+        onConsumed?(count)
+    }
+
+    /// A herdr-core viewer, which says what it took and whether it is seen.
+    var isCoreViewer: Bool { onPresence != nil }
+
+    /// Whether anyone is looking at this terminal. A herdr-core attach alone
+    /// passes this on.
+    func setPresence(_ presence: TerminalViewerPresence) {
+        onPresence?(presence)
     }
 
     /// Forwards raw keystroke bytes to the remote PTY. Fire-and-forget: a

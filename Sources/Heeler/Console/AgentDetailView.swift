@@ -43,6 +43,12 @@ struct AgentDetailView: View {
     @State private var changes: AgentChangesPresentation
     @State private var retainedAgent: AgentTerminalCache.Entry?
     @State private var retentionOwnerID: UUID
+    /// Lives as long as this detail does, which tells the cache whether a
+    /// retained terminal hidden here will be wanted back.
+    @State private var retentionHolder = AgentDetailRetentionHolder()
+    /// `attach` is this detail's own viewer of a core Terminal another
+    /// detail retains.
+    @State private var isOwnViewer = false
     @State private var attachReference: AgentDetailAttachReference
     private let permitsRetention: Bool
     @State private var isResolvingTerminal = false
@@ -180,7 +186,18 @@ struct AgentDetailView: View {
     }
 
     private var terminalAccess: HostTerminalAccess {
-        sceneRouting?.terminalAccess(for: agent.hostID) ?? .holds
+        console.capabilities(for: agent.hostID)
+            .terminalAccess(sceneRouting?.terminalAccess(for: agent.hostID))
+    }
+
+    /// Whether Open Terminal has anywhere to go: a Shell Terminal already in
+    /// this Workspace, or a new one on a Host that can start it.
+    private var canOpenTerminal: Bool {
+        guard terminalAccess == .holds else { return false }
+        if console.capabilities(for: agent.hostID).startsTerminals {
+            return !workspaceShells.isEmpty || openTerminal.canOpen
+        }
+        return onSelectTerminal != nil && !workspaceShells.isEmpty
     }
 
     /// One per window, so a detail SwiftUI remounts, as a size-class change
@@ -274,16 +291,40 @@ struct AgentDetailView: View {
         }
     }
 
+    /// Closing a window changes nothing `isOnStage` reads.
+    private var windowHasEnded: Bool {
+        console.hasSceneEnded(sceneRouting?.sceneID, on: agent.hostID)
+    }
+
     private func prepareRetainedAgent() {
-        guard permitsRetention, isOnStage(), showsAgentTerminal else { return }
+        guard permitsRetention, isOnStage(), showsAgentTerminal, !windowHasEnded else { return }
         if let retainedAgent, retainedAgent.isRetained {
             console.agentTerminals.activate(retainedAgent, ownerID: retentionOwnerID, isPresented: { isOnStage() })
             return
         }
+        // A core Terminal takes any number of viewers, so another window's
+        // detail keeps the one it retains, and this one is a viewer of its own.
+        let takesViewers = !console.capabilities(for: agent.hostID).takeOver
+        let sceneID = takesViewers ? sceneRouting?.sceneID : nil
+        if takesViewers,
+            console.agentTerminals.isHeldByAnotherDetail(
+                agent, ownerID: retentionOwnerID, sceneID: sceneID)
+        {
+            guard !isOwnViewer else { return }
+            if retainedAgent == nil { attach.leaveForTerminalHandoff() }
+            retainedAgent = nil
+            isOwnViewer = true
+            attach = makePrivateAttach()
+            attachReference.store = attach
+            if let sceneID { console.agentTerminals.addViewer(attach, sceneID: sceneID) }
+            return
+        }
         if retainedAgent == nil { attach.leaveForTerminalHandoff() }
         let entry = console.agentTerminals.acquire(
-            agent: agent, console: console, ownerID: retentionOwnerID, isPresented: { isOnStage() })
+            agent: agent, console: console, ownerID: retentionOwnerID, sceneID: sceneID,
+            holder: retentionHolder, isPresented: { isOnStage() })
         retainedAgent = entry
+        isOwnViewer = false
         attach = entry.attach
         attachReference.store = attach
     }
@@ -292,11 +333,13 @@ struct AgentDetailView: View {
         let console = console
         let hostID = agent.hostID
         let paneID = agent.agent.paneID
+        let sceneID = sceneRouting?.sceneID
+        let isOnStage = isOnStage
         return AgentAttachStore(
             target: agent.agent.paneID,
             paneTitle: AgentTerminalView.displayTitle(for: agent),
             transportGeneration: console.hostConnectionGenerations[agent.hostID],
-            isOnStage: isOnStage,
+            isOnStage: { isOnStage() && !console.hasSceneEnded(sceneID, on: hostID) },
             runTerminal: console.terminalRunner(for: agent.hostID),
             closePane: { [weak console] in
                 guard let console else { throw CancellationError() }
@@ -361,7 +404,7 @@ struct AgentDetailView: View {
                     isOnStage: { isVisible() && showsChatSurface },
                     onSwitch: onSwitch,
                     onClosed: onClosed,
-                    canOpenTerminal: (!workspaceShells.isEmpty || openTerminal.canOpen) && terminalAccess == .holds,
+                    canOpenTerminal: canOpenTerminal,
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
                     showChanges: agent.directory == nil ? nil : { changes.open() },
@@ -387,7 +430,7 @@ struct AgentDetailView: View {
                     },
                     onSwitch: onSwitch,
                     onClosed: onClosed,
-                    canOpenTerminal: (!workspaceShells.isEmpty || openTerminal.canOpen) && terminalAccess == .holds,
+                    canOpenTerminal: canOpenTerminal,
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
                     // Any Agent with a directory, whatever its worktree
@@ -410,7 +453,7 @@ struct AgentDetailView: View {
                     // Retention swaps `attach` on appear and rebuilds this
                     // view; the build before that swap is a placeholder and
                     // must not spend the keyboard handoff meant for the real one.
-                    inheritsKeyboardHandoff: !permitsRetention || retainedAgent != nil)
+                    inheritsKeyboardHandoff: !permitsRetention || retainedAgent != nil || isOwnViewer)
                 .id(ObjectIdentifier(attach))
             }
         }
@@ -461,7 +504,7 @@ struct AgentDetailView: View {
                     showWorkspaceTerminal(target)
                 }
             }
-            if agent.shellTerminalCreationRequest != nil {
+            if agent.shellTerminalCreationRequest != nil, console.capabilities(for: agent.hostID).startsTerminals {
                 Button("New Terminal") { createWorkspaceTerminal() }
             }
             Button("Cancel", role: .cancel) {}
@@ -581,6 +624,7 @@ struct AgentDetailView: View {
                 }
             },
             onNewTerminal: agent.shellTerminalCreationRequest == nil
+                || !console.capabilities(for: agent.hostID).startsTerminals
                 ? nil : { createWorkspaceTerminal(fresh: true) },
             isCreatingTerminal: isResolvingTerminal)
     }
@@ -726,6 +770,8 @@ struct AgentShellRoute: Equatable {
     let agentID: ConsoleAgent.ID
     let route: WorkspaceTerminalRoute
 }
+
+private final class AgentDetailRetentionHolder {}
 
 @MainActor
 private final class AgentDetailAttachReference {

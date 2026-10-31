@@ -172,7 +172,17 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private(set) var sockets: [FakeCoreSocket] = []
     /// Every channel-0 method the core received, oldest first.
     private(set) var methods: [String] = []
+    /// Every attach the core received, oldest first, with the channel it named.
+    private(set) var attaches: [(channel: UInt32, params: JSONValue, socket: FakeCoreSocket)] = []
     private var methodWaiters: [(method: String, count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    /// Every Changes read that reached the Host's services, oldest first.
+    private(set) var changesReads: [ChangesReadRequest] = []
+    /// Every skills probe that reached the Host's services, oldest first.
+    private(set) var skillQueries: [SkillListQuery] = []
+    private var changes: CheckoutChangesRead?
+    private var skills: [AgentSkill] = []
+    private var isHoldingAttachReplies = false
+    private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
@@ -309,6 +319,18 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             case "events.subscribe":
                 try? await socket.reply(to: request.id, result: core.subscribeResult(channel: eventsChannel))
                 eventsChannel += 1
+            case "terminal.attach":
+                attaches.append((eventsChannel, request.params, socket))
+                let result: JSONValue = .object([
+                    "channel": .number(Double(eventsChannel)),
+                    "terminal": .object(["address": request.params["terminal"] ?? .null]),
+                ])
+                eventsChannel += 1
+                if isHoldingAttachReplies {
+                    heldAttachReplies.append((socket, request.id, result))
+                } else {
+                    try? await socket.reply(to: request.id, result: result)
+                }
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
             // A real core's answer for a name nobody wrote.
             case "doc.get" where core.answersDocumentReads:
@@ -349,6 +371,43 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// What the next process read answers.
     func setProcessRead(_ read: ProcessRead) {
         processRead = read
+    }
+
+    /// The core receives each attach and answers nothing until released, while
+    /// the rest of channel 0 keeps answering.
+    func holdAttachReplies() {
+        isHoldingAttachReplies = true
+    }
+
+    func releaseAttachReplies() async {
+        isHoldingAttachReplies = false
+        let held = heldAttachReplies
+        heldAttachReplies = []
+        for reply in held {
+            try? await reply.socket.reply(to: reply.id, result: reply.result)
+        }
+    }
+
+    /// What the Host's git answers a Changes read with. Nil keeps the seam's
+    /// refusal.
+    func setChanges(_ read: CheckoutChangesRead?) {
+        changes = read
+    }
+
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+        changesReads.append(request)
+        guard let changes else { throw ChangesReadError.unavailable }
+        return changes
+    }
+
+    /// The skills the Host's probe finds.
+    func setSkills(_ skills: [AgentSkill]) {
+        self.skills = skills
+    }
+
+    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
+        skillQueries.append(query)
+        return skills
     }
 
     /// Process reads start and then wait, as one on a slow link does.

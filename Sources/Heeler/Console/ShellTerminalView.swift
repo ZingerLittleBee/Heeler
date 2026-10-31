@@ -26,6 +26,8 @@ struct ShellTerminalView: View {
     var isClosingTerminal: Bool = false
     var onCloseTerminal: (@MainActor () -> Void)? = nil
     var managesLifecycle = true
+    /// False on a Host whose terminals have no Take Over: any viewer may type.
+    var offersTakeOver = true
     var surfaceRetention: TerminalSurfaceRetention?
     var title = "Terminal"
     var backTitle = "Back to Agent"
@@ -111,6 +113,7 @@ struct ShellTerminalView: View {
             return true
         }
         screen.theme = terminal.themes.theme
+        screen.displayColors = terminal.themes.colors(for: colorScheme)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { terminal.zoom.setFontSize($0) }
@@ -538,7 +541,7 @@ struct ShellTerminalView: View {
                 ) {
                     Button("Reattach") { store.retryTerminal() }
                         .buttonStyle(.terminalStatusPrimary)
-                    if !managesLifecycle {
+                    if !managesLifecycle, offersTakeOver {
                         Button("Take Over") { store.takeOverTerminal() }
                             .buttonStyle(.terminalStatusSecondary)
                             .accessibilityHint("Disconnects another client's attachment to this terminal")

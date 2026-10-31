@@ -84,8 +84,14 @@ struct AgentDeepLinkPolicyTests {
 }
 
 @MainActor
-private final class FakeSceneWindow: AgentSceneWindow {
+final class FakeSceneWindow: AgentSceneWindow {
     var sceneWindowState = AgentSceneWindowState.connected
+    var windowScene: UIScene?
+}
+
+@MainActor
+private final class EndedScenes {
+    var ids: [UUID] = []
 }
 
 /// Which scene-phase activations count as the user moving into a window.
@@ -350,6 +356,29 @@ struct AgentSceneDirectoryTests {
 
         #expect(!directory.activateScene(presenting: target("w1:p1").agentID))
         #expect(directory.keyScenePresentedAgent == nil)
+    }
+
+    /// UIKit's signal stands in for an `onDisappear` SwiftUI never delivers,
+    /// and says nothing about a window in another scene.
+    @Test func aDisconnectEndsTheWindowsItTookAndNoOthers() throws {
+        let directory = AgentSceneDirectory()
+        let center = NotificationCenter()
+        let scene = try #require(UIApplication.shared.connectedScenes.first)
+        let inScene = FakeSceneWindow()
+        inScene.windowScene = scene
+        let elsewhere = FakeSceneWindow()
+        let alreadyGone = FakeSceneWindow()
+        alreadyGone.sceneWindowState = .disconnected
+        let (shown, other, gone) = (UUID(), UUID(), UUID())
+        directory.register(sceneID: shown, router: makeRouter(knowing: []), window: inScene) {}
+        directory.register(sceneID: other, router: makeRouter(knowing: []), window: elsewhere) {}
+        directory.register(sceneID: gone, router: makeRouter(knowing: []), window: alreadyGone) {}
+        let ended = EndedScenes()
+        directory.observeDisconnects(center: center) { ended.ids.append($0) }
+
+        center.post(name: UIScene.didDisconnectNotification, object: scene)
+
+        #expect(Set(ended.ids) == [shown, gone])
     }
 
     /// A window registers before its `UIWindow` attaches; it is live then.

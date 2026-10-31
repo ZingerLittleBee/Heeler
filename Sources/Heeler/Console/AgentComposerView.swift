@@ -58,8 +58,10 @@ struct AgentComposerKeyboardLayout: Equatable {
 struct AgentComposerActions {
     let canBegin: Bool
     let attachLinkCount: Int
-    let addImage: () -> Void
-    let addFile: () -> Void
+    /// Nil hides the entry, as it does for every optional action here: a Host
+    /// that does not offer it.
+    let addImage: (() -> Void)?
+    let addFile: (() -> Void)?
     let showAttachLinks: () -> Void
     let openTerminal: (() -> Void)?
     let isOpeningTerminal: Bool
@@ -67,7 +69,7 @@ struct AgentComposerActions {
     /// Nil when the Agent has no directory, which hides the entry; it is
     /// never gated on the Agent's worktree metadata.
     let showChanges: (() -> Void)?
-    let startAgent: () -> Void
+    let startAgent: (() -> Void)?
     let manageSnippets: () -> Void
     /// Opens the explicit Skill picker. Nil for agent kinds without a skills
     /// source catalog, which hides the More-menu entry entirely rather than
@@ -76,7 +78,7 @@ struct AgentComposerActions {
     let showWorktreeDetails: (() -> Void)?
     let renameAgent: (() -> Void)?
     let renameWorkspace: (() -> Void)?
-    let closeAgent: () -> Void
+    let closeAgent: (() -> Void)?
     /// Leaves the Agent the way its edge swipe does: back to the Console
     /// list, or out to the sidebar beside an iPad's detail column.
     let backToConsole: () -> Void
@@ -197,6 +199,9 @@ struct AgentComposerView: View {
     /// What Stop presses in the Agent's program, its wait and its hint; nil
     /// keeps Send.
     var interrupt: AgentComposerInterrupt? = nil
+    /// False on a Host that cannot deliver a draft yet: no Send, no Stop, and
+    /// Return and ⌘↩ send nothing.
+    var offersSend = true
     @State private var isInputFocused = false
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
@@ -247,7 +252,7 @@ struct AgentComposerView: View {
                         .stroke(composerCardStroke, lineWidth: dropHighlight.strokeWidth)
                 }
                 .composerDropDestination(
-                    isEnabled: ComposerDropPolicy.acceptsDrops(in: inputMode),
+                    isEnabled: ComposerDropPolicy.acceptsDrops(in: inputMode) && offersAdd,
                     isTargeted: $isDropTargeted,
                     accept: { store.acceptDrop($0) }
                 )
@@ -259,7 +264,7 @@ struct AgentComposerView: View {
         .modifier(ConsoleComposerCommandRegistration(
             agentID: switcher.selectedID,
             isFocused: isInputFocused,
-            hasDraft: { store.canSend },
+            hasDraft: { offersSend && store.canSend },
             send: { await deliverDraft { await store.send(policy: sendPolicy) } }))
         .onAppear {
             guard inheritsKeyboardHandoff,
@@ -354,7 +359,7 @@ struct AgentComposerView: View {
     /// would drop the focus and any keyboard handoff in flight.
     private var editorRow: some View {
         HStack(spacing: 8) {
-            if isCollapsed {
+            if isCollapsed, offersAdd {
                 addMenu
             }
             ZStack(alignment: .topLeading) {
@@ -437,7 +442,7 @@ struct AgentComposerView: View {
 
     private var actionRow: some View {
         HStack(spacing: 8) {
-            addMenu
+            if offersAdd { addMenu }
 
             Menu {
                 AgentActionMenuContent(
@@ -493,6 +498,10 @@ struct AgentComposerView: View {
             .accessibilityHidden(true)
     }
 
+    private var offersAdd: Bool {
+        actions.addImage != nil || actions.addFile != nil
+    }
+
     private var addMenu: some View {
         Menu {
             AgentActionMenuContent(
@@ -512,27 +521,30 @@ struct AgentComposerView: View {
     }
 
     private func sendDraft() {
+        guard offersSend else { return }
         Task { await deliverDraft { await store.send(policy: sendPolicy) } }
     }
 
     /// Send, or Stop while the Agent works and the draft is blank.
     @ViewBuilder
     private var primaryButton: some View {
-        switch primaryControl {
-        case .send:
-            AgentComposerSendButton(
-                isEnabled: store.canSend,
-                accessibilityHint: store.sendAccessibilityHint
-            ) {
-                sendDraft()
-            }
-        case .stop:
-            AgentComposerStopButton(
-                isStopping: store.stop.isStopping,
-                accessibilityHint: stopHint
-            ) {
-                guard let interrupt else { return }
-                store.stop.stop(waiting: interrupt.wait, using: interrupt.perform)
+        if offersSend {
+            switch primaryControl {
+            case .send:
+                AgentComposerSendButton(
+                    isEnabled: store.canSend,
+                    accessibilityHint: store.sendAccessibilityHint
+                ) {
+                    sendDraft()
+                }
+            case .stop:
+                AgentComposerStopButton(
+                    isStopping: store.stop.isStopping,
+                    accessibilityHint: stopHint
+                ) {
+                    guard let interrupt else { return }
+                    store.stop.stop(waiting: interrupt.wait, using: interrupt.perform)
+                }
             }
         }
     }

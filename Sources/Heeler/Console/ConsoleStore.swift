@@ -17,6 +17,8 @@ final class ConsoleStore {
 
     private(set) var agents: [ConsoleAgent] = []
     private(set) var terminals: [ConsoleTerminal] = []
+    /// See `sceneDidEnd`.
+    @ObservationIgnored private var endedScenes: Set<UUID> = []
     private(set) var hostStatuses: [Host.ID: EventsSessionStatus] = [:]
     private(set) var hostStandingFailures: [Host.ID: TransportError] = [:]
     private(set) var hostLatencies: [Host.ID: Duration] = [:]
@@ -1363,6 +1365,31 @@ final class ConsoleStore {
 
     /// What the Host offers. A detail can outlive its Host's catalog entry for
     /// a moment; its actions stay as they were and fail as not connected.
+    /// A window closed, or the system disconnected it. What it shows still
+    /// reads as selected, so its screens never let go of a core Terminal on
+    /// their own, and one that did not would stay a viewer the Terminal sizes
+    /// to. A Herdr TUI Host keeps its window rules, which go through
+    /// `HostTerminalOwnership`.
+    func sceneDidEnd(_ sceneID: UUID) {
+        endedScenes.insert(sceneID)
+        agentTerminals.sceneDidEnd(sceneID)
+        terminalConnections.sceneDidEnd(sceneID) { [self] hostID in
+            !capabilities(for: hostID).takeOver
+        }
+    }
+
+    /// SwiftUI can pair a window's root `onDisappear` with an `onAppear`.
+    func sceneDidStart(_ sceneID: UUID) {
+        endedScenes.remove(sceneID)
+    }
+
+    /// A window that ended may still run a load it started or a late update.
+    /// Its screens ask this before showing a core Terminal again.
+    func hasSceneEnded(_ sceneID: UUID?, on hostID: Host.ID) -> Bool {
+        guard let sceneID, endedScenes.contains(sceneID) else { return false }
+        return !capabilities(for: hostID).takeOver
+    }
+
     func capabilities(for hostID: Host.ID) -> HostCapabilities {
         catalog.first(where: { $0.id == hostID })?.capabilities
             ?? HostCapabilities(serverKind: .herdrTUI)

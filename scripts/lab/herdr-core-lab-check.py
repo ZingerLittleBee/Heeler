@@ -175,7 +175,7 @@ class Lab:
             ["xcrun", "simctl", "spawn", self.udid, "launchctl", "unsetenv", CONFIG_VARIABLE]))
         self.local(["xcrun", "simctl", "spawn", self.udid, "launchctl", "setenv", CONFIG_VARIABLE, encoded])
         status = self.local(["make", "test-app", f"SIM_DESTINATION={destination}", f"TEST_SELECTOR={E2E_SUITE}"])
-        self.check("the six end-to-end methods", status == 0)
+        self.check("the seven end-to-end methods", status == 0)
 
     def check_linux_facts(self, helper):
         self.remote(self.core_command(self.session, ["server", "start"]))

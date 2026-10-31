@@ -188,6 +188,100 @@ struct HerdrCoreTransportE2ETests {
         }
     }
 
+    @Test("an attach takes more than its credit window, resizes, answers a program with its display facts, and closes when a kept Terminal is killed")
+    func attachResizeCreditAndClose() async throws {
+        try await CoreSSHFixture.with { fixture in
+            try await fixture.startCore()
+            // Waits for a line, bursts past the 256 KiB window, waits for
+            // another and reports its size. Each line after that asks the
+            // terminal for its colors and cell size and prints the answer.
+            let script = #"""
+                PATH=/usr/bin:/bin
+                read go
+                head -c 400000 /dev/zero | tr '\0' x
+                printf '\nheeler-burst-done\n'
+                read again
+                printf 'heeler-size %s\n' "$(stty size)"
+                while read next; do
+                    settings=$(stty -g)
+                    stty raw -echo min 0 time 20
+                    printf '\033]10;?\033\\\033]11;?\033\\\033]12;?\033\\\033[16t'
+                    answer=$(dd bs=256 count=1 2>/dev/null | tr '\033' '^')
+                    stty "$settings"
+                    printf 'heeler-answer %s\n' "$answer"
+                done
+                """#
+            let terminal = try await fixture.runTerminal(["/bin/sh", "-c", script], keep: true)
+            let transport = try await fixture.connectCore()
+            do {
+                _ = try await transport.hello()
+                let session = try await transport.attachTerminal(
+                    TerminalAttachRequest(
+                        target: .terminal(terminal),
+                        displayFacts: TerminalDisplayFacts(
+                            foreground: "#102030", background: "#405060", cursor: "#708090",
+                            cell: .init(width: 10, height: 20)),
+                        cols: 80, rows: 24))
+                let collected = AttachOutput()
+                let reader = Task {
+                    for try await chunk in session.output {
+                        await collected.append(chunk)
+                        session.outputConsumed(chunk.count)
+                    }
+                }
+
+                session.send(Data("go\n".utf8))
+                try await eventually { await collected.contains("heeler-burst-done") }
+                #expect(await collected.count > 256 * 1024)
+
+                session.resize(cols: 100, rows: 30)
+                try await eventually {
+                    let record = try await fixture.rpc(
+                        "terminal.get", params: .object(["terminal": .string(terminal)]))
+                    return HerdrCoreWire.integer(record["cols"]) == 100
+                        && HerdrCoreWire.integer(record["rows"]) == 30
+                }
+                session.send(Data("\n".utf8))
+                try await eventually { await collected.contains("heeler-size 30 100") }
+
+                // Presence and input travel apart, so the program asks again
+                // until what the viewer reported has reached the core.
+                let programHears: @Sendable ([String]) async throws -> Void = { answers in
+                    try await eventually {
+                        session.send(Data("\n".utf8))
+                        try await Task.sleep(for: .milliseconds(200))
+                        for answer in answers where await !collected.contains(answer) { return false }
+                        return true
+                    }
+                }
+                try await programHears([
+                    "]10;rgb:1010/2020/3030", "]11;rgb:4040/5050/6060", "]12;rgb:7070/8080/9090", "[6;20;10t",
+                ])
+                session.setPresence(
+                    .viewed(
+                        TerminalDisplayFacts(
+                            foreground: "#aabbcc", background: "#ddeeff", cursor: "#112233",
+                            cell: .init(width: 17, height: 33))))
+                try await programHears([
+                    "]10;rgb:aaaa/bbbb/cccc", "]11;rgb:dddd/eeee/ffff", "]12;rgb:1111/2222/3333", "[6;33;17t",
+                ])
+
+                let record = try await fixture.rpc(
+                    "terminal.get", params: .object(["terminal": .string(terminal)]))
+                let pid = try #require(HerdrCoreWire.integer(record["pid"]))
+                try await fixture.kill(pid: pid)
+                // Server CLOSE: the output finishes, with no error.
+                try await reader.value
+                await session.end()
+                try await transport.close()
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+            #expect(try await fixture.tripwireCalls().isEmpty)
+        }
+    }
+
     @Test("labels and a seeded herdr-app document place Terminals, and the app never writes it")
     func desktopPlacement() async throws {
         try await CoreSSHFixture.with { fixture in
@@ -345,6 +439,22 @@ private final class CoreSessionWatcher: @unchecked Sendable {
 }
 
 private enum CoreSSHFailure: Error { case timeout, fixture(String) }
+
+private actor AttachOutput {
+    private(set) var count = 0
+    /// Only the end of the stream: the burst is not worth keeping.
+    private var tail = Data()
+
+    func append(_ chunk: Data) {
+        count += chunk.count
+        tail.append(chunk)
+        if tail.count > 4096 { tail.removeFirst(tail.count - 4096) }
+    }
+
+    func contains(_ text: String) -> Bool {
+        tail.range(of: Data(text.utf8)) != nil
+    }
+}
 
 private func eventually(_ predicate: @escaping @Sendable () async throws -> Bool) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(10))

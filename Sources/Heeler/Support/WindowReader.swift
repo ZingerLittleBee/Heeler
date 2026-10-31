@@ -107,6 +107,8 @@ extension WindowReference: AgentSceneWindow {
             hasAttached: attachments > 0,
             activationState: storage?.windowScene?.activationState)
     }
+
+    var windowScene: UIScene? { storage?.windowScene }
 }
 
 extension EnvironmentValues {

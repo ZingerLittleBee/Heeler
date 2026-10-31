@@ -34,7 +34,7 @@ covers the fixture and CI.
 make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
 ```
 
-It authorizes a throwaway key through `instabox port-forward`, runs the six
+It authorizes a throwaway key through `instabox port-forward`, runs the seven
 methods of `HerdrCoreTransportE2ETests` on the Simulator, then starts a core for a
 unique session and checks:
 
@@ -101,10 +101,34 @@ yet, and read each pid from `server.status` or `terminal.list`.
 
 | Check | How to get there | Heeler shows |
 | --- | --- | --- |
-| Derived Workspaces | Terminals launched in two directories | One card per directory, named for its last path component, with one row per Terminal; the rows open nothing and their menu offers only Copy Path |
+| Derived Workspaces | Terminals launched in two directories | One card per directory, named for its last path component, with one row per Terminal; a row opens its Terminal and its menu offers only Copy Path |
 | Kept restart | `kill -9` the program of a Terminal started with `keep` | The row reads **Restarting** with its launch directory, then comes back in the same card |
 | Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | The Host stays Connected in the Hosts list and every row stays in its card |
 | Stopped core | `server stop` by absolute path | The Host reads **herdr-core is not running** and retries; no core process appears until you start it |
+
+## Attach
+
+Add the Host through a build launched with `--offer-herdr-core-hosts`. Open each
+Terminal from its row, and an Agent from the Agents tab. Every terminal is a
+channel on the Host's one link, so `ss` on the box shows one connection however
+many are open.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Full-screen program | Run `vim`, then `htop`, in a core Terminal and rotate the device | The program fills the terminal in both orientations and redraws at the new size |
+| Scrollback | `seq 1 5000`, then scroll back | Earlier lines are there, in order |
+| Burst and repaint | `head -c 6000000 /dev/urandom \| base64` with the terminal hidden or scrolled, so the core drops its backlog | The screen repaints and stays usable; the Terminals tab and another open terminal keep updating |
+| Modes after a repaint | In `vim`, paste multi-line text after the burst above | The paste arrives bracketed, as one insert |
+| Every key | `stty -isig; cat -v`, then Ctrl+\ | `cat` prints `^\`; nothing in Heeler intercepts it |
+| Display facts | In a core Terminal, `stty raw -echo min 0 time 20; printf '\033]11;?\033\\\033[16t'; dd bs=256 count=1 2>/dev/null \| tr '\033' '^'; stty sane; echo`, then pick another theme in Settings and run it again | It prints the theme's background as `]11;rgb:…` and the cell in pixels as `[6;<height>;<width>t`; the second run shows the new background |
+| Second viewer | `hc attach <terminal>` on the box at another size, then type in Heeler | The program takes Heeler's size when you type; no Take Over appears anywhere on the Host |
+| Retained terminals | Open six Terminals in turn and go back | Five stay retained for five minutes and come back at once; the sixth detaches the least recently viewed idle one, which attaches afresh when you return to it |
+| End of a program | `exit` in a Terminal that was not started with `keep` | The session ends with no error |
+| Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send, Stop and Add stay hidden; Direct Input types into the terminal |
+| Two windows | On an iPad, show one core Agent in two windows, open Changes in the first and come back | Each window keeps a live terminal of its own, and typing in either reaches the program |
+| Window size | On an iPad, resize a window showing a core Agent across compact and regular widths, then leave the Agent | The same terminal and scrollback stay on screen with one viewer, and the viewer closes five minutes after you leave |
+| Closed window | On an iPad, close one of two windows showing the same core Agent | The other window's terminal stays live; if the closed window retained the Terminal, its viewer stops being reported and closes after five minutes; if it held the second viewer, that viewer closes at once and `terminal.get` shows the size follows the window left |
+| Closed window on a Terminal | On an iPad, open a core Terminal in one window, close that window, then open the same Terminal in another | The other window shows the Terminal at once on the same channel and takes its size, with no "already open in another window". Left alone, the Terminal returns to its headless size within five minutes of the close |
 
 ## Program Status
 
@@ -126,8 +150,8 @@ with its source, and clear the vector's `provisional` flag once the captures are
 | Grok Build | `grok` | `grok-build` | `grok` | The same. Without hooks set up it stays **Unknown** |
 
 Each Agent lists on Agents, By Host and By Workspace, and under the Host filter. It
-leaves the Terminals tab while it holds the foreground, its row opens nothing, and its
-menu offers no Open in New Window or Close.
+leaves the Terminals tab while it holds the foreground, its row opens its detail, and
+its menu offers Open in New Window where the device has windows, and no Close.
 
 Then check what no harness needs to be signed in for, from an inert program in a
 Terminal. A status report is `printf '\033]7501;state=working:app=x\007'`, as the

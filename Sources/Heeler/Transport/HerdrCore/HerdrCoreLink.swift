@@ -48,6 +48,7 @@ actor HerdrCoreLink {
         let continuation: CheckedContinuation<Reply, any Error>
         let isMutation: Bool
         let opensStream: Bool
+        let creditsWhenConsumed: Bool
         let timer: Task<Void, Never>
         var dispatched = false
     }
@@ -64,6 +65,9 @@ actor HerdrCoreLink {
         var waiter: CheckedContinuation<Data?, any Error>?
         var claimed = false
         var serverClosed = false
+        /// The stream's consumer says what it has taken, so reading returns no
+        /// credit, and the link closing under it is not a clean end.
+        var creditsWhenConsumed = false
     }
 
     private let channel: any HeelerSSHAPIChannel
@@ -125,16 +129,21 @@ actor HerdrCoreLink {
         _ method: String, params: JSONValue = .object([:]), deadline: Duration, isMutation: Bool = false
     ) async throws -> JSONValue {
         try await request(
-            method, params: params, deadline: deadline, isMutation: isMutation, opensStream: false
+            method, params: params, deadline: deadline, isMutation: isMutation, opensStream: false,
+            creditsWhenConsumed: false
         ).result
     }
 
     /// A call whose reply names a new channel, as `terminal.attach` does.
+    /// `creditsWhenConsumed` moves the stream's credit from each read to the
+    /// consumer's `consumed(_:)`.
     func openStream(
-        _ method: String, params: JSONValue, deadline: Duration, isMutation: Bool = false
+        _ method: String, params: JSONValue, deadline: Duration, isMutation: Bool = false,
+        creditsWhenConsumed: Bool = false
     ) async throws -> (result: JSONValue, stream: HerdrCoreLinkStream) {
         let reply = try await request(
-            method, params: params, deadline: deadline, isMutation: isMutation, opensStream: true)
+            method, params: params, deadline: deadline, isMutation: isMutation, opensStream: true,
+            creditsWhenConsumed: creditsWhenConsumed)
         guard let channel = reply.streamChannel else {
             throw TransportError.malformedResponse("herdr-core: \(method) named no channel.")
         }
@@ -170,12 +179,13 @@ actor HerdrCoreLink {
         let line = try HerdrCoreServerInfo.helloRequestLine(id: Self.helloID)
         let reply = try await exchange(
             id: Self.helloID, bytes: Data(line.utf8), deadline: deadline,
-            isMutation: false, opensStream: false)
+            isMutation: false, opensStream: false, creditsWhenConsumed: false)
         return try HerdrCoreServerInfo(hello: reply.result)
     }
 
     private func request(
-        _ method: String, params: JSONValue, deadline: Duration, isMutation: Bool, opensStream: Bool
+        _ method: String, params: JSONValue, deadline: Duration, isMutation: Bool, opensStream: Bool,
+        creditsWhenConsumed: Bool
     ) async throws -> Reply {
         nextRequestID += 1
         let id = String(nextRequestID)
@@ -189,11 +199,13 @@ actor HerdrCoreLink {
             throw TransportError.channelFailed(detail: "The herdr-core request exceeds the frame limit.")
         }
         return try await exchange(
-            id: id, bytes: bytes, deadline: deadline, isMutation: isMutation, opensStream: opensStream)
+            id: id, bytes: bytes, deadline: deadline, isMutation: isMutation, opensStream: opensStream,
+            creditsWhenConsumed: creditsWhenConsumed)
     }
 
     private func exchange(
-        id: String, bytes: Data, deadline: Duration, isMutation: Bool, opensStream: Bool
+        id: String, bytes: Data, deadline: Duration, isMutation: Bool, opensStream: Bool,
+        creditsWhenConsumed: Bool
     ) async throws -> Reply {
         if let ending { throw ending.callFailure }
         return try await withTaskCancellationHandler {
@@ -207,7 +219,8 @@ actor HerdrCoreLink {
                     self.expireCall(id)
                 }
                 pending[id] = PendingCall(
-                    continuation: continuation, isMutation: isMutation, opensStream: opensStream, timer: timer)
+                    continuation: continuation, isMutation: isMutation, opensStream: opensStream,
+                    creditsWhenConsumed: creditsWhenConsumed, timer: timer)
                 enqueue(Outbound(bytes: bytes, callID: id))
             }
         } onCancel: {
@@ -249,7 +262,7 @@ actor HerdrCoreLink {
         }
         if !state.chunks.isEmpty {
             let chunk = state.chunks.removeFirst()
-            if ending == nil, !state.serverClosed {
+            if ending == nil, !state.serverClosed, !state.creditsWhenConsumed {
                 state.credit += chunk.count
                 enqueueCredit(chunk.count, channel: channel)
             }
@@ -259,6 +272,7 @@ actor HerdrCoreLink {
         if let ending {
             retire(channel)
             if case .failed(let error) = ending { throw error }
+            if state.creditsWhenConsumed { throw TransportError.cancelled }
             return nil
         }
         if state.serverClosed {
@@ -280,6 +294,14 @@ actor HerdrCoreLink {
         } onCancel: {
             Task { await self.cancelRead(channel: channel) }
         }
+    }
+
+    /// Returns credit for bytes a `creditsWhenConsumed` stream's consumer took.
+    fileprivate func returnCredit(_ count: Int, channel: UInt32) {
+        guard count > 0, ending == nil, var state = streams[channel], !state.serverClosed else { return }
+        state.credit += count
+        streams[channel] = state
+        enqueueCredit(count, channel: channel)
     }
 
     fileprivate func send(_ frame: HerdrCoreFrame) async throws {
@@ -439,7 +461,9 @@ actor HerdrCoreLink {
         call.timer.cancel()
         do {
             let result = try HerdrCoreServerInfo.result(from: payload, id: id)
-            let streamChannel = call.opensStream ? try claimStream(from: result) : nil
+            let streamChannel =
+                call.opensStream
+                ? try claimStream(from: result, creditsWhenConsumed: call.creditsWhenConsumed) : nil
             call.continuation.resume(returning: Reply(result: result, streamChannel: streamChannel))
         } catch {
             call.continuation.resume(throwing: error)
@@ -455,12 +479,13 @@ actor HerdrCoreLink {
         closeStream(channel)
     }
 
-    private func claimStream(from result: JSONValue) throws -> UInt32 {
+    private func claimStream(from result: JSONValue, creditsWhenConsumed: Bool) throws -> UInt32 {
         guard let channel = Self.channel(in: result), !retired.contains(channel) else {
             throw TransportError.malformedResponse("herdr-core: The reply names no usable channel.")
         }
         var state = streams[channel] ?? StreamState()
         state.claimed = true
+        state.creditsWhenConsumed = creditsWhenConsumed
         streams[channel] = state
         return channel
     }
@@ -479,9 +504,11 @@ actor HerdrCoreLink {
         }
         if let waiter = state.waiter {
             state.waiter = nil
-            state.credit += payload.count
+            if !state.creditsWhenConsumed {
+                state.credit += payload.count
+                enqueueCredit(payload.count, channel: channel)
+            }
             streams[channel] = state
-            enqueueCredit(payload.count, channel: channel)
             waiter.resume(returning: payload)
         } else {
             state.chunks.append(payload)
@@ -537,6 +564,8 @@ actor HerdrCoreLink {
                 retire(channel)
                 if case .failed(let error) = reason {
                     waiter.resume(throwing: error)
+                } else if state.creditsWhenConsumed {
+                    waiter.resume(throwing: TransportError.cancelled)
                 } else {
                     waiter.resume(returning: nil)
                 }
@@ -557,7 +586,8 @@ actor HerdrCoreLink {
 
 /// A stream channel on a link. One task reads it. Reading returns CREDIT for
 /// the bytes it hands out, never earlier, so the core stops sending to a
-/// consumer that stops reading. A cancelled read closes the channel.
+/// consumer that stops reading; a stream opened with `creditsWhenConsumed`
+/// returns it from `consumed(_:)` instead. A cancelled read closes the channel.
 struct HerdrCoreLinkStream: HerdrCoreEventBytes {
     let channel: UInt32
     private let link: HerdrCoreLink
@@ -581,6 +611,21 @@ struct HerdrCoreLinkStream: HerdrCoreEventBytes {
 
     func resize(columns: Int, rows: Int) async throws {
         try await link.send(try HerdrCoreFrame.resize(channel: channel, columns: columns, rows: rows))
+    }
+
+    /// Sends a viewer's focus change.
+    func focus(gained: Bool) async throws {
+        try await link.send(HerdrCoreFrame.focus(channel: channel, gained: gained))
+    }
+
+    /// Sends what a viewer's own terminal looks like.
+    func facts(_ payload: Data) async throws {
+        try await link.send(HerdrCoreFrame(channel: channel, kind: .facts, payload: payload))
+    }
+
+    /// The consumer took `count` bytes of a `creditsWhenConsumed` stream.
+    func consumed(_ count: Int) async {
+        await link.returnCredit(count, channel: channel)
     }
 
     /// Sends CLOSE unless the channel already ended. Idempotent.

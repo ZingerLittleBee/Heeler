@@ -238,6 +238,9 @@ struct TerminalScreenView: UIViewRepresentable {
     var initialKeyboardMode = TerminalKeyboardMode.text
     var textInputStyle = TerminalTextInputStyle.terminal
     var theme: TerminalTheme = .default
+    /// The colors `theme` shows in this appearance, which a herdr-core attach
+    /// reports as its display facts.
+    var displayColors: TerminalThemeColors?
     var fontSize: Float = TerminalZoomSettings.defaultFontSize
     var fontFamily: String?
     /// Pinch-to-zoom and the ⌘+/⌘- shortcut change the size in place; the
@@ -278,6 +281,10 @@ struct TerminalScreenView: UIViewRepresentable {
         }
         view.setTextInputStyle(textInputStyle)
         view.setLocalInputEnabled(isLocalInputEnabled)
+        reportDisplayColors()
+        view.onCellPixelsChange = { [weak feed] width, height in
+            feed?.updateDisplayFacts { $0.cell = .init(width: width, height: height) }
+        }
         // The feed holds the surface weakly so a replaced UIKit view cannot be
         // kept alive by an obsolete terminal pipeline.
         feed.attach(view)
@@ -285,6 +292,15 @@ struct TerminalScreenView: UIViewRepresentable {
         onSurfaceAttached?()
         #endif
         return view
+    }
+
+    private func reportDisplayColors() {
+        guard let displayColors else { return }
+        feed.updateDisplayFacts {
+            $0.foreground = displayColors.foreground
+            $0.background = displayColors.background
+            $0.cursor = displayColors.cursor
+        }
     }
 
     @MainActor
@@ -319,6 +335,7 @@ struct TerminalScreenView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: HeelerTerminalView, context: Context) {
+        reportDisplayColors()
         let openURL = openURL
         let onKeyboardHandoffEnded = onKeyboardHandoffEnded
         view.updateCallbacks(
@@ -728,6 +745,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     private(set) var appliedFontFamily: String?
     var onFontSizeChanged: ((Float) -> Void)?
     var onOpenLink: ((URL) -> Void)?
+    /// The cell's size in device pixels changed.
+    var onCellPixelsChange: ((_ width: Int, _ height: Int) -> Void)? {
+        didSet { reportCellPixels() }
+    }
+    private var cellPixels: (width: Int, height: Int)?
     /// Raises the keyboard once this surface reaches a window. An Agent switch
     /// rebuilds the whole terminal, and the user who tapped a switcher chip
     /// was mid-conversation — dropping the keyboard would hide the switcher
@@ -2588,11 +2610,18 @@ extension HeelerTerminalView: TerminalSurfaceOpenURLDelegate,
         terminalGridSize = (Int(size.columns), Int(size.rows))
         hasTerminalGridMetrics = true
         guard size.cellWidthPixels > 0, size.cellHeightPixels > 0 else { return }
+        cellPixels = (Int(size.cellWidthPixels), Int(size.cellHeightPixels))
+        reportCellPixels()
         let scale = window?.screen.nativeScale ?? traitCollection.displayScale
         guard scale > 0 else { return }
         terminalCellSize = CGSize(
             width: CGFloat(size.cellWidthPixels) / scale,
             height: CGFloat(size.cellHeightPixels) / scale)
+    }
+
+    private func reportCellPixels() {
+        guard let cellPixels else { return }
+        onCellPixelsChange?(cellPixels.width, cellPixels.height)
     }
 
     func terminalDidRequestTextSelection(_ request: TerminalTextSelectionRequest) {

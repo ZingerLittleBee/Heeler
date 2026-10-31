@@ -451,24 +451,47 @@ struct HerdrCoreAgentsTests {
         #expect(transport.hostServicesBorrows == 0)
     }
 
-    // MARK: Agent detail stays closed
+    // MARK: Agent detail
 
-    /// Agent detail waits for "Open a core Terminal", and its row's Changes
-    /// totals with it: the row reads nothing from the Host.
-    @Test func aCoreAgentOffersNoDetailAndItsRowReadsNoChanges() async throws {
+    /// Agent detail opens on its live terminal, and its row reads Changes
+    /// through the kind-neutral Host services. Closing stays hidden.
+    @Test func aCoreAgentOpensItsDetailAndItsRowReadsChangesThroughHostServices() async throws {
         let (store, transport) = try await started([Self.claude("t1")])
         defer { store.setHosts([]) }
         let row = try #require(agent(store, "t1"))
 
-        #expect(!store.capabilities(for: host.id).opensDetail)
+        #expect(store.capabilities(for: host.id).opensDetail)
         let offers = ConsoleAgentRowOffers(
             capabilities: store.capabilities(for: host.id), supportsMultipleWindows: true)
-        #expect(offers == ConsoleAgentRowOffers(opensDetail: false, opensInNewWindow: false, closes: false))
+        #expect(offers == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: true, closes: false))
 
         store.rowChanges.rowAppeared(row)
-        #expect(store.rowChanges.store(for: row) == nil)
-        await Task.yield()
-        #expect(transport.hostServicesBorrows == 0)
+        #expect(store.rowChanges.store(for: row) != nil)
+        try await waitUntil("a Changes read") { transport.hostServicesBorrows > 0 }
+    }
+
+    @Test func aCoreHostHoldsItsTerminalsInEveryWindowAndNeverOffersTakeOver() {
+        let core = HostCapabilities(serverKind: .herdrCore)
+        #expect(!core.takeOver)
+        let away = HostTerminalAccess.liveInAnotherWindow(canTakeOver: true)
+        #expect(core.terminalAccess(away) == .holds)
+        #expect(LiveInAnotherWindowPresentation(access: core.terminalAccess(away)) == nil)
+
+        let tui = HostCapabilities(serverKind: .herdrTUI)
+        #expect(tui.takeOver)
+        #expect(tui.terminalAccess(away) == away)
+        #expect(tui.terminalAccess(nil) == .holds)
+    }
+
+    @Test func newTerminalIsOfferedBesideATerminalOnlyWhereItCanBeStarted() {
+        let core = HostCapabilities(serverKind: .herdrCore)
+        #expect(core.newTerminalRequest(workspaceID: "w1", cwd: "/srv/app") == nil)
+
+        let tui = HostCapabilities(serverKind: .herdrTUI)
+        #expect(
+            tui.newTerminalRequest(workspaceID: "w1", cwd: "/srv/app")
+                == ShellTerminalCreationRequest(workspaceID: "w1", cwd: "/srv/app"))
+        #expect(tui.newTerminalRequest(workspaceID: "w1", cwd: "") == nil)
     }
 
     @Test func aHerdrTUIAgentsRowOffersWhatItAlwaysDid() {

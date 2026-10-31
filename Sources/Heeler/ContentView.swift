@@ -65,6 +65,7 @@ struct ContentView: View {
             // registers. A dragged row's Agent needs the registration to
             // route through the single-window rule, so it goes last.
             let draggedRoute = restoreRoute()
+            app.console.sceneDidStart(sceneID)
             app.sceneDirectory.register(
                 sceneID: sceneID, router: notificationRouter, window: window,
                 activate: { activateWindow() })
@@ -81,6 +82,7 @@ struct ContentView: View {
         }
         .onDisappear {
             app.sceneDirectory.unregister(sceneID: sceneID)
+            app.console.sceneDidEnd(sceneID)
         }
         // A foreground return is not the user choosing this window; see
         // `SceneActivationTracker`. Moving between windows arrives through

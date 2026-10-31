@@ -215,6 +215,14 @@ final class AttachTerminalStore {
 
     private let target: TerminalAttachTarget
     private let takeover: Bool
+    /// How the next attach joins a herdr-core Terminal.
+    private var nextViewer: TerminalViewerRole
+    /// Once output has reached this pipeline its surface holds the scrollback,
+    /// and a reattach asking for it again would repeat every line.
+    private var hasTakenOutput = false
+    /// Whether anyone is looking at this pipeline's surface. A hidden core
+    /// attach reports neither focus nor display facts.
+    private(set) var isViewed: Bool
     private let input: TerminalInputController
     private let observeOutput: @MainActor @Sendable (Data) -> Void
     private let finishOutput: @MainActor @Sendable () -> Void
@@ -249,6 +257,7 @@ final class AttachTerminalStore {
 
     init(
         target: TerminalAttachTarget, takeover: Bool = false,
+        viewer: TerminalViewerRole = .interactive, isViewed: Bool = true,
         input: TerminalInputController = TerminalInputController(),
         transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
@@ -261,6 +270,8 @@ final class AttachTerminalStore {
     ) {
         self.target = target
         self.takeover = takeover
+        nextViewer = viewer
+        self.isViewed = isViewed
         self.input = input
         self.transportGeneration = transportGeneration
         self.observeOutput = observeOutput
@@ -268,6 +279,10 @@ final class AttachTerminalStore {
         self.transportReady = transportReady
         self.runDidFinish = runDidFinish
         self.runTerminal = runTerminal
+        feed.onDisplayFactsChange = { [weak self] facts in
+            guard let self, self.isViewed else { return }
+            self.session?.setPresence(.factsChanged(facts))
+        }
     }
 
     convenience init(
@@ -328,6 +343,12 @@ final class AttachTerminalStore {
     /// treat a byte handed to a sink object as proof that a frame was drawn.
     func didBecomeActive() {
         guard status == .live, let session, let cols, let rows, cols > 1 else { return }
+        if session.isCoreViewer {
+            // A core keeps painting to a viewer that went away for a moment;
+            // what it needs to hear is that this one is back.
+            if isViewed { session.setPresence(.viewed(feed.displayFacts)) }
+            return
+        }
         // A window-change only reaches the remote when the size actually
         // changes, so the nudge is a shrink followed by a restore. Both ride
         // the reliable input queue, in order, on the live channel; the
@@ -340,7 +361,15 @@ final class AttachTerminalStore {
     /// Reattaches after the session ended remotely.
     func retry() {
         guard case .ended = status, runTask == nil else { return }
+        nextViewer = .interactive
         start()
+    }
+
+    /// The surface came on or off screen while its session stays attached.
+    func setViewed(_ viewed: Bool) {
+        guard viewed != isViewed else { return }
+        isViewed = viewed
+        session?.setPresence(viewed ? .viewed(feed.displayFacts) : .hidden)
     }
 
     /// Ends the session by explicit close (only `end()` runs the channel's
@@ -400,6 +429,7 @@ final class AttachTerminalStore {
                 {
                     reattachesSinceLive += 1
                     status = .reconnecting
+                    nextViewer = .resumed
                     continue
                 }
                 status = .ended(Self.message(for: error))
@@ -412,14 +442,22 @@ final class AttachTerminalStore {
     }
 
     private func attach(cols: Int, rows: Int) async throws {
+        let viewer = isViewed ? nextViewer : .resumed
+        // A viewer back from a dropped line takes the size only once someone
+        // acts on it. One attached hidden that came into view while it was
+        // opening is someone acting on it.
+        let reportsOnceOpen = !isViewed || viewer == .interactive
         let request = TerminalAttachRequest(
-            target: target, takeover: takeover, cols: cols, rows: rows)
+            target: target, takeover: takeover, viewer: viewer,
+            displayFacts: isViewed ? feed.displayFacts : nil,
+            surfaceHasHistory: hasTakenOutput, cols: cols, rows: rows)
         let operation: TerminalSessionOperation = { [weak self] session in
             guard let self else {
                 await session.end()
                 return
             }
-            try await self.consume(session, initialCols: cols, initialRows: rows)
+            try await self.consume(
+                session, reportsOnceOpen: reportsOnceOpen, initialCols: cols, initialRows: rows)
         }
         let transportReady: @MainActor @Sendable (UInt64) -> Void = { [weak self] generation in
             guard let self else { return }
@@ -461,6 +499,7 @@ final class AttachTerminalStore {
 
     private func consume(
         _ session: TerminalAttachSession,
+        reportsOnceOpen: Bool,
         initialCols: Int,
         initialRows: Int
     ) async throws {
@@ -485,6 +524,9 @@ final class AttachTerminalStore {
             // remote PTY up to the latest geometry.
             session.resize(cols: latestCols, rows: latestRows)
         }
+        if isViewed, reportsOnceOpen {
+            session.setPresence(.viewed(feed.displayFacts))
+        }
 
         do {
             for try await bytes in session.output {
@@ -501,7 +543,8 @@ final class AttachTerminalStore {
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
                 #endif
                 observeOutput(bytes)
-                feed.write(bytes)
+                hasTakenOutput = true
+                feed.write(bytes, consumed: { session.outputConsumed($0) })
             }
         } catch {
             finishSession(inputGeneration)
