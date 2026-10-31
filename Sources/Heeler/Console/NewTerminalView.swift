@@ -86,10 +86,12 @@ struct NewTerminalView: View {
                 } header: {
                     Text("Workspace")
                 } footer: {
-                    if !store.offersWorkspaceAndTabNames {
-                        Text("Starts a shell in this directory. Terminals in the same directory are grouped together.")
-                    } else if store.target == .newWorkspace {
-                        Text("Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
+                    if store.target == .newWorkspace {
+                        if store.offersWorkspaceAndTabNames {
+                            Text("Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
+                        } else {
+                            Text("Starts a shell in this directory. Terminals in the same directory are grouped together.")
+                        }
                     } else if let selectedWorkspaceTitle {
                         Text("Opens a new shell tab in \(selectedWorkspaceTitle). Choose New Workspace in the menu to start somewhere else.")
                     }

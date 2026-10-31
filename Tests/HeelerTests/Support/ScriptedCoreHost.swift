@@ -55,6 +55,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// framed by the nonce and names the pid the script asked about.
     enum ProcessRead: Sendable {
         case names([String])
+        /// The environment holds these variables.
+        case values([String: String])
         /// The reader could not read that process's environment.
         case unreadable
         case exits(status: Int32, stdout: String)
@@ -163,6 +165,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var isProcessReadHeld = false
     private var heldProcessReads: [CheckedContinuation<Void, Never>] = []
     private var processReadWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var agentDiscovery = GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 0)
 
     /// Everything that happened, in order.
     private(set) var log: [String] = []
@@ -172,6 +175,8 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private(set) var sockets: [FakeCoreSocket] = []
     /// Every channel-0 method the core received, oldest first.
     private(set) var methods: [String] = []
+    /// The params of every `terminal.run` the core received, oldest first.
+    private(set) var runs: [JSONValue] = []
     /// Every attach the core received, oldest first, with the channel it named.
     private(set) var attaches: [(channel: UInt32, params: JSONValue, socket: FakeCoreSocket)] = []
     private var methodWaiters: [(method: String, count: Int, continuation: CheckedContinuation<Void, Never>)] = []
@@ -182,6 +187,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var changes: CheckoutChangesRead?
     private var skills: [AgentSkill] = []
     private var attachRefusals: [String] = []
+    private var runReply: JSONValue?
     private var isHoldingAttachReplies = false
     private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
     private var heldTerminalReads: [(socket: FakeCoreSocket, id: String)] = []
@@ -243,6 +249,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         switch read {
         case .names(let names):
             answer = names.map { "N \(pid) \($0)" } + ["E \(pid) ok"]
+        case .values(let values):
+            answer = values.map { name, value in
+                "V \(pid) \(name) " + value.utf8.map { String(format: "%02x", $0) }.joined()
+            } + ["E \(pid) ok"]
         case .unreadable:
             answer = ["E \(pid) -"]
         case .exits(let status, let stdout):
@@ -253,6 +263,12 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         let lines = ["__HEELER_PROC_BEGIN_\(Self.nonce)"] + answer + ["", "__HEELER_PROC_END_\(Self.nonce)"]
         return GitExecResult(
             stdout: Data((lines.joined(separator: "\n") + "\n").utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
+        log.append("agent-discovery")
+        scripts.append(String(decoding: script, as: UTF8.self))
+        return agentDiscovery
     }
 
     private var processReadCount: Int { log.filter { $0 == "process-read" }.count }
@@ -337,6 +353,9 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
                 } else {
                     try? await socket.reply(to: request.id, result: result)
                 }
+            case "terminal.run":
+                runs.append(request.params)
+                if let runReply { try? await socket.reply(to: request.id, result: runReply) }
             case "server.status": try? await socket.reply(to: request.id, result: core.statusResult)
             // A real core's answer for a name nobody wrote.
             case "doc.get" where core.answersDocumentReads:
@@ -375,6 +394,16 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     /// Whether the SSH connection is up.
     func setConnected(_ connected: Bool) {
         self.connected = connected
+    }
+
+    /// What each `terminal.run` answers. Nil leaves it unanswered.
+    func setRunReply(_ reply: JSONValue?) {
+        runReply = reply
+    }
+
+    /// What the next agent discovery's exec prints.
+    func setAgentDiscovery(stdout: String, status: Int32 = 0) {
+        agentDiscovery = GitExecResult(stdout: Data(stdout.utf8), stderr: Data(), exitStatus: status)
     }
 
     /// What the next process read answers.
