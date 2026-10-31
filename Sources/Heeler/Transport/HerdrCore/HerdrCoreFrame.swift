@@ -46,6 +46,10 @@ struct HerdrCoreFrame: Equatable, Sendable {
             payload: littleEndian(columnsSide) + littleEndian(rowsSide))
     }
 
+    static func focus(channel: UInt32, gained: Bool) -> HerdrCoreFrame {
+        HerdrCoreFrame(channel: channel, kind: .focus, payload: Data([gained ? 1 : 0]))
+    }
+
     func encoded() throws -> Data {
         guard payload.count <= Self.maximumPayload else {
             throw HerdrCoreFrameError.oversized(length: payload.count)

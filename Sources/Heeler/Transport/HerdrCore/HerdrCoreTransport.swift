@@ -49,6 +49,11 @@ protocol HerdrCoreTransport: Sendable {
     /// cursor from its own snapshot, and no event number outlives the link.
     func subscribeEvents() async throws -> HerdrCoreEventStream
 
+    /// Opens a live terminal as a channel of its own on the link, so several
+    /// use no further SSH sessions (ADR 0031). `request.takeover` means nothing
+    /// to a core; its role says how the viewer joins.
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession
+
     /// One channel-0 call. A mutation the link had already handed to its
     /// writer when the link ended throws `.coreMutationOutcomeUnknown`, and
     /// nothing here sends it again.
@@ -223,6 +228,12 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     func subscribeEvents() async throws -> HerdrCoreEventStream {
         try await onLink { link in try await link.subscribeEvents(deadline: Self.callDeadline) }
+    }
+
+    func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        try await onLink { link in
+            try await HerdrCoreAttach.open(on: link, request: request, deadline: Self.callDeadline)
+        }
     }
 
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
