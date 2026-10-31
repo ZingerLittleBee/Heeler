@@ -48,7 +48,8 @@ import Testing
         case "snapshot":
             count = try #require(step.turn)
             return state.noteSnapshot(
-                turn: count, word: step.state, kind: kind, reported: try #require(step.reported))
+                turn: count, word: step.state, kind: kind,
+                reported: try #require(step.reported as Bool?))
         case "status":
             return state.noteStatus(word: step.state, turn: count, kind: kind)
         case "turn":
