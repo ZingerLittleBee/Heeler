@@ -739,33 +739,7 @@ struct AgentComposerFoldHostedTests {
     }
 
     private static func accessible(labeled label: String, in root: UIView) -> NSObject? {
-        var visited = Set<ObjectIdentifier>()
-        var match: NSObject?
-        func visit(_ node: NSObject) {
-            guard match == nil, visited.insert(ObjectIdentifier(node)).inserted else { return }
-            if node.accessibilityLabel == label {
-                match = node
-                return
-            }
-            for element in node.accessibilityElements ?? [] {
-                if let object = element as? NSObject { visit(object) }
-            }
-            // SwiftUI containers can expose an empty or incomplete array
-            // while their indexed accessibility API owns the live controls.
-            let count = node.accessibilityElementCount()
-            if count > 0, count != NSNotFound {
-                for index in 0..<count {
-                    if let object = node.accessibilityElement(at: index) as? NSObject {
-                        visit(object)
-                    }
-                }
-            }
-            if let view = node as? UIView {
-                for subview in view.subviews { visit(subview) }
-            }
-        }
-        visit(root)
-        return match
+        accessibleElement(labeled: label, in: root)
     }
 
     private static func eventually(

@@ -494,20 +494,6 @@ struct HerdrCoreAgentsTests {
         #expect(tui.newTerminalRequest(workspaceID: "w1", cwd: "") == nil)
     }
 
-    /// What the menus offer on a core Host, from the capabilities that build
-    /// them: live terminal tools stay, and what is not built yet is gone.
-    @Test func aCoreAgentsMenusHideWhatIsNotBuiltYet() {
-        let actions = AgentComposerActions(
-            canBegin: true, attachLinkCount: 0, addImage: nil, addFile: nil, showAttachLinks: {},
-            openTerminal: nil, isOpeningTerminal: false, showChanges: {}, startAgent: nil,
-            manageSnippets: {}, showSkills: {}, showWorktreeDetails: nil, renameAgent: nil,
-            renameWorkspace: nil, closeAgent: nil, backToConsole: {})
-        let visible = AgentActionMenuPolicy.directInputMoreSections
-            .flatMap(\.items)
-            .filter { AgentActionMenuPolicy.isVisible($0, actions: actions) }
-        #expect(visible == [.backToConsole, .openTerminal, .changes, .skills, .snippets])
-    }
-
     @Test func aHerdrTUIAgentsRowOffersWhatItAlwaysDid() {
         let capabilities = HostCapabilities(serverKind: .herdrTUI)
         #expect(

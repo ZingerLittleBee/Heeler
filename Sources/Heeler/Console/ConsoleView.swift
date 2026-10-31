@@ -1393,10 +1393,9 @@ struct ConsoleView: View {
                                 && console.chatDisplayAgents.contains(where: { $0.id == id })
                                 && currentTab == tab
                         },
-                        terminalAccess: { [sceneRouting] in
-                            console.capabilities(for: id.hostID)
-                                .terminalAccess(sceneRouting?.terminalAccess(for: id.hostID))
-                        }),
+                        hostID: id.hostID,
+                        console: console,
+                        sceneRouting: sceneRouting),
                     onSwitch: { selectAgent($0) },
                     onClosed: { clearSelection() },
                     onSelectTerminal: { selectTerminal($0) },
@@ -2755,6 +2754,25 @@ struct AgentDetailStage {
     /// Attach start, resize and rejoin: visible and holding the Host's channel.
     func isOnStage() -> Bool {
         isVisible() && terminalAccess() == .holds
+    }
+}
+
+extension AgentDetailStage {
+    /// A detail in a window of the app: whether it holds its Host's channel is
+    /// the scene directory's say, on a Host that has one to hand over.
+    @MainActor
+    init(
+        isVisible: @escaping () -> Bool,
+        hostID: Host.ID,
+        console: ConsoleStore,
+        sceneRouting: AgentSceneRouting?
+    ) {
+        self.init(
+            isVisible: isVisible,
+            terminalAccess: {
+                console.capabilities(for: hostID)
+                    .terminalAccess(sceneRouting?.terminalAccess(for: hostID))
+            })
     }
 }
 

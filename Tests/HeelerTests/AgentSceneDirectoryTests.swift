@@ -84,7 +84,7 @@ struct AgentDeepLinkPolicyTests {
 }
 
 @MainActor
-private final class FakeSceneWindow: AgentSceneWindow {
+final class FakeSceneWindow: AgentSceneWindow {
     var sceneWindowState = AgentSceneWindowState.connected
     var windowScene: UIScene?
 }

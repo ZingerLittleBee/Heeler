@@ -93,13 +93,21 @@ struct HerdrCoreTerminalStoreTests {
 
         /// A window showing `agent`'s detail, built as the Console builds it.
         /// `sceneID` puts it under a scene root, as a real window is.
-        func showDetail(of agent: ConsoleAgent, sceneID: UUID? = nil) async throws -> CoreDetailWindow {
+        func showDetail(
+            of agent: ConsoleAgent, sceneID: UUID? = nil, inputMode: AgentInputMode = .composer,
+            readsHostChanges: Bool = false
+        ) async throws -> CoreDetailWindow {
             let settings = try Self.makeSettings()
             let defaults = try #require(UserDefaults(suiteName: "core-detail-\(UUID().uuidString)"))
+            let inputModeSettings = AgentInputModeSettings(defaults: defaults)
+            inputModeSettings.select(inputMode)
             let selection = HostedDetailSelection()
-            let changes = AgentChangesPresentation {
-                ChangesStore(directory: { "/work/app" }) { _ in throw ChangesReadError.unavailable }
-            }
+            let changes =
+                readsHostChanges
+                ? nil
+                : AgentChangesPresentation {
+                    ChangesStore(directory: { "/work/app" }) { _ in throw ChangesReadError.unavailable }
+                }
             let console = console
             let activity = AppActivityCoordinator()
             let handoff = TerminalKeyboardHandoff()
@@ -111,7 +119,7 @@ struct HerdrCoreTerminalStoreTests {
                         agent: agent,
                         console: console,
                         terminal: settings,
-                        inputMode: AgentInputModeSettings(defaults: defaults),
+                        inputMode: inputModeSettings,
                         detailSurface: AgentDetailSurfaceSettings(defaults: defaults),
                         hosts: [],
                         activity: activity,
@@ -119,9 +127,12 @@ struct HerdrCoreTerminalStoreTests {
                         keyboardInset: inset,
                         stage: AgentDetailStage(
                             isVisible: { [selection] in selection.showsDetail },
-                            terminalAccess: { .holds }),
+                            hostID: agent.hostID,
+                            console: console,
+                            sceneRouting: routing),
                         onSwitch: { _ in },
                         onClosed: {},
+                        onSelectTerminal: { _ in },
                         changesPresentation: changes)
                 })
             let window = try await makeTestWindow(
@@ -167,6 +178,20 @@ struct HerdrCoreTerminalStoreTests {
                 zoom: TerminalZoomSettings(defaults: defaults),
                 fonts: TerminalFontSettings(defaults: defaults),
                 snippets: SnippetStore(defaults: defaults))
+        }
+
+        /// Two windows on `agent`, as the app registers them, `holder` the one
+        /// worked in last. What the scene directory then says of `other`.
+        func registerWindows(on agent: ConsoleAgent, holder: UUID, other: UUID) -> HostTerminalAccess {
+            for sceneID in [other, holder] {
+                let router = AgentNotificationRouter()
+                router.agentsDidChange([agent])
+                directory.register(sceneID: sceneID, router: router, window: FakeSceneWindow()) {}
+                router.path = [agent.id]
+                directory.sceneRouteDidChange(sceneID: sceneID)
+                directory.sceneDidBecomeActive(sceneID: sceneID)
+            }
+            return directory.terminalAccess(sceneID: other, hostID: agent.hostID)
         }
 
         /// The `count`th attach on the Host, once `detail` has asked for it.
@@ -342,8 +367,9 @@ struct HerdrCoreTerminalStoreTests {
         store.setViewed(true)
         await fixture.scripted.releaseAttachReplies()
 
-        let focus = await attach.socket.waitForFrame(channel: attach.channel, kind: .focus)
-        #expect(focus.payload == Data([1]))
+        try await Self.until("focus") {
+            await attach.socket.frames(channel: attach.channel, kind: .focus).map(\.payload) == [Data([1])]
+        }
         store.feed.updateDisplayFacts { $0 = Self.facts }
         _ = await attach.socket.waitForFrame(channel: attach.channel, kind: .facts)
         await store.stop()
@@ -710,6 +736,149 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    // MARK: What a core Agent's detail offers
+
+    /// The header's More, and the input chrome's: the Composer's and Direct
+    /// Input's offer the same, since Direct Input's Add entries are hidden too.
+    private static let coreAgentMenus: Set<[String]> = [
+        ["Terminals", "Changes", "Collapse"],
+        ["Back to Console", "Open Terminal", "Changes", "Skills", "Snippets"],
+    ]
+    /// On screen for a Host that has them; none are built for a core Host yet.
+    private static let notBuiltLabels = ["Add", "Send", "Stop", "Take Over", "Take Over Here"]
+
+    /// A Composer that cannot send hides Send, Stop and Add, and the Agent is
+    /// working, so Stop is what a Host that can would show.
+    @Test func aCoreAgentsDetailShowsItsTerminalAndOffersOnlyWhatIsBuilt() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        #expect(agent.agent.status == .working)
+        let detail = try await fixture.showDetail(of: agent)
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("x", on: attach)
+        #expect(attach.params["takeover"] == nil)
+        #expect(detail.surface != nil)
+
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
+
+        let menus = try await HostedMenu.items(labeled: "More", in: detail.window)
+        #expect(Set(menus) == Self.coreAgentMenus, "\(menus)")
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func aCoreAgentsDirectInputOffersOnlyWhatIsBuiltAndTypesIntoItsAttach() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent, inputMode: .direct)
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("x", on: attach)
+        try await Self.until("Direct Input") { detail.offers("Escape") }
+        for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
+
+        let menus = try await HostedMenu.items(labeled: "More", in: detail.window)
+        #expect(Set(menus) == Self.coreAgentMenus, "\(menus)")
+
+        let escape = try #require(accessibleElement(labeled: "Escape", in: detail.window))
+        #expect(escape.accessibilityActivate())
+        let key = await attach.socket.waitForFrame(channel: attach.channel, kind: .data)
+        #expect(key.payload == Data([0x1B]))
+
+        (try #require(detail.surface) as UIKeyInput).insertText("hi")
+        try await Self.until("what the user typed") {
+            let typed = await attach.socket.frames(channel: attach.channel, kind: .data)
+            return typed.dropFirst().reduce(into: Data()) { $0.append($1.payload) } == Data("hi".utf8)
+        }
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// The menu's own entry, on the store the detail builds for itself, reads
+    /// through the Host's services rather than a Herdr TUI transport.
+    @Test func aCoreAgentsChangesEntryOpensTheHostsChanges() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        await fixture.scripted.setChanges(
+            CheckoutChangesRead(
+                changes: CheckoutChanges(
+                    checkout: CheckoutLocation(
+                        topLevel: Data("/work/app".utf8), isLinkedWorktree: false, displayPath: "/work/app"),
+                    head: CheckoutHead(branch: .named("main"), commit: "abc", latestCommit: nil),
+                    files: [
+                        ChangedFile(
+                            path: Data("src/app.swift".utf8), originalPath: nil, kind: .modified,
+                            staging: .unstaged)
+                    ]),
+                directoryPrefix: Data()))
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent, readsHostChanges: true)
+        _ = try await fixture.waitForAttach(1, laying: detail)
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        #expect(!detail.reads("app.swift"))
+
+        try await HostedMenu.select("Changes", labeled: "More", in: detail.window)
+
+        try await Self.until("the Host's changed file on screen") { detail.reads("app.swift") }
+        #expect(await fixture.scripted.changesReads.allSatisfy { $0.directory == "/work/app" })
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func aCoreAgentsSkillsEntryListsTheHostsSkills() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        await fixture.scripted.setSkills([AgentSkill(scope: .project, name: "lab-review", description: nil)])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        _ = try await fixture.waitForAttach(1, laying: detail)
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+
+        try await HostedMenu.select("Skills", labeled: "More", in: detail.window)
+
+        try await Self.until("the Host's skill on screen") { detail.reads("lab-review") }
+        #expect(
+            await fixture.scripted.skillQueries.last
+                == SkillListQuery(kind: .claude, projectRoot: "/work/app"))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func aCoreAgentsDrawerCannotStartATerminal() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord, Self.shellRecord(address: "t2")])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        _ = try await fixture.waitForAttach(1, laying: detail)
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+
+        try await HostedMenu.select("Terminals", labeled: "More", in: detail.window)
+
+        try await Self.until("the drawer") { detail.offers("Hide Workspace terminals") }
+        #expect(!detail.offers("New Terminal"))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// The directory does say another window holds the Host's channel: a core
+    /// Host has no channel to hand over, so this window just shows its terminal.
+    @Test func aWindowBesideAnotherOnACoreHostIsLiveWithNoOfferToTakeOver() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let other = UUID()
+        #expect(
+            fixture.registerWindows(on: agent, holder: UUID(), other: other)
+                == .liveInAnotherWindow(canTakeOver: true))
+
+        let detail = try await fixture.showDetail(of: agent, sceneID: other)
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("x", on: attach)
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+
+        #expect(detail.surface != nil)
+        #expect(!detail.offers("Live in Another Window"))
+        #expect(!detail.offers(LiveInAnotherWindowPresentation.takeOverTitle))
+        await detail.close()
+        await fixture.finish()
+    }
+
     // MARK: Windows
 
     @Test func aSecondWindowOnAnAgentAlreadyShownIsASecondViewer() async throws {
@@ -744,7 +913,7 @@ struct HerdrCoreTerminalStoreTests {
         try await fixture.deliverOutput("x", on: held)
         let surface = try #require(first.surface)
 
-        first.changes.open()
+        try #require(first.changes).open()
         try await Self.until("the terminal to go quiet under Changes") {
             first.layOut()
             return await held.socket.frames(channel: held.channel, kind: .focus).last?.payload == Data([0])
@@ -755,7 +924,7 @@ struct HerdrCoreTerminalStoreTests {
         #expect(second.surface != nil)
         #expect(second.surface !== surface)
 
-        first.changes.close()
+        try #require(first.changes).close()
         try await Self.until("the first window's terminal to come back") {
             first.layOut()
             return first.surface != nil
@@ -953,11 +1122,49 @@ struct HerdrCoreTerminalStoreTests {
 
     // MARK: Shell Terminal windows
 
-    private static let shellRecord: JSONValue = .object([
-        "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
-        "argv": .array([.string("/bin/zsh")]), "keep": .bool(false), "title": .string(""),
-        "cols": .number(80), "rows": .number(24), "pid": .number(7),
-    ])
+    private static func shellRecord(address: String) -> JSONValue {
+        .object([
+            "address": .string(address), "cwd": .string("/work/app"), "state": .string("live"),
+            "argv": .array([.string("/bin/zsh")]), "keep": .bool(false), "title": .string(""),
+            "cols": .number(80), "rows": .number(24), "pid": .number(7),
+        ])
+    }
+
+    private static let shellRecord = shellRecord(address: "t1")
+
+    @Test func aCoreTerminalThatEndsOffersReattachAndNoTakeOver() async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let screen = try await fixture.showShell(of: terminal, sceneID: UUID())
+        let attach = try await fixture.waitForAttach(1, laying: screen)
+        try await attach.socket.deliver(
+            HerdrCoreFrame(
+                channel: attach.channel, kind: .close,
+                payload: Data(#"{"reason":"exited","exit_code":0}"#.utf8)))
+
+        try await Self.until("the ended screen") { screen.offers("Reattach") }
+        #expect(!screen.offers("Take Over"))
+        await screen.close()
+        await fixture.finish()
+    }
+
+    @Test func aCoreTerminalsMenusHaveNoCloseOrNewTerminalUntilTheyAreBuilt() async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let screen = try await fixture.showShell(of: terminal, sceneID: UUID())
+        let attach = try await fixture.waitForAttach(1, laying: screen)
+        try await fixture.deliverOutput("x", on: attach)
+        try await Self.until("the terminal's menu") { screen.offers("More") }
+
+        let menus = try await HostedMenu.items(labeled: "More", in: screen.window)
+        #expect(menus == [["Terminals", "Collapse"], ["Back to Console"]], "\(menus)")
+
+        try await HostedMenu.select("Terminals", labeled: "More", in: screen.window)
+        try await Self.until("the drawer") { screen.offers("Hide Workspace terminals") }
+        #expect(!screen.offers("New Terminal"))
+        await screen.close()
+        await fixture.finish()
+    }
 
     /// Closing the window changes nothing the screen's selection reads, so
     /// the screen never releases; the scene root says so instead. The Terminal
@@ -1205,12 +1412,13 @@ private struct HostedCoreDetail: View {
 @MainActor
 private final class CoreDetailWindow {
     let selection: HostedDetailSelection
-    let changes: AgentChangesPresentation
+    /// The Changes the test handed the detail. Nil: the detail built its own.
+    let changes: AgentChangesPresentation?
     let activity: AppActivityCoordinator
     let window: UIWindow
 
     init(
-        selection: HostedDetailSelection, changes: AgentChangesPresentation,
+        selection: HostedDetailSelection, changes: AgentChangesPresentation?,
         activity: AppActivityCoordinator, window: UIWindow
     ) {
         self.selection = selection
@@ -1220,6 +1428,21 @@ private final class CoreDetailWindow {
     }
 
     func layOut() { window.layoutIfNeeded() }
+
+    /// Whether accessibility finds a control or text with this label.
+    func offers(_ label: String) -> Bool {
+        layOut()
+        return accessibleElement(labeled: label, in: window) != nil
+    }
+
+    /// Whether anything on screen, sheets included, reads with this text.
+    func reads(_ text: String) -> Bool {
+        layOut()
+        return accessibleElements(in: window).contains { $0.accessibilityLabel?.contains(text) == true }
+            || window.rootViewController?.presentedViewController.map { sheet in
+                accessibleElements(in: sheet.view).contains { $0.accessibilityLabel?.contains(text) == true }
+            } == true
+    }
 
     /// The terminal this window shows, while one is in its hierarchy.
     var surface: HeelerTerminalView? {
@@ -1239,6 +1462,7 @@ private final class CoreDetailWindow {
     }
 
     func close() async {
+        window.rootViewController?.presentedViewController?.dismiss(animated: false)
         await hideTestWindowWhenSettled(window)
         window.rootViewController = nil
     }
