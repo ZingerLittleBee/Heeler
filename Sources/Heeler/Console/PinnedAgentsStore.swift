@@ -92,6 +92,12 @@ final class PinnedAgentsStore {
         drop { $0.hostID == hostID && !paneIDs.contains($0.paneID) }
     }
 
+    /// Drops all of this Host's pins. Only herdr-core Hosts call this: another
+    /// core's addresses are not these.
+    func removePins(hostID: Host.ID) {
+        drop { $0.hostID == hostID }
+    }
+
     private func drop(where shouldDrop: (Entry) -> Bool) {
         let kept = entries.filter { !shouldDrop($0) }
         guard kept.count != entries.count else { return }

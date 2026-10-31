@@ -175,6 +175,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             if status != .connected { invalidateInventory() }
             publish()
         case .snapshot(let snapshot, let coreID):
+            // Pins go first: a crash in between still finds another core next time.
+            if let known = memory.coreID(for: host.id), known != coreID {
+                pins.removePins(hostID: host.id)
+            }
             memory.noteCore(coreID, for: host.id)
             replaceInventory(with: snapshot)
         case .event(let event):

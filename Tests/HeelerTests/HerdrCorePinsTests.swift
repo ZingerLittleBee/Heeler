@@ -109,7 +109,7 @@ struct HerdrCorePinsTests {
         store.togglePin(hostID: host.id, paneID: "t2")
 
         #expect(listed(store) == ["t2", "t1"])
-        store.setHosts([])
+        await store.suspend()
 
         let relaunched = try await launch(
             on: defaults, [host.id: ScriptedCoreTransport(subscribeResults: [firstResult])])
@@ -188,7 +188,7 @@ struct HerdrCorePinsTests {
             ])])
         store.togglePin(hostID: host.id, paneID: "t1")
         store.togglePin(hostID: host.id, paneID: "t2")
-        store.setHosts([])
+        await store.suspend()
 
         let relaunched = try await launch(
             on: defaults,
@@ -250,5 +250,109 @@ struct HerdrCorePinsTests {
         #expect(store.pins.pinnedPaneIDs(for: host.id) == ["t2", "t1"])
         #expect(persistedPins(on: defaults) == ["t2", "t1"])
         #expect(listed(store) == ["t2", "t1", "t9"])
+    }
+
+    // MARK: Another core
+
+    /// The new core's addresses start over, so its Terminals can have the same
+    /// addresses as the Pins it must not inherit.
+    @Test func anotherCoreIDDropsAllOfThatHostsPinsAndLeavesOtherHosts() async throws {
+        let defaults = try device()
+        let wiped = ScriptedCoreTransport(coreID: "c1", subscribeResults: [
+            Self.subscribeResult([Self.agent("t1"), Self.agent("t2")]),
+            Self.subscribeResult(sequence: 1, [Self.agent("t1"), Self.agent("t2"), Self.agent("t9")]),
+        ])
+        let other = ScriptedCoreTransport(coreID: "c1", subscribeResults: [
+            Self.subscribeResult([Self.agent("t1"), Self.agent("t2")])
+        ])
+        let store = try await launch(on: defaults, [host.id: wiped, otherHost.id: other])
+        defer { store.setHosts([]) }
+        store.togglePin(hostID: host.id, paneID: "t1")
+        store.togglePin(hostID: host.id, paneID: "t2")
+        store.togglePin(hostID: otherHost.id, paneID: "t1")
+
+        await wiped.setCoreID("c2")
+        await wiped.endLink()
+        try await waitUntil("the new core's snapshot") { listed(store).contains("t9") }
+
+        #expect(store.pins.pinnedPaneIDs(for: host.id).isEmpty)
+        #expect(persistedPins(on: defaults).isEmpty)
+        #expect(store.pins.pinnedPaneIDs(for: otherHost.id) == ["t1"])
+        #expect(persistedPins(on: defaults, for: otherHost) == ["t1"])
+        #expect(listed(store, on: otherHost).first == "t1")
+    }
+
+    @Test func aCoreWipedWhileTheAppWasClosedLosesThePinsAtTheNextLaunch() async throws {
+        let defaults = try device()
+        let terminals = Self.subscribeResult([Self.agent("t1")])
+        let store = try await launch(
+            on: defaults, [host.id: ScriptedCoreTransport(coreID: "c1", subscribeResults: [terminals])])
+        store.togglePin(hostID: host.id, paneID: "t1")
+        await store.suspend()
+
+        let relaunched = try await launch(
+            on: defaults, [host.id: ScriptedCoreTransport(coreID: "c2", subscribeResults: [terminals])])
+        defer { relaunched.setHosts([]) }
+
+        #expect(relaunched.pins.pinnedPaneIDs(for: host.id).isEmpty)
+        #expect(persistedPins(on: defaults).isEmpty)
+    }
+
+    /// With no core remembered, nothing says this one is another. Its snapshot
+    /// still rules on each address.
+    @Test func theFirstCoreRememberedForAHostIsNoOtherCore() async throws {
+        let defaults = try device()
+        let earlier = PinnedAgentsStore(defaults: defaults)
+        earlier.togglePin(hostID: host.id, paneID: "t1")
+        earlier.togglePin(hostID: host.id, paneID: "t2")
+
+        let store = try await launch(
+            on: defaults,
+            [host.id: ScriptedCoreTransport(subscribeResults: [
+                Self.subscribeResult([Self.agent("t1")])
+            ])])
+        defer { store.setHosts([]) }
+
+        #expect(store.pins.pinnedPaneIDs(for: host.id) == ["t1"])
+    }
+
+    // MARK: Herdr TUI
+
+    /// Its pane ids return after a herdr restart, so its Pins are never pruned.
+    @Test func aHerdrTUISnapshotMissingAPinnedPaneKeepsThePin() async throws {
+        let defaults = try device()
+        let tuiHost = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1"), .fixture(paneID: "w1:p2")]))
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10), pins: PinnedAgentsStore(defaults: defaults),
+            makeSession: { _, subscriptions in
+                EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+            })
+        defer { store.setHosts([]) }
+        store.setHosts([tuiHost])
+        await store.resume()
+        try await waitUntil("the Agents") { store.agents.count == 2 }
+        store.togglePin(hostID: tuiHost.id, paneID: "w1:p1")
+
+        await transport.setSnapshot(.fixture(agents: [.fixture(paneID: "w1:p2"), .fixture(paneID: "w1:p3")]))
+        #expect(await transport.emit(HerdrEvent(
+            kind: GlobalEventKind.paneAgentDetected.kind,
+            data: .object(["pane_id": .string("w1:p3")]))) == true)
+        try await waitUntil("the snapshot without it") {
+            store.agents.contains { $0.agent.paneID == "w1:p3" }
+                && !store.agents.contains { $0.agent.paneID == "w1:p1" }
+        }
+
+        #expect(store.pins.isPinned(hostID: tuiHost.id, paneID: "w1:p1"))
+        #expect(persistedPins(on: defaults, for: tuiHost) == ["w1:p1"])
+
+        await transport.setSnapshot(.fixture(agents: [.fixture(paneID: "w1:p1"), .fixture(paneID: "w1:p2")]))
+        #expect(await transport.emit(HerdrEvent(
+            kind: GlobalEventKind.paneAgentDetected.kind,
+            data: .object(["pane_id": .string("w1:p1")]))) == true)
+        try await waitUntil("the same pane id back, at the top") {
+            store.agents.first?.agent.paneID == "w1:p1"
+        }
     }
 }

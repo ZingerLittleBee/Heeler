@@ -122,6 +122,27 @@ struct PinnedAgentsStoreTests {
         #expect(store.pinnedPaneIDs(for: hostID) == ["t1"])
     }
 
+    @Test func removingAHostsPinsLeavesOtherHosts() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = PinnedAgentsStore(defaults: defaults)
+        let hostA = UUID()
+        let hostB = UUID()
+        store.togglePin(hostID: hostA, paneID: "t1")
+        store.togglePin(hostID: hostB, paneID: "t1")
+        store.togglePin(hostID: hostA, paneID: "t2")
+        let revision = store.revision
+
+        store.removePins(hostID: hostA)
+        store.removePins(hostID: hostA)
+
+        #expect(store.pinnedPaneIDs(for: hostA).isEmpty)
+        #expect(store.pinnedPaneIDs(for: hostB) == ["t1"])
+        #expect(store.revision == revision + 1)
+        #expect(PinnedAgentsStore(defaults: defaults).pinnedPaneIDs(for: hostA).isEmpty)
+        #expect(PinnedAgentsStore(defaults: defaults).pinnedPaneIDs(for: hostB) == ["t1"])
+    }
+
     @Test func malformedDataStartsEmptyWithoutCrashing() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
