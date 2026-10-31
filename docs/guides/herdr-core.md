@@ -1,17 +1,59 @@
-# Connect herdr-app / herdr-core
+# Connect herdr-core
 
-Agents started by the desktop herdr-app belong to herdr-core. They do not appear in the legacy herdr TUI server, even when both servers run under the same SSH account. Add a separate Host for each backend you want to use.
+Agents started by the desktop herdr-app belong to herdr-core, a server of their own. They do not appear in the Herdr TUI server, even when both run under the same SSH account, so each one is a Host of its own in Heeler. Heeler reads herdr-core 0.1.13. The app and the core have separate version numbers.
 
-1. Install `hc` (or `herdr-core`) on the Host and start herdr-app. Heeler supports the generation-one API. The compatibility observations cover herdr-core 0.1.13 and herdr-app 0.1.7; the app and core have separate version numbers.
-2. In Heeler, choose **Add Host**, enter the SSH account and Route, and choose **herdr-app / herdr-core** under **Backend**.
-3. Use Device Key, RSA Key, or Password authentication. For a Device Key, copy the form's public-key line into the Host's `~/.ssh/authorized_keys`. The private key stays on the phone. The TUI plugin's Pairing Code does not select core.
-4. Leave Session blank for `default`, or enter the desktop core's `HC_SESSION` name. Test the connection and open the Console.
+## Add a Host
 
-Heeler runs `hc connect` and `hc attach` over SSH, verifying the core executable in the usual user-local and package-manager locations. Each command selects `HC_SESSION` and clears inherited terminal/socket overrides; it never falls back to legacy herdr. Core resolves its own socket, including `/run/user/<uid>/herdr-core/default.sock` on Linux when the SSH login has no `XDG_RUNTIME_DIR`. A custom installation can provide a core-compatible launcher on the SSH account's PATH that selects its configuration and runtime directories.
+1. In the Hosts tab, tap **+** and enter the SSH account and Route. Use Device Key, RSA Key, or Password authentication. For a Device Key, copy the form's public-key line into the Host's `~/.ssh/authorized_keys`. A Pairing Code always adds a Herdr TUI Host, so it is not the way to add this one.
+2. Leave Session blank for `default`, or enter the desktop core's `HC_SESSION` name.
+3. Save, and trust the Host's key. Heeler reads once what the machine runs, and that read starts nothing.
+4. Confirm what it found:
 
-`hc connect` can start core if the selected session is not running. A mistyped session can therefore connect successfully to a new, empty core. If Agents is empty, compare `hc ls` in the desktop's session with `HC_SESSION=default hc ls` through the same SSH account, substituting the selected session name when needed. A successful connection alone does not establish that Heeler found the desktop's session.
+   | Heeler found | You see |
+   | --- | --- |
+   | herdr-core | **Use herdr-core** |
+   | Herdr TUI | **Use Herdr TUI** |
+   | Both | Both choices. A Host is one kind: confirm one, then add the machine again for the other |
+   | Neither | Both choices. The one you confirm then says how to set it up |
 
-Recognized coding programs appear in Agents; ordinary shells and other programs appear in Terminals. A custom reported program name does not by itself add Agent support. Status comes from the program's core report, so an unreported program remains Unknown; Error keeps its own wording and asks for attention. A confirmed foreground shell removes an exited Agent despite its retained status report.
+A session name the server refuses leaves the Host unconfirmed and says why. The checks run after you confirm. A Host keeps its kind, so a Host you added before stays what it is.
+
+## Not running and Start
+
+Heeler never starts a core by connecting or checking, so a mistyped session name reads **herdr-core is not running** rather than an empty, new core. While the core is not running, the checks try again by themselves.
+
+| Host reads | What to do |
+| --- | --- |
+| **herdr-core is not installed** | Install it on the SSH PATH or at `~/.local/bin/herdr-core`, then check again |
+| **herdr-core is not running**, nothing listening at a socket path | Start the core. Check the session name if you expected it running |
+| **herdr-core is not running**, a socket file left behind | Start the core, or allow stream-local forwarding in the Host's SSH server. Heeler cannot tell these two apart from here |
+| **The SSH server refuses socket forwarding** | Allow stream-local forwarding in the Host's SSH server |
+| **herdr-core needs an update** | Run the update command it shows, then check again |
+| **The herdr-core socket path is too long** | Use a shorter session name, or set a shorter socket in the core's config |
+
+**Start herdr-core** appears under the checks on a Linux Host whose core is not running. It asks first, naming the session, the interactive login shell it starts through, and systemd linger, which it tries to turn on when it is off. The core then has the environment your own terminal has. If a core was already running by then, Heeler says so and that Start changed nothing. On macOS and Windows, Heeler says how to start the core yourself.
+
+## Console
+
+A core Host's Terminals follow the Herdr desktop's organization when the core has one. Heeler reads it and never changes it.
+
+- Each desktop space is a card under its own name, in the desktop's order. A row reads **Tab “name”**, or **Tab N** for a tab with no name.
+- A space that only a Terminal's label names follows the desktop's spaces, named for the folder of its git checkout, or for its directory outside one.
+- A Terminal started from another Terminal joins its parent's card, unless its own labels place it elsewhere.
+- Every other Terminal goes in a card named for its launch directory.
+
+A changed space, tab or label moves the rows within a moment, with no reconnect.
+
+## Agents and status
+
+A Terminal is an Agent while its foreground program is a known coding program, or any program but a shell that reports a status. Everything else stays in the Terminals tab. Quitting a harness back to its shell ends the Agent, whatever it last reported.
+
+| Status | What it means |
+| --- | --- |
+| **Unknown** | The program has not reported yet |
+| **Working**, **Idle** | What it reports. A program reporting done reads **Idle** |
+| **Blocked** | It waits for you |
+| **Error** | It reports an error, and sorts with **Blocked** |
 
 Tap **Unknown** on an Agent's status line to see why it reads that way. Each program reports its status from a release on: Claude Code 2.1.295, Codex 0.163, OpenCode 2.1, Pi 1.1.0 (earlier releases report through the [Host Helper](#host-helper)) and Oh My Pi 18.8.7, so an older one stays Unknown. No such release is known for Grok Build or for a program Heeler does not recognize. A Terminal that has reported but holds no state reads as not having reported a state yet. Heeler never works out a status from the screen.
 
@@ -21,17 +63,41 @@ If the file changed after Heeler read it, Heeler writes nothing and says so. If 
 
 **Undo** in the same sheet, or under **Harness Edits** in the Host's detail, puts the file back exactly as it was. It writes nothing if the file has changed since the edit. In that case undo the edit by hand, and **Stop Listing** drops it from the list. The list belongs to the device that made the edit. Heeler never edits Claude Code's settings, Codex's hooks or trusted hashes, or Grok Build's global hooks.
 
-Terminals are grouped by their launch directory, independently of the desktop's layout. Live attachment supports input and resize. You can start Agents and open or close terminals in an existing or new directory. A terminal created from Heeler is not automatically placed in the desktop layout: adopt it there when you want it in a desktop pane. Closing it ends its program on the desktop too.
+A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and no Close.
 
-Composer's **Insert into Terminal** action accepts one line without control characters. It inserts that line into the already connected live terminal without Enter. Check the terminal and press Enter yourself when ready to submit. Multiline or control-containing drafts stay local; copy multiline text and use the Terminal's reviewed **Paste** action. If the live terminal is unavailable, connect it before inserting. Core's queued send API cannot bind a submission to the same Agent process, so Heeler does not use it for automatic submission.
+**Agent List Fields** in Settings sets a core Host's rows, starting from Heeler's own fields. It offers the labels of the Host's Terminals, and no Sync from plugin, since no plugin runs there.
 
-Console previews read the current screen without scrolling the remote program. When an action may have reached core but no reply confirms it, Heeler reports that the outcome is unknown and does not automatically repeat it. Check the terminal before trying again.
+**Pins** are per Host and survive a core restart. A Pin goes when its Terminal is removed, and all of a Host's Pins go when its core was wiped and started new.
 
-The core CLI reserves its configured detach chord, **Ctrl+backslash** by default. Sending that chord closes the attachment instead of delivering it, and may discard later bytes in the same input chunk. A Host configured to detach on Ctrl+C also reserves the ordinary interrupt key. Reconnect to continue; the underlying program keeps running. Heeler does not override this core configuration.
+## Terminal
 
-Chat, the Heeler plugin, notifications, Live Activities, renaming, and creating/removing Worktrees are unavailable for this backend. Usage comes through the [Host Helper](#usage). Core does not supply the legacy plugin contract or exact transcript identity. Changes, files, and Skills still use the same Host's SSH filesystem. Terminals federated from another machine are omitted: add that machine directly as a Host so its file operations reach the right computer.
+Every terminal is a channel on the Host's one connection, so opening more costs no new SSH session. It is one of any number of viewers: the desktop can stay attached, typing takes the size, and no Take Over appears. Scrollback comes with it. Up to five terminals stay ready for five minutes after you leave them, and come back at once.
 
-Existing legacy Hosts stay on herdr. A manually configured Host can be edited or duplicated to select core. Before switching a legacy Host, turn off its notifications and wait for the remote update to finish; an unreachable original Host must be recovered before that registration can be removed. Hosts carrying a paired Herdr Endpoint retain that endpoint when edited or duplicated and cannot change backend. Add a new manual core Host for those accounts.
+Every key reaches the program, Ctrl+\ included. Heeler reserves no detach key.
+
+In an Agent detail, Direct Input types into the terminal, and Changes and Skills work as on any other Host.
+
+## Restarts and ended Terminals
+
+| What happened | Heeler shows |
+| --- | --- |
+| A kept Terminal lost its program, for example to a crash or a signal | **Restarting…** The core brings the Terminal back as a new shell at the same address, and an open terminal reattaches by itself, with no error and nothing to tap. An Agent detail stays open over the new shell |
+| A program exited, including your own `exit` | **Agent Ended** in an Agent detail, or **Terminal Closed** on a Terminal's own screen. The Terminal has ended for good, so nothing reattaches |
+
+The new shell is no Agent until you start one in it.
+
+## Core Environment
+
+A core started from inside another program can inherit variables that change how its programs behave. Host detail then shows **Core Environment**, naming each variable and what it breaks, never its value. Restarting the core from your own terminal fixes it. Heeler does not restart it.
+
+## Known limits
+
+- Heeler does not start Agents on a core Host yet, and has no New Terminal, Close or Rename there. Start them on the Host or in the desktop.
+- Worktrees, Uploads and Chat are not available yet.
+- An Agent detail's Send, Stop and Add stay hidden. Use Direct Input to type into the terminal.
+- Notifications and Live Activities are not available yet.
+- Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
+- If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 
 ## Host Helper
 

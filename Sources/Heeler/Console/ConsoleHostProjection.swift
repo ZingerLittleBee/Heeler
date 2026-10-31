@@ -23,6 +23,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] { get }
     var terminalsByPane: [String: ConsoleTerminal] { get }
     var agentsByPane: [String: ConsoleAgent] { get }
+    /// Agents off the list whose program was lost or ended, for a detail open
+    /// on one to say so (ADR 0032).
+    var departedAgentsByPane: [String: ConsoleAgent] { get }
     var sidebarRevision: UInt64 { get }
     var terminalLabelKeys: [String] { get }
 
@@ -96,4 +99,8 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func withNotificationTransport<Value: Sendable>(
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value
+}
+
+extension ConsoleHostProjection {
+    var departedAgentsByPane: [String: ConsoleAgent] { [:] }
 }

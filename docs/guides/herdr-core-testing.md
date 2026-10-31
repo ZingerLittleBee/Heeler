@@ -59,9 +59,8 @@ on the fixture.
 
 ## Connect states
 
-Launch the app with `--offer-herdr-core-hosts` unless the build already offers
-herdr-core. Add the Host by hand with a unique core session, confirm **herdr-core**
-in its detail, and run its checks in each state.
+Add the Host by hand with a unique core session, confirm **herdr-core** in its
+detail, and run its checks in each state.
 
 | State | How to get there | Heeler reads | Check again |
 | --- | --- | --- | --- |
@@ -77,8 +76,7 @@ or file added.
 
 ## Start
 
-Launch with `--offer-herdr-core-hosts`, and give the Host a unique non-default core
-session. The session is yours to start and stop; no other is. Record the session and
+Give the Host a unique non-default core session. The session is yours to start and stop; no other is. Record the session and
 `loginctl show-user <user> -p Linger` before you begin. To see the linger step change
 something, turn it off first with `loginctl disable-linger`, and put it back afterwards
 if it was on.
@@ -108,8 +106,7 @@ yet, and read each pid from `server.status` or `terminal.list`.
 
 ## Attach
 
-Add the Host through a build launched with `--offer-herdr-core-hosts`. Open each
-Terminal from its row, and an Agent from the Agents tab. Every terminal is a
+Open each Terminal from its row, and an Agent from the Agents tab. Every terminal is a
 channel on the Host's one link, so `ss` on the box shows one connection however
 many are open.
 
@@ -123,12 +120,29 @@ many are open.
 | Display facts | In a core Terminal, `stty raw -echo min 0 time 20; printf '\033]11;?\033\\\033[16t'; dd bs=256 count=1 2>/dev/null \| tr '\033' '^'; stty sane; echo`, then pick another theme in Settings and run it again | It prints the theme's background as `]11;rgb:…` and the cell in pixels as `[6;<height>;<width>t`; the second run shows the new background |
 | Second viewer | `hc attach <terminal>` on the box at another size, then type in Heeler | The program takes Heeler's size when you type; no Take Over appears anywhere on the Host |
 | Retained terminals | Open six Terminals in turn and go back | Five stay retained for five minutes and come back at once; the sixth detaches the least recently viewed idle one, which attaches afresh when you return to it |
-| End of a program | `exit` in a Terminal that was not started with `keep` | The session ends with no error |
+| End of a program | `exit` in a Terminal, kept or not | **Terminal Closed** with **Back to Console**, and no error or **Reattach** |
 | Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send, Stop and Add stay hidden; Direct Input types into the terminal |
 | Two windows | On an iPad, show one core Agent in two windows, open Changes in the first and come back | Each window keeps a live terminal of its own, and typing in either reaches the program |
 | Window size | On an iPad, resize a window showing a core Agent across compact and regular widths, then leave the Agent | The same terminal and scrollback stay on screen with one viewer, and the viewer closes five minutes after you leave |
 | Closed window | On an iPad, close one of two windows showing the same core Agent | The other window's terminal stays live; if the closed window retained the Terminal, its viewer stops being reported and closes after five minutes; if it held the second viewer, that viewer closes at once and `terminal.get` shows the size follows the window left |
 | Closed window on a Terminal | On an iPad, open a core Terminal in one window, close that window, then open the same Terminal in another | The other window shows the Terminal at once on the same channel and takes its size, with no "already open in another window". Left alone, the Terminal returns to its headless size within five minutes of the close |
+
+## Reattach
+
+Start a kept Terminal on the box with `terminal.run` and `keep` through
+`scripts/fixtures/herdr-core-rpc.py`, and a harness or an inert program that reports
+a status, so it is listed as an Agent. Read the program's pid from `terminal.list`,
+and kill only that pid. The core brings a shell back about two seconds later.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Added plainly | Add the Host by hand, from a build launched with no arguments | **Use herdr-core** is offered, the Host connects, and `hc` was never called |
+| Agent detail restarts | Open the Agent's detail, then `kill -9` the pid | **Restarting…** with no error and no **Reattach**, then the restored shell in the same detail, with nothing tapped. Typing reaches the new shell |
+| Terminal restarts | Open a kept Terminal from its row, then `kill -9` the pid | The same, and `terminal.get` shows Heeler's size afterwards |
+| Hidden while it restarts | Leave the terminal retained, `kill -9` the pid, and come back after the shell returned | The restored shell at once, attached with no error |
+| Opened between programs | `kill -9` the pid and open its row within the two seconds | **Restarting…**, then the restored shell |
+| Agent exits | In an open Agent detail on a Terminal not started with `keep`, quit the program | **Agent Ended**, with no **Reattach**, and `terminal.get` reads `finished` |
+| Kept program exits | The same on a kept Terminal, with `exit` or a program exit code | **Agent Ended**, or **Terminal Closed** on its own screen: a kept Terminal comes back only from a loss |
 
 ## Program Status
 
@@ -201,8 +215,7 @@ Open **Settings**, then **Agent List Fields**, and the Host.
 
 ## Pins
 
-Launch with `--offer-herdr-core-hosts`, with a core running in your unique session and
-two Agents listed, from inert programs if you like. Removing a Terminal takes
+With a core running in your unique session and two Agents listed, from inert programs if you like. Removing a Terminal takes
 `terminal.kill` then `terminal.rm` through `scripts/fixtures/herdr-core-rpc.py`, since
 `terminal.rm` refuses a running one.
 
@@ -251,12 +264,11 @@ done in the app.
 | Child Terminal | `terminal.run` with `parent` and no `herdr.*` label, `heeler.*` labels allowed | Another row in its parent's card, reading the parent's tab |
 | Child with its own labels | The same with `herdr.space` and `herdr.tab` | A row in the space its labels name |
 | Live change | Rename or reorder in the document, or set or clear a label | The cards follow within a moment, without reconnecting |
-| Mac with the desktop app | Add that Mac as a herdr-core Host with the debug launch argument | The same spaces and tabs as the window, in its order and under its names; a space the app has not named reads the same in both |
+| Mac with the desktop app | Add that Mac as a herdr-core Host | The same spaces and tabs as the window, in its order and under its names; a space the app has not named reads the same in both |
 
 ## Detection states
 
-Add a Host by hand, with `--offer-herdr-core-hosts`, and read its Server Kind section
-before confirming. Tap **Run Checks Again** after changing a state.
+Add a Host by hand and read its Server Kind section before confirming. Tap **Run Checks Again** after changing a state.
 
 | State | How to get there | herdr-core row reads |
 | --- | --- | --- |

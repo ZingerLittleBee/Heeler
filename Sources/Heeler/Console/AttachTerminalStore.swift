@@ -6,18 +6,30 @@ typealias TerminalSessionOperation =
 typealias TerminalSessionRunner =
     @Sendable (TerminalAttachRequest, TerminalSessionHandler) async throws -> Void
 
+/// What a runner found became of the program under an attach. Only a Server Kind
+/// that reports programs apart from their attaches throws these (ADR 0032).
+enum TerminalProgramEnd: Error, Equatable {
+    /// A new program runs at the same address, so the attach can come back.
+    case restarted
+    /// The program exited and its Terminal ended for good.
+    case finished
+}
+
 struct TerminalSessionHandler: Sendable {
     private let operation: TerminalSessionOperation
     private let transportReady: @MainActor @Sendable (UInt64) -> Void
+    private let programLost: @MainActor @Sendable () -> Void
     #if DEBUG
     private let traceEvents: AttachRestorationTraceEvents?
     #endif
 
     init(
         transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        programLost: @escaping @MainActor @Sendable () -> Void = {},
         _ operation: @escaping TerminalSessionOperation
     ) {
         self.transportReady = transportReady
+        self.programLost = programLost
         self.operation = operation
         #if DEBUG
         traceEvents = nil
@@ -27,10 +39,12 @@ struct TerminalSessionHandler: Sendable {
     #if DEBUG
     init(
         transportReady: @escaping @MainActor @Sendable (UInt64) -> Void = { _ in },
+        programLost: @escaping @MainActor @Sendable () -> Void = {},
         traceEvents: AttachRestorationTraceEvents,
         _ operation: @escaping TerminalSessionOperation
     ) {
         self.transportReady = transportReady
+        self.programLost = programLost
         self.traceEvents = traceEvents
         self.operation = operation
     }
@@ -39,6 +53,12 @@ struct TerminalSessionHandler: Sendable {
     @MainActor
     func transportDidBecomeReady(_ generation: UInt64) {
         transportReady(generation)
+    }
+
+    /// The Terminal has no program for now, and will get a new one.
+    @MainActor
+    func programWasLost() {
+        programLost()
     }
 
     #if DEBUG
@@ -199,6 +219,11 @@ final class AttachTerminalStore {
         /// The session ended remotely (clean detach or channel death); the
         /// message is user-facing and `retry()` reattaches.
         case ended(String)
+        /// A kept Terminal lost its program. The attach comes back on its own
+        /// once the new shell is up.
+        case restarting
+        /// The Terminal's program exited, so there is nothing to attach to.
+        case finished
         /// `stop()` was called; terminal.
         case stopped
     }
@@ -421,6 +446,17 @@ final class AttachTerminalStore {
             attemptTransportGeneration = nil
             do {
                 try await attach(cols: cols, rows: rows)
+            } catch TerminalProgramEnd.restarted {
+                guard !stopRequested else { return }
+                // A new program, so nothing here counts against the link.
+                reattachesSinceLive = 0
+                status = .restarting
+                nextViewer = .resumed
+                continue
+            } catch TerminalProgramEnd.finished {
+                guard !stopRequested else { return }
+                status = .finished
+                return
             } catch {
                 guard !stopRequested else { return }
                 if status == .live { reattachesSinceLive = 0 }
@@ -469,15 +505,21 @@ final class AttachTerminalStore {
             self.restorationTrace.emit(.transportAcquired, generation: generation)
             #endif
         }
+        let programLost: @MainActor @Sendable () -> Void = { [weak self] in
+            guard let self, !self.stopRequested else { return }
+            self.status = .restarting
+        }
         #if DEBUG
         let handler = TerminalSessionHandler(
             transportReady: transportReady,
+            programLost: programLost,
             traceEvents: AttachRestorationTraceEvents(
                 trace: restorationTrace,
                 generation: { [weak self] in self?.acquiredTransportGeneration }),
             operation)
         #else
-        let handler = TerminalSessionHandler(transportReady: transportReady, operation)
+        let handler = TerminalSessionHandler(
+            transportReady: transportReady, programLost: programLost, operation)
         #endif
         try await runTerminal(request, handler)
     }
@@ -535,7 +577,7 @@ final class AttachTerminalStore {
                 // noise, so an open channel with no output yet is still
                 // connecting. This does not prove that a renderer presented
                 // the bytes on screen.
-                if status == .connecting || status == .reconnecting {
+                if status == .connecting || status == .reconnecting || status == .restarting {
                     status = .live
                     input.sessionDidBecomeLive(inputGeneration)
                 }

@@ -16,6 +16,9 @@ final class ConsoleStore {
     }
 
     private(set) var agents: [ConsoleAgent] = []
+    /// Agents off the list whose program was lost or ended. Only a detail
+    /// already open on one reads them, through `detailAgent(for:)`.
+    private(set) var departedAgents: [ConsoleAgent] = []
     private(set) var terminals: [ConsoleTerminal] = []
     /// See `sceneDidEnd`.
     @ObservationIgnored private var endedScenes: Set<UUID> = []
@@ -1118,6 +1121,10 @@ final class ConsoleStore {
             return lhs.paneID < rhs.paneID
         }
         if terminals != nextTerminals { terminals = nextTerminals }
+        // Ahead of the Agents: a detail must never find its Agent in neither.
+        let nextDeparted = current.flatMap { $0.departedAgentsByPane.values }
+            .sorted { ($0.hostID.uuidString, $0.agent.paneID) < ($1.hostID.uuidString, $1.agent.paneID) }
+        if departedAgents != nextDeparted { departedAgents = nextDeparted }
         rebuildAgentOrder()
         publishAgentStatuses()
         publishChatAgents()
@@ -1161,7 +1168,9 @@ final class ConsoleStore {
                         paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
                 })
             let revision = projection.sidebarRevision
+            // A detail stays on a departed Agent, and so does its terminal.
             let agents = Array(projection.agentsByPane.values)
+                + Array(projection.departedAgentsByPane.values)
             let isCurrent: @MainActor () -> Bool = { [weak self, weak projection] in
                 guard let self, let projection else { return false }
                 return projections[hostID] === projection && !projection.isAwaitingSnapshot
@@ -1340,6 +1349,12 @@ final class ConsoleStore {
 
     /// Live rows plus saved Chat entry points while a Host is unproven. The
     /// separate `agents` property remains the only realtime inventory.
+    /// What a detail column shows for this selection: an Agent on the list or
+    /// a saved Chat, or a departed Agent, which no list shows.
+    func detailAgent(for id: ConsoleAgent.ID) -> ConsoleAgent? {
+        chatDisplayAgents.first { $0.id == id } ?? departedAgents.first { $0.id == id }
+    }
+
     var chatDisplayAgents: [ConsoleAgent] {
         agents + savedChatAgents.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
             pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)

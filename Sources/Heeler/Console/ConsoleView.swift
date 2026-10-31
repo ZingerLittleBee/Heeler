@@ -651,7 +651,8 @@ struct ConsoleView: View {
         rememberedSelections[leaving] = parkedSelection
         switch rememberedSelections[arriving] {
         case .agent(let id)
-        where console.agents.contains(where: { $0.id == id }) || isUnreported(id):
+        where console.agents.contains(where: { $0.id == id })
+            || console.departedAgents.contains(where: { $0.id == id }) || isUnreported(id):
             selectedTerminal = nil
             notificationRouter.path = [id]
         case .terminal(let parked) where isRestorable(parked):
@@ -1357,6 +1358,7 @@ struct ConsoleView: View {
             agentShowingChat != id
         else { return nil }
         let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
+            || console.departedAgents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
             && MissingAgentPresentation(agentID: id, console: console, hosts: hosts)
                 .renderingMode == .progress
@@ -1374,7 +1376,7 @@ struct ConsoleView: View {
         if let id = notificationRouter.path.last {
             if let receipt = matchingRemovedWorktreeReceipt(for: id) {
                 removedWorktreeSurface(receipt)
-            } else if let agent = console.chatDisplayAgents.first(where: { $0.id == id }) {
+            } else if let agent = console.detailAgent(for: id) {
                 AgentDetailView(
                     agent: agent,
                     console: console,
@@ -1391,7 +1393,7 @@ struct ConsoleView: View {
                         // terminal on a spurious reappearance.
                         isVisible: { [notificationRouter] in
                             notificationRouter.path.last == id
-                                && console.chatDisplayAgents.contains(where: { $0.id == id })
+                                && console.detailAgent(for: id) != nil
                                 && currentTab == tab
                         },
                         hostID: id.hostID,
