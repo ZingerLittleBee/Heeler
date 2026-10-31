@@ -62,7 +62,9 @@ final class ConsoleStore {
     @ObservationIgnored private var gitExecGates: [Host.ID: GitExecGate] = [:]
     /// The Agents list's Changes totals, one store per Agent, shared by
     /// every window's rows and by nothing else.
-    @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges { [unowned self] agent in
+    @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges(
+        reads: { [unowned self] in capabilities(for: $0.hostID).opensDetail }
+    ) { [unowned self] agent in
         makeChangesStore(
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
     }

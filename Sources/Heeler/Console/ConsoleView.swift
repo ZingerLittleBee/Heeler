@@ -1271,6 +1271,7 @@ struct ConsoleView: View {
     }
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
+        guard console.capabilities(for: id.hostID).opensDetail else { return }
         changeSelection {
             showAgentsList(parking: parkedSelection)
             selectedTerminal = nil
@@ -1879,9 +1880,20 @@ struct ConsoleView: View {
         _ agent: ConsoleAgent, background: Background,
         @ViewBuilder label: () -> RowContent, @ViewBuilder preview: () -> Preview
     ) -> some View {
-        NavigationLink(value: ConsoleSelection.agent(agent.id)) {
-            label()
-                .modifier(ConsoleRowSelectionContent())
+        let offers = ConsoleAgentRowOffers(
+            capabilities: console.capabilities(for: agent.hostID),
+            supportsMultipleWindows: supportsMultipleWindows)
+        return Group {
+            if offers.opensDetail {
+                NavigationLink(value: ConsoleSelection.agent(agent.id)) {
+                    label()
+                        .modifier(ConsoleRowSelectionContent())
+                }
+            } else {
+                label()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .selectionDisabled()
+            }
         }
         // The list reads what it shows: a row on screen reads its Agent's
         // Checkout, and an exit from Working while none does waits for one.
@@ -1904,19 +1916,21 @@ struct ConsoleView: View {
                         hostID: agent.hostID, paneID: agent.agent.paneID)
                 }
                 // Never on iPhone, and not for the Agent this window already shows.
-                if supportsMultipleWindows, notificationRouter.path.last != agent.id {
+                if offers.opensInNewWindow, notificationRouter.path.last != agent.id {
                     Button("Open in New Window", systemImage: "plus.rectangle.on.rectangle") {
                         openInNewWindow(agent)
                     }
                 }
                 // Asks first, like the swipe. A menu item can be destructive:
                 // the row stays put until the close succeeds.
-                Divider()
-                Button(
-                    "Close \(closeScope(for: agent))", systemImage: "trash",
-                    role: .destructive
-                ) {
-                    pendingTabClose = agent
+                if offers.closes {
+                    Divider()
+                    Button(
+                        "Close \(closeScope(for: agent))", systemImage: "trash",
+                        role: .destructive
+                    ) {
+                        pendingTabClose = agent
+                    }
                 }
             } preview: {
                 preview()
@@ -1925,7 +1939,7 @@ struct ConsoleView: View {
             AgentWindowDrag(
                 route: AgentRoute(agentID: agent.id),
                 title: agent.agent.displayName,
-                isEnabled: supportsMultipleWindows))
+                isEnabled: offers.opensInNewWindow))
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             let pinned = console.pins.isPinned(
                 hostID: agent.hostID, paneID: agent.agent.paneID)
@@ -1942,12 +1956,14 @@ struct ConsoleView: View {
         // first. No `.destructive` role: List would animate the row out
         // while the confirmation is still up, even if the user cancels.
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button {
-                pendingTabClose = agent
-            } label: {
-                Label("Close", systemImage: "trash")
+            if offers.closes {
+                Button {
+                    pendingTabClose = agent
+                } label: {
+                    Label("Close", systemImage: "trash")
+                }
+                .tint(.red)
             }
-            .tint(.red)
         }
     }
 
@@ -2069,12 +2085,15 @@ struct ConsoleView: View {
                 filteredHostID: hostFilter, searchQuery: agentSearchText))
     }
 
+    /// Where previous and next can land, so an Agent with no detail is skipped.
     private var visibleAgentIDs: [ConsoleAgent.ID] {
-        switch listPresentation.mode {
-        case .flat: filteredAgents.map(\.id)
-        case .grouped: hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) }
-        case .byWorkspace: workspaceCards.flatMap(\.visibleAgentIDs)
-        }
+        let visible: [ConsoleAgent.ID] =
+            switch listPresentation.mode {
+            case .flat: filteredAgents.map(\.id)
+            case .grouped: hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) }
+            case .byWorkspace: workspaceCards.flatMap(\.visibleAgentIDs)
+            }
+        return visible.filter { console.capabilities(for: $0.hostID).opensDetail }
     }
 
     private var presentationModeBinding: Binding<ConsoleListPresentationMode> {

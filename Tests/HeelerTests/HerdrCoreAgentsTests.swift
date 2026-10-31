@@ -378,6 +378,36 @@ struct HerdrCoreAgentsTests {
         #expect(transport.hostServicesBorrows == 0)
     }
 
+    // MARK: Agent detail stays closed
+
+    /// Agent detail waits for "Open a core Terminal", and its row's Changes
+    /// totals with it: the row reads nothing from the Host.
+    @Test func aCoreAgentOffersNoDetailAndItsRowReadsNoChanges() async throws {
+        let (store, transport) = try await started([Self.claude("t1")])
+        defer { store.setHosts([]) }
+        let row = try #require(agent(store, "t1"))
+
+        #expect(!store.capabilities(for: host.id).opensDetail)
+        let offers = ConsoleAgentRowOffers(
+            capabilities: store.capabilities(for: host.id), supportsMultipleWindows: true)
+        #expect(offers == ConsoleAgentRowOffers(opensDetail: false, opensInNewWindow: false, closes: false))
+
+        store.rowChanges.rowAppeared(row)
+        #expect(store.rowChanges.store(for: row) == nil)
+        await Task.yield()
+        #expect(transport.hostServicesBorrows == 0)
+    }
+
+    @Test func aHerdrTUIAgentsRowOffersWhatItAlwaysDid() {
+        let capabilities = HostCapabilities(serverKind: .herdrTUI)
+        #expect(
+            ConsoleAgentRowOffers(capabilities: capabilities, supportsMultipleWindows: true)
+                == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: true, closes: true))
+        #expect(
+            ConsoleAgentRowOffers(capabilities: capabilities, supportsMultipleWindows: false)
+                == ConsoleAgentRowOffers(opensDetail: true, opensInNewWindow: false, closes: true))
+    }
+
     // MARK: Row fields
 
     @Test func anAgentCarriesItsTerminalsLabelsAndTitle() async throws {
