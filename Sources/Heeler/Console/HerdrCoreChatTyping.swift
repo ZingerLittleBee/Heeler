@@ -71,6 +71,8 @@ final class HerdrCoreChatViewer: HerdrCoreTypingSeat {
     /// Chat's messages are in the Transcript, and it has no index of its own.
     func recordSubmitted(_ text: String) {}
 
+    func notePendingInsert(_ data: Data) {}
+
     func leave() {
         Task { [session] in await session.end() }
     }

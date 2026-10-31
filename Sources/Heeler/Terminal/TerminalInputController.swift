@@ -282,6 +282,13 @@ final class TerminalInputController {
         userMessageIndex.record(submitted: text)
     }
 
+    /// Indexes a Composer insert that `generation` has already written, for a
+    /// write that only learned it was one afterwards.
+    func notePendingInsert(_ data: Data, generation: SessionGeneration) {
+        guard generation == liveGeneration else { return }
+        userMessageIndex.observeOutgoing(data, source: .composerInsert)
+    }
+
     private func write(
         _ data: Data,
         using writer: (Data) -> Void,

@@ -668,6 +668,27 @@ struct HerdrCoreComposerSendTests {
         await fixture.finish()
     }
 
+    /// The tools keyboard's Enter submits it, as it does a paste into an Agent that
+    /// was Blocked before the Send, so the message can be jumped to either way.
+    @Test func aPasteTheAgentStartedAskingOverIsIndexedOnceItsEnterGoes() async throws {
+        let fixture = try await Fixture()
+        let attached = try await fixture.live()
+        fixture.composer.replaceDraft(with: "hello there")
+        let composer = fixture.composer
+        let sending = Task { await composer.send() }
+        await attached.socket.waitForData(channel: attached.channel, count: 1)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record(status: "blocked"))
+        #expect(await sending.value == .deliveredViaAttach)
+        #expect(fixture.attach.input.userMessageIndex.entries.isEmpty)
+
+        fixture.attach.input.send(Data(Self.enter.utf8))
+
+        #expect(fixture.attach.input.userMessageIndex.entries.map(\.rawText) == ["hello there"])
+        await fixture.finish()
+    }
+
     // MARK: A step with no answer
 
     private static func expectUnknownAndNoRetry(_ fixture: Fixture) async throws {

@@ -10,6 +10,8 @@ protocol HerdrCoreTypingSeat: AnyObject, Sendable {
     /// have; anything else says they never did.
     func write(_ data: Data, indexedAs source: AttachUserMessageIndex.OutgoingSource?) async throws
     func recordSubmitted(_ text: String)
+    /// `data` left and now waits, unsubmitted, for the user to finish it.
+    func notePendingInsert(_ data: Data)
     func leave()
 }
 
@@ -68,6 +70,10 @@ private final class ViewedAttachSeat: HerdrCoreTypingSeat {
 
     func recordSubmitted(_ text: String) {
         attach.input.recordSubmitted(text, generation: session)
+    }
+
+    func notePendingInsert(_ data: Data) {
+        attach.input.notePendingInsert(data, generation: session)
     }
 
     func leave() {}
@@ -208,7 +214,9 @@ final class HerdrCoreComposerSend {
         switch await sampleAfterPaste(of: held, wakes: wakes, wake: wake, in: projection) {
         case .holds(let record):
             if HerdrCoreAgentRule.agent(in: record)?.status == .blocked {
-                return route == .chat ? .refused(.notSubmitted(Self.becameBlocked)) : .pasted
+                guard route == .terminal else { return .refused(.notSubmitted(Self.becameBlocked)) }
+                seat.notePendingInsert(paste)
+                return .pasted
             }
             guard clock.now() - pasteStart < Self.submitWindow else {
                 return .refused(.notSubmitted(Self.windowPassed))
