@@ -345,7 +345,7 @@ enum HostProcessReader {
                     String(data: bytes, encoding: .utf8).map(Variable.value) ?? .unavailable
             case "N":
                 guard request.namesOf.contains(fields[2])
-                    || request.namesWithPrefix.contains(where: fields[2].hasPrefix)
+                    || (isVariableName(fields[2]) && request.namesWithPrefix.contains(where: fields[2].hasPrefix))
                 else { throw MalformedOutput() }
                 names[pid, default: []].insert(fields[2])
             case "E":
