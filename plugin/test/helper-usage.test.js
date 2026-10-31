@@ -439,6 +439,27 @@ suite("the Helper's Usage query", () => {
     assert.deepEqual(query(), { version: 1, runtime: "missing" });
   });
 
+  test("a session the app asked Usage about is followed, with no registration naming it", async () => {
+    const { query } = await host({ registered: [] });
+    assert.deepEqual(query(), { version: 1, runtime: "missing" });
+
+    // What the app's Usage script makes before it runs the query.
+    mkdirSync(join(directory, "sessions", "work"), { recursive: true, mode: 0o700 });
+
+    await waitFor(() => existsSync(recordPath("work")), "the record", PATIENCE_MS);
+    assert.equal(query().runtime, "recorded");
+  });
+
+  test("a session nobody registered or asked about is left alone", async () => {
+    const other = await coreProcess({ HOME: root });
+    const fake = await fakeCore("other", other.pid);
+    await host();
+    await waitFor(() => existsSync(recordPath("work")), "the record", PATIENCE_MS);
+
+    assert.equal(fake.connections.length, 0);
+    assert.equal(existsSync(recordPath("other")), false);
+  });
+
   test("refuses a session name the core refuses", async () => {
     const { run } = await host();
     const result = run("usage-query.js", "--tz", "UTC", "--session", "../work");

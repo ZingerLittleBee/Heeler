@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { followRegisteredSessions } from "./core/follower.js";
+import { usageSessions } from "./usage/layout.js";
 import { usageListener } from "./usage/recorder.js";
 
 const { version } = JSON.parse(readFileSync(new URL("./version.json", import.meta.url), "utf8"));
@@ -18,6 +19,7 @@ const log = (line) => console.log(line);
 followRegisteredSessions({
   directory,
   log,
+  alsoFollow: () => usageSessions(directory),
   listener: usageListener({ directory, log }),
 });
 
