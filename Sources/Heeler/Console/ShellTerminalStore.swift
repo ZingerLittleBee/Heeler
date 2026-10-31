@@ -188,6 +188,9 @@ final class AgentOpenTerminalStore {
             }
             do {
                 try await self.closeRemoteTerminal(shell.identity)
+            } catch let refusal as HerdrCoreCloseRefusal {
+                self.closeFailureMessage = ConsoleStore.tabCloseFailureMessage(for: refusal)
+                return
             } catch is HerdrAPIError {
                 // The server no longer knows the pane: closed on the desktop,
                 // or lost to a restart. Either way it is gone, which is the
