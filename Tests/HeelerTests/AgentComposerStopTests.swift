@@ -37,6 +37,17 @@ struct AgentComposerPrimaryControlTests {
 
 @Suite("Agent Composer collapse")
 struct AgentComposerCollapseTests {
+    @Test func theFoldWaitsForTheKeyboardToStartDown() {
+        let collapsed = { (keyboardIsLeaving: Bool) in
+            AgentComposerCollapse.isCollapsed(
+                isEnabled: true, isInputFocused: false, keyboardPresentation: .hidden,
+                inheritsKeyboard: false, hasInputReplacement: false,
+                keyboardIsLeaving: keyboardIsLeaving)
+        }
+        #expect(!collapsed(true))
+        #expect(collapsed(false))
+    }
+
     @Test func foldsOnlyWhileNothingHoldsOrAwaitsTheKeyboard() {
         #expect(Self.folds())
         #expect(!Self.folds(isEnabled: false), "the terminal keeps its height")

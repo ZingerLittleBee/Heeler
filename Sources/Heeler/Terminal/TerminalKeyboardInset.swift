@@ -49,6 +49,13 @@ final class TerminalKeyboardInset {
     var keyboardRideRaise: CGFloat {
         Self.insetHeight(covered: keyboardRideCoverage, bottomSafeArea: keyboardRideContentInset)
     }
+    /// Where a surface with no terminal to resize once keeps its input row
+    /// above the content edge. `restingInset` is where it goes with no keyboard
+    /// to follow, such as on the tools dock.
+    func keyboardLift(restingInset: CGFloat, isEnabled: Bool) -> CGFloat {
+        isEnabled && !isHoldingHandoffHeight && !isSkippingKeyboardRide
+            ? keyboardRideRaise : restingInset
+    }
     @ObservationIgnored private var rideMotion: KeyboardRideMotion?
     @ObservationIgnored private var rideLink: CADisplayLink?
     /// Leaving the tools dock, whose footprint the input row already rests on,
@@ -685,13 +692,12 @@ extension View {
         modifier(KeyboardRide(inset: inset, layoutInset: layoutInset, isEnabled: isEnabled))
     }
 
-    /// Lays this view out on the keyboard while it moves, for a surface with
-    /// no terminal to resize once. `restingInset` is the inset without a
-    /// keyboard to follow, such as the tools dock's.
-    func keyboardRidePadding(
+    /// Keeps an input row on the keyboard, for a surface with no terminal to
+    /// resize once. See ``TerminalKeyboardInset/keyboardLift(restingInset:isEnabled:)``.
+    func keyboardLiftPadding(
         _ inset: TerminalKeyboardInset, restingInset: CGFloat, isEnabled: Bool
     ) -> some View {
-        modifier(KeyboardRidePadding(inset: inset, restingInset: restingInset, isEnabled: isEnabled))
+        modifier(KeyboardLiftPadding(inset: inset, restingInset: restingInset, isEnabled: isEnabled))
     }
 }
 
@@ -757,13 +763,13 @@ private struct KeyboardRide: ViewModifier {
 }
 
 /// On its own for the same reason as ``KeyboardRide``.
-private struct KeyboardRidePadding: ViewModifier {
+private struct KeyboardLiftPadding: ViewModifier {
     let inset: TerminalKeyboardInset
     let restingInset: CGFloat
     let isEnabled: Bool
 
     func body(content: Content) -> some View {
-        let rides = isEnabled && !inset.isHoldingHandoffHeight && !inset.isSkippingKeyboardRide
-        content.padding(.bottom, rides ? inset.keyboardRideRaise : restingInset)
+        content.padding(
+            .bottom, inset.keyboardLift(restingInset: restingInset, isEnabled: isEnabled))
     }
 }

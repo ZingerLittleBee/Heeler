@@ -230,6 +230,9 @@ struct AgentComposerView: View {
     /// `AgentComposerCollapse`. The terminal keeps its height, since every
     /// fold would resize the PTY, so each surface says which it wants.
     let collapsesWithoutKeyboard: Bool
+    /// Focus has left but the keyboard has not started down. The fold waits, so
+    /// that it and the keyboard move the conversation as one motion.
+    var keyboardIsLeaving = false
     /// What Stop presses in the Agent's program, its wait and its hint; nil
     /// keeps Send.
     var interrupt: AgentComposerInterrupt? = nil
@@ -631,7 +634,8 @@ struct AgentComposerView: View {
             isInputFocused: isInputFocused,
             keyboardPresentation: keyboardPresentation,
             inheritsKeyboard: inheritsPendingKeyboard,
-            hasInputReplacement: inputReplacement != nil)
+            hasInputReplacement: inputReplacement != nil,
+            keyboardIsLeaving: keyboardIsLeaving)
     }
 
     /// A keyboard handed over by the screen this one replaces, read without
