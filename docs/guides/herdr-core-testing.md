@@ -34,7 +34,7 @@ covers the fixture and CI.
 make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
 ```
 
-It authorizes a throwaway key through `instabox port-forward`, runs the six
+It authorizes a throwaway key through `instabox port-forward`, runs the seven
 methods of `HerdrCoreTransportE2ETests` on the Simulator, then starts a core for a
 unique session and checks:
 
@@ -105,6 +105,25 @@ yet, and read each pid from `server.status` or `terminal.list`.
 | Kept restart | `kill -9` the program of a Terminal started with `keep` | The row reads **Restarting** with its launch directory, then comes back in the same card |
 | Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | The Host stays Connected in the Hosts list and every row stays in its card |
 | Stopped core | `server stop` by absolute path | The Host reads **herdr-core is not running** and retries; no core process appears until you start it |
+
+## Attach
+
+Add the Host through a build launched with `--offer-herdr-core-hosts`. Open each
+Terminal from its row, and an Agent from the Agents tab. Every terminal is a
+channel on the Host's one link, so `ss` on the box shows one connection however
+many are open.
+
+| Check | How to get there | Heeler shows |
+| --- | --- | --- |
+| Full-screen program | Run `vim`, then `htop`, in a core Terminal and rotate the device | The program fills the terminal in both orientations and redraws at the new size |
+| Scrollback | `seq 1 5000`, then scroll back | Earlier lines are there, in order |
+| Burst and repaint | `head -c 6000000 /dev/urandom \| base64` with the terminal hidden or scrolled, so the core drops its backlog | The screen repaints and stays usable; the Terminals tab and another open terminal keep updating |
+| Modes after a repaint | In `vim`, paste multi-line text after the burst above | The paste arrives bracketed, as one insert |
+| Every key | `stty -isig; cat -v`, then Ctrl+\ | `cat` prints `^\`; nothing in Heeler intercepts it |
+| Second viewer | `hc attach <terminal>` on the box at another size, then type in Heeler | The program takes Heeler's size when you type; no Take Over appears anywhere on the Host |
+| Retained terminals | Open six Terminals in turn and go back | Five stay retained for five minutes and come back at once; the sixth detaches the least recently viewed idle one, which attaches afresh when you return to it |
+| End of a program | `exit` in a Terminal that was not started with `keep` | The session ends with no error |
+| Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send, Stop and Add stay hidden; Direct Input types into the terminal |
 
 ## Program Status
 
