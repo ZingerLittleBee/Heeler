@@ -203,7 +203,8 @@ final class AgentChatStore {
     /// Agent queries and transcript reads recover independently.
     @ObservationIgnored private var agentRefreshFailure: TransportError?
     /// One Agent query lost to the link can be a passing stall, which the
-    /// connection owner handles and shows by itself. A second in a row is news.
+    /// connection owner handles and shows by itself. A second in a row, in the
+    /// same stretch on screen, is news.
     @ObservationIgnored private var consecutiveAgentRefreshLinkFailures = 0
     @ObservationIgnored private var transcriptReadFailure: TransportError?
     /// A page above the oldest message shown that waits for the loop, by
@@ -367,6 +368,7 @@ final class AgentChatStore {
     /// its own token, so one window leaving does not stop another's.
     func show(_ viewer: UUID = AgentChatStore.soleViewer) {
         if viewers.isEmpty {
+            consecutiveAgentRefreshLinkFailures = 0
             // Background prefetches back off looking for a missing
             // transcript; opening Chat looks at once and backs off afresh.
             switch conversation.phase {
@@ -404,6 +406,7 @@ final class AgentChatStore {
 
     func resume() {
         isSuspended = false
+        consecutiveAgentRefreshLinkFailures = 0
         needsAgentRefresh = true
         needsLaunchCheck = true
         startLoop()
@@ -939,8 +942,11 @@ final class AgentChatStore {
 
     private static func isLinkFailure(_ failure: TransportError) -> Bool {
         switch failure {
-        case .sshUnreachable, .timedOut, .channelFailed: true
-        default: false
+        case .sshUnreachable, .timedOut, .channelFailed, .noRouteReached, .jumpHostFailed,
+            .overlayFailed:
+            true
+        default:
+            false
         }
     }
 

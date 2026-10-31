@@ -866,6 +866,9 @@ struct AgentChatStoreTests {
         await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
         fixture.store.retry()
         await fixture.store.step()
+        fixture.advance(5)
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
         await fixture.server.fail(with: nil)
         await fixture.files.failNext(.status, with: TransportError.hostFileTimedOut)
         fixture.store.retry()
@@ -910,6 +913,34 @@ struct AgentChatStoreTests {
         await fixture.server.fail(with: failure)
         fixture.store.retry()
         await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func aQuietLostQueryDoesNotCountAgainstTheNextTimeChatOpens() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: .timedOut)
+        fixture.store.retry()
+        await fixture.store.step()
+
+        fixture.store.suspend()
+        fixture.store.resume()
+        await fixture.store.step()
+
+        #expect(await fixture.server.reads == 3)
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func aRouteFailureFromARedialCountsAsLostToTheLink() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: .jumpHostFailed(.sshUnreachable(detail: "offline")))
+        fixture.store.retry()
+
+        await fixture.store.step()
+
         #expect(fixture.store.conversation.readFailure == nil)
     }
 
