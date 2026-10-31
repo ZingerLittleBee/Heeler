@@ -201,6 +201,11 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var isHoldingAttachReplies = false
     private var heldAttachReplies: [(socket: FakeCoreSocket, id: String, result: JSONValue)] = []
     private var heldTerminalReads: [(socket: FakeCoreSocket, id: String)] = []
+    private var isHoldingHellos = false
+    private var heldHellos: [CheckedContinuation<Void, Never>] = []
+    private var heldInterrupts: [(socket: FakeCoreSocket, id: String)] = []
+    /// The params of every `terminal.interrupt`, oldest first.
+    private(set) var interrupts: [JSONValue] = []
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
@@ -341,6 +346,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             sockets.append(socket)
             Task {
                 _ = await socket.nextWrittenLine()
+                await self.waitOutHelloHold()
                 await socket.deliver(core.helloReply)
                 await self.answer(on: socket, core: core)
             }
@@ -390,6 +396,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             // Nobody answers until the test says what the core knows.
             case "terminal.get":
                 heldTerminalReads.append((socket, request.id))
+            // The core presses the key and watches until the test says.
+            case "terminal.interrupt":
+                interrupts.append(request.params)
+                heldInterrupts.append((socket, request.id))
             case "terminal.read":
                 try? await socket.reply(
                     to: request.id,
@@ -483,6 +493,37 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         let held = heldTerminalReads
         heldTerminalReads = []
         for read in held { try? await read.socket.replyError(to: read.id, kind: kind) }
+    }
+
+    /// A new link's `hello` waits for its answer until `releaseHellos`, as one
+    /// that is slow to establish does.
+    func holdHellos() {
+        isHoldingHellos = true
+    }
+
+    func releaseHellos() {
+        isHoldingHellos = false
+        let held = heldHellos
+        heldHellos = []
+        for waiter in held { waiter.resume() }
+    }
+
+    private func waitOutHelloHold() async {
+        while isHoldingHellos {
+            await withCheckedContinuation { heldHellos.append($0) }
+        }
+    }
+
+    /// Answers every `terminal.interrupt` waiting so far, as a core does once its
+    /// watch ends.
+    func answerInterrupts(outcome: String = "stopped") async {
+        let held = heldInterrupts
+        heldInterrupts = []
+        for interrupt in held {
+            try? await interrupt.socket.reply(
+                to: interrupt.id,
+                result: .object(["outcome": .string(outcome), "key": .string("esc")]))
+        }
     }
 
     /// What the Host's git answers a Changes read with. Nil keeps the seam's

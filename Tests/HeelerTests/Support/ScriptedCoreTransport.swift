@@ -205,6 +205,15 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var kills: [String] = []
     private var killAnswers: [String: Result<JSONValue, any Error>] = [:]
     private var killObserver: (@Sendable (String) async -> Void)?
+    /// Each `terminal.interrupt` and `terminal.get`, with its params, oldest first.
+    private(set) var stopCalls: [(method: String, params: JSONValue)] = []
+    private var interruptAnswer: Result<JSONValue, any Error> = .success(
+        .object(["outcome": .string("stopped"), "key": .string("esc")]))
+    private var interruptHold: InterruptHold?
+    private var heldInterrupts: [UUID: CheckedContinuation<Void, Never>] = [:]
+    private var terminalRecords: [Result<JSONValue, any Error>] = []
+    private var isHoldingTerminalReads = false
+    private var heldTerminalReads: [CheckedContinuation<Void, Never>] = []
     /// The script of every agent discovery, oldest first.
     private(set) var discoveryScripts: [String] = []
     private var shell: String?
@@ -310,6 +319,19 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
         if isMutation { mutations.append(method) }
         switch method {
+        case "terminal.interrupt":
+            stopCalls.append((method, params))
+            if let hold = interruptHold { try await waitOutInterruptHold(hold) }
+            return try interruptAnswer.get()
+        case "terminal.get":
+            stopCalls.append((method, params))
+            while isHoldingTerminalReads {
+                await withCheckedContinuation { heldTerminalReads.append($0) }
+            }
+            guard !terminalRecords.isEmpty else {
+                throw TransportError.hostFeatureUnavailable(feature: method)
+            }
+            return try (terminalRecords.count > 1 ? terminalRecords.removeFirst() : terminalRecords[0]).get()
         case "terminal.kill":
             let terminal = params["terminal"]?.stringValue ?? ""
             kills.append(terminal)
@@ -480,6 +502,74 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// Hears each kill before it is answered, while the caller still waits on it.
     func observeKill(_ observer: @escaping @Sendable (String) async -> Void) {
         killObserver = observer
+    }
+
+    /// What `terminal.interrupt` gets back.
+    func setInterruptAnswer(_ answer: Result<JSONValue, any Error>) {
+        interruptAnswer = answer
+    }
+
+    /// Where a held `terminal.interrupt` is, which decides what cancelling it does,
+    /// as `HerdrCoreLink` and `HerdrCoreTransport.onLink` do.
+    enum InterruptHold {
+        /// With the writer or past it: cancelling says the outcome is unknown.
+        case handedToTheWriter
+        /// Queued behind other writes: cancelling drops it, and it never goes.
+        case inTheOutbox
+        /// Waiting for a link to open, which cancelling does not end. Once it
+        /// ends, the cancelled call writes nothing.
+        case awaitingALink
+    }
+
+    /// Each `terminal.interrupt` waits, answerless, until `releaseInterrupts`.
+    func holdInterrupts(_ hold: InterruptHold = .handedToTheWriter) {
+        interruptHold = hold
+    }
+
+    func releaseInterrupts() {
+        interruptHold = nil
+        let held = heldInterrupts
+        heldInterrupts = [:]
+        for waiter in held.values { waiter.resume() }
+    }
+
+    private func waitOutInterruptHold(_ hold: InterruptHold) async throws {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if hold != .awaitingALink, Task.isCancelled {
+                    continuation.resume()
+                } else {
+                    heldInterrupts[id] = continuation
+                }
+            }
+        } onCancel: {
+            if hold != .awaitingALink { Task { await self.releaseInterrupt(id) } }
+        }
+        guard Task.isCancelled else { return }
+        if hold == .handedToTheWriter { throw TransportError.coreMutationOutcomeUnknown }
+        throw CancellationError()
+    }
+
+    private func releaseInterrupt(_ id: UUID) {
+        heldInterrupts.removeValue(forKey: id)?.resume()
+    }
+
+    /// What each `terminal.get` answers. The last one repeats.
+    func setTerminalRecords(_ answers: [Result<JSONValue, any Error>]) {
+        terminalRecords = answers
+    }
+
+    /// Each `terminal.get` waits, answerless, until `releaseTerminalReads`.
+    func holdTerminalReads() {
+        isHoldingTerminalReads = true
+    }
+
+    func releaseTerminalReads() {
+        isHoldingTerminalReads = false
+        let held = heldTerminalReads
+        heldTerminalReads = []
+        for waiter in held { waiter.resume() }
     }
 
     /// What the next document read answers, as `doc.get` shapes it.

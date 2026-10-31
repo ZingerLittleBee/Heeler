@@ -575,10 +575,12 @@
 		9F33E6B6FB4C4085CAA86B7E /* ClaudeTranscriptRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7B849F54A144724C4D064F /* ClaudeTranscriptRecord.swift */; };
 		9F3D3FBE80546EC399AA04F6 /* ConsoleEmptyDetailPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D22BD103F3CD9127066426E /* ConsoleEmptyDetailPresentationTests.swift */; };
 		9F495C6368D1C8754903D457 /* sidebar-layout-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = ACD367936A5F42F20E8CBB3B /* sidebar-layout-v1.json */; };
+		9FACE1A18C485A0CD003AABD /* HerdrCoreComposerStopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C1AB6694871F354D8617BE /* HerdrCoreComposerStopTests.swift */; };
 		A000D3550C034E2978E8B485 /* TerminalAppearancePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57EAD92008AF144C63F5582E /* TerminalAppearancePane.swift */; };
 		A00CAAAC1E79D699A3AF3346 /* ScriptedTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B64F59C086BFF5B062ADCE8C /* ScriptedTransport.swift */; };
 		A03EF2773BB652706D734E85 /* ChatBackgroundWorkPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D54B91902FE5898DCB9CF9 /* ChatBackgroundWorkPresentationTests.swift */; };
 		A04812B36F6E9AF3F683AB50 /* ImageStagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B0C3E8DD054078EF85AB5A /* ImageStagingTests.swift */; };
+		A18C9003C43D27A58C8F47B9 /* HerdrCoreComposerStop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8605CA8535D417168E314D87 /* HerdrCoreComposerStop.swift */; };
 		A194C27FBF0EF6641215D33A /* PreflightReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151586845D0A1EE54968B536 /* PreflightReportTests.swift */; };
 		A1C3FC4C247594FF635D897D /* ChatBackgroundWorkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978D7D0A7769F1D10ABD61D4 /* ChatBackgroundWorkTests.swift */; };
 		A1E5F3DFA582BFF8D2C00E00 /* AgentActivityContentStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519305F6554977DB6C5E93F2 /* AgentActivityContentStateTests.swift */; };
@@ -1495,6 +1497,7 @@
 		85BEE99E7BEFA0D0D985162C /* AttachUserMessageIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachUserMessageIndex.swift; sourceTree = "<group>"; };
 		85D417729EF8DE0723478139 /* AgentUsageLimitsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageLimitsView.swift; sourceTree = "<group>"; };
 		8600859EA0F94A1A75BAE9CA /* ChatTranscriptAdapter+Programs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatTranscriptAdapter+Programs.swift"; sourceTree = "<group>"; };
+		8605CA8535D417168E314D87 /* HerdrCoreComposerStop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreComposerStop.swift; sourceTree = "<group>"; };
 		86642A7BA9C1F1E3456D64E3 /* SSHChannelAdmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHChannelAdmission.swift; sourceTree = "<group>"; };
 		866CBB6E58F431BF10EA101C /* ChatTextSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTextSettingsTests.swift; sourceTree = "<group>"; };
 		8676E870CC318F78C437284B /* HeelerAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerAppModel.swift; sourceTree = "<group>"; };
@@ -1537,6 +1540,7 @@
 		9153299D65A76990413D95F1 /* ClaudeTranscriptProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTranscriptProjection.swift; sourceTree = "<group>"; };
 		915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9161AE15FDE3388F1E8BC668 /* HarnessConfigEditStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessConfigEditStore.swift; sourceTree = "<group>"; };
+		91C1AB6694871F354D8617BE /* HerdrCoreComposerStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreComposerStopTests.swift; sourceTree = "<group>"; };
 		921CA559141776BD0F02FDA7 /* TerminalThemeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemeSettingsTests.swift; sourceTree = "<group>"; };
 		93417EFE29FA2DC3DD3FAF9F /* AsyncDeadlineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncDeadlineTests.swift; sourceTree = "<group>"; };
 		935245D1EA74FD36925F3112 /* HerdrCoreServerInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreServerInfo.swift; sourceTree = "<group>"; };
@@ -2190,6 +2194,7 @@
 				7E8AB621459A7895E1AA969B /* HerdrCoreAttachTests.swift */,
 				B9FD9D3F622DF65FB055AB4B /* HerdrCoreCloseTests.swift */,
 				33C78F399DC6F97E21C33BE7 /* HerdrCoreComposerSendTests.swift */,
+				91C1AB6694871F354D8617BE /* HerdrCoreComposerStopTests.swift */,
 				3C4EC4891D805C617F78CF27 /* HerdrCoreConsolePlacementTests.swift */,
 				79887E955BAAF7654E81B1ED /* HerdrCoreConsoleProjectionTests.swift */,
 				11F7EC7F75CCE0247D02EC9A /* HerdrCoreDoneTests.swift */,
@@ -2721,6 +2726,7 @@
 				2086C471788D2E7193FA9CBE /* HeelerPluginStatusStore.swift */,
 				1663C1C0B0B2174068B2B915 /* HerdrCoreAgentRule.swift */,
 				78C87715683760CC51A10FF4 /* HerdrCoreComposerSend.swift */,
+				8605CA8535D417168E314D87 /* HerdrCoreComposerStop.swift */,
 				AC0A58B48CCA186A2BA36498 /* HerdrCoreConsoleProjection.swift */,
 				A268F2C5E0B2FBDA6756411B /* HerdrCoreOrganization.swift */,
 				D595E3CD4EC5E3A817B51178 /* HerdrCoreStatusExplanation.swift */,
@@ -3777,6 +3783,7 @@
 				64DB6580AEFBF062334B541E /* HerdrCoreAgentRule.swift in Sources */,
 				C53D7B3967C4D5856C3CF046 /* HerdrCoreAttach.swift in Sources */,
 				D2A88ABAF9B288C577236B7A /* HerdrCoreComposerSend.swift in Sources */,
+				A18C9003C43D27A58C8F47B9 /* HerdrCoreComposerStop.swift in Sources */,
 				B6738D8B77DEB4CE74A838F4 /* HerdrCoreConsoleProjection.swift in Sources */,
 				7E549F9B3878DF6CCFD49045 /* HerdrCoreDesktopDocument.swift in Sources */,
 				DF891AD5074156C5431A418F /* HerdrCoreEnvironmentCheck.swift in Sources */,
@@ -4243,6 +4250,7 @@
 				0D1C15B6F74323AECFF7595E /* HerdrCoreAttachTests.swift in Sources */,
 				179E5731501163CFB7E15DDB /* HerdrCoreCloseTests.swift in Sources */,
 				AA9D11EBAD8E2CCB6E643F5B /* HerdrCoreComposerSendTests.swift in Sources */,
+				9FACE1A18C485A0CD003AABD /* HerdrCoreComposerStopTests.swift in Sources */,
 				FA7D19F205871831CCD506C4 /* HerdrCoreConsolePlacementTests.swift in Sources */,
 				2DBFA48945D299B45EA7BDEC /* HerdrCoreConsoleProjectionTests.swift in Sources */,
 				2F8905E394BC4A4E59B5C4B0 /* HerdrCoreDoneTests.swift in Sources */,

@@ -1150,11 +1150,10 @@ struct HerdrCoreTerminalStoreTests {
         ["Back to Console", "Add Image", "Add File", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
     ]
     /// On screen for a Host that has them; none are built for a core Host yet.
-    private static let notBuiltLabels = ["Stop", "Take Over", "Take Over Here"]
+    private static let notBuiltLabels = ["Take Over", "Take Over Here"]
 
-    /// The Composer hides Stop, and the Agent is working, so Stop is what a Host
-    /// that can would show. Add and Send (ADR 0035) wait for the platform the
-    /// connection reports.
+    /// The Agent is working and the draft blank, so Stop has Send's place. Add and
+    /// Send (ADR 0035) wait for the platform the connection reports.
     @Test func aCoreAgentsDetailShowsItsTerminalAndOffersOnlyWhatIsBuilt() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         let agent = try #require(fixture.console.agents.first)
@@ -1168,7 +1167,12 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the Composer") { detail.offers("Message the Agent") }
         for label in Self.notBuiltLabels { #expect(!detail.offers(label), "\(label)") }
         try await Self.until("Add") { detail.offers("Add") }
-        #expect(detail.offers("Send"))
+        #expect(detail.offers("Stop"))
+        #expect(!detail.offers("Send"))
+        fixture.console.composerStore(for: agent).replaceDraft(with: "and the tests")
+        try await Self.until("Send") { detail.offers("Send") }
+        #expect(!detail.offers("Stop"))
+        fixture.console.composerStore(for: agent).replaceDraft(with: "")
 
         let menus = try await HostedMenu.items(labeled: "More", in: detail.window)
         #expect(Set(menus) == Self.coreAgentMenus, "\(menus)")
@@ -1190,6 +1194,98 @@ struct HerdrCoreTerminalStoreTests {
         await Task.yield()
         #expect(!detail.offers("Add"))
         #expect(!detail.offers("Send"))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// Stop takes Send's place, through the core and no key of Heeler's, and goes
+    /// with the Agent even for a detail still on it.
+    @Test
+    func aWorkingCoreAgentsStopGoesThroughTheCoreUntilAShellHoldsTheForeground() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let attach = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("x", on: attach)
+        try await Self.until("Stop") { detail.offers("Stop") }
+        #expect(!detail.offers("Send"))
+
+        let stop = try #require(accessibleElement(labeled: "Stop", in: detail.window))
+        #expect(stop.accessibilityActivate())
+        await fixture.scripted.waitForMethod("terminal.interrupt")
+        await fixture.scripted.answerInterrupts()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.agentRecord)
+        try await fixture.settle()
+
+        #expect(await fixture.scripted.interrupts.count == 1)
+        #expect(await attach.socket.frames(channel: attach.channel, kind: .data).isEmpty)
+
+        try await fixture.scripted.deliverEvent(
+            Self.eventLine(
+                "foreground",
+                data: .object([
+                    "pid": .number(7), "name": .string("zsh"), "argv": .array([.string("/bin/zsh")]),
+                    "cwd": .string("/work/app"),
+                ])))
+        try await Self.until("the shell") { fixture.console.agents.isEmpty }
+        try await Self.until("Stop to go") { !detail.offers("Stop") }
+        #expect(await fixture.scripted.interrupts.count == 1)
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// Esc does not stop Grok Build's turns, so its terminal Composer keeps Send.
+    @Test
+    func aWorkingGrokBuildAgentsComposerKeepsSend() async throws {
+        guard case .object(var grok) = Self.agentRecord else { return }
+        grok["argv"] = .array([.string("grok")])
+        grok["foreground"] = .object([
+            "pid": .number(40), "name": .string("grok"), "argv": .array([.string("grok")]),
+            "cwd": .string("/work/app"),
+        ])
+        grok["status"] = .object(["state": .string("working"), "app": .string("grok-build")])
+        let fixture = try await Fixture(terminals: [.object(grok)])
+        let agent = try #require(fixture.console.agents.first)
+        #expect(agent.agent.kind == "grok")
+        #expect(agent.agent.status == .working)
+        let detail = try await fixture.showDetail(of: agent)
+        let hostID = fixture.host.id
+        try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .posix }
+
+        try await Self.until("Send") { detail.offers("Send") }
+        #expect(!detail.offers("Stop"))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// Stop is for a Working Agent. An idle one has nothing to stop.
+    @Test func anIdleCoreAgentsComposerOffersNoStop() async throws {
+        guard case .object(var idle) = Self.agentRecord else { return }
+        idle["status"] = .object(["state": .string("idle"), "app": .string("claude-code")])
+        let fixture = try await Fixture(terminals: [.object(idle)])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let hostID = fixture.host.id
+
+        try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .posix }
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        #expect(!detail.offers("Stop"))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// Stop on native Windows arrives with that platform's own Composer.
+    @Test func aNativeWindowsCoreAgentsComposerOffersNoStop() async throws {
+        let fixture = try await Fixture(terminals: [Self.agentRecord])
+        await fixture.scripted.helper.configure { $0.platform = .nativeWindows }
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let hostID = fixture.host.id
+
+        try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .nativeWindows }
+        try await Self.until("the Composer") { detail.offers("Message the Agent") }
+        #expect(!detail.offers("Stop"))
         await detail.close()
         await fixture.finish()
     }

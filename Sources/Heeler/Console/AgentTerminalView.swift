@@ -1307,11 +1307,10 @@ struct AgentTerminalView: View {
             offersSend: console.capabilities(for: agent.hostID).composerSend)
     }
 
-    /// The Composer's Stop: one Esc over the Attach PTY, or nil to keep Send
-    /// for a kind Esc doesn't stop (`AgentComposerInterrupt.terminal`).
+    /// The Composer's Stop: one Esc over the Attach PTY, or on a core Host the
+    /// core's own interrupt, or nil to keep Send (`ConsoleStore.terminalInterrupt`).
     private var stopInterrupt: AgentComposerInterrupt? {
-        guard console.capabilities(for: agent.hostID).composerStop else { return nil }
-        return .terminal(forAgentKind: agent.agent.kind) { interruptAgent() }
+        console.terminalInterrupt(for: agent) { interruptAgent() }
     }
 
     /// The interaction probe's Stop, as the Composer's button runs it: the
