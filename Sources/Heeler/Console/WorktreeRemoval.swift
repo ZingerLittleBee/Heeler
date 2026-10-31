@@ -72,10 +72,18 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
     case terminalsNotEnded
     /// The checkout now holds what the confirmation did not warn about.
     case changedSinceConfirmation
+    /// The Terminals ended, and the checkout then held what the confirmation did
+    /// not warn about, so it stayed.
+    case changedWhileTerminalsEnded
     /// git could not say what the checkout holds, before anything ended.
     case riskUnread(String)
     case removeRefused(String)
     case removeUnconfirmed(path: String)
+
+    /// The next confirmation has to warn of what stopped this removal.
+    var isNewerThanConfirmation: Bool {
+        self == .changedSinceConfirmation || self == .changedWhileTerminalsEnded
+    }
 
     var message: String {
         switch self {
@@ -89,6 +97,8 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
             "A Terminal in this worktree could not be confirmed ended, so the checkout was not removed. Others may have ended. Check the Host, then try again."
         case .changedSinceConfirmation:
             "This worktree changed since you confirmed, and nothing was removed. Removing it again deletes what it holds now."
+        case .changedWhileTerminalsEnded:
+            "The worktree's Terminals have ended, but it changed since you confirmed, so the checkout was not removed. Removing it again deletes what it holds now."
         case .riskUnread(let reason):
             "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: \(reason)"
         case .removeRefused(let reason):
@@ -186,7 +196,7 @@ struct WorktreeRemovalRefusal {
         switch error {
         case let removal as WorktreeRemovalError:
             self.init(
-                message: removal.message, offersChanges: removal == .changedSinceConfirmation)
+                message: removal.message, offersChanges: removal.isNewerThanConfirmation)
         case let api as HerdrAPIError:
             self.init(
                 code: api.code, serverMessage: api.message,

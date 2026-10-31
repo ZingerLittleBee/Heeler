@@ -981,8 +981,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// the checkout, so nothing keeps running in a deleted folder. Which Terminals
     /// comes from the membership computed here, never from labels alone: any
     /// process can rewrite those. What the checkout would lose is checked against
-    /// what the request's confirmation named before anything ends, and it is what
-    /// forces the removal; anything newer than that check makes git refuse.
+    /// what the request's confirmation named before anything ends, and again once
+    /// the Terminals have ended, since they can write on their way out. That last
+    /// read is what forces the removal, so force covers only what the user heard.
     func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt {
         let identity = request.identity
         guard identity.hostID == host.id else { throw WorktreeRemovalError.staleIdentity }
@@ -1011,8 +1012,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let agents = agentsByPane.values.filter { $0.agent.workspaceID == identity.workspaceID }
         worktreeRemovals[identity, default: []].formUnion(agents.map(\.id))
         try await endTerminals(ofWorkspace: identity.workspaceID)
+        let settled = try await git.riskOnceTerminalsEnded(ofCheckout: identity.checkoutPath)
+        guard settled.isCovered(by: request.toldRisk) else {
+            throw WorktreeRemovalError.changedWhileTerminalsEnded
+        }
         try await git.remove(
-            path: identity.checkoutPath, mainCheckout: mainCheckout, force: risk.requiresForce)
+            path: identity.checkoutPath, mainCheckout: mainCheckout, force: settled.requiresForce)
 
         let receipt = WorktreeRemovalReceipt(
             request: request, affectedAgentIDs: worktreeRemovals[identity] ?? [])

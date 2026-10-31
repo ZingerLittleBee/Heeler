@@ -1042,6 +1042,114 @@ struct HerdrCoreWorktreesTests {
         #expect(message.contains("fatal: broken"))
         #expect(await fixture.transport.kills.isEmpty)
     }
+
+    // MARK: What the Terminals leave behind
+
+    private func setDirtyOnKill(_ fixture: Fixture) async {
+        await fixture.transport.observeKill { [services = fixture.services] _ in
+            await services.setGitAnswer(
+                .success(GitCommandResult(status: 0, output: "?? new.txt\n", message: nil)),
+                for: ["status", "--porcelain"])
+        }
+    }
+
+    /// The confirmation warned of submodules only, so `--force` may not take what
+    /// an Agent wrote on its way out.
+    @Test func changesLeftByTheEndingTerminalsStopAForcedRemoval() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.setSubmodule()
+        await setDirtyOnKill(fixture)
+        let request = try await fixture.removalAfterHearing()
+        #expect(request.toldRisk == WorktreeRemovalRisk(hasChanges: false, hasSubmodules: true))
+
+        await #expect(throws: WorktreeRemovalError.changedWhileTerminalsEnded) {
+            _ = try await fixture.store.removeWorktree(request, on: fixture.host.id)
+        }
+
+        #expect(await fixture.transport.kills.sorted() == ["t1", "t2", "t3"])
+        #expect(await fixture.git("worktree").isEmpty)
+        #expect(fixture.store.removedWorktreesByAgent.isEmpty)
+    }
+
+    /// The Terminals did end, and the next confirmation warns of what is there now.
+    @Test func changesLeftByTheEndingTerminalsAreWarnedOfByTheNextConfirmation() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.setSubmodule()
+        let request = try await fixture.removal()
+        let detail = makeDetail(fixture, request: request)
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+        #expect(detail.confirmation?.message.contains("uncommitted") == false)
+        await setDirtyOnKill(fixture)
+        let first = try #require(detail.beginRemoval())
+
+        await detail.finishRemoval(first)
+
+        guard case .failed(let message) = detail.removalPhase else {
+            Issue.record("The removal ended as \(detail.removalPhase)")
+            return
+        }
+        #expect(message.contains("Terminals have ended"))
+        #expect(message.contains("was not removed"))
+        #expect(detail.refusalOffersChanges == false)
+        #expect(await fixture.git("worktree").isEmpty)
+
+        detail.dismissFeedback()
+        detail.prepareConfirmation()
+        #expect(detail.confirmation?.message.contains("Its uncommitted changes will be lost.") == true)
+        let second = try #require(detail.beginRemoval())
+        await detail.finishRemoval(second)
+
+        #expect(await fixture.git("worktree", "remove").map(\.arguments) == [
+            ["worktree", "remove", "--force", Self.linked]
+        ])
+    }
+
+    /// What was there when the user heard has gone by the end, so nothing forces.
+    @Test func changesGoneByTheTimeTheTerminalsEndForceNothing() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.setChanges()
+        let request = try await fixture.removalAfterHearing()
+        await fixture.transport.observeKill { [services = fixture.services] _ in
+            await services.setGitAnswer(
+                .success(GitCommandResult(status: 0, output: "", message: nil)),
+                for: ["status", "--porcelain"])
+        }
+
+        _ = try await fixture.store.removeWorktree(request, on: fixture.host.id)
+
+        #expect(await fixture.git("worktree", "remove").map(\.arguments) == [
+            ["worktree", "remove", Self.linked]
+        ])
+    }
+
+    /// A read that fails once the Terminals have ended leaves nothing to force on.
+    @Test(arguments: [
+        Result<GitCommandResult, any Error>.success(
+            GitCommandResult(status: 128, output: "", message: "fatal: broken")),
+        .failure(TransportError.gitTimedOut),
+    ])
+    func aReadThatFailsOnceTheTerminalsEndedRemovesNothing(
+        answer: Result<GitCommandResult, any Error>
+    ) async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        await fixture.setSubmodule()
+        let request = try await fixture.removalAfterHearing()
+        await fixture.transport.observeKill { [services = fixture.services] _ in
+            await services.setGitAnswer(answer, for: ["status", "--porcelain"])
+        }
+
+        let thrown = await #expect(throws: WorktreeRemovalError.self) {
+            _ = try await fixture.store.removeWorktree(request, on: fixture.host.id)
+        }
+
+        #expect(thrown?.message.contains("Terminals have ended") == true)
+        #expect(await fixture.git("worktree").isEmpty)
+    }
 }
 
 /// What a Herdr TUI Host's confirmation keeps saying, with no risk to warn of.

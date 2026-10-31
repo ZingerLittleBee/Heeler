@@ -80,7 +80,10 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   submodules, keeping the branch. Those two git commands run as the app's do,
   with the repository's hooks, while Heeler's git reads stay neutralized. A
   removal stops before any kill when git reports a risk the confirmation did
-  not name, so force never covers something the user did not hear about. Remove
+  not name, so force never covers something the user did not hear about. The
+  Terminals can write as they end, so git is read again once they have, and that
+  read decides force: a risk the confirmation did not name stops the removal
+  there, with the Terminals ended and the checkout kept. Remove
   waits for the read of those risks, as the desktop's mod does, and the
   confirmation carries what it named to the removal, so a read nobody was shown
   covers nothing.

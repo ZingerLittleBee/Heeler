@@ -197,6 +197,18 @@ struct HerdrCoreWorktreeGit: Sendable {
             hasSubmodules: submodules.status != 0 || !submodules.output.isEmpty)
     }
 
+    /// The same read with the Terminals gone, when failing to answer means they
+    /// did end and the checkout stays.
+    func riskOnceTerminalsEnded(ofCheckout path: String) async throws -> WorktreeRemovalRisk {
+        do {
+            return try await removalRisk(ofCheckout: path)
+        } catch WorktreeRemovalError.riskUnread(let reason) {
+            throw WorktreeRemovalError.removeRefused(reason)
+        } catch {
+            throw WorktreeRemovalError.removeRefused("The Host did not say what the checkout holds.")
+        }
+    }
+
     /// One `git worktree remove`, which keeps the branch.
     func remove(path: String, mainCheckout: String, force: Bool) async throws {
         let result: GitCommandResult

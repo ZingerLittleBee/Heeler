@@ -212,7 +212,7 @@ final class WorktreeDetailStore {
             removalPhase = .failed(refusal.message)
             showsFeedback = true
             // The next confirmation has to warn of what stopped this one.
-            if error as? WorktreeRemovalError == .changedSinceConfirmation {
+            if (error as? WorktreeRemovalError)?.isNewerThanConfirmation == true {
                 awaitsRemovalRisk = readRemovalRisk != nil
                 await loadRemovalRiskIfNeeded()
             }
