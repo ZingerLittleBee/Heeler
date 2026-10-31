@@ -99,6 +99,32 @@ protocol HerdrCoreTransport: Sendable {
 }
 
 extension HerdrCoreTransport {
+    /// The core's `hello`. A channel refused with the socket file present may be
+    /// a core its holder is about to restart, so it is polled before the failure
+    /// is believed, without running the locator again. A missing socket file
+    /// reads not running at once. `sleep` throws to stop the wait, as `isWanted`
+    /// returning false does.
+    func helloAcrossHolderRestart(
+        policy: HerdrCoreHolderRestartPolicy,
+        sleep: @Sendable (Duration) async throws -> Void,
+        isWanted: @Sendable () async -> Bool
+    ) async throws -> HerdrCoreServerInfo {
+        do {
+            return try await hello()
+        } catch TransportError.herdrCoreNotRunning(socketPath: let path, socketFilePresent: true) {
+            for _ in 0..<policy.polls {
+                try await sleep(policy.pollInterval)
+                guard await isWanted() else { throw TransportError.cancelled }
+                do {
+                    return try await helloAtLastLocation()
+                } catch TransportError.herdrCoreNotRunning(socketPath: _, socketFilePresent: true) {
+                    continue
+                }
+            }
+            throw TransportError.herdrCoreNotRunning(socketPath: path, socketFilePresent: true)
+        }
+    }
+
     /// The Terminal's screen. Passive: `lines: 0` never scrolls a full-screen
     /// program, which asking for history would.
     func readTerminal(_ address: String) async throws -> HerdrCoreTerminalRead {

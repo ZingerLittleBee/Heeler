@@ -22,7 +22,8 @@ struct HostOnboardingStoreTests {
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
         pluginSteps: FakePluginSteps = FakePluginSteps(),
         fingerprintTimeout: Duration = .seconds(5),
-        core: ScriptedCoreHost? = nil
+        core: ScriptedCoreHost? = nil,
+        sleep: @escaping HerdrCoreHostSession.Sleep = { _ in }
     ) throws -> (HostOnboardingStore, FakeTransportConnector) {
         let connector = FakeTransportConnector(
             outcome: outcome, presentedKeyBlob: presentedKeyBlob,
@@ -41,7 +42,8 @@ struct HostOnboardingStoreTests {
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
                 secrets: secrets),
-            fingerprintTimeout: fingerprintTimeout)
+            fingerprintTimeout: fingerprintTimeout,
+            sleep: sleep)
         return (store, connector)
     }
 
@@ -813,6 +815,83 @@ struct HostOnboardingStoreTests {
         #expect(await connector.transports.isEmpty)
         #expect(store.availableSessions.isEmpty)
         #expect(store.sessionDiscoveryError == nil)
+    }
+
+    // MARK: A core its holder is restarting
+
+    private func holderWindowStore(
+        _ core: ScriptedCoreHost, clock: ManualClock
+    ) throws -> HostOnboardingStore {
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        return try makeStore(host: host, core: core, sleep: clock.parkedSleep(for:)).0
+    }
+
+    @Test(.timeLimit(.minutes(1))) func aCoreBackWithinTheHolderWindowPassesAndNeverOffersStart() async throws {
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .refused)
+        let clock = ManualClock()
+        let store = try holderWindowStore(core, clock: clock)
+
+        let checks = Task { await store.runChecks() }
+        await clock.untilParked(1)
+        #expect(store.phase == .running)
+        #expect(store.report == nil)
+        #expect(store.coreStartOffer == nil)
+
+        await core.setChannel(.answersHello(ScriptedCoreHost.helloReply()))
+        clock.advance(.milliseconds(500))
+        await checks.value
+
+        #expect(store.report?.isFullyPassed == true)
+        #expect(store.coreStartOffer == nil)
+        #expect(await core.log.filter { $0 == "locator" }.count == 1)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func startIsOfferedOnlyOnceTheHolderWindowHasPassed() async throws {
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .refused)
+        let clock = ManualClock()
+        let store = try holderWindowStore(core, clock: clock)
+
+        let checks = Task { await store.runChecks() }
+        for _ in 0..<HerdrCoreHolderRestartPolicy.default.polls {
+            await clock.untilParked(1)
+            #expect(store.report == nil)
+            #expect(store.coreStartOffer == nil)
+            clock.advance(.milliseconds(500))
+        }
+        await checks.value
+
+        #expect(store.coreStartOffer == .start)
+        #expect(await core.log.filter { $0 == "locator" }.count == 1)
+        #expect(await core.log.filter { $0.hasPrefix("open ") }.count == 11)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func cancellingTheChecksEndsTheHolderWindowWithNoStartOffer() async throws {
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .refused)
+        let clock = ManualClock()
+        let store = try holderWindowStore(core, clock: clock)
+
+        let checks = Task { await store.runChecks() }
+        await clock.untilParked(1)
+        store.cancelChecks()
+        await checks.value
+
+        #expect(store.phase == .finished)
+        #expect(store.report == .failure(TransportError.cancelled, authMethod: store.host.authMethod))
+        #expect(store.coreStartOffer == nil)
+    }
+
+    @Test func noSocketFileReadsNotRunningWithoutWaiting() async throws {
+        let core = ScriptedCoreHost(channel: .refused)
+        let clock = ManualClock()
+        let store = try holderWindowStore(core, clock: clock)
+
+        await store.runChecks()
+
+        #expect(store.coreStartOffer == .start)
+        #expect(await core.log.filter { $0.hasPrefix("open ") }.count == 1)
     }
 
     @Test func coreOutcomesFailTheirOwnChecks() async throws {

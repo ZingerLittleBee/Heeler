@@ -351,7 +351,14 @@ actor HerdrCoreHostSession {
             let coreID: String
             do {
                 transport = try await ensureTransport(for: generation)
-                let info = try await hello(on: transport, generation: generation, awaitingHolder: mayAwaitHolder)
+                let info: HerdrCoreServerInfo
+                if mayAwaitHolder {
+                    info = try await transport.helloAcrossHolderRestart(
+                        policy: holderRestart, sleep: sleep,
+                        isWanted: { await self.activationIsCurrent(generation) })
+                } else {
+                    info = try await transport.hello()
+                }
                 guard activationIsCurrent(generation) else { break }
                 if !isAnnouncedConnected {
                     let latency = try await measureLatency(on: transport)
@@ -453,28 +460,6 @@ actor HerdrCoreHostSession {
         guard activationIsCurrent(generation), isAnnouncedConnected else { return }
         leakedEnvironmentBox.withLock { $0 = names }
         leakedEnvironmentContinuation.yield()
-    }
-
-    /// The core's `hello`. A channel refused with the socket file present may
-    /// be a core its holder is about to restart, so it is polled before the
-    /// failure is believed. A missing socket file reads not running at once.
-    private func hello(
-        on transport: any HerdrCoreTransport, generation: UInt64, awaitingHolder: Bool
-    ) async throws -> HerdrCoreServerInfo {
-        do {
-            return try await transport.hello()
-        } catch TransportError.herdrCoreNotRunning(socketPath: let path, socketFilePresent: true) where awaitingHolder {
-            for _ in 0..<holderRestart.polls {
-                try await sleep(holderRestart.pollInterval)
-                guard activationIsCurrent(generation) else { throw TransportError.cancelled }
-                do {
-                    return try await transport.helloAtLastLocation()
-                } catch TransportError.herdrCoreNotRunning(socketPath: _, socketFilePresent: true) {
-                    continue
-                }
-            }
-            throw TransportError.herdrCoreNotRunning(socketPath: path, socketFilePresent: true)
-        }
     }
 
     private func ensureTransport(for generation: UInt64) async throws -> any HerdrCoreTransport {

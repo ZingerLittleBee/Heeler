@@ -105,6 +105,8 @@ final class HostOnboardingStore {
     /// The transport deliberately has no confirmation timeout (#2); the UI
     /// layer owns it (spec #20). An unanswered candidate is declined.
     @ObservationIgnored private let fingerprintTimeout: Duration
+    @ObservationIgnored private let coreHolderRestart: HerdrCoreHolderRestartPolicy
+    @ObservationIgnored private let sleep: HerdrCoreHostSession.Sleep
     @ObservationIgnored private var fingerprintDecision: CheckedContinuation<Bool, Never>?
     @ObservationIgnored private var fingerprintTimeoutTask: Task<Void, Never>?
     /// Identifies the prompt `fingerprintDecision` answers.
@@ -119,8 +121,12 @@ final class HostOnboardingStore {
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider(),
         overlays: OverlayNetworkRuntime = .shared,
-        fingerprintTimeout: Duration = .seconds(60)
+        fingerprintTimeout: Duration = .seconds(60),
+        coreHolderRestart: HerdrCoreHolderRestartPolicy = .default,
+        sleep: @escaping HerdrCoreHostSession.Sleep = { try await Task.sleep(for: $0) }
     ) {
+        self.coreHolderRestart = coreHolderRestart
+        self.sleep = sleep
         self.host = host
         self.connector = connector
         self.knownHosts = knownHosts
@@ -309,7 +315,13 @@ final class HostOnboardingStore {
             // The Helper does not need a core, so it reads whether one runs or not.
             await hostHelper?.refresh(over: transport)
             do {
-                let info = try await transport.hello()
+                // Straight after a Start nothing is on its way back: the core
+                // said it runs, so a refused channel is SSH's refusal.
+                let info =
+                    coreReportedRunning
+                    ? try await transport.hello()
+                    : try await transport.helloAcrossHolderRestart(
+                        policy: coreHolderRestart, sleep: sleep, isWanted: { !Task.isCancelled })
                 if !Task.isCancelled {
                     serverInfo = ServerInfo(version: info.version, protocolVersion: info.generation)
                     report = .allPassed
