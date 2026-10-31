@@ -6,13 +6,15 @@ import Testing
 /// The virtual Host's files as a core transport's services read them.
 private struct VirtualHostServices: HostServices {
     let files: VirtualHostFiles
+    var heldStatus: HeldFileStatus?
 
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
         try await files.readRange(range)
     }
 
     func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
-        try await files.fileStatus(atPath: path)
+        await heldStatus?.pass(path)
+        return try await files.fileStatus(atPath: path)
     }
 
     func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
@@ -21,6 +23,31 @@ private struct VirtualHostServices: HostServices {
 
     func hostHomeDirectory() async throws -> String {
         try await files.home()
+    }
+}
+
+/// Keeps a stat of one path waiting until the test lets it answer, so an event
+/// can arrive while a read is under way.
+private actor HeldFileStatus {
+    private let path: String
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var released = false
+
+    var isHolding: Bool { waiting != nil }
+
+    init(path: String) {
+        self.path = path
+    }
+
+    func pass(_ asked: String) async {
+        guard asked == path, !released else { return }
+        await withCheckedContinuation { waiting = $0 }
+    }
+
+    func release() {
+        released = true
+        waiting?.resume()
+        waiting = nil
     }
 }
 
@@ -107,11 +134,14 @@ struct HerdrCoreChatTests {
         let store: ConsoleStore
         let host: Host
 
-        init(host: Host, record: JSONValue = HerdrCoreChatTests.record(), coreID: String = "c1") {
+        init(
+            host: Host, record: JSONValue = HerdrCoreChatTests.record(), coreID: String = "c1",
+            heldStatus: HeldFileStatus? = nil
+        ) {
             self.host = host
             transport = ScriptedCoreTransport(
                 coreID: coreID, subscribeResults: [HerdrCoreChatTests.subscribeResult([record])],
-                services: VirtualHostServices(files: files))
+                services: VirtualHostServices(files: files, heldStatus: heldStatus))
             let transport = transport
             store = ConsoleStore(
                 chatCache: cache,
@@ -252,7 +282,9 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
-    @Test func aBlockedAgentReadsNoScreenAndOffersNoCard() async throws {
+    /// Past the wait, a Blocked Agent with no screen to read gives the store its
+    /// "can't read" card, which only a Composer shows (`HerdrCoreTerminalStoreTests`).
+    @Test func aBlockedAgentAsksNothingOfTheCore() async throws {
         let rig = Rig(host: host)
         try await rig.start()
         let chat = try rig.chat()
@@ -262,8 +294,8 @@ struct HerdrCoreChatTests {
         await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "blocked"))
         try await rig.waitUntil("the Agent to read Blocked") { rig.agent?.agent.status == .blocked }
         try await rig.waitForChecks(2)
+        try await rig.waitUntil("the store to stop waiting for a dialog") { chat.blocked.content == .unreadable }
 
-        #expect(chat.blocked.content == .none)
         #expect(await rig.transport.mutations.isEmpty)
         chat.end()
         rig.store.setHosts([])
@@ -376,6 +408,50 @@ struct HerdrCoreChatTests {
         try await Task.sleep(for: .milliseconds(200))
         #expect(await table.requests.count == 2)
         bound.end()
+
+        // Bound to a conversation whose file cannot be read, opening again as it
+        // backs off.
+        await files.failNext(
+            .status, path: Self.transcriptPath(), with: TransportError.channelFailed(detail: "read"), count: 500)
+        let failing = make()
+        failing.show()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(failing.conversation.readFailure != nil)
+        #expect(await table.requests.count == 3)
+        failing.end()
+    }
+
+    /// `/clear` while Chat reads the old conversation's file, and that read fails:
+    /// the turn it reported still gets its check.
+    @Test func anEventDuringAFailedOpenStillChecks() async throws {
+        let held = HeldFileStatus(path: Self.transcriptPath())
+        let rig = Rig(host: host, heldStatus: held)
+        try await rig.start()
+        let entry = "\(Self.home)/.claude/sessions/\(Self.pid).json"
+        await rig.files.write(Self.registryEntry(), at: entry)
+        await rig.files.failNext(
+            .status, path: Self.transcriptPath(), with: TransportError.channelFailed(detail: "read"))
+        let chat = try rig.chat()
+        chat.show()
+        for _ in 0..<500 where await !held.isHolding {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await held.isHolding)
+
+        await rig.files.write(Self.registryEntry(session: Self.second), at: entry)
+        await rig.files.write(try Self.transcript(session: Self.second), at: Self.transcriptPath(session: Self.second))
+        await rig.transport.deliver(
+            Self.event(sequence: 2, type: "turn", data: .object(["turn": .number(1), "reason": .string("status")])))
+        // Events arrive in order: by this title the turn has reached the Chat.
+        await rig.transport.deliver(
+            Self.event(sequence: 3, type: "title", data: .object(["title": .string("a title")])))
+        try await rig.waitUntil("the title") { rig.store.agents.first?.agent.title == "a title" }
+        await held.release()
+
+        try await rig.waitUntil("Chat to follow the new one") { Self.isFollowing(chat, session: Self.second) }
+        #expect(await rig.checks == 2)
+        chat.end()
+        rig.store.setHosts([])
     }
 
     @Test func retryChecksAgain() async throws {

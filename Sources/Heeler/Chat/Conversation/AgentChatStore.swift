@@ -1402,7 +1402,7 @@ final class AgentChatStore {
         nextOpen = now().addingTimeInterval(delay)
         // Not found may mean the session moved on: ask herdr again first. A
         // check of a process waits for an event, or this would be its timer.
-        needsAgentRefresh = source.sessionEvidence == nil
+        if source.sessionEvidence == nil { needsAgentRefresh = true }
     }
 
     private var directories: [String] {
