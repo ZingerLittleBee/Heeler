@@ -241,6 +241,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         await bytes?.push(line + Data([0x0A]))
     }
 
+    /// The subscription's channel ends with the connection still up, as a core
+    /// going away does: the session says `hello` and subscribes again.
+    func endLink() async {
+        await bytes?.push(nil)
+    }
+
     /// Subscribes wait, for the window between Connected and the first snapshot.
     func holdSubscribes() {
         isSubscribeHeld = true

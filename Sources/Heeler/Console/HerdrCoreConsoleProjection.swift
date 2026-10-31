@@ -201,6 +201,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     private func replaceInventory(with snapshot: HerdrCoreSnapshot) {
         memory.noteInventory(snapshot.terminals, for: host.id)
+        pins.retainPins(hostID: host.id, paneIDs: Set(snapshot.terminals.map(\.address)))
         records = snapshot.terminals
         transportGeneration = max(transportGeneration, session.currentConnectionGeneration)
         sidebarRevision &+= 1

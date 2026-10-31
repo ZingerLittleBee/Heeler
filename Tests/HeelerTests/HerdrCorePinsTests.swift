@@ -137,4 +137,118 @@ struct HerdrCorePinsTests {
         #expect(persistedPins(on: defaults) == ["t2"])
         #expect(listed(store) == ["t2", "t3"])
     }
+
+    // MARK: Snapshots from the same core
+
+    @Test func aFreshSnapshotDropsAPinWhoseAddressItLacksAndKeepsOneItHas() async throws {
+        let defaults = try device()
+        let transport = ScriptedCoreTransport(subscribeResults: [
+            Self.subscribeResult([Self.agent("t1"), Self.agent("t2"), Self.agent("t3")]),
+            Self.subscribeResult(sequence: 9, [Self.agent("t2"), Self.agent("t3"), Self.agent("t9")]),
+        ])
+        let store = try await launch(on: defaults, [host.id: transport])
+        defer { store.setHosts([]) }
+        store.togglePin(hostID: host.id, paneID: "t1")
+        store.togglePin(hostID: host.id, paneID: "t2")
+
+        await transport.endLink()
+        try await waitUntil("the fresh snapshot") { listed(store).contains("t9") }
+
+        #expect(store.pins.pinnedPaneIDs(for: host.id) == ["t2"])
+        #expect(persistedPins(on: defaults) == ["t2"])
+        #expect(listed(store).first == "t2")
+    }
+
+    @Test func aMissedSnapshotDropsAPinWhoseAddressItLacks() async throws {
+        let defaults = try device()
+        let transport = ScriptedCoreTransport(subscribeResults: [
+            Self.subscribeResult([Self.agent("t1"), Self.agent("t2")])
+        ])
+        let store = try await launch(on: defaults, [host.id: transport])
+        defer { store.setHosts([]) }
+        store.togglePin(hostID: host.id, paneID: "t1")
+        store.togglePin(hostID: host.id, paneID: "t2")
+
+        let line = try JSONEncoder().encode(JSONValue.object([
+            "jsonrpc": .string("2.0"), "method": .string("missed"),
+            "params": .object(["seq": .number(50), "terminals": .array([Self.agent("t2")])]),
+        ]))
+        await transport.deliver(line)
+        try await waitUntil("t1 gone") { !listed(store).contains("t1") }
+
+        #expect(store.pins.pinnedPaneIDs(for: host.id) == ["t2"])
+    }
+
+    @Test func aTerminalRemovedWhileTheAppWasClosedLosesItsPinAtTheNextLaunch() async throws {
+        let defaults = try device()
+        let store = try await launch(
+            on: defaults,
+            [host.id: ScriptedCoreTransport(subscribeResults: [
+                Self.subscribeResult([Self.agent("t1"), Self.agent("t2")])
+            ])])
+        store.togglePin(hostID: host.id, paneID: "t1")
+        store.togglePin(hostID: host.id, paneID: "t2")
+        store.setHosts([])
+
+        let relaunched = try await launch(
+            on: defaults,
+            [host.id: ScriptedCoreTransport(subscribeResults: [
+                Self.subscribeResult([Self.agent("t2")])
+            ])])
+        defer { relaunched.setHosts([]) }
+
+        #expect(relaunched.pins.pinnedPaneIDs(for: host.id) == ["t2"])
+        #expect(persistedPins(on: defaults) == ["t2"])
+    }
+
+    /// The core still knows it: only `removed` or a snapshot without it ends the Pin.
+    @Test func aFinishedTerminalStillInTheSnapshotKeepsItsPin() async throws {
+        let defaults = try device()
+        let transport = ScriptedCoreTransport(subscribeResults: [
+            Self.subscribeResult([Self.agent("t1"), Self.agent("t2")]),
+            Self.subscribeResult(
+                sequence: 9,
+                [Self.agent("t1", terminalState: "finished"), Self.agent("t2"), Self.agent("t9")]),
+        ])
+        let store = try await launch(on: defaults, [host.id: transport])
+        defer { store.setHosts([]) }
+        store.togglePin(hostID: host.id, paneID: "t1")
+
+        await transport.endLink()
+        try await waitUntil("the fresh snapshot") { listed(store).contains("t9") }
+
+        #expect(!listed(store).contains("t1"))
+        #expect(store.pins.isPinned(hostID: host.id, paneID: "t1"))
+    }
+
+    // MARK: A core restart
+
+    @Test func aCoreRestartWithTheSameIDKeepsEveryPin() async throws {
+        let defaults = try device()
+        let transport = ScriptedCoreTransport(subscribeResults: [
+            Self.subscribeResult([Self.agent("t1", keep: true), Self.agent("t2", keep: true)]),
+            // A restarted core's sequence starts below the old one's.
+            Self.subscribeResult(
+                sequence: 1,
+                [Self.agent("t1", keep: true), Self.agent("t2", keep: true), Self.agent("t9")]),
+        ])
+        let store = try await launch(on: defaults, [host.id: transport])
+        defer { store.setHosts([]) }
+        store.togglePin(hostID: host.id, paneID: "t1")
+        store.togglePin(hostID: host.id, paneID: "t2")
+
+        await transport.deliver(
+            Self.event(
+                sequence: 2, type: "lost", terminal: "t1",
+                data: .object(["reason": .string("holder_lost")])))
+        try await waitUntil("t1 lost") { !listed(store).contains("t1") }
+        #expect(store.pins.pinnedPaneIDs(for: host.id) == ["t2", "t1"])
+
+        await transport.endLink()
+        try await waitUntil("the restarted core's snapshot") { listed(store).contains("t9") }
+
+        #expect(store.pins.pinnedPaneIDs(for: host.id) == ["t2", "t1"])
+        #expect(persistedPins(on: defaults) == ["t2", "t1"])
+        #expect(listed(store) == ["t2", "t1", "t9"])
+    }
 }

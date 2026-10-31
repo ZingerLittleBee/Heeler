@@ -3,9 +3,10 @@ import Observation
 
 /// Pins the user has chosen on Console rows, keyed by `(hostID, paneID)` —
 /// the same identity as `ConsoleAgent.ID`. Array order is recency: most
-/// recently pinned first. Entries are never pruned; a pane that has closed
-/// leaves a dangling pin so the same pane id coming back after a herdr
-/// restart is still pinned.
+/// recently pinned first. A Herdr TUI Host's entries are never pruned; a pane
+/// that has closed leaves a dangling pin so the same pane id coming back after
+/// a herdr restart is still pinned. A herdr-core Host's projection prunes its
+/// own, since an address is never reused (ADR 0031).
 @MainActor
 @Observable
 final class PinnedAgentsStore {
@@ -81,6 +82,20 @@ final class PinnedAgentsStore {
     func removePin(hostID: Host.ID, paneID: String) {
         guard isPinned(hostID: hostID, paneID: paneID) else { return }
         entries.removeAll { $0.hostID == hostID && $0.paneID == paneID }
+        persist()
+        revision += 1
+    }
+
+    /// Drops this Host's pins on panes outside `paneIDs`. Only herdr-core Hosts
+    /// call this: their addresses never return once gone.
+    func retainPins(hostID: Host.ID, paneIDs: Set<String>) {
+        drop { $0.hostID == hostID && !paneIDs.contains($0.paneID) }
+    }
+
+    private func drop(where shouldDrop: (Entry) -> Bool) {
+        let kept = entries.filter { !shouldDrop($0) }
+        guard kept.count != entries.count else { return }
+        entries = kept
         persist()
         revision += 1
     }
