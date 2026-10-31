@@ -381,6 +381,29 @@ struct HerdrCoreCloseTests {
         #expect(isPinned("t1", in: store))
     }
 
+    /// The row read as alone in its Tab, so both go by `closeTab`. The Terminal
+    /// that ended has no reason to keep a Pin because another did not answer.
+    @Test func aTabWithOneKillUnconfirmedKeepsOnlyThatTerminalsPin() async throws {
+        let (store, transport) = try await started([
+            Self.agent("t1", labels: Self.tab("tb1")), Self.agent("t2", labels: Self.tab("tb1")),
+        ])
+        defer { store.setHosts([]) }
+        pin("t1", "t2", in: store)
+        await transport.setKillAnswer(.success(Self.agent("t2", labels: Self.tab("tb1"))), for: "t2")
+        let row = try #require(store.agents.first { $0.agent.paneID == "t1" })
+        let stale = ConsoleAgent(
+            hostID: row.hostID, hostName: row.hostName, agent: row.agent, workspaceLabel: nil,
+            repositoryCheckout: nil)
+
+        await #expect(throws: TransportError.coreMutationOutcomeUnknown) {
+            try await store.closeAgent(stale)
+        }
+
+        #expect(await transport.kills == ["t1", "t2"])
+        #expect(!isPinned("t1", in: store))
+        #expect(isPinned("t2", in: store))
+    }
+
     // MARK: Saying so
 
     private static let unconfirmed =

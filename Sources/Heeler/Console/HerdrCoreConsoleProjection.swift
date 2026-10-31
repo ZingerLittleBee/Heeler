@@ -871,19 +871,31 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         guard !isAwaitingSnapshot else {
             throw TransportError.sshUnreachable(detail: "The Host is not connected.")
         }
-        try await endTerminals(
-            records.map(\.address).filter { terminalsByPane[$0]?.tabID == tabID })
+        do {
+            try await endTerminals(
+                records.map(\.address).filter { terminalsByPane[$0]?.tabID == tabID }
+            ) { [pins, host] address in
+                pins.removePin(hostID: host.id, paneID: address)
+            }
+        } catch {
+            // The caller drops no Pin on a throw, and this may have.
+            publish()
+            throw error
+        }
     }
 
     /// Each Terminal gets its one kill whatever became of the others, so a kill
     /// nobody answered leaves no Terminal unasked. That uncertainty is what the
     /// caller hears over any refusal, since it is what to check before trying again.
-    private func endTerminals(_ addresses: [String]) async throws {
+    private func endTerminals(
+        _ addresses: [String], onEnded: (String) -> Void = { _ in }
+    ) async throws {
         let transport = try await session.withTransport { $0 }
         var failure: (any Error)?
         for address in addresses {
             do {
                 try await transport.killTerminal(address)
+                onEnded(address)
             } catch TransportError.coreMutationOutcomeUnknown {
                 failure = TransportError.coreMutationOutcomeUnknown
             } catch let refusal as HerdrAPIError {
