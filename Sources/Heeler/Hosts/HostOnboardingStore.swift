@@ -296,7 +296,7 @@ final class HostOnboardingStore {
     /// close. It starts nothing. The plugin does not run here, whatever the core
     /// answers, and no Herdr TUI session is looked for.
     private func performCoreChecks(settings: SSHTransportSettings, coreReportedRunning: Bool) async {
-        pluginStatus = .unsupportedBackend
+        pluginStatus = .unsupportedServerKind
         do {
             let transport = try await connector.connectCore(settings: settings)
             guard !Task.isCancelled else {
@@ -600,7 +600,7 @@ final class HostOnboardingStore {
         switch status {
         case .installed, .notInstalled:
             pluginStatus = status
-        case .checking, .unsupportedPlatform, .unsupportedBackend, .unavailable:
+        case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
             // An unreadable plugin keeps the last status in place. A step
             // whose connection dropped may have finished all the same.
             guard let stepError else {
@@ -658,7 +658,7 @@ final class HostOnboardingStore {
                         + "changed. Run the checks again."))
             }
             installed = version
-        case .checking, .unsupportedPlatform, .unsupportedBackend, .unavailable:
+        case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
             return .refused(HeelerPluginActionFailure(
                 message: "Heeler could not read the Host's plugin before changing it, so "
                     + "nothing changed. Run the checks again."))

@@ -852,7 +852,7 @@ struct HostOnboardingStoreTests {
 
         await store.runChecks()
 
-        #expect(store.pluginStatus == .unsupportedBackend)
+        #expect(store.pluginStatus == .unsupportedServerKind)
         #expect(await connector.transports.isEmpty)
     }
 

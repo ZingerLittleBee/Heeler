@@ -168,7 +168,7 @@ The flag-less generator queries the locally installed herdr. Generation,
 `git diff --check`, parsing, and guard-fixture success are different evidence
 from compilation, an executed suite, or native UI acceptance.
 
-### herdr-core backend
+### herdr-core Hosts
 
 A herdr-core Host connects over one framed link: a read-only locator exec, then a direct-streamlocal channel under the events slot. Only the user's confirmed Start starts a core, on Linux (ADR 0031).
 
