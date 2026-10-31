@@ -21,6 +21,8 @@ struct HostOnboardingView: View {
     let syncIssue: String?
     /// The variables the connected core inherited, on a herdr-core Host.
     let coreEnvironmentNotice: HerdrCoreEnvironmentNotice?
+    /// The Console, for the harness edits this device applied on this Host.
+    let harnessEdits: ConsoleStore?
     /// True while Console is serving a Host-detail Reconnect press (the
     /// retry call plus the 1.2 s visual-feedback hold). Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -59,6 +61,7 @@ struct HostOnboardingView: View {
         connectedRouteID: HostRoute.ID? = nil,
         syncIssue: String? = nil,
         coreEnvironmentNotice: HerdrCoreEnvironmentNotice? = nil,
+        harnessEdits: ConsoleStore? = nil,
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable () async -> Void)? = nil,
@@ -73,6 +76,7 @@ struct HostOnboardingView: View {
         self.connectedRouteID = connectedRouteID
         self.syncIssue = syncIssue
         self.coreEnvironmentNotice = coreEnvironmentNotice
+        self.harnessEdits = harnessEdits
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         self.stopConnecting = stopConnecting
@@ -158,6 +162,9 @@ struct HostOnboardingView: View {
                 HerdrCoreStartSection(store: store)
                 if let coreEnvironmentNotice {
                     HerdrCoreEnvironmentSection(notice: coreEnvironmentNotice)
+                }
+                if let harnessEdits {
+                    HarnessConfigEditsSection(console: harnessEdits, hostID: store.host.id)
                 }
             } else {
                 serverKindSection

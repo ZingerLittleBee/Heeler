@@ -163,7 +163,7 @@ The [Done step](#done-per-device) below does the same for the turn-end vector.
 | Pi | `pi`, from each package name you can install (`@mariozechner/pi-coding-agent`, `@earendil-works/pi-coding-agent`) | `pi` | `pi` | The same. A Node launch resolves to `pi` |
 | OpenCode 2.x | `opencode` | `opencode` | `opencode` | The same |
 | Oh My Pi | `omp` | `omp` | `omp` | The same |
-| Grok Build | `grok` | `grok-build` | `grok` | The same. Without hooks set up it stays **Unknown** |
+| Grok Build | `grok` | `grok-build` | `grok` | The same. With its Program Status off it stays **Unknown**, and [the edit](#grok-build-edit) is offered |
 
 Each Agent lists on Agents, By Host and By Workspace, and under the Host filter. It
 leaves the Terminals tab while it holds the foreground, its row opens its detail, and
@@ -182,6 +182,29 @@ Terminal. A status report is `printf '\033]7501;state=working:app=x\007'`, as th
 | Wrappers | A harness started through `bash -lc`, and through the desktop app's fish wrapper | The Agent is the harness underneath. New arguments on the fish wrapper's pid end it |
 | Cleared foreground | Quit a harness started through the desktop app's bash wrapper, then run `printf x \| less` in the shell it left, and background and reopen Heeler while it runs | No Agent comes back, at the capture's `null` `foreground` event or after the reconnect |
 | Kept restart | `kill -9` a harness started with `keep` | No Agent between `lost` and `restarted` |
+| Why Unknown | Tap **Unknown** on an inert program named `claude`, then on one named for no harness | The first names Claude Code 2.1.295, the second names no release, and neither offers an edit |
+| Reported, no state | A running program reports `state=clear`, and tap **Unknown** | It has not reported a state yet, with no edit offered, whatever the program |
+
+### Grok Build edit
+
+On a throwaway session, start the core by absolute path with a made-up `TMUX`, as in
+[Leaked environment](#leaked-environment), and start `grok` in a Terminal. Save a copy
+of `~/.grok/config.toml` first, or note that it is absent. Do not sign in with a real
+account.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Offer | Open the Agent and tap **Unknown** | **Turn On Grok Build's Status** shows, and the file has not changed |
+| Shown change | Tap it | The file's path and the exact lines, `program_status = "on"` under `[ui.notifications]`. The file still has not changed |
+| Changed under it | Add a comment to the file on the box, then tap **Apply This Change** | **The file changed after Heeler read it, so nothing was written**, and the file keeps your comment. Remove the comment, and tap **OK** |
+| Apply | Review again and tap **Apply This Change** | `diff` against the saved copy shows exactly the lines shown. The mode is unchanged, and no `.heeler-` file is left beside it |
+| Reports | Quit Grok Build and start it again | Record the version and whether a status arrives under the leaked `TMUX` in [the compatibility notes](../agents/herdr-compatibility.md). Source review could not settle this. Once it reports, its Agent shows no offer |
+| Host detail | Open the Host's detail | **Harness Edits** lists Grok Build with the same lines and **Undo** |
+| Undo | Tap **Undo** there | The file matches the saved copy byte for byte, or is gone again if it was absent, and the row goes |
+| Undo refused | Apply again, add a comment on the box, and tap **Undo** | **The file changed after Heeler edited it, so nothing was written**, and the file keeps your comment. **Stop Listing** drops the row and leaves the file alone |
+| A second file | With the edit applied, start another `grok` with `GROK_HOME` naming a scratch folder, and tap its **Unknown** | The offer shows, not the first file's edit. Apply shows that folder's `config.toml`, and **Harness Edits** lists both files. **Undo** on the first file's row restores that file and leaves the other |
+| Symlink | Make the file a symlink and repeat Apply and Undo | It stays a symlink, and the target takes the change |
+| Others untouched | Compare Claude Code's settings, Codex's hooks and `~/.grok`'s global hooks before and after | No change |
 
 ## Done per device
 

@@ -36,6 +36,10 @@ final class ConsoleStore {
     private(set) var hostSyncErrors: [Host.ID: String] = [:]
     /// Connected core Hosts whose core inherited variables that break things.
     private(set) var hostCoreEnvironmentNotices: [Host.ID: HerdrCoreEnvironmentNotice] = [:]
+    /// Why each core Agent reading Unknown does (ADR 0034). No Herdr TUI Agent is here.
+    private(set) var coreStatusExplanations: [ConsoleAgent.ID: HerdrCoreStatusExplanation] = [:]
+    /// The harness configuration edits this device applied (ADR 0033).
+    let harnessEdits: HarnessConfigEditStore
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
     /// Hosts whose current connection has not produced its first snapshot.
     /// Their empty Agent projection is loading state, not proof that a pane
@@ -174,10 +178,12 @@ final class ConsoleStore {
         },
         makeCoreSession: @escaping @Sendable (Host) -> HerdrCoreHostSession =
             ConsoleStore.coreSessionFactory(),
-        coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory()
+        coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
+        harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore()
     ) {
         self.makeCoreSession = makeCoreSession
         self.coreHostMemory = coreHostMemory
+        self.harnessEdits = harnessEdits
         self.chatCache = chatCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
@@ -207,8 +213,9 @@ final class ConsoleStore {
         let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
-        coreHostMemory.retainHosts(
-            Set(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id)))
+        let coreHostIDs = Set(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
+        coreHostMemory.retainHosts(coreHostIDs)
+        harnessEdits.retainHosts(coreHostIDs)
         cachedChats.setHosts(hosts)
         for id in projections.keys where incoming[id] != projections[id]?.host {
             chatPrefetchTasks[id]?.cancel()
@@ -1087,6 +1094,13 @@ final class ConsoleStore {
                 HerdrCoreEnvironmentNotice(names: projection.leakedEnvironmentNames)
                     .map { (projection.host.id, $0) }
             })
+        coreStatusExplanations = Dictionary(
+            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
+                .flatMap { projection in
+                    projection.statusExplanations.map {
+                        (ConsoleAgent.ID(hostID: projection.host.id, paneID: $0.key), $0.value)
+                    }
+                })
         hostConnectionGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
@@ -1445,6 +1459,57 @@ final class ConsoleStore {
         HostCapabilities(
             serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
             platform: hostPlatforms[hostID])
+    }
+
+    // MARK: Harness configuration edits
+
+    /// The Grok Build edit an Unknown Grok Build Agent offers. `process` is the
+    /// Agent's, whose `GROK_HOME` says which file its program reads.
+    func grokBuildEditFlow(on hostID: Host.ID, process: Int?) -> HarnessConfigEditFlow {
+        HarnessConfigEditFlow(
+            hostID: hostID, editID: GrokBuildProgramStatusEdit.id, store: harnessEdits,
+            services: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.harnessEditServices(on: hostID)
+            },
+            makeEdit: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.grokBuildEdit(on: hostID, process: process)
+            })
+    }
+
+    /// A Host detail row's own way to its edit, which can only undo it.
+    func harnessEditFlow(for edit: HarnessConfigAppliedEdit, on hostID: Host.ID) -> HarnessConfigEditFlow {
+        HarnessConfigEditFlow(
+            hostID: hostID, listing: edit, store: harnessEdits,
+            services: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.harnessEditServices(on: hostID)
+            })
+    }
+
+    private func harnessEditServices(on hostID: Host.ID) async throws -> any HostServices {
+        try await projection(for: hostID).withHostServices { $0 }
+    }
+
+    private func grokBuildEdit(on hostID: Host.ID, process: Int?) async throws -> HarnessConfigEdit {
+        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
+            throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+        }
+        // Only an environment that was read can say `GROK_HOME` is unset. Taking an
+        // unreadable one for unset would edit a file this Agent may not read.
+        guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+        let grokHome: String?
+        switch await core.processVariable("GROK_HOME", pid: process) {
+        case .value(let value): grokHome = value
+        case .unset: grokHome = nil
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let home = try await harnessEditServices(on: hostID).hostHomeDirectory()
+        guard let path = GrokBuildProgramStatusEdit.configPath(grokHome: grokHome, home: home) else {
+            throw HarnessConfigEditError.unresolvedPath
+        }
+        return GrokBuildProgramStatusEdit.edit(path: path)
     }
 
     func chatProgram(for agent: ConsoleAgent) -> ChatProgram? {

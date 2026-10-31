@@ -184,6 +184,24 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
 
     func lastLocation() async -> HerdrCoreLocator.Location? { nil }
 
+    /// What each process's environment answers, and every read asked for.
+    private var processVariables: [String: HostProcessReader.Variable] = [:]
+    private(set) var processVariableReads: [String] = []
+
+    func setProcessVariable(_ name: String, to value: String) {
+        processVariables[name] = .value(value)
+    }
+
+    /// The environment could not be read, which says nothing about the name.
+    func makeProcessVariableUnavailable(_ name: String) {
+        processVariables[name] = .unavailable
+    }
+
+    func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable {
+        processVariableReads.append("\(name) of \(pid)")
+        return processVariables[name] ?? .unset
+    }
+
     func startCore() async throws -> HerdrCoreStart.Outcome {
         throw TransportError.hostFeatureUnavailable(feature: "startCore")
     }
