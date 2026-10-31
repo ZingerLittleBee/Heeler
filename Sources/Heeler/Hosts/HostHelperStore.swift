@@ -185,7 +185,7 @@ final class HostHelperStore {
     }
 
     private func installer(_ transport: any HerdrCoreTransport) -> HostHelperInstaller {
-        HostHelperInstaller(host: transport.hostHelperHost, nonce: nonce)
+        HostHelperInstaller(host: transport.hostHelperHost, nonce: nonce, bundle: bundle)
     }
 
     private static func message(for error: any Error) -> String {

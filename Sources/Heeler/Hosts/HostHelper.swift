@@ -105,9 +105,9 @@ struct HostHelperLayout: Sendable, Equatable {
     func file(named name: String) -> String { "\(directory)/\(name)" }
 
     /// Every folder down to the deepest ones the install needs, parents first.
-    var folderChain: [String] {
+    func folderChain(reaching extensionFolders: [String]) -> [String] {
         var chain: [String] = []
-        for deepest in [directory, unitWantsDirectory] {
+        for deepest in [directory, unitWantsDirectory] + extensionFolders {
             var path = ""
             for component in deepest.split(separator: "/") {
                 path += "/\(component)"
@@ -286,9 +286,15 @@ struct HostHelperReading: Sendable, Equatable {
             if version < bundled { return .update }
             switch status {
             case .damaged, .serviceFailed: return .repair
-            default: return nil
+            default: return lacksAnExtension ? .repair : nil
             }
         }
+    }
+
+    /// An Oh My Pi profile made since the install has no extension yet, and the
+    /// Helper itself is fine, so this offers a repair without calling it damage.
+    private var lacksAnExtension: Bool {
+        probe?.extensionFolders?.contains { !$0.installed } ?? false
     }
 
     /// Whether there is anything of the Helper's on this Host to remove.
@@ -388,6 +394,7 @@ enum HostHelperError: Error, Equatable {
     case nodeMissing
     case unsupportedPlatform
     case unreadableHost
+    case extensionFoldersUnreadable
     case noHashTool
     case verificationFailed
     case stepFailed(step: String, detail: String)
@@ -405,6 +412,8 @@ enum HostHelperError: Error, Equatable {
             "This Host cannot run the Host Helper yet."
         case .unreadableHost:
             "Could not read this Host's answer about the Host Helper."
+        case .extensionFoldersUnreadable:
+            "Heeler could not find where this Host's Pi and Oh My Pi load extensions from."
         case .noHashTool:
             "This Host has neither sha256sum nor shasum, so Heeler cannot check the Host Helper's files."
         case .verificationFailed:

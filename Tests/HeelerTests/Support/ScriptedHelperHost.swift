@@ -38,6 +38,8 @@ actor ScriptedHelperHost: HostHelperHost {
     /// Corrupts this file of an upload as it lands, as a bad link might.
     var corruptUploadNamed: String?
     var failUploadsNamed: String?
+    /// Fails the Node.js run that finds the extension folders, with this message.
+    var extensionFoldersFailure: String?
 
     private(set) var files: [String: File] = [:]
     private(set) var folders: [String: UInt32] = [:]
@@ -119,6 +121,13 @@ actor ScriptedHelperHost: HostHelperHost {
             lines = probeLines()
         case .locate:
             lines = locationLines()
+        case .listExtensionFolders(_, _, let home):
+            if let extensionFoldersFailure {
+                status = 1
+                stderr = extensionFoldersFailure
+            } else {
+                lines = [extensionFoldersLine(home: home)]
+            }
         case .makeFolders(let chain, let privateFolder):
             for folder in chain where folders[folder] == nil {
                 folders[folder] = 0o700
@@ -204,6 +213,22 @@ actor ScriptedHelperHost: HostHelperHost {
         }
     }
 
+    /// What `extensions/extension-folders.js` prints, whose own tests are Node's.
+    private func extensionFoldersLine(home: String) -> String {
+        let profiles = "\(home)/.omp/profiles"
+        let names = folders.keys
+            .filter { ($0 as NSString).deletingLastPathComponent == profiles }
+            .map { ($0 as NSString).lastPathComponent }
+            .sorted()
+        let paths = ["\(home)/.pi/agent/extensions", "\(home)/.omp/agent/extensions"]
+            + names.map { "\(profiles)/\($0)/agent/extensions" }
+        let entries = paths.map { path in
+            let installed = files["\(path)/\(HostHelperScript.extensionFileName)"] != nil
+            return "{\"path\":\"\(path)\",\"installed\":\(installed)}"
+        }
+        return "{\"folders\":[\(entries.joined(separator: ","))]}"
+    }
+
     private func locationLines() -> [String] {
         ["home \(Self.home)", "data \(Self.home)/.local/share", "config \(Self.home)/.config"]
     }
@@ -254,6 +279,7 @@ actor ScriptedHelperHost: HostHelperHost {
         switch step {
         case .probe: "probe"
         case .locate: "locate"
+        case .listExtensionFolders: "listExtensionFolders"
         case .makeFolders: "makeFolders"
         case .prepareStaging: "prepareStaging"
         case .hashTree: "hashTree"
@@ -273,6 +299,8 @@ enum HostHelperFixture {
         let files = [
             "main.js": Data("console.log('main')\n".utf8),
             "package.json": Data("{\"type\":\"module\"}\n".utf8),
+            HostHelperScript.extensionPath: Data("export default function () {}\n".utf8),
+            HostHelperScript.extensionFoldersPath: Data("console.log('{}')\n".utf8),
             "shared/delivery/push.js": Data("export const push = 1;\n".utf8),
             "version.json": Data("{\"version\":\"\(version)\"}\n".utf8),
         ]
