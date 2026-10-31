@@ -610,6 +610,38 @@ struct AttachTerminalStoreTests {
 @MainActor
 @Suite("Agent Attach store")
 struct AgentAttachStoreTests {
+    @Test func automaticReattachKeepsTheTerminalSurfaceAcrossTransportReplacement() async throws {
+        let transport = ScriptedTransport()
+        let generation = TerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.acquire()
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = makeStore(transport: transport, generation: 1, runTerminal: runner)
+        try await goLive(store, transport)
+        let surface = store.terminalID
+        let feed = store.terminal.feed
+        let readyGate = ScriptedTransportCallGate()
+        await generation.set(2)
+        await generation.gateNextAcquisition(using: readyGate)
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await readyGate.waitForEntry()
+        #expect(store.terminalStatus == .reconnecting)
+
+        store.transportGenerationDidChange(2)
+        #expect(store.terminalID == surface)
+        #expect(store.terminal.feed === feed)
+        await readyGate.open()
+        try await paint(transport)
+        try await waitUntil("the existing terminal should recover") { store.terminalStatus == .live }
+        #expect(store.terminalID == surface)
+        #expect(store.terminal.feed === feed)
+        #expect(await transport.attachRequests.count == 2)
+        await store.leave().value
+    }
+
     @Test func unchangedGenerationAllowsConsecutiveForegroundRecoveries() async throws {
         let transport = ScriptedTransport()
         let generation = TerminalGenerationSource(1)
