@@ -87,7 +87,8 @@ final class AgentChatStore {
         let id: UUID
         /// What herdr typed: the draft after Chat's rewrite.
         let text: String
-        /// `agent.prompt` took it, so the program may record it.
+        /// `agent.prompt` took it, or a herdr-core step got no answer: either
+        /// way the program may record it.
         let isDelivered: Bool
     }
 
@@ -173,7 +174,7 @@ final class AgentChatStore {
     @ObservationIgnored private let source: AgentChatSource
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private let now: @Sendable () -> Date
-    @ObservationIgnored private var agent: Agent
+    @ObservationIgnored private(set) var agent: Agent
     /// Whether this conversation has had a live read. Until then the
     /// Background Work list stays empty: saved work alone could have ended
     /// long ago (ADR 0024).
@@ -405,6 +406,9 @@ final class AgentChatStore {
         blocked.hide()
     }
 
+    /// The Chat views on screen, for a store that takes this one's place.
+    var viewerTokens: Set<UUID> { viewers }
+
     /// The app went to the background; Chat keeps its place.
     func suspend() {
         isSuspended = true
@@ -555,7 +559,8 @@ final class AgentChatStore {
     /// session Chat has not seen.
     func noteSent() {
         lastActivity = now()
-        needsAgentRefresh = true
+        // A check of a process waits for an event: a Send had its own just now.
+        if source.sessionEvidence == nil { needsAgentRefresh = true }
         nextOpen = nil
         failedOpens = 0
         wake()
@@ -1602,9 +1607,10 @@ final class AgentChatStore {
         let oldestAwaiting = sends.compactMap { statuses[$0.id] == .awaiting ? $0.deliveredAt : nil }.min()
         busySpells.removeAll { spell in oldestAwaiting.map { spell.end <= $0 } ?? true }
         // The program may have forked into a session herdr has not
-        // reported through the snapshot yet.
+        // reported through the snapshot yet. A check of a process waits for
+        // an event, or this clock would be its timer.
         if becameOverdue {
-            needsAgentRefresh = true
+            if source.sessionEvidence == nil { needsAgentRefresh = true }
             needsRelocate = true
             wake()
         }

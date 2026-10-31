@@ -220,7 +220,8 @@ with test clients, not the app.
   program restarts. An Agent detail open on either stays on screen, showing
   restarting or ended, though the Terminal has stopped being an Agent. The app
   keeps that departed Agent for the detail alone, so no list shows it, and a
-  reconnect forgets it.
+  reconnect forgets it. Its Chat stays too, on the conversation it showed, says
+  what became of the Agent, and follows the next Agent back at that address.
 - Close ends a Terminal for good with `terminal.kill`, one for each Terminal
   it takes, and never sends one twice: a kill the core did not answer reads as
   outcome unknown. A kill is final even on a kept Terminal, so keep is left as

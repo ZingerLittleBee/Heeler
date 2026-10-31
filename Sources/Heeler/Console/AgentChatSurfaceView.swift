@@ -313,6 +313,10 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
+        .onChange(of: chat?.sendStatuses, initial: true) { _, statuses in
+            guard let statuses else { return }
+            composer.settleUnknownOutcomes(recorded: Set(statuses.filter { $0.value == .recorded }.keys))
+        }
         .onChange(of: chat.map { $0.blocked.content != .none } ?? false) { _, isReplaced in
             // A Blocked card takes the Composer's place and the tools dock
             // with it. iPad keeps `.tools` without focus, so nothing else
@@ -547,6 +551,10 @@ struct AgentChatSurfaceView: View {
         switch presentation {
         case .timeline:
             EmptyView()
+        case .departed(let departure):
+            ContentUnavailableView(
+                departure.title, systemImage: departure.systemImage, description: Text(departure.explanation))
+            .accessibilityIdentifier("chat.departed")
         case .locating:
             ChatLocatingView()
         case .awaitingHost:
@@ -607,7 +615,8 @@ struct AgentChatSurfaceView: View {
     private var bannerContent: [Banner] {
         let lines = ChatBannerLine.lines(
             hostStatus: console.hostStatuses[agent.hostID], conversation: chat?.conversation,
-            hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.launchNotice)
+            hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.launchNotice,
+            departure: console.chatDeparture(of: agent.id))
         let terminalOffered = lines.contains {
             if case .unavailable(let reason, _) = $0 { !reason.isWaiting } else { false }
         }
@@ -625,6 +634,9 @@ struct AgentChatSurfaceView: View {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
                     banner.action = { showAgentTerminal() }
                 }
+            case .departure:
+                banner.actionTitle = AgentDetailSurface.terminal.showTitle
+                banner.action = { showAgentTerminal() }
             case .launch:
                 if !terminalOffered {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
@@ -640,7 +652,8 @@ struct AgentChatSurfaceView: View {
     private var presentation: ChatSurfacePresentation {
         ChatSurfacePresentation(
             conversation: chat?.conversation, hasPendingEchoes: !pendingEchoes.isEmpty,
-            isHostConnected: isHostConnected, checkingLaunch: chat?.isCheckingLaunch ?? false)
+            isHostConnected: isHostConnected, checkingLaunch: chat?.isCheckingLaunch ?? false,
+            departure: console.chatDeparture(of: agent.id))
     }
 
     /// What the timeline is rebuilt from; anything else it shows comes

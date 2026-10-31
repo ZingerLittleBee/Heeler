@@ -62,6 +62,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// Events that may mean a Terminal's session changed, for Chat (ADR 0034).
     private var sessionEventCounts: [String: UInt64] = [:]
     private var inventoryReplacements: UInt64 = 0
+    /// Leak checks that found a variable, which a Chat's reason depends on.
+    private var leakAnswers: UInt64 = 0
 
     private let gitGate: GitExecGate
     private var document: HerdrCoreDesktopDocument?
@@ -147,6 +149,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             for await _ in session.leakedEnvironmentUpdates {
                 guard !Task.isCancelled, let self else { return }
                 self.leakedEnvironmentNames = session.currentLeakedEnvironment
+                // A Chat that checked before this answer named the wrong fix.
+                if !self.leakedEnvironmentNames.isEmpty { self.leakAnswers &+= 1 }
                 self.publish()
             }
         }
@@ -1330,11 +1334,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     // MARK: Chat
 
-    /// Moves with each status, turn or foreground event of the Terminal, and
-    /// each fresh inventory, since those events may have been missed. Chat
-    /// checks the Agent's process again when it moves (ADR 0034).
+    /// Moves with each status, turn or foreground event of the Terminal, each
+    /// fresh inventory, since those events may have been missed, and each leak
+    /// check that found something, since a reason names what the core carries.
+    /// Chat checks the Agent's process again when it moves (ADR 0034).
     func sessionEventRevision(of address: String) -> UInt64 {
-        inventoryReplacements &+ (sessionEventCounts[address] ?? 0)
+        inventoryReplacements &+ leakAnswers &+ (sessionEventCounts[address] ?? 0)
     }
 
     /// Keys Chat's cache: nil before the first link named its core.
@@ -1344,6 +1349,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// One check of the Agent's process: one exec and at most one SFTP read.
     func checkChatSession(paneID: String) async throws -> ChatSessionEvidence {
+        // No inventory is no evidence either way: a Chat keeps what it shows and
+        // the snapshot's fresh inventory asks again. A Send here says it couldn't
+        // check.
+        guard hasInventory else { throw TransportError.cancelled }
+        // An Agent that left has no process to look at, and nothing it left says
+        // which conversation it was in. Its Chat says what became of it.
+        guard departedAgentsByPane[paneID] == nil else { throw TransportError.cancelled }
         guard let record = terminalRecord(at: paneID) else {
             return .unavailable(.cannotTellSession(.claude))
         }

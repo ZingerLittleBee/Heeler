@@ -412,6 +412,15 @@ final class AgentComposerStore: ComposerDraftOperations {
         draftSelection = NSRange(location: (draft as NSString).length, length: 0)
     }
 
+    /// The Transcript recorded these, so a step with no answer reached the
+    /// program after all, and nothing is left to decide about them.
+    func settleUnknownOutcomes(recorded: Set<Message.ID>) {
+        for index in messages.indices
+        where messages[index].state == .outcomeUnknown && recorded.contains(messages[index].id) {
+            messages[index].state = .delivered(.acknowledged)
+        }
+    }
+
     func agentStatusDidChange(_ status: AgentStatus) {
         guard agentStatus != status else { return }
         agentStatus = status

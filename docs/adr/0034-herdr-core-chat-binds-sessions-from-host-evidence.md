@@ -15,7 +15,13 @@ never show or send into a conversation it has guessed.
 - The app binds a herdr-core Agent's session itself, lazily: when Chat opens,
   before each Send, and on the Terminal's status, turn and foreground events.
   Each check is at most one SFTP read and one exec on the Host. The Host Helper
-  takes no part.
+  takes no part. No clock asks, including a Send's echo timeout, and neither does
+  a Send having gone, since one check ran just before it. A leak answer that
+  names a variable also asks again, since it changes what a reason says.
+- A check needs something to look at. Between a link and its snapshot nothing is
+  known of any Terminal, and an Agent that left its Terminal has no process, so
+  there it says nothing and runs nothing, rather than that it cannot tell: the
+  snapshot or the Agent's return asks again. A Send in either sends nothing.
 - A check starts from the Terminal's foreground process and its descendants
   that share the Terminal's `HC_SCOPE`, so an npm or Node launcher leads to
   the real agent process. It skips Codex's shared daemon

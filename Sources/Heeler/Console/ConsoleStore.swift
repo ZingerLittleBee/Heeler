@@ -1532,6 +1532,17 @@ final class ConsoleStore {
         chatDisplayAgents.first { $0.id == id } ?? departedAgents.first { $0.id == id }
     }
 
+    /// What became of an Agent a detail stays open on, for its Chat to say. Nil
+    /// while the Agent is there.
+    func chatDeparture(of id: ConsoleAgent.ID) -> ChatAgentDeparture? {
+        guard departedAgents.contains(where: { $0.id == id }) else { return nil }
+        // The Console hides a finished Terminal.
+        guard let terminal = terminals.first(where: { $0.hostID == id.hostID && $0.paneID == id.paneID }) else {
+            return .ended
+        }
+        return terminal.isRestarting ? .restarting : .shell
+    }
+
     var chatDisplayAgents: [ConsoleAgent] {
         agents + savedChatAgents.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
             pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
@@ -1761,7 +1772,8 @@ final class ConsoleStore {
     }
 
     /// Hands each Chat its Agent's latest record, and ends the Chats of
-    /// Agents a current snapshot no longer lists.
+    /// Agents a current snapshot no longer lists. A departed Agent's detail
+    /// stays open, and its Chat with it, until the Agent is back or gone.
     private func publishChatAgents() {
         guard !chatStores.isEmpty else { return }
         let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
@@ -1770,9 +1782,17 @@ final class ConsoleStore {
             // Another core's Agents are other Agents: its Transcripts are keyed
             // apart, and this store is keyed to the last one.
             if let core, store.coreScope != core.chatCacheScope {
+                let viewers = store.viewerTokens
                 store.end()
                 chatStores[id] = nil
                 chatSessionEventRevisions[id] = nil
+                // A Chat on screen says so only once, when it appears, and it
+                // stays on screen across this.
+                if !viewers.isEmpty, let agent = agents.first(where: { $0.id == id }),
+                    let next = chatStore(for: agent, program: store.program)
+                {
+                    for viewer in viewers { next.show(viewer) }
+                }
                 continue
             }
             if let core {
@@ -1781,7 +1801,7 @@ final class ConsoleStore {
                     store.sessionEvidenceMayHaveChanged()
                 }
             }
-            if let agent = current[id] {
+            if let agent = current[id] ?? departedAgents.first(where: { $0.id == id })?.agent {
                 store.agentDidChange(agent)
             } else if hostStatuses[id.hostID] == .connected,
                 !hostsAwaitingSnapshot.contains(id.hostID)

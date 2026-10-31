@@ -152,6 +152,48 @@ struct BlockedCardStoreTests {
         #expect(store.notice == nil)
     }
 
+    /// The key may have reached the pane: a read that shows another dialog, or
+    /// none, says the failure is no longer about what the card shows.
+    @Test(arguments: ["claude-31-par-second", "claude-01-ready"])
+    func aKeyPadFailureGivesWayToWhatTheNextReadShows(next: String) async throws {
+        let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
+        let after = try ScreenFixture.screen(next)
+        let store = BlockedCardStore(
+            program: .claude,
+            io: BlockedScreenIO(
+                readScreen: { await pane.read() },
+                sendKeys: { _ in
+                    await pane.show(after)
+                    throw TransportError.channelFailed(detail: "timed out")
+                },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.sendKeys(["enter"])
+
+        #expect(store.notice == nil)
+    }
+
+    /// The same dialog still shows, so the failure is about it.
+    @Test func aKeyPadFailureStaysOverTheSameDialog() async throws {
+        let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
+        let store = BlockedCardStore(
+            program: .claude,
+            io: BlockedScreenIO(
+                readScreen: { await pane.read() },
+                sendKeys: { _ in throw TransportError.channelFailed(detail: "timed out") },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.sendKeys(["enter"])
+
+        #expect(store.notice?.hasPrefix("Heeler couldn't reach the Agent") == true)
+    }
+
     @Test func aClaudeCardConfirmsByItsCallsResult() async throws {
         let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
         let request = Self.bash("toolu_1", "touch c1.txt")

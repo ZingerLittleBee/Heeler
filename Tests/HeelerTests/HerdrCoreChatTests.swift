@@ -468,61 +468,165 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
-    /// Everything that polls runs far faster than any real timer here.
-    @Test func noTimerEverChecks() async throws {
-        let table = ScriptedProcessTable()
-        await table.add(
-            ScriptedProcessTable.Process(
-                pid: Self.pid, name: "claude", start: Self.start, environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
-        let files = VirtualHostFiles(home: Self.home)
+    private final class ManualDate: @unchecked Sendable {
+        var now = Date(timeIntervalSince1970: 1_791_266_400)
+    }
+
+    /// Counts what would only run again if the loop went round again.
+    private actor Rounds {
+        private(set) var count = 0
+
+        func note() {
+            count += 1
+        }
+    }
+
+    /// A core Chat outside `ConsoleStore`, so its `now` and pace are the test's.
+    private func evidenceStore(
+        table: ScriptedProcessTable, files: VirtualHostFiles, rounds: Rounds? = nil,
+        timing: AgentChatStore.Timing = AgentChatStore.Timing(), now: @escaping @Sendable () -> Date = { Date() }
+    ) throws -> AgentChatStore {
         let record = try HerdrCoreSessionBinderTests.record(pid: Self.pid, foreground: Self.pid)
         let binder = HerdrCoreSessionBinder(
             processes: { try await table.read($0) }, files: files.hostFiles(), clearLabels: { _ in })
         let agent = Agent(
             terminalID: "t1", kind: "claude", title: "", status: .idle, workspaceID: "w1", tabID: "t1",
             paneID: "t1", cwd: "/work/app", revision: 1, agentSession: nil)
-        func make() -> AgentChatStore {
-            AgentChatStore(
-                agentID: ConsoleAgent.ID(hostID: host.id, paneID: "t1"), agent: agent, program: .claude,
-                source: AgentChatSource(
-                    hostID: host.id, socketLocation: .defaultSession, files: files.hostFiles(),
-                    agentInfo: {
-                        Issue.record("A core Chat asked for the Agent's record")
-                        return agent
-                    },
-                    cache: VolatileChatTranscriptCache(),
-                    adapter: try! #require(ChatTranscriptAdapter.standard(for: .claude)),
-                    sessionEvidence: { try await binder.check(record) }),
-                timing: AgentChatStore.Timing(
-                    activeInterval: .milliseconds(2), idleInterval: .milliseconds(2),
-                    locateBackoff: [0.001], sessionRecheck: 0.001, idleSessionRecheck: 0.001))
-        }
+        return AgentChatStore(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "t1"), agent: agent, program: .claude,
+            source: AgentChatSource(
+                hostID: host.id, socketLocation: .defaultSession, files: files.hostFiles(),
+                agentInfo: {
+                    Issue.record("A core Chat asked for the Agent's record")
+                    return agent
+                },
+                cache: VolatileChatTranscriptCache(),
+                adapter: try #require(ChatTranscriptAdapter.standard(for: .claude)),
+                cachedSession: { _ in
+                    await rounds?.note()
+                    return nil
+                },
+                sessionEvidence: { try await binder.check(record) }),
+            timing: timing, now: now)
+    }
 
-        // With nothing to bind.
-        let waiting = make()
+    private static func eventually(
+        _ what: String, _ condition: @MainActor () async -> Bool, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        for _ in 0..<1000 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+    }
+
+    /// Everything that polls runs far faster than any real timer here, and each
+    /// stage ends after the loop has gone round many times, however long that took.
+    @Test func noTimerEverChecks() async throws {
+        let table = ScriptedProcessTable()
+        await table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, name: "claude", start: Self.start, environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        let files = VirtualHostFiles(home: Self.home)
+        let timing = AgentChatStore.Timing(
+            activeInterval: .milliseconds(2), idleInterval: .milliseconds(2),
+            locateBackoff: [0.001], sessionRecheck: 0.001, idleSessionRecheck: 0.001)
+        let enoughRounds = 20
+
+        // With nothing to bind: each round looks for a saved binding.
+        let rounds = Rounds()
+        let waiting = try evidenceStore(table: table, files: files, rounds: rounds, timing: timing)
         waiting.show()
-        try await Task.sleep(for: .milliseconds(200))
+        try await Self.eventually("the rounds") { await rounds.count >= enoughRounds }
         #expect(await table.requests.count == 1)
         waiting.end()
 
-        // Bound to a conversation whose file is not there.
+        // Bound to a conversation whose file is not there: each round that opens
+        // looks for the file.
         await files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
-        let bound = make()
+        let bound = try evidenceStore(table: table, files: files, timing: timing)
+        await files.clearRecords()
         bound.show()
-        try await Task.sleep(for: .milliseconds(200))
+        try await Self.eventually("the opens") { await files.statuses.count >= enoughRounds }
         #expect(await table.requests.count == 2)
         bound.end()
 
         // Bound to a conversation whose file cannot be read, opening again as it
         // backs off.
+        let faults = 500
         await files.failNext(
-            .status, path: Self.transcriptPath(), with: TransportError.channelFailed(detail: "read"), count: 500)
-        let failing = make()
+            .status, path: Self.transcriptPath(), with: TransportError.channelFailed(detail: "read"), count: faults)
+        let failing = try evidenceStore(table: table, files: files, timing: timing)
         failing.show()
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(failing.conversation.readFailure != nil)
+        try await Self.eventually("the failed opens") {
+            let left = await files.faultsLeft(.status, path: Self.transcriptPath())
+            return failing.conversation.readFailure != nil && left <= faults - enoughRounds
+        }
         #expect(await table.requests.count == 3)
         failing.end()
+    }
+
+    /// One check before the Send, and none for the Send having gone or for its
+    /// clock passing: neither is one of the events that say the session may have
+    /// changed (ADR 0034).
+    @Test func aSendAddsNoCheckOfItsOwn() async throws {
+        let table = ScriptedProcessTable()
+        await table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, name: "claude", start: Self.start, environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        let files = VirtualHostFiles(home: Self.home)
+        await files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await files.write(try Self.transcript(), at: Self.transcriptPath())
+        let date = ManualDate()
+        let chat = try evidenceStore(table: table, files: files, now: { date.now })
+        await chat.step()
+        #expect(Self.isFollowing(chat))
+        #expect(await table.requests.count == 1)
+
+        let id = UUID()
+        chat.updateSends([AgentChatStore.SentMessage(id: id, text: "nothing records this", isDelivered: false)])
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        #expect(await table.requests.count == 2)
+
+        chat.updateSends([AgentChatStore.SentMessage(id: id, text: "nothing records this", isDelivered: true)])
+        await chat.step()
+        #expect(await table.requests.count == 2)
+
+        date.now = date.now.addingTimeInterval(AgentChatStore.Timing().echoTimeout + 1)
+        await chat.step()
+        #expect(chat.sendStatuses[id] == .overdue)
+        await chat.step()
+        #expect(await table.requests.count == 2)
+    }
+
+    /// A Send whose answer was lost, once the Transcript shows the core delivered it.
+    @Test func aSendWithNoAnswerSettlesWhenTheTranscriptRecordsIt() async throws {
+        let table = ScriptedProcessTable()
+        await table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, name: "claude", start: Self.start, environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        let files = VirtualHostFiles(home: Self.home)
+        await files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await files.write(try Self.transcript(), at: Self.transcriptPath())
+        let chat = try evidenceStore(table: table, files: files)
+        await chat.step()
+
+        let id = UUID()
+        let text = "the answer to this was lost"
+        chat.updateSends([AgentChatStore.SentMessage(id: id, text: text, isDelivered: false)])
+        chat.updateSends([AgentChatStore.SentMessage(id: id, text: text, isDelivered: true)])
+        await chat.step()
+        #expect(chat.sendStatuses[id] == .awaiting)
+
+        await files.append(Self.userLine(text), to: Self.transcriptPath())
+        await chat.step()
+        #expect(chat.sendStatuses[id] == .recorded)
+    }
+
+    private static func userLine(_ text: String) -> String {
+        let uuid = UUID().uuidString.lowercased()
+        return #"{"type":"user","uuid":"\#(uuid)","timestamp":"2026-11-01T00:00:00.000Z","sessionId":"\#(first)","message":{"role":"user","content":"\#(text)"}}"#
+            + "\n"
     }
 
     /// `/clear` while Chat reads the old conversation's file, and that read fails:
@@ -702,6 +806,232 @@ struct HerdrCoreChatTests {
         #expect(reason.explanation.contains("Host's details"))
         chat.end()
         rig.store.setHosts([])
+    }
+
+    /// The leak check comes back after the check it should have informed.
+    @Test func aLeakAnswerAfterTheReasonPointsAtTheHostNotice() async throws {
+        let rig = Rig(host: host)
+        let name = ChatTranscriptOffVariable.childSession.rawValue
+        await rig.transport.setLeakedEnvironment([name])
+        await rig.transport.holdLeakAnswers()
+        try await rig.start(environment: [name: "1"])
+        let chat = try rig.chat()
+
+        chat.show()
+        let before = ChatUnavailableReason.transcriptOff(.childSession, coreCarriesIt: false)
+        try await rig.waitUntil("the reason") { chat.conversation.phase == .unavailable(before) }
+
+        await rig.transport.releaseLeakAnswers()
+
+        let after = ChatUnavailableReason.transcriptOff(.childSession, coreCarriesIt: true)
+        try await rig.waitUntil("the reason to point at the notice") { chat.conversation.phase == .unavailable(after) }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Between a new link and its snapshot nothing is known of any Terminal, so a
+    /// check says nothing rather than that Chat cannot tell.
+    @Test func aCheckBeforeTheSnapshotLeavesAFollowedConversationAlone() async throws {
+        let rig = Rig(host: host)
+        try await rig.start()
+        await rig.files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await rig.files.write(try Self.transcript(), at: Self.transcriptPath())
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntil("Chat to follow it") { Self.isFollowing(chat) }
+        let checks = await rig.checks
+
+        // Back from the background: the link comes up before its snapshot.
+        await rig.transport.holdSubscribes()
+        await rig.store.suspend()
+        await rig.store.resume()
+        await rig.transport.waitForSubscribe(count: 2)
+        try await rig.waitUntil("the link, with no snapshot yet") {
+            rig.store.hostStatuses[self.host.id] == .connected && rig.store.hostsAwaitingSnapshot.contains(self.host.id)
+        }
+
+        chat.suspend()
+        chat.retry()
+        await chat.step()
+
+        #expect(Self.isFollowing(chat))
+        #expect(await rig.checks == checks)
+        // Send has nothing to go on, and says that rather than what it cannot tell.
+        #expect(await chat.confirmSessionBeforeSend() == AgentChatStore.uncheckedSessionReason(.claude))
+        #expect(Self.isFollowing(chat))
+
+        await rig.transport.releaseSubscribes()
+        try await rig.waitUntil("the snapshot") { !rig.store.hostsAwaitingSnapshot.contains(self.host.id) }
+        chat.resume()
+        try await rig.waitForChecks(checks + 1)
+        #expect(Self.isFollowing(chat))
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    // MARK: An Agent that leaves while Chat shows
+
+    private static let exitedEnd = JSONValue.object(["reason": .string("exited"), "exit_code": .number(0)])
+    private static let lostEnd = JSONValue.object(["reason": .string("signaled"), "signal": .number(9)])
+
+    private static func keptRecord() -> JSONValue {
+        guard case .object(var fields) = record() else { return record() }
+        fields["keep"] = .bool(true)
+        return .object(fields)
+    }
+
+    private func followedChat(_ rig: Rig) async throws -> (chat: AgentChatStore, agent: ConsoleAgent) {
+        try await rig.start()
+        await rig.files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await rig.files.write(try Self.transcript(), at: Self.transcriptPath())
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntil("Chat to follow it") { Self.isFollowing(chat) }
+        return (chat, try #require(rig.agent))
+    }
+
+    @Test func aChatStaysOnItsConversationWhenItsAgentEnds() async throws {
+        let rig = Rig(host: host)
+        let (chat, agent) = try await followedChat(rig)
+        let shown = chat.conversation.transcript.entries.count
+        let checks = await rig.checks
+
+        await rig.transport.deliver(Self.event(sequence: 2, type: "finished", data: Self.exitedEnd))
+        try await rig.waitUntil("the Agent to leave") { rig.store.agents.isEmpty }
+
+        let departed = try #require(rig.store.detailAgent(for: agent.id))
+        #expect(rig.store.chatDeparture(of: agent.id) == .ended)
+        #expect(rig.store.chatStore(for: departed, program: .claude) === chat)
+        #expect(chat.isVisible)
+        #expect(Self.isFollowing(chat))
+        #expect(chat.conversation.transcript.entries.count == shown)
+
+        // Nothing is left to look at, so a check runs nothing and says nothing.
+        chat.suspend()
+        chat.retry()
+        await chat.step()
+        #expect(await rig.checks == checks)
+        #expect(Self.isFollowing(chat))
+        // And a Send goes nowhere.
+        #expect(await chat.confirmSessionBeforeSend() == AgentChatStore.uncheckedSessionReason(.claude))
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    @Test func aChatFollowsAProgramTheCoreBroughtBackAtItsAddress() async throws {
+        let rig = Rig(host: host, record: Self.keptRecord())
+        let (chat, agent) = try await followedChat(rig)
+        let checks = await rig.checks
+
+        await rig.transport.deliver(Self.event(sequence: 2, type: "lost", data: Self.lostEnd))
+        try await rig.waitUntil("the Agent to leave") { rig.store.agents.isEmpty }
+        #expect(rig.store.chatDeparture(of: agent.id) == .restarting)
+        let departed = try #require(rig.store.detailAgent(for: agent.id))
+        #expect(rig.store.chatStore(for: departed, program: .claude) === chat)
+        #expect(chat.isVisible)
+
+        await rig.transport.deliver(
+            Self.event(
+                sequence: 3, type: "restarted",
+                data: Self.record(foreground: ["/bin/zsh"], name: "zsh", status: nil)))
+        try await rig.waitUntil("the new shell") { rig.store.chatDeparture(of: agent.id) == .shell }
+        #expect(rig.store.chatStore(for: departed, program: .claude) === chat)
+        #expect(await rig.checks == checks)
+
+        await rig.files.write(try Self.transcript(session: Self.second), at: Self.transcriptPath(session: Self.second))
+        await rig.files.write(
+            Self.registryEntry(session: Self.second), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
+        await rig.transport.deliver(
+            Self.event(
+                sequence: 5, type: "foreground",
+                data: Self.foregroundValue(["claude"], name: "claude", pid: Self.pid)))
+
+        try await rig.waitUntil("Chat to follow the new one") { Self.isFollowing(chat, session: Self.second) }
+        #expect(rig.store.chatDeparture(of: agent.id) == nil)
+        #expect(chat.isVisible)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    @Test func aDepartedAgentsChatStopsShowingItAsWorking() async throws {
+        let rig = Rig(host: host, record: Self.record(status: "working"))
+        let (chat, _) = try await followedChat(rig)
+        #expect(chat.agent.status == .working)
+
+        await rig.transport.deliver(Self.event(sequence: 2, type: "finished", data: Self.exitedEnd))
+        try await rig.waitUntil("the Agent to leave") { rig.store.agents.isEmpty }
+
+        #expect(chat.agent.status == .unknown)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    @Test func aChatOnScreenGoesOnToTheNewCoresChat() async throws {
+        let rig = Rig(host: host)
+        let (chat, _) = try await followedChat(rig)
+
+        await rig.transport.setCoreID("c2")
+        await rig.transport.endLink()
+        try await rig.waitUntil("the new core's Chat") {
+            guard let agent = rig.agent else { return false }
+            return rig.store.chatStore(for: agent, program: .claude)?.coreScope
+                == ChatCacheKey.coreScope(session: "", coreID: "c2")
+        }
+
+        let next = try rig.chat()
+        #expect(next !== chat)
+        #expect(next.isVisible)
+        #expect(!chat.isVisible)
+        try await rig.waitUntil("the new Chat to follow it") { Self.isFollowing(next) }
+        next.end()
+        rig.store.setHosts([])
+    }
+
+    @Test(arguments: [ChatAgentDeparture.restarting, .ended, .shell])
+    func aDepartureIsSaidOverAConversation(_ departure: ChatAgentDeparture) {
+        var conversation = ChatConversationSnapshot()
+        conversation.transcript.entries = [
+            ChatEntry(id: ChatEntryID("e0"), sourceOffset: 0, content: .assistant(ChatAssistantMessage(text: "said")))
+        ]
+        conversation.phase = .unavailable(.cannotTellSession(.claude))
+
+        let lines = ChatBannerLine.lines(
+            hostStatus: .connected, conversation: conversation, hasPendingEchoes: false, departure: departure)
+
+        #expect(lines == [.departure(departure)])
+        #expect(
+            ChatSurfacePresentation(
+                conversation: conversation, hasPendingEchoes: false, isHostConnected: true, departure: departure)
+                == .timeline)
+    }
+
+    @Test func aDepartureSaysWhatBecameOfTheAgent() {
+        #expect(
+            ChatBannerLine.departure(.restarting).text
+                == "Restarting… The program was lost. A new shell takes its place in a moment.")
+        #expect(
+            ChatBannerLine.departure(.ended).text == "The Agent ended. Its program exited, so it will not come back.")
+        #expect(
+            ChatBannerLine.departure(.shell).text
+                == "The Agent is gone. A shell runs in its Terminal now. Chat follows the next Claude Code started there.")
+    }
+
+    @Test(arguments: [ChatAgentDeparture.restarting, .ended, .shell])
+    func aDepartureTakesThePlaceOfAConversationNothingShows(_ departure: ChatAgentDeparture) {
+        var phases: [ChatConversationSnapshot.Phase] = [.locating, .unavailable(.cannotTellSession(.claude))]
+        phases.append(.unavailable(.transcriptOff(.childSession, coreCarriesIt: false)))
+        for phase in phases {
+            var conversation = ChatConversationSnapshot()
+            conversation.phase = phase
+            #expect(
+                ChatSurfacePresentation(
+                    conversation: conversation, hasPendingEchoes: false, isHostConnected: true, departure: departure)
+                    == .departed(departure))
+            #expect(
+                ChatBannerLine.lines(
+                    hostStatus: .connected, conversation: conversation, hasPendingEchoes: false, departure: departure)
+                    .isEmpty)
+        }
     }
 
     @Test func aReasonKeepsWhatChatShowedAndAFreshBindingResumesIt() async throws {

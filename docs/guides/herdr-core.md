@@ -190,18 +190,19 @@ Native Windows core Hosts do not offer Worktrees yet.
 
 Chat opens for a Claude Code Agent on a Linux core Host, where you can read its conversation, send to it, stop it and answer its questions.
 
-- **Send** checks the Agent's input box and which conversation it shows, pastes the message, and submits it only if the same Agent still holds the terminal within two seconds. Otherwise nothing is submitted, the draft stays in the Composer, and a notice says whether the text may still be in the terminal. A Send the Host did not answer is never sent again, so check the terminal before sending it yourself. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**.
+- **Send** checks the Agent's input box and which conversation it shows, pastes the message, and submits it only if the same Agent still holds the terminal within two seconds. Otherwise nothing is submitted, the draft stays in the Composer, and a notice says whether the text may still be in the terminal. A Send the Host did not answer is never sent again, so check the terminal before sending it yourself. Its message says it **may or may not have reached the Agent**, until the conversation shows it arrived. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**.
 - **Stop** presses Esc, or on a Template's Terminal the Template's stop key.
 - A **Blocked card** answers only while the same dialog is on screen and the Agent still holds the terminal. If either changed, it sends nothing and says so.
 
 Typing from Chat does not change the terminal's size for anyone viewing it.
 
-Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. It checks when you open Chat and when the Agent's status or foreground program changes, and at no other time.
+Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. It checks when you open Chat, before each Send, and when the Agent's status, turn or foreground program changes, and at no other time.
 
 | Chat says | What it means |
 | --- | --- |
 | **Can't Tell the Conversation** | Claude Code names its conversation only once it reaches its prompt. Finish signing in or answer its question in the terminal, and Chat follows on the next status change. **Retry** checks at once |
 | **Transcript Saving Is Off** | The Agent runs with the variable Chat names, `CLAUDE_CODE_CHILD_SESSION` or `CLAUDE_CODE_SKIP_PROMPT_HISTORY`, so it keeps no conversation to read. Start it again without the variable. If the core itself carries it, the Host's **Core Environment** says how to fix that |
+| **Restarting…**, **The Agent ended** or **The Agent is gone** | The program in the Agent's Terminal was lost, exited, or gave way to a shell. Chat stays on the conversation and sends nothing, and follows the next Claude Code started at that address |
 
 ## Known limits
 

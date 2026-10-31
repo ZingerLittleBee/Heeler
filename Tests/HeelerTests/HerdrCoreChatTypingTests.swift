@@ -669,6 +669,38 @@ struct HerdrCoreChatTypingTests {
         fixture.finish()
     }
 
+    /// The outcome is unknown, so its echo says neither that it was sent nor that
+    /// it was not, and the Transcript recording it settles the question.
+    @Test func aChatSendWithNoAnswerEchoesAsUnknownUntilTheTranscriptRecordsIt() async throws {
+        let fixture = try await Fixture()
+        let (sending, _) = try await fixture.sendPastingHello()
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.stepTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.stepTimeout)
+        #expect(await sending.value == .outcomeUnknown)
+
+        let composer = fixture.composer
+        let id = try #require(composer.messages.last?.id)
+        let rules = ChatSendRules(program: .claude, commands: [])
+        #expect(ChatComposerEchoes.sentMessages(composer.messages, rules: rules).map(\.isDelivered) == [true])
+        for status in [nil, AgentChatStore.SendStatus.awaiting, .overdue] {
+            let statuses = status.map { [id: $0] } ?? [:]
+            #expect(ChatComposerEchoes.pending(composer.messages, statuses: statuses).map(\.state) == [.outcomeUnknown])
+        }
+        #expect(ChatComposerEchoes.pending(composer.messages, statuses: [id: .recorded]).isEmpty)
+
+        composer.settleUnknownOutcomes(recorded: [UUID()])
+        #expect(composer.messages.last?.state == .outcomeUnknown)
+
+        composer.settleUnknownOutcomes(recorded: [id])
+        #expect(composer.messages.last?.state == .delivered(.acknowledged))
+        composer.withdrawToDraft(id)
+        #expect(composer.draft.isEmpty)
+        #expect(composer.messages.last?.id == id)
+        fixture.finish()
+    }
+
     @Test func aSampleWithNoAnswerSubmitsNothingAndIsNeverSentAgain() async throws {
         let fixture = try await Fixture()
         let (sending, viewer) = try await fixture.sendPastingHello()

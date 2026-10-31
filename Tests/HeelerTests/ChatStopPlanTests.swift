@@ -68,6 +68,21 @@ struct ChatStopPlanTests {
         #expect(plan.accessibilityHint == "Presses Ctrl+C to cancel the turn")
     }
 
+    /// The Template names the key, which may not be Esc, so nothing says it was.
+    @Test func aTemplatesStopKeepsTheProgramsWaitAndDoesNotNameItsKey() {
+        let plan = ChatStopPlan.standard(for: .claude).pressing(templateStopKey: "ctrl+c")
+
+        #expect(plan.keys == ["ctrl+c"])
+        #expect(plan.wait.window == .seconds(3))
+        #expect(plan.wait.minimumGap == .zero)
+        #expect(plan.wait.unconfirmedNotice == "Stop went, but the Agent still shows Working.")
+        #expect(plan.accessibilityHint == AgentComposerInterrupt.coreHint)
+
+        let grok = ChatStopPlan.standard(for: .grok).pressing(templateStopKey: "esc")
+        #expect(grok.wait.minimumGap == .milliseconds(1500))
+        #expect(grok.wait.unconfirmedNotice == "Stop went, but the Agent still shows Working.")
+    }
+
     @Test func anUnguardedPlanSendsEveryKeyInOneRequestWithoutReading() async {
         let recorder = StopRecorder()
         let plan = ChatStopPlan(keys: ["esc", "esc"], wait: .escape, accessibilityHint: "Presses Esc twice")
