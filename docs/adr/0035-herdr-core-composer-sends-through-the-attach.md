@@ -33,7 +33,10 @@ the shell that stays behind, and a retry can deliver it twice.
   draft and says the program is not accepting a paste. Heeler reads both
   modes from its own emulator after processing the Attach's output in order,
   because the core's repaint turns modes off before it sets them again and
-  can arrive in the middle of the stream.
+  can arrive in the middle of the stream. For the same reason Send waits for
+  the end of the Attach's first paint, the sequence every paint ends with,
+  before it reads them: a program's modes can be in a later frame than the
+  output that made the Attach live.
 - While Agent Status is Blocked, Send only pastes, as on Herdr TUI, and the
   tools keyboard submits or cancels.
 - If the check fails or runs out of time, nothing is submitted. Text the Agent
@@ -166,6 +169,10 @@ confirm or refine these points with test clients, not the app.
   Attach leads anyway, and Chat's attach takes the size the Terminal already
   has. When the last viewer that typed leaves, the Terminal returns
   to the core's headless size.
+- Only a first paint is waited for. Heeler cannot tell a repaint from the program's
+  output, so a Send during the repaint of a viewer that fell behind 4 MiB can read
+  the modes off and refuse, or submit in the legacy key form. The draft stays, and
+  a retry reads them set again.
 - Under bash, bracketed paste is on only at the prompt, so the mode gate never
   stops a paste into the shell an Agent left behind; the foreground check
   keeps it from being submitted there, and Send's Ctrl+C drops it.

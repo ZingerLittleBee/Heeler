@@ -588,6 +588,7 @@ final class AttachTerminalStore {
                 observeOutput(bytes)
                 hasTakenOutput = true
                 feed.write(bytes, consumed: { session.outputConsumed($0) })
+                if modes.hasNamedWin32InputMode { input.sessionDidPaint(inputGeneration) }
             }
         } catch {
             finishSession(inputGeneration)

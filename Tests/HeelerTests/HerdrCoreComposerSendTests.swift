@@ -14,6 +14,8 @@ struct HerdrCoreComposerSendTests {
     private static let ctrlC = "\u{3}"
     private static let bracketedPasteOn = "\u{1B}[?2004h"
     private static let kittyAllKeys = "\u{1B}[>8u"
+    /// The win32 input mode's sequence: every first paint ends with it.
+    private static let paintEnd = "\u{1B}[?9001l"
 
     private static func foreground(pid: Int = 40, argv: [String] = ["claude"]) -> JSONValue {
         .object([
@@ -133,7 +135,7 @@ struct HerdrCoreComposerSendTests {
             await scripted.waitForMethod("terminal.attach", count: attachCount)
             let opened = try #require(await scripted.attaches.last)
             try await opened.socket.deliver(
-                HerdrCoreFrame(channel: opened.channel, kind: .data, payload: Data((modes + "x").utf8)))
+                HerdrCoreFrame(channel: opened.channel, kind: .data, payload: Data((modes + "x" + HerdrCoreComposerSendTests.paintEnd).utf8)))
             try await until("the Attach's output") { attach.input.readySession != nil }
             return (opened.channel, opened.socket)
         }
@@ -613,7 +615,7 @@ struct HerdrCoreComposerSendTests {
         await fixture.scripted.releaseAttachReplies()
         let attached = try #require(await fixture.scripted.attaches.last)
         try await attached.socket.deliver(
-            HerdrCoreFrame(channel: attached.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "x").utf8)))
+            HerdrCoreFrame(channel: attached.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "x" + Self.paintEnd).utf8)))
         try await Self.until("the Attach's output") { fixture.attach.input.readySession != nil }
 
         let retrying = Task { await composer.retry(failed.id, policy: fixture.policy) }
@@ -642,7 +644,7 @@ struct HerdrCoreComposerSendTests {
         await fixture.scripted.waitForMethod("terminal.attach", count: 2)
         let second = try #require(await fixture.scripted.attaches.last)
         try await second.socket.deliver(
-            HerdrCoreFrame(channel: second.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "x").utf8)))
+            HerdrCoreFrame(channel: second.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "x" + Self.paintEnd).utf8)))
 
         await second.socket.waitForData(channel: second.channel, count: 1)
         await fixture.passSampleDelay()
@@ -658,6 +660,66 @@ struct HerdrCoreComposerSendTests {
         fixture.composer.replaceDraft(with: "hello")
         #expect(await fixture.composer.send(policy: .terminal) == .failed)
         #expect(await fixture.scripted.attaches.isEmpty)
+        await fixture.finish()
+    }
+
+    // MARK: The paint
+
+    /// The Attach, with the start of its paint: every mode off, and some of the
+    /// screen. It has output, so it takes input, and its modes say nothing yet.
+    private static func paintingAttach(_ fixture: Fixture) async throws -> (channel: UInt32, socket: FakeCoreSocket) {
+        fixture.attach.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let opened = try #require(await fixture.scripted.attaches.last)
+        try await opened.socket.deliver(
+            HerdrCoreFrame(channel: opened.channel, kind: .data, payload: Data("\u{1B}[?2004lhistory".utf8)))
+        try await Self.until("the Attach's output") { fixture.attach.input.readySession != nil }
+        return (opened.channel, opened.socket)
+    }
+
+    /// The core's writer can cut a paint anywhere, its last sequence included.
+    @Test func aSendWaitsForThePaintBeforeItBelievesTheModes() async throws {
+        let fixture = try await Fixture()
+        let attached = try await Self.paintingAttach(fixture)
+
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let sending = Task { await composer.send(policy: fixture.policy) }
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.liveAttachTimeout)
+        #expect(fixture.composer.notice == nil)
+        #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
+
+        try await attached.socket.deliver(
+            HerdrCoreFrame(
+                channel: attached.channel, kind: .data, payload: Data((Self.bracketedPasteOn + "\u{1B}[?90").utf8)))
+        try await attached.socket.deliver(
+            HerdrCoreFrame(channel: attached.channel, kind: .data, payload: Data("01l".utf8)))
+        await attached.socket.waitForData(channel: attached.channel, count: 1)
+        await fixture.passSampleDelay()
+        await fixture.scripted.waitForMethod("terminal.get")
+        await fixture.scripted.answerTerminalReads(with: Self.record())
+
+        #expect(await sending.value == .submittedViaAttach)
+        #expect(await attached.socket.dataWritten(channel: attached.channel) == [Self.paste, Self.enter])
+        await fixture.finish()
+    }
+
+    /// The wait is bounded, and says the terminal did not connect, not that the
+    /// program takes no paste.
+    @Test func aPaintThatDoesNotFinishInTimeFailsWithNothingSent() async throws {
+        let fixture = try await Fixture()
+        let attached = try await Self.paintingAttach(fixture)
+
+        fixture.composer.replaceDraft(with: "hello")
+        let composer = fixture.composer
+        let sending = Task { await composer.send(policy: fixture.policy) }
+        await fixture.clock.untilParked(for: HerdrCoreComposerSend.liveAttachTimeout)
+        fixture.clock.advance(HerdrCoreComposerSend.liveAttachTimeout)
+
+        #expect(await sending.value == .failed)
+        #expect(fixture.composer.messages.last?.state == .failed(
+            "The terminal did not connect in time, so nothing was sent. Retry when it shows."))
+        #expect(await attached.socket.dataWritten(channel: attached.channel).isEmpty)
         await fixture.finish()
     }
 

@@ -267,18 +267,19 @@ final class HerdrCoreComposerSend {
         }
     }
 
-    /// Waits, bounded, for an Attach that can take input, opening one if none is
-    /// on its way.
+    /// Waits, bounded, for an Attach whose first paint is in, so that its modes are
+    /// the program's, opening one if none is on its way.
     private func liveSession(
         of attach: AgentAttachStore
     ) async -> TerminalInputController.SessionGeneration? {
         let input = attach.input
-        if let ready = input.readySession { return ready }
-        attach.openForSend()
+        if let painted = input.paintedSession { return painted }
+        if input.readySession == nil { attach.openForSend() }
         try? await AsyncDeadline.run(for: Self.liveAttachTimeout, sleep: clock.sleep) {
             await input.untilSessionIsReady()
+            await input.untilSessionHasPainted()
         }
-        return input.readySession
+        return input.paintedSession
     }
 
     private enum Write {
