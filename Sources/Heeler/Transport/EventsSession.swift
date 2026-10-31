@@ -684,7 +684,7 @@ actor EventsSession {
                     continue
                 }
                 guard failure.isRetryable else {
-                    recordTerminalTransportFailure(failure)
+                    terminalTransportFailure = failure
                     failTerminalTransportWaiters(failure, for: generation)
                     failTransportWaiters(failure)
                     yieldUpdate(.status(.failed(failure)))
@@ -758,7 +758,7 @@ actor EventsSession {
                 ?? .channelFailed(detail: "events stream ended unexpectedly")
             pendingKeepaliveFailure = nil
             guard failure.isRetryable else {
-                recordTerminalTransportFailure(failure)
+                terminalTransportFailure = failure
                 failTerminalTransportWaiters(failure, for: generation)
                 failTransportWaiters(failure)
                 yieldUpdate(.status(.failed(failure)))
@@ -1231,11 +1231,6 @@ actor EventsSession {
             }
         }
         terminalTransportWaiters = retained
-    }
-
-    private func recordTerminalTransportFailure(_ failure: TransportError) {
-        guard currentTransport == nil else { return }
-        terminalTransportFailure = failure
     }
 
     private func cancelTerminalTransportWaiter(id: UUID) {
