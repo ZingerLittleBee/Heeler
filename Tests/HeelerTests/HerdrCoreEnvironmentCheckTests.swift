@@ -245,3 +245,146 @@ struct HerdrCoreEnvironmentCheckTests {
         #expect(await host.log.isEmpty)
     }
 }
+
+/// What Host detail reads, from the Host session through the Console.
+@MainActor
+@Suite(.timeLimit(.minutes(1)))
+struct HerdrCoreEnvironmentNoticeTests {
+    private let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+
+    private func store(on core: ScriptedCoreHost) -> ConsoleStore {
+        ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(
+                    connect: {
+                        await core.setConnected(true)
+                        return core.transport()
+                    },
+                    keepalive: nil)
+            })
+    }
+
+    private func waitUntil(
+        _ what: String, _ condition: @MainActor () async -> Bool,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        for _ in 0..<500 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+    }
+
+    // MARK: The copy
+
+    @Test func eachVariableSaysWhatItBreaks() throws {
+        let notice = try #require(
+            HerdrCoreEnvironmentNotice(names: [
+                "TMUX", "CLAUDE_CODE_CHILD_SESSION", "HERDR_PANE_ID", "HERDR_ENV", "PI_PROGRAM_STATUS",
+            ]))
+        let herdr = "Herdr's agent hooks report to the pane this names, not to the Terminal they run in."
+        #expect(notice.variables == [
+            .init(
+                name: "CLAUDE_CODE_CHILD_SESSION",
+                breaks: "Claude Code keeps no session record and saves no conversation, so Chat has nothing to show."),
+            .init(name: "HERDR_ENV", breaks: herdr),
+            .init(name: "HERDR_PANE_ID", breaks: herdr),
+            .init(
+                name: "TMUX",
+                breaks: "Grok Build turns its status off inside tmux, so its Agents read Unknown."),
+            .init(
+                name: "PI_PROGRAM_STATUS",
+                breaks: "Set to 0, it turns Pi's status off, so its Agents read Unknown."),
+        ])
+    }
+
+    @Test func everyVariableTheCheckAsksForHasItsOwnReason() throws {
+        let names = HerdrCoreEnvironmentCheck.names + ["HERDR_ENV"]
+        let notice = try #require(HerdrCoreEnvironmentNotice(names: Set(names)))
+        #expect(notice.variables.count == names.count)
+        #expect(Set(notice.variables.map(\.breaks)).count == names.count)
+    }
+
+    @Test func theFixIsTheUsersOwnRestart() {
+        #expect(
+            HerdrCoreEnvironmentNotice.fix
+                == "Restarting the core from your own terminal fixes this. Heeler does not restart it.")
+    }
+
+    @Test func nothingLeakedIsNoNotice() {
+        #expect(HerdrCoreEnvironmentNotice(names: []) == nil)
+    }
+
+    // MARK: Through the Console
+
+    @Test func hostDetailReadsTheLeakAndALaterCleanLinkClearsIt() async throws {
+        let core = ScriptedCoreHost(
+            processRead: .names(["TMUX", "CLAUDE_CODE_CHILD_SESSION"]), channel: .core(.init(pid: 100)))
+        let store = store(on: core)
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("the notice") { store.hostCoreEnvironmentNotices[host.id] != nil }
+        #expect(
+            store.hostCoreEnvironmentNotices[host.id]?.variables.map(\.name)
+                == ["CLAUDE_CODE_CHILD_SESSION", "TMUX"])
+
+        let firstSocket = try #require(await core.socket)
+        await core.setChannel(.core(.init(pid: 200)))
+        await core.setProcessRead(.names([]))
+        await firstSocket.deliverEndOfFile()
+
+        try await waitUntil("the notice to clear") { store.hostCoreEnvironmentNotices[host.id] == nil }
+        #expect(store.hostStatuses[host.id] == .connected)
+        #expect(await core.log.filter { $0 == "process-read" }.count == 2)
+    }
+
+    @Test func aFailedCheckOnALaterLinkAlsoClearsIt() async throws {
+        let core = ScriptedCoreHost(processRead: .names(["TMUX"]), channel: .core(.init()))
+        let store = store(on: core)
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the notice") { store.hostCoreEnvironmentNotices[host.id] != nil }
+
+        let firstSocket = try #require(await core.socket)
+        await core.setChannel(.core(.init()))
+        await core.setProcessRead(.throwsError(.timedOut))
+        await firstSocket.deliverEndOfFile()
+
+        try await waitUntil("the notice to clear") { store.hostCoreEnvironmentNotices[host.id] == nil }
+        #expect(store.hostStatuses[host.id] == .connected)
+    }
+
+    @Test func anUnreadableEnvironmentShowsNoNoticeOnAConnectedHost() async throws {
+        let core = ScriptedCoreHost(processRead: .unreadable, channel: .core(.init()))
+        let store = store(on: core)
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("the check") { await core.log.contains("process-read") }
+        try await waitUntil("the first snapshot") { !store.hostsAwaitingSnapshot.contains(host.id) }
+        #expect(store.hostCoreEnvironmentNotices.isEmpty)
+        #expect(store.hostStatuses[host.id] == .connected)
+    }
+
+    @Test func aHostThatLeavesConnectedHasNoNotice() async throws {
+        let core = ScriptedCoreHost(processRead: .names(["TMUX"]), channel: .core(.init()))
+        let store = store(on: core)
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the notice") { store.hostCoreEnvironmentNotices[host.id] != nil }
+
+        await store.suspend()
+        try await waitUntil("the notice to clear") { store.hostCoreEnvironmentNotices[host.id] == nil }
+    }
+}
