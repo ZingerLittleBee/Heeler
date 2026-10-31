@@ -677,7 +677,7 @@ actor SessionDriver {
                         session: session)
                     applyTransportSendOwnerDisposition(disposition)
                     guard written >= 0 || written == Int(LIBSSH2_ERROR_EAGAIN) else {
-                        throw SSHError.channelFailed
+                        throw ptyFailure(written)
                     }
                     progress = (
                         written,
@@ -745,7 +745,8 @@ actor SessionDriver {
                         stream: 0,
                         buffer: &buffer,
                         owner: owner,
-                        session: session)
+                        session: session,
+                        failure: ptyFailure)
                     let eof = libssh2_channel_eof(channel) == 1
                     if eof { ptyChannels[id]?.reachedEOF = true }
                     progress = (data, eof, sessionWaitPlan(session))
@@ -4574,7 +4575,8 @@ actor SessionDriver {
         stream: Int32,
         buffer: inout [UInt8],
         owner: UInt64,
-        session: OpaquePointer
+        session: OpaquePointer,
+        failure: (Int) -> SSHError = { _ in .channelFailed }
     ) throws -> Data {
         let count = rawChannelRead(channel: channel, stream: stream, buffer: &buffer)
         let disposition = notePacketProducingWrite(
@@ -4584,7 +4586,22 @@ actor SessionDriver {
         applyTransportSendOwnerDisposition(disposition)
         if count > 0 { return Data(buffer.prefix(count)) }
         if count == 0 || count == Int(LIBSSH2_ERROR_EAGAIN) { return Data() }
-        throw SSHError.channelFailed
+        throw failure(count)
+    }
+
+    /// A PTY read or write that lost the socket must not read as the terminal
+    /// ending: the store would show Session Ended over a connection it can
+    /// redial. `LIBSSH2_ERROR_SOCKET_NONE` stays a channel failure, because
+    /// libssh2 also uses that code as a generic error.
+    private func ptyFailure(_ result: Int) -> SSHError {
+        switch Int32(clamping: result) {
+        case LIBSSH2_ERROR_SOCKET_SEND, LIBSSH2_ERROR_SOCKET_RECV,
+            LIBSSH2_ERROR_SOCKET_DISCONNECT:
+            invalidateResources()
+            return .connectionInvalidated
+        default:
+            return .channelFailed
+        }
     }
 
     private func readOnce(

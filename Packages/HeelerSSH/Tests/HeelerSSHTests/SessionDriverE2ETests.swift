@@ -815,6 +815,43 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    /// The store only reattaches a terminal when the failure reads as connection
+    /// loss. A severed link used to surface as `.channelFailed`, which shows
+    /// Session Ended until the Events reader notices and redials (#523). Runs
+    /// through the degraded proxy, so the loss lands on a link with real latency.
+    @Test("a PTY that loses its socket invalidates the session", arguments: PTYSeverance.allCases)
+    func ptySocketLossInvalidatesTheSession(severance: PTYSeverance) async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+        try await proxy.degrade()
+        let connection = try await SSHConnection.connect(to: endpoint, timeout: .seconds(15))
+        var thrown: (any Error)?
+        do {
+            try await environment.authenticate(connection)
+            let channel = try await connection.openPTY(
+                command: severance.command,
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(15))
+            #expect(await connection.isConnected)
+            thrown = try await severance.drive(channel, proxy: proxy)
+        } catch {
+            try? await proxy.reset()
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+        try await proxy.reset()
+
+        #expect(
+            thrown as? SSHError == .connectionInvalidated,
+            "\(severance) reported \(String(describing: thrown))")
+        // No `close(timeout:)` above this line: the property must go false
+        // because the link died, not because it was told to.
+        #expect(await connection.isConnected == false)
+        try? await connection.close(timeout: .seconds(2))
+    }
+
     @Test("a teardown that only runs out of its budget spares the session")
     func expiredTeardownBudgetSparesTheSession() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -2863,6 +2900,56 @@ publish("completed", sent)
 /// apart: both tests walk this list, so neither can end up covering three sites
 /// while the other covers four, and a fifth site added to the driver without a
 /// case here is a visible omission rather than a silent one.
+/// How a test takes the socket out from under a live PTY, and which side finds out.
+enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
+    /// The peer sees RST.
+    case resetSeenByRead
+    case resetSeenByWrite
+    /// The server process dies, so the proxy forwards an orderly FIN.
+    case serverKilledSeenByRead
+
+    var testDescription: String { rawValue }
+
+    var command: String {
+        switch self {
+        case .resetSeenByRead, .resetSeenByWrite: "cat"
+        // ForceCommand execs this shell, so its parent is the session's sshd.
+        case .serverKilledSeenByRead: "sleep 1; kill -KILL $PPID; sleep 30"
+        }
+    }
+
+    /// Returns the first failure from the side this case exercises.
+    fileprivate func drive(
+        _ channel: SSHPTYChannel,
+        proxy: WeakNetworkProxyFixture
+    ) async throws -> (any Error)? {
+        switch self {
+        case .resetSeenByRead, .resetSeenByWrite:
+            try await channel.write(Data("up\n".utf8), timeout: .seconds(5))
+            _ = try await channel.read(timeout: .seconds(5))
+            guard try await proxy.cut() > 0 else { return nil }
+        case .serverKilledSeenByRead:
+            break
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+        while ContinuousClock.now < deadline {
+            do {
+                if self == .resetSeenByWrite {
+                    try await channel.write(Data("x".utf8), timeout: .seconds(1))
+                    try await Task.sleep(for: .milliseconds(50))
+                } else if try await channel.read(timeout: .seconds(1)) == nil {
+                    return nil
+                }
+            } catch SSHError.timedOut {
+                continue
+            } catch {
+                return error
+            }
+        }
+        return nil
+    }
+}
+
 private enum TeardownSite: String, CaseIterable {
     case pty = "closePTY"
     case streamLocal = "closeStreamLocal"

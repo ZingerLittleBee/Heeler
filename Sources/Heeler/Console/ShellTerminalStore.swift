@@ -324,13 +324,22 @@ final class ShellTerminalStore {
         terminal.viewDidResize(cols: cols, rows: rows)
     }
 
-    func send(_ data: Data) { terminal.send(data) }
+    /// A reattach owns a writer before its first byte, while the screen still
+    /// shows the lost session. A key typed at that screen would answer whatever
+    /// the pane has moved on to, so input waits for the new output.
+    private var acceptsInput: Bool { terminal.status != .reconnecting }
+
+    func send(_ data: Data) {
+        guard acceptsInput else { return }
+        terminal.send(data)
+    }
 
     func scroll(_ sequence: Data, rows: Int) {
         input.scroll(sequence, rows: rows)
     }
 
     func requestPaste(_ text: String, bracketedPaste: Bool) {
+        guard acceptsInput else { return }
         _ = input.requestPaste(text, bracketedPaste: bracketedPaste)
     }
 
@@ -387,6 +396,12 @@ final class ShellTerminalStore {
             return
         }
         if terminal.transportGeneration == generation {
+            transportGeneration = generation
+            return
+        }
+        if terminal.isAwaitingReattachTransport {
+            // The Attach loop takes the replacement Transport itself. Keep its
+            // feed instead of racing it with a second pipeline.
             transportGeneration = generation
             return
         }

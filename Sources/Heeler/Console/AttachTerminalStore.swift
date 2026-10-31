@@ -232,6 +232,12 @@ final class AttachTerminalStore {
     /// What the current attach attempt acquired, nil until its runner hands
     /// it a Transport. Only a loss after acquisition is reattached.
     private var attemptTransportGeneration: UInt64?
+    /// A reattach still waiting for a Transport takes the Host's next one by
+    /// itself. One that already holds an older Transport never will, so its
+    /// owner must replace it when the generation moves on.
+    var isAwaitingReattachTransport: Bool {
+        status == .reconnecting && attemptTransportGeneration == nil
+    }
     private var stopRequested = false
     private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?

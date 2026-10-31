@@ -341,7 +341,7 @@ final class AgentAttachStore {
             transportGeneration = generation
             return
         }
-        if terminal.status == .reconnecting {
+        if terminal.isAwaitingReattachTransport {
             // The Attach loop already waits for the replacement Transport.
             // Keep its feed and emulator, including the user's scroll position,
             // instead of racing it with a second pipeline replacement.
