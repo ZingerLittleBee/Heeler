@@ -73,6 +73,9 @@ final class NotificationPreferencesStore {
     private(set) var states: [Host.ID: HostState] = [:]
     /// What a core Host's Helper needs, from its last read.
     private var helperRequirements: [Host.ID: String] = [:]
+    /// Whether a core Host's Helper can drive a Live Activity, from its last read.
+    /// Nil on a read that failed, and on any other Host.
+    private var helperDrivesLiveActivity: [Host.ID: Bool] = [:]
     /// A catalog edit/removal invalidates every result captured for that Host.
     private var operations: [Host.ID: UUID] = [:]
     /// Seen marks waiting for a core Host's registration to be known, or for the
@@ -111,6 +114,7 @@ final class NotificationPreferencesStore {
         self.hosts = hosts
         states = states.filter { unchanged.contains($0.key) }
         helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
+        helperDrivesLiveActivity = helperDrivesLiveActivity.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
         pendingSeenMarks = pendingSeenMarks.filter { unchanged.contains($0.key) }
     }
@@ -266,6 +270,7 @@ final class NotificationPreferencesStore {
             guard isCurrent(operation, for: host) else { return }
             var file = try NotificationRegistrationFile.decode(read.registration)
             helperRequirements[host.id] = read.standing?.requirement
+            helperDrivesLiveActivity[host.id] = read.standing?.drivesLiveActivity
             // Only an entry carrying this Host's Notification Key is its own;
             // another Host of the same remote user shares this file (#412).
             let owner = try ceremony.registrationOwner(for: host, deviceToken: token)
@@ -285,6 +290,7 @@ final class NotificationPreferencesStore {
                     notify: preferences ?? NotificationTriggerPreferences()))
         } catch {
             guard isCurrent(operation, for: host) else { return }
+            helperDrivesLiveActivity[host.id] = nil
             states[host.id] = .unavailable(message: Self.message(for: error))
         }
     }
@@ -374,13 +380,39 @@ final class NotificationPreferencesStore {
     /// The gate the in-app banner reads (#77): the Host's confirmed notify
     /// flags, or nil when this device is not registered or the Host's truth
     /// is unknown (unreachable, still loading, never refreshed) — in which
-    /// case the banner fails closed, matching the plugin's semantics. A core
-    /// Host's notifications reach no in-app banner.
+    /// case the banner fails closed, matching the plugin's semantics.
     func confirmedTriggers(for hostID: Host.ID) -> NotificationTriggerPreferences? {
-        guard hosts.contains(where: { $0.id == hostID && $0.serverKind == .herdrTUI }),
-            let settings = confirmedSettings(for: hostID), settings.isRegistered
-        else { return nil }
+        guard let settings = confirmedSettings(for: hostID), settings.isRegistered else { return nil }
         return settings.notify
+    }
+
+    /// Whether a core Host may show a Live Activity: this device's confirmed
+    /// registration, with a Helper that can drive the activity once the app
+    /// suspends. A read that failed says nothing about either, so it is unknown.
+    func liveActivityGate(forCoreHost hostID: Host.ID) -> LiveActivityGate {
+        switch states[hostID] {
+        case .idle(let settings), .failed(_, let settings):
+            settings.isRegistered && helperDrivesLiveActivity[hostID] == true ? .open : .closed
+        case .unavailable:
+            helperDrivesLiveActivity[hostID] == false ? .closed : .unknown
+        case .loading, .updating, nil:
+            .unknown
+        }
+    }
+
+    /// Each core Host's gate, for whoever follows them changing.
+    var coreLiveActivityGates: [Host.ID: LiveActivityGate] {
+        var gates: [Host.ID: LiveActivityGate] = [:]
+        for host in hosts where host.serverKind == .herdrCore {
+            gates[host.id] = liveActivityGate(forCoreHost: host.id)
+        }
+        return gates
+    }
+
+    /// Whether Settings offers a Host's Live Activity switch. Herdr TUI's has its
+    /// own note about what the plugin lacks.
+    func offersLiveActivity(for host: Host) -> Bool {
+        host.serverKind == .herdrTUI || helperDrivesLiveActivity[host.id] == true
     }
 
     private func confirmedSettings(for hostID: Host.ID) -> HostSettings? {

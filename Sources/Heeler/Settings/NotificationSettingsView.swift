@@ -175,7 +175,7 @@ struct NotificationSettingsView: View {
                         }
                     }))
                 .disabled(isUpdating)
-            if host.serverKind == .herdrTUI {
+            if notificationPreferences.offersLiveActivity(for: host) {
                 Toggle(
                     "Live Activity",
                     isOn: Binding(
@@ -201,7 +201,7 @@ struct NotificationSettingsView: View {
                 Text(requirement)
                     .accessibilityIdentifier("settings.notifications.helperRequirement.\(host.id.uuidString)")
             }
-            if registered, host.serverKind == .herdrTUI {
+            if registered, notificationPreferences.offersLiveActivity(for: host) {
                 Text(NotificationPrivacyCopy.liveActivityFooter)
                 if !liveActivities.areActivitiesEnabled {
                     Text(NotificationPrivacyCopy.liveActivityDisabledHint)
@@ -228,7 +228,8 @@ struct NotificationSettingsView: View {
     }
 
     private func pluginRequirements(for host: Host) -> [HeelerPluginRequirement] {
-        pluginStatuses.status(for: host.id)?.notificationRequirements(
+        guard host.serverKind == .herdrTUI else { return [] }
+        return pluginStatuses.status(for: host.id)?.notificationRequirements(
             liveActivityEnabled: liveActivities.isEnabled(for: host.id)) ?? []
     }
 

@@ -1,11 +1,20 @@
 import Foundation
 import Observation
 
+/// Whether this device's registration lets a Host show a Live Activity. Herdr
+/// TUI's is always open: its activity needs the toggle, key and device token alone.
+enum LiveActivityGate: Sendable, Equatable {
+    case open
+    case closed
+    /// Still being read: no activity starts, and one already showing stays.
+    case unknown
+}
+
 /// Per-Host Live Activity state machine. The Console's Agent list is the
 /// source of truth while the app is foregrounded; after a 3-second settle
 /// the coordinator starts, updates, or ends one activity per Host. Push
-/// tokens are written to the Host registration file so the plugin can keep
-/// the activity alive after the app suspends.
+/// tokens are written to the Host registration file so the plugin, or a core
+/// Host's Host Helper, can keep the activity alive after the app suspends.
 @MainActor
 @Observable
 final class HostLiveActivityCoordinator {
@@ -18,6 +27,7 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private let deviceToken: @MainActor () -> APNSDeviceToken?
     @ObservationIgnored private let knownHostIDs: @MainActor () -> Set<Host.ID>
     @ObservationIgnored private let supportsHost: @MainActor (Host.ID) -> Bool
+    @ObservationIgnored private let registrationGate: @MainActor (Host.ID) -> LiveActivityGate
     @ObservationIgnored private let hostDisplayName: @MainActor (Host.ID) -> String
     @ObservationIgnored private let isAwaitingSnapshot: @MainActor (Host.ID) -> Bool
     @ObservationIgnored private let connectionStatus: @MainActor (Host.ID) -> EventsSessionStatus?
@@ -82,6 +92,7 @@ final class HostLiveActivityCoordinator {
         isAwaitingSnapshot: @escaping @MainActor (Host.ID) -> Bool,
         connectionStatus: @escaping @MainActor (Host.ID) -> EventsSessionStatus?,
         supportsHost: @escaping @MainActor (Host.ID) -> Bool = { _ in true },
+        registrationGate: @escaping @MainActor (Host.ID) -> LiveActivityGate = { _ in .open },
         pinnedPaneIDs: @escaping @MainActor (Host.ID) -> [String] = { _ in [] },
         rowLayout: @escaping @MainActor (Host.ID) -> AgentRowLayout? = { _ in nil },
         settleDuration: Duration = .seconds(3),
@@ -95,6 +106,7 @@ final class HostLiveActivityCoordinator {
         self.deviceToken = deviceToken
         self.knownHostIDs = knownHostIDs
         self.supportsHost = supportsHost
+        self.registrationGate = registrationGate
         self.hostDisplayName = hostDisplayName
         self.isAwaitingSnapshot = isAwaitingSnapshot
         self.connectionStatus = connectionStatus
@@ -104,8 +116,7 @@ final class HostLiveActivityCoordinator {
         self.now = now
     }
 
-    /// A herdr-core Host has no plugin to receive Live Activity updates, so it
-    /// stays outside this coordinator's inventory.
+    /// A Host waiting for its Server Kind stays outside this coordinator's inventory.
     private func supportedHostIDs() -> Set<Host.ID> {
         knownHostIDs().filter { supportsHost($0) }
     }
@@ -271,6 +282,16 @@ final class HostLiveActivityCoordinator {
         }
     }
 
+    /// A core Host's registration settled or moved: apply what it now allows, and
+    /// retry a token write that found no entry to hang on.
+    func registrationsDidChange() {
+        guard didStart else { return }
+        retryDirtyPipes(onlyIfConnected: true)
+        for hostID in Set(latestAgents.keys).union(sessions.keys) {
+            scheduleSettle(for: hostID)
+        }
+    }
+
     // MARK: Desire / settle
 
     private func scheduleSettle(for hostID: Host.ID) {
@@ -348,6 +369,7 @@ final class HostLiveActivityCoordinator {
     private func desireBlocker(for hostID: Host.ID) -> String {
         if !controller.areEnabled { return "iOS has Live Activities disabled for Heeler" }
         if !preferences.isEnabled(for: hostID) { return "the per-Host toggle is off" }
+        if registrationGate(hostID) != .open { return "this device is not registered with the Host Helper" }
         if deviceToken() == nil { return "no push device token yet" }
         if notificationKey(for: hostID) == nil { return "no Notification Key for this Host" }
         return "no working, blocked, or done agents"
@@ -363,6 +385,7 @@ final class HostLiveActivityCoordinator {
     private func computeDesired(for hostID: Host.ID) -> AgentActivityDesire? {
         guard controller.areEnabled else { return nil }
         guard preferences.isEnabled(for: hostID) else { return nil }
+        guard registrationGate(hostID) == .open else { return nil }
         guard deviceToken() != nil else { return nil }
         guard notificationKey(for: hostID) != nil else { return nil }
         let agents = latestAgents[hostID] ?? []
@@ -386,6 +409,7 @@ final class HostLiveActivityCoordinator {
     /// that cleared `agentsByPane` before the next snapshot.
     private func shouldDeferApply(for hostID: Host.ID) -> Bool {
         if isUnknownAgentInventory(hostID) { return true }
+        if registrationGate(hostID) == .unknown { return true }
         if sessions[hostID]?.awaitingFirstSnapshot == true { return true }
         return false
     }
@@ -588,7 +612,7 @@ final class HostLiveActivityCoordinator {
         let writtenToken = writtenLiveActivityTokens[hostID]
         let diagnose = onDiagnostic
         do {
-            try await transports.withNotificationTransport(for: hostID) { [ceremony] transport in
+            try await transports.withNotificationFiles(for: hostID) { [ceremony] files in
                 try Task.checkCancellation()
                 await diagnose?(hostID, "transport acquired")
                 switch job {
@@ -596,15 +620,15 @@ final class HostLiveActivityCoordinator {
                     try await ceremony.setLiveActivityToken(
                         tokenHex: hex, startedAt: startedAt, hostID: hostID, deviceToken: token,
                         pinnedPaneIDs: pins, rowLayout: layout, hostName: hostName,
-                        over: transport,
+                        over: files,
                         diagnose: { event in await diagnose?(hostID, event) })
                 case .setPreferences:
                     try await ceremony.setLiveActivityPinnedPaneIDs(
                         pins, rowLayout: layout, hostName: hostName, hostID: hostID,
-                        deviceToken: token, over: transport)
+                        deviceToken: token, over: files)
                 case .clear:
                     try await ceremony.clearLiveActivityToken(
-                        writtenToken, hostID: hostID, deviceToken: token, over: transport)
+                        writtenToken, hostID: hostID, deviceToken: token, over: files)
                 }
             }
             // A write that lands after its Host left the catalog records
