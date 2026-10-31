@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "files": [
     {
       "path": "core/client.js",
@@ -27,7 +27,7 @@
     },
     {
       "path": "main.js",
-      "sha256": "401ee0b99606918427a7e2e4ed53f6d68118caf5eb1114ccfbe5fd399188e54c"
+      "sha256": "0e24be4a92ba964b6c96c29774c768251cc42848b1221a63ac4345f9fc6fbc5c"
     },
     {
       "path": "package.json",
@@ -50,8 +50,24 @@
       "sha256": "e27e055e882a665fb01058eb9f18604595204ae4efe2bd56d2262187ad921a52"
     },
     {
+      "path": "shared/usage/process-environment.js",
+      "sha256": "d947513f4c02e1f93f1421f53a6e705b8a4dfcdaaf3f1d941394cd6078eb32f7"
+    },
+    {
+      "path": "shared/usage/runtime-record.js",
+      "sha256": "85f3ee71cbc03f09cd6be2b5ffed4dfe3ed147ed81177535110fc70760688df7"
+    },
+    {
+      "path": "usage/layout.js",
+      "sha256": "1590b6688dc07608b45438fbac5caaa0dc0464aeb6c705fa4f9268a37efacdd2"
+    },
+    {
+      "path": "usage/recorder.js",
+      "sha256": "dc4b1877c7f8e907a8af0135db9c03ca6a209988d329ae40ad542a92ae67e10c"
+    },
+    {
       "path": "version.json",
-      "sha256": "2593ebb9dfc99faaee1f8c0e1960f6fe5e0e5a1b5005f94d0d1a60fb03f712d4"
+      "sha256": "03eada1f990a27a1357eb782c4320727d973f1ed51155b8b082dd8ea99b9ae19"
     }
   ]
 }

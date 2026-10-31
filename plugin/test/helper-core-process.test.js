@@ -106,6 +106,25 @@ suite("the Helper's process", () => {
     assert.deepEqual(await exit, { code: 0, signal: null });
   });
 
+  test("records the core's named variables for Usage, at the pid server.status reported", async () => {
+    const process_ = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      env: { HOME: home, CLAUDE_CONFIG_DIR: "/core/claude", ANTHROPIC_API_KEY: "outside-the-list" },
+      stdio: "ignore",
+    });
+    try {
+      await core("work", { status: { ...STATUS, pid: process_.pid } });
+      startHelper(["work"]);
+      const path = join(root, "helper", "sessions", "work", "runtime.json");
+      await waitFor(() => existsSync(path), "the record", PATIENCE_MS);
+      const text = readFileSync(path, "utf8");
+      assert.equal(JSON.parse(text).env.CLAUDE_CONFIG_DIR, "/core/claude");
+      assert.equal(text.includes("outside-the-list"), false);
+      assert.equal(existsSync(tripwire), false, existsSync(tripwire) ? readFileSync(tripwire, "utf8") : "");
+    } finally {
+      process_.kill("SIGKILL");
+    }
+  });
+
   test("connects only to the sessions its registrations name", async () => {
     const work = await core("work");
     const other = await core("other");
