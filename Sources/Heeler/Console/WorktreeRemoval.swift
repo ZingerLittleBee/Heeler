@@ -72,6 +72,8 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
     case terminalsNotEnded
     /// The checkout now holds what the confirmation did not warn about.
     case changedSinceConfirmation
+    /// git could not say what the checkout holds, before anything ended.
+    case riskUnread(String)
     case removeRefused(String)
     case removeUnconfirmed(path: String)
 
@@ -87,6 +89,8 @@ enum WorktreeRemovalError: Error, Equatable, Sendable {
             "A Terminal in this worktree could not be confirmed ended, so the checkout was not removed. Others may have ended. Check the Host, then try again."
         case .changedSinceConfirmation:
             "This worktree changed since you confirmed, and nothing was removed. Removing it again deletes what it holds now."
+        case .riskUnread(let reason):
+            "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: \(reason)"
         case .removeRefused(let reason):
             "The worktree's Terminals have ended, but git did not remove the checkout: \(reason)"
         case .removeUnconfirmed(let path):

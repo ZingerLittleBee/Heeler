@@ -188,7 +188,7 @@ struct HerdrCoreWorktreeGit: Sendable {
     func removalRisk(ofCheckout path: String) async throws -> WorktreeRemovalRisk {
         let status = try await read(["status", "--porcelain"], in: path)
         guard status.status == 0 || status.isTruncated else {
-            throw WorktreeRemovalError.removeRefused(
+            throw WorktreeRemovalError.riskUnread(
                 status.message ?? "git exited with status \(status.status).")
         }
         let submodules = try await read(["submodule", "status"], in: path)

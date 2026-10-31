@@ -1011,10 +1011,35 @@ struct HerdrCoreWorktreesTests {
             .success(GitCommandResult(status: 128, output: "", message: "fatal: broken")),
             for: ["status", "--porcelain"])
 
-        await #expect(throws: WorktreeRemovalError.self) {
+        await #expect(throws: WorktreeRemovalError.riskUnread("fatal: broken")) {
             _ = try await fixture.store.removeWorktree(request, on: fixture.host.id)
         }
 
+        #expect(await fixture.transport.kills.isEmpty)
+    }
+
+    /// The Terminals are all still running, whatever the alert says of them.
+    @Test func aStatusReadThatFailsSaysNoTerminalEnded() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        let request = try await fixture.removal()
+        let detail = makeDetail(fixture, request: request)
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+        await fixture.services.setGitAnswer(
+            .success(GitCommandResult(status: 128, output: "", message: "fatal: broken")),
+            for: ["status", "--porcelain"])
+        let begun = try #require(detail.beginRemoval())
+
+        await detail.finishRemoval(begun)
+
+        guard case .failed(let message) = detail.removalPhase else {
+            Issue.record("The removal ended as \(detail.removalPhase)")
+            return
+        }
+        #expect(!message.contains("have ended"))
+        #expect(message.contains("ended no Terminal"))
+        #expect(message.contains("fatal: broken"))
         #expect(await fixture.transport.kills.isEmpty)
     }
 }
