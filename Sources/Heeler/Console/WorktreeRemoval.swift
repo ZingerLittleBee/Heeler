@@ -139,7 +139,8 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         workspaceLabel: String,
         branch: Branch,
         hasWorkingAgent: Bool,
-        risk: WorktreeRemovalRisk? = nil
+        risk: WorktreeRemovalRisk? = nil,
+        otherWorkspaces: [String] = []
     ) -> WorktreeRemovalConfirmation {
         var sentences = [
             "This deletes \(request.identity.checkoutPath) and closes the whole workspace, ending every Agent and closing every Pane in it."
@@ -160,6 +161,13 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
         }
         if risk?.hasSubmodules == true {
             sentences.append("Its submodules go with it, with any commits in them that were not pushed.")
+        }
+        if let names = otherWorkspaces.first.map({ _ in otherWorkspaces.joined(separator: ", ") }) {
+            sentences.append(
+                otherWorkspaces.count == 1
+                    ? "The workspace \(names) also uses this checkout. Its Terminals keep running in the deleted folder, so close them first."
+                    : "The workspaces \(names) also use this checkout. Their Terminals keep running in the deleted folder, so close them first."
+            )
         }
         sentences.append("This can't be undone.")
         return WorktreeRemovalConfirmation(

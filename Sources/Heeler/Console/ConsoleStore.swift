@@ -1103,6 +1103,14 @@ final class ConsoleStore {
         try await projection(for: hostID).removeWorktree(request)
     }
 
+    /// The other Workspaces on this Worktree's checkout. Removing it ends only its
+    /// own Workspace (ADR 0032), so the confirmation names these.
+    func workspaceLabels(sharingCheckoutOf identity: WorktreeIdentity) -> [String] {
+        workspaces(for: identity.hostID)
+            .filter { $0.id != identity.workspaceID && $0.checkoutPath == identity.checkoutPath }
+            .map(\.label)
+    }
+
     func worktreeRemovalRisk(
         _ request: WorktreeRemovalRequest, on hostID: Host.ID
     ) async throws -> WorktreeRemovalRisk? {

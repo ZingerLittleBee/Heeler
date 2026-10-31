@@ -1022,6 +1022,9 @@ struct AgentTerminalView: View {
                 ? { [console] request in
                     try await console.worktreeRemovalRisk(request, on: hostID)
                 }
+                : nil,
+            otherWorkspaces: host?.serverKind == .herdrCore
+                ? { [console] in console.workspaceLabels(sharingCheckoutOf: request.identity) }
                 : nil)
     }
 

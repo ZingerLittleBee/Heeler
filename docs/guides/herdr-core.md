@@ -182,7 +182,7 @@ The checkout goes to `~/.herdr/worktrees/<repository>/<branch>`, where the deskt
 
 To remove one, open an Agent in it, then **Worktree Details** in the More menu. Heeler first ends every Terminal of that Workspace, as Close does, then removes the checkout. **Remove Worktree** becomes available once Heeler has checked the checkout, and the confirmation warns when uncommitted changes or submodules would go with it. The branch stays.
 
-If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout in place. Check the Host before trying again. The same goes if the checkout changed while its Terminals were ending: they have ended, the checkout stays, and the next confirmation warns about what it holds now. A Terminal in another Workspace that has moved into the checkout is not ended, so close it first.
+If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout in place. Check the Host before trying again. The same goes if the checkout changed while its Terminals were ending: they have ended, the checkout stays, and the next confirmation warns about what it holds now. Removing ends only that Workspace. Another Workspace on the same checkout keeps running in the deleted folder, whether it started there or a Terminal moved in, so the confirmation names any it can tell. Close those first.
 
 Native Windows core Hosts do not offer Worktrees yet.
 

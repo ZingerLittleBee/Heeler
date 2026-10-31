@@ -881,7 +881,8 @@ struct HerdrCoreWorktreesTests {
 
     private func makeDetail(
         _ fixture: Fixture, request: WorktreeRemovalRequest,
-        readRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)? = nil
+        readRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)? = nil,
+        otherWorkspaces: (() -> [String])? = nil
     ) -> WorktreeDetailStore {
         let store = fixture.store
         let hostID = fixture.host.id
@@ -894,7 +895,8 @@ struct HerdrCoreWorktreesTests {
             list: { try await store.listWorktrees(forWorkspaceID: $0, on: hostID) },
             remove: { try await store.removeWorktree($0, on: hostID) },
             hasWorkingAgent: { false },
-            readRemovalRisk: readRisk ?? { try await store.worktreeRemovalRisk($0, on: hostID) })
+            readRemovalRisk: readRisk ?? { try await store.worktreeRemovalRisk($0, on: hostID) },
+            otherWorkspaces: otherWorkspaces)
     }
 
     /// git has the last word on what the path is, however the row reads.
@@ -1041,6 +1043,53 @@ struct HerdrCoreWorktreesTests {
         #expect(message.contains("ended no Terminal"))
         #expect(message.contains("fatal: broken"))
         #expect(await fixture.transport.kills.isEmpty)
+    }
+
+    // MARK: Other Workspaces on the checkout
+
+    /// A removal ends one Workspace (ADR 0032), so the others on the checkout are
+    /// named rather than ended on the user's behalf.
+    @Test func theConfirmationNamesAnotherWorkspaceOnTheCheckoutAndLeavesItRunning() async throws {
+        let fixture = try await Fixture(terminals: Self.worktreeInventory + [Self.shell("t7", cwd: Self.linked)])
+        defer { fixture.finish() }
+        let request = try await fixture.removal()
+        try await fixture.until("the other Workspace") {
+            fixture.store.workspaces(for: fixture.host.id).filter {
+                $0.checkoutPath == Self.linked
+            }.count == 2
+        }
+        let store = fixture.store
+        let detail = makeDetail(
+            fixture, request: request,
+            otherWorkspaces: { store.workspaceLabels(sharingCheckoutOf: request.identity) })
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+
+        let message = try #require(detail.confirmation?.message)
+        #expect(message.contains("also uses this checkout"), "\(message)")
+        #expect(message.contains("keep running"))
+        #expect(store.workspaceLabels(sharingCheckoutOf: request.identity).count == 1)
+
+        let begun = try #require(detail.beginRemoval())
+        await detail.finishRemoval(begun)
+        #expect(await !fixture.transport.kills.contains("t7"))
+        #expect(await fixture.git("worktree", "remove").count == 1)
+    }
+
+    @Test func aWorkspaceAloneOnItsCheckoutNamesNoOther() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.finish() }
+        let request = try await fixture.removal()
+        let store = fixture.store
+        let detail = makeDetail(
+            fixture, request: request,
+            otherWorkspaces: { store.workspaceLabels(sharingCheckoutOf: request.identity) })
+        await detail.loadRemovalRiskIfNeeded()
+        detail.prepareConfirmation()
+
+        let message = try #require(detail.confirmation?.message)
+        #expect(!message.contains("also use"))
+        #expect(!message.contains("keep running"))
     }
 
     // MARK: What the Terminals leave behind

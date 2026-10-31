@@ -46,6 +46,9 @@ final class WorktreeDetailStore {
     /// Nil where nothing forces one: Herdr TUI Hosts refuse instead.
     private let readRemovalRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)?
     private var removalRisk: WorktreeRemovalRisk?
+    /// The other Workspaces on this checkout, whose Terminals a removal leaves
+    /// running. Nil where a removal closes the checkout's one Workspace.
+    private let otherWorkspaces: (() -> [String])?
     /// Remove waits while this holds, since a confirmation can only warn of what
     /// has been read.
     private var awaitsRemovalRisk: Bool
@@ -64,9 +67,11 @@ final class WorktreeDetailStore {
         remove: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt,
         hasWorkingAgent: @escaping () -> Bool,
         showChanges: ((String) -> Void)? = nil,
-        readRemovalRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)? = nil
+        readRemovalRisk: ((WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk?)? = nil,
+        otherWorkspaces: (() -> [String])? = nil
     ) {
         self.readRemovalRisk = readRemovalRisk
+        self.otherWorkspaces = otherWorkspaces
         awaitsRemovalRisk = readRemovalRisk != nil
         self.request = request
         self.workspaceLabel = workspaceLabel
@@ -171,7 +176,8 @@ final class WorktreeDetailStore {
             workspaceLabel: workspaceLabel,
             branch: confirmationBranch,
             hasWorkingAgent: hasWorkingAgent(),
-            risk: removalRisk)
+            risk: removalRisk,
+            otherWorkspaces: otherWorkspaces?() ?? [])
     }
 
     func cancelConfirmation() {
