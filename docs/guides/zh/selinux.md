@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/selinux.md at 3f9ed81 -->
+<!-- Translated from docs/guides/selinux.md at ed1e9e66 -->
 # Fedora 或 RHEL 主机上的 SELinux
 
 在 Fedora、RHEL、CentOS Stream、AlmaLinux 和 Rocky Linux 上，SELinux 可能会阻止 SSH 打开 herdr 的 socket。此时即使 herdr 正在运行，Heeler 也会报告无法打开 socket。本指南说明如何确认这一拒绝并放行。

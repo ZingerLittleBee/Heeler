@@ -95,7 +95,7 @@ Leave these empty for ZeroTier Central. If you run your own ZeroTier controller,
 
 ## Stop using the network
 
-Turn off the network's switch to disconnect it; its settings stay. To remove it, move or delete its Hosts first, then delete the network. If you delete your last ZeroTier network, you'll need to authorize Heeler again the next time you add one.
+Turn off the network's switch to disconnect it; its settings stay. To remove it, move or remove its Hosts first, then delete the network. If you delete your last ZeroTier network, you'll need to authorize Heeler again the next time you add one.
 
 To leave the network on the Mac:
 

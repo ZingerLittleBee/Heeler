@@ -117,8 +117,8 @@ Checkpoint:
 
 **Run on: iOS**
 
-In Heeler, begin adding a Host and copy the Device Key public-key line.
-It looks like:
+In Heeler, open **Hosts > Add Host**. Under **Authentication**, keep **Device
+Key** selected and tap **Copy authorized_keys Line**. It looks like:
 
 ```text
 ssh-ed25519 AAAA... heeler
@@ -534,7 +534,7 @@ pre-login FileVault screen.
 
 **Run on: iOS**
 
-In **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the tunnel and Jump Host fields, save the route, and fill in the remaining Host fields:
+In **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the tunnel and Jump Host fields, tap **Save** on the route page, and fill in the remaining Host fields:
 
 | Field | Value |
 |---|---|
@@ -556,7 +556,7 @@ Leave herdr Session blank to use the default session at
 `~/.config/herdr/herdr.sock`. Any value, including `default`, selects
 `~/.config/herdr/sessions/<name>/herdr.sock`.
 
-Run preflight.
+Tap **Save** on **Add Host** to start the **Preflight** checks.
 
 Heeler presents two independent host-key confirmations:
 
@@ -599,8 +599,8 @@ launchctl print "gui/$(id -u)/dev.herdr.VPS_NAME-reverse-ssh"
 
 It must show a new PID and `state = running`.
 
-Repeat Heeler preflight or open an Agent. A restarted process without a
-working app connection is not sufficient proof.
+In Heeler, tap **Run Checks Again** next to **Preflight** or open an Agent. A
+restarted process without a working app connection is not sufficient proof.
 
 ## Step 15: Harden Mac Authentication
 
@@ -791,8 +791,8 @@ Do not edit the working path in place:
 3. Add the existing Device Key public line to the new Jump account.
 4. Create new Mac aliases and a second LaunchAgent.
 5. Validate the new loopback listener and automatic recovery.
-6. In Heeler, open the Host's route (or add a new route) and change only the Jump Host fields.
-7. Test preflight and Attach.
+6. In Heeler, open the Host's route (or add a new route), change only the Jump Host fields, and tap **Save** on the Host.
+7. Test **Preflight** and Attach.
 8. Stop and remove the old path only after the new path works.
 
 See [Adding or Migrating to a New VPS](vps-jump-host.md#adding-or-migrating-to-a-new-vps)

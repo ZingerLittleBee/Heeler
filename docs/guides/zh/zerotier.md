@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/zerotier.md at b9b2cbc3 -->
+<!-- Translated from docs/guides/zerotier.md at ed1e9e66 -->
 
 # 通过 ZeroTier 连接 Heeler
 
@@ -97,7 +97,7 @@ ZeroTier 有新旧两个控制台。2025 年 11 月 5 日之后注册的账号�
 
 ## 停用或移除网络
 
-关闭网络开关即可断开连接并保留配置。如需删除网络，请先迁移或删除正在使用该网络的 Host，再删除网络本身。如果删除了最后一个 ZeroTier 网络，下次重新添加时需要在控制台中再次授权 Heeler。
+关闭网络开关即可断开连接并保留配置。如需删除网络，请先迁移或移除正在使用该网络的 Host，再删除网络本身。如果删除了最后一个 ZeroTier 网络，下次重新添加时需要在控制台中再次授权 Heeler。
 
 如需在 Mac 上退出该网络，请运行：
 
