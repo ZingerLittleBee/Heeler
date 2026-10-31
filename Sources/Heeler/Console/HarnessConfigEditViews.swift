@@ -59,7 +59,7 @@ struct HarnessConfigEditOffer: View {
                     Text(offer)
                 }
             }
-        case .reading, .writing:
+        case .locating, .reading, .writing:
             Section {
                 ProgressView().frame(maxWidth: .infinity)
             }
@@ -128,6 +128,7 @@ struct HerdrCoreStatusExplanationSheet: View {
                         manualInstruction: GrokBuildProgramStatusEdit.manualInstruction)
                 }
             }
+            .task { await flow?.locate() }
             .navigationTitle("Status Unknown")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

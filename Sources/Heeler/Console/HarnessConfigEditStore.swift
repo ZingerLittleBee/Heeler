@@ -24,9 +24,14 @@ final class HarnessConfigEditStore {
         entries[hostID] ?? []
     }
 
-    /// The newest of one edit, for the place that offered it.
-    func latest(_ editID: String, on hostID: Host.ID) -> HarnessConfigAppliedEdit? {
-        entries[hostID]?.last { $0.editID == editID }
+    /// One edit of one file. A Host can hold the same edit of several files, since
+    /// its Agents can read different ones.
+    func edit(_ editID: String, path: String, on hostID: Host.ID) -> HarnessConfigAppliedEdit? {
+        entries[hostID]?.first { $0.editID == editID && $0.path == path }
+    }
+
+    func edit(id: HarnessConfigAppliedEdit.ID, on hostID: Host.ID) -> HarnessConfigAppliedEdit? {
+        entries[hostID]?.first { $0.id == id }
     }
 
     /// An edit applied again to a file it left replaces what was known of it.
@@ -58,12 +63,14 @@ final class HarnessConfigEditStore {
     }
 }
 
-/// One offer's walk from reading the file to the user's answer, for the place that
-/// offers it. Nothing is written before `accept()` or `undo()`.
+/// One edit's walk from reading the file to the user's answer, for the place that
+/// offers it or lists it. Nothing is written before `accept()` or `undo()`.
 @MainActor
 @Observable
 final class HarnessConfigEditFlow {
     enum Phase: Equatable {
+        /// Working out which file this offer is about, so it claims no edit yet.
+        case locating
         case idle
         case reading
         case review(HarnessConfigPendingChange)
@@ -73,30 +80,68 @@ final class HarnessConfigEditFlow {
         case failed(String)
     }
 
-    private(set) var phase: Phase = .idle
+    /// What this flow answers for.
+    private enum Subject {
+        /// The one record a listing shows.
+        case record(HarnessConfigAppliedEdit.ID)
+        /// The file its Agent reads, once that is known. An edit of another file
+        /// says nothing about this one.
+        case offer(editID: String, path: String?)
+    }
+
+    private(set) var phase: Phase
     /// True when the last failure was the file changing under an undo, and so
     /// forgetting the edit is what is left to offer.
     private(set) var canForget = false
 
     private let hostID: Host.ID
-    private let editID: String
+    private var subject: Subject
     private let store: HarnessConfigEditStore
     private let makeEdit: @MainActor @Sendable () async throws -> HarnessConfigEdit
     private let services: @MainActor @Sendable () async throws -> any HostServices
 
+    /// An offer, which says nothing until `locate()` or `review()` knows its file.
     init(
         hostID: Host.ID, editID: String, store: HarnessConfigEditStore,
         services: @escaping @MainActor @Sendable () async throws -> any HostServices,
         makeEdit: @escaping @MainActor @Sendable () async throws -> HarnessConfigEdit
     ) {
         self.hostID = hostID
-        self.editID = editID
+        subject = .offer(editID: editID, path: nil)
+        phase = .locating
         self.store = store
         self.services = services
         self.makeEdit = makeEdit
     }
 
-    var applied: HarnessConfigAppliedEdit? { store.latest(editID, on: hostID) }
+    /// A listed edit, which can only be undone or forgotten.
+    init(
+        hostID: Host.ID, listing edit: HarnessConfigAppliedEdit, store: HarnessConfigEditStore,
+        services: @escaping @MainActor @Sendable () async throws -> any HostServices
+    ) {
+        self.hostID = hostID
+        subject = .record(edit.id)
+        phase = .idle
+        self.store = store
+        self.services = services
+        makeEdit = { throw TransportError.cancelled }
+    }
+
+    var applied: HarnessConfigAppliedEdit? {
+        switch subject {
+        case .record(let id): store.edit(id: id, on: hostID)
+        case .offer(let editID, let path): path.flatMap { store.edit(editID, path: $0, on: hostID) }
+        }
+    }
+
+    /// Finds the file this offer is about, for what to show first. One it can't find
+    /// stays an offer: `review()` looks again, and says why if it still can't.
+    func locate() async {
+        guard phase == .locating else { return }
+        remember(try? await makeEdit())
+        // The user can't have acted during this, since nothing is offered yet.
+        phase = .idle
+    }
 
     /// Reads the file and shows the change. Writes nothing.
     func review() async {
@@ -104,6 +149,12 @@ final class HarnessConfigEditFlow {
         canForget = false
         do {
             let edit = try await makeEdit()
+            remember(edit)
+            // The file holds Heeler's own edit, so its Undo is what is left to offer.
+            guard applied == nil else {
+                phase = .idle
+                return
+            }
             switch try await HarnessConfigEditor(files: try await services()).propose(edit) {
             case .change(let change): phase = .review(change)
             case .alreadyApplied(let path): phase = .alreadyApplied(path: path)
@@ -150,6 +201,11 @@ final class HarnessConfigEditFlow {
         guard let applied else { return }
         store.forget(applied, on: hostID)
         cancel()
+    }
+
+    private func remember(_ edit: HarnessConfigEdit?) {
+        guard let edit, case .offer(let editID, _) = subject else { return }
+        subject = .offer(editID: editID, path: edit.path)
     }
 }
 

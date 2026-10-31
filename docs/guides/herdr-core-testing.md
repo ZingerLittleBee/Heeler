@@ -202,6 +202,7 @@ account.
 | Host detail | Open the Host's detail | **Harness Edits** lists Grok Build with the same lines and **Undo** |
 | Undo | Tap **Undo** there | The file matches the saved copy byte for byte, or is gone again if it was absent, and the row goes |
 | Undo refused | Apply again, add a comment on the box, and tap **Undo** | **The file changed after Heeler edited it, so nothing was written**, and the file keeps your comment. **Stop Listing** drops the row and leaves the file alone |
+| A second file | With the edit applied, start another `grok` with `GROK_HOME` naming a scratch folder, and tap its **Unknown** | The offer shows, not the first file's edit. Apply shows that folder's `config.toml`, and **Harness Edits** lists both files. **Undo** on the first file's row restores that file and leaves the other |
 | Symlink | Make the file a symlink and repeat Apply and Undo | It stays a symlink, and the target takes the change |
 | Others untouched | Compare Claude Code's settings, Codex's hooks and `~/.grok`'s global hooks before and after | No change |
 

@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -8,6 +10,8 @@ import Testing
 @MainActor
 @Suite struct HarnessConfigEditStoreTests {
     private static let config = "/home/dev/.grok/config.toml"
+    private static let otherHome = "/opt/grok"
+    private static let otherConfig = "/opt/grok/config.toml"
     private static let original = Data("[agent]\nname = \"a\"\n".utf8)
     private static let edited = Data(
         "[agent]\nname = \"a\"\n\n[ui.notifications]\nprogram_status = \"on\"\n".utf8)
@@ -110,7 +114,9 @@ import Testing
         let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
         defer { store.setHosts([]) }
         let flow = grokFlow(store, host)
+        await flow.locate()
         #expect(flow.phase == .idle)
+        #expect(await files.replaceCalls == 0)
 
         await flow.review()
         guard case .review(let change) = flow.phase else {
@@ -348,6 +354,229 @@ import Testing
         }
         #expect(change.path == Self.config)
         #expect(await transport.processVariableReads == ["GROK_HOME of 70"])
+    }
+
+    // MARK: One Host, more than one file
+
+    /// The edit made to the default file, then to the file `GROK_HOME` names: two
+    /// Agents on one Host that read different files.
+    private func appliedToBothFiles() async throws -> (
+        ConsoleStore, InMemoryHostFiles, Host, first: HarnessConfigEditFlow, second: HarnessConfigEditFlow
+    ) {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original, Self.otherConfig: Self.original])
+        let (store, transport, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        let first = grokFlow(store, host)
+        await first.review()
+        await first.accept()
+        await transport.setProcessVariable("GROK_HOME", to: Self.otherHome)
+        let second = grokFlow(store, host)
+        await second.review()
+        await second.accept()
+        return (store, files, host, first, second)
+    }
+
+    private func row(
+        _ store: ConsoleStore, _ host: Host, path: String
+    ) throws -> HarnessConfigEditFlow {
+        let edit = try #require(store.harnessEdits.edits(on: host.id).first { $0.path == path })
+        return store.harnessEditFlow(for: edit, on: host.id)
+    }
+
+    /// An edit of another file says nothing about the one this Agent reads.
+    @Test func anAgentReadingAnotherFileIsStillOfferedItsOwn() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original, Self.otherConfig: Self.original])
+        let (store, transport, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let first = grokFlow(store, host)
+        await first.review()
+        await first.accept()
+        await transport.setProcessVariable("GROK_HOME", to: Self.otherHome)
+
+        let second = grokFlow(store, host)
+        await second.locate()
+
+        #expect(second.phase == .idle)
+        #expect(second.applied == nil)
+
+        await second.review()
+        guard case .review(let change) = second.phase else {
+            Issue.record("expected a review, got \(second.phase)")
+            return
+        }
+        #expect(change.path == Self.otherConfig)
+
+        await second.accept()
+        #expect(await files.files[Self.otherConfig] == Self.edited)
+        #expect(await files.files[Self.config] == Self.edited)
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.config, Self.otherConfig])
+        #expect(first.applied?.path == Self.config)
+        #expect(second.applied?.path == Self.otherConfig)
+    }
+
+    @Test func anAgentFindsTheEditOfItsOwnFileWhenItsSheetOpens() async throws {
+        let (store, files, host, _, _) = try await appliedToBothFiles()
+        defer { store.setHosts([]) }
+        let flow = store.grokBuildEditFlow(on: host.id, process: 70)
+
+        // No claim before the file is known.
+        #expect(flow.phase == .locating)
+        #expect(flow.applied == nil)
+
+        await flow.locate()
+
+        #expect(flow.phase == .idle)
+        #expect(flow.applied?.path == Self.otherConfig)
+        #expect(await files.replaceCalls == 2)
+    }
+
+    @Test func undoInOneAgentsSheetLeavesTheOtherFile() async throws {
+        let (store, files, host, first, second) = try await appliedToBothFiles()
+        defer { store.setHosts([]) }
+
+        await first.undo()
+
+        #expect(await files.files[Self.config] == Self.original)
+        #expect(await files.files[Self.otherConfig] == Self.edited)
+        #expect(first.applied == nil)
+        #expect(second.applied?.path == Self.otherConfig)
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.otherConfig])
+    }
+
+    /// A row shows its own file, whichever edit is newest.
+    @Test func hostDetailUndoesTheFileItsRowShows() async throws {
+        let (store, files, host, _, _) = try await appliedToBothFiles()
+        defer { store.setHosts([]) }
+
+        try await row(store, host, path: Self.config).undo()
+
+        #expect(await files.files[Self.config] == Self.original)
+        #expect(await files.files[Self.otherConfig] == Self.edited)
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.otherConfig])
+
+        try await row(store, host, path: Self.otherConfig).undo()
+
+        #expect(await files.files[Self.otherConfig] == Self.original)
+        #expect(store.harnessEdits.edits(on: host.id).isEmpty)
+    }
+
+    @Test func aRowRefusedOnItsOwnFileStopsListingOnlyItself() async throws {
+        let (store, files, host, _, _) = try await appliedToBothFiles()
+        defer { store.setHosts([]) }
+        let theirs = Self.edited + Data("# mine\n".utf8)
+        await files.set(Self.config, theirs)
+        let flow = try row(store, host, path: Self.config)
+
+        await flow.undo()
+
+        #expect(flow.canForget)
+        #expect(await files.files[Self.config] == theirs)
+        #expect(await files.files[Self.otherConfig] == Self.edited)
+
+        flow.forget()
+
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.otherConfig])
+        #expect(await files.files[Self.config] == theirs)
+    }
+
+    /// Which file is not known, so no edit is this Agent's. Host detail still lists it.
+    @Test func anAgentWhoseFileCannotBeFoundClaimsNoEdit() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, transport, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let first = grokFlow(store, host)
+        await first.review()
+        await first.accept()
+        await transport.makeProcessVariableUnavailable("GROK_HOME")
+
+        let flow = grokFlow(store, host)
+        await flow.locate()
+
+        #expect(flow.phase == .idle)
+        #expect(flow.applied == nil)
+        #expect(store.harnessEdits.edits(on: host.id).map(\.path) == [Self.config])
+
+        await flow.review()
+        #expect(flow.phase == .failed(Self.unreadableEnvironment))
+        #expect(await files.replaceCalls == 1)
+    }
+
+    /// The read that failed when the sheet opened now works, and this file already
+    /// holds Heeler's edit: what is left to offer is its Undo.
+    @Test func aReviewOfAFileWithThisEditShowsItsUndo() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, transport, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let first = grokFlow(store, host)
+        await first.review()
+        await first.accept()
+        await transport.makeProcessVariableUnavailable("GROK_HOME")
+        let flow = grokFlow(store, host)
+        await flow.locate()
+        await transport.setProcessVariable("GROK_HOME", to: "/home/dev/.grok")
+
+        await flow.review()
+
+        #expect(flow.phase == .idle)
+        #expect(flow.applied?.path == Self.config)
+        #expect(await files.replaceCalls == 1)
+
+        await flow.undo()
+        #expect(await files.files[Self.config] == Self.original)
+    }
+
+    // MARK: The sheet
+
+    /// The sheet's labels once it shows `expected`, or as they stand when time runs out.
+    private func sheetLabels(
+        _ store: ConsoleStore, _ host: Host, showing expected: String
+    ) async throws -> [String] {
+        let explanation = try #require(store.coreStatusExplanations[id(host, "g")])
+        let controller = UIHostingController(
+            rootView: HerdrCoreStatusExplanationSheet(console: store, hostID: host.id, explanation: explanation))
+        var labels: [String] = []
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            let deadline = ContinuousClock.now + .seconds(5)
+            repeat {
+                labels = AccessibilityProbe.labels(in: controller.view)
+                if labels.contains(where: { $0.contains(expected) }) { return }
+                try await Task.sleep(for: .milliseconds(20))
+            } while ContinuousClock.now < deadline
+        }
+        return labels
+    }
+
+    @Test func theSheetOffersAnAgentReadingAnotherFile() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original, Self.otherConfig: Self.original])
+        let (store, transport, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let first = grokFlow(store, host)
+        await first.review()
+        await first.accept()
+        await transport.setProcessVariable("GROK_HOME", to: Self.otherHome)
+
+        let labels = try await sheetLabels(store, host, showing: "Turn On Grok Build's Status")
+
+        #expect(labels.contains { $0.contains("Turn On Grok Build's Status") }, "\(labels)")
+        #expect(!labels.contains { $0.contains("Undo") }, "\(labels)")
+        #expect(!labels.contains { $0.contains(Self.config) }, "\(labels)")
+        #expect(await files.replaceCalls == 1)
+    }
+
+    @Test func theSheetShowsTheEditOfItsAgentsOwnFile() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let first = grokFlow(store, host)
+        await first.review()
+        await first.accept()
+
+        let labels = try await sheetLabels(store, host, showing: "Undo")
+
+        #expect(labels.contains { $0.contains("Undo") }, "\(labels)")
+        #expect(labels.contains { $0.contains(Self.config) }, "\(labels)")
+        #expect(!labels.contains { $0.contains("Turn On Grok Build's Status") }, "\(labels)")
     }
 
     // MARK: Staying with the Host

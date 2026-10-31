@@ -1469,15 +1469,14 @@ final class ConsoleStore {
             })
     }
 
-    /// Host detail's own way to an edit, which can only undo it.
+    /// A Host detail row's own way to its edit, which can only undo it.
     func harnessEditFlow(for edit: HarnessConfigAppliedEdit, on hostID: Host.ID) -> HarnessConfigEditFlow {
         HarnessConfigEditFlow(
-            hostID: hostID, editID: edit.editID, store: harnessEdits,
+            hostID: hostID, listing: edit, store: harnessEdits,
             services: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await self.harnessEditServices(on: hostID)
-            },
-            makeEdit: { throw TransportError.cancelled })
+            })
     }
 
     private func harnessEditServices(on hostID: Host.ID) async throws -> any HostServices {

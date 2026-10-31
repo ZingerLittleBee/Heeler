@@ -63,7 +63,7 @@ Tap **Unknown** on an Agent's status line to see why it reads that way. Each pro
 
 If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler cannot read the Agent's environment, it cannot tell which file that Agent uses, so it writes nothing and says so. If Heeler cannot be sure how to change a file, it writes nothing and tells you what to add by hand. A native Windows Host takes this change by hand too.
 
-**Undo** in the same sheet, or under **Harness Edits** in the Host's detail, puts the file back exactly as it was. It writes nothing if the file has changed since the edit. In that case undo the edit by hand, and **Stop Listing** drops it from the list. The list belongs to the device that made the edit. Heeler never edits Claude Code's settings, Codex's hooks or trusted hashes, or Grok Build's global hooks.
+**Undo** in the same sheet, or under **Harness Edits** in the Host's detail, puts the file back exactly as it was. It writes nothing if the file has changed since the edit. In that case undo the edit by hand, and **Stop Listing** drops it from the list. Each sheet speaks for the file its Agent reads, so Agents with different `GROK_HOME` values each get their own change and **Undo**, and each row under **Harness Edits** undoes the file it shows. The list belongs to the device that made the edit. Heeler never edits Claude Code's settings, Codex's hooks or trusted hashes, or Grok Build's global hooks.
 
 A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and no Close.
 
