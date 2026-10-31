@@ -346,8 +346,9 @@ On herdr-core no server names the conversation. Chat takes it from what the
 Host shows about the Agent's own process, or from the user's one-time choice
 among the candidates it lists, and when it can do neither it says so and how to
 fix it; it never guesses (ADR 0034). There its Send, Stop and Blocked Card
-answers keep the rules above, but type through an attach of Chat's own that
-keeps the Terminal's size, with the Composer's checked steps, and read the
+answers keep the rules above, but type through an attach of Chat's own, open
+only for that action, that keeps the Terminal's size, with the Composer's checked
+steps, and read the
 screen from an observing attach's first paint (ADR 0035).
 The choice between Chat and the terminal is app-wide, Terminal by default. Not
 offered on native Windows Herdr TUI Hosts; on native Windows herdr-core Hosts,

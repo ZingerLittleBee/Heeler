@@ -64,9 +64,11 @@ the shell that stays behind, and a retry can deliver it twice.
   submit key and the Ctrl+C. On a Template's Terminal Chat's Stop presses the
   Template's stop key. Chat's attach is a resumed viewer, reports no display
   facts, and before it types sends the Terminal's latest size as its own, so
-  that sending never resizes the Terminal. A Blocked Card answer is sent only
-  while the dialog it answers is still on screen and the Agent still holds the
-  foreground. A viewer that only observes cannot type.
+  that sending never resizes the Terminal. It is opened for one action and closed
+  after, so it holds the Terminal's size no longer than it types. A Blocked Card
+  answer is sent only while the dialog it answers is still on screen and the
+  Agent still holds the foreground, the same process as when that screen was read.
+  A viewer that only observes cannot type.
 - Chat's screen checks read a viewer's first paint. `terminal.read` has text
   only, and the emulator Heeler embeds reads text only, while every attach
   starts with the styled screen. Each read is an observing attach of its own
@@ -138,7 +140,10 @@ confirm or refine these points with test clients, not the app.
 - Under the desktop app's fish wrapper the agent shares the wrapper's pid, so
   only the program behind that pid tells an exited Agent from a live one.
 - Each of Chat's screen reads is a round trip and a paint, up to one a second
-  while a Blocked Card shows and more often while an answer is checked.
+  while a Blocked Card shows and more often while an answer is checked. Each of
+  Chat's actions opens one more attach and closes it, so it costs a paint too.
+- Chat's foreground checks before a key use the record the core's events keep,
+  up to one sampling period old, as a read would be only a round trip fresher.
 - A person typing into the same Terminal on another client at that moment can
   interleave with the paste, as on Herdr TUI.
 - Typing through a viewer makes it the Terminal's size leader; the viewed
