@@ -104,6 +104,23 @@ On a macOS or Linux Host, **Add** in the Composer, or **Add Image** and **Add Fi
 
 Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
 
+## Stop
+
+While an Agent is **Working** and the draft is empty, **Stop** takes Send's place. Heeler asks the core to press the Terminal's own stop key: the stop key of the Template the Terminal came from, else Esc. It then reads whether the program still runs, so an Agent that exits at the key leaves the list without waiting for the next update. Each tap presses once, and Heeler never presses again by itself.
+
+Stop shows only while the Agent holds the terminal, never for the shell it left behind. A program that has not reported a status reads **Unknown** and has no Stop. Use the tools keyboard or Direct Input there.
+
+A Grok Build Agent's Composer keeps **Send** while it works, as on any other Host, because Esc does not stop its turns. Use the tools keyboard or Direct Input to press Ctrl+C.
+
+On a native Windows Host, Stop is not available yet.
+
+| Notice | What it means | What to do |
+| --- | --- | --- |
+| **still shows Working** | The key went and the Agent is still Working a few seconds later. A background task can do that | Tap **Stop** again if you still want it to stop |
+| **may or may not have reached the Agent** | The connection dropped or went silent during Stop, so Heeler cannot tell, and it does not send it again | Look at the terminal first |
+| **did not say whether the Agent still runs** | The Host answered that it pressed the key, and the check after it got no answer | Look at the terminal |
+| **wasn't sent** | The connection was down, or too busy to take Stop within a few seconds. No key was pressed | Tap **Stop** again |
+
 ## Restarts and ended Terminals
 
 | What happened | Heeler shows |
@@ -137,11 +154,23 @@ Pick where it starts, for an Agent and for **New Terminal** alike:
 | A directory's Workspace | In that Workspace's directory, even after a Terminal in it moved elsewhere | In that Workspace, and not in the desktop app's layout until you adopt it there |
 | **New Workspace** or **Browse Directory…** | In the directory you chose | In a new Workspace of its own, even when another already uses that directory. A running desktop app shows it as a new space. Until the desktop app names it, it is named for its first Terminal's checkout folder |
 
-Heeler asks for no tab or Workspace name on this kind of Host. Worktrees and Templates are not offered here yet.
+Heeler asks for no tab or Workspace name on this kind of Host. Worktrees are not offered here yet.
 
 Heeler gives an Agent a session of its own from the start where the program takes one, unless your arguments already pick a session, as `--resume` does. Codex runs with `--no-daemon`. OpenCode gets its session only from version 2.1.
 
 If the Host does not confirm a start, Heeler says so and does not try again, since the Agent may already be running. Check the Host before starting another.
+
+### Templates
+
+**New Agent** also lists the Host's Templates, the roles saved under `~/.config/herdr-core/templates` (or `$XDG_CONFIG_HOME/herdr-core/templates`), under the agents your shell can run. A file the core cannot use is not listed.
+
+Pick one and tap **Start**. It lands where any other Agent would, by the table above, and an empty name field names the Agent after the Template, or `reviewer-2` while another live Terminal is named `reviewer`. The core runs the Template's own command, so your shell, your startup files and the session flags above play no part, and the form asks for no arguments. A command that needs a variable from your startup files should set it itself.
+
+A Template that has a first message answers only once its program first reports, which can take up to 35 seconds. New Agent shows it starting for that long. A program that has not reported after 30 seconds still starts, but the core does not type the first message and Heeler does not say so, so check its screen. If the Host does not answer at all, Heeler says it did not confirm the start and does not try again.
+
+A program Heeler does not know joins the Agents once it reports a status. Until then it stays in the Terminals tab, and New Agent closes without opening it.
+
+If the program ends during the few seconds New Agent watches it, the form stays open and says so, with its exit code. Exit code 127 means the core could not find the command, so give it a full path or set `PATH` in the command. A program that ends after the form has closed leaves the Terminals tab like any other that ended.
 
 **Known limit:** with zsh as your login shell and no startup files, such as no `~/.zshrc`, zsh opens its new-user wizard and the Agent waits behind it. Open the Terminal and answer the wizard once, or create an empty `~/.zshrc` on the Host first.
 
@@ -149,7 +178,7 @@ If the Host does not confirm a start, Heeler says so and does not try again, sin
 
 - Heeler has no Rename on a core Host yet. Use the Host or the desktop.
 - Worktrees and Chat are not available yet.
-- An Agent detail's Stop stays hidden, and native Windows core Hosts offer no Send yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
+- Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
 - Live Activities and in-app banners for Agent Notifications are not available yet.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.

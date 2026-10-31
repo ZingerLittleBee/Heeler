@@ -161,17 +161,32 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     private(set) var documentWrites: [JSONValue] = []
     /// The exact params of every `terminal.run`, oldest first.
     private(set) var runs: [JSONValue] = []
+    /// How many of `runs` asked for a Template's long deadline.
+    private(set) var templateRuns = 0
     /// The method of every call sent as a mutation, oldest first.
     private(set) var mutations: [String] = []
     /// The Terminal of every `terminal.kill`, oldest first.
     private(set) var kills: [String] = []
     private var killAnswers: [String: Result<JSONValue, any Error>] = [:]
+    /// Each `terminal.interrupt` and `terminal.get`, with its params, oldest first.
+    private(set) var stopCalls: [(method: String, params: JSONValue)] = []
+    private var interruptAnswer: Result<JSONValue, any Error> = .success(
+        .object(["outcome": .string("stopped"), "key": .string("esc")]))
+    private var interruptHold: InterruptHold?
+    private var heldInterrupts: [UUID: CheckedContinuation<Void, Never>] = [:]
+    private var terminalRecords: [Result<JSONValue, any Error>] = []
+    private var isHoldingTerminalReads = false
+    private var heldTerminalReads: [CheckedContinuation<Void, Never>] = []
     /// The script of every agent discovery, oldest first.
     private(set) var discoveryScripts: [String] = []
     private var shell: String?
     private var discoveredPrograms: [String] = []
     private var openCodeVersionOutput: String?
     private var runFailure: (any Error)?
+    private var heldNames: Set<String> = []
+    private var templateList: JSONValue = .object(["templates": .array([])])
+    private var templateListFailure: (any Error)?
+    private var templateCommand = "pi --thinking high"
     private var isDesktopAppRunning = false
     private var desktopAppRenameFailure: (any Error)?
 
@@ -269,6 +284,19 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     func call(_ method: String, params: JSONValue, isMutation: Bool) async throws -> JSONValue {
         if isMutation { mutations.append(method) }
         switch method {
+        case "terminal.interrupt":
+            stopCalls.append((method, params))
+            if let hold = interruptHold { try await waitOutInterruptHold(hold) }
+            return try interruptAnswer.get()
+        case "terminal.get":
+            stopCalls.append((method, params))
+            while isHoldingTerminalReads {
+                await withCheckedContinuation { heldTerminalReads.append($0) }
+            }
+            guard !terminalRecords.isEmpty else {
+                throw TransportError.hostFeatureUnavailable(feature: method)
+            }
+            return try (terminalRecords.count > 1 ? terminalRecords.removeFirst() : terminalRecords[0]).get()
         case "terminal.kill":
             let terminal = params["terminal"]?.stringValue ?? ""
             kills.append(terminal)
@@ -284,6 +312,9 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
             documentWrites.append(params)
             Issue.record("A code path wrote a document: \(params)")
             throw TransportError.hostFeatureUnavailable(feature: method)
+        case "templates.list":
+            if let templateListFailure { throw templateListFailure }
+            return templateList
         default:
             throw TransportError.hostFeatureUnavailable(feature: method)
         }
@@ -315,7 +346,36 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     func runTerminal(params: JSONValue) async throws -> JSONValue {
         runs.append(params)
         if let runFailure { throw runFailure }
+        try holdName(in: params)
         return Self.runReply(address: "t\(100 + runs.count)", params: params)
+    }
+
+    /// The core's rule for a name a live Terminal holds. Every Terminal started
+    /// here stays live as far as this knows.
+    private func holdName(in params: JSONValue) throws {
+        guard let name = params["name"]?.stringValue else { return }
+        guard heldNames.insert(name).inserted else {
+            throw HerdrAPIError(
+                code: "name_taken", message: "a live terminal is already named \"\(name)\"")
+        }
+    }
+
+    /// What a core answers for a Template: its command under `sh -c`, with its
+    /// name and keys on the record.
+    func runTemplate(params: JSONValue) async throws -> JSONValue {
+        templateRuns += 1
+        runs.append(params)
+        if let runFailure { throw runFailure }
+        try holdName(in: params)
+        var reply = Self.runReply(address: "t\(100 + runs.count)", params: params)
+        if case .object(var fields) = reply {
+            fields["argv"] = .array(["sh", "-c", templateCommand].map(JSONValue.string))
+            if case .array(let argv)? = params["argv"] { fields["template"] = argv.first }
+            fields["submit"] = .string("ctrl+j")
+            fields["stop"] = .string("ctrl+c")
+            reply = .object(fields)
+        }
+        return reply
     }
 
     /// What a core answers: the Terminal it started from these params.
@@ -373,6 +433,21 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         runFailure = failure
     }
 
+    /// What `templates.list` answers, as the core shapes it.
+    func setTemplates(_ templates: [JSONValue]) {
+        templateList = .object(["templates": .array(templates)])
+    }
+
+    /// The command line a Template's Terminal runs.
+    func setTemplateCommand(_ command: String) {
+        templateCommand = command
+    }
+
+    /// `templates.list` fails with this until it is called with nil.
+    func setTemplateListFailure(_ failure: (any Error)?) {
+        templateListFailure = failure
+    }
+
     /// What `herdr-app status` says from now on.
     func setDesktopApp(running: Bool) {
         isDesktopAppRunning = running
@@ -386,6 +461,74 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// What a kill of this Terminal gets back instead of its ended record.
     func setKillAnswer(_ answer: Result<JSONValue, any Error>, for terminal: String) {
         killAnswers[terminal] = answer
+    }
+
+    /// What `terminal.interrupt` gets back.
+    func setInterruptAnswer(_ answer: Result<JSONValue, any Error>) {
+        interruptAnswer = answer
+    }
+
+    /// Where a held `terminal.interrupt` is, which decides what cancelling it does,
+    /// as `HerdrCoreLink` and `HerdrCoreTransport.onLink` do.
+    enum InterruptHold {
+        /// With the writer or past it: cancelling says the outcome is unknown.
+        case handedToTheWriter
+        /// Queued behind other writes: cancelling drops it, and it never goes.
+        case inTheOutbox
+        /// Waiting for a link to open, which cancelling does not end. Once it
+        /// ends, the cancelled call writes nothing.
+        case awaitingALink
+    }
+
+    /// Each `terminal.interrupt` waits, answerless, until `releaseInterrupts`.
+    func holdInterrupts(_ hold: InterruptHold = .handedToTheWriter) {
+        interruptHold = hold
+    }
+
+    func releaseInterrupts() {
+        interruptHold = nil
+        let held = heldInterrupts
+        heldInterrupts = [:]
+        for waiter in held.values { waiter.resume() }
+    }
+
+    private func waitOutInterruptHold(_ hold: InterruptHold) async throws {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if hold != .awaitingALink, Task.isCancelled {
+                    continuation.resume()
+                } else {
+                    heldInterrupts[id] = continuation
+                }
+            }
+        } onCancel: {
+            if hold != .awaitingALink { Task { await self.releaseInterrupt(id) } }
+        }
+        guard Task.isCancelled else { return }
+        if hold == .handedToTheWriter { throw TransportError.coreMutationOutcomeUnknown }
+        throw CancellationError()
+    }
+
+    private func releaseInterrupt(_ id: UUID) {
+        heldInterrupts.removeValue(forKey: id)?.resume()
+    }
+
+    /// What each `terminal.get` answers. The last one repeats.
+    func setTerminalRecords(_ answers: [Result<JSONValue, any Error>]) {
+        terminalRecords = answers
+    }
+
+    /// Each `terminal.get` waits, answerless, until `releaseTerminalReads`.
+    func holdTerminalReads() {
+        isHoldingTerminalReads = true
+    }
+
+    func releaseTerminalReads() {
+        isHoldingTerminalReads = false
+        let held = heldTerminalReads
+        heldTerminalReads = []
+        for waiter in held { waiter.resume() }
     }
 
     /// What the next document read answers, as `doc.get` shapes it.

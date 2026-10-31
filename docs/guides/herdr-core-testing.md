@@ -122,7 +122,7 @@ many are open.
 | Second viewer | `hc attach <terminal>` on the box at another size, then type in Heeler | The program takes Heeler's size when you type; no Take Over appears anywhere on the Host |
 | Retained terminals | Open six Terminals in turn and go back | Five stay retained for five minutes and come back at once; the sixth detaches the least recently viewed idle one, which attaches afresh when you return to it |
 | End of a program | `exit` in a Terminal, kept or not | **Terminal Closed** with **Back to Console**, and no error or **Reattach** |
-| Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Stop stays hidden; Send works, and Add stages an image and a file, on macOS and Linux, and both are hidden on native Windows; Direct Input types into the terminal |
+| Agent detail | Open a core Agent | Live terminal, Changes and Skills work; Send and Stop work, and Add stages an image and a file, on macOS and Linux, and all three are hidden on native Windows; Direct Input types into the terminal |
 | Two windows | On an iPad, show one core Agent in two windows, open Changes in the first and come back | Each window keeps a live terminal of its own, and typing in either reaches the program |
 | Window size | On an iPad, resize a window showing a core Agent across compact and regular widths, then leave the Agent | The same terminal and scrollback stay on screen with one viewer, and the viewer closes five minutes after you leave |
 | Closed window | On an iPad, close one of two windows showing the same core Agent | The other window's terminal stays live; if the closed window retained the Terminal, its viewer stops being reported and closes after five minutes; if it held the second viewer, that viewer closes at once and `terminal.get` shows the size follows the window left |
@@ -255,6 +255,23 @@ Add any case the
 [turn-end vector](../../plugin/test-vectors/herdr-core-turn-end-v1.json) lacks, with
 its source, and clear its `provisional` flag once the captures are in.
 
+## Composer Stop
+
+`HerdrCoreComposerStopTests` hold what Heeler sends against a scripted core: one
+`terminal.interrupt` with `timeout` 2, then a `terminal.get`. These steps need the
+programs themselves, and show the read through what the app does next. Record each
+version and result beside the check it answers.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Pi keeps running | Give Pi a long prompt, then tap **Stop** | The turn stops, Pi stays the Agent, and Send comes back |
+| Codex exits | Run Codex where the key ends it, or a stand-in that reports working and exits on Esc, then tap **Stop** | The Agent leaves the list about when the program goes, and no Stop shows on that Terminal |
+| Never reports | Run a program that has never reported in a core Terminal, as a copy of `cat` named `claude` | It reads **Unknown**, so the Composer shows no Stop, since Stop needs Working. From a test client, `terminal.interrupt` with `timeout` 2 answers `unknown` after the two seconds and presses Ctrl+C, and `terminal.get` then shows whether it still runs |
+| Ignores the key | Run a stand-in that reports working and ignores Esc, then tap **Stop** | The spinner lasts about three seconds, then the notice says **still shows Working** and **Stop** works again. The stand-in stays the Agent |
+| Template | Start a Template with a `stop` key, wait for it to report working, then tap **Stop** | The program receives the Template's stop key |
+| Grok Build | Give Grok Build a long prompt | The Composer keeps **Send** on a blank draft and offers no Stop |
+| Shell behind | Exit an Agent under the desktop app's wrapper, so its shell continues in the Terminal | No Stop on that Terminal, although the core would press Esc there |
+
 ## New Agent and New Terminal
 
 Use three throwaway accounts on hc-lab whose login shells are bash, zsh and fish, and
@@ -276,6 +293,7 @@ its flags. Read each launch with `terminal.get` through
 | Browsing | **Browse Directory…** in **New Agent** and in **New Terminal** | Remote folders list, and the launch lands in a card named for the one chosen |
 | Mac with the desktop app | On a Mac running the Herdr desktop app, **New Terminal** in one of its spaces | It shows in a new tab of that space in the window, and `terminal.get` has `herdr.space` and a new `herdr.tab`. Never `doc.set` on this core |
 | No answer | Cut the route just after tapping **Start** | Heeler says the Host did not confirm the launch, and `terminal.list` shows at most one new Terminal |
+| Template with a slow first report | A file in `~/.config/herdr-core/templates/` with a body, whose `command` is a harmless stub that sends its first OSC 7501 report after about 28 seconds and keeps reading its input, then pick it under **Templates** in **New Agent** and start it | **New Agent** shows it starting for the whole wait of about 33 seconds, then opens it as an Agent with the Template's body typed. `terminal.get` has `argv` reading `sh -c <command>`, its `template`, `submit` and `stop`, and no `heeler.launch-session` label, and `terminal.list` shows one new Terminal. A stub that reports at 30 seconds or later still opens, but with no body typed |
 
 ## Close
 

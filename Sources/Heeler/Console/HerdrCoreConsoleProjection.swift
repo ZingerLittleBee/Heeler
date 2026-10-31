@@ -70,6 +70,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var hasAskedHome = false
     /// Whether `records` is this link's inventory, not yet another's emptied one.
     private var hasInventory = false
+    /// Moves with every event or snapshot that speaks of a foreground.
+    private var foregroundChanges = 0
     /// Terminals waiting to hear what became of a program.
     private var programWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     private var programWatches:
@@ -248,6 +250,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         memory.noteInventory(snapshot.terminals, for: host.id)
         pins.retainPins(hostID: host.id, paneIDs: Set(snapshot.terminals.map(\.address)))
         records = snapshot.terminals
+        foregroundChanges &+= 1
         hasInventory = true
         for record in records {
             noteTurns(of: record.address) { state, kind in
@@ -297,6 +300,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         case .title(let terminal, let title):
             update(terminal) { $0.title = title }
         case .foreground(let terminal, let foreground):
+            foregroundChanges &+= 1
             update(terminal) { $0.noteForeground(foreground) }
             noteTurns(of: terminal) { _, _ in }
             notifyProgramWatches(of: terminal, .sample(foreground))
@@ -326,11 +330,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             }
             noteTurns(of: terminal) { _, _ in }
             notifyProgramWatches(of: terminal, .ended)
-        case .finished(let terminal, _):
+        case .finished(let terminal, let end):
             update(terminal) {
                 $0.state = "finished"
                 $0.pid = nil
                 $0.foreground = nil
+                $0.exitCode = end.exitCode
             }
             noteTurns(of: terminal) { _, _ in }
             sidebarRevision &+= 1
@@ -633,6 +638,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         return installed.kinds
     }
 
+    func availableTemplates() async throws -> [AgentTemplate] {
+        try await session.withTransport { $0 }.listTemplates()
+    }
+
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         try await launch(
             request,
@@ -645,6 +654,45 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         try await inNewSpace(workspace) { placement in
             try await launch(request, placement: placement)
         }
+    }
+
+    /// Placed as any other launch is, and started by the core with neither the
+    /// shell nor a kind of Heeler's, so the Agent's kind comes from its record.
+    /// A program Heeler does not know is no Agent until it reports.
+    func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
+        if let workspace = request.newWorkspace {
+            return try await inNewSpace(workspace) { placement in
+                try await runTemplate(request, placement: placement)
+            }
+        }
+        return try await runTemplate(
+            request,
+            placement: try await placement(workspaceID: request.workspaceID, directory: request.cwd))
+    }
+
+    private func runTemplate(
+        _ request: TemplateLaunchRequest, placement: HerdrCoreLaunch.Placement
+    ) async throws -> Agent {
+        let transport = try await session.withTransport { $0 }
+        let record = try fold(
+            runReply: try await transport.runTemplate(
+                params: HerdrCoreLaunch.templateRequest(
+                    template: request.template, name: request.name, placement: placement)))
+        return agent(at: record, kind: HerdrCoreAgentRule.agent(in: record)?.kind ?? "unknown")
+    }
+
+    /// An exit is final even for a kept Terminal, and a lost program is not.
+    func programExit(ofPane paneID: String) -> ProgramExit? {
+        guard let record = records.first(where: { $0.address == paneID }), record.hasFinished else {
+            return nil
+        }
+        return ProgramExit(code: record.exitCode)
+    }
+
+    /// A name stays with its Terminal for as long as the core calls it live,
+    /// which covers a kept one between programs.
+    var heldTerminalNames: Set<String> {
+        Set(records.lazy.filter { !$0.hasFinished }.compactMap(\.name))
     }
 
     func createShellTerminal(
@@ -687,14 +735,19 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
         let transport = try await session.withTransport { $0 }
         let shell = try await transport.launchShell()
-        let record = try await run(
-            HerdrCoreLaunch.agentRequest(
-                kind: kind, name: request.name, arguments: request.arguments, shell: shell,
-                openCodeVersion: openCodeVersion, placement: placement),
-            on: transport)
-        return agentsByPane[record.address]?.agent
+        let record = try fold(
+            runReply: try await transport.runTerminal(
+                params: HerdrCoreLaunch.agentRequest(
+                    kind: kind, name: request.name, arguments: request.arguments, shell: shell,
+                    openCodeVersion: openCodeVersion, placement: placement)))
+        return agent(at: record, kind: kind.rawValue)
+    }
+
+    /// The row a launch made, or one to stand in until it shows.
+    private func agent(at record: HerdrCoreTerminalRecord, kind: String) -> Agent {
+        agentsByPane[record.address]?.agent
             ?? Agent(
-                terminalID: record.address, kind: kind.rawValue, title: "", status: .unknown,
+                terminalID: record.address, kind: kind, title: "", status: .unknown,
                 workspaceID: HerdrCoreOrganization.workspaceID(
                     of: record, firstSeenDirectories: memory.firstSeenDirectories(for: host.id)),
                 tabID: "tab-\(record.address)", paneID: record.address, cwd: record.cwd, revision: 0,
@@ -705,20 +758,19 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         placement: HerdrCoreLaunch.Placement
     ) async throws -> ShellTerminalIdentity {
         let transport = try await session.withTransport { $0 }
-        let record = try await run(HerdrCoreLaunch.terminalRequest(placement: placement), on: transport)
+        let record = try fold(
+            runReply: try await transport.runTerminal(
+                params: HerdrCoreLaunch.terminalRequest(placement: placement)))
         return ShellTerminalIdentity(
             paneID: record.address,
             tabID: terminalsByPane[record.address]?.tabID ?? "tab-\(record.address)",
             terminalID: record.address)
     }
 
-    /// One `terminal.run`. Its answer shows at once, so the row a caller opens
+    /// One `terminal.run`'s answer. It shows at once, so the row a caller opens
     /// next exists, and the core's own `created` event then changes nothing. An
     /// answer past reading started something all the same, so it is not a refusal.
-    private func run(
-        _ params: JSONValue, on transport: any HerdrCoreTransport
-    ) async throws -> HerdrCoreTerminalRecord {
-        let reply = try await transport.runTerminal(params: params)
+    private func fold(runReply reply: JSONValue) throws -> HerdrCoreTerminalRecord {
         guard let record = try? HerdrCoreWire.typed(reply) as HerdrCoreTerminalRecord else {
             throw TransportError.coreMutationOutcomeUnknown
         }
@@ -792,6 +844,26 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             }
         }
         if let failure { throw failure }
+    }
+
+    // MARK: Composer Stop (ADR 0035)
+
+    func interruptTerminal(at address: String, timeout: Duration) async throws {
+        let transport = try await session.withTransport { $0 }
+        try await transport.interruptTerminal(address, timeout: timeout)
+    }
+
+    /// Reads whether the Terminal's program still runs and folds the answer, so a
+    /// program that left stops being the Agent without waiting for the next sample.
+    /// Nothing orders a reply against the events, so whatever spoke of the
+    /// foreground while this was on its way is at least as new.
+    func readForeground(at address: String) async throws {
+        let changes = foregroundChanges
+        let record = try await session.withTransport { try await $0.terminalRecord(address) }
+        guard !hasEnded, foregroundChanges == changes, let foreground = record.foreground else {
+            return
+        }
+        apply(.foreground(terminal: address, foreground))
     }
 
     // MARK: Actions not built yet

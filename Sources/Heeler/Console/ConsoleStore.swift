@@ -112,6 +112,7 @@ final class ConsoleStore {
     @ObservationIgnored private let herdrAppRename: Bool
     @ObservationIgnored private let coreSendClock: BlockedCardClock
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
+    @ObservationIgnored private let coreStopClock: BlockedCardClock
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
     @ObservationIgnored private let connectCore: @Sendable (Host) async throws -> any HerdrCoreTransport
@@ -185,6 +186,7 @@ final class ConsoleStore {
         },
         makeCoreSession: @escaping @Sendable (Host) -> HerdrCoreHostSession =
             ConsoleStore.coreSessionFactory(),
+        coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
@@ -192,6 +194,7 @@ final class ConsoleStore {
     ) {
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
+        self.coreStopClock = coreStopClock
         self.herdrAppRename = herdrAppRename
         self.coreHostMemory = coreHostMemory
         self.harnessEdits = harnessEdits
@@ -511,6 +514,29 @@ final class ConsoleStore {
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
         try await projection(for: hostID).availableAgentKinds()
     }
+
+    func availableTemplates(on hostID: Host.ID) async throws -> [AgentTemplate] {
+        try await projection(for: hostID).availableTemplates()
+    }
+
+    @discardableResult
+    func startTemplate(
+        _ request: TemplateLaunchRequest, on hostID: Host.ID
+    ) async throws -> Agent {
+        try await projection(for: hostID).startTemplate(request)
+    }
+
+    /// See `ConsoleHostProjection.programExit(ofPane:)`.
+    func programExit(of id: ConsoleAgent.ID) -> ProgramExit? {
+        projections[id.hostID]?.programExit(ofPane: id.paneID)
+    }
+
+    /// The names a new Agent's generated default keeps clear of on `hostID`.
+    func takenAgentNames(on hostID: Host.ID) -> Set<String> {
+        Set(agents.filter { $0.hostID == hostID }.compactMap { $0.agent.name })
+            .union(projections[hostID]?.heldTerminalNames ?? [])
+    }
+
     /// Resolves the Host's remote home directory for the New Workspace
     /// directory browser (#280). Throws the error's own presentation,
     /// including homeDirectoryUnresolvable when the probe fails.
@@ -659,6 +685,27 @@ final class ConsoleStore {
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))
         return session
+    }
+
+    /// The terminal Composer's Stop, or nil to keep Send. A core Agent has one
+    /// only while it is listed, so while it holds the foreground: a Terminal that
+    /// has ever reported keeps Esc as its interrupt key after its Agent exits, and
+    /// the shell left behind must not get it. `pressEsc` is Stop on any other Host.
+    func terminalInterrupt(
+        for agent: ConsoleAgent,
+        pressEsc: @escaping @MainActor () async -> AgentInterruptOutcome
+    ) -> AgentComposerInterrupt? {
+        guard capabilities(for: agent.hostID).composerStop else { return nil }
+        let hostID = agent.hostID
+        guard projections[hostID] is HerdrCoreConsoleProjection else {
+            return .terminal(forAgentKind: agent.agent.kind, pressEsc)
+        }
+        guard let listed = agents.first(where: { $0.id == agent.id }) else { return nil }
+        let stop = HerdrCoreComposerStop(
+            address: listed.agent.paneID,
+            projection: { [weak self] in self?.projections[hostID] as? HerdrCoreConsoleProjection },
+            clock: coreStopClock)
+        return .coreTerminal(forAgentKind: listed.agent.kind) { await stop.perform() }
     }
 
     func composerStore(for agent: ConsoleAgent) -> AgentComposerStore {
@@ -851,15 +898,15 @@ final class ConsoleStore {
             request, workspace: workspace)
     }
 
-    /// Suspends until `id` is reported by its Host's sync machinery, or the
-    /// timeout elapses. The new-agent flow (#12) opens the started Agent's
+    /// Suspends until `id` is reported by its Host's sync machinery, its program
+    /// has ended for good, or the timeout elapses. The new-agent flow (#12) opens the started Agent's
     /// terminal, and the row it navigates to exists only once the post-start
     /// resync lands — waiting keeps the detail column from flashing its
     /// missing-Agent placeholder over a launch that just succeeded.
     func waitForAgent(_ id: ConsoleAgent.ID, timeout: Duration = .seconds(5)) async {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
-        while !agents.contains(where: { $0.id == id }) {
+        while !agents.contains(where: { $0.id == id }), programExit(of: id) == nil {
             guard clock.now < deadline,
                 (try? await Task.sleep(for: .milliseconds(50))) != nil
             else { return }
