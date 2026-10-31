@@ -667,6 +667,7 @@ struct HerdrCoreTerminalStoreTests {
         let detail = try await fixture.showDetail(of: agent)
         let first = try await fixture.waitForAttach(1, laying: detail)
         try await fixture.deliverOutput("agent screen", on: first)
+        let retained = try #require(fixture.console.agentTerminals.entries[agent.id])
 
         try await fixture.scripted.deliverEvent(Self.eventLine("lost", data: Self.lostEnd))
         try await Self.deliverClose(on: first)
@@ -689,7 +690,7 @@ struct HerdrCoreTerminalStoreTests {
         #expect(!detail.offers("Reattach"))
         #expect(detail.surface != nil)
         #expect(fixture.console.agents.isEmpty)
-        #expect(fixture.console.agentTerminals.entries[agent.id] != nil)
+        #expect(fixture.console.agentTerminals.entries[agent.id] === retained)
         #expect(fixture.console.detailAgent(for: agent.id) != nil)
         #expect(await second.socket.frames(channel: second.channel, kind: .close).isEmpty)
         await detail.close()
@@ -702,6 +703,7 @@ struct HerdrCoreTerminalStoreTests {
         let detail = try await fixture.showDetail(of: agent)
         let first = try await fixture.waitForAttach(1, laying: detail)
         try await fixture.deliverOutput("agent screen", on: first)
+        let retained = try #require(fixture.console.agentTerminals.entries[agent.id])
 
         try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedEnd))
         try await Self.deliverClose(on: first, end: Self.exitedEnd)
@@ -716,6 +718,7 @@ struct HerdrCoreTerminalStoreTests {
         detail.layOut()
         try await fixture.settle()
         #expect(await fixture.scripted.attaches.count == 1)
+        #expect(fixture.console.agentTerminals.entries[agent.id] === retained)
 
         // Gone from the core, so there is nothing left to show.
         try await fixture.scripted.deliverEvent(Self.eventLine("removed", data: .object([:])))
