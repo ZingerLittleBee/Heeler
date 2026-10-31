@@ -101,7 +101,7 @@ yet, and read each pid from `server.status` or `terminal.list`.
 
 | Check | How to get there | Heeler shows |
 | --- | --- | --- |
-| Derived Workspaces | Terminals launched in two directories | One card per directory, named for its last path component, with one row per Terminal; the rows open nothing and their menu offers only Copy Path |
+| Derived Workspaces | Terminals launched in two directories | One card per directory, named for its last path component, with one row per Terminal; a row opens its Terminal and its menu offers only Copy Path |
 | Kept restart | `kill -9` the program of a Terminal started with `keep` | The row reads **Restarting** with its launch directory, then comes back in the same card |
 | Core restart | SIGKILL the pid from `server.status`, with a kept Terminal so its holder restarts the core | The Host stays Connected in the Hosts list and every row stays in its card |
 | Stopped core | `server stop` by absolute path | The Host reads **herdr-core is not running** and retries; no core process appears until you start it |
@@ -145,8 +145,8 @@ with its source, and clear the vector's `provisional` flag once the captures are
 | Grok Build | `grok` | `grok-build` | `grok` | The same. Without hooks set up it stays **Unknown** |
 
 Each Agent lists on Agents, By Host and By Workspace, and under the Host filter. It
-leaves the Terminals tab while it holds the foreground, its row opens nothing, and its
-menu offers no Open in New Window or Close.
+leaves the Terminals tab while it holds the foreground, its row opens its detail, and
+its menu offers Open in New Window where the device has windows, and no Close.
 
 Then check what no harness needs to be signed in for, from an inert program in a
 Terminal. A status report is `printf '\033]7501;state=working:app=x\007'`, as the
