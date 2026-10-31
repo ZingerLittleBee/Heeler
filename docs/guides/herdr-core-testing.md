@@ -120,6 +120,7 @@ many are open.
 | Burst and repaint | `head -c 6000000 /dev/urandom \| base64` with the terminal hidden or scrolled, so the core drops its backlog | The screen repaints and stays usable; the Terminals tab and another open terminal keep updating |
 | Modes after a repaint | In `vim`, paste multi-line text after the burst above | The paste arrives bracketed, as one insert |
 | Every key | `stty -isig; cat -v`, then Ctrl+\ | `cat` prints `^\`; nothing in Heeler intercepts it |
+| Display facts | In a core Terminal, `stty raw -echo min 0 time 20; printf '\033]11;?\033\\\033[16t'; dd bs=256 count=1 2>/dev/null \| tr '\033' '^'; stty sane; echo`, then pick another theme in Settings and run it again | It prints the theme's background as `]11;rgb:…` and the cell in pixels as `[6;<height>;<width>t`; the second run shows the new background |
 | Second viewer | `hc attach <terminal>` on the box at another size, then type in Heeler | The program takes Heeler's size when you type; no Take Over appears anywhere on the Host |
 | Retained terminals | Open six Terminals in turn and go back | Five stay retained for five minutes and come back at once; the sixth detaches the least recently viewed idle one, which attaches afresh when you return to it |
 | End of a program | `exit` in a Terminal that was not started with `keep` | The session ends with no error |
