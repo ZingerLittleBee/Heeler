@@ -113,6 +113,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
 
     nonisolated let routeID: UUID? = nil
     nonisolated let hostServices: any HostServices
+    nonisolated var hostHelperHost: any HostHelperHost { ScriptedHelperHost() }
 
     private let coreID: String
     /// What each subscribe answers. The last one repeats.
