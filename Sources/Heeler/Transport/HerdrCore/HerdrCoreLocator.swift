@@ -57,6 +57,8 @@ enum HerdrCoreLocator {
     /// Everything from the Host is a quoted word or a variable, so a session
     /// name can never become shell syntax. `nonce` frames the output, whose
     /// begin marker starts its own line after whatever the user's shell printed.
+    /// A `core.lock` holding a line break is reported as a field the parser
+    /// refuses, so its contents can never read as fields of their own.
     static func script(session: String, nonce: String) throws -> Data {
         guard HerdrCoreSessionName.isValid(session) else { throw SessionRefused(session: session) }
         let name = HerdrCoreSessionName.normalized(session)
@@ -90,6 +92,7 @@ enum HerdrCoreLocator {
             printf 'default %s\\n' "$__socket"
             __lock=
             [ -r "$__state/core.lock" ] && __lock=$(cat "$__state/core.lock" 2>/dev/null)
+            case "$__lock" in *"$__nl"*) printf 'lock-unreadable\\n'; __lock= ;; esac
             if [ -n "$__lock" ]; then
                 printf 'lock %s\\n' "$__lock"
                 __socket=$__lock
