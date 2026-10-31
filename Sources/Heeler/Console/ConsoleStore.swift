@@ -273,7 +273,11 @@ final class ConsoleStore {
             for projection in projections {
                 await projection.resume()
             }
-            guard revalidating else { return }
+            guard revalidating else {
+                // A core Host with no connection never reports coming up.
+                refreshStaleWidgetUsage()
+                return
+            }
             // Every Host, not only one the user has navigated to: recovery
             // that depends on navigation just trades the Retry button for
             // another hidden step, and the Console is a single list across
@@ -1244,7 +1248,7 @@ final class ConsoleStore {
     /// that could not reach the Host makes a core Host not connected.
     private func usageHasConnection(_ host: Host, state: AgentUsageStore.State) -> Bool {
         if hostStatuses[host.id] == .connected { return true }
-        return host.serverKind == .herdrCore && state != .failed(AgentUsageStore.connectionFailureMessage)
+        return host.serverKind == .herdrCore && !state.couldNotReachHost
     }
 
     /// Hands every catalog Host's current Usage reading to the widgets.
@@ -1255,17 +1259,25 @@ final class ConsoleStore {
             let state = store?.state ?? .idle
             return AgentUsageWidgetReading(
                 id: host.id, name: host.displayName, state: state, readAt: store?.readAt,
-                isConnected: usageHasConnection(host, state: state))
+                isConnected: usageHasConnection(host, state: state),
+                keepsLastAnswerUntilRead: host.serverKind == .herdrCore)
         })
     }
 
-    /// Reads Usage again for each connected Host whose widget figures went
-    /// stale, so returning to the app updates the widgets without opening
+    /// Whether a read for the widgets can run now. A Herdr TUI Host borrows the
+    /// Console's connection. A core Host's read dials one when the Console has
+    /// none, so a stopped core or a native Windows Host still gets its answer.
+    private func canReadUsageForWidgets(_ id: Host.ID) -> Bool {
+        hostStatuses[id] == .connected || coreHost(id) != nil
+    }
+
+    /// Reads Usage again for each Host that can be read and whose widget figures
+    /// went stale, so returning to the app updates the widgets without opening
     /// Usage. Nothing is read while no Usage widget is installed.
     private func refreshStaleWidgetUsage() {
         guard let usageWidgets, isActive else { return }
         let hostIDs = catalog.map(\.id).filter { id in
-            hostStatuses[id] == .connected && widgetUsageRefreshes[id] == nil
+            canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
                 && agentUsageStores[id]?.isLoading != true
                 && usageWidgets.isStale(id, readAt: agentUsageStores[id]?.readAt)
         }
@@ -1276,7 +1288,7 @@ final class ConsoleStore {
                     if self?.widgetUsageRefreshes[id]?.id == refresh { self?.widgetUsageRefreshes[id] = nil }
                 }
                 guard await usageWidgets.widgetsInstalled(), !Task.isCancelled, let self,
-                    hostStatuses[id] == .connected
+                    canReadUsageForWidgets(id)
                 else { return }
                 await agentUsageStore(for: id).refresh()
             }

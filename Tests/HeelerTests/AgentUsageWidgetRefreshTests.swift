@@ -209,6 +209,18 @@ struct AgentUsageWidgetRefreshTests {
         #expect(await Self.backgroundRead(connector).read(core, false) == .hostHelper(.notInstalled))
     }
 
+    @Test func aCoreHostTheBackgroundReadCannotReachSaysNotConnected() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var core = Self.host("Core Mac")
+        core.serverKind = .herdrCore
+        let connector = FakeTransportConnector(outcome: .connectFails(.sshUnreachable(detail: "no route")))
+
+        await Self.backgroundRead(connector).run(hosts: [core], publisher: publisher)
+
+        #expect(Self.snapshot(directory)?.host(core.id)?.excludedReason == "Not connected")
+    }
+
     @Test func connectingReadsAStaleHostForTheWidgetsOnce() async throws {
         let (publisher, directory) = try Self.publisher()
         defer { try? FileManager.default.removeItem(at: directory) }

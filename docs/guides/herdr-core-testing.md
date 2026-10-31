@@ -277,5 +277,6 @@ Use a throwaway `CLAUDE_CONFIG_DIR`, for example `~/heeler-usage-lab`, that the 
 | Limits | With a throwaway sign-in, turn on **Claude Code limits** for this Host, then off | A read asks only while it is on, and the card follows. Skip this without such a sign-in |
 | Update | Install a Helper from before Usage, and open Usage | **Usage needs a newer Host Helper**, until you update it from the Host's detail |
 | Unreachable | Stop `sshd` or block the route, and open Usage | The Usage tab leaves the Host out as **Not connected** |
+| Widget alone | Add a Usage widget. With the core stopped and no Helper, reopen Heeler and do not open Usage. Repeat on an unreachable Host, and on a native Windows Host if one is on hand | The widget says **Needs the Host Helper**, **Not connected**, and **Comes with the Host Helper, not available yet**, and keeps saying so after you force-quit Heeler and reopen it. None of them reads **Not read yet** |
 
 `/proc/<pid>/environ` holds the environment the core started with, so a variable it set for itself later does not appear. A Windows Host's line is covered by unit tests, not this checklist.

@@ -49,6 +49,11 @@ final class AgentUsageStore {
         case updateRequired
         case available(AgentUsageReport)
         case failed(String)
+
+        /// The read failed on the way to the Host, not at the Host's answer.
+        nonisolated var couldNotReachHost: Bool {
+            self == .failed(AgentUsageStore.connectionFailureMessage)
+        }
     }
 
     /// One read's outcome and the plugin release that gave it, when the

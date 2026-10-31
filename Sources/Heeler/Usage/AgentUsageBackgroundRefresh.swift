@@ -47,7 +47,8 @@ struct AgentUsageBackgroundRefresh {
             for await (host, state, readAt) in group {
                 guard let state, !Task.isCancelled else { continue }
                 readings.append(AgentUsageWidgetReading(
-                    id: host.id, name: host.displayName, state: state, readAt: readAt, isConnected: true))
+                    id: host.id, name: host.displayName, state: state, readAt: readAt,
+                    isConnected: host.serverKind != .herdrCore || !state.couldNotReachHost))
                 publisher.publish(readings, updating: hosts)
             }
         }

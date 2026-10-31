@@ -213,10 +213,10 @@ struct AgentUsageHostHelperTests {
     private func unconnectedConsole(
         _ helper: ScriptedHelperHost, session: SessionOutcome = .stoppedCore,
         usageWidgets: AgentUsageWidgetPublisher? = nil,
+        host: Host = Host(address: "box.example", username: "dev", serverKind: .herdrCore),
         dial: (@Sendable () throws -> Void)? = nil
     ) async throws -> (ConsoleStore, Host) {
         let core = ScriptedCoreHost(helper: helper, channel: .refused)
-        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
         let failure = session.failure
         let console = ConsoleStore(
             usageWidgets: usageWidgets,
@@ -387,18 +387,174 @@ struct AgentUsageHostHelperTests {
     }
 
     @Test func theWidgetSaysTheSameAsTheTabWithoutAConsoleConnection() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let snapshots = UsageWidgetSnapshotStore(containerURL: directory)
-        let publisher = AgentUsageWidgetPublisher(
-            store: snapshots, reloadTimelines: {}, installedKinds: { [] })
-        let (console, host) = try await unconnectedConsole(ScriptedHelperHost(), usageWidgets: publisher)
+        let widgets = try WidgetFile(installed: [])
+        defer { widgets.remove() }
+        let (console, host) = try await unconnectedConsole(ScriptedHelperHost(), usageWidgets: widgets.publisher())
         defer { console.setHosts([]) }
 
         await console.agentUsageStore(for: host.id).pullToRefresh()
 
-        #expect(snapshots.read()?.hosts.map(\.excludedReason) == ["Needs the Host Helper"])
+        #expect(widgets.reasons == ["Needs the Host Helper"])
+    }
+
+    // MARK: The widget, with no one opening Usage
+
+    /// The widgets' snapshot on disk. Each `publisher()` starts from the file, as
+    /// the app does on launch.
+    private struct WidgetFile {
+        let installed: Set<String>
+        private let directory: URL
+        private let store: UsageWidgetSnapshotStore
+
+        init(installed: Set<String> = [UsageWidgetSnapshotStore.usageKind]) throws {
+            self.installed = installed
+            directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            store = UsageWidgetSnapshotStore(containerURL: directory)
+        }
+
+        @MainActor func publisher(installed: Set<String>? = nil) -> AgentUsageWidgetPublisher {
+            let kinds = installed ?? self.installed
+            return AgentUsageWidgetPublisher(store: store, reloadTimelines: {}, installedKinds: { kinds })
+        }
+
+        var snapshot: UsageWidgetSnapshot? { store.read() }
+        var reasons: [String?]? { snapshot?.hosts.map(\.excludedReason) }
+        func remove() { try? FileManager.default.removeItem(at: directory) }
+    }
+
+    @Test(arguments: SessionOutcome.allCases)
+    func theWidgetSaysWhatTheHelperNeedsWithoutOpeningUsage(session: SessionOutcome) async throws {
+        let helper = ScriptedHelperHost()
+        if session == .nativeWindows { await helper.configure { $0.platform = .nativeWindows } }
+        let widgets = try WidgetFile()
+        defer { widgets.remove() }
+        let (console, _) = try await unconnectedConsole(helper, session: session, usageWidgets: widgets.publisher())
+        defer { console.setHosts([]) }
+
+        let reason = session == .nativeWindows
+            ? "Comes with the Host Helper, not available yet" : "Needs the Host Helper"
+        try await waitUntil("the widget says why") { widgets.reasons == [reason] }
+    }
+
+    @Test func theWidgetShowsTheHelpersReportWithoutOpeningUsage() async throws {
+        let widgets = try WidgetFile()
+        defer { widgets.remove() }
+        let (console, _) = try await unconnectedConsole(
+            try await helperWithReport(), usageWidgets: widgets.publisher())
+        defer { console.setHosts([]) }
+
+        try await waitUntil("the widget has the figures") { widgets.snapshot?.hosts.first?.reports == true }
+    }
+
+    @Test func theWidgetPicksUpACoreThatStartsLater() async throws {
+        let helper = ScriptedHelperHost()
+        await helper.installApp()
+        let widgets = try WidgetFile()
+        defer { widgets.remove() }
+        let (console, _) = try await unconnectedConsole(helper, usageWidgets: widgets.publisher())
+        defer { console.setHosts([]) }
+        try await waitUntil("the widget waits") { widgets.reasons == ["Waiting for the core"] }
+
+        await helper.seedUsage(try AgentUsageFixture.reportData(refreshing: false), session: "default")
+
+        try await waitUntil("the widget has the figures") { widgets.snapshot?.hosts.first?.reports == true }
+    }
+
+    @Test func theWidgetReadsNotConnectedWhenSSHCannotReachTheHost() async throws {
+        let widgets = try WidgetFile()
+        defer { widgets.remove() }
+        let (console, _) = try await unconnectedConsole(ScriptedHelperHost(), usageWidgets: widgets.publisher()) {
+            throw TransportError.sshUnreachable(detail: "no route")
+        }
+        defer { console.setHosts([]) }
+
+        try await waitUntil("the widget says not connected") { widgets.reasons == ["Not connected"] }
+    }
+
+    @Test func aLaunchKeepsTheReasonTheBackgroundRefreshWrote() async throws {
+        let widgets = try WidgetFile(installed: [])
+        defer { widgets.remove() }
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        await AgentUsageBackgroundRefresh(read: { _, _ in .hostHelper(.notOnWindows) })
+            .run(hosts: [host], publisher: widgets.publisher())
+        let reason = "Comes with the Host Helper, not available yet"
+        #expect(widgets.reasons == [reason])
+
+        // The next launch: nothing read yet, and no widget to read it for.
+        let (console, _) = try await unconnectedConsole(
+            ScriptedHelperHost(), usageWidgets: widgets.publisher(), host: host)
+        defer { console.setHosts([]) }
+
+        #expect(widgets.reasons == [reason])
+    }
+
+    @Test func aCoreHostIsDialedForTheWidgetOnceAnInterval() async throws {
+        let helper = ScriptedHelperHost()
+        await helper.configure { $0.platform = .nativeWindows }
+        let widgets = try WidgetFile()
+        defer { widgets.remove() }
+        let dials = OSAllocatedUnfairLock(initialState: 0)
+        let (console, _) = try await unconnectedConsole(helper, session: .nativeWindows, usageWidgets: widgets.publisher()) {
+            dials.withLock { $0 += 1 }
+        }
+        defer { console.setHosts([]) }
+        try await waitUntil("the widget says why") { widgets.reasons?.first == "Comes with the Host Helper, not available yet" }
+
+        await console.reactivate()
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(dials.withLock { $0 } == 1)
+    }
+
+    @Test func aCoreHostAddedWhileTheAppIsOpenIsReadForTheWidget() async throws {
+        let widgets = try WidgetFile()
+        defer { widgets.remove() }
+        let (console, host) = try await unconnectedConsole(ScriptedHelperHost(), usageWidgets: widgets.publisher())
+        defer { console.setHosts([]) }
+        try await waitUntil("the first Host is read") { widgets.reasons == ["Needs the Host Helper"] }
+
+        console.setHosts([host, Host(address: "other.example", username: "dev", serverKind: .herdrCore)])
+
+        try await waitUntil("the added Host is read") {
+            widgets.reasons == ["Needs the Host Helper", "Needs the Host Helper"]
+        }
+    }
+
+    @Test func leavingTheAppStopsDialingForAWaitingCore() async throws {
+        let helper = ScriptedHelperHost()
+        await helper.installApp()
+        let widgets = try WidgetFile()
+        defer { widgets.remove() }
+        let dials = OSAllocatedUnfairLock(initialState: 0)
+        let (console, _) = try await unconnectedConsole(helper, usageWidgets: widgets.publisher()) {
+            dials.withLock { $0 += 1 }
+        }
+        defer { console.setHosts([]) }
+        try await waitUntil("the widget waits") { widgets.reasons == ["Waiting for the core"] }
+
+        await console.suspend()
+        let atSuspend = dials.withLock { $0 }
+        // Past the first re-read's 3 seconds.
+        try await Task.sleep(for: .seconds(3.5))
+
+        #expect(dials.withLock { $0 } == atSuspend)
+    }
+
+    @Test func withoutAUsageWidgetACoreHostIsNotDialed() async throws {
+        let widgets = try WidgetFile(installed: [])
+        defer { widgets.remove() }
+        let dials = OSAllocatedUnfairLock(initialState: 0)
+        let (console, _) = try await unconnectedConsole(ScriptedHelperHost(), usageWidgets: widgets.publisher()) {
+            dials.withLock { $0 += 1 }
+        }
+        defer { console.setHosts([]) }
+
+        await console.reactivate()
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(dials.withLock { $0 } == 0)
+        #expect(widgets.reasons == ["Not read yet"])
     }
 }
 

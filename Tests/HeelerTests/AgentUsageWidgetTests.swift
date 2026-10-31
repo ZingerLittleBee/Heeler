@@ -69,6 +69,42 @@ struct AgentUsageWidgetTests {
         #expect(core.hosts.first?.reports == false)
     }
 
+    /// A core Host's read has its own connection, so having no reading yet says
+    /// nothing new about it.
+    @Test(arguments: [AgentUsageStore.State.idle, .loading])
+    func aCoreHostKeepsItsLastAnswerUntilItsNextRead(state: AgentUsageStore.State) throws {
+        let reason = "Comes with the Host Helper, not available yet"
+        let answered = UsageWidgetSnapshot(
+            readings: [reading(studio, "Studio Mac", .hostHelper(.notOnWindows))], previous: nil, now: Self.now)
+
+        let core = AgentUsageWidgetReading(
+            id: studio, name: "Studio", state: state, readAt: nil, isConnected: true, keepsLastAnswerUntilRead: true)
+        let kept = UsageWidgetSnapshot(readings: [core], previous: answered, now: Self.now)
+        #expect(kept.hosts.first?.excludedReason == reason)
+        #expect(kept.hosts.first?.name == "Studio")
+
+        // With nothing to keep it has simply not been read.
+        let first = UsageWidgetSnapshot(readings: [core], previous: nil, now: Self.now)
+        #expect(first.hosts.first?.excludedReason == "Not read yet")
+
+        // A Herdr TUI Host's connection decides what it says.
+        let borrowed = UsageWidgetSnapshot(
+            readings: [reading(studio, "Studio Mac", state, isConnected: false)], previous: answered, now: Self.now)
+        #expect(borrowed.hosts.first?.excludedReason == "Not connected")
+    }
+
+    @Test func aCoreHostsFailedReadReplacesItsLastAnswer() throws {
+        let answered = UsageWidgetSnapshot(
+            readings: [reading(studio, "Studio Mac", .hostHelper(.notOnWindows))], previous: nil, now: Self.now)
+
+        let failed = AgentUsageWidgetReading(
+            id: studio, name: "Studio Mac", state: .failed(AgentUsageStore.connectionFailureMessage),
+            readAt: nil, isConnected: false, keepsLastAnswerUntilRead: true)
+
+        let next = UsageWidgetSnapshot(readings: [failed], previous: answered, now: Self.now)
+        #expect(next.hosts.first?.excludedReason == "Not connected")
+    }
+
     @Test func aHostNeverReadSaysWhy() {
         let snapshot = UsageWidgetSnapshot(
             readings: [

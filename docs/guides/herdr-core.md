@@ -67,6 +67,8 @@ To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler sugges
 | **The Host Helper has not reached this session's core yet** | Start the core if it is not running. Heeler keeps checking, and the Helper never starts one |
 | **Usage comes with the Host Helper, which is not available on native Windows yet** | Nothing for now |
 
-Usage reaches the Helper over its own SSH connection when the Host's session has none, so these read the same whether the core is running or not. **Not connected** in the Usage tab means SSH itself could not reach the Host.
+Usage reaches the Helper over its own SSH connection when the Host's session has none, so these read the same whether the core is running or not. **Not connected** in the Usage tab and the widgets means SSH itself could not reach the Host.
+
+The Usage widgets say the same in a shorter form, such as **Needs the Host Helper**. With a widget installed, Heeler checks each core Host when you open the app, so you do not have to open Usage for the widget to catch up.
 
 **Remove.** In the sheet, tap **Remove**. Heeler disables and stops the service, deletes the files the install recorded, the Pi and Oh My Pi extensions among them, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.
