@@ -65,6 +65,8 @@ final class AgentComposerStore: ComposerDraftOperations {
             if draft != oldValue { notice = nil }
         }
     }
+    /// Recovery keeps the draft editable, but never queues it for delivery.
+    var isConnectionAvailable = true
     /// Why the last Send or Retry was refused. Changing the draft ends it,
     /// as does the next Send that goes; a transient refusal also ends when
     /// Agent Status changes, since the Agent it described has moved on.
@@ -154,7 +156,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     var canSend: Bool {
-        !hasPendingDroppedImages && draft.contains(where: { !$0.isWhitespace })
+        isConnectionAvailable && !hasPendingDroppedImages
+            && draft.contains(where: { !$0.isWhitespace })
     }
 
     var hasPendingDroppedImages: Bool {
@@ -163,7 +166,9 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     /// VoiceOver hint for the Send button. Pending drops disable Send.
     var sendAccessibilityHint: String {
-        hasPendingDroppedImages
+        !isConnectionAvailable
+            ? "Waiting for the Host connection"
+            : hasPendingDroppedImages
             ? "Waiting for image…"
             : "Delivers the complete draft to the Agent"
     }
@@ -348,6 +353,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     private func retryMessage(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
+        guard isConnectionAvailable else { return .ignored }
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         guard case .failed = messages[index].state, messages[index].route == policy.route else {
             return .ignored

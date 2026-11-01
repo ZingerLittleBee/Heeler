@@ -138,6 +138,7 @@ final actor ScriptedTransport: Transport {
     private var eventContinuation: AsyncThrowingStream<HerdrEvent, any Error>.Continuation?
     private var subscriptionObservers: [UUID: AsyncStream<[EventSubscription]>.Continuation] = [:]
     private var nextSubscriptionGate: ScriptedTransportCallGate?
+    private var nextEventEndGate: ScriptedTransportCallGate?
     private var nextAttachID: UInt64 = 0
     private var liveAttachID: UInt64?
     private var nextAttachGate: ScriptedTransportCallGate?
@@ -351,6 +352,10 @@ final actor ScriptedTransport: Transport {
     /// Pauses the next events subscription after recording its requested set.
     func gateNextSubscription(using gate: ScriptedTransportCallGate) {
         nextSubscriptionGate = gate
+    }
+
+    func gateNextEventEnd(using gate: ScriptedTransportCallGate) {
+        nextEventEndGate = gate
     }
 
     /// Wait for actual stream installation, not merely a captured request.
@@ -1008,7 +1013,10 @@ final actor ScriptedTransport: Transport {
 
     /// Explicit `end()` on the stream: finishes it gracefully, exactly like
     /// the real channel closed by its consumer.
-    private func endStream(id: UInt64) {
+    private func endStream(id: UInt64) async {
+        let gate = nextEventEndGate
+        nextEventEndGate = nil
+        await gate?.waitUntilOpen()
         guard liveStreamID == id else { return }
         eventContinuation?.finish()
         eventContinuation = nil

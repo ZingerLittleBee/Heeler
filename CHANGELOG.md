@@ -54,6 +54,18 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep an Agent's terminal and draft on screen while its connection recovers,
+  with the status and a loading indicator in the title, even when the title is
+  folded. New input waits until the Host is ready, and the keyboard stays up.
+  A stall no longer replaces a connection that still answers, unless a request
+  timed out opening a channel on it, and a send whose reply was lost is never
+  sent twice. Scrolling still queued on the phone after 200 ms is dropped;
+  rows already sent can arrive when the connection comes back. Typing or
+  scrolling through a stall no longer reattaches the terminal when the link
+  returns. A cut connection on a Unix Host now shows Reconnecting… on a Shell
+  instead of flashing Session Ended, and a terminal that is reattaching ignores
+  input until the new session paints. Chat shows a query lost to the link only
+  when the next one is lost too. (#523; PR #595)
 - Bring out the Agents list when swiping in from the left edge of an
   Agent or Shell Terminal beside a hidden sidebar, such as on an iPhone
   Duo's inner display or a Pro Max in landscape, instead of closing it to

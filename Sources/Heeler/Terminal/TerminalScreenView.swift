@@ -234,6 +234,8 @@ struct TerminalScreenView: UIViewRepresentable {
     /// drive remote scroll without holding the UIKit view itself.
     var scrollControl: TerminalScrollControl?
     var isLocalInputEnabled = true
+    /// Independent of keyboard mode: Composer still permits remote scrolling.
+    var isRemoteScrollEnabled = true
     /// Applied before the first focus claim, including Agent tools handoffs.
     var initialKeyboardMode = TerminalKeyboardMode.text
     var textInputStyle = TerminalTextInputStyle.terminal
@@ -278,6 +280,7 @@ struct TerminalScreenView: UIViewRepresentable {
         }
         view.setTextInputStyle(textInputStyle)
         view.setLocalInputEnabled(isLocalInputEnabled)
+        view.setRemoteScrollEnabled(isRemoteScrollEnabled)
         // The feed holds the surface weakly so a replaced UIKit view cannot be
         // kept alive by an obsolete terminal pipeline.
         feed.attach(view)
@@ -341,6 +344,7 @@ struct TerminalScreenView: UIViewRepresentable {
             && (claimsKeyboard?() ?? false)
         view.setTextInputStyle(textInputStyle)
         view.setLocalInputEnabled(isLocalInputEnabled)
+        view.setRemoteScrollEnabled(isRemoteScrollEnabled)
         if claimsKeyboardOnEnable, let keyboardHandoffID {
             DispatchQueue.main.async { [weak view, weak keyboardControl] in
                 guard let view,
@@ -808,6 +812,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     var wantsKeyboard: Bool { responderGate.userWantsKeyboard }
     private var viewportSnapshotTask: Task<Void, Never>?
     private(set) var isLocalInputEnabled = true
+    private var isRemoteScrollEnabled = true
     private var textInputStyle = TerminalTextInputStyle.terminal
     private var defaultLeadingAssistantGroups: [UIBarButtonItemGroup]?
     private var defaultTrailingAssistantGroups: [UIBarButtonItemGroup]?
@@ -1312,6 +1317,18 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         if !isEnabled, isFirstResponder {
             _ = dismissKeyboard()
         }
+    }
+
+    func setRemoteScrollEnabled(_ isEnabled: Bool) {
+        isRemoteScrollEnabled = isEnabled
+        if !canScrollCurrentScreen {
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+        }
+    }
+
+    private var canScrollCurrentScreen: Bool {
+        isRemoteScrollEnabled || (!modeTracker.isAlternateScreen && !modeTracker.tracksMouse)
     }
 
     /// Ends local input for a surface leaving the stage or being replaced,
@@ -2010,6 +2027,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// so its wheel reports aim at the grid's centre.
     @discardableResult
     func scrollTouch(translationY: CGFloat, at point: CGPoint? = nil) -> Int {
+        guard canScrollCurrentScreen else { return 0 }
         let rows = touchScrollAccumulator.rows(
             for: translationY,
             pointsPerRow: max(8, terminalCellSize.height))
@@ -2040,6 +2058,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
             rows: terminalGridSize.rows,
             at: point.flatMap { gridPointMapper.cell(at: $0) })
         {
+            guard isRemoteScrollEnabled else { return }
             callbackBridge.scroll(sequence, rows: rowCount)
         } else {
             let localRows = towardOlderContent ? -rowCount : rowCount
@@ -2499,6 +2518,11 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     }
 
     func startTouchScrollMomentum(velocityY: CGFloat) {
+        guard canScrollCurrentScreen else {
+            stopTouchScrollMomentum()
+            touchScrollAccumulator.reset()
+            return
+        }
         guard abs(velocityY) >= 80 else {
             touchScrollAccumulator.reset()
             return
@@ -2514,7 +2538,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     }
 
     @objc private func advanceTouchScrollMomentum(_ displayLink: CADisplayLink) {
-        guard abs(touchScrollMomentumVelocityY) >= 20 else {
+        guard canScrollCurrentScreen, abs(touchScrollMomentumVelocityY) >= 20 else {
             stopTouchScrollMomentum()
             touchScrollAccumulator.reset()
             return

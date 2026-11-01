@@ -464,7 +464,10 @@ struct AgentTerminalView: View {
         // Keep the destination terminal enabled until Composer-to-Direct has
         // fully settled. The reverse handoff must disable this outgoing
         // terminal as soon as Composer accepts first responder.
+        // Recovery gates what reaches the Host in the input controller. It
+        // must not touch first responder: a slow reply cannot take the keyboard.
         screen.isLocalInputEnabled = isDirectInput || composerToDirectHandoffID != nil
+        screen.isRemoteScrollEnabled = attach.input.isEnabled && attach.terminalStatus == .live
         screen.claimsKeyboard = {
             [
                 keyboardHandoff,
@@ -1100,6 +1103,7 @@ struct AgentTerminalView: View {
                 actions: backHeaderActions,
                 surfaceSwitch: chatSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
+                statusTitle: connectionRecoveryTitle,
                 trailingInBar: headerSharesBar)
             .environment(
                 \.colorScheme,
@@ -1827,6 +1831,11 @@ struct AgentTerminalView: View {
         }
     }
 
+    private var connectionRecoveryTitle: String? {
+        if attach.terminalStatus == .reconnecting { return "Reconnecting…" }
+        return console.connectionRecoveryTitle(for: agent.hostID)
+    }
+
     @ViewBuilder
     private var statusOverlay: some View {
         if let away = LiveInAnotherWindowPresentation(
@@ -1847,7 +1856,9 @@ struct AgentTerminalView: View {
                     .buttonStyle(.terminalStatusPrimary)
                 }
             }
-        } else if let presentation = TerminalStatusPresentation(status: attach.terminalStatus) {
+        } else if connectionRecoveryTitle == nil,
+            let presentation = TerminalStatusPresentation(status: attach.terminalStatus)
+        {
             switch presentation.kind {
             case .connecting:
                 // No dim: a reattach would otherwise flash the whole screen dark.

@@ -58,6 +58,9 @@ struct AgentDetailHeader: View {
     var surfaceSwitch: AgentDetailSurfaceSwitch?
     /// Nil for a screen that names nothing, such as a shell terminal.
     var title: AgentDetailHeaderTitle?
+    /// Temporarily replaces the task title and reveals it even while folded,
+    /// without changing the user's expansion preference or the other controls.
+    var statusTitle: String?
     /// The bar holds the trailing controls; the header keeps their room
     /// clear so the expanded title stays centred.
     var trailingInBar = false
@@ -80,17 +83,19 @@ struct AgentDetailHeader: View {
         return 2 * Self.capsuleButtonWidth + 2 * Self.capsuleInset
     }
 
+    private var showsTitle: Bool { isExpanded || statusTitle != nil }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             leadingSlot
-            if isExpanded, let title {
+            if showsTitle, let title {
                 titlePill(title)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
             } else {
                 Spacer(minLength: 0)
             }
             trailingControls
-                .frame(width: isExpanded ? slotWidth : nil, alignment: .trailing)
+                .frame(width: showsTitle ? slotWidth : nil, alignment: .trailing)
         }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: {
             trailingSafeInset = $0
@@ -99,8 +104,8 @@ struct AgentDetailHeader: View {
         .foregroundStyle(palette.foreground)
     }
 
-    /// Back while expanded, on a slot as wide as the trailing controls. Empty
-    /// and absent while folded, so the folded header is unchanged.
+    /// Back while expanded, on a slot as wide as the trailing controls.
+    /// A folded header reserves an empty slot only while showing recovery.
     @ViewBuilder
     private var leadingSlot: some View {
         if isExpanded {
@@ -112,13 +117,15 @@ struct AgentDetailHeader: View {
             } else {
                 Color.clear.frame(width: slotWidth)
             }
+        } else if showsTitle {
+            Color.clear.frame(width: slotWidth)
         }
     }
 
     @ViewBuilder
     private var trailingControls: some View {
         if trailingInBar {
-            if isExpanded {
+            if showsTitle {
                 Color.clear.frame(width: slotWidth, height: Self.controlSize)
             }
         } else {
@@ -136,9 +143,17 @@ struct AgentDetailHeader: View {
     /// start, so the folder the Agent works in stays readable.
     private func titlePill(_ title: AgentDetailHeaderTitle) -> some View {
         VStack(spacing: 1) {
-            Text(title.title)
-                .font(.system(size: 15, weight: .semibold))
-                .lineLimit(1)
+            HStack(spacing: 6) {
+                if statusTitle != nil {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(palette.foreground)
+                        .accessibilityHidden(true)
+                }
+                Text(statusTitle ?? title.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+            }
             HStack(spacing: 4) {
                 Text(title.harness)
                     .layoutPriority(1)

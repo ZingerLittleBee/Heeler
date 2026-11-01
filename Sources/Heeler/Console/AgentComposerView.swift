@@ -402,6 +402,7 @@ struct AgentComposerView: View {
                         }
                     }
                 }
+                .disabled(!store.isConnectionAvailable)
                 Button("Edit Draft") {
                     store.withdrawToDraft(failure.id)
                     isInputFocused = true
@@ -544,7 +545,7 @@ struct AgentComposerView: View {
     private var primaryControl: AgentComposerPrimaryControl {
         AgentComposerPrimaryControl(
             status: status, draft: store.draft,
-            canStop: interrupt != nil && !store.stop.isHeldAfterSend)
+            canStop: store.isConnectionAvailable && interrupt != nil && !store.stop.isHeldAfterSend)
     }
 
     private var inputAreaInsets: EdgeInsets {

@@ -577,6 +577,8 @@ struct AgentChatStoreTests {
         await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
 
         await fixture.store.step()
+        fixture.advance(5)
+        await fixture.store.step()
 
         #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
         #expect(fixture.store.conversation.phase == .unavailable(.noSession(.claude)))
@@ -587,7 +589,7 @@ struct AgentChatStoreTests {
         await fixture.store.step()
 
         #expect(fixture.store.conversation.readFailure == nil)
-        #expect(await fixture.server.reads == 2)
+        #expect(await fixture.server.reads == 3)
         #expect(await fixture.files.reads.isEmpty)
     }
 
@@ -599,17 +601,18 @@ struct AgentChatStoreTests {
         fixture.store.retry()
 
         await fixture.store.step()
+        fixture.advance(5)
         await fixture.store.step()
 
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
         #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
-        #expect(await fixture.server.reads == 2)
+        #expect(await fixture.server.reads == 3)
 
         await fixture.server.fail(with: nil)
         fixture.advance(5)
         await fixture.store.step()
 
-        #expect(await fixture.server.reads == 3)
+        #expect(await fixture.server.reads == 4)
         #expect(fixture.store.conversation.readFailure == nil)
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
     }
@@ -628,6 +631,8 @@ struct AgentChatStoreTests {
         await fixture.cache.save(document)
         await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
 
+        await fixture.store.step()
+        fixture.advance(5)
         await fixture.store.step()
 
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
@@ -861,6 +866,9 @@ struct AgentChatStoreTests {
         await fixture.server.fail(with: .channelFailed(detail: "agent.get failed"))
         fixture.store.retry()
         await fixture.store.step()
+        fixture.advance(5)
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == .channelFailed(detail: "agent.get failed"))
         await fixture.server.fail(with: nil)
         await fixture.files.failNext(.status, with: TransportError.hostFileTimedOut)
         fixture.store.retry()
@@ -869,6 +877,81 @@ struct AgentChatStoreTests {
 
         #expect(fixture.store.conversation.readFailure == .hostFileTimedOut)
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+    }
+
+    /// A stall can cost one Agent query while the connection recovers, and the
+    /// Host status already says so. Only a second loss in a row is shown (#523).
+    @Test(arguments: [
+        TransportError.timedOut,
+        .sshUnreachable(detail: "offline"),
+        .channelFailed(detail: "agent.get failed"),
+    ])
+    func oneSessionQueryLostToTheLinkStaysQuietUntilTheNextIsLostToo(
+        failure: TransportError
+    ) async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: failure)
+        fixture.store.retry()
+
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == nil)
+        #expect(await fixture.server.reads == 2)
+
+        fixture.advance(5)
+        await fixture.store.step()
+        #expect(await fixture.server.reads == 3)
+        #expect(fixture.store.conversation.readFailure == failure)
+
+        await fixture.server.fail(with: nil)
+        fixture.advance(5)
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == nil)
+
+        // Recovery starts the count over.
+        await fixture.server.fail(with: failure)
+        fixture.store.retry()
+        await fixture.store.step()
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func aQuietLostQueryDoesNotCountAgainstTheNextTimeChatOpens() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: .timedOut)
+        fixture.store.retry()
+        await fixture.store.step()
+
+        fixture.store.suspend()
+        fixture.store.resume()
+        await fixture.store.step()
+
+        #expect(await fixture.server.reads == 3)
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func aRouteFailureFromARedialCountsAsLostToTheLink() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        await fixture.store.step()
+        await fixture.server.fail(with: .jumpHostFailed(.sshUnreachable(detail: "offline")))
+        fixture.store.retry()
+
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.readFailure == nil)
+    }
+
+    @Test func aSessionQueryRefusedByTheHostIsShownAtOnce() async throws {
+        let refused = TransportError.apiRejected(code: "not_found", message: "no such pane")
+        let fixture = Fixture(session: nil)
+        await fixture.server.fail(with: refused)
+
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.readFailure == refused)
     }
 
     @Test func aCancelledSessionQueryDoesNotShowAReadFailure() async throws {

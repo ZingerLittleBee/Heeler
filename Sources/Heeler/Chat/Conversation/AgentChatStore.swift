@@ -202,6 +202,10 @@ final class AgentChatStore {
     @ObservationIgnored private var lastAgentRefresh: Date?
     /// Agent queries and transcript reads recover independently.
     @ObservationIgnored private var agentRefreshFailure: TransportError?
+    /// One Agent query lost to the link can be a passing stall, which the
+    /// connection owner handles and shows by itself. A second in a row, in the
+    /// same stretch on screen, is news.
+    @ObservationIgnored private var consecutiveAgentRefreshLinkFailures = 0
     @ObservationIgnored private var transcriptReadFailure: TransportError?
     /// A page above the oldest message shown that waits for the loop, by
     /// who asked for it.
@@ -364,6 +368,7 @@ final class AgentChatStore {
     /// its own token, so one window leaving does not stop another's.
     func show(_ viewer: UUID = AgentChatStore.soleViewer) {
         if viewers.isEmpty {
+            consecutiveAgentRefreshLinkFailures = 0
             // Background prefetches back off looking for a missing
             // transcript; opening Chat looks at once and backs off afresh.
             switch conversation.phase {
@@ -401,6 +406,7 @@ final class AgentChatStore {
 
     func resume() {
         isSuspended = false
+        consecutiveAgentRefreshLinkFailures = 0
         needsAgentRefresh = true
         needsLaunchCheck = true
         startLoop()
@@ -891,7 +897,9 @@ final class AgentChatStore {
 
     private var sessionRecheckIsDue: Bool {
         let interval: TimeInterval
-        if engine == nil || isUnavailable || agentRefreshFailure != nil {
+        if engine == nil || isUnavailable || agentRefreshFailure != nil
+            || consecutiveAgentRefreshLinkFailures > 0
+        {
             interval = timing.sessionRecheck
         } else if isVisible, ChatAgentActivity(agent.status) == .idle {
             interval = timing.idleSessionRecheck
@@ -912,6 +920,7 @@ final class AgentChatStore {
         do {
             let fresh = try await source.agentInfo()
             guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return nil }
+            consecutiveAgentRefreshLinkFailures = 0
             agentRefreshFailure = nil
             updateReadFailure()
             adoptRecord(fresh)
@@ -920,10 +929,24 @@ final class AgentChatStore {
             guard !Task.isCancelled, recordRevision == sessionRecordRevision,
                 !(error is CancellationError), error as? TransportError != .cancelled
             else { return nil }
-            agentRefreshFailure = error as? TransportError
+            let failure = error as? TransportError
                 ?? .channelFailed(detail: String(describing: type(of: error)))
+            consecutiveAgentRefreshLinkFailures =
+                Self.isLinkFailure(failure) ? consecutiveAgentRefreshLinkFailures + 1 : 0
+            guard consecutiveAgentRefreshLinkFailures != 1 else { return nil }
+            agentRefreshFailure = failure
             updateReadFailure()
             return nil
+        }
+    }
+
+    private static func isLinkFailure(_ failure: TransportError) -> Bool {
+        switch failure {
+        case .sshUnreachable, .timedOut, .channelFailed, .noRouteReached, .jumpHostFailed,
+            .overlayFailed:
+            true
+        default:
+            false
         }
     }
 

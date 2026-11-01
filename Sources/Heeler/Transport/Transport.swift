@@ -12,6 +12,10 @@ protocol Transport: Sendable {
     /// path; Host-local session discovery may run before it.
     func ping() async throws -> ServerInfo
 
+    /// A liveness probe has its own budget, independent of ordinary requests.
+    /// Its soft deadline must not cancel a still-recoverable SSH channel open.
+    func ping(timeout: Duration) async throws -> ServerInfo
+
     /// Lists the local herdr sessions visible to this SSH account. This is a
     /// Host-level capability and does not depend on the currently selected
     /// API socket, so onboarding can recover from a stale manual selection.
@@ -370,6 +374,10 @@ protocol Transport: Sendable {
 
 extension Transport {
     var routeID: UUID? { nil }
+
+    func ping(timeout: Duration) async throws -> ServerInfo {
+        try await ping()
+    }
 
     /// Test doubles and alternative transports that do not expose Host-level
     /// session discovery can opt out without inventing sessions.

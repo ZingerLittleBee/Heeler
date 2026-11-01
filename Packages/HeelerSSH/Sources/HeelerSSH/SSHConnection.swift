@@ -409,6 +409,10 @@ public final class SSHConnection: Sendable {
         await driver.holdNextSessionWaitForTesting(hold)
     }
 
+    func holdOperationForTesting(_ hold: @Sendable () async -> Void) async {
+        await driver.holdOperationForTesting(hold)
+    }
+
     func waitForInboundBeforeNextExchangeStderrReadForTesting() async {
         await driver.waitForInboundBeforeNextExchangeStderrReadForTesting()
     }

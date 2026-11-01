@@ -396,6 +396,7 @@ struct AgentChatSurfaceView: View {
                 actions: backHeaderActions,
                 surfaceSwitch: terminalSurfaceSwitch,
                 title: AgentDetailHeaderTitle(agent),
+                statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
                 trailingInBar: headerSharesBar)
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
