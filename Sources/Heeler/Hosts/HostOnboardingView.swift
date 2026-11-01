@@ -254,6 +254,19 @@ struct HostOnboardingView: View {
                 retry()
             }
         }
+        .onChange(of: store.coreStart) { _, coreStart in
+            let action = HostOnboardingCoreFollow.action(
+                afterCoreStart: coreStart, reportPassed: store.report == .allPassed, status: connectionStatus)
+            if action == .wakeConsole { retry() }
+        }
+        // The reading, not the status: every backoff would otherwise count.
+        .onChange(of: HostOnboardingCoreFollow.reading(connectionStatus)) { _, reading in
+            let action = HostOnboardingCoreFollow.action(
+                afterConsoleReads: reading, serverKind: store.host.serverKind, phase: store.phase,
+                coreStart: store.coreStart, reportPassed: store.report == .allPassed,
+                offersStart: store.coreStartOffer != nil)
+            if action == .runChecks { Task { await store.runChecks() } }
+        }
     }
 
     /// The checklist of a Host whose kind is confirmed. A core's version is on
@@ -1080,6 +1093,59 @@ struct HostOnboardingConnectionPresentation: Equatable {
         }
         isSyncIssue = if case .connected = status { syncIssue != nil } else { false }
         footerMessage = isManualReconnectInFlight ? nil : connectionErrorMessage
+    }
+}
+
+/// What a core Host's detail does when the Console finds out something its
+/// checks have not. Only ever the locator and `hello`, so nothing here starts a
+/// core (ADR 0031).
+enum HostOnboardingCoreFollow {
+    /// What the Console says of the core, which is what the checks may contradict.
+    enum Reading: Equatable {
+        case notRunning
+        case connected
+        case other
+    }
+
+    enum Action: Equatable {
+        case none
+        case runChecks
+        case wakeConsole
+    }
+
+    static func reading(_ status: EventsSessionStatus?) -> Reading {
+        switch status {
+        case .reconnecting(_, _, .herdrCoreNotRunning): .notRunning
+        case .connected: .connected
+        default: .other
+        }
+    }
+
+    /// Checks that passed read a core that has since stopped, or checks that offer
+    /// Start read one that has since come back. After a Start the checks may fail
+    /// on something more exact than not running, so only a pass is run again.
+    static func action(
+        afterConsoleReads reading: Reading, serverKind: ServerKind, phase: HostOnboardingStore.Phase,
+        coreStart: CoreStartState, reportPassed: Bool, offersStart: Bool
+    ) -> Action {
+        guard serverKind == .herdrCore, phase == .finished, coreStart != .running else { return .none }
+        switch reading {
+        case .notRunning: return reportPassed ? .runChecks : .none
+        case .connected: return offersStart ? .runChecks : .none
+        case .other: return .none
+        }
+    }
+
+    /// A core that just started should not wait out a Console's backoff, up to 30
+    /// seconds, with the checks above it all green. A link that is up is left alone.
+    static func action(
+        afterCoreStart coreStart: CoreStartState, reportPassed: Bool, status: EventsSessionStatus?
+    ) -> Action {
+        guard reportPassed, case .reconnecting = status else { return .none }
+        switch coreStart {
+        case .started, .alreadyRunning: return .wakeConsole
+        case .idle, .running, .failed: return .none
+        }
     }
 }
 

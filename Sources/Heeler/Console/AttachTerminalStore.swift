@@ -15,10 +15,26 @@ enum TerminalProgramEnd: Error, Equatable {
     case finished
 }
 
+/// The core a terminal pipeline first joined, across every attach and store it
+/// takes. Its screen and any input on it belong to that core's Terminal.
+@MainActor
+final class TerminalCorePin {
+    private var joined: String?
+
+    func admits(_ coreID: String) -> Bool {
+        guard let joined else {
+            joined = coreID
+            return true
+        }
+        return joined == coreID
+    }
+}
+
 struct TerminalSessionHandler: Sendable {
     private let operation: TerminalSessionOperation
     private let transportReady: @MainActor @Sendable (UInt64) -> Void
     private let programLost: @MainActor @Sendable () -> Void
+    private var coreAdmission: @MainActor @Sendable (String) -> Bool = { _ in true }
     #if DEBUG
     private let traceEvents: AttachRestorationTraceEvents?
     #endif
@@ -53,6 +69,20 @@ struct TerminalSessionHandler: Sendable {
     @MainActor
     func transportDidBecomeReady(_ generation: UInt64) {
         transportReady(generation)
+    }
+
+    /// Whether this pipeline may join a Terminal of this core. An address means
+    /// another Terminal on another core, whatever a surface already shows.
+    @MainActor
+    func admitsCore(_ coreID: String) -> Bool {
+        coreAdmission(coreID)
+    }
+
+    /// This handler, for a pipeline `pin` keeps to the one core it first joined.
+    func keeping(to pin: TerminalCorePin) -> TerminalSessionHandler {
+        var handler = self
+        handler.coreAdmission = { pin.admits($0) }
+        return handler
     }
 
     /// The Terminal has no program for now, and will get a new one.
@@ -534,7 +564,7 @@ final class AttachTerminalStore {
     /// can carry a reattach.
     private static func isConnectionLoss(_ error: any Error) -> Bool {
         switch error as? TransportError {
-        case .sshUnreachable, .timedOut, .cancelled: true
+        case .sshUnreachable, .timedOut, .cancelled, .herdrCoreInventoryStale: true
         default: false
         }
     }

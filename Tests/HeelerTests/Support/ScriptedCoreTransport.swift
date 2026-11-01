@@ -362,7 +362,8 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         let result = subscribeResults.count > 1 ? subscribeResults.removeFirst() : subscribeResults[0]
         let source = Bytes()
         bytes = source
-        return HerdrCoreEventStream(snapshot: try HerdrCoreSnapshot(result: result), source: source)
+        return HerdrCoreEventStream(
+            snapshot: try HerdrCoreSnapshot(result: result), coreID: coreID, source: source)
     }
 
     func attachTerminal(_ request: TerminalAttachRequest) async throws -> TerminalAttachSession {

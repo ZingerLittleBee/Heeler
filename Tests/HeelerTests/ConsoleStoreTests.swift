@@ -209,8 +209,8 @@ struct ConsoleStoreTests {
         let statuses = HeelerPluginStatusStore()
         await statuses.refresh([core.id, tui.id], transports: store)
 
-        #expect(statuses.status(for: core.id) == .unsupportedBackend)
-        #expect(statuses.status(for: tui.id) != .unsupportedBackend)
+        #expect(statuses.status(for: core.id) == .unsupportedServerKind)
+        #expect(statuses.status(for: tui.id) != .unsupportedServerKind)
     }
 
     /// Actions only Herdr TUI can serve are offered by Server Kind, not

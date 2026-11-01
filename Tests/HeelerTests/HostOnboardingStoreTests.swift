@@ -22,7 +22,8 @@ struct HostOnboardingStoreTests {
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
         pluginSteps: FakePluginSteps = FakePluginSteps(),
         fingerprintTimeout: Duration = .seconds(5),
-        core: ScriptedCoreHost? = nil
+        core: ScriptedCoreHost? = nil,
+        sleep: @escaping HerdrCoreHostSession.Sleep = { _ in }
     ) throws -> (HostOnboardingStore, FakeTransportConnector) {
         let connector = FakeTransportConnector(
             outcome: outcome, presentedKeyBlob: presentedKeyBlob,
@@ -41,7 +42,8 @@ struct HostOnboardingStoreTests {
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
                 secrets: secrets),
-            fingerprintTimeout: fingerprintTimeout)
+            fingerprintTimeout: fingerprintTimeout,
+            sleep: sleep)
         return (store, connector)
     }
 
@@ -683,11 +685,11 @@ struct HostOnboardingStoreTests {
         #expect(await core.log.isEmpty)
     }
 
-    /// A reached Host that could not be read, such as native Windows until it has
-    /// a probe of its own, can still be confirmed, and its preflight then runs.
+    /// A reached Host that could not be read can still be confirmed, and its
+    /// preflight then runs.
     @Test func aDetectionThatFailsStillOffersWhatIsOnOffer() async throws {
         let core = ScriptedCoreHost(
-            detectionFailure: .hostFeatureUnavailable(feature: "Server Kind detection is not yet supported"),
+            detectionFailure: .malformedResponse("Server Kind detection's output is unreadable."),
             channel: .refused)
         let (store, connector, catalog) = try unconfirmedStore(core)
 
@@ -704,6 +706,48 @@ struct HostOnboardingStoreTests {
         #expect(store.detectionFailure == nil)
         #expect(store.report?.isFullyPassed == true)
         #expect(await connector.transports.count == 1)
+    }
+
+    /// Native Windows has no core path yet, and a confirmed Server Kind is final,
+    /// so herdr-core would be a choice that can only ever fail its checks.
+    @Test func aHostWithNoProbeOffersOnlyHerdrTUI() async throws {
+        let core = ScriptedCoreHost(
+            detectionFailure: .hostFeatureUnavailable(
+                feature: "Server Kind detection is not yet supported on native Windows"),
+            channel: .refused)
+        let (store, _, catalog) = try unconfirmedStore(core)
+
+        await store.runChecks()
+
+        #expect(store.offeredKinds == [.herdrTUI])
+        #expect(store.confirmationNote?.contains("the choice is yours") == false)
+        #expect(store.confirmationNote?.contains("native Windows") == true)
+
+        await store.confirmServerKind(.herdrCore, in: catalog)
+        #expect(store.host.serverKind == .unconfirmed)
+        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
+
+        await store.confirmServerKind(.herdrTUI, in: catalog)
+        #expect(store.host.serverKind == .herdrTUI)
+        #expect(store.report?.isFullyPassed == true)
+    }
+
+    @Test func confirmingHerdrCoreWithASocketPathOverTheLimitSaysWhy() async throws {
+        let long = "/" + String(repeating: "a", count: 107)
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(defaultPath: long), channel: .refused)
+        let (store, _, catalog) = try unconfirmedStore(core)
+        await store.runChecks()
+        #expect(store.offeredKinds == [.herdrCore])
+
+        await store.confirmServerKind(.herdrCore, in: catalog)
+
+        #expect(
+            store.confirmationRefusal
+                == TransportError.herdrCoreSocketPathTooLong(path: long, limit: 107).presentation.message)
+        #expect(store.host.serverKind == .unconfirmed)
+        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
+        #expect(await core.log == ["detection", "close"])
     }
 
     @Test func detectionAsksToTrustTheHostFirst() async throws {
@@ -771,6 +815,83 @@ struct HostOnboardingStoreTests {
         #expect(await connector.transports.isEmpty)
         #expect(store.availableSessions.isEmpty)
         #expect(store.sessionDiscoveryError == nil)
+    }
+
+    // MARK: A core its holder is restarting
+
+    private func holderWindowStore(
+        _ core: ScriptedCoreHost, clock: ManualClock
+    ) throws -> HostOnboardingStore {
+        let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
+        return try makeStore(host: host, core: core, sleep: clock.parkedSleep(for:)).0
+    }
+
+    @Test(.timeLimit(.minutes(1))) func aCoreBackWithinTheHolderWindowPassesAndNeverOffersStart() async throws {
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .refused)
+        let clock = ManualClock()
+        let store = try holderWindowStore(core, clock: clock)
+
+        let checks = Task { await store.runChecks() }
+        await clock.untilParked(1)
+        #expect(store.phase == .running)
+        #expect(store.report == nil)
+        #expect(store.coreStartOffer == nil)
+
+        await core.setChannel(.answersHello(ScriptedCoreHost.helloReply()))
+        clock.advance(.milliseconds(500))
+        await checks.value
+
+        #expect(store.report?.isFullyPassed == true)
+        #expect(store.coreStartOffer == nil)
+        #expect(await core.log.filter { $0 == "locator" }.count == 1)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func startIsOfferedOnlyOnceTheHolderWindowHasPassed() async throws {
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .refused)
+        let clock = ManualClock()
+        let store = try holderWindowStore(core, clock: clock)
+
+        let checks = Task { await store.runChecks() }
+        for _ in 0..<HerdrCoreHolderRestartPolicy.default.polls {
+            await clock.untilParked(1)
+            #expect(store.report == nil)
+            #expect(store.coreStartOffer == nil)
+            clock.advance(.milliseconds(500))
+        }
+        await checks.value
+
+        #expect(store.coreStartOffer == .start)
+        #expect(await core.log.filter { $0 == "locator" }.count == 1)
+        #expect(await core.log.filter { $0.hasPrefix("open ") }.count == 11)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func cancellingTheChecksEndsTheHolderWindowWithNoStartOffer() async throws {
+        let core = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .refused)
+        let clock = ManualClock()
+        let store = try holderWindowStore(core, clock: clock)
+
+        let checks = Task { await store.runChecks() }
+        await clock.untilParked(1)
+        store.cancelChecks()
+        await checks.value
+
+        #expect(store.phase == .finished)
+        #expect(store.report == .failure(TransportError.cancelled, authMethod: store.host.authMethod))
+        #expect(store.coreStartOffer == nil)
+    }
+
+    @Test func noSocketFileReadsNotRunningWithoutWaiting() async throws {
+        let core = ScriptedCoreHost(channel: .refused)
+        let clock = ManualClock()
+        let store = try holderWindowStore(core, clock: clock)
+
+        await store.runChecks()
+
+        #expect(store.coreStartOffer == .start)
+        #expect(await core.log.filter { $0.hasPrefix("open ") }.count == 1)
     }
 
     @Test func coreOutcomesFailTheirOwnChecks() async throws {
@@ -852,7 +973,7 @@ struct HostOnboardingStoreTests {
 
         await store.runChecks()
 
-        #expect(store.pluginStatus == .unsupportedBackend)
+        #expect(store.pluginStatus == .unsupportedServerKind)
         #expect(await connector.transports.isEmpty)
     }
 

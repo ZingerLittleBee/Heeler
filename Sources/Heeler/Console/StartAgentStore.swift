@@ -803,7 +803,7 @@ final class StartAgentStore {
         case TransportError.malformedResponse(let detail):
             detail
         default:
-            TransportError.herdrCoreNotRunningMessage(for: error)
+            TransportError.herdrCoreLinkMessage(for: error)
                 ?? "Detecting Agents failed: \(error)"
         }
     }
@@ -885,7 +885,7 @@ final class StartAgentStore {
         case let apiError as HerdrAPIError:
             "herdr rejected the command: \(apiError.message)"
         default:
-            TransportError.herdrCoreNotRunningMessage(for: error)
+            TransportError.herdrCoreLinkMessage(for: error)
                 ?? "Starting the agent failed: \(error)"
         }
     }

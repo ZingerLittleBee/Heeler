@@ -1008,6 +1008,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The core's socket path does not fit this Host's limit, so nothing can
     /// connect to it however often the app tries.
     case herdrCoreSocketPathTooLong(path: String, limit: Int)
+    /// Nothing was sent: the action came from one core's Terminals and the link
+    /// now reaches another, or none yet. Addresses are only unique within a core,
+    /// so it waits for that link's snapshot instead (ADR 0031).
+    case herdrCoreInventoryStale
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1050,7 +1054,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // A rejection is retryable because herdr's error codes are open-ended
         // and most of them describe a target that moved, not a broken setup.
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
-            .attachExited, .apiRejected, .herdrCoreNotRunning:
+            .attachExited, .apiRejected, .herdrCoreNotRunning, .herdrCoreInventoryStale:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,

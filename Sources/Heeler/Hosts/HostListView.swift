@@ -303,7 +303,7 @@ struct HostListView: View {
                             "The saved Host catalog could not be read. Its original data was preserved; "
                                 + "reinstalling or adding a Host would risk losing it.")
                     }
-                } else if store.hosts.isEmpty {
+                } else if store.hosts.isEmpty, store.coreCatalogLoadError == nil {
                     ContentUnavailableView {
                         Label("No Hosts", systemImage: "server.rack")
                     } description: {
@@ -320,6 +320,14 @@ struct HostListView: View {
                     }
                 } else {
                     List {
+                        if store.coreCatalogLoadError != nil {
+                            Section {
+                                Label(
+                                    "The saved herdr-core Hosts could not be read. Their original "
+                                        + "data was preserved, and no herdr-core Host can be added.",
+                                    systemImage: "externaldrive.badge.exclamationmark")
+                            }
+                        }
                         ForEach(HostListEntry.grouped(entries)) { @Sendable section in
                             MainActorContent {
                                 let isCollapsed = isCollapsed(section.group)

@@ -69,6 +69,9 @@ struct TerminalAttachRequest: Sendable, Equatable {
     let surfaceHasHistory: Bool
     let cols: Int
     let rows: Int
+    /// The core this attach means, on a herdr-core Host. It goes to no other,
+    /// since an address means another Terminal there.
+    var coreID: String?
 
     init(
         target: TerminalAttachTarget,

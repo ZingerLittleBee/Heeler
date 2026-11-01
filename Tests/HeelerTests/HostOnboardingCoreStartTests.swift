@@ -14,6 +14,7 @@ struct HostOnboardingCoreStartTests {
 
     private func makeStore(
         _ core: ScriptedCoreHost, session: String = "work", kind: ServerKind = .herdrCore,
+        clock: ManualClock = ManualClock(),
         connectorOutcome: FakeTransportConnector.Outcome = .connects(
             pingResult: .success(ServerInfo(version: "0.7.5", protocolVersion: 17)))
     ) -> (HostOnboardingStore, HostStore) {
@@ -25,7 +26,8 @@ struct HostOnboardingCoreStartTests {
             credentials: HostCredentialsProvider(
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
-                secrets: InMemorySecretStore()))
+                secrets: InMemorySecretStore()),
+            sleep: clock.clock.sleep)
         return (store, HostStore(volatileHosts: [host]))
     }
 
@@ -245,17 +247,22 @@ struct HostOnboardingCoreStartTests {
     @Test func aCoreAlreadyRunningBehindARefusedChannelShowsOnlyForwarding() async {
         let core = ScriptedCoreHost(
             locator: ScriptedCoreHost.locatorLines(socketFile: true), start: .alreadyRunning, channel: .refused)
-        let (store, _) = makeStore(core)
+        let clock = ManualClock()
+        let (store, _) = makeStore(core, clock: clock)
         await store.runChecks()
         guard case .failed(let before) = store.report?[.serverRunning] else {
             Issue.record("A refused channel should fail its check")
             return
         }
         #expect(before.contains("stopped or crashed"))
+        let holderWindow = clock.sleeps.count
+        #expect(holderWindow == HerdrCoreHolderRestartPolicy.default.polls)
 
         store.requestCoreStart()
         await store.confirmCoreStart()
 
+        // The core has just said it runs, so nothing waits for it to come back.
+        #expect(clock.sleeps.count == holderWindow)
         #expect(store.coreStart == .alreadyRunning(session: "work"))
         guard case .failed(let hint) = store.report?[.serverRunning] else {
             Issue.record("A refused channel should still fail its check")

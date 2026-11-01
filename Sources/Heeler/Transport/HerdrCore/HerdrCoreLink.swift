@@ -94,6 +94,8 @@ actor HerdrCoreLink {
     private var readerTask: Task<Void, Never>?
     private var writerTask: Task<Void, Never>?
     private var closeTask: Task<Void, Never>?
+    /// From this link's `hello`. A link never reopens, so it is the one core.
+    private var coreID = ""
 
     private init(channel: any HeelerSSHAPIChannel, sleep: @escaping Sleep) {
         self.channel = channel
@@ -160,7 +162,8 @@ actor HerdrCoreLink {
         let (result, stream) = try await openStream(
             "events.subscribe", params: .object([:]), deadline: deadline)
         do {
-            return HerdrCoreEventStream(snapshot: try HerdrCoreSnapshot(result: result), source: stream)
+            return HerdrCoreEventStream(
+                snapshot: try HerdrCoreSnapshot(result: result), coreID: coreID, source: stream)
         } catch {
             await stream.close()
             throw error
@@ -180,7 +183,9 @@ actor HerdrCoreLink {
         let reply = try await exchange(
             id: Self.helloID, bytes: Data(line.utf8), deadline: deadline,
             isMutation: false, opensStream: false, creditsWhenConsumed: false)
-        return try HerdrCoreServerInfo(hello: reply.result)
+        let info = try HerdrCoreServerInfo(hello: reply.result)
+        coreID = info.coreID
+        return info
     }
 
     private func request(

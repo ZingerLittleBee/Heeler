@@ -20,7 +20,7 @@ A session name the server refuses leaves the Host unconfirmed and says why. The 
 
 ## Not running and Start
 
-Heeler never starts a core by connecting or checking, so a mistyped session name reads **herdr-core is not running** rather than an empty, new core. While the core is not running, the checks try again by themselves.
+Heeler never starts a core by connecting or checking, so a mistyped session name reads **herdr-core is not running** rather than an empty, new core. While the core is not running, Heeler keeps trying to reconnect by itself, and the Host's checks run again when the core stops or comes back.
 
 | Host reads | What to do |
 | --- | --- |
@@ -130,6 +130,8 @@ On a native Windows Host, Stop is not available yet.
 
 The new shell is no Agent until you start one in it.
 
+Another core at the same socket, such as one started under another state directory, has its own Terminals, even at the same address. A terminal you had open shows as ended, and anything you tap waits for the new core's list. Open the Terminal again from that list.
+
 ## Close
 
 Closing a Tab on a core Host ends its Terminals for good, and closing a Pane ends that one Terminal. A kept Terminal does not come back as a shell, and it leaves the Console once the core reports it ended. Close works the same from an Agent's or a Terminal's row, Agent detail and a Shell Terminal.
@@ -213,6 +215,7 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 - Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
+- If Heeler cannot read its saved herdr-core Hosts, the Hosts tab says so. Herdr TUI Hosts keep working and the saved data stays as it was, but no herdr-core Host can be added until it reads again.
 
 ## Host Helper
 

@@ -154,6 +154,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     nonisolated let helper: ScriptedHelperHost
     private let locator: [String]
     private let locatorStatus: Int32
+    private var nextLocatorAnswers: [GitExecResult] = []
     private let shellBanner: Data
     private var channel: Channel
     private var connected = true
@@ -232,9 +233,15 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         self.channel = channel
     }
 
+    /// What the next locator exec answers instead of its script's output.
+    func answerNextLocator(_ answer: GitExecResult) {
+        nextLocatorAnswers.append(answer)
+    }
+
     func runCoreLocator(_ script: Data) async throws -> GitExecResult {
         log.append("locator")
         scripts.append(String(decoding: script, as: UTF8.self))
+        if !nextLocatorAnswers.isEmpty { return nextLocatorAnswers.removeFirst() }
         let output = (["\(Self.nonce) begin"] + locator + ["\(Self.nonce) end"]).joined(separator: "\n") + "\n"
         return GitExecResult(stdout: shellBanner + Data(output.utf8), stderr: Data(), exitStatus: locatorStatus)
     }

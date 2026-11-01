@@ -57,6 +57,8 @@ enum HerdrCoreLocator {
     /// Everything from the Host is a quoted word or a variable, so a session
     /// name can never become shell syntax. `nonce` frames the output, whose
     /// begin marker starts its own line after whatever the user's shell printed.
+    /// A `core.lock` holding a line break is reported as a field the parser
+    /// refuses, so its contents can never read as fields of their own.
     static func script(session: String, nonce: String) throws -> Data {
         guard HerdrCoreSessionName.isValid(session) else { throw SessionRefused(session: session) }
         let name = HerdrCoreSessionName.normalized(session)
@@ -90,6 +92,7 @@ enum HerdrCoreLocator {
             printf 'default %s\\n' "$__socket"
             __lock=
             [ -r "$__state/core.lock" ] && __lock=$(cat "$__state/core.lock" 2>/dev/null)
+            case "$__lock" in *"$__nl"*) printf 'lock-unreadable\\n'; __lock= ;; esac
             if [ -n "$__lock" ]; then
                 printf 'lock %s\\n' "$__lock"
                 __socket=$__lock
@@ -145,6 +148,19 @@ enum HerdrCoreLocator {
             socketFilePresent: socketFile == "1",
             socketPathLimit: socketPathLimit(kernel: kernel),
             loginShell: fields["shell"])
+    }
+
+    /// An exec the Host's shutdown or session cleanup ended partway: killed by a
+    /// signal, with nothing printed, or with a begin marker and no end. That says
+    /// nothing about this Host's core, as a shell's own failure or output that is
+    /// not this script's does.
+    static func wasCutShort(stdout: Data, exitStatus: Int32, nonce: String) -> Bool {
+        if exitStatus > 128 { return true }
+        guard exitStatus == 0 else { return false }
+        if stdout.isEmpty { return true }
+        let lines = stdout.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false)
+        return lines.contains { $0.elementsEqual("\(nonce) begin".utf8) }
+            && !lines.contains { $0.elementsEqual("\(nonce) end".utf8) }
     }
 
     static func quoted(_ value: String) -> String {

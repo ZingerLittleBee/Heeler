@@ -306,6 +306,17 @@ class SocketTests(LocatorTestCase):
         parsed = subprocess.run([str(self.binary), "parse"], input=output, capture_output=True)
         self.assertEqual(parsed.returncode, 66)
 
+    def test_a_lock_cannot_print_locator_fields(self) -> None:
+        # No core is installed, so nothing else would name an executable.
+        self.lock("work", "x\nexecutable /tmp/y\nversion 1")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                output = self.run_script(shell)
+                self.assertNotIn(b"executable /tmp/y", output)
+                parsed = subprocess.run(
+                    [str(self.binary), "parse"], input=output, capture_output=True)
+                self.assertEqual(parsed.returncode, 66)
+
 
 class StartupOutputTests(LocatorTestCase):
     """The exec's command line is parsed by the user's shell, which reads its

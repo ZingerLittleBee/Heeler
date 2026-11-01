@@ -130,7 +130,7 @@ enum HeelerPluginStatus: Equatable, Sendable {
     case checking
     /// The plugin does not run on native Windows Hosts.
     case unsupportedPlatform
-    case unsupportedBackend
+    case unsupportedServerKind
     /// The Host could not be asked or did not answer usefully; nothing is
     /// known about the plugin, which is not the same as it being absent.
     case unavailable
@@ -142,7 +142,7 @@ enum HeelerPluginStatus: Equatable, Sendable {
         switch result {
         case .success(let installation?): self = .installed(installation)
         case .success(nil): self = .notInstalled
-        case .failure(HeelerPluginUnavailableError.herdrCore): self = .unsupportedBackend
+        case .failure(HeelerPluginUnavailableError.herdrCore): self = .unsupportedServerKind
         case .failure(TransportError.hostFeatureUnavailable): self = .unsupportedPlatform
         case .failure: self = .unavailable
         }
@@ -353,7 +353,7 @@ struct HeelerPluginPresentation: Equatable {
         case .unsupportedPlatform:
             value = "Not supported on Windows"
             notice = nil
-        case .unsupportedBackend:
+        case .unsupportedServerKind:
             value = "Not supported on herdr-core"
             notice = nil
         case .unavailable:

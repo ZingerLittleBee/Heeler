@@ -41,6 +41,9 @@ final class TerminalConnectionPool {
         fileprivate var expiry: Task<Void, Never>?
 
         fileprivate var isVisible: Bool { ownerID != nil && (isPresented?() ?? false) }
+        /// Only a core Terminal ends this way. Nobody is looking at it, so opening
+        /// its address again means whatever runs there now.
+        fileprivate var isOverAndLeft: Bool { !isVisible && store.terminalStatus == .finished }
 
         fileprivate init(
             store: ShellTerminalStore, lifetime: Lifetime, ownerID: UUID, selectionID: UUID,
@@ -99,6 +102,10 @@ final class TerminalConnectionPool {
             await previous?.value
             try Task.checkCancellation()
             let key = Key(hostID: hostID, identity: identity)
+            if let entry = entries[key], entry.isOverAndLeft {
+                await removeEntry(key)
+                try Task.checkCancellation()
+            }
             if let entry = entries[key] {
                 guard mayClaim(entry, ownerID: ownerID, sceneID: sceneID) else {
                     throw Failure.alreadyVisible
@@ -173,7 +180,8 @@ final class TerminalConnectionPool {
         isPresented: @escaping @MainActor () -> Bool = { true }
     ) -> Entry? {
         let key = Key(hostID: hostID, identity: identity)
-        guard let entry = entries[key], mayClaim(entry, ownerID: ownerID, sceneID: sceneID)
+        guard let entry = entries[key], !entry.isOverAndLeft,
+            mayClaim(entry, ownerID: ownerID, sceneID: sceneID)
         else { return nil }
         claim(
             entry, key: key, ownerID: ownerID, sceneID: sceneID, selectionID: UUID(),

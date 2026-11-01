@@ -83,6 +83,8 @@ final class HostOnboardingStore {
     private(set) var detection: ServerKindDetection?
     /// Why a reached Host could not be read, which leaves its kind to the user.
     private(set) var detectionFailure: String?
+    /// The Host's platform has no probe, and so no herdr-core path, yet.
+    private var hostHasNoProbe = false
     /// Why the last confirmation was refused, for the user to read.
     private(set) var confirmationRefusal: String?
     /// What the locator found on a core Host the last checks read as not running.
@@ -103,6 +105,8 @@ final class HostOnboardingStore {
     /// The transport deliberately has no confirmation timeout (#2); the UI
     /// layer owns it (spec #20). An unanswered candidate is declined.
     @ObservationIgnored private let fingerprintTimeout: Duration
+    @ObservationIgnored private let coreHolderRestart: HerdrCoreHolderRestartPolicy
+    @ObservationIgnored private let sleep: HerdrCoreHostSession.Sleep
     @ObservationIgnored private var fingerprintDecision: CheckedContinuation<Bool, Never>?
     @ObservationIgnored private var fingerprintTimeoutTask: Task<Void, Never>?
     /// Identifies the prompt `fingerprintDecision` answers.
@@ -117,8 +121,12 @@ final class HostOnboardingStore {
         knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
         credentials: HostCredentialsProvider = HostCredentialsProvider(),
         overlays: OverlayNetworkRuntime = .shared,
-        fingerprintTimeout: Duration = .seconds(60)
+        fingerprintTimeout: Duration = .seconds(60),
+        coreHolderRestart: HerdrCoreHolderRestartPolicy = .default,
+        sleep: @escaping HerdrCoreHostSession.Sleep = { try await Task.sleep(for: $0) }
     ) {
+        self.coreHolderRestart = coreHolderRestart
+        self.sleep = sleep
         self.host = host
         self.connector = connector
         self.knownHosts = knownHosts
@@ -144,6 +152,7 @@ final class HostOnboardingStore {
         overlayLoginURL = nil
         detection = nil
         detectionFailure = nil
+        hostHasNoProbe = false
         confirmationRefusal = nil
         notRunningCore = nil
         coreStartConfirmation = nil
@@ -296,7 +305,7 @@ final class HostOnboardingStore {
     /// close. It starts nothing. The plugin does not run here, whatever the core
     /// answers, and no Herdr TUI session is looked for.
     private func performCoreChecks(settings: SSHTransportSettings, coreReportedRunning: Bool) async {
-        pluginStatus = .unsupportedBackend
+        pluginStatus = .unsupportedServerKind
         do {
             let transport = try await connector.connectCore(settings: settings)
             guard !Task.isCancelled else {
@@ -306,7 +315,13 @@ final class HostOnboardingStore {
             // The Helper does not need a core, so it reads whether one runs or not.
             await hostHelper?.refresh(over: transport)
             do {
-                let info = try await transport.hello()
+                // Straight after a Start nothing is on its way back: the core
+                // said it runs, so a refused channel is SSH's refusal.
+                let info =
+                    coreReportedRunning
+                    ? try await transport.hello()
+                    : try await transport.helloAcrossHolderRestart(
+                        policy: coreHolderRestart, sleep: sleep, isWanted: { !Task.isCancelled })
                 if !Task.isCancelled {
                     serverInfo = ServerInfo(version: info.version, protocolVersion: info.generation)
                     report = .allPassed
@@ -362,6 +377,7 @@ final class HostOnboardingStore {
             } catch {
                 if !Task.isCancelled {
                     detectionFailure = (error as? TransportError)?.presentation.message ?? "\(error)"
+                    if case TransportError.hostFeatureUnavailable = error { hostHasNoProbe = true }
                 }
             }
             try? await connection.close()
@@ -376,12 +392,14 @@ final class HostOnboardingStore {
     var offeredKinds: [ServerKind] {
         guard host.serverKind == .unconfirmed else { return [] }
         if let detection { return detection.offeredKinds }
+        if hostHasNoProbe { return [.herdrTUI] }
         return detectionFailure == nil ? [] : ServerKindDetection.offeredWithoutFindings
     }
 
     /// What the confirmation adds to the findings it lists, if anything.
     var confirmationNote: String? {
         if let detectionFailure {
+            if hostHasNoProbe { return detectionFailure }
             return "Heeler could not read what this Host runs, so the choice is yours. \(detectionFailure)"
         }
         guard let detection else { return nil }
@@ -401,10 +419,19 @@ final class HostOnboardingStore {
     /// kind's server refuses leaves the Host as it was and says why.
     func confirmServerKind(_ kind: ServerKind, in catalog: HostStore) async {
         guard phase != .running, offeredKinds.contains(kind) else { return }
+        if kind == .herdrCore, case .socketPathTooLong(_, let path, let limit) = detection?.herdrCore {
+            confirmationRefusal =
+                TransportError.herdrCoreSocketPathTooLong(path: path, limit: limit).presentation.message
+            return
+        }
         do {
             host = try catalog.confirmServerKind(kind, for: host.id)
         } catch HostStoreError.sessionNameRefused(let reason) {
             confirmationRefusal = reason
+            return
+        } catch HostStoreError.catalogUnreadable where catalog.coreCatalogLoadError != nil {
+            confirmationRefusal =
+                "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added."
             return
         } catch {
             confirmationRefusal = "The Server Kind could not be saved. (\(error))"
@@ -600,7 +627,7 @@ final class HostOnboardingStore {
         switch status {
         case .installed, .notInstalled:
             pluginStatus = status
-        case .checking, .unsupportedPlatform, .unsupportedBackend, .unavailable:
+        case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
             // An unreadable plugin keeps the last status in place. A step
             // whose connection dropped may have finished all the same.
             guard let stepError else {
@@ -658,7 +685,7 @@ final class HostOnboardingStore {
                         + "changed. Run the checks again."))
             }
             installed = version
-        case .checking, .unsupportedPlatform, .unsupportedBackend, .unavailable:
+        case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
             return .refused(HeelerPluginActionFailure(
                 message: "Heeler could not read the Host's plugin before changing it, so "
                     + "nothing changed. Run the checks again."))

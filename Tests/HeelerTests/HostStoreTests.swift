@@ -751,22 +751,100 @@ struct HostStoreTests {
     @Test(arguments: [
         "not-json", #"{"version":2,"hosts":[]}"#, #"[{"authMethod":"deviceKey"}]"#,
     ])
-    func anUnreadableCoreCatalogCannotBeSilentlyOverwritten(_ corrupt: String) throws {
+    func anUnreadableCoreCatalogLeavesHerdrTUIHostsAloneAndIsNeverWritten(_ corrupt: String) throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let secrets = InMemorySecretStore()
         let tui = Host.fixture(name: "TUI")
-        try HostStore(defaults: defaults, secrets: secrets).add(tui)
+        let waiting = Host(address: "new.example", username: "dev", serverKind: .unconfirmed)
+        let first = HostStore(defaults: defaults, secrets: secrets)
+        try first.add(tui)
+        try first.add(waiting)
         let shared = defaults.data(forKey: "hosts")
         defaults.set(Data(corrupt.utf8), forKey: Self.coreKey)
+
+        let store = HostStore(defaults: defaults, secrets: secrets)
+
+        #expect(store.catalogLoadError == nil)
+        #expect(store.coreCatalogLoadError == .catalogUnreadable)
+        #expect(store.hosts == [tui, waiting])
+        #expect(defaults.data(forKey: "hosts") == shared)
+
+        // Nothing goes to the catalog nobody can read.
+        #expect(throws: HostStoreError.catalogUnreadable) { try store.add(coreHost()) }
+        #expect(throws: HostStoreError.catalogUnreadable) {
+            try store.confirmServerKind(.herdrCore, for: waiting.id)
+        }
+        #expect(store.hosts.map(\.serverKind) == [.herdrTUI, .unconfirmed])
+        #expect(defaults.data(forKey: "hosts") == shared)
+
+        // Herdr TUI Hosts go on as they did.
+        var edited = tui
+        edited.name = "Edited"
+        try store.update(edited)
+        let added = Host.fixture(name: "Added")
+        try store.add(added)
+        try store.remove(waiting.id)
+        #expect(HostStore(defaults: defaults, secrets: secrets).hosts.map(\.name) == ["Edited", "Added"])
+        #expect(defaults.data(forKey: Self.coreKey) == Data(corrupt.utf8))
+    }
+
+    @Test func anUnreadableSharedCatalogStillHidesEveryHost() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        try HostStore(defaults: defaults, secrets: secrets).add(coreHost())
+        let core = defaults.data(forKey: Self.coreKey)
+        defaults.set(Data("not-json".utf8), forKey: "hosts")
 
         let store = HostStore(defaults: defaults, secrets: secrets)
 
         #expect(store.catalogLoadError == .catalogUnreadable)
         #expect(store.hosts.isEmpty)
         #expect(throws: HostStoreError.catalogUnreadable) { try store.add(coreHost()) }
-        #expect(defaults.data(forKey: Self.coreKey) == Data(corrupt.utf8))
-        #expect(defaults.data(forKey: "hosts") == shared)
+        #expect(defaults.data(forKey: Self.coreKey) == core)
+    }
+
+    // MARK: Which Hosts device memory may be swept against
+
+    @Test func aCatalogOfOnlyReadableHostsKeepsNothingOutOfSight() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        try store.add(coreHost())
+        #expect(store.hostsOutOfSight == [])
+    }
+
+    @Test func aHostThisBuildCannotReadIsOutOfSightNotGone() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let futureCore = UUID()
+        let futureShared = UUID()
+        func catalog(_ id: UUID) -> Data {
+            Data(
+                """
+                {"version":1,"hosts":[{"id":"\(id.uuidString)","name":"Future","address":"f.example",
+                  "port":22,"username":"dev","authMethod":"deviceKey","serverKind":"future-kind"}]}
+                """.utf8)
+        }
+        defaults.set(catalog(futureCore), forKey: Self.coreKey)
+        defaults.set(catalog(futureShared), forKey: "hosts")
+
+        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+
+        #expect(store.hosts.isEmpty)
+        #expect(store.catalogLoadError == nil)
+        #expect(store.hostsOutOfSight == [futureCore, futureShared])
+    }
+
+    @Test func aCatalogThatCannotBeReadSaysNothingOfWhichHostsExist() throws {
+        for key in ["hosts", Self.coreKey] {
+            let (defaults, cleanup) = try makeDefaults()
+            defer { cleanup() }
+            defaults.set(Data("not-json".utf8), forKey: key)
+            let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+            #expect(store.hostsOutOfSight == nil, "\(key)")
+        }
     }
 
     @Test func addPersistsAcrossInstances() throws {

@@ -237,13 +237,19 @@ final class ConsoleStore {
     /// Aligns Host projections with the catalog. Editing a Host replaces its
     /// projection because its connection coordinates may have changed. A Host
     /// waiting for its Server Kind is not the Console's yet.
-    func setHosts(_ catalogHosts: [Host]) {
+    ///
+    /// `hostsOutOfSight` is `HostStore.hostsOutOfSight`: Hosts in the catalog that
+    /// are not listed, whose device memory stays. Nil says the catalog could not be
+    /// read, so nobody can say which Hosts went and none of that memory is swept.
+    func setHosts(_ catalogHosts: [Host], hostsOutOfSight: Set<Host.ID>? = []) {
         let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
-        let coreHostIDs = Set(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
-        coreHostMemory.retainHosts(coreHostIDs)
-        harnessEdits.retainHosts(coreHostIDs)
+        if let hostsOutOfSight {
+            let retained = hostsOutOfSight.union(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
+            coreHostMemory.retainHosts(retained)
+            harnessEdits.retainHosts(retained)
+        }
         cachedChats.setHosts(hosts)
         for id in projections.keys where incoming[id] != projections[id]?.host {
             chatPrefetchTasks[id]?.cancel()
@@ -407,14 +413,16 @@ final class ConsoleStore {
     /// The returned runner resolves the Host's live projection on every
     /// call: editing a Host replaces its projection (and session), and a
     /// runner captured by a long-lived Attach screen must follow it there
-    /// instead of staying bound to the ended session.
+    /// instead of staying bound to the ended session. Its pipeline keeps to one
+    /// core, for a Server Kind that has them, however many projections it sees.
     func terminalRunner(for hostID: Host.ID) -> TerminalSessionRunner {
-        { [weak self] request, handler in
+        let pin = TerminalCorePin()
+        return { [weak self] request, handler in
             guard let runner = await self?.liveTerminalRunner(for: hostID) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
-            try await runner(request, handler)
+            try await runner(request, handler.keeping(to: pin))
         }
     }
 
@@ -1104,7 +1112,7 @@ final class ConsoleStore {
         case TransportError.apiRejected(_, let message):
             "herdr rejected the close: \(message)"
         default:
-            TransportError.herdrCoreNotRunningMessage(for: error) ?? "Closing failed: \(error)"
+            TransportError.herdrCoreLinkMessage(for: error) ?? "Closing failed: \(error)"
         }
     }
 

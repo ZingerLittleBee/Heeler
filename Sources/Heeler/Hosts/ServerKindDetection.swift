@@ -107,8 +107,9 @@ struct ServerKindDetection: Equatable, Sendable {
         return foundKinds.isEmpty ? Self.offeredWithoutFindings : foundKinds
     }
 
-    /// What is on offer when a reached Host could not be read: the exec failed,
-    /// or the Host's platform has no probe yet.
+    /// What is on offer when a reached Host could not be read because the exec
+    /// failed. A platform with no probe has no core path either, so it offers
+    /// Herdr TUI alone (`HostOnboardingStore.offeredKinds`).
     static let offeredWithoutFindings: [ServerKind] = [.herdrTUI, .herdrCore]
 }
 

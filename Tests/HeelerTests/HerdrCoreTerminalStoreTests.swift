@@ -848,6 +848,117 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    // MARK: Another core at the same socket
+
+    @Test func aReattachOntoAnotherCoreEndsTheTerminalWithNothingAttached() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        let store = fixture.store()
+        let first = try await fixture.opened(store)
+        try await fixture.deliverOutput("the old program", on: first)
+        try await Self.until("the first output") { store.status == .live }
+
+        // Another core, wiped or under another state directory, hands out t1 again.
+        await fixture.scripted.setChannel(.core(.init(id: "c2", terminals: [Self.keptRecord()])))
+        await first.socket.deliverEndOfFile()
+
+        try await Self.until("the store sees the end") { store.status == .finished }
+        #expect(await fixture.scripted.attaches.count == 1)
+        await store.stop()
+        await fixture.finish()
+    }
+
+    /// A replacement store for the same screen keeps what the first attach joined.
+    @Test func aPipelinesLaterStoresStayOnTheCoreItFirstJoined() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord()])
+        let runner = fixture.runner
+        let first = AttachTerminalStore(target: .terminal("t1"), runTerminal: runner)
+        let attached = try await fixture.opened(first)
+        try await fixture.deliverOutput("x", on: attached)
+        try await Self.until("the first output") { first.status == .live }
+        await first.stop()
+
+        await fixture.scripted.setChannel(.core(.init(id: "c2", terminals: [Self.keptRecord()])))
+        await attached.socket.deliverEndOfFile()
+        try await Self.until("the new core's snapshot") { [console = fixture.console, host = fixture.host] in
+            console.hostStatuses[host.id] == .connected
+                && !console.hostsAwaitingSnapshot.contains(host.id)
+        }
+        await fixture.scripted.waitForMethod("events.subscribe", count: 2)
+
+        let replacement = AttachTerminalStore(target: .terminal("t1"), runTerminal: runner)
+        replacement.viewDidResize(cols: 80, rows: 24)
+        try await Self.until("the replacement sees the end") { replacement.status == .finished }
+        #expect(await fixture.scripted.attaches.count == 1)
+        await replacement.stop()
+        await fixture.finish()
+    }
+
+    /// Nobody holds it, so its address means whatever runs there now.
+    @Test func anEndedAgentTerminalReopenedAtItsAddressGetsAFreshStore() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let cache = fixture.console.agentTerminals
+        let owner = UUID()
+        let ended = cache.acquire(agent: agent, console: fixture.console, ownerID: owner)
+        ended.attach.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let first = try #require(await fixture.scripted.attaches.last)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        await fixture.scripted.setChannel(.core(.init(id: "c2", terminals: [Self.keptAgentRecord])))
+        await first.socket.deliverEndOfFile()
+        try await Self.until("the ended state") { ended.attach.terminalStatus == .finished }
+        cache.release(ended, ownerID: owner)
+        try await Self.until("the core's new Agent") { !fixture.console.agents.isEmpty }
+
+        let newAgent = try #require(fixture.console.agents.first)
+        let reopened = cache.acquire(agent: newAgent, console: fixture.console, ownerID: UUID())
+        #expect(reopened !== ended)
+        reopened.attach.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach", count: 2)
+        let second = try #require(await fixture.scripted.attaches.last)
+        #expect(second.socket !== first.socket)
+        await fixture.finish()
+    }
+
+    @Test func anEndedShellTerminalReopenedAtItsAddressGetsAFreshStore() async throws {
+        let fixture = try await Fixture(terminals: [Self.shellRecord])
+        let terminal = try #require(fixture.console.terminals.first)
+        let identity = ShellTerminalIdentity(
+            paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID)
+        let pool = fixture.console.terminalConnections
+        let owner = UUID()
+        let ended = try await pool.select(
+            hostID: fixture.host.id, identity: identity, ownerID: owner, generation: nil,
+            runTerminal: fixture.runner)
+        ended.store.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach")
+        let first = try #require(await fixture.scripted.attaches.last)
+        try await fixture.deliverOutput("x", on: first)
+
+        await fixture.scripted.setChannel(.core(.init(id: "c2", terminals: [Self.shellRecord])))
+        await first.socket.deliverEndOfFile()
+        try await Self.until("the ended state") { ended.store.terminalStatus == .finished }
+        pool.release(hostID: fixture.host.id, identity: identity, ownerID: owner)
+        await fixture.scripted.waitForMethod("events.subscribe", count: 2)
+        try await Self.until("the new core's snapshot") { [console = fixture.console, host = fixture.host] in
+            console.hostStatuses[host.id] == .connected
+                && !console.hostsAwaitingSnapshot.contains(host.id)
+        }
+
+        let returning = UUID()
+        #expect(pool.reclaim(hostID: fixture.host.id, identity: identity, ownerID: returning, generation: nil) == nil)
+        let reopened = try await pool.select(
+            hostID: fixture.host.id, identity: identity, ownerID: returning, generation: nil,
+            runTerminal: fixture.runner)
+        #expect(reopened !== ended)
+        reopened.store.viewDidResize(cols: 80, rows: 24)
+        await fixture.scripted.waitForMethod("terminal.attach", count: 2)
+        let second = try #require(await fixture.scripted.attaches.last)
+        #expect(second.socket !== first.socket)
+        await fixture.finish()
+    }
+
     // MARK: Modes
 
     /// What herdr-core 0.1.13 sends a fresh viewer (`ghostty-vt` `paint`): every

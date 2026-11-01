@@ -388,7 +388,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         case .missed(let snapshot):
             replaceInventory(with: snapshot)
             return
-        case .dropped, .unknown:
+        case .dropped:
             // These deltas can no longer be trusted: start over from a snapshot.
             Task { [session] in await session.resubscribe() }
             return
@@ -400,7 +400,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 readDocument()
             }
             return
-        case .heartbeat:
+        case .heartbeat, .unknown:
             return
         }
         rebuildRows()
@@ -912,7 +912,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private func endTerminals(
         _ addresses: [String], onEnded: (String) -> Void = { _ in }
     ) async throws {
-        let transport = try await session.withTransport { $0 }
+        let transport = try await inventoryTransport()
         var failure: (any Error)?
         for address in addresses {
             do {
@@ -932,7 +932,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     // MARK: Composer Stop (ADR 0035)
 
     func interruptTerminal(at address: String, timeout: Duration) async throws {
-        let transport = try await session.withTransport { $0 }
+        let transport = try await inventoryTransport()
         try await transport.interruptTerminal(address, timeout: timeout)
     }
 
@@ -942,7 +942,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// foreground while this was on its way is at least as new.
     func readForeground(at address: String) async throws {
         let changes = foregroundChanges
-        let record = try await session.withTransport { try await $0.terminalRecord(address) }
+        let record = try await inventoryTransport().terminalRecord(address)
         guard !hasEnded, foregroundChanges == changes, let foreground = record.foreground else {
             return
         }
@@ -1161,7 +1161,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let request = TerminalAttachRequest(
             target: .terminal(address), viewer: role, surfaceHasHistory: true,
             cols: record.columns, rows: record.rows)
-        return try await session.withTerminalTransport { transport, _ in
+        return try await session.withTerminalTransport { transport, _, _ in
             try await transport.attachTerminal(request)
         }
     }
@@ -1178,11 +1178,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             let address = request.target.identifier
             let program = try await self?.programToAttach(at: address, handler: handler)
             do {
-                try await session.withTerminalTransport { transport, generation in
+                try await session.withTerminalTransport { transport, generation, coreID in
+                    // Another core at this socket has its own Terminal at this
+                    // address. This one is as good as ended (ADR 0031).
+                    guard await handler.admitsCore(coreID) else { throw TerminalProgramEnd.finished }
                     await handler.transportDidBecomeReady(generation)
                     #if DEBUG
                     await handler.attachRequestDidStart()
                     #endif
+                    var request = request
+                    request.coreID = coreID
                     let terminal = try await transport.attachTerminal(request)
                     #if DEBUG
                     await handler.attachChannelDidOpen()
@@ -1210,7 +1215,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// The Terminal's record as the core knows it now. Waits for a link.
     func readTerminalRecord(at address: String) async throws -> HerdrCoreTerminalRecord {
-        try await session.withTransport { try await $0.terminalRecord(address) }
+        try await inventoryTransport().terminalRecord(address)
+    }
+
+    /// For anything sent to an address this inventory lists, which means another
+    /// Terminal on any other core.
+    private func inventoryTransport() async throws -> any HerdrCoreTransport {
+        try await session.withTransport(servingCore: memory.coreID(for: host.id)) { $0 }
     }
 
     /// Calls `onChange` with what the events say of `address`'s program until
@@ -1414,9 +1425,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                     "terminal": .string(paneID),
                     "labels": .object(Dictionary(uniqueKeysWithValues: labels)),
                 ])
-                _ = try await session.withTransport {
-                    try await $0.call("terminal.label", params: params, isMutation: true)
-                }
+                _ = try await self.inventoryTransport().call("terminal.label", params: params, isMutation: true)
             })
         return try await binder.check(record, coreCarries: leakedEnvironmentNames)
     }
