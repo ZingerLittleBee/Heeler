@@ -57,7 +57,7 @@ build: generate ## Build Debug for a physical device without installing
 .PHONY: build-ci-app
 build-ci-app: ## Compile the committed app and extensions, without tests or simulator boot
 	xcodebuild build -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
-		-destination 'generic/platform=iOS Simulator' -arch "$$(uname -m)" \
+		-destination 'generic/platform=iOS Simulator' ARCHS="$$(uname -m)" \
 		-derivedDataPath '$(CURDIR)/.ci/app-derived' \
 		-clonedSourcePackagesDirPath '$(CURDIR)/.ci/source-packages' \
 		COMPILATION_CACHE_ENABLE_CACHING=YES \

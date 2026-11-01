@@ -75,6 +75,8 @@ if not command.startswith("xcodebuild build ") or re.search(
     raise SystemExit("Daily build entrypoint must compile the committed app without native tests")
 if "generic/platform=iOS Simulator" not in command:
     raise SystemExit("Daily builds must not need a booted Simulator destination")
+if re.search(r"(?:^|\s)-arch(?:\s|$)", command):
+    raise SystemExit("The generic destination conflicts with -arch; use the ARCHS build setting")
 
 require_line(reusable, "workflow_call:")
 require_line(reusable, "workflow_dispatch:")
