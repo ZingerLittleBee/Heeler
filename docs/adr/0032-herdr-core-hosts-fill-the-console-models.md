@@ -205,10 +205,13 @@ with test clients, not the app.
   Agent therefore reads the program out of PowerShell's `-Command` argument
   (#588). Under Heeler's form the Agent's exit finishes the Terminal with the
   program's code, so its Pane closes as on Unix. Under the desktop's `-NoExit`
-  form the same exit changes nothing the core reports, so such a Terminal keeps
-  reading as that Agent until its shell exits, and "a shell in the foreground
-  ends the Agent" never fires. Only a read of PowerShell's children could tell;
-  until #588 or #590 adds one, that staleness stands.
+  form the same exit leaves the foreground's pid, name and arguments unchanged
+  and sends no new foreground event, so recognition from the foreground keeps
+  reading such a Terminal as that Agent until its shell exits, and "a shell in
+  the foreground ends the Agent" never fires. A read of PowerShell's children
+  showed the exit, and the attach stream later carried PowerShell's prompt; the
+  screen and the other event types were not compared as signals. Until #588 or
+  #590 adds a check, that staleness stands.
 - Recognizing an Agent works on the foreground's arguments, not the launch
   arguments, and needs a table from reported `app` names (`claude-code`,
   `codex`, `opencode`, `pi`, `omp`, `grok-build`) to Heeler's agent kinds.

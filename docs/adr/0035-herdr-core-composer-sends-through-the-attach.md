@@ -188,15 +188,15 @@ confirm or refine these points with test clients, not the app.
   so Enter would reach PowerShell's prompt and run the draft as a command. The
   foreground cannot show that a PowerShell took over, so "when a shell holds
   the foreground" never fires there. #589 therefore offers Send only under
-  Heeler's form until it can read PowerShell's children before submitting. This
-  narrows that ticket's Ctrl+C on the `-NoExit` wrapper, and it needs the
-  owner's decision if that wrapper must have Send.
+  Heeler's form until it has another check before submitting, such as a read of
+  PowerShell's children. This narrows that ticket's Ctrl+C on the `-NoExit`
+  wrapper, and it needs the owner's decision if that wrapper must have Send.
 - At PowerShell 5.1's prompt the attach never showed bracketed paste turned on,
   so the mode gate refuses a paste there unless a dead Agent's flag stayed set,
   which was not tried on Windows. When a paste does reach the prompt, one 0x03
   drops it unrun ([observation](../agents/herdr-compatibility.md)).
-- Through the Windows console an attach delivers input at about 80 KB/s, so a
-  very long draft can still be arriving when Enter is queued behind it. Valid
+- On Windows an attach delivered input to a raw-mode program at about 80 KB/s,
+  so a very long draft can still be arriving when Enter is queued behind it. Valid
   UTF-8, the paste envelope, 0x03 and `CSI 13 u` reached a raw-mode program
   unchanged, but 0x00 did not arrive and a lone byte of 0x80 or above became
   U+FFFD. None of this has crossed SSH exec.

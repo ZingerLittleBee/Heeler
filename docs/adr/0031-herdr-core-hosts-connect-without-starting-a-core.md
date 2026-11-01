@@ -200,11 +200,12 @@ confirm or refine these points with test clients, not the app.
   probe (#587) therefore cannot read the file as Unix does, and must name
   `powershell.exe`, since an exec on a default server runs under `cmd.exe`.
 - Over Windows' `connect`, framing, credit, a several-MiB client frame and a
-  backlog past 4 MiB all held on a local run, with the same results as the
-  pipe. Three things remain unverified and block calling #587's link proven:
-  the stream across Windows OpenSSH's exec
-  channel, whether the pipe admits an administrator's elevated SSH token, and
-  the probe's reads from an SSH exec.
+  backlog past 4 MiB all held on a local run, with the same outcomes as the
+  pipe. Request lengths covered every low byte value; reply lengths did not,
+  and the ones missing include 0x1A. Three things remain unverified and block
+  calling #587's link proven: the stream across Windows OpenSSH's exec channel,
+  whether the pipe admits an administrator's elevated SSH token, and the
+  probe's reads from an SSH exec.
 - The state directory follows `XDG_STATE_HOME`. An override set only in an
   interactive shell's rc file is invisible to the probe, and a core started
   under it has another `core.id` behind the same socket path.
