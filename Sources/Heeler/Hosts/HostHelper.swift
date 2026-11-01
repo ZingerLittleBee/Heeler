@@ -5,7 +5,7 @@ enum HostHelperCompatibility {
     /// `plugin/helper/version.json` when this app was built. The shared
     /// `plugin/test-vectors/host-helper-version-v1.json` pins both sides, so a
     /// Helper release must update this constant too.
-    static let bundled = PluginVersion(0, 5, 0)
+    static let bundled = PluginVersion(0, 5, 1)
     /// The first Helper that sends Agent Notifications.
     static let firstWithNotifications = PluginVersion(0, 4, 0)
     /// The first Helper that drives a Live Activity through the Push Relay.
