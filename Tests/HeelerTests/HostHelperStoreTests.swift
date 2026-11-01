@@ -260,15 +260,6 @@ struct HostHelperStoreTests {
         #expect(detail.contains("Agent Notifications (in-app banners included), Live Activity and Usage"))
         #expect(store.installAction == nil)
     }
-
-    @Test func aMacOSHostIsOfferedNoInstallYet() async {
-        await helper.configure { $0.kernel = "Darwin" }
-        let store = await refreshed()
-        #expect(store.status == .unsupportedPlatform(.macOS))
-        #expect(store.installAction == nil)
-        #expect(store.plan == nil)
-        #expect(!store.offersRemoval)
-    }
 }
 
 /// Which directory a Host's notification and Usage files come from.

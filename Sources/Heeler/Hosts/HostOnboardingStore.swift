@@ -318,7 +318,10 @@ final class HostOnboardingStore {
                 return
             }
             // The Helper does not need a core, so it reads whether one runs or not.
-            await hostHelper?.refresh(over: transport)
+            // Beside the core's checks, as a Mac's Helper takes over ten seconds
+            // to read and the checks should not wait for it.
+            let helper = hostHelper
+            async let helperRead: Void? = helper?.refresh(over: transport)
             do {
                 // Straight after a Start nothing is on its way back: the core
                 // said it runs, so a refused channel is SSH's refusal.
@@ -342,6 +345,7 @@ final class HostOnboardingStore {
                     report = failureReport(error)
                 }
             }
+            _ = await helperRead
             try? await transport.close()
         } catch {
             guard !Task.isCancelled else { return }
