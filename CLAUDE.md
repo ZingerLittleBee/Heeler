@@ -10,6 +10,9 @@ Native iOS companion app for [herdr](https://herdr.dev), an agent console over S
   area-specific ADR linked by the source map.
 - **Tests or builds:** use `make help` and [the testing guide](docs/agents/testing.md).
   For Simulator UI work, read [the UI runbook](docs/agents/simulator-ui.md).
+- **App Store or README images:** follow
+  [the store screenshot runbook](docs/agents/store-screenshots.md). Agent content
+  comes from real Agents through `scripts/store-shots.py`, not demo data.
 - **Review or regrade:** capture the current acceptance amendments, candidate,
   and evidence in [the handoff template](docs/agents/review-handoff.md).
 - **RPC, subscriptions, launch/input, or scrolling compatibility:** consult
