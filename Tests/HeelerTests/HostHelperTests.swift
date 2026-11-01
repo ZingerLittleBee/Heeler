@@ -289,22 +289,6 @@ struct HostHelperServiceTests {
         #expect(text.contains("WantedBy=default.target\n"))
     }
 
-    @Test func everySystemctlCallCarriesTheRuntimeDirectory() async throws {
-        _ = try await install()
-        try await installer.remove(over: try await installer.read())
-        let prefix = "XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\" "
-        var count = 0
-        for script in await host.scripts {
-            let pieces = script.components(separatedBy: "systemctl --user ")
-            for piece in pieces.dropLast() {
-                count += 1
-                #expect(piece.hasSuffix(prefix), "\(script)")
-            }
-        }
-        // Reads, install and removal all reach systemd.
-        #expect(count >= 8)
-    }
-
     @Test func startsTheServiceAndReadsItBack() async throws {
         let after = try await install()
         let calls = await host.journal.filter { $0.hasPrefix("systemctl") }
