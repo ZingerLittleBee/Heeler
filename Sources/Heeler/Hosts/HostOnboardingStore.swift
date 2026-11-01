@@ -35,6 +35,8 @@ struct HostOnboardingDependencies: Sendable {
     var connector: any TransportConnector = SSHTransportConnector()
     var knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared
     var credentials = HostCredentialsProvider()
+    /// An action on a Host's Helper has run, so what follows it should look again.
+    var hostHelperDidChange: @MainActor @Sendable () -> Void = {}
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -114,6 +116,7 @@ final class HostOnboardingStore {
     @ObservationIgnored private var checks: Task<Void, Never>?
     /// Identifies the run whose trust prompts may still be shown.
     @ObservationIgnored private var currentRun = UUID()
+    @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
 
     init(
         host: Host,
@@ -123,7 +126,8 @@ final class HostOnboardingStore {
         overlays: OverlayNetworkRuntime = .shared,
         fingerprintTimeout: Duration = .seconds(60),
         coreHolderRestart: HerdrCoreHolderRestartPolicy = .default,
-        sleep: @escaping HerdrCoreHostSession.Sleep = { try await Task.sleep(for: $0) }
+        sleep: @escaping HerdrCoreHostSession.Sleep = { try await Task.sleep(for: $0) },
+        hostHelperDidChange: @escaping @MainActor () -> Void = {}
     ) {
         self.coreHolderRestart = coreHolderRestart
         self.sleep = sleep
@@ -133,6 +137,7 @@ final class HostOnboardingStore {
         self.credentials = credentials
         self.overlays = overlays
         self.fingerprintTimeout = fingerprintTimeout
+        self.hostHelperDidChange = hostHelperDidChange
     }
 
     /// Runs the preflight once: connect + ping, rendered into `report`.
@@ -353,13 +358,15 @@ final class HostOnboardingStore {
         let knownHosts = knownHosts
         let credentials = credentials
         let overlays = overlays
-        return HostHelperStore(connect: {
+        let store = HostHelperStore(connect: {
             let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
             return try await connector.connectCore(
                 settings: SSHTransportSettings(
                     host: host, credentials: try credentials.credentials(for: host),
                     hostKeyPolicy: policy, overlays: overlays))
         })
+        store.onChanged = hostHelperDidChange
+        return store
     }
 
     /// One exec over a connection of its own, which starts no server. A Host

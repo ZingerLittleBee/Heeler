@@ -420,6 +420,28 @@ struct HostHelperNotificationsTests {
         #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .closed)
     }
 
+    @Test func removingTheHelperFromHostDetailClosesBothGatesWhileTheConsoleStaysConnected() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        #expect(rig.preferences.confirmedTriggers(for: host.id) != nil)
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .open)
+        let helperHost = ScriptedCoreHost(helper: rig.helper, channel: .refused)
+        let bundle = HostHelperFixture.bundle()
+        let store = HostHelperStore(connect: { helperHost.transport() }, bundle: { bundle })
+        let preferences = rig.preferences
+        store.onChanged = { Task { await preferences.refresh() } }
+        await store.refresh()
+
+        await store.remove()
+
+        try await waitUntil("the gates to close") {
+            preferences.confirmedTriggers(for: host.id) == nil
+                && preferences.liveActivityGate(forCoreHost: host.id) == .closed
+        }
+        #expect(rig.console.hostStatuses[host.id] == .connected)
+    }
+
     // MARK: Live Activity
 
     /// A coordinator wired to the rig's stores as the app wires them, already started.

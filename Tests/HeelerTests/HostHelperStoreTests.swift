@@ -193,6 +193,33 @@ struct HostHelperStoreTests {
         #expect(await helper.writes.isEmpty)
     }
 
+    @Test func eachActionSaysItMayHaveChangedTheHelperOnceItHasReadTheHostBack() async throws {
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let bundle = bundle
+        let store = HostHelperStore(connect: { core.transport() }, bundle: { bundle })
+        var heard: [HostHelperStatus?] = []
+        store.onChanged = { heard.append(store.status) }
+        await store.refresh()
+        #expect(heard.isEmpty)
+
+        await store.install()
+        #expect(heard == [.installed(version: HostHelperCompatibility.bundled, updateAvailable: false)])
+
+        await store.remove()
+        #expect(heard.last == .notInstalled)
+        #expect(heard.count == 2)
+    }
+
+    @Test func anActionThatNeverReachedTheHostSaysNothingChanged() async throws {
+        let bundle = bundle
+        let store = HostHelperStore(connect: { throw TransportError.timedOut }, bundle: { bundle })
+        var heard = 0
+        store.onChanged = { heard += 1 }
+        await store.remove()
+        #expect(store.failure != nil)
+        #expect(heard == 0)
+    }
+
     @Test func aNativeWindowsHostNamesWhatComesWithTheHelper() async throws {
         await helper.configure { $0.platform = .nativeWindows }
         let store = await refreshed()
@@ -533,6 +560,23 @@ struct HostHelperOnboardingTests {
         #expect(helper.reading == .checking)
         #expect(helper.installAction == nil)
         await running.value
+    }
+
+    @Test func anActionFromHostDetailReachesWhatFollowsTheHelper() async throws {
+        let core = ScriptedCoreHost(helper: ScriptedHelperHost(), channel: .refused)
+        var heard = 0
+        let store = HostOnboardingStore(
+            host: Host(address: "box.example", username: "dev", serverKind: .herdrCore),
+            connector: reaching(core),
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: credentials,
+            hostHelperDidChange: { heard += 1 })
+        await store.runChecks()
+        #expect(heard == 0)
+
+        await store.hostHelper?.install()
+
+        #expect(heard == 1)
     }
 
     @Test func aHerdrTUIHostHasNoHelper() async throws {

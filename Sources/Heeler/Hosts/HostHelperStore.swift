@@ -28,6 +28,10 @@ final class HostHelperStore {
     /// Why the last action failed, in words the user can act on.
     private(set) var failure: String?
 
+    /// An action has run and the Host has been read back: what else follows the
+    /// Helper should look again.
+    @ObservationIgnored var onChanged: (@MainActor () -> Void)?
+
     @ObservationIgnored private let connect: @Sendable () async throws -> any HerdrCoreTransport
     @ObservationIgnored private let bundle: @Sendable () throws -> HostHelperBundle
     @ObservationIgnored private let nonce: @Sendable () -> String
@@ -182,6 +186,7 @@ final class HostHelperStore {
         }
         await read(over: transport)
         try? await transport.close()
+        onChanged?()
     }
 
     private func installer(_ transport: any HerdrCoreTransport) -> HostHelperInstaller {

@@ -91,7 +91,8 @@ struct HostOnboardingView: View {
             host: host,
             connector: dependencies.connector,
             knownHosts: dependencies.knownHosts,
-            credentials: dependencies.credentials)
+            credentials: dependencies.credentials,
+            hostHelperDidChange: dependencies.hostHelperDidChange)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which
