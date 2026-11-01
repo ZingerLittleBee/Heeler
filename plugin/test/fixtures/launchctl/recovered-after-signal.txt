@@ -1,0 +1,70 @@
+user/501/dev.heeler.spike576 = {
+	active count = 1
+	path = /Users/<user>/spike576/p.plist
+	type = LaunchAgent
+	state = running
+
+	program = /opt/homebrew/bin/node
+	arguments = {
+		/opt/homebrew/bin/node
+		/Users/<user>/spike576/recover.js
+	}
+
+	working directory = /Users/<user>/spike576
+
+	stdout path = /Users/<user>/spike576/agent.out
+	stderr path = /Users/<user>/spike576/agent.err
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		OSLogRateLimit => 64
+		XPC_SERVICE_NAME => dev.heeler.spike576
+	}
+
+	domain = user/501
+	asid = 100013
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 7
+	successive crashes = 6
+	pid = 5383
+	immediate reason = inefficient
+	forks = 0
+	execs = 1
+	initialized = 1
+	trampolined = 1
+	started suspended = 0
+	proxy started suspended = 0
+	checked allocations = 0 (queried = 1)
+	checked allocations reason = no host
+	checked allocations flags = 0x0
+	last terminating signal = Abort trap: 6
+
+	resource coalition = {
+		ID = 911
+		type = resource
+		state = active
+		active count = 1
+		name = dev.heeler.spike576
+	}
+
+	jetsam coalition = {
+		ID = 912
+		type = jetsam
+		state = active
+		active count = 1
+		name = dev.heeler.spike576
+	}
+
+	spawn type = daemon (3)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+
+	properties = keepalive | runatload | inferred program | system service | tle system
+}

@@ -15,4 +15,11 @@ are written up in `docs/agents/herdr-compatibility.md`.
 | `failed-node-missing.txt` | 0 | Node.js path moved away, desktop logged in |
 | `failed-node-missing-logged-out.txt` | 0 | The same with nobody logged in; launchd has no monitor for the path |
 | `failed-exit-1.txt` | 0 | Node.js present, script missing, exits 1 about every ten seconds |
+| `failed-signal-abort.txt` | 0 | Dies on SIGABRT at start, between runs: a signal and `successive crashes`, no `last exit code` |
+| `failed-signal-running.txt` | 0 | The same loop read during a run: `state = running` with a pid, while still failing |
+| `recovered-after-signal.txt` | 0 | Running and staying up after that loop: `successive crashes` and the signal remain |
 | `not-loaded.txt` | 113 | Stderr for a label the domain does not hold |
+
+No single read separates `failed-signal-running.txt` from
+`recovered-after-signal.txt`: their only differences are the counters and pid.
+`state = xpcproxy` also appeared for a moment before a run, and has no fixture.
