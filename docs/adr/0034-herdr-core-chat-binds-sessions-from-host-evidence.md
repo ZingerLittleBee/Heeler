@@ -79,6 +79,18 @@ never show or send into a conversation it has guessed.
   program in the Terminal does not count. On a core a Grok Build id may be the UUIDv4
   Heeler started it with, where Herdr TUI's reference takes only the UUIDv7 Grok
   Build creates itself.
+- An OpenCode's argv keeps the id it started with when `/new` and a prompt, or a
+  pick in its list, move the screen, so a check of its process still binds the old
+  conversation. Its terminal title does change, so a Send compares it as ADR 0025
+  does, after the check, and reads it from the core's title events. It refuses on
+  another `OC | ` title. It also refuses on `OpenCode` over a conversation with a
+  title of its own, which ADR 0025 lets through because herdr reports the
+  conversation that title may stand for, and a core reports none. The screen read
+  before each Send still holds OpenCode's home screen.
+- ADR 0025's start-screen watch does not run on a core. A clock paces it and
+  herdr's report ends it, and a core has neither, so Chat keeps showing the
+  conversation OpenCode started with until the program is started again, and only a
+  Send says the screen left.
 - Some variables break session records or Program Status when the core leaks
   them (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY`,
   `CLAUDECODE`, `HERDR_*`, `TMUX`, `STY`, `ZELLIJ`, `CURSOR_TRACE_ID`,
@@ -130,7 +142,8 @@ never show or send into a conversation it has guessed.
   the owner signs in to passes, and one that fails stays off with its observation
   saying why.
 
-This amends ADR 0024, and ADR 0025's source of the OpenCode session id, for
+This amends ADR 0024, and ADR 0025's source of the OpenCode session id, its
+start-screen watch and what its confirmation makes of the title `OpenCode`, for
 herdr-core Hosts only.
 
 ## Considered options
@@ -148,8 +161,14 @@ herdr-core Hosts only.
 - A confirmed binding for Pi without the extension or OpenCode without the
   plugin cannot notice an in-process `/new`. Send still reaches whatever
   session the program shows, but Chat keeps showing the old one until a guard
-  catches it. The same holds for an OpenCode bound from the id it was started with:
-  its argv keeps that id after `/new`.
+  catches it.
+- An OpenCode bound from the id it was started with has no guard to move Chat after
+  `/new` or a pick, only the title check that stops a Send. That check cannot help
+  with `terminal.title` off, which writes no title, or while Chat's conversation has
+  no title, since a new untitled one reads `OpenCode` as well, so those Sends reach
+  whatever the screen shows, unless that is the home screen. It can also refuse wrongly
+  and briefly: OpenCode writes `OpenCode` until a session it just opened has loaded, and a
+  conversation titled since Chat's last read looks like another until the next.
 - `/new` moves Codex's screen before anything on the Host says so. Until a prompt
   there it holds only the old thread's rollout and lock, the same as before `/new`,
   so Chat keeps showing the old conversation and a Send reaches the new one. A check
