@@ -1246,8 +1246,8 @@ final class AgentChatStore {
 
     // MARK: Start screen
 
-    /// The start-screen watch (ADR 0025), for a program that leaves its
-    /// conversation without herdr reporting it
+    /// The start-screen watch (ADR 0025), on Herdr TUI, for a program that leaves
+    /// its conversation without herdr reporting it
     /// (`ChatProgram.leavesSessionWithoutReport`): after OpenCode's `/new`
     /// herdr keeps reporting the conversation OpenCode left for its home
     /// screen. Each record read while Chat shows the idle Agent reads the
@@ -1316,7 +1316,8 @@ final class AgentChatStore {
 
     /// The check before each send, for a program that can leave its
     /// conversation without herdr reporting it
-    /// (`ChatProgram.confirmsSessionBeforeSend`): reads the Agent's record
+    /// (`ChatProgram.confirmsSessionBeforeSend`), and on herdr-core for any
+    /// program (`confirmBindingBeforeSend`): reads the Agent's record
     /// once and adopts it, so Chat follows a session herdr newly reports,
     /// then compares the terminal title with the conversation's. Returns
     /// why the message would land outside the conversation Chat shows, or
@@ -1344,10 +1345,12 @@ final class AgentChatStore {
         }
         let verdict = OpenCodeTerminalTitle.verdict(
             terminalTitle: fresh.terminalTitleStripped, sessionTitle: conversation.transcript.title)
-        if case .differs(let title) = verdict {
-            return "\(name)'s terminal shows another conversation (\(title)). Open this one in the terminal, then send again."
-        }
+        if case .differs(let title) = verdict { return otherConversationReason(title) }
         return nil
+    }
+
+    private func otherConversationReason(_ title: String) -> String {
+        "\(program.chatName)'s terminal shows another conversation (\(title)). Open this one in the terminal, then send again."
     }
 
     /// Whether each send first checks the conversation. No server reports a move
@@ -1356,7 +1359,9 @@ final class AgentChatStore {
         source.sessionEvidence != nil || program.confirmsSessionBeforeSend
     }
 
-    /// On herdr-core: one more check of what the Host shows about the process.
+    /// On herdr-core: one more check of what the Host shows about the process,
+    /// then, for a program that can leave its conversation with nothing there
+    /// saying so, what its terminal's title says.
     private func confirmBindingBeforeSend(
         _ sessionEvidence: @Sendable () async throws -> ChatSessionEvidence
     ) async -> String? {
@@ -1375,7 +1380,24 @@ final class AgentChatStore {
         if followed != shown {
             return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."
         }
-        return nil
+        return program.confirmsSessionBeforeSend ? coreTitleConcern : nil
+    }
+
+    /// No herdr reports OpenCode's moves on a core and its argv keeps the id it
+    /// started with, so the check above still binds that conversation and the title
+    /// is what is left to tell (ADR 0034). It reads the Console's latest record, which
+    /// the core's title events keep, and is stricter than Herdr TUI's about
+    /// `OpenCode`, where herdr reports the conversation that title may stand for.
+    private var coreTitleConcern: String? {
+        let title = agent.terminalTitle.map(TerminalTitleGlyphs.strip)
+        let sessionTitle = conversation.transcript.title
+        if case .differs(let shown) = OpenCodeTerminalTitle.verdict(terminalTitle: title, sessionTitle: sessionTitle) {
+            return otherConversationReason(shown)
+        }
+        guard title == OpenCodeTerminalTitle.untitled,
+            OpenCodeTerminalTitle.expected(sessionTitle: sessionTitle) != OpenCodeTerminalTitle.untitled
+        else { return nil }
+        return "\(program.chatName)'s terminal isn't showing this conversation. Open it in the terminal, then send again."
     }
 
     /// Why a send that couldn't be checked sent nothing: the Agent's record
@@ -2082,7 +2104,8 @@ extension ChatProgram {
     /// idles (`AgentChatStore.checkStartScreen`). OpenCode 2.0.32's `/new`
     /// opens its home screen, where herdr's integration reports nothing and
     /// herdr keeps the conversation it left (ADR 0025). Opting in needs the
-    /// program's screen reader and terminal title in the watch.
+    /// program's screen reader and terminal title in the watch. It runs on
+    /// Herdr TUI only: a core has no record to re-read (ADR 0034).
     var leavesSessionWithoutReport: Bool {
         switch self {
         case .claude, .codex, .pi, .omp, .grok: false

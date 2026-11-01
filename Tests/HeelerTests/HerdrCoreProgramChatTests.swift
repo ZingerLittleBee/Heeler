@@ -91,12 +91,23 @@ struct HerdrCoreProgramChatTests {
         ]))) ?? Data()
     }
 
+    private static func titleEvent(sequence: Int, title: String) -> Data {
+        (try? JSONEncoder().encode(JSONValue.object([
+            "jsonrpc": .string("2.0"), "method": .string("event"),
+            "params": .object([
+                "seq": .number(Double(sequence)), "type": .string("title"), "terminal": .string("t1"),
+                "data": .object(["title": .string(title)]),
+            ]),
+        ]))) ?? Data()
+    }
+
     @MainActor
     private final class Rig {
         let files = VirtualHostFiles(home: HerdrCoreProgramChatTests.home)
         let transport: ScriptedCoreTransport
         let store: ConsoleStore
         let host: Host
+        private var titleSequence = 100
 
         init(host: Host, record: JSONValue, openCodeStore: OpenCodeStoreStub? = nil) {
             self.host = host
@@ -133,6 +144,14 @@ struct HerdrCoreProgramChatTests {
         }
 
         var agent: ConsoleAgent? { store.agents.first }
+
+        /// What the program writes to its terminal's title, as far as the Console's
+        /// record of the Agent. An empty one reads as none.
+        func setTitle(_ title: String) async throws {
+            titleSequence += 1
+            await transport.deliver(HerdrCoreProgramChatTests.titleEvent(sequence: titleSequence, title: title))
+            try await waitUntil("the title") { self.agent?.agent.terminalTitle == (title.isEmpty ? nil : title) }
+        }
 
         func chat(_ program: ChatProgram) throws -> AgentChatStore {
             let agent = try #require(agent)
@@ -444,6 +463,125 @@ struct HerdrCoreProgramChatTests {
         let snapshot = await engine.open(directories: [], context: ChatProjectionContext(activity: .idle))
 
         #expect(snapshot.phase == .unavailable(.sessionStore(.opencode, .sessionMissing(otherStores: []))))
+    }
+
+    // MARK: OpenCode's title before a Send
+
+    private static let pongTitle = "OC | Pong"
+
+    private func openCodeRig(pongStartedBy store: OpenCodeStoreStub) async throws -> (Rig, AgentChatStore) {
+        let fixture = try OpenCodeStoreFixture.named("pong")
+        let session = try #require(fixture.sessionID).rawValue
+        let rig = openCodeRig(store: store, session: session)
+        try await rig.start([Self.process(name: "opencode", environment: [:], argv: ["opencode", "-s", session])])
+        return (rig, try rig.chat(.opencode))
+    }
+
+    /// Following `pong`, whose conversation is titled `Pong`, under the title OpenCode
+    /// writes for it.
+    private func openCodeFollowingPong() async throws -> (Rig, AgentChatStore) {
+        let store = OpenCodeStoreStub(harness: try OpenCodeSQLiteHarness(try OpenCodeStoreFixture.named("pong")))
+        await store.takeFirstPrompt()
+        let (rig, chat) = try await openCodeRig(pongStartedBy: store)
+        chat.show()
+        try await rig.waitUntil("the conversation") { chat.conversation.transcript.title == "Pong" }
+        try await rig.setTitle(Self.pongTitle)
+        return (rig, chat)
+    }
+
+    /// `/new` and a prompt, or a pick in OpenCode's list. Its argv keeps the id it
+    /// started with, so the check of its process still binds the same conversation,
+    /// and only the title says the screen left (ADR 0034).
+    @Test func aSendIsRefusedOnceTheTitleNamesAnotherConversation() async throws {
+        let (rig, chat) = try await openCodeFollowingPong()
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+
+        try await rig.setTitle("OC | Another conversation")
+
+        #expect(
+            await chat.confirmSessionBeforeSend()
+                == "OpenCode's terminal shows another conversation (Another conversation). Open this one in the terminal, then send again."
+        )
+        #expect(chat.conversation.transcript.title == "Pong")
+
+        // Back on it in the terminal, Send goes again.
+        try await rig.setTitle(Self.pongTitle)
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// OpenCode writes `OpenCode` on its home screen and for a conversation it has
+    /// not titled, and this one has a title. So the same `/new` before the new
+    /// conversation has its title, and a title model that never gives one, send
+    /// nothing either.
+    @Test func aSendIsRefusedWhenATitledConversationReadsAsUntitled() async throws {
+        let (rig, chat) = try await openCodeFollowingPong()
+
+        try await rig.setTitle(OpenCodeTerminalTitle.untitled)
+
+        #expect(
+            await chat.confirmSessionBeforeSend()
+                == "OpenCode's terminal isn't showing this conversation. Open it in the terminal, then send again.")
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// OpenCode's `terminal.title` setting off writes nothing, which says nothing.
+    @Test func aSendGoesWhenTheTerminalHasNoTitle() async throws {
+        let (rig, chat) = try await openCodeFollowingPong()
+
+        try await rig.setTitle("")
+
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// With no row yet there is no title to compare, so only another conversation's
+    /// own title refuses.
+    @Test func aConversationStillToStartHasOnlyAnotherTitleToRefuse() async throws {
+        let store = OpenCodeStoreStub(harness: try OpenCodeSQLiteHarness(try OpenCodeStoreFixture.named("pong")))
+        let (rig, chat) = try await openCodeRig(pongStartedBy: store)
+        chat.show()
+        try await rig.waitUntil("a conversation to start") {
+            chat.conversation.phase == .unavailable(.awaitingFirstMessage(.opencode))
+        }
+
+        try await rig.setTitle(OpenCodeTerminalTitle.untitled)
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+
+        try await rig.setTitle("OC | Picked in the terminal")
+        #expect(await chat.confirmSessionBeforeSend()?.contains("Picked in the terminal") == true)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// `/new` alone, over a conversation with nothing to compare: the title says
+    /// nothing and the check of the process passes, and the screen read holds it.
+    @Test func theHomeScreenHoldsASendTheChecksLetThrough() async throws {
+        let store = OpenCodeStoreStub(harness: try OpenCodeSQLiteHarness(try OpenCodeStoreFixture.named("pong")))
+        let (rig, chat) = try await openCodeRig(pongStartedBy: store)
+        chat.show()
+        try await rig.waitUntil("a conversation to start") {
+            chat.conversation.phase == .unavailable(.awaitingFirstMessage(.opencode))
+        }
+        try await rig.setTitle(OpenCodeTerminalTitle.untitled)
+        let home = try ScreenFixture.screen("opencode-18-home-after-new-180")
+        let policy = ComposerDeliveryPolicy.chat(
+            rules: ChatSendRules(
+                program: .opencode,
+                commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .opencode)),
+            activity: { .idle }, readScreen: { home }, confirmSession: { await chat.confirmSessionBeforeSend() })
+        let preflight = try #require(policy.preflight)
+
+        #expect(
+            await preflight("hello")
+                == .inputNotReady(
+                    "OpenCode is on its home screen, where a message starts a new conversation. Open this conversation in the terminal first."
+                ))
+        chat.end()
+        rig.store.setHosts([])
     }
 
     // MARK: What it says
