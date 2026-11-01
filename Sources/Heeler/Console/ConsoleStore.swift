@@ -1562,8 +1562,12 @@ final class ConsoleStore {
 
     private func rebuildAgentOrder() {
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
-        let sorts = Dictionary(uniqueKeysWithValues: projections.keys.compactMap { id in
-            sidebarSnapshots.snapshot(for: id).map { (id, $0.agentPanelSort) }
+        // A Host with no plugin has no snapshot to say: it keeps status priority,
+        // and within a status the order its projection lists, the desktop app's.
+        let sorts = Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
+            projection.host.capabilities.syncLayoutFromPlugin
+                ? sidebarSnapshots.snapshot(for: id).map { (id, $0.agentPanelSort) }
+                : (id, AgentPanelSort.priority)
         })
         let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)

@@ -287,8 +287,8 @@ extension AgentStatus {
 }
 
 extension [ConsoleAgent] {
-    /// Pins always lead by recency. Snapshot policy controls each Host's
-    /// remaining Agents; absent snapshots retain the legacy priority order.
+    /// Pins always lead by recency. `sortByHost` controls each Host's remaining
+    /// Agents; a Host absent from it retains the legacy priority order.
     /// Space order uses stable Host blocks even in the flat presentation.
     func consoleSorted(
         sortByHost: [Host.ID: AgentPanelSort] = [:],

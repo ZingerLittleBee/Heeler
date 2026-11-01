@@ -73,8 +73,11 @@ struct HerdrCoreAgentsTests {
             data: .object(["status": status, "records": .object([:]), "reported": .bool(status != .null)]))
     }
 
-    private func started(_ terminals: [JSONValue]) async throws -> (ConsoleStore, ScriptedCoreTransport) {
+    private func started(
+        _ terminals: [JSONValue], document: JSONValue? = nil
+    ) async throws -> (ConsoleStore, ScriptedCoreTransport) {
         let transport = ScriptedCoreTransport(subscribeResults: [Self.subscribeResult(terminals)])
+        if let document { await transport.setDocument(document, version: 3) }
         let store = ConsoleStore(
             makeSession: { _, subscriptions in
                 EventsSession(
@@ -182,6 +185,38 @@ struct HerdrCoreAgentsTests {
         #expect(Set(byWorkspace.map(\.title)) == ["app", "docs"])
         #expect(byWorkspace.first { $0.title == "app" }?.agents.map(\.agent.paneID) == ["t1"])
         #expect(byWorkspace.first { $0.title == "docs" }?.agents.map(\.agent.paneID) == ["t2"])
+    }
+
+    /// Zeta before Alpha, and Zeta's Tab holding z2 before z1.
+    private static let zetaThenAlpha = CoreDesktopJSON.document([
+        CoreDesktopJSON.space(
+            "s2", name: "Zeta", tabs: [CoreDesktopJSON.tab("tb2", name: "logs", terminals: ["z2", "z1"])]),
+        CoreDesktopJSON.space("s1", name: "Alpha", tabs: [CoreDesktopJSON.tab("tb1", name: "main")]),
+    ])
+
+    private static func inSpace(_ space: String, _ tab: String) -> [String: String] {
+        ["herdr.space": space, "herdr.tab": tab]
+    }
+
+    @Test func agentsFollowTheDesktopAppsOrderWithinEachStatus() async throws {
+        let (store, transport) = try await started(
+            [
+                Self.claude("a1", state: "idle", labels: Self.inSpace("s1", "tb1")),
+                Self.claude("z1", state: "idle", labels: Self.inSpace("s2", "tb2")),
+                Self.claude("z2", state: "idle", labels: Self.inSpace("s2", "tb2")),
+            ], document: Self.zetaThenAlpha)
+        defer { store.setHosts([]) }
+
+        #expect(store.agents.map(\.agent.paneID) == ["z2", "z1", "a1"])
+        #expect(list().workspaceSections(hosts: [host], console: store).map(\.title) == ["Zeta", "Alpha"])
+
+        await transport.deliver(
+            Self.statusEvent(sequence: 2, terminal: "a1", Self.report("blocked", app: "claude-code")))
+        try await waitUntil("the Blocked Agent") { agent(store, "a1")?.agent.status == .blocked }
+
+        // Who needs you still comes first, and their Workspace with them.
+        #expect(store.agents.map(\.agent.paneID) == ["a1", "z2", "z1"])
+        #expect(list().workspaceSections(hosts: [host], console: store).map(\.title) == ["Alpha", "Zeta"])
     }
 
     // MARK: Deltas
