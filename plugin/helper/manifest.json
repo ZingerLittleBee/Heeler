@@ -55,7 +55,7 @@
     },
     {
       "path": "notifications/notifier.js",
-      "sha256": "540e0705b2b0db5da4ea36e2d5292287e848698908645a5474d7b6798e41e091"
+      "sha256": "bf741f26f66fad553228bf877a3591146eb8c1439eb859a06168a6779f1acbbb"
     },
     {
       "path": "notifications/seen-marks.js",

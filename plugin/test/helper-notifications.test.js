@@ -550,6 +550,142 @@ suite("across connections", () => {
   });
 });
 
+suite("one device's send that failed", () => {
+  /** A relay that fails `token` while `failing.on`, and answers everyone else. */
+  async function relayFailing(token) {
+    const failing = { on: true };
+    relay = await startRelay((request) => (failing.on && request.body.token === token ? { status: 500, body: {} } : { status: 200, body: {} }));
+    writeConfig(relay.url);
+    return failing;
+  }
+
+  const failedOnce = () => waitFor(() => logs.some((line) => line.includes("could not notify")), "the failure", 15_000);
+
+  test("is tried at the next decision, for that device alone", async () => {
+    const failing = await relayFailing(TOKEN_B);
+    register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B));
+    const core = await connected([agent("t1")]);
+
+    status(core, "t1", "working");
+    status(core, "t1", "blocked");
+    await failedOnce();
+    assert.equal(sentTo(KEY_A, "t1").length, 1);
+    const tries = sentTo(KEY_B, "t1").length;
+
+    failing.on = false;
+    send(core, "foreground", "t1", CLAUDE);
+    await waitFor(() => sentTo(KEY_B, "t1").length > tries, "the retry");
+    await settled(core);
+
+    assert.equal(sentTo(KEY_A, "t1").length, 1);
+    assert.equal(sentTo(KEY_B, "t1").length, tries + 1);
+    assert.equal(open(sentTo(KEY_B, "t1").at(-1).envelope, KEY_B).status, "blocked");
+  });
+
+  test("of a Done is dropped once that device has seen the turn", async () => {
+    await relayFailing(TOKEN_B);
+    register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B));
+    const core = await connected([agent("t1")]);
+
+    status(core, "t1", "working");
+    finishTurn(core, "t1", 1);
+    await failedOnce();
+    const tries = sentTo(KEY_B, "t1").length;
+    writeMark(KEY_B, [{ terminal: "t1", turn: 1, word: "done" }]);
+    send(core, "foreground", "t1", CLAUDE);
+    await settled(core);
+
+    assert.equal(sentTo(KEY_A, "t1").length, 1);
+    assert.equal(sentTo(KEY_B, "t1").length, tries);
+  });
+
+  test("of a Done is tried again at the next decision", async () => {
+    const failing = await relayFailing(TOKEN_B);
+    register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B));
+    const core = await connected([agent("t1")]);
+
+    status(core, "t1", "working");
+    finishTurn(core, "t1", 1);
+    await failedOnce();
+    const tries = sentTo(KEY_B, "t1").length;
+
+    failing.on = false;
+    send(core, "foreground", "t1", CLAUDE);
+    await waitFor(() => sentTo(KEY_B, "t1").length > tries, "the retry");
+    await settled(core);
+
+    assert.equal(sentTo(KEY_A, "t1").length, 1);
+    assert.equal(open(sentTo(KEY_B, "t1").at(-1).envelope, KEY_B).status, "done");
+  });
+
+  test("goes when the Agent has moved on", async () => {
+    const failing = await relayFailing(TOKEN_B);
+    register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B));
+    const core = await connected([agent("t1")]);
+
+    status(core, "t1", "working");
+    status(core, "t1", "blocked");
+    await failedOnce();
+    const tries = sentTo(KEY_B, "t1").length;
+
+    failing.on = false;
+    status(core, "t1", "working");
+    await settled(core);
+    assert.equal(sentTo(KEY_B, "t1").length, tries);
+
+    status(core, "t1", "blocked");
+    await waitFor(() => sentTo(KEY_B, "t1").length === tries + 1, "the new Blocked");
+    assert.equal(sentTo(KEY_A, "t1").length, 2);
+  });
+
+  test("goes when the device has left", async () => {
+    const failing = await relayFailing(TOKEN_B);
+    register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B));
+    const core = await connected([agent("t1")]);
+
+    status(core, "t1", "working");
+    status(core, "t1", "blocked");
+    await failedOnce();
+    const tries = sentTo(KEY_B, "t1").length;
+
+    failing.on = false;
+    register(entry(KEY_A, TOKEN_A));
+    send(core, "foreground", "t1", CLAUDE);
+    await settled(core);
+
+    assert.equal(sentTo(KEY_A, "t1").length, 1);
+    assert.equal(sentTo(KEY_B, "t1").length, tries);
+  });
+
+  test("outlives the Helper process", async () => {
+    const failing = await relayFailing(TOKEN_B);
+    register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B));
+    const core = await connected([agent("t1")]);
+    status(core, "t1", "working");
+    status(core, "t1", "blocked");
+    send(core, "turn", "t1", { turn: 1, state: "blocked" });
+    await failedOnce();
+    await waitFor(() => {
+      const kept = join(directory, "state", "notify", `${SESSION}.json`);
+      return existsSync(kept) && readFileSync(kept, "utf8").includes(TOKEN_B);
+    }, "the memory of the failed send");
+    const requests = relay.requests;
+    failing.on = false;
+    while (running.length > 0) await running.pop()();
+
+    relay = await startRelay();
+    writeConfig(relay.url);
+    logs = [];
+    const again = await connected([agent("t1", { turn: 1, status: { state: "blocked", app: "claude-code" } })]);
+    await waitFor(() => sentTo(KEY_B, "t1").length === 1, "the retry");
+    await settled(again);
+
+    assert.ok(requests.length > 0);
+    assert.equal(sentTo(KEY_A, "t1").length, 0);
+    assert.equal(sentTo(KEY_B, "t1").length, 1);
+  });
+});
+
 suite("a device the relay says is gone", () => {
   test("leaves the registrations, with its marks", async () => {
     relay = await startRelay((request) => (request.body.token === TOKEN_A ? { status: 410, body: {} } : { status: 200, body: {} }));
