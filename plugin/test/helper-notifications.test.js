@@ -5,7 +5,7 @@ import { afterEach, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";
 import { createDecipheriv } from "node:crypto";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { followCoreSession } from "../helper/core/follower.js";
@@ -214,6 +214,20 @@ suite("a Terminal that enters Blocked, Error or Done", () => {
       assert.ok(Number.isInteger(payload.ts) && payload.ts > 0);
     }
     assert.notEqual(byToken.get(TOKEN_A).collapse, byToken.get(TOKEN_B).collapse);
+  });
+
+  test("a title reads without the activity glyph the harness draws in it", async () => {
+    register(entry(KEY_A, TOKEN_A));
+    const core = await connected([agent("t1", { title: "✳ Fix the bug" }), agent("t2", { title: "✳" })]);
+
+    for (const terminal of ["t1", "t2"]) {
+      status(core, terminal, "working");
+      status(core, terminal, "blocked");
+    }
+    await waitFor(() => sentTo(KEY_A, "t1").length === 1 && sentTo(KEY_A, "t2").length === 1, "both notifications");
+
+    assert.equal(open(sentTo(KEY_A, "t1")[0].envelope, KEY_A).title, "Fix the bug");
+    assert.equal(open(sentTo(KEY_A, "t2")[0].envelope, KEY_A).title, undefined);
   });
 
   test("Error is sent under the Blocked trigger, in its own word", async () => {
@@ -569,5 +583,7 @@ suite("what the Helper keeps", () => {
     assert.equal(existsSync(join(directory, "sessions")), false);
     const kept = join(directory, "state", "notify", `${SESSION}.json`);
     await waitFor(() => existsSync(kept), "the memory file");
+    assert.equal(statSync(kept).mode & 0o777, 0o600);
+    assert.equal(statSync(join(directory, "state", "notify")).mode & 0o777, 0o700);
   });
 });

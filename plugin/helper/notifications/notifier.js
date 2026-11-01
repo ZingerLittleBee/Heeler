@@ -17,6 +17,7 @@ import { agentIn } from "../core/agent-rule.js";
 import { normalizeSessionName } from "../core/session-name.js";
 import { AGENT_EVENTS, foldEvent, foldRecord } from "../core/turn-fold.js";
 import { TurnState } from "../core/turn-state.js";
+import { strippedSidebarTitle } from "../shared/activity-rows.js";
 import { collapseKeyFor, sendAlertPush } from "../shared/delivery/push.js";
 import { pruneAlertTokens, readAlertDevices, registeredSessions } from "../shared/delivery/registrations.js";
 import { forDisplay } from "../shared/display-text.js";
@@ -108,7 +109,7 @@ export function notificationListener({ directory, log = () => {} }) {
       status,
       timestamp: Math.floor(Date.now() / 1000),
       project: forDisplay(typeof record.cwd === "string" && record.cwd !== "" ? basename(record.cwd) : null),
-      title: forDisplay(record.title),
+      title: forDisplay(strippedSidebarTitle(record.title)),
     };
     const gone = [];
     let failed = false;
