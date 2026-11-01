@@ -23,6 +23,8 @@ SOURCES = [
     ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreStart.swift",
     ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreLocator.swift",
     ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreSessionName.swift",
+    ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreWindowsLocator.swift",
+    ROOT / "scripts/fixtures/herdr-core-tool-stubs.swift",
 ]
 VECTORS = ROOT / "plugin/test-vectors/herdr-core-session-names-v1.json"
 
