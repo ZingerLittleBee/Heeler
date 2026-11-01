@@ -645,8 +645,9 @@ once per path, a write over an existing file as an edit, a write that records
 no diff as written, a path changed more than once under its first change while
 reads count apart), their lines changed, and a spinner or a count of failures.
 Reasoning between calls joins the group; reasoning with no text shows
-nowhere. Subagent launches, questions, calls waiting on the user and Codex's
-user shell commands are never grouped. While a turn runs, its last group
+nowhere. Subagent launches, questions, calls waiting on the user, Codex's
+user shell commands and calls whose image the row shows are never grouped.
+While a turn runs, its last group
 keeps its newest call as its own row below the group, so its status and
 output stay in reach, and settles into one row, under a new identity and
 closed, once anything else follows. A call waiting on the user after the
