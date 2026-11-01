@@ -276,7 +276,7 @@ To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler sugges
 
 | Usage reads | What to do |
 | --- | --- |
-| **Usage needs the Host Helper** | Install it from the Host's detail |
+| **Usage needs the Host Helper** | See the Host Helper row on the Host's detail, which says whether this Host can take one |
 | **Usage needs a newer Host Helper** | Update it from the Host's detail |
 | **The Host Helper has not reached this session's core yet** | Start the core if it is not running. Heeler keeps checking, and the Helper never starts one |
 | **Usage comes with the Host Helper, which is not available on native Windows yet** | Nothing for now |

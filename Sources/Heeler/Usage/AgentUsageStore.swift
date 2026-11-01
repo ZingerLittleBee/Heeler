@@ -14,7 +14,7 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
 
     var message: String {
         switch self {
-        case .notInstalled: "Usage needs the Host Helper. Install it from this Host's details."
+        case .notInstalled: "Usage needs the Host Helper. See this Host's details."
         case .outdated: "Usage needs a newer Host Helper. Update it from this Host's details."
         case .waitingForCore:
             "The Host Helper has not reached this session's core yet. Start the core if it is not running."

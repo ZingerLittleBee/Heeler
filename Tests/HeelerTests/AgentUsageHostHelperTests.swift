@@ -388,6 +388,10 @@ struct AgentUsageHostHelperTests {
         }
     }
 
+    @Test func aHostHelperNeedDoesNotPromiseAnInstallEveryHostCanTake() {
+        #expect(!AgentUsageHostHelperNeed.notInstalled.message.contains("Install"))
+    }
+
     @Test func aHerdrTUIHostWithoutAConnectionStillReadsAsNotConnected() async throws {
         let host = Host(address: "box.example", username: "dev", serverKind: .herdrTUI)
         let console = ConsoleStore(makeSession: { _, subscriptions in
