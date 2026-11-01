@@ -474,8 +474,8 @@ Terminal.
 
 ### The Helper and the core
 
-Use a unique non-default session `<s>` of your own, and start and stop nothing else.
-With no device registered from the app, name it by hand, in the Helper directory:
+Use a unique non-default session `<s>` of your own, plus a second one `<s2>` for the
+last step, and start and stop nothing else. With no device registered from the app, name it by hand, in the Helper directory:
 `printf '{"v":1,"devices":[{"session":"<s>"}]}' >
 ~/.local/share/heeler/host-helper/notifications.json`. Remove the file when done.
 
@@ -484,7 +484,7 @@ With no device registered from the app, name it by hand, in the Helper directory
 | No core | `HC_SESSION=<s> ~/.local/bin/herdr-core server stop` if it runs, then `systemctl --user restart heeler-host-helper` | `systemctl --user list-units 'hc-serve-*'` shows no new unit, however long you wait. `journalctl --user -u heeler-host-helper` reads `core session "<s>": waiting for a core at <socket>` once |
 | Core starts | From the user's login shell, `HC_SESSION=<s> ~/.local/bin/herdr-core server start`, and do not touch the Helper | Within seconds the journal reads `connected to core pid <pid>`, the pid `<s>`'s `server.status` reports. The unit's main PID has not changed |
 | Core restarts | `kill -9` that pid from `<s>`'s `server.status`, then start `<s>` again the same way | The journal reads `connection to core pid <pid> ended`, then `connected` with the new pid |
-| Other sessions | Start a core for a session the file does not name, and no Host's Usage asked about | The journal never mentions it, and `ss -xp` shows the Helper connected only to the named session's socket |
+| Other sessions | `HC_SESSION=<s2> ~/.local/bin/herdr-core server start`, which the file does not name and no Host's Usage asked about. Stop `<s2>` the same way when done | The journal never mentions `<s2>`, and `ss -xp` shows the Helper connected only to `<s>`'s socket |
 
 ### Agent Notifications
 
