@@ -204,8 +204,8 @@ confirm or refine these points with test clients, not the app.
   The reads from byte 1 seen to work there were PowerShell's and SFTP's. The
   pipe check does not need PowerShell: under the exec's default `cmd.exe`,
   `dir /b \\.\pipe\\ | findstr /x /i /c:"<name>"` exited 0 for the running
-  core's pipe and 1 for a name with no pipe, on that machine, with no stopped
-  core tried. With one trailing backslash `dir` itself fails and the pipeline
+  core's pipe and 1 for a name with no pipe and for a stopped core's, on that
+  machine. With one trailing backslash `dir` itself fails and the pipeline
   also exits 1, so only stderr tells a failed `dir` from a missing pipe. This
   decision's PowerShell guard reads the name and checks it in one exec; that is
   a choice, not a limit of `cmd.exe`.
@@ -227,8 +227,9 @@ confirm or refine these points with test clients, not the app.
   that account, but no run shows it. Conversely, a core started elevated is
   out of reach of a normal desktop client, by that source. Before #587 relies on
   this, the owner starts the check's core from a window that is confirmed not
-  elevated and the connect is repeated. A stopped core has also not been read
-  through sshd.
+  elevated and the connect is repeated. A stopped core was read through sshd,
+  and it left `core.lock` naming the pipe, with the pipe check reading absent
+  and no core process appearing.
 - A viewer granting credit for every frame can still get a repaint instead of
   the bytes: a program writing about 6 MiB at once reached the Mac end as
   2,196,107 bytes with gaps, and a client on the pipe got all of it. #587's
