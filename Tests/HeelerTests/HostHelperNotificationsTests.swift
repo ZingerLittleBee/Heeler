@@ -366,6 +366,112 @@ struct HostHelperNotificationsTests {
             relayBaseURL: { Self.relay }, ceremony: NotificationRegistrationCeremony(keys: keys))
     }
 
+    @Test func aBannerDueDuringAReReadOfARegisteredHostStillShows() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+        await preferences.refresh()
+        #expect(preferences.confirmedTriggers(for: host.id) != nil)
+        let store = bannerStore(rig, preferences: preferences)
+
+        await hold.close()
+        let reread = Task { await preferences.refresh() }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+        await report(rig, seq: 2, "working")
+        try await follow(rig, into: store, until: .working)
+        await report(rig, seq: 3, "error")
+        try await follow(rig, into: store, until: .error)
+
+        try await waitUntil("the Error banner") { store.banner != nil }
+        #expect(store.banner?.alert.body == "Error")
+        // Only the banner's gate holds: the toggles wait for the read.
+        #expect(preferences.liveActivityGate(forCoreHost: host.id) == .unknown)
+        #expect(preferences.helperRequirement(for: host.id) == nil)
+
+        await hold.open()
+        await reread.value
+    }
+
+    @Test func aReReadThatFindsTheRegistrationGoneClosesTheBannerGate() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+        await preferences.refresh()
+
+        await hold.close()
+        let reread = Task { await preferences.refresh() }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+        await rig.preferences.setNotificationsEnabled(false, for: host)
+        await hold.open()
+        await reread.value
+
+        #expect(preferences.confirmedTriggers(for: host.id) == nil)
+    }
+
+    @Test func aFirstReadStillFailsClosed() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        await hold.close()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+
+        let read = Task { await preferences.refresh() }
+        try await waitUntil("the read to begin") { preferences.states[host.id] == .loading }
+        #expect(preferences.confirmedTriggers(for: host.id) == nil)
+
+        await hold.open()
+        await read.value
+    }
+
+    /// A removal during a read is not undone by what that read still holds.
+    @Test func forgettingTheKeyDuringAReReadClosesTheBannerGate() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        let hold = FileAccessHold()
+        let preferences = heldPreferences(over: rig.console, hold: hold)
+        preferences.setHosts([host])
+        await preferences.refresh()
+
+        await hold.close()
+        let reread = Task { await preferences.refresh() }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+        try preferences.forgetNotificationKey(for: host.id)
+        #expect(preferences.confirmedTriggers(for: host.id) == nil)
+
+        await hold.open()
+        await reread.value
+    }
+
+    /// Herdr TUI's gate fails closed for its read, as it always has.
+    @Test func aHerdrTUIHostsBannerGateStillFailsClosedDuringAReRead() async throws {
+        let host = Host.fixture()
+        let token = token
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        let ceremony = NotificationRegistrationCeremony(keys: keys)
+        try await ceremony.register(host: host, deviceToken: token, over: transport)
+        let hold = FileAccessHold()
+        let preferences = NotificationPreferencesStore(
+            transports: HeldNotificationFiles(
+                provider: ScriptedTransportProvider(transports: [host.id: transport]), hold: hold),
+            deviceToken: { token }, ceremony: ceremony)
+        preferences.setHosts([host])
+        await preferences.refresh()
+        #expect(preferences.confirmedTriggers(for: host.id) != nil)
+
+        await hold.close()
+        let reread = Task { await preferences.refresh() }
+        try await waitUntil("the re-read to begin") { preferences.states[host.id] == .loading }
+        #expect(preferences.confirmedTriggers(for: host.id) == nil)
+
+        await hold.open()
+        await reread.value
+    }
+
     // MARK: What can drive an activity
 
     @Test func aNewerHelperThatFailedClosesBothGates() async throws {

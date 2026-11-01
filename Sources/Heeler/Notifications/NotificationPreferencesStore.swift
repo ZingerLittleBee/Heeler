@@ -76,6 +76,10 @@ final class NotificationPreferencesStore {
     /// Whether a core Host's Helper can drive a Live Activity, from its last read.
     /// Nil on a read that failed, and on any other Host.
     private var helperDrivesLiveActivity: [Host.ID: Bool] = [:]
+    /// What a core Host last confirmed, held for its banner gate while it is read
+    /// again. Reads repeat with the connection and a Helper's takes seconds; Herdr
+    /// TUI's gate still fails closed for its read.
+    private var settingsDuringReRead: [Host.ID: HostSettings] = [:]
     /// A catalog edit/removal invalidates every result captured for that Host.
     private var operations: [Host.ID: UUID] = [:]
     /// Seen marks waiting for a core Host's registration to be known, or for the
@@ -118,6 +122,7 @@ final class NotificationPreferencesStore {
         states = states.filter { unchanged.contains($0.key) }
         helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
         helperDrivesLiveActivity = helperDrivesLiveActivity.filter { unchanged.contains($0.key) }
+        settingsDuringReRead = settingsDuringReRead.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
         pendingSeenMarks = pendingSeenMarks.filter { unchanged.contains($0.key) }
     }
@@ -251,6 +256,7 @@ final class NotificationPreferencesStore {
     /// Settles a confirmed state on unregistered; one still loading or
     /// updating is left for its own read or write to settle.
     private func markUnregistered(_ hostID: Host.ID) {
+        settingsDuringReRead[hostID] = nil
         guard confirmedSettings(for: hostID) != nil else { return }
         states[hostID] = .idle(
             HostSettings(isRegistered: false, notify: NotificationTriggerPreferences()))
@@ -266,6 +272,9 @@ final class NotificationPreferencesStore {
         }
         let operation = UUID()
         operations[host.id] = operation
+        if states[host.id] != .loading {
+            settingsDuringReRead[host.id] = host.serverKind == .herdrCore ? confirmedSettings(for: host.id) : nil
+        }
         states[host.id] = .loading
         defer { writeSeenMarks(for: host.id) }
         do {
@@ -387,9 +396,11 @@ final class NotificationPreferencesStore {
     /// The gate the in-app banner reads (#77): the Host's confirmed notify
     /// flags, or nil when this device is not registered or the Host's truth
     /// is unknown (unreachable, still loading, never refreshed) — in which
-    /// case the banner fails closed, matching the plugin's semantics.
+    /// case the banner fails closed, matching the plugin's semantics. A core
+    /// Host being read again keeps what it last confirmed until the read settles.
     func confirmedTriggers(for hostID: Host.ID) -> NotificationTriggerPreferences? {
-        guard let settings = confirmedSettings(for: hostID), settings.isRegistered else { return nil }
+        let held = states[hostID] == .loading ? settingsDuringReRead[hostID] : nil
+        guard let settings = confirmedSettings(for: hostID) ?? held, settings.isRegistered else { return nil }
         return settings.notify
     }
 
