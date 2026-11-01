@@ -58,6 +58,7 @@ process rows shaped for `ScriptedProcessTable.Process`, plus the files as read.
 | `host-evidence/pi/session-files-0.85.1.json`, `session-files-1.4.0.json` | Pi `--session-id`, `/new` and no flag: when each session file appeared, its header and line types, and the bare process |
 | `host-evidence/omp/breadcrumb-and-session-files.json` | Oh My Pi 18.13.3: the breadcrumb through a process's life and the next one's, session files, the open file, the session lock, and how far the security scan got |
 | `host-evidence/omp/session-lock-by-id.json` | Oh My Pi 18.13.3: the lock its process holds while the title is held, and the names its own `tryAcquireSessionLease` binds for the same ids and for invented ids and homes. The hash is not identified |
+| `host-evidence/macos/vm-26.5.json` | herdr-core 0.1.13 on macOS 26.5 in a throwaway VM with SIP off, no sign-in and a fake model: each program's rows as `HostProcessReader`'s macOS script read them, trimmed to terminals and session files, the core's record, and the files as read. Rollouts keep their first line's identifying fields. Its `record` field is the core's `terminal.get` |
 | `host-evidence/reply-held.json` | All five with the fake model holding each reply, Pi on 0.85.1 and 1.4.0 and OpenCode on 2.0.32 and 2.2.5: what existed during the hold |
 | `host-evidence/*/*-core-events.ndjson` | The core's event stream for the same runs, from `scripts/lab/herdr-core-capture.py` |
 

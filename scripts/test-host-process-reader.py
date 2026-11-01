@@ -843,6 +843,21 @@ class MacOSReadTests(ReaderTestCase):
             self.assertEqual(facts[pid]["names"], "unavailable")
         self.for_each_shell(check)
 
+    def test_the_shell_a_terminal_runs_withholds_its_environment_too(self) -> None:
+        # The fact a check's fallback to the foreground's HC_SCOPE rests on.
+        process = subprocess.Popen(
+            ["/bin/zsh", "-f", "-c", "/bin/sleep 300; :"], env=self.ENV,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.running.append(process)
+        time.sleep(0.3)
+        pid = str(process.pid)
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=[pid], start=True, values=["HC_SCOPE", "NAMED"], macOS=True)
+            self.assertEqual(facts[pid]["variables"], {"HC_SCOPE": "unavailable", "NAMED": "unavailable"})
+            self.assertNotEqual(facts[pid]["start"], "unavailable")
+        self.for_each_shell(check)
+
     def test_a_title_that_fills_argv_never_reads_a_set_variable_as_unset(self) -> None:
         # Past argc lie entries the argv area no longer holds: PATH, NAMED and
         # BLANK sit where argv strings are expected.

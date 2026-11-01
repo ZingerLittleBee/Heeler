@@ -276,7 +276,7 @@ the facts they took on trust, so correct
 | Carried by the core | Use the core from [Leaked environment](#leaked-environment), then start `claude` by hand | The same reason, also pointing at the Host's details, where **Core Environment** names it |
 | Stale hint | Set the label `heeler.session` on the Terminal with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show the label's session |
 | No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
-| Off elsewhere | A Pi Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
+| Off elsewhere | A Pi Agent on this box | It offers the terminal alone |
 
 ### Codex, Grok Build and OpenCode
 
@@ -302,7 +302,22 @@ shows.
 | OpenCode's title off | Turn `terminal.title` off in OpenCode, then Send after `/new` and a prompt | The known limit: the title is empty, and the Send lands in the conversation on screen, not the one Chat shows |
 | OpenCode unconfirmed | Start `opencode` by hand, then OpenCode 2.0 and 1.x from New Agent, then set a stale `heeler.session` label on one | **Can't Tell the Conversation**, each time, and the stale label is gone |
 | Home folders | Start Codex and Grok Build with `CODEX_HOME` and `GROK_HOME` naming scratch folders, with other sessions in `~/.codex` and `~/.grok` | Chat reads from the scratch folders |
-| Off until passed | Before adding a program to `HostCapabilities.confirmedCoreChatPrograms`, on this box and on a macOS core Host | It offers the terminal alone |
+| Off until passed | Before adding a program to `HostCapabilities.confirmedCoreChatPrograms`, on this box and on a macOS core Host | It offers the terminal alone on both |
+
+### Chat on a Mac
+
+On a Mac Host with signed-in harnesses and the Host Helper installed as a LaunchAgent. Temporarily turn on each program in `HostCapabilities.confirmedCoreChatPrograms` that has not passed yet. Record each result as a versioned observation in `docs/agents/herdr-compatibility.md`.
+
+| Check | Do | Expect |
+| --- | --- | --- |
+| Claude Code | Open Chat on a `claude` at its prompt, from zsh and from New Agent | It follows that conversation. `sessions/<pid>.json`'s `procStart` equals `TZ=UTC LC_ALL=C ps -o lstart= -p <pid>`. Update ADR 0034's Unverified list. Read that file by name and never a `.key` file |
+| SIP on | Run `csrutil status`, then read a zsh Terminal's `HC_SCOPE` through Chat with a Claude Code under it | SIP on: zsh's variables read as withheld and Chat still binds. The VM only ran with SIP off |
+| Codex | `codex --no-daemon`, before and after the first message. Then plain `codex` | Can't tell, then it binds. Plain `codex` shows only the reopen message and no list |
+| Pi | Start Pi with the Helper's extension, and take a reply | It binds through `heeler.session`, whose `start` equals the same read. The VM's Pi never finished a reply |
+| Grok Build | Start `grok`, then read `active_sessions.json` | It binds. `pid_start` divided by a million is the second of that read. The VM saw one sample |
+| OpenCode, Oh My Pi | OpenCode 2.x from New Agent. Oh My Pi before and after the first message | OpenCode binds. Oh My Pi can't tell until the first reply, then binds |
+| Moved on | After Use This Conversation on any Agent, exit it and start another program in the same Terminal, then check Chat | The choice is dropped, and no banner stays. Under a shell with withheld variables too |
+| Any read that failed | Note which row above could not bind | That program shows **Can't Tell the Conversation** and **Choose a Conversation**. Take it out of `HostCapabilities.macOSExactCoreChatPrograms` and note why |
 
 ### Choosing a conversation
 
