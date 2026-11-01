@@ -1,17 +1,17 @@
 {
-  "description": "Native Windows herdr-core frames, captured on the Windows machine and scrubbed. Each case's source names its route: most came through a local `herdr-core connect` child, and foreground-*-form, finished-*-form and put-over-8-mib came over the named pipe directly. Provisional: the same bytes have not yet crossed an SSH exec channel to that machine (#586). Hex strings hold exact bytes; a frame is channel (u32 LE), kind (u8) and length (u32 LE) before its payload.",
-  "provisional": true,
+  "description": "Native Windows herdr-core frames (#586), scrubbed. Every case crossed one ssh -T exec of `herdr-core connect` by the installer path, from a Mac, under sshd's default cmd.exe, on one machine: Windows PowerShell 5.1, an elevated SSH token and a core whose own token was elevated too. Each source says how the case was kept. Exact wire bytes: `bytes` of every entry in `frames` and of the eventFrames entry event-frame-size, and `line` of every entry in `errors`. `requestFrame` is rebuilt by the capture script and was checked equal to the frame it sent. Not kept from the wire: `replyFrame`, `hello.reply`, `result`, the first-event-frame entry and every event `line` are rebuilt from scrubbed JSON, so their bytes and lengths may differ from what the core sent. A frame is channel (u32 LE), kind (u8) and length (u32 LE) before its payload.",
+  "provisional": false,
   "coreVersion": "0.1.16",
   "coreCommit": "e07c2a1",
   "hello": {
     "name": "hello",
-    "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the plain hello reply",
+    "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the plain hello reply",
     "reply": "{\"id\":\"hello\",\"jsonrpc\":\"2.0\",\"result\":{\"core\":{\"id\":\"scrubbed-core-id\",\"name\":\"lab-core\"},\"features\":[\"framed\",\"attach\",\"events\",\"status\",\"shell\"],\"framed\":true,\"generation\":1,\"methods\":[\"hello\",\"server.status\",\"server.stop\",\"server.restart\",\"terminal.run\",\"templates.list\",\"terminal.list\",\"terminal.get\",\"terminal.kill\",\"terminal.rm\",\"terminal.keep\",\"terminal.label\",\"terminal.read\",\"terminal.attach\",\"terminal.send\",\"terminal.wait\",\"terminal.keys\",\"terminal.interrupt\",\"terminal.put\",\"machine.exec\",\"file.read\",\"file.write\",\"file.edit\",\"doc.get\",\"doc.set\",\"events.subscribe\",\"machine.add\",\"machine.list\",\"machine.connect\",\"machine.rename\",\"machine.rm\",\"rpc.discover\"],\"version\":\"0.1.16\"}}"
   },
   "exchanges": [
     {
       "name": "server-status",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: a server.status exchange on channel 0",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: a server.status exchange on channel 0",
       "method": "server.status",
       "params": {},
       "result": {
@@ -22,144 +22,226 @@
         "finished": 0,
         "holder": {
           "current": true,
-          "instance": "b1c5d06bf9f31869a6db62cca574646a",
-          "pid": 33088,
-          "terminals": 0
+          "instance": "1d26c69794c7fc8951ed55f363b33a31",
+          "pid": 24956,
+          "terminals": 1
         },
         "holders": [
           {
             "current": true,
-            "instance": "b1c5d06bf9f31869a6db62cca574646a",
-            "pid": 33088,
-            "terminals": 0
+            "instance": "1d26c69794c7fc8951ed55f363b33a31",
+            "pid": 24956,
+            "terminals": 1
           }
         ],
         "installed_by": null,
-        "live": 0,
-        "pid": 14076,
-        "uptime_ms": 144688,
+        "live": 1,
+        "pid": 33236,
+        "uptime_ms": 1891019,
         "version": "0.1.16"
       },
-      "requestFrame": "00000000003f0000007b226a736f6e727063223a22322e30222c226964223a2232222c226d6574686f64223a227365727665722e737461747573222c22706172616d73223a7b7d7d",
-      "replyFrame": "00000000007b0100007b226964223a2232222c226a736f6e727063223a22322e30222c22726573756c74223a7b22636f7265223a7b226964223a2273637275626265642d636f72652d6964222c226e616d65223a226c61622d636f7265227d2c2266696e6973686564223a302c22686f6c646572223a7b2263757272656e74223a747275652c22696e7374616e6365223a226231633564303662663966333138363961366462363263636135373436343661222c22706964223a33333038382c227465726d696e616c73223a307d2c22686f6c64657273223a5b7b2263757272656e74223a747275652c22696e7374616e6365223a226231633564303662663966333138363961366462363263636135373436343661222c22706964223a33333038382c227465726d696e616c73223a307d5d2c22696e7374616c6c65645f6279223a6e756c6c2c226c697665223a302c22706964223a31343037362c22757074696d655f6d73223a3134343638382c2276657273696f6e223a22302e312e3136227d7d"
+      "requestFrame": "00000000003f0000007b226a736f6e727063223a22322e30222c226964223a2231222c226d6574686f64223a227365727665722e737461747573222c22706172616d73223a7b7d7d",
+      "replyFrame": "00000000007c0100007b226964223a2231222c226a736f6e727063223a22322e30222c22726573756c74223a7b22636f7265223a7b226964223a2273637275626265642d636f72652d6964222c226e616d65223a226c61622d636f7265227d2c2266696e6973686564223a302c22686f6c646572223a7b2263757272656e74223a747275652c22696e7374616e6365223a223164323663363937393463376663383935316564353566333633623333613331222c22706964223a32343935362c227465726d696e616c73223a317d2c22686f6c64657273223a5b7b2263757272656e74223a747275652c22696e7374616e6365223a223164323663363937393463376663383935316564353566333633623333613331222c22706964223a32343935362c227465726d696e616c73223a317d5d2c22696e7374616c6c65645f6279223a6e756c6c2c226c697665223a312c22706964223a33333233362c22757074696d655f6d73223a313839313031392c2276657273696f6e223a22302e312e3136227d7d"
     },
     {
       "name": "events-subscribe",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: a events.subscribe exchange on channel 0",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: an events.subscribe exchange on channel 0, with one Terminal live",
       "method": "events.subscribe",
       "params": {},
       "result": {
         "channel": 1,
-        "seq": 10,
-        "terminals": []
+        "seq": 403,
+        "terminals": [
+          {
+            "address": "t1j",
+            "argv": [
+              "powershell.exe",
+              "<scrubbed>",
+              "<scrubbed>",
+              "<scrubbed>"
+            ],
+            "cols": 200,
+            "created_ms": 1793534023184,
+            "cwd": "C:\\Users\\user\\heeler586",
+            "die_with_parent": false,
+            "exit_code": null,
+            "finished_ms": null,
+            "foreground": {
+              "argv": [
+                "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "<scrubbed>",
+                "<scrubbed>",
+                "<scrubbed>"
+              ],
+              "cwd": "C:\\Users\\user\\heeler586",
+              "name": "powershell.exe",
+              "pid": 11896
+            },
+            "identity": "ghostty",
+            "keep": false,
+            "labels": {},
+            "name": "capkeep",
+            "notify": true,
+            "parent": null,
+            "pid": 11896,
+            "reason": null,
+            "reported": false,
+            "rm": false,
+            "rows": 120,
+            "screen": "exact",
+            "signal": null,
+            "state": "live",
+            "status": null,
+            "status_ms": null,
+            "template": null,
+            "title": "<scrubbed>",
+            "turn": 0
+          }
+        ]
       },
-      "requestFrame": "0000000000420000007b226a736f6e727063223a22322e30222c226964223a2231222c226d6574686f64223a226576656e74732e737562736372696265222c22706172616d73223a7b7d7d",
-      "replyFrame": "0000000000490000007b226964223a2231222c226a736f6e727063223a22322e30222c22726573756c74223a7b226368616e6e656c223a312c22736571223a31302c227465726d696e616c73223a5b5d7d7d"
+      "requestFrame": "0000000000420000007b226a736f6e727063223a22322e30222c226964223a2232222c226d6574686f64223a226576656e74732e737562736372696265222c22706172616d73223a7b7d7d",
+      "replyFrame": "0000000000ff0200007b226964223a2232222c226a736f6e727063223a22322e30222c22726573756c74223a7b226368616e6e656c223a312c22736571223a3430332c227465726d696e616c73223a5b7b2261646472657373223a2274316a222c2261726776223a5b22706f7765727368656c6c2e657865222c223c73637275626265643e222c223c73637275626265643e222c223c73637275626265643e225d2c22636f6c73223a3230302c22637265617465645f6d73223a313739333533343032333138342c22637764223a22433a5c5c55736572735c5c757365725c5c6865656c6572353836222c226469655f776974685f706172656e74223a66616c73652c22657869745f636f6465223a6e756c6c2c2266696e69736865645f6d73223a6e756c6c2c22666f726567726f756e64223a7b2261726776223a5b22433a5c5c57494e444f57535c5c53797374656d33325c5c57696e646f7773506f7765725368656c6c5c5c76312e305c5c706f7765727368656c6c2e657865222c223c73637275626265643e222c223c73637275626265643e222c223c73637275626265643e225d2c22637764223a22433a5c5c55736572735c5c757365725c5c6865656c6572353836222c226e616d65223a22706f7765727368656c6c2e657865222c22706964223a31313839367d2c226964656e74697479223a2267686f73747479222c226b656570223a66616c73652c226c6162656c73223a7b7d2c226e616d65223a226361706b656570222c226e6f74696679223a747275652c22706172656e74223a6e756c6c2c22706964223a31313839362c22726561736f6e223a6e756c6c2c227265706f72746564223a66616c73652c22726d223a66616c73652c22726f7773223a3132302c2273637265656e223a226578616374222c227369676e616c223a6e756c6c2c227374617465223a226c697665222c22737461747573223a6e756c6c2c227374617475735f6d73223a6e756c6c2c2274656d706c617465223a6e756c6c2c227469746c65223a223c73637275626265643e222c227475726e223a307d5d7d7d"
     }
   ],
   "frames": [
     {
       "name": "data-attach-first-paint",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the first paint of a Terminal running an inert program",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: the first paint of a Terminal running an inert program",
       "bytes": "020000000015010000181b5b21701b5b3f323032366c1b5b3f396c1b5b3f313030306c1b5b3f313030316c1b5b3f313030326c1b5b3f313030336c1b5b3f313030346c1b5b3f313030356c1b5b3f313030366c1b5b3f313031356c1b5b3f313031366c1b5b3f323030346c1b5b3f316c1b5b3f36366c1b5b3f323033316c1b5b3f323034386c1b5b3d303b31751b5b3f313034396c1b5b3f313034376c1b5b3f34376c1b5b481b5b324a1b5b3f31303034681b5b33671b5b39471b481b5b3137471b481b5b3235471b481b5b3333471b481b5b3431471b481b5b3439471b481b5b3537471b481b5b3635471b481b5b3733471b481b5b3831471b481b5b3839471b481b5b3937471b481b5b481b5b313b31481b5b306d1b5b3f3930303168"
     },
     {
       "name": "data-attach-cr-lf-crlf-ctrl-z",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: a program writing CR, LF, CRLF and Ctrl+Z; its bare LF arrived as CRLF",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: a program writing CR, LF, CRLF and Ctrl+Z; its bare LF arrived as CRLF, and the frame length is 0x1A",
       "bytes": "02000000001a00000063726c660d0a6c660d0a63720d746162097375621a7375620d0a"
     },
     {
       "name": "data-attach-utf8",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: a program writing UTF-8 up to four bytes long",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: a program writing UTF-8 up to four bytes long",
       "bytes": "02000000001b0000000d0ac3a9e4b8adf09f98800d0a4543484f444f4e45203532310d0a"
     },
     {
       "name": "close-terminal-killed",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the attach channel closing as its Terminal was killed",
-      "bytes": "02000000024b0000007b22657869745f636f6465223a312c2266696e69736865645f6d73223a313739333532343034313338312c22726561736f6e223a226b696c6c6564222c227369676e616c223a6e756c6c7d"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: the attach channel closing as its Terminal was killed",
+      "bytes": "02000000024b0000007b22657869745f636f6465223a312c2266696e69736865645f6d73223a313739333533343131313635372c22726561736f6e223a226b696c6c6564222c227369676e616c223a6e756c6c7d"
     },
     {
       "name": "client-data-every-byte",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the client frame the core accepted on the attach channel, every byte value then CR, LF, CRLF and Ctrl+Z",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: the client frame the core accepted on the attach channel, every byte value then CR, LF, CRLF and Ctrl+Z",
       "bytes": "02000000000a010000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff0d0a0d0a1a5a5a454e44"
     },
     {
       "name": "resize-from-client",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: a RESIZE the client sent",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: a RESIZE the client sent",
       "bytes": "0200000003040000005a001900"
     },
     {
       "name": "credit-from-client",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: a CREDIT the client sent",
-      "bytes": "0200000001040000000b000000"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: a CREDIT the client sent",
+      "bytes": "02000000010400000015010000"
+    },
+    {
+      "name": "data-attach-length-lf",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: a program line whose frame length is 0x0A, the byte a text mode would change",
+      "bytes": "03000000000a00000061626364656667680d0a"
+    },
+    {
+      "name": "data-attach-length-cr",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: a program line whose frame length is 0x0D, the byte a text mode would change",
+      "bytes": "03000000000d0000006162636465666768696a6b0d0a"
+    },
+    {
+      "name": "data-attach-length-ctrl-z",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: a program line whose frame length is 0x1A, the byte a text mode would change",
+      "bytes": "03000000001a0000006162636465666768696a6b6c6d6e6f7071727374757677780d0a"
     }
   ],
   "errors": [
     {
       "name": "not-found",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: terminal.get for an address no Terminal has",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: terminal.get for an address no Terminal has",
       "kind": "not_found",
-      "line": "{\"error\":{\"code\":-32000,\"data\":{\"hint\":\"<scrubbed>\",\"kind\":\"not_found\"},\"message\":\"<scrubbed>\"},\"id\":\"7\",\"jsonrpc\":\"2.0\"}"
+      "line": "{\"error\":{\"code\":-32000,\"data\":{\"hint\":\"see `hc ls --all`\",\"kind\":\"not_found\"},\"message\":\"no terminal \\\"t999999\\\"\"},\"id\":\"14\",\"jsonrpc\":\"2.0\"}"
     },
     {
       "name": "put-over-8-mib",
-      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: terminal.put of 8 MiB and one byte; the client kept only the error object, which holds no user data, so the id and jsonrpc around it are rebuilt",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, exact bytes on the wire: terminal.put of 8 MiB and one byte",
       "kind": "invalid_params",
-      "line": "{\"error\":{\"code\":-32602,\"data\":{\"hint\":\"see `hc schema`\",\"kind\":\"invalid_params\"},\"message\":\"at most 8 MB per put\"},\"id\":\"1\",\"jsonrpc\":\"2.0\"}"
+      "line": "{\"error\":{\"code\":-32602,\"data\":{\"hint\":\"see `hc schema`\",\"kind\":\"invalid_params\"},\"message\":\"at most 8 MB per put\"},\"id\":\"11\",\"jsonrpc\":\"2.0\"}"
     }
   ],
   "events": [
     {
       "name": "created",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the events channel",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"address\":\"t1j\",\"argv\":[\"C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\bin\\\\node.exe\",\"<scrubbed>\",\"<scrubbed>\"],\"cols\":200,\"created_ms\":1793524035517,\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"die_with_parent\":false,\"exit_code\":null,\"finished_ms\":null,\"identity\":\"ghostty\",\"keep\":false,\"labels\":{},\"name\":\"capecho\",\"notify\":true,\"parent\":null,\"pid\":14232,\"reason\":null,\"reported\":false,\"rm\":false,\"rows\":120,\"screen\":\"exact\",\"signal\":null,\"state\":\"live\",\"status\":null,\"status_ms\":null,\"template\":null,\"title\":\"\",\"turn\":0},\"seq\":11,\"terminal\":\"t1j\",\"type\":\"created\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the events channel",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"address\":\"t1k\",\"argv\":[\"powershell.exe\",\"<scrubbed>\",\"<scrubbed>\",\"<scrubbed>\"],\"cols\":200,\"created_ms\":1793534030735,\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"die_with_parent\":false,\"exit_code\":null,\"finished_ms\":null,\"identity\":\"ghostty\",\"keep\":false,\"labels\":{},\"name\":\"capinert\",\"notify\":true,\"parent\":null,\"pid\":29940,\"reason\":null,\"reported\":false,\"rm\":false,\"rows\":120,\"screen\":\"exact\",\"signal\":null,\"state\":\"live\",\"status\":null,\"status_ms\":null,\"template\":null,\"title\":\"\",\"turn\":0},\"seq\":404,\"terminal\":\"t1k\",\"type\":\"created\"}}\n"
+    },
+    {
+      "name": "title",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the events channel",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"title\":\"<scrubbed>\"},\"seq\":405,\"terminal\":\"t1k\",\"type\":\"title\"}}\n"
     },
     {
       "name": "foreground",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the events channel",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\bin\\\\node.exe\",\"<scrubbed>\",\"<scrubbed>\"],\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"node.exe\",\"pid\":14232},\"seq\":12,\"terminal\":\"t1j\",\"type\":\"foreground\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the events channel",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"<scrubbed>\",\"<scrubbed>\",\"<scrubbed>\"],\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":29940},\"seq\":406,\"terminal\":\"t1k\",\"type\":\"foreground\"}}\n"
+    },
+    {
+      "name": "labels",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the events channel",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"labels\":{\"heeler.check\":\"capture\"}},\"seq\":407,\"terminal\":\"t1k\",\"type\":\"labels\"}}\n"
     },
     {
       "name": "size",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the events channel",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"cols\":100,\"rows\":30},\"seq\":13,\"terminal\":\"t1j\",\"type\":\"size\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the events channel",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"cols\":90,\"rows\":25},\"seq\":408,\"terminal\":\"t1k\",\"type\":\"size\"}}\n"
     },
     {
       "name": "finished",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the events channel",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":1,\"finished_ms\":1793524041381,\"reason\":\"killed\",\"signal\":null},\"seq\":15,\"terminal\":\"t1j\",\"type\":\"finished\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the events channel",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":1,\"finished_ms\":1793534037003,\"reason\":\"killed\",\"signal\":null},\"seq\":410,\"terminal\":\"t1k\",\"type\":\"finished\"}}\n"
     },
     {
       "name": "removed",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: the events channel",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{},\"seq\":16,\"terminal\":\"t1j\",\"type\":\"removed\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the events channel",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{},\"seq\":411,\"terminal\":\"t1k\",\"type\":\"removed\"}}\n"
+    },
+    {
+      "name": "heartbeat",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: the events channel",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"heartbeat\",\"params\":{\"seq\":414}}\n"
     },
     {
       "name": "foreground-heeler-form",
-      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: the only foreground event of a Terminal running choice.exe under PowerShell, heeler form; terminal.get showed the same fields while choice.exe ran and, in the desktop form, after it exited. The cwd is scrubbed and the argv is kept whole, unlike the other event lines",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"-Command\",\"& 'C:\\\\Windows\\\\System32\\\\choice.exe' '/c' 'yn' '/t' '10' '/d' 'n'; exit $LASTEXITCODE\"],\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":15344},\"seq\":2,\"terminal\":\"t1g\",\"type\":\"foreground\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, rebuilt from scrubbed JSON: the foreground event of a Terminal running choice.exe under PowerShell, heeler form. The cwd is scrubbed and the argv is kept whole, unlike the other event lines",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"-Command\",\"& 'C:\\\\Windows\\\\System32\\\\choice.exe' '/c' 'yn' '/t' '10' '/d' 'n'; exit $LASTEXITCODE\"],\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":17624},\"seq\":449,\"terminal\":\"t1t\",\"type\":\"foreground\"}}\n"
     },
     {
       "name": "finished-heeler-form",
-      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: the finish of that Terminal, heeler form; it holds no user data",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":2,\"finished_ms\":1793524014156,\"reason\":\"exited\",\"signal\":null},\"seq\":4,\"terminal\":\"t1g\",\"type\":\"finished\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, rebuilt from scrubbed JSON: the finish of that Terminal, heeler form; it holds no user data",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":2,\"finished_ms\":1793534209955,\"reason\":\"exited\",\"signal\":null},\"seq\":451,\"terminal\":\"t1t\",\"type\":\"finished\"}}\n"
     },
     {
       "name": "foreground-desktop-form",
-      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: the only foreground event of a Terminal running choice.exe under PowerShell, desktop form; terminal.get showed the same fields while choice.exe ran and, in the desktop form, after it exited. The cwd is scrubbed and the argv is kept whole, unlike the other event lines",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"-NoExit\",\"-Command\",\"& 'C:\\\\Windows\\\\System32\\\\choice.exe' '/c' 'yn' '/t' '10' '/d' 'n'\"],\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":26092},\"seq\":7,\"terminal\":\"t1h\",\"type\":\"foreground\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, rebuilt from scrubbed JSON: the foreground event of a Terminal running choice.exe under PowerShell, desktop form. The cwd is scrubbed and the argv is kept whole, unlike the other event lines",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"argv\":[\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"-NoExit\",\"-Command\",\"& 'C:\\\\Windows\\\\System32\\\\choice.exe' '/c' 'yn' '/t' '10' '/d' 'n'\"],\"cwd\":\"C:\\\\Users\\\\user\\\\heeler586\",\"name\":\"powershell.exe\",\"pid\":26796},\"seq\":455,\"terminal\":\"t1v\",\"type\":\"foreground\"}}\n"
     },
     {
       "name": "finished-desktop-form",
-      "source": "captured from herdr-core 0.1.16 on native Windows over the named pipe directly, not through herdr-core connect: the finish of that Terminal, desktop form; it holds no user data",
-      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":5,\"finished_ms\":1793524034625,\"reason\":\"exited\",\"signal\":null},\"seq\":9,\"terminal\":\"t1h\",\"type\":\"finished\"}}\n"
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by a lab client, rebuilt from scrubbed JSON: the finish of that Terminal, desktop form; it holds no user data",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"event\",\"params\":{\"data\":{\"exit_code\":5,\"finished_ms\":1793534225051,\"reason\":\"exited\",\"signal\":null},\"seq\":457,\"terminal\":\"t1v\",\"type\":\"finished\"}}\n"
     }
   ],
   "eventFrames": [
     {
       "name": "first-event-frame",
-      "source": "captured from herdr-core 0.1.16 on native Windows over a local herdr-core connect, scrubbed with the capture script: an events frame rebuilt from scrubbed lines",
-      "bytes": "0100000000580200007b226a736f6e727063223a22322e30222c226d6574686f64223a226576656e74222c22706172616d73223a7b2264617461223a7b2261646472657373223a2274316a222c2261726776223a5b22433a5c5c55736572735c5c757365725c5c417070446174615c5c4c6f63616c5c5c62696e5c5c6e6f64652e657865222c223c73637275626265643e222c223c73637275626265643e225d2c22636f6c73223a3230302c22637265617465645f6d73223a313739333532343033353531372c22637764223a22433a5c5c55736572735c5c757365725c5c6865656c6572353836222c226469655f776974685f706172656e74223a66616c73652c22657869745f636f6465223a6e756c6c2c2266696e69736865645f6d73223a6e756c6c2c226964656e74697479223a2267686f73747479222c226b656570223a66616c73652c226c6162656c73223a7b7d2c226e616d65223a226361706563686f222c226e6f74696679223a747275652c22706172656e74223a6e756c6c2c22706964223a31343233322c22726561736f6e223a6e756c6c2c227265706f72746564223a66616c73652c22726d223a66616c73652c22726f7773223a3132302c2273637265656e223a226578616374222c227369676e616c223a6e756c6c2c227374617465223a226c697665222c22737461747573223a6e756c6c2c227374617475735f6d73223a6e756c6c2c2274656d706c617465223a6e756c6c2c227469746c65223a22222c227475726e223a307d2c22736571223a31312c227465726d696e616c223a2274316a222c2274797065223a2263726561746564227d7d0a",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, rebuilt from scrubbed JSON: an events frame rebuilt from scrubbed lines",
+      "bytes": "0100000000470200007b226a736f6e727063223a22322e30222c226d6574686f64223a226576656e74222c22706172616d73223a7b2264617461223a7b2261646472657373223a2274316b222c2261726776223a5b22706f7765727368656c6c2e657865222c223c73637275626265643e222c223c73637275626265643e222c223c73637275626265643e225d2c22636f6c73223a3230302c22637265617465645f6d73223a313739333533343033303733352c22637764223a22433a5c5c55736572735c5c757365725c5c6865656c6572353836222c226469655f776974685f706172656e74223a66616c73652c22657869745f636f6465223a6e756c6c2c2266696e69736865645f6d73223a6e756c6c2c226964656e74697479223a2267686f73747479222c226b656570223a66616c73652c226c6162656c73223a7b7d2c226e616d65223a22636170696e657274222c226e6f74696679223a747275652c22706172656e74223a6e756c6c2c22706964223a32393934302c22726561736f6e223a6e756c6c2c227265706f72746564223a66616c73652c22726d223a66616c73652c22726f7773223a3132302c2273637265656e223a226578616374222c227369676e616c223a6e756c6c2c227374617465223a226c697665222c22737461747573223a6e756c6c2c227374617475735f6d73223a6e756c6c2c2274656d706c617465223a6e756c6c2c227469746c65223a22222c227475726e223a307d2c22736571223a3430342c227465726d696e616c223a2274316b222c2274797065223a2263726561746564227d7d0a",
+      "lines": 1
+    },
+    {
+      "name": "event-frame-size",
+      "source": "captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec of herdr-core connect by the installer path under the default cmd.exe, by scripts/lab/herdr-core-capture.py through a socat bridge, exact bytes on the wire as socat saw them: one size event, which holds no user data",
+      "bytes": "0100000000740000007b226a736f6e727063223a22322e30222c226d6574686f64223a226576656e74222c22706172616d73223a7b2264617461223a7b22636f6c73223a39302c22726f7773223a32357d2c22736571223a3430382c227465726d696e616c223a2274316b222c2274797065223a2273697a65227d7d0a",
       "lines": 1
     }
   ]

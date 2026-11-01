@@ -3,10 +3,11 @@ import Testing
 
 @testable import Heeler
 
-/// Replays the scrubbed capture from a native Windows core. Each case came through a
-/// local `herdr-core connect` or directly over the pipe, as its source says, so it
-/// proves the codec reads what that core sends, not that an SSH exec leaves the
-/// bytes alone (see the compatibility notes).
+/// Replays the scrubbed capture from a native Windows core, taken from a Mac over an
+/// SSH exec of `herdr-core connect`. The description and each source say which hex
+/// strings are wire bytes; the rest are rebuilt from scrubbed JSON. It proves the codec
+/// reads what crossed that one exec, not that every Windows server behaves the same
+/// (see the compatibility notes).
 @Suite struct HerdrCoreWindowsCaptureTests {
     private let vectors = HerdrCoreVectorFile.windows
 
@@ -20,13 +21,13 @@ import Testing
     }
 
     @Test func everyCaseNamesItsCapture() {
-        #expect(vectors.provisional)
+        #expect(!vectors.provisional)
         #expect(vectors.coreVersion == "0.1.16")
         // Pinned against the file: a section that stops decoding cannot pass quietly.
-        #expect(vectors.allCases.count == 1 + 7 + 2 + 2 + 9 + 1)
+        #expect(vectors.allCases.count == 1 + 10 + 2 + 2 + 12 + 2)
         #expect(Set(vectors.allCases.map(\.name)).count == vectors.allCases.count)
         for testCase in vectors.allCases {
-            #expect(testCase.source.hasPrefix("captured from herdr-core 0.1.16 on native Windows "), "\(testCase.name)")
+            #expect(testCase.source.hasPrefix("captured from herdr-core 0.1.16 on native Windows, from a Mac over one ssh -T exec "), "\(testCase.name)")
         }
     }
 
@@ -52,6 +53,18 @@ import Testing
         let vector = try #require(vectors.frames.first { $0.name == "data-attach-cr-lf-crlf-ctrl-z" })
         let payload = try oneFrame(hex: vector.bytes).frame.payload
         #expect(payload == Data("crlf\r\nlf\r\ncr\rtab\tsub\u{1A}sub\r\n".utf8))
+    }
+
+    /// A text-mode stream would change these three bytes wherever they fall, a frame's
+    /// length included, and the decoder would then lose the stream.
+    @Test func aLengthThatIsALineEndOrCtrlZArrivedAsALength() throws {
+        for (name, length) in [("data-attach-length-lf", 0x0A), ("data-attach-length-cr", 0x0D), ("data-attach-length-ctrl-z", 0x1A)] {
+            let vector = try #require(vectors.frames.first { $0.name == name })
+            let (frame, bytes) = try oneFrame(hex: vector.bytes)
+            #expect(bytes[bytes.startIndex + 5] == UInt8(length), "\(name)")
+            #expect(frame.payload.count == length, "\(name)")
+            #expect(frame.payload.suffix(2) == Data([0x0D, 0x0A]), "\(name)")
+        }
     }
 
     @Test func theLinkReadsTheCoresHelloStatusAndAttachFrames() async throws {
