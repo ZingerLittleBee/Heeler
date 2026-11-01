@@ -143,6 +143,19 @@ actor SSHChannelAdmission {
         }
     }
 
+    /// `admitCoreLink` for a native Windows Host, whose link is one exec session.
+    func admitCoreExec(
+        open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
+    ) async throws -> any WindowsTerminalExecChannel {
+        let lease = try await acquire(.events)
+        do {
+            return AdmittedCoreLinkExec(channel: try await open(), lease: lease)
+        } catch {
+            await lease.release()
+            throw error
+        }
+    }
+
     /// Windows RPC and Events are exec sessions as well. Leave one slot of
     /// headroom below OpenSSH's default MaxSessions=10 across all categories.
     func useWindowsSessionBudget() {
@@ -221,6 +234,34 @@ private struct AdmittedCoreLinkChannel: HeelerSSHAPIChannel {
 
     func read(maximumBytes: Int, timeout: Duration) async throws -> Data? {
         try await channel.read(maximumBytes: maximumBytes, timeout: timeout)
+    }
+
+    func close(timeout: Duration) async throws {
+        do {
+            try await channel.close(timeout: timeout)
+        } catch {
+            await lease.release()
+            throw error
+        }
+        await lease.release()
+    }
+}
+
+/// A native Windows core link's exec with the slot it was admitted under.
+private struct AdmittedCoreLinkExec: WindowsTerminalExecChannel {
+    let channel: any WindowsTerminalExecChannel
+    let lease: SSHChannelAdmissionLease
+
+    func write(_ data: Data, timeout: Duration) async throws {
+        try await channel.write(data, timeout: timeout)
+    }
+
+    func read(maximumBytes: Int, timeout: Duration) async throws -> Data? {
+        try await channel.read(maximumBytes: maximumBytes, timeout: timeout)
+    }
+
+    func exitStatus(timeout: Duration) async throws -> Int32 {
+        try await channel.exitStatus(timeout: timeout)
     }
 
     func close(timeout: Duration) async throws {

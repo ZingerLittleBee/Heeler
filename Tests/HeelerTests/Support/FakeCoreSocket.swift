@@ -7,7 +7,7 @@ import HeelerSSH
 /// bytes and read back exactly what the client wrote: first the plain `hello`
 /// line, then frames. Time never passes on its own; deadlines belong to the
 /// manual clock.
-actor FakeCoreSocket: HeelerSSHAPIChannel {
+actor FakeCoreSocket: HeelerSSHAPIChannel, WindowsTerminalExecChannel {
     private enum Inbound {
         case bytes(Data)
         case endOfFile
@@ -65,6 +65,8 @@ actor FakeCoreSocket: HeelerSSHAPIChannel {
         failRead(SSHError.cancelled)
         signalChange()
     }
+
+    func exitStatus(timeout: Duration) async throws -> Int32 { 0 }
 
     // MARK: The core's side
 

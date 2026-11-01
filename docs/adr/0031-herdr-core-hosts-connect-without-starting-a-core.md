@@ -27,7 +27,7 @@ stays as it is.
   under a file lock, restores the leading backslash, checks with PowerShell's
   `Test-Path` that the named pipe it names exists, and only then runs
   `.\AppData\Local\Programs\herdr-core\herdr-core.exe connect --session <s>`
-  over SSH exec, because a pipe cannot be forwarded. As in ADR 0018, the
+  under `cmd /d /c` over SSH exec, because a pipe cannot be forwarded. As in ADR 0018, the
   Windows path is a platform branch, never a fallback. `<s>`, and the
   `core.lock` the app reads on either platform, follow the core session the
   Host stores: hc's `HC_SESSION`, `default` unless the user names another,
@@ -189,7 +189,20 @@ confirm or refine these points with test clients, not the app.
 - One SSH session's forwarding survives core restarts: each connection is a
   new channel.
 - On Windows a core that stops between the pipe check and `connect` is
-  started by `connect`; the window is one round trip.
+  started by `connect`; the window is one round trip. Every connect and
+  reconnect repeats the check, so nothing about an earlier pipe is reused.
+- On Windows `connect` is not wrapped in PowerShell as the Herdr TUI bridge is.
+  `cmd /d /c "echo <marker>&& <installer path> connect --session <s>"` keeps it
+  a direct child on the exec's own stdio, the form whose bytes were measured,
+  and what PowerShell does to the stream was not. The marker drops whatever the
+  account's shell printed first. This exact line, the marker and the PowerShell
+  probe have not run through sshd; #587 leaves that to its owner acceptance.
+- `cmd` and a PowerShell `DefaultShell` parse that line differently and no
+  quoting survives both, so a Windows session name is limited to the characters
+  hc itself advises (letters, digits, `-`, `_`, `.`, no leading `-`), stricter
+  than hc's own refusal. A Unix Host keeps hc's rule.
+- The Windows probe also prints the account's home folder, since the home read
+  the other Console names use refuses native Windows.
 - On Windows `core.lock` is unreadable as a whole while its core runs: a plain
   read fails with a lock violation, an SFTP read at offset 0 fails too, and
   only a read from byte 1 returns the path. A stopped core's file reads whole

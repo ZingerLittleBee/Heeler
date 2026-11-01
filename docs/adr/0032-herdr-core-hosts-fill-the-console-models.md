@@ -95,7 +95,15 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   removes with the Terminal; this amends ADR 0018's refusal of uploads for
   herdr-core Hosts only, since no SFTP mode bits are involved. New Workspace
   is offered. Rename and Worktrees stay off until each passes a test on a
-  Windows Host.
+  Windows Host. A space nobody named still takes its Checkout's folder: one
+  bounded PowerShell exec asks git only for the top level of each directory,
+  from inside it, so no Worktree is known there, and without git on that exec's
+  PATH the space takes its directory's name. Until a later ticket turns them on,
+  what a Windows core Host cannot start stays hidden whatever its connection
+  reads, stopped, update required, not installed or a refused session name
+  included. So a core Host offers no New while its first attempt runs with
+  nothing known of its platform, and this device remembers the kernel a locator
+  last found, so that a relaunch knows before the Host answers.
 
 ## Why
 

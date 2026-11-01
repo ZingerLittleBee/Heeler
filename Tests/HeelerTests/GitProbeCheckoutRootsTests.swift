@@ -126,4 +126,94 @@ struct GitProbeCheckoutRootsTests {
                 nonce: "someoneelse", directories: ["/work"])
         }
     }
+
+    // MARK: Native Windows
+
+    private func windowsScript(_ directories: [String]) throws -> String {
+        try HerdrCoreWindowsLocatorTests.decoded(
+            GitProbe.windowsCheckoutRootsCommand(directories: directories, nonce: nonce))
+    }
+
+    private func windowsOutput(_ lines: [String], framing: String = "\n", reachesEnd: Bool = true) -> Data {
+        var all = ["banner from a profile", "", "\(nonce) begin"] + lines
+        if reachesEnd { all.append("\(nonce) end") }
+        return Data((all.joined(separator: framing) + framing).utf8)
+    }
+
+    @Test func aWindowsReadAsksGitForTheTopLevelFromInsideEachDirectoryAndNothingElse() throws {
+        let body = try windowsScript([#"C:\Users\me\src\api"#, #"D:\work\"#])
+        #expect(ScriptedCoreHost.windowsCheckoutDirectories(in: body) == [#"C:\Users\me\src\api"#, #"D:\work\"#])
+        // A trailing backslash in a quoted native argument eats the quote on 5.1.
+        #expect(body.contains("Set-Location -LiteralPath $dirs[$i] -ErrorAction Stop"))
+        #expect(body.contains("rev-parse"))
+        #expect(body.contains("--show-toplevel"))
+        #expect(body.contains("'--no-optional-locks'"))
+        #expect(!body.contains("--git-common-dir"))
+        #expect(!body.contains("herdr-core"))
+        #expect(!body.split(whereSeparator: \.isWhitespace).contains("hc"))
+    }
+
+    /// A folder can be named with any of the quotes PowerShell closes a string on.
+    @Test func aWindowsDirectoryCannotBecomeSyntax() throws {
+        let body = try windowsScript(["C:\\it's", "C:\\it\u{2019}; Remove-Item x", "C:\\a\u{2018}\u{201A}\u{201B}b"])
+        #expect(body.contains("'C:\\it''s'"))
+        #expect(body.contains("'C:\\it\u{2019}\u{2019}; Remove-Item x'"))
+        #expect(body.contains("'C:\\a\u{2018}\u{2018}\u{201A}\u{201A}\u{201B}\u{201B}b'"))
+    }
+
+    @Test func aWindowsAnswerIsEachDirectorysRootInTheHostsOwnSeparators() throws {
+        let directories = [#"C:\a"#, #"C:\b"#, #"\\server\share\c"#]
+        let checkouts = try GitProbe.parseWindowsCheckoutRoots(
+            stdout: windowsOutput(["root 0 C:/Users/me/My Repo", "root 2 //server/share"]), nonce: nonce,
+            directories: directories)
+        #expect(checkouts == [
+            #"C:\a"#: HostCheckout(root: #"C:\Users\me\My Repo"#),
+            #"\\server\share\c"#: HostCheckout(root: #"\\server\share"#),
+        ])
+    }
+
+    @Test func aWindowsAnswerTakesEitherLineEnding() throws {
+        let checkouts = try GitProbe.parseWindowsCheckoutRoots(
+            stdout: windowsOutput(["root 0 C:/repo"], framing: "\r\n"), nonce: nonce, directories: [#"C:\a"#])
+        #expect(checkouts == [#"C:\a"#: HostCheckout(root: #"C:\repo"#)])
+    }
+
+    @Test func aWindowsAnswerSaysNothingOfADirectoryItWasNotAsked() throws {
+        let checkouts = try GitProbe.parseWindowsCheckoutRoots(
+            stdout: windowsOutput(["root 5 C:/repo", "root x C:/repo", "root 0 "]), nonce: nonce,
+            directories: [#"C:\a"#])
+        #expect(checkouts.isEmpty)
+    }
+
+    @Test func aWindowsAnswerThatStopsShortIsNoAnswer() {
+        #expect(throws: ChangesReadError.incomplete) {
+            try GitProbe.parseWindowsCheckoutRoots(
+                stdout: windowsOutput(["root 0 C:/repo"], reachesEnd: false), nonce: self.nonce,
+                directories: [#"C:\a"#])
+        }
+        // Output with no markers of this read's is not this read's.
+        #expect(throws: ChangesReadError.incomplete) {
+            try GitProbe.parseWindowsCheckoutRoots(
+                stdout: Data("root 0 C:/repo\nother end\n".utf8), nonce: self.nonce, directories: [#"C:\a"#])
+        }
+    }
+
+    /// `cmd.exe` takes 8191 characters, and sshd starts the exec through it.
+    @Test func windowsBatchesKeepEveryCommandWithinTheCmdLimit() throws {
+        let directories = (0..<16).map { #"C:\deep\"# + String(repeating: "x", count: 240) + "\($0)" }
+        let batches = GitProbe.windowsCheckoutRootBatches(directories, nonce: nonce)
+
+        #expect(batches.count > 1)
+        #expect(batches.flatMap(\.self) == directories)
+        for batch in batches {
+            #expect(GitProbe.windowsCheckoutRootsCommand(directories: batch, nonce: nonce).count <= 8191)
+        }
+        #expect(GitProbe.windowsCheckoutRootBatches([#"C:\a"#, #"C:\b"#], nonce: nonce) == [[#"C:\a"#, #"C:\b"#]])
+    }
+
+    /// No command can ask, so it names itself, as a directory outside a checkout does.
+    @Test func aDirectoryNoCommandCanCarryIsLeftOut() {
+        let long = #"C:\"# + String(repeating: "y", count: 8191)
+        #expect(GitProbe.windowsCheckoutRootBatches([#"C:\a"#, long, #"C:\b"#], nonce: nonce) == [[#"C:\a"#, #"C:\b"#]])
+    }
 }

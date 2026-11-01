@@ -1,6 +1,6 @@
 # Connect herdr-core
 
-Agents started by the Herdr desktop app belong to herdr-core, a server of their own. They do not appear in the Herdr TUI server, even when both run under the same SSH account, so each one is a Host of its own in Heeler. Heeler reads herdr-core 0.1.13. The app and the core have separate version numbers.
+Agents started by the Herdr desktop app belong to herdr-core, a server of their own. They do not appear in the Herdr TUI server, even when both run under the same SSH account, so each one is a Host of its own in Heeler. Heeler reads herdr-core 0.1.13, and 0.1.16 on native Windows. The app and the core have separate version numbers.
 
 ## Add a Host
 
@@ -24,7 +24,7 @@ Heeler never starts a core by connecting or checking, so a mistyped session name
 
 | Host reads | What to do |
 | --- | --- |
-| **herdr-core is not installed** | Install it on the SSH PATH or at `~/.local/bin/herdr-core`, then check again |
+| **herdr-core is not installed** | Install it on the SSH PATH or at `~/.local/bin/herdr-core`, or with its installer on native Windows, then check again |
 | **herdr-core is not running**, nothing listening at a socket path | Start the core. Check the session name if you expected it running |
 | **herdr-core is not running**, a socket file left behind | Start the core, or allow stream-local forwarding in the Host's SSH server. Heeler cannot tell these two apart from here |
 | **The SSH server refuses socket forwarding** | Allow stream-local forwarding in the Host's SSH server |
@@ -32,6 +32,22 @@ Heeler never starts a core by connecting or checking, so a mistyped session name
 | **The herdr-core socket path is too long** | Use a shorter session name, or set a shorter socket in the core's config |
 
 **Start herdr-core** appears under the checks on a Linux Host whose core is not running. It asks first, naming the session, the interactive login shell it starts through, and systemd linger, which it tries to turn on when it is off. The core then has the environment your own terminal has. If a core was already running by then, Heeler says so and that Start changed nothing. On macOS, Heeler says how to start the core yourself.
+
+## Native Windows
+
+Add a Windows machine as any other Host, over its OpenSSH server. Heeler looks for the core where its installer puts it, `%LOCALAPPDATA%\Programs\herdr-core\herdr-core.exe`, and connects only once the core's named pipe exists. Each reconnect looks again, so a core you stopped stays stopped: the Host reads **herdr-core is not running** and keeps checking.
+
+Heeler never starts a core on Windows. On that machine, in your desktop session, open PowerShell, not as administrator, and run the command the Host's checks show. For a session named `work` it reads:
+
+```powershell
+$env:HC_SESSION='work'; C:\Users\you\AppData\Local\Programs\herdr-core\herdr-core.exe server start
+```
+
+A session name there uses letters, digits, `-`, `_` and `.`, and does not start with `-`. Leave Session blank for `default`.
+
+The Console lists the core's Agents and Terminals, each in a card named for its directory or its space. A space nobody named takes its repository's folder when `git` is on the PATH of an SSH session there, and its directory's otherwise. Open one for its Agent detail with Direct Input, or as a Shell Terminal, and close it from there.
+
+Not offered there yet, whatever the Host reads: New Agent, New Terminal, New Workspace, images and files in the Composer, Send, Stop, Chat, Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
 
 ## Console
 
@@ -226,7 +242,6 @@ Heeler looks for the sessions where the Agent's own environment says: `PI_CODING
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
 - Chat opens only for Claude Code on Linux. Other programs and macOS core Hosts offer the terminal alone, and [Pi and Oh My Pi](#pi-and-oh-my-pi) join once each passes its check.
-- Heeler cannot connect to a native Windows core Host yet: its checks read **herdr-core Hosts is not yet supported on native Windows**.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 - If Heeler cannot read its saved herdr-core Hosts, the Hosts tab says so. Herdr TUI Hosts keep working and the saved data stays as it was, but no herdr-core Host can be added until it reads again.

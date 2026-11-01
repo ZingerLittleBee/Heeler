@@ -247,4 +247,78 @@ struct ServerKindDetectionTests {
         let refused = try await detect(herdr: .answers(Self.sessionsJSON), session: "a/b")
         #expect(refused.offeredKinds == [.herdrTUI, .herdrCore])
     }
+
+    // MARK: A native Windows target
+
+    private func detectOnWindows(
+        herdr: ScriptedCoreHost.HerdrRead = .notInstalled,
+        locator: [String] = ScriptedCoreHost.windowsLocatorLines(),
+        shellBanner: Data = Data(), session: String = "work"
+    ) async throws -> (ServerKindDetection, ScriptedCoreHost) {
+        let host = ScriptedCoreHost(
+            windowsLocator: locator, shellBanner: shellBanner, herdrRead: herdr, channel: .refused)
+        return (try await ServerKindDetection.run(over: host, session: session), host)
+    }
+
+    @Test func aWindowsTargetsCoreIsReportedFromItsProbe() async throws {
+        let (running, host) = try await detectOnWindows()
+        #expect(await host.log == ["windows-detection"])
+        #expect(running.herdrCore == .socketFilePresent(version: "0.1.16", socketPath: ScriptedCoreHost.windowsPipe))
+        #expect(running.offeredKinds == [.herdrCore])
+        #expect(running.herdrCore.summary == "0.1.16, running")
+
+        let (stopped, _) = try await detectOnWindows(
+            locator: ScriptedCoreHost.windowsLocatorLines(lock: ScriptedCoreHost.windowsPipe, pipe: false))
+        #expect(stopped.herdrCore == .notRunning(version: "0.1.16", socketPath: ScriptedCoreHost.windowsPipe))
+        #expect(stopped.offeredKinds == [.herdrCore])
+
+        let (absent, _) = try await detectOnWindows(
+            locator: ScriptedCoreHost.windowsLocatorLines(executable: nil, pipe: false))
+        #expect(absent.herdrCore == .notInstalled)
+    }
+
+    @Test func theWindowsProbeAlsoReadsHerdrTUIInTheSameExec() async throws {
+        let (detection, host) = try await detectOnWindows(
+            herdr: .answers(Self.sessionsJSON), shellBanner: Data("Windows banner\r\n".utf8))
+
+        #expect(detection.herdrTUI == .found(sessions: Self.sessions))
+        #expect(detection.offeredKinds == [.herdrTUI, .herdrCore])
+        let body = try #require(await host.scripts.first)
+        #expect(await host.scripts.count == 1)
+        #expect(body.contains("session list --json"))
+        #expect(body.contains(HerdrCoreLocator.windowsExecutable))
+        #expect(!body.lowercased().contains("hc.exe"))
+        #expect(!body.contains("server start"))
+        #expect(!body.contains("connect"))
+    }
+
+    @Test func aNameWindowsRefusesRunsNoLocatorAndSaysWhy() async throws {
+        // A name Unix takes and no `cmd` line can carry.
+        let (detection, host) = try await detectOnWindows(
+            herdr: .answers(Self.sessionsJSON), session: "my work")
+
+        guard case .sessionRefused(let reason) = detection.herdrCore else {
+            Issue.record("expected a refusal, got \(detection.herdrCore)")
+            return
+        }
+        #expect(reason == HerdrCoreSessionName.windowsRefusal("my work"))
+        #expect(!reason.isEmpty)
+        #expect(detection.herdrTUI == .found(sessions: Self.sessions))
+        #expect(await host.scripts.first?.contains("$s = ") == false)
+    }
+
+    @Test func aNameHCRefusesIsRefusedOnWindowsToo() async throws {
+        let (detection, _) = try await detectOnWindows(session: "a/b")
+
+        #expect(detection.herdrCore == .sessionRefused(reason: try #require(ServerKind.herdrCore.sessionNameRefusal("a/b"))))
+    }
+
+    @Test func aWindowsProbeCutShortReadsAsAFailedRead() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(), locatorStatus: 1, channel: .refused)
+
+        await #expect(throws: TransportError.self) {
+            _ = try await ServerKindDetection.run(over: host, session: "work")
+        }
+    }
 }

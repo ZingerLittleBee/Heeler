@@ -221,7 +221,9 @@ struct ConsoleView: View {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
                 StartAgentView(
-                    hosts: hosts.consoleHosts.offeringNewItem(listsTerminals: false), console: console
+                    hosts: hosts.consoleHosts.offeringNewItem(
+                        listsTerminals: false, capabilities: { console.capabilities(for: $0.id) }),
+                    console: console
                 ) { id in
                     // A fresh launch lands in its own terminal, exactly
                     // as tapping the new row would, on the list that has it.
@@ -256,7 +258,9 @@ struct ConsoleView: View {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // NewTerminalView brings its own NavigationStack.
                 NewTerminalView(
-                    hosts: hosts.consoleHosts.offeringNewItem(listsTerminals: true), console: console,
+                    hosts: hosts.consoleHosts.offeringNewItem(
+                        listsTerminals: true, capabilities: { console.capabilities(for: $0.id) }),
+                    console: console,
                     initialHostID: hostFilter
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
@@ -1143,7 +1147,8 @@ struct ConsoleView: View {
     }
 
     private func offersNewItem(on tab: ConsoleTab) -> Bool {
-        hosts.consoleHosts.offersNewItem(listsTerminals: tab == .terminals)
+        hosts.consoleHosts.offersNewItem(
+            listsTerminals: tab == .terminals, capabilities: { console.capabilities(for: $0.id) })
     }
 
     /// An iPad sidebar's foot, standing in for the tab bar: Hosts and

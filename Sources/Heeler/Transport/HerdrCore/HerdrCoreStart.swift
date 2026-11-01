@@ -34,6 +34,26 @@ enum HerdrCoreStart {
         return "HC_SESSION=\(shellWord(name)) \(shellWord(executablePath)) server start"
     }
 
+    /// What to run in a PowerShell window of the user's desktop session on a native
+    /// Windows Host. `HC_SESSION` is how `server start` takes a session there too.
+    static func windowsManualCommand(executablePath: String, session: String) -> String {
+        let name = HerdrCoreSessionName.normalized(session)
+        let run = "\(windowsProgramWord(executablePath)) server start"
+        return name == "default" ? run : "$env:HC_SESSION=\(PowerShellCommand.literal(name)); \(run)"
+    }
+
+    /// `herdr-core update` by the probed path, for the same window.
+    static func windowsUpdateCommand(executablePath: String) -> String {
+        "\(windowsProgramWord(executablePath)) update"
+    }
+
+    /// A path that needs quoting needs `&` to run: PowerShell reads a bare quoted
+    /// word as a string.
+    private static func windowsProgramWord(_ path: String) -> String {
+        path.unicodeScalars.contains(where: CharacterSet.whitespaces.contains)
+            ? "& \(PowerShellCommand.literal(path))" : path
+    }
+
     /// Judges by exit status and by the uptime the core prints as its last line.
     /// An interactive shell without a terminal writes job-control warnings and
     /// the user's startup files may print anything, in any encoding, before it.

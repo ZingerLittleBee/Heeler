@@ -35,7 +35,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private(set) var latency: Duration?
     private(set) var routeID: UUID?
     private(set) var leakedEnvironmentNames: Set<String> = []
-    /// As `uname -s` prints it, once a link has located the core.
+    /// As `uname -s` prints it: what a locator last found, this connection's once
+    /// it has run. What a Host offers does not wait for a core to answer.
     private(set) var kernel: String?
     /// Why each Agent reading Unknown does, by Terminal address.
     private(set) var statusExplanations: [String: HerdrCoreStatusExplanation] = [:]
@@ -122,6 +123,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.host = host
         self.session = session
         self.memory = memory
+        kernel = memory.kernel(for: host.id)
         self.pins = pins
         self.gitGate = gitGate
         self.herdrAppRename = herdrAppRename
@@ -229,8 +231,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             switch status {
             case .failed(let failure):
                 standingFailure = failure
+                readKernel()
             case .connected, .reconnecting:
                 standingFailure = nil
+                readKernel()
             case .connecting, .suspended, .ended:
                 break
             }
@@ -243,19 +247,21 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 chatTypings = [:]
             }
             memory.noteCore(coreID, for: host.id)
-            readKernelOnce()
+            readKernel()
             replaceInventory(with: snapshot)
         case .event(let event):
             apply(event)
         }
     }
 
-    /// The locator already ran for this link, so this reads no Host.
-    private func readKernelOnce() {
-        guard kernel == nil else { return }
+    /// The locator already ran on this connection, if it got that far, so this
+    /// reads no Host. A stopped or refused core has no snapshot to read this at.
+    private func readKernel() {
         Task { [weak self, session] in
-            let kernel = try? await session.withTransport { await $0.lastLocation()?.kernel }
-            guard let self, let kernel, self.kernel != kernel else { return }
+            let kernel = try? await session.withTransport { await $0.lastKernel() }
+            guard let self, let kernel, !self.hasEnded else { return }
+            self.memory.noteKernel(kernel, for: self.host.id)
+            guard self.kernel != kernel else { return }
             self.kernel = kernel
             self.publish()
         }
@@ -623,15 +629,18 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     private func resolveCheckouts() async {
         let session = session
-        let services = try? await session.withTransport { $0.hostServices }
+        let transport = try? await session.withTransport { $0 }
         guard !Task.isCancelled else { return }
-        guard let services else {
+        guard let transport else {
             checkoutTask = nil
             return
         }
+        let services = transport.hostServices
         if !hasAskedHome {
             hasAskedHome = true
             home = try? await services.hostHomeDirectory()
+            // That read is Chat's, and it refuses native Windows; the locator knows.
+            if home == nil { home = (try? await session.withTransport { await $0.lastLocation() })?.home }
             guard !Task.isCancelled else { return }
             // The desktop app does not ask git about the home folder either.
             queuedCheckouts.removeAll { $0 == home }
@@ -639,7 +648,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         while !queuedCheckouts.isEmpty {
             let batch = Array(queuedCheckouts.prefix(GitProbe.checkoutRootsPerCall))
             queuedCheckouts.removeFirst(batch.count)
-            let answers = try? await gitGate.run { try await services.checkouts(for: batch) }
+            let answers = try? await gitGate.run { try await transport.checkouts(for: batch) }
             guard !Task.isCancelled else { return }
             if let answers {
                 for directory in batch {

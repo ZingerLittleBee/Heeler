@@ -116,3 +116,81 @@ extension GitProbe {
         return String(path.hasSuffix("/.git") ? path.dropLast(5) : path)
     }
 }
+
+/// A native Windows Host's read of the same, through PowerShell, since the script
+/// above needs a POSIX shell. It asks only for the top level, which names a space:
+/// which repository a Checkout belongs to is for Worktrees, off there (ADR 0032).
+/// Nothing here has run on a Windows machine. See `docs/agents/herdr-compatibility.md`.
+extension GitProbe {
+    /// What `cmd.exe` takes, and OpenSSH starts an exec through the account's shell.
+    private static let windowsCommandLimit = 8_191
+
+    /// Each directory is entered, not handed to `-C`: Windows PowerShell 5.1 ends a
+    /// quoted native argument early at a trailing backslash. A directory it cannot
+    /// enter stays unanswered rather than asking about wherever this already is.
+    /// PowerShell finds `git` on PATH and never in the folder it just entered.
+    static func windowsCheckoutRootsCommand(directories: [String], nonce: String) -> String {
+        let options = neutralizingOptions.map(PowerShellCommand.literal).joined(separator: " ")
+        let list = directories.map(PowerShellCommand.literal).joined(separator: "\n")
+        return PowerShellCommand.encoded(
+            """
+            \(HerdrCoreLocator.windowsPrelude)
+            say ''
+            say \(PowerShellCommand.literal("\(nonce) begin"))
+            Remove-Item Env:GIT_DIR, Env:GIT_WORK_TREE, Env:GIT_COMMON_DIR
+            $env:GIT_TERMINAL_PROMPT = '0'
+            $dirs = @(
+            \(list)
+            )
+            for ($i = 0; $i -lt $dirs.Count; $i++) {
+                try { Set-Location -LiteralPath $dirs[$i] -ErrorAction Stop } catch { continue }
+                $global:LASTEXITCODE = 1
+                $r = git \(options) rev-parse --show-toplevel 2>$null
+                if ($LASTEXITCODE -eq 0 -and $r) { say ("root $i " + $r) }
+            }
+            say \(PowerShellCommand.literal("\(nonce) end"))
+            exit 0
+            """)
+    }
+
+    /// The commands one call takes, in the order asked: long paths can fill one
+    /// long before `checkoutRootsPerCall` does. A path no command can carry has no
+    /// entry, so it names itself.
+    static func windowsCheckoutRootBatches(_ directories: [String], nonce: String) -> [[String]] {
+        func fits(_ batch: [String]) -> Bool {
+            windowsCheckoutRootsCommand(directories: batch, nonce: nonce).count <= windowsCommandLimit
+        }
+        var batches: [[String]] = []
+        var batch: [String] = []
+        for directory in checkoutRootDirectories(directories) where fits([directory]) {
+            if fits(batch + [directory]) {
+                batch.append(directory)
+            } else {
+                batches.append(batch)
+                batch = [directory]
+            }
+        }
+        return batch.isEmpty ? batches : batches + [batch]
+    }
+
+    /// Throws `ChangesReadError.incomplete` unless this read's own end marker came.
+    /// Git for Windows prints `/`, and a Host's paths compare with its own `\\`.
+    static func parseWindowsCheckoutRoots(
+        stdout: Data, nonce: String, directories: [String]
+    ) throws -> [String: HostCheckout] {
+        let lines = String(decoding: stdout, as: UTF8.self).split(whereSeparator: \.isNewline).map(String.init)
+        guard let begin = lines.firstIndex(of: "\(nonce) begin"),
+            let end = lines[begin...].firstIndex(of: "\(nonce) end")
+        else { throw ChangesReadError.incomplete }
+        var checkouts: [String: HostCheckout] = [:]
+        for line in lines[begin..<end] {
+            let fields = line.split(separator: " ", maxSplits: 2).map(String.init)
+            guard fields.count == 3, fields[0] == "root", let index = Int(fields[1]),
+                directories.indices.contains(index)
+            else { continue }
+            checkouts[directories[index]] = HostCheckout(
+                root: fields[2].replacingOccurrences(of: "/", with: "\\"))
+        }
+        return checkouts
+    }
+}

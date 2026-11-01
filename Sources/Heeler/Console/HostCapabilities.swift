@@ -63,21 +63,32 @@ extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
     /// core Host offers uploads once it is known to take them over SFTP: native
     /// Windows stages through the core's `terminal.put` instead (ADR 0032), and
-    /// has no Rename or Worktrees until each passes a test there. It offers Send
+    /// has no Rename or Worktrees until each passes a test there. Nor does it start
+    /// Agents, Terminals or Workspaces yet, which show their own tickets. It offers Send
     /// and Stop once it is known to be POSIX too, because the foreground that Send
     /// checks takes another form on native Windows (ADRs 0032 and 0035). `coreKernel`
-    /// is the core Host's `uname -s`: its Chat opens on Linux, whose process reads a
-    /// check of an Agent's session uses, for `coreChatPrograms`.
+    /// is the core Host's `uname -s`, known once its locator ran with or without a
+    /// core: its Chat opens on Linux, whose process reads a check of an Agent's session
+    /// uses, for `coreChatPrograms`. `isLocatingCore` is a connection on its way: a core
+    /// Host nothing is known of yet may turn out to be Windows, and nothing could start
+    /// on any core Host before that attempt says.
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
         desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil,
-        coreChatPrograms: Set<ChatProgram> = confirmedCoreChatPrograms
+        coreChatPrograms: Set<ChatProgram> = confirmedCoreChatPrograms,
+        isLocatingCore: Bool = false
     ) {
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
         let coreChat = coreOnPosix && coreKernel == "Linux"
+        let coreOnWindows =
+            serverKind == .herdrCore
+            && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
+        let coreStillUnknown =
+            serverKind == .herdrCore && isLocatingCore && platform == nil && coreKernel == nil
+        let starts = !coreOnWindows && !coreStillUnknown
         self.init(
-            startsAgents: true, startsTerminals: true,
+            startsAgents: starts, startsTerminals: starts,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
             uploads: offered || coreOnPosix,
             composerSend: offered || coreOnPosix, chat: offered || coreChat,
@@ -115,14 +126,22 @@ struct ConsoleAgentRowOffers: Equatable {
 
 extension Collection<Host> {
     /// The Hosts a list's New button can start something on: Agents, or
-    /// Terminals on the Terminals tab. With none, it is not offered.
-    func offeringNewItem(listsTerminals: Bool) -> [Host] {
-        filter { listsTerminals ? $0.capabilities.startsTerminals : $0.capabilities.startsAgents }
+    /// Terminals on the Terminals tab. With none, it is not offered. What a
+    /// connection has learned of a Host comes through `capabilities`.
+    func offeringNewItem(
+        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities = \.capabilities
+    ) -> [Host] {
+        filter { host in
+            let offers = capabilities(host)
+            return listsTerminals ? offers.startsTerminals : offers.startsAgents
+        }
     }
 
     /// Whether a list offers New at all: it does with no Hosts, and stops only
     /// when every Host it has cannot start the item.
-    func offersNewItem(listsTerminals: Bool) -> Bool {
-        isEmpty || !offeringNewItem(listsTerminals: listsTerminals).isEmpty
+    func offersNewItem(
+        listsTerminals: Bool, capabilities: (Host) -> HostCapabilities = \.capabilities
+    ) -> Bool {
+        isEmpty || !offeringNewItem(listsTerminals: listsTerminals, capabilities: capabilities).isEmpty
     }
 }
