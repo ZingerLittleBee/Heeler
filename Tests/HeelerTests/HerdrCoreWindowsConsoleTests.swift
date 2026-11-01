@@ -44,6 +44,32 @@ struct HerdrCoreWindowsConsoleTests {
         return store
     }
 
+    /// A Console over the real `HerdrCoreSSHTransport`, so what it says of a Host's
+    /// platform is what the real path says. `before` runs ahead of each connection.
+    private func storeOnScripted(
+        _ scripted: ScriptedCoreHost, session: String = "work", memory: HerdrCoreHostMemory? = nil,
+        before: @escaping @Sendable () async throws -> Void = {}
+    ) -> ConsoleStore {
+        ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(
+                    connect: {
+                        try await before()
+                        await scripted.setConnected(true)
+                        return scripted.transport(session: session)
+                    }, keepalive: nil)
+            },
+            coreHostMemory: memory
+                ?? HerdrCoreHostMemory(
+                    defaults: UserDefaults(suiteName: "core-windows-\(UUID().uuidString)") ?? .standard))
+    }
+
     private func waitUntil(
         _ what: String, _ condition: @MainActor () -> Bool,
         sourceLocation: SourceLocation = #_sourceLocation
@@ -112,22 +138,7 @@ struct HerdrCoreWindowsConsoleTests {
             channel: .core(.init(terminals: [
                 Self.record("t1", cwd: #"C:\Users\me"#, labels: ["herdr.space": "lonely"])
             ])))
-        let store = ConsoleStore(
-            makeSession: { _, subscriptions in
-                EventsSession(
-                    subscriptions: subscriptions,
-                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
-                    keepalive: nil)
-            },
-            makeCoreSession: { _ in
-                HerdrCoreHostSession(
-                    connect: {
-                        await scripted.setConnected(true)
-                        return scripted.transport()
-                    }, keepalive: nil)
-            },
-            coreHostMemory: HerdrCoreHostMemory(
-                defaults: UserDefaults(suiteName: "core-windows-\(UUID().uuidString)") ?? .standard))
+        let store = storeOnScripted(scripted)
         store.setHosts([host])
         await store.resume()
 
@@ -193,29 +204,128 @@ struct HerdrCoreWindowsConsoleTests {
     @Test func aWindowsHostWhoseCoreIsStoppedOffersNothingToStartEither() async throws {
         let scripted = ScriptedCoreHost(
             windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
-        let store = ConsoleStore(
-            makeSession: { _, subscriptions in
-                EventsSession(
-                    subscriptions: subscriptions,
-                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
-                    keepalive: nil)
-            },
-            makeCoreSession: { _ in
-                HerdrCoreHostSession(
-                    connect: {
-                        await scripted.setConnected(true)
-                        return scripted.transport()
-                    }, keepalive: nil)
-            },
-            coreHostMemory: HerdrCoreHostMemory(
-                defaults: UserDefaults(suiteName: "core-windows-\(UUID().uuidString)") ?? .standard))
+        let store = storeOnScripted(scripted)
         store.setHosts([host])
         await store.resume()
 
-        try await waitUntil("the kernel") { !store.capabilities(for: host.id).startsAgents }
+        try await waitUntil("the kernel") { store.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel }
 
         expectNothingToStart(store.capabilities(for: host.id))
         #expect(await scripted.connectCommands.isEmpty)
+        await finish(store)
+    }
+
+    /// These stop the session for good, so nothing later would bring the kernel.
+    @Test func aWindowsHostThatCannotConnectOffersNothingToStart() async throws {
+        let cases: [(what: String, scripted: ScriptedCoreHost, session: String)] = [
+            (
+                "update required",
+                ScriptedCoreHost(
+                    windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
+                    channel: .answersHello(ScriptedCoreHost.helloReply(features: ["framed"]))),
+                "work"
+            ),
+            (
+                "not installed",
+                ScriptedCoreHost(
+                    windowsLocator: ScriptedCoreHost.windowsLocatorLines(executable: nil), channel: .core(.init())),
+                "work"
+            ),
+            (
+                "a session name it refuses",
+                ScriptedCoreHost(windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .core(.init())),
+                "my work"
+            ),
+        ]
+        for (what, scripted, session) in cases {
+            let store = storeOnScripted(scripted, session: session)
+            store.setHosts([host])
+            await store.resume()
+
+            try await waitUntil("\(what) to stop the session") {
+                if case .failed = store.hostStatuses[host.id] { return true }
+                return false
+            }
+            try await waitUntil("the kernel after \(what)") {
+                store.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel
+            }
+
+            expectNothingToStart(store.capabilities(for: host.id))
+            await finish(store)
+        }
+    }
+
+    /// Nothing can start before the first locator says which platform this is,
+    /// and on Windows nothing could after it either.
+    @Test func aCoreHostBeingLocatedForTheFirstTimeOffersNothingToStartYet() async throws {
+        let gate = ScriptedTransportCallGate()
+        let scripted = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .core(.init()))
+        let store = storeOnScripted(scripted, before: { await gate.waitUntilOpen() })
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("the first attempt") { store.hostStatuses[host.id] == .connecting }
+        #expect(!store.capabilities(for: host.id).startsAgents)
+        #expect(!store.capabilities(for: host.id).startsTerminals)
+        #expect(![host].offersNewItem(listsTerminals: true) { store.capabilities(for: $0.id) })
+
+        await gate.open()
+        try await waitUntil("the kernel") { store.capabilities(for: host.id).startsAgents }
+        #expect(store.capabilities(for: host.id).startsTerminals)
+        await finish(store)
+    }
+
+    /// A relaunch knows before the Host answers, or whether it answers at all.
+    @Test func aWindowsHostOnceLocatedOffersNothingToStartWhileItCannotBeReached() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "core-windows-\(UUID().uuidString)"))
+        let scripted = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
+        let first = storeOnScripted(scripted, memory: HerdrCoreHostMemory(defaults: defaults))
+        first.setHosts([host])
+        await first.resume()
+        try await waitUntil("the kernel") { first.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel }
+        // Not `finish`: a Host taken off the catalog takes its memory along.
+        await first.suspend()
+
+        let relaunched = storeOnScripted(
+            scripted, memory: HerdrCoreHostMemory(defaults: defaults),
+            before: { throw TransportError.sshUnreachable(detail: "gone") })
+        relaunched.setHosts([host])
+        expectNothingToStart(relaunched.capabilities(for: host.id))
+        await relaunched.resume()
+        try await waitUntil("the failed attempt") {
+            if case .reconnecting = relaunched.hostStatuses[host.id] { return true }
+            return false
+        }
+        expectNothingToStart(relaunched.capabilities(for: host.id))
+        await finish(relaunched)
+    }
+
+    /// Another core on the machine is still that machine.
+    @Test func aHostsKernelOutlivesItsCore() throws {
+        let defaults = try #require(UserDefaults(suiteName: "core-windows-\(UUID().uuidString)"))
+        let memory = HerdrCoreHostMemory(defaults: defaults)
+        memory.noteCore("c1", for: host.id)
+        memory.noteKernel(HerdrCoreLocator.windowsKernel, for: host.id)
+        memory.noteCore("c2", for: host.id)
+        #expect(HerdrCoreHostMemory(defaults: defaults).kernel(for: host.id) == HerdrCoreLocator.windowsKernel)
+    }
+
+    /// The machine behind a Host's address can change.
+    @Test func aRememberedKernelGivesWayToTheOneTheLocatorFinds() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "core-windows-\(UUID().uuidString)"))
+        let memory = HerdrCoreHostMemory(defaults: defaults)
+        memory.noteKernel(HerdrCoreLocator.windowsKernel, for: host.id)
+        let scripted = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .core(.init()))
+        let store = storeOnScripted(scripted, memory: memory)
+        store.setHosts([host])
+        #expect(!store.capabilities(for: host.id).startsAgents)
+        await store.resume()
+
+        try await waitUntil("the Host's own kernel") { store.capabilities(for: host.id).startsAgents }
+        #expect(memory.kernel(for: host.id) == "Linux")
         await finish(store)
     }
 

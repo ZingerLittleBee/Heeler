@@ -23,6 +23,9 @@ protocol HerdrCoreTransport: Sendable {
     /// What the last locator run found, for a caller that reads why `hello` failed.
     func lastLocation() async -> HerdrCoreLocator.Location?
 
+    /// What this connection has learned of the Host's kernel, reading no Host.
+    func lastKernel() async -> String?
+
     /// One named variable of one process, in one bounded exec, for finding where
     /// that process's program keeps its configuration. Never says why it could not.
     func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable
@@ -102,6 +105,10 @@ protocol HerdrCoreTransport: Sendable {
 }
 
 extension HerdrCoreTransport {
+    func lastKernel() async -> String? {
+        await lastLocation()?.kernel
+    }
+
     /// The core's `hello`. A channel refused with the socket file present may be
     /// a core its holder is about to restart, so it is polled before the failure
     /// is believed, without running the locator again. A missing socket file
@@ -332,6 +339,12 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     func lastLocation() async -> HerdrCoreLocator.Location? {
         located
+    }
+
+    /// A session name Windows refuses stops at the platform branch, before any
+    /// locator, and a Host that can never connect still has to say what it offers.
+    func lastKernel() async -> String? {
+        located?.kernel ?? (platform == .nativeWindows ? HerdrCoreLocator.windowsKernel : nil)
     }
 
     /// The core's own clock says how long it has been up, so the elapsed time is

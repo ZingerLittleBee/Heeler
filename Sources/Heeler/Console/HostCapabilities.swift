@@ -69,10 +69,13 @@ extension HostCapabilities {
     /// checks takes another form on native Windows (ADRs 0032 and 0035). `coreKernel`
     /// is what the core Host's locator reported, known once it ran with or without a
     /// core: its Chat opens on Linux, whose process reads a check of an Agent's session
-    /// uses, for the one program built so far.
+    /// uses, for the one program built so far. `isLocatingCore` is a connection on
+    /// its way: a core Host nothing is known of yet may turn out to be Windows, and
+    /// nothing could start on any core Host before that attempt says.
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
-        desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil
+        desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil,
+        isLocatingCore: Bool = false
     ) {
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
@@ -80,8 +83,11 @@ extension HostCapabilities {
         let coreOnWindows =
             serverKind == .herdrCore
             && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
+        let coreStillUnknown =
+            serverKind == .herdrCore && isLocatingCore && platform == nil && coreKernel == nil
+        let starts = !coreOnWindows && !coreStillUnknown
         self.init(
-            startsAgents: !coreOnWindows, startsTerminals: !coreOnWindows,
+            startsAgents: starts, startsTerminals: starts,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
             uploads: offered || coreOnPosix,
             composerSend: offered || coreOnPosix, chat: offered || coreChat,

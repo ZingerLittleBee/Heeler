@@ -1857,7 +1857,8 @@ final class ConsoleStore {
             serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
             platform: hostPlatforms[hostID],
             desktopAppNaming: hostDesktopAppNaming[hostID],
-            coreKernel: hostCoreKernels[hostID])
+            coreKernel: hostCoreKernels[hostID],
+            isLocatingCore: hostStatuses[hostID] == .connecting)
     }
 
     // MARK: Harness configuration edits
