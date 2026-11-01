@@ -249,6 +249,86 @@ struct HerdrCorePiChatTests {
         rig.store.setHosts([])
     }
 
+    // MARK: A kept Terminal's next Agent
+
+    /// `restarted` keeps labels, so the next Agent starts under the last one's. It
+    /// writes its own once, as its session starts, which may be while a check runs.
+    @Test(arguments: programs)
+    func aLabelWrittenDuringACheckBindsAndIsNotCleared(_ program: ChatProgram) async throws {
+        let earlier = #"{"session":"\#(Self.second)","pid":9,"start":"1"}"#
+        let file = Self.sessionFile(root: Self.defaultRoot(program), session: Self.first)
+        let rig = Rig(host: host, program: program, record: Self.record(program, labels: ["heeler.session": earlier]))
+        try await rig.start()
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        let gate = ScriptedTransportCallGate()
+        await rig.transport.processTable.hold(using: gate)
+
+        let check = Task { try await core.checkChatSession(paneID: "t1", program: program) }
+        await gate.waitForEntry()
+        let own = Self.label(session: Self.first, file: file)
+        await rig.transport.deliver(Self.labelsEvent(sequence: 2, labels: ["heeler.session": own]))
+        try await rig.waitUntil("the new label") { core.terminalRecord(at: "t1")?.labels["heeler.session"] == own }
+        await gate.open()
+
+        let evidence = try await check.value
+        #expect(evidence == .bound(sessionID: file, transcriptRoot: Self.defaultRoot(program), directory: nil))
+        #expect(await rig.transport.labelWrites.isEmpty)
+        rig.store.setHosts([])
+    }
+
+    /// An earlier Agent's label that outlasts the exec still goes.
+    @Test(arguments: programs)
+    func aLabelStillStaleAfterTheExecIsCleared(_ program: ChatProgram) async throws {
+        let earlier = #"{"session":"\#(Self.second)","pid":9,"start":"1"}"#
+        let rig = Rig(host: host, program: program, record: Self.record(program, labels: ["heeler.session": earlier]))
+        try await rig.start()
+        let core = try #require(rig.store.coreProjection(on: host.id))
+
+        let evidence = try await core.checkChatSession(paneID: "t1", program: program)
+
+        #expect(evidence == .unavailable(.cannotTellSession(program)))
+        let write = try #require(await rig.transport.labelWrites.first)
+        #expect(write["labels"]?["heeler.session"]?.stringValue == "")
+        rig.store.setHosts([])
+    }
+
+    /// The core replaces labels by name, so the app is what compares them.
+    @Test func aLabelThatChangedAfterItWasFoundStaleStays() async throws {
+        let earlier = #"{"session":"\#(Self.second)","pid":9,"start":"1"}"#
+        let own = Self.label(session: Self.first)
+        let rig = Rig(
+            host: host, program: .pi,
+            record: Self.record(.pi, labels: ["heeler.session": earlier, "heeler.chat": earlier]))
+        try await rig.start()
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        await rig.transport.deliver(
+            Self.labelsEvent(sequence: 2, labels: ["heeler.session": own, "heeler.chat": earlier]))
+        try await rig.waitUntil("the new label") { core.terminalRecord(at: "t1")?.labels["heeler.session"] == own }
+
+        try await core.clearStaleLabels(
+            ["heeler.session": earlier, "heeler.chat": earlier], at: "t1", on: core.inventoryCore)
+
+        let writes = await rig.transport.labelWrites
+        #expect(writes.count == 1)
+        #expect(writes.first?["labels"]?["heeler.chat"]?.stringValue == "")
+        #expect(writes.first?["labels"]?["heeler.session"] == nil)
+        rig.store.setHosts([])
+    }
+
+    @Test func noLabelStillStaleSendsNothing() async throws {
+        let earlier = #"{"session":"\#(Self.second)","pid":9,"start":"1"}"#
+        let own = Self.label(session: Self.first)
+        let rig = Rig(host: host, program: .pi, record: Self.record(.pi, labels: ["heeler.session": own]))
+        try await rig.start()
+        let core = try #require(rig.store.coreProjection(on: host.id))
+
+        try await core.clearStaleLabels(["heeler.session": earlier], at: "t1", on: core.inventoryCore)
+
+        #expect(await rig.transport.labelWrites.isEmpty)
+        #expect(await rig.transport.mutations.isEmpty)
+        rig.store.setHosts([])
+    }
+
     // MARK: The Agent's own root
 
     @Test(arguments: [

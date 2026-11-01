@@ -58,8 +58,11 @@ struct HerdrCoreSessionBinder: Sendable {
     /// is an exec that failed on the Host, which tells nothing.
     var processes: @Sendable (HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
     var files: ChatHostFiles
-    /// Removes labels from the Terminal.
-    var clearLabels: @Sendable ([String]) async throws -> Void
+    /// Removes labels from the Terminal, each with the value that was found stale.
+    var clearLabels: @Sendable ([String: String]) async throws -> Void
+    /// The Terminal's labels as they stand now, nil when nothing newer than the
+    /// record is known.
+    var currentLabels: @Sendable () async -> [String: String]? = { nil }
     /// Whose evidence this looks for, which is the Agent's own program.
     var program: ChatProgram = .claude
 
@@ -203,19 +206,22 @@ struct HerdrCoreSessionBinder: Sendable {
 
     // MARK: Hints
 
-    /// The hints for this process, after clearing those for another. A failure
-    /// to clear leaves it for the next check.
+    /// The hints for this process, after clearing those for another. The labels
+    /// are read after the exec, not taken from the record the check began on: a
+    /// process writes its label once, as its session starts, which may be while the
+    /// exec runs. A failure to clear leaves it for the next check.
     func readHints(
         in record: HerdrCoreTerminalRecord, pid: String, start: String
     ) async -> [HerdrCoreSessionHint] {
+        let labels = await currentLabels() ?? record.labels
         var matching: [HerdrCoreSessionHint] = []
-        var stale: [String] = []
+        var stale: [String: String] = [:]
         for label in HerdrCoreSessionHint.labels {
-            guard let value = record.labels[label] else { continue }
+            guard let value = labels[label] else { continue }
             if let hint = HerdrCoreSessionHint(label: value), String(hint.pid) == pid, hint.start == start {
                 matching.append(hint)
             } else {
-                stale.append(label)
+                stale[label] = value
             }
         }
         if !stale.isEmpty { try? await clearLabels(stale) }

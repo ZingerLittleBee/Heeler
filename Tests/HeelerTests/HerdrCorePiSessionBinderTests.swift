@@ -25,7 +25,7 @@ struct HerdrCorePiSessionBinderTests {
             return HerdrCoreSessionBinder(
                 processes: { try await table.read($0) },
                 files: files.hostFiles(),
-                clearLabels: { await labels.clear($0) },
+                clearLabels: { await labels.clear($0.keys.sorted()) },
                 program: program)
         }
 

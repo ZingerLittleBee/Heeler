@@ -1441,18 +1441,37 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 try await session.withTransport { try await $0.readProcesses(request) }
             },
             files: chatHostFiles(),
-            clearLabels: { names in
-                let labels = names.map { ($0, JSONValue.string("")) }
-                let params = JSONValue.object([
-                    "terminal": .string(paneID),
-                    "labels": .object(Dictionary(uniqueKeysWithValues: labels)),
-                ])
-                // The check takes a while, and this record is the core's it began on.
-                let transport = try await session.withTransport(servingCore: core) { $0 }
-                _ = try await transport.call("terminal.label", params: params, isMutation: true)
+            clearLabels: { stale in
+                try await self.clearStaleLabels(stale, at: paneID, on: core)
+            },
+            currentLabels: {
+                await self.terminalLabels(at: paneID, on: core)
             },
             program: program)
         return try await binder.check(record, coreCarries: leakedEnvironmentNames)
+    }
+
+    /// The Terminal's labels while these records are still the core's a check began on.
+    private func terminalLabels(at paneID: String, on core: String?) -> [String: String]? {
+        guard inventoryCore == core else { return nil }
+        return terminalRecord(at: paneID)?.labels
+    }
+
+    /// Removes the labels a check found stale, except any that has changed since,
+    /// which is the next Agent's own. `terminal.label` replaces by name with no
+    /// compare, so a label the core took within one round trip of this call still
+    /// goes, and only that Agent's next write brings it back (herdr compatibility).
+    func clearStaleLabels(_ stale: [String: String], at paneID: String, on core: String?) async throws {
+        // The check takes a while, and this record is the core's it began on.
+        let transport = try await session.withTransport(servingCore: core) { $0 }
+        let current = terminalLabels(at: paneID, on: core)
+        let names = stale.keys.filter { current?[$0] == stale[$0] }
+        guard !names.isEmpty else { return }
+        let params = JSONValue.object([
+            "terminal": .string(paneID),
+            "labels": .object(Dictionary(uniqueKeysWithValues: names.map { ($0, JSONValue.string("")) })),
+        ])
+        _ = try await transport.call("terminal.label", params: params, isMutation: true)
     }
 
     func chatHostFiles() -> ChatHostFiles {
