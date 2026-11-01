@@ -78,9 +78,6 @@ final class ConsoleStore {
     private(set) var hostDesktopAppNaming: [Host.ID: HerdrAppNaming] = [:]
     /// Each core Host's `uname -s`, once a link has located its core.
     private(set) var hostCoreKernels: [Host.ID: String] = [:]
-    /// The programs Chat opens for on a Linux core Host. Only a test turns on
-    /// another before its owner check passes.
-    @ObservationIgnored var coreChatPrograms = HerdrCoreChatRollout.confirmed
     /// The core each core Host's inventory comes from. A detail reads it, so it
     /// redraws once the Host no longer serves the core it opened on.
     private(set) var hostCores: [Host.ID: String] = [:]
@@ -133,6 +130,7 @@ final class ConsoleStore {
     @ObservationIgnored private let coreSendClock: BlockedCardClock
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     @ObservationIgnored private let coreStopClock: BlockedCardClock
+    @ObservationIgnored private let coreChatPrograms: Set<ChatProgram>
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
     @ObservationIgnored private let connectCore: @Sendable (Host) async throws -> any HerdrCoreTransport
@@ -214,8 +212,10 @@ final class ConsoleStore {
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
-        coreSendClock: BlockedCardClock = .live
+        coreSendClock: BlockedCardClock = .live,
+        coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms
     ) {
+        self.coreChatPrograms = coreChatPrograms
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.coreStopClock = coreStopClock

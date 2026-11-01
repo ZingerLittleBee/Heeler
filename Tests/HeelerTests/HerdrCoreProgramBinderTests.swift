@@ -28,7 +28,7 @@ struct HerdrCoreProgramBinderTests {
                 program: program,
                 processes: { try await table.read($0) },
                 files: files.hostFiles(),
-                clearLabels: { await labels.clear($0) })
+                clearLabels: { await labels.clear($0.keys.sorted()) })
         }
 
         func add(_ rows: [HostEvidenceFixture.Row], environment: [String: String] = [:]) async {
@@ -98,7 +98,7 @@ struct HerdrCoreProgramBinderTests {
         await rig.add(rows, environment: ["CODEX_HOME": codexHome])
         var native = try #require(rows.last).process
         native.environment["CODEX_HOME"] = codexHome
-        native.files = Array(files.keys).sorted()
+        native.openFiles = Array(files.keys).sorted()
         await rig.table.add(native)
         await rig.write(files)
         return (rig, try record(for: try firstRow(scene)))
@@ -163,7 +163,7 @@ struct HerdrCoreProgramBinderTests {
         await rig.table.add(
             ScriptedProcessTable.Process(
                 pid: pid, name: "codex", start: "1",
-                environment: ["HC_SCOPE": "scope", "CODEX_HOME": afterNewHome], files: try files(scene)))
+                environment: ["HC_SCOPE": "scope", "CODEX_HOME": afterNewHome], openFiles: try files(scene)))
         await rig.write(fixture.files)
         return try await rig.binder.check(try record(pid: pid, argv: ["codex", "--no-daemon"]))
     }
@@ -717,16 +717,6 @@ struct HerdrCoreProgramBinderTests {
     }
 
     // MARK: The rest
-
-    @Test(arguments: [ChatProgram.pi, .omp])
-    func aProgramNotBuiltYetCannotTellAndAsksNothing(_ program: ChatProgram) async throws {
-        let rig = Rig(program: program)
-
-        let evidence = try await rig.binder.check(try Self.record(pid: 1, argv: [program.rawValue]))
-
-        #expect(evidence == .unavailable(.cannotTellSession(program)))
-        #expect(await rig.table.requests.isEmpty)
-    }
 
     @Test(arguments: [ChatProgram.codex, .grok, .opencode])
     func aFailedExecBindsNothingAndReadsNothing(_ program: ChatProgram) async throws {

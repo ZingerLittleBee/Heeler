@@ -1014,7 +1014,7 @@ struct HerdrCoreChatTests {
             ChatBannerLine.departure(.ended).text == "The Agent ended. Its program exited, so it will not come back.")
         #expect(
             ChatBannerLine.departure(.shell).text
-                == "The Agent is gone. A shell runs in its Terminal now. Chat follows the next Claude Code started there.")
+                == "The Agent is gone. A shell runs in its Terminal now. Chat comes back with the next Agent it can read there.")
     }
 
     @Test(arguments: [ChatAgentDeparture.restarting, .ended, .shell])

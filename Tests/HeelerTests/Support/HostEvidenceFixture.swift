@@ -18,7 +18,7 @@ struct HostEvidenceFixture: Decodable, Sendable {
         var process: ScriptedProcessTable.Process {
             ScriptedProcessTable.Process(
                 pid: pid, parent: parent, name: name, start: start, environment: environment, argv: argv,
-                files: files)
+                openFiles: files)
         }
     }
 

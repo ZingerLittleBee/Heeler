@@ -109,7 +109,10 @@ struct HerdrCoreProgramChatTests {
         let host: Host
         private var titleSequence = 100
 
-        init(host: Host, record: JSONValue, openCodeStore: OpenCodeStoreStub? = nil) {
+        init(
+            host: Host, record: JSONValue, openCodeStore: OpenCodeStoreStub? = nil,
+            offering programs: Set<ChatProgram> = Set(ChatProgram.allCases)
+        ) {
             self.host = host
             let result = JSONValue.object([
                 "seq": .number(1), "terminals": .array([record]), "channel": .number(1),
@@ -126,16 +129,13 @@ struct HerdrCoreProgramChatTests {
                         connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
                         keepalive: nil)
                 },
-                makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) })
+                makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
+                coreChatPrograms: programs)
         }
 
-        func start(
-            _ rows: [ScriptedProcessTable.Process], kernel: String = "Linux",
-            turningOn programs: Set<ChatProgram> = Set(ChatProgram.allCases)
-        ) async throws {
+        func start(_ rows: [ScriptedProcessTable.Process], kernel: String = "Linux") async throws {
             for row in rows { await transport.processTable.add(row) }
             await transport.setKernel(kernel)
-            store.coreChatPrograms = programs
             store.setHosts([host])
             await store.resume()
             try await waitUntil("the first snapshot") { !self.store.hostsAwaitingSnapshot.contains(self.host.id) }
@@ -176,7 +176,7 @@ struct HerdrCoreProgramChatTests {
     ) -> ScriptedProcessTable.Process {
         ScriptedProcessTable.Process(
             pid: pid, parent: parent, name: name, start: start,
-            environment: ["HC_SCOPE": "scope", "HOME": home].merging(environment) { $1 }, argv: argv, files: files)
+            environment: ["HC_SCOPE": "scope", "HOME": home].merging(environment) { $1 }, argv: argv, openFiles: files)
     }
 
     // MARK: The offer
@@ -187,17 +187,20 @@ struct HerdrCoreProgramChatTests {
         (.opencode, ["opencode"], "opencode", "opencode"),
     ]
 
-    private func offerRig(_ program: ChatProgram) throws -> (Rig, [ScriptedProcessTable.Process]) {
+    private func offerRig(
+        _ program: ChatProgram, offering programs: Set<ChatProgram> = Set(ChatProgram.allCases)
+    ) throws -> (Rig, [ScriptedProcessTable.Process]) {
         let entry = try #require(Self.programs.first { $0.program == program })
         let rig = Rig(
-            host: host, record: Self.record(foreground: entry.argv, name: entry.name, app: entry.app))
+            host: host, record: Self.record(foreground: entry.argv, name: entry.name, app: entry.app),
+            offering: programs)
         return (rig, [Self.process(name: entry.name, environment: [:], argv: entry.argv)])
     }
 
     @Test(arguments: [ChatProgram.codex, .grok, .opencode])
     func chatIsOfferedOnceAProgramsCheckHasPassed(_ program: ChatProgram) async throws {
-        let (rig, rows) = try offerRig(program)
-        try await rig.start(rows, turningOn: [.claude, program])
+        let (rig, rows) = try offerRig(program, offering: [.claude, program])
+        try await rig.start(rows)
 
         let agent = try #require(rig.agent)
         #expect(rig.store.chatProgram(for: agent) == program)
@@ -207,9 +210,8 @@ struct HerdrCoreProgramChatTests {
 
     @Test(arguments: [ChatProgram.codex, .grok, .opencode])
     func anotherProgramsPassDoesNotOfferIt(_ program: ChatProgram) async throws {
-        let (rig, rows) = try offerRig(program)
-        let others = Set(ChatProgram.allCases).subtracting([program])
-        try await rig.start(rows, turningOn: others)
+        let (rig, rows) = try offerRig(program, offering: Set(ChatProgram.allCases).subtracting([program]))
+        try await rig.start(rows)
 
         let agent = try #require(rig.agent)
         #expect(rig.store.chatProgram(for: agent) == nil)
@@ -221,9 +223,9 @@ struct HerdrCoreProgramChatTests {
     /// which is the point: the list is the whole switch.
     @Test(arguments: [ChatProgram.codex, .grok, .opencode])
     func chatStaysOffUntilTheOwnerCheckPasses(_ program: ChatProgram) async throws {
-        #expect(!HerdrCoreChatRollout.confirmed.contains(program))
-        let (rig, rows) = try offerRig(program)
-        try await rig.start(rows, turningOn: HerdrCoreChatRollout.confirmed)
+        #expect(!HostCapabilities.confirmedCoreChatPrograms.contains(program))
+        let (rig, rows) = try offerRig(program, offering: HostCapabilities.confirmedCoreChatPrograms)
+        try await rig.start(rows)
 
         #expect(rig.store.chatProgram(for: try #require(rig.agent)) == nil)
         rig.store.setHosts([])
@@ -316,7 +318,7 @@ struct HerdrCoreProgramChatTests {
         try await rig.waitUntil("Chat to say so") { chat.conversation.phase == .unavailable(.cannotTellSession(.codex)) }
 
         var holding = row
-        holding.files = [Self.rollout()]
+        holding.openFiles = [Self.rollout()]
         await rig.transport.processTable.add(holding)
         await rig.files.write(try ChatFixture.data("codex/probe1-rollout.jsonl"), at: Self.rollout())
         await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "working", app: "codex"))
@@ -342,7 +344,7 @@ struct HerdrCoreProgramChatTests {
         #expect(await chat.confirmSessionBeforeSend() == nil)
 
         var moved = row
-        moved.files.append("\(Self.accountRoot)/thread-writer-locks/01a10f87-e025-7fb1-8974-8dd09937767b.lock")
+        moved.openFiles.append("\(Self.accountRoot)/thread-writer-locks/01a10f87-e025-7fb1-8974-8dd09937767b.lock")
         await rig.transport.processTable.add(moved)
 
         let refusal = try #require(await chat.confirmSessionBeforeSend())

@@ -331,8 +331,9 @@ actor ChatConversationEngine {
     /// lists.
     private var journals: [String: FollowedJournal] = [:]
     private var journalCalls = 0
-    /// The Agent's own config root, which its Transcript is under, from a check
-    /// of its process (ADR 0034). Nil looks in the Host's default place.
+    /// Where the Agent's own program keeps Transcripts, from a check of its process
+    /// (ADR 0034): Claude Code's config dir, or Pi's or Oh My Pi's sessions folder.
+    /// Nil looks in the Host's default place.
     private let transcriptRoot: String?
     /// Heeler can name an id before the program has written it (ADR 0034).
     private let sessionMayPrecedeItsStore: Bool
@@ -818,9 +819,13 @@ actor ChatConversationEngine {
             }
         case .pi, .omp:
             switch try await PiTranscriptLocator(files: files).locate(
-                reference: reference, directories: directories)
+                reference: reference, directories: directories, sessionsRoot: transcriptRoot)
             {
             case .success(let path): return .found(path)
+            case .failure(.notFound) where transcriptRoot != nil && !hasFollowed && cached == nil:
+                // The Agent's own evidence names this id, and nothing is saved
+                // under it yet: a conversation still to start, as with a path.
+                return .unavailable(.awaitingFirstMessage(reference.program))
             case .failure(.notFound(let searchedAll)): return .unavailable(.notFound(searchedAll: searchedAll))
             case .failure(.notWritten):
                 // A file shown before, or saved on the device, that is gone

@@ -59,14 +59,6 @@ struct HostCapabilities: Equatable, Sendable {
     }
 }
 
-/// Which programs' Chat is on for a Linux herdr-core Host. A program joins only
-/// once its check with a harness the owner signs in to passes, and one that
-/// fails stays off with its observation saying why (ADR 0034). The binder reads
-/// Codex, Grok Build and OpenCode already; their evidence came from a fake model.
-enum HerdrCoreChatRollout {
-    static let confirmed: Set<ChatProgram> = [.claude]
-}
-
 extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
     /// core Host offers uploads once it is known to take them over SFTP: native
@@ -79,7 +71,7 @@ extension HostCapabilities {
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
         desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil,
-        coreChatPrograms: Set<ChatProgram> = HerdrCoreChatRollout.confirmed
+        coreChatPrograms: Set<ChatProgram> = confirmedCoreChatPrograms
     ) {
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
@@ -95,6 +87,13 @@ extension HostCapabilities {
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChat ? coreChatPrograms : nil)
     }
+
+    /// The programs whose Chat a Linux core Host opens. Binding works for Codex, Grok
+    /// Build, OpenCode, Pi and Oh My Pi, from recordings with no sign-in. Each joins
+    /// this list only once the owner's signed-in check of that program passes and is
+    /// recorded, and one that fails stays off with its observation saying why
+    /// (ADR 0034).
+    static let confirmedCoreChatPrograms: Set<ChatProgram> = [.claude]
 }
 
 extension Host {

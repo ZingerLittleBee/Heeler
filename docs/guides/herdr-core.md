@@ -214,10 +214,22 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 | **Transcript Saving Is Off** | The Agent runs with the variable Chat names, `CLAUDE_CODE_CHILD_SESSION` or `CLAUDE_CODE_SKIP_PROMPT_HISTORY`, so it keeps no conversation to read. Start it again without the variable. If the core itself carries it, the Host's **Core Environment** says how to fix that |
 | **Restarting…**, **The Agent ended** or **The Agent is gone** | The program in the Agent's Terminal was lost, exited, or gave way to a shell. Chat stays on the conversation and sends nothing, and follows the next Claude Code started at that address |
 
+### Pi and Oh My Pi
+
+Chat for Pi and Oh My Pi stays off until each program passes a check with a signed-in account, so for now both offer the terminal alone. Once a program's Chat is on, it works like this:
+
+- **With the [Host Helper](#host-helper)**, Heeler's extension names the conversation, however the Agent started: New Agent, a Template, `hc run` or a shell. Chat follows `/new` at its next check. An Agent already running when you install the Helper needs starting again.
+- **Pi without the Helper** opens only if Heeler started it, from the session id Heeler gave it. Chat waits for the first message, and keeps showing that conversation after a `/new`, which it cannot notice. Sending still reaches the session the program shows.
+- **Oh My Pi without the Helper** opens once the first message makes the process hold its session file, and follows `/new` the same way. Until then its conversation has no proof yet, so Chat says it can't tell.
+
+Anything else reads **Can't Tell the Conversation**, and the message points you to installing the Helper from the Host's details. Heeler never picks the newest file or goes by the directory.
+
+Heeler looks for the sessions where the Agent's own environment says: `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` for Pi, `PI_CONFIG_DIR`, `OMP_PROFILE`, `PI_PROFILE` and `PI_CODING_AGENT_DIR` for Oh My Pi. It cannot see a folder set any other way, such as Pi's `--session-dir` or `sessionDir` setting, Oh My Pi's `--profile` flag or `.env` file, or its files after `omp config init-xdg`. With the Helper, the extension names the file itself and Chat reads it. Without it, Chat stays on **Can't Tell the Conversation**, or for a Pi Heeler started, keeps waiting for a first message it cannot find.
+
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
-- Chat opens for Claude Code on Linux, and for Codex, Grok Build and OpenCode 2.x once each has passed its check. Other programs and macOS core Hosts offer the terminal alone.
+- Chat opens for Claude Code on Linux, and for Codex, Grok Build, OpenCode 2.x, [Pi and Oh My Pi](#pi-and-oh-my-pi) once each has passed its check. Until then those Agents, and every Agent on a macOS core Host, offer the terminal alone.
 - Right after `/new` in Codex, before any message there, nothing on the Host has changed. Chat keeps showing the old conversation, and a Send goes to the new one. After `/new`, keep to the terminal until you have exited Codex and run `codex resume --no-daemon`.
 - After `/new` or a pick in OpenCode's list, Chat keeps showing the conversation OpenCode started with until you start OpenCode again. Its terminal title is what says the screen moved, so a Send sends nothing and says why. With OpenCode's `terminal.title` setting off, or while Chat's conversation has no title of its own, the title can't tell, and a Send goes to whatever conversation is on screen. Only OpenCode's home screen still holds it.
 - Heeler cannot connect to a native Windows core Host yet: its checks read **herdr-core Hosts is not yet supported on native Windows**.

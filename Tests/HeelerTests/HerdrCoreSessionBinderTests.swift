@@ -13,7 +13,7 @@ actor ScriptedProcessTable {
         var start: String
         var environment: [String: String]
         var argv: [String] = []
-        var files: [String] = []
+        var openFiles: [String] = []
     }
 
     private var processes: [Int: Process] = [:]
@@ -76,7 +76,7 @@ actor ScriptedProcessTable {
             fact.nonEmptyNames = .value(
                 Set(request.namesOf.filter { process.environment[$0]?.isEmpty == false }))
         }
-        if request.readsOpenFiles { fact.openFiles = .value(process.files) }
+        if request.readsOpenFiles { fact.openFiles = .value(process.openFiles) }
         if request.readsArguments {
             fact.arguments = .value(Set(request.argumentsAmong).intersection(process.argv))
         }
@@ -161,7 +161,7 @@ struct HerdrCoreSessionBinderTests {
                 program: .claude,
                 processes: { try await table.read($0) },
                 files: files.hostFiles(),
-                clearLabels: { try await labels.clear($0) })
+                clearLabels: { try await labels.clear($0.keys.sorted()) })
         }
 
         func add(_ process: ScriptedProcessTable.Process) async {
@@ -483,6 +483,20 @@ struct HerdrCoreSessionBinderTests {
 
         #expect(evidence == .unavailable(.cannotTellSession(.claude)))
         #expect(await rig.labels.cleared == [["heeler.session"]])
+    }
+
+    /// The record is what the check began on. What counts is what stands once the
+    /// exec has said which process this is.
+    @Test func aHintWrittenDuringTheExecIsAdoptedAndTheEarlierOneNotCleared() async throws {
+        let rig = Rig()
+        await rig.add(Self.claude())
+        var binder = rig.binder
+        binder.currentLabels = { ["heeler.session": Self.hint()] }
+
+        let evidence = try await binder.check(try Self.record(labels: ["heeler.session": Self.hint(pid: 9)]))
+
+        #expect(evidence == .bound(sessionID: Self.first, transcriptRoot: "\(Self.home)/.claude", directory: nil))
+        #expect(await rig.labels.cleared.isEmpty)
     }
 
     @Test func aHintWhoseSessionIsNotAnIdIsNotAdopted() async throws {
