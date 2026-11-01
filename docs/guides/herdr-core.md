@@ -130,7 +130,7 @@ A Grok Build Agent's Composer keeps **Send** while it works, as on any other Hos
 
 The new shell is no Agent until you start one in it.
 
-Another core at the same socket, such as one started under another state directory, has its own Terminals, even at the same address. A terminal you had open shows as ended, and says it belongs to a core that is gone. A Chat you had open gives way to that terminal. Anything you tap waits for the new core's list, and after that the screen you had open sends nothing: Close, Send, Stop and answers to the Agent all say the Terminal belongs to a core that is gone. Open the Terminal again from that list, and what you open there, like the list's own rows, acts on the new core.
+Another core at the same socket, such as one started under another state directory, has its own Terminals, even at the same address. A terminal you had open shows as ended, and says it belongs to a core that is gone. A Chat you had open gives way to that terminal. Anything you tap waits for the new core's list, and after that the screen you had open sends nothing: Close, Send, Stop and answers to the Agent all say the Terminal belongs to a core that is gone. This holds even if the screen was rebuilt while the Host was reconnecting. Open the Terminal again from that list, and what you open there, like the list's own rows, acts on the new core. On iPad the row is no longer marked as selected, and tapping it opens the new core's Terminal.
 
 ## Close
 
