@@ -101,6 +101,52 @@ extension HeelerSSHTransportBehaviorE2ETests {
         #expect(try await host.entries() == ["config.toml"])
     }
 
+    /// The folder steps, which go over exec, beside the file's over SFTP.
+    @Test("a harness edit with a folder places it first, and its undo takes the entry and then the folder")
+    func harnessEditPlacesAndRemovesItsFolderOverTheHost() async throws {
+        let host = try await HostTextFileHost.open()
+        defer { Task { await host.close() } }
+        let original = Data("{\n  \"theme\": \"dark\"\n}\n".utf8)
+        try await host.seed("tui.json", original, mode: "640")
+        let editor = HarnessConfigEditor(files: host.transport)
+        let edit = OpenCodePluginEdit.edit(
+            configDirectory: host.directory, fileName: "tui.json", form: .tuiConfig,
+            files: OpenCodePluginEdit.fileNames.map { .init(name: $0, contents: Data("// \($0)\n".utf8)) })
+
+        let change = try await host.pendingChange(editor, edit)
+        #expect(try await host.entries() == ["tui.json"])
+
+        let applied = try await editor.apply(change)
+        #expect(try await host.entries() == ["heeler-opencode", "tui.json"])
+        #expect(try await host.contents("heeler-opencode/tui.js") == Data("// tui.js\n".utf8))
+        #expect(try await host.listing("heeler-opencode") == "drwx------")
+        #expect(
+            try await host.contents("tui.json")
+                == Data("{\n  \"plugin\": [\"./heeler-opencode\"],\n  \"theme\": \"dark\"\n}\n".utf8))
+
+        // A file of the user's keeps the folder, and undoing again takes it once it goes.
+        try await host.seed("heeler-opencode/notes", Data("mine".utf8), mode: "600")
+        try await editor.undo(applied)
+        #expect(try await host.contents("tui.json") == original)
+        #expect(try await host.listing("tui.json") == "-rw-r-----")
+        #expect(try await host.shell("ls -A \"$d/heeler-opencode\"") == "notes\n")
+
+        try await host.shell("rm \"$d/heeler-opencode/notes\"")
+        try await editor.undo(applied)
+        #expect(try await host.entries() == ["tui.json"])
+        #expect(try await host.contents("tui.json") == original)
+
+        // A file changed between the first comparison and the file's write takes the folder back.
+        let stale = try await host.pendingChange(editor, edit)
+        let theirs = Data("{ \"theme\": \"light\" }\n".utf8)
+        try await host.seed("tui.json", theirs, mode: "640")
+        await #expect(throws: HarnessConfigEditError.changedSinceRead) {
+            _ = try await editor.apply(stale)
+        }
+        #expect(try await host.entries() == ["tui.json"])
+        #expect(try await host.contents("tui.json") == theirs)
+    }
+
     @Test("a harness edit over SFTP keeps a link a link, and removes the file it created")
     func harnessEditFollowsALinkAndCreatesAFileOverSFTP() async throws {
         let host = try await HostTextFileHost.open()
