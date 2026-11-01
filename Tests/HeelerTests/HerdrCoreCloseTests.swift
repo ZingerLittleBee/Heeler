@@ -1,4 +1,6 @@
 import Foundation
+import Observation
+import Synchronization
 import Testing
 
 @testable import Heeler
@@ -589,6 +591,50 @@ struct HerdrCoreCloseTests {
 
         #expect(store.terminalEndedMessage(keepingTo: pin, on: host.id) == TerminalStatusPresentation.coreGoneMessage)
         #expect(store.terminalEndedMessage(keepingTo: store.corePin(on: host.id), on: host.id) == nil)
+    }
+
+    /// The new core's Terminal at the address is not the one that detail showed.
+    @Test func aDetailWhoseCoreIsGoneDoesNotReadTheNewCoresExit() async throws {
+        let (store, transport) = try await started([Self.agent("t1")])
+        defer { store.setHosts([]) }
+        let id = ConsoleAgent.ID(hostID: host.id, paneID: "t1")
+        let pin = store.corePin(on: host.id)
+
+        try await moveToAnotherCore(store, transport)
+        await transport.deliver(
+            Self.event(
+                sequence: 2, type: "finished", terminal: "t1",
+                data: .object(["reason": .string("exited"), "exit_code": .number(9)])))
+        try await waitUntil("its end") { store.programExit(of: id) != nil }
+
+        #expect(store.agentEndedMessage(of: id, keepingTo: pin) == TerminalStatusPresentation.coreGoneMessage)
+        #expect(
+            store.agentEndedMessage(of: id, keepingTo: store.corePin(on: host.id))
+                == "Its program exited with code 9, so it will not come back.")
+    }
+
+    /// A reconnect empties the inventory under an open dialog, and its snapshot
+    /// brings the exit back.
+    @Test func theEndedWordsRedrawWhenTheInventoryHearsOfTheExit() async throws {
+        let (store, transport) = try await started([Self.agent("t1")])
+        defer { store.setHosts([]) }
+        let id = ConsoleAgent.ID(hostID: host.id, paneID: "t1")
+        let pin = store.corePin(on: host.id)
+        let redraws = Mutex(0)
+        withObservationTracking {
+            _ = store.agentEndedMessage(of: id, keepingTo: pin)
+        } onChange: {
+            redraws.withLock { $0 += 1 }
+        }
+
+        await transport.deliver(
+            Self.event(
+                sequence: 2, type: "finished", terminal: "t1",
+                data: .object(["reason": .string("exited"), "exit_code": .number(9)])))
+        try await waitUntil("its end") { store.programExit(of: id) != nil }
+
+        #expect(redraws.withLock { $0 } > 0)
+        #expect(store.agentEndedMessage(of: id, keepingTo: pin) == "Its program exited with code 9, so it will not come back.")
     }
 
     // MARK: What a core Host offers

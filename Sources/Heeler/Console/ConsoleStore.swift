@@ -452,6 +452,16 @@ final class ConsoleStore {
         hasLeftCore(corePin, on: hostID) ? TerminalStatusPresentation.coreGoneMessage : nil
     }
 
+    /// What Agent Ended says for `id`, when it has more to say than its plain
+    /// words: another core's exit at the address is no word about this Terminal.
+    func agentEndedMessage(of id: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin?) -> String? {
+        if let message = terminalEndedMessage(keepingTo: corePin, on: id.hostID) { return message }
+        // The exit lives in the inventory, which a reconnect empties for a while.
+        // Its rows are what say it changed, so the open dialog redraws.
+        _ = terminals
+        return programExit(of: id)?.code.map(TerminalStatusPresentation.finishedMessage(exitCode:))
+    }
+
     /// Late-bound for the same reason as `terminalRunner(for:)`: a retryable
     /// upload taken before a Host edit must stage over the new session.
     func imageStager(for hostID: Host.ID) -> ImageStager {

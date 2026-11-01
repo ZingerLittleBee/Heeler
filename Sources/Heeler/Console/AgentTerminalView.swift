@@ -1908,7 +1908,7 @@ struct AgentTerminalView: View {
                 TerminalStatusDialog(
                     glyph: .symbol("stop.circle"),
                     title: "Agent Ended",
-                    message: console.terminalEndedMessage(keepingTo: session.corePin, on: agent.hostID)
+                    message: console.agentEndedMessage(of: agent.id, keepingTo: session.corePin)
                         ?? presentation.message,
                     palette: themePalette,
                     dimsBackground: presentation.dimsBackground)

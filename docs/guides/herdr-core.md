@@ -126,7 +126,7 @@ A Grok Build Agent's Composer keeps **Send** while it works, as on any other Hos
 | What happened | Heeler shows |
 | --- | --- |
 | A kept Terminal lost its program, for example to a crash or a signal | **Restarting…** The core brings the Terminal back as a new shell at the same address, and an open terminal reattaches by itself, with no error and nothing to tap. An Agent detail stays open over the new shell |
-| A program exited, including your own `exit` | **Agent Ended** in an Agent detail, or **Terminal Closed** on a Terminal's own screen. The Terminal has ended for good, so nothing reattaches |
+| A program exited, including your own `exit` | **Agent Ended** in an Agent detail, with its exit code when the core reports one, or **Terminal Closed** on a Terminal's own screen. The Terminal has ended for good, so nothing reattaches |
 
 The new shell is no Agent until you start one in it.
 
@@ -147,6 +147,8 @@ A core started from inside another program can inherit variables that change how
 ## New Agent and New Terminal
 
 **New Agent** lists the agents your own shell can run, and starts the one you pick through that shell, so it has the `PATH` and variables your startup files set. An alias or a shell function does not count, since a start runs a program on that `PATH`. That shell is your login shell on the Host, bash, zsh and fish alike. Arguments you type stay whole, however many spaces, quotes or `$` they hold.
+
+If the program has already ended when the Host answers the start, the form stays open and says so, with its exit code. Exit code 127 means your shell could not find the command. Otherwise New Agent closes and opens the Agent, and a program that ends then reads **Agent Ended** with its exit code.
 
 Pick where it starts, for an Agent and for **New Terminal** alike:
 

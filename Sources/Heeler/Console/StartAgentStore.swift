@@ -594,14 +594,19 @@ final class StartAgentStore {
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
             await awaitAgentVisible(startedID)
-            if case .template(let template, _) = launch {
+            switch launch {
+            case .template(let template, _):
                 if let exit = programExit(startedID) {
                     state = .failed(Self.message(forTemplate: template.name, endedWith: exit))
                 } else {
                     state = isAgentListed(startedID) ? .started(startedID) : .startedAsTerminal
                 }
-            } else {
-                state = .started(startedID)
+            case .kind(let kind, _, _):
+                if let exit = programExit(startedID) {
+                    state = .failed(Self.message(forKind: kind, endedWith: exit))
+                } else {
+                    state = .started(startedID)
+                }
             }
         } catch {
             var kind: SupportedAgentKind?
@@ -823,17 +828,32 @@ final class StartAgentStore {
 
     /// The core reports a command `sh -c` could not find as exit code 127.
     private static func message(forTemplate template: String, endedWith exit: ProgramExit) -> String {
+        message(
+            for: template, endedWith: exit,
+            commandNotFound: "That code means its command was not found: a Template runs without your shell, "
+                + "so it needs a full path or a PATH of its own.")
+    }
+
+    /// A kind goes through the Host's login shell, so its 127 is that shell's.
+    private static func message(forKind kind: SupportedAgentKind, endedWith exit: ProgramExit) -> String {
+        message(
+            for: kind.displayName, endedWith: exit,
+            commandNotFound: "That code means the Host's shell could not find its command.")
+    }
+
+    private static func message(
+        for program: String, endedWith exit: ProgramExit, commandNotFound: String
+    ) -> String {
         switch exit.code {
         case 0:
-            "\(template) finished right after it started, so no Agent is running."
+            "\(program) finished right after it started, so no Agent is running."
         case 127:
-            "\(template) ended right after it started, with exit code 127, so no Agent is running. "
-                + "That code means its command was not found: a Template runs without your shell, "
-                + "so it needs a full path or a PATH of its own."
+            "\(program) ended right after it started, with exit code 127, so no Agent is running. "
+                + commandNotFound
         case let code?:
-            "\(template) ended right after it started, with exit code \(code), so no Agent is running."
+            "\(program) ended right after it started, with exit code \(code), so no Agent is running."
         case nil:
-            "\(template) ended right after it started, so no Agent is running."
+            "\(program) ended right after it started, so no Agent is running."
         }
     }
 

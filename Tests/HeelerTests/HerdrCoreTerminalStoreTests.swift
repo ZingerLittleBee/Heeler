@@ -697,6 +697,61 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
+    private static let exitedWithThree: JSONValue = .object([
+        "reason": .string("exited"), "exit_code": .number(3),
+    ])
+
+    @Test func anAgentDetailSaysHowItsProgramEnded() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedWithThree))
+        try await Self.deliverClose(on: first, end: Self.exitedWithThree)
+
+        try await Self.until("the ended state") { detail.reads("Agent Ended") }
+        #expect(detail.reads("Its program exited with code 3, so it will not come back."))
+        await detail.close()
+        await fixture.finish()
+    }
+
+    /// The detail waits on the event a close comes before.
+    @Test func anAgentDetailWhoseCloseCameBeforeTheEventShowsTheCode() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+
+        try await Self.deliverClose(on: first, end: Self.exitedWithThree)
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: Self.exitedWithThree))
+
+        try await Self.until("the code") {
+            detail.reads("Its program exited with code 3, so it will not come back.")
+        }
+        await detail.close()
+        await fixture.finish()
+    }
+
+    @Test func anAgentDetailWithNoExitCodeKeepsThePlainWords() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
+        let agent = try #require(fixture.console.agents.first)
+        let detail = try await fixture.showDetail(of: agent)
+        let first = try await fixture.waitForAttach(1, laying: detail)
+        try await fixture.deliverOutput("agent screen", on: first)
+        let killed: JSONValue = .object(["reason": .string("killed"), "signal": .number(9)])
+
+        try await fixture.scripted.deliverEvent(Self.eventLine("finished", data: killed))
+        try await Self.deliverClose(on: first, end: killed)
+
+        try await Self.until("the ended state") { detail.reads("Agent Ended") }
+        #expect(detail.reads("Its program exited, so it will not come back."))
+        await detail.close()
+        await fixture.finish()
+    }
+
     @Test func anAgentDetailSaysItEndedAndMakesNoReattachAttempt() async throws {
         let fixture = try await Fixture(terminals: [Self.keptAgentRecord])
         let agent = try #require(fixture.console.agents.first)

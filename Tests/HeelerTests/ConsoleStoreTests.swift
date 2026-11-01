@@ -213,6 +213,18 @@ struct ConsoleStoreTests {
         #expect(statuses.status(for: tui.id) != .unsupportedServerKind)
     }
 
+    /// Herdr TUI reports no exit, so its Agent Ended dialog keeps these words.
+    @Test func aHerdrTUIAgentEndedKeepsItsExactWords() {
+        let tui = Host.fixture()
+        let store = makeStore(transports: [tui.id: ScriptedTransport()])
+        defer { store.setHosts([]) }
+        store.setHosts([tui])
+
+        let id = ConsoleAgent.ID(hostID: tui.id, paneID: "w1-1")
+        #expect(store.agentEndedMessage(of: id, keepingTo: store.corePin(on: tui.id)) == nil)
+        #expect(TerminalStatusPresentation.finished.message == "Its program exited, so it will not come back.")
+    }
+
     /// Actions only Herdr TUI can serve are offered by Server Kind, not
     /// attempted and failed (ADR 0032). Later tickets turn on each core action
     /// as they build it.
