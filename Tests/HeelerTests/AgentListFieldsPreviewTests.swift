@@ -75,6 +75,7 @@ struct AgentListFieldsPreviewTests {
         return try #require(renderer.uiImage?.pngData())
     }
 
+    @MainActor
     @Test func sampleValuesDriveTheSharedRendererForBuiltinsAndCustomTokens() throws {
         let agent = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac")
         #expect(agent.hostName == "Studio Mac")
@@ -114,6 +115,7 @@ struct AgentListFieldsPreviewTests {
         #expect(presentation.headline == rendered.first?.map(\.text).joined())
     }
 
+    @MainActor
     @Test func emptyRowsUseTheConsoleAgentNameFallbackNotAnIllustrativeStatusLabel() {
         let agent = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac")
         for layout in [
