@@ -31,7 +31,7 @@ Heeler never starts a core by connecting or checking, so a mistyped session name
 | **herdr-core needs an update** | Run the update command it shows, then check again |
 | **The herdr-core socket path is too long** | Use a shorter session name, or set a shorter socket in the core's config |
 
-**Start herdr-core** appears under the checks on a Linux Host whose core is not running. It asks first, naming the session, the interactive login shell it starts through, and systemd linger, which it tries to turn on when it is off. The core then has the environment your own terminal has. If a core was already running by then, Heeler says so and that Start changed nothing. On macOS and Windows, Heeler says how to start the core yourself.
+**Start herdr-core** appears under the checks on a Linux Host whose core is not running. It asks first, naming the session, the interactive login shell it starts through, and systemd linger, which it tries to turn on when it is off. The core then has the environment your own terminal has. If a core was already running by then, Heeler says so and that Start changed nothing. On macOS, Heeler says how to start the core yourself.
 
 ## Console
 
@@ -61,7 +61,7 @@ Tap **Unknown** on an Agent's status line to see why it reads that way. Each pro
 
 **Grok Build's status.** Grok Build's automatic check leaves its status off where its query cannot run, such as under a core started with `TMUX` set. On a Grok Build Agent with no status, that same sheet offers **Turn On Grok Build's Status**. It shows the file and the exact lines, `program_status = "on"` under `[ui.notifications]` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`, and writes nothing until you tap **Apply This Change**. Start Grok Build again to see its status. A managed configuration or a `GROK_CONFIG` overlay can still override this file.
 
-If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler cannot read the Agent's environment, it cannot tell which file that Agent uses, so it writes nothing and says so. If Heeler cannot be sure how to change a file, it writes nothing and tells you what to add by hand. A native Windows Host takes this change by hand too.
+If the file changed after Heeler read it, Heeler writes nothing and says so. If Heeler cannot read the Agent's environment, it cannot tell which file that Agent uses, so it writes nothing and says so. If Heeler cannot be sure how to change a file, it writes nothing and tells you what to add by hand.
 
 **Undo** in the same sheet, or under **Harness Edits** in the Host's detail, puts the file back exactly as it was. It writes nothing if the file has changed since the edit. In that case undo the edit by hand, and **Stop Listing** drops it from the list. Each sheet speaks for the file its Agent reads, so Agents with different `GROK_HOME` values each get their own change and **Undo**, and each row under **Harness Edits** undoes the file it shows. The list belongs to the device that made the edit. Heeler never edits Claude Code's settings, Codex's hooks or trusted hashes, or Grok Build's global hooks.
 
@@ -96,13 +96,13 @@ While the Agent is **Blocked**, Send only pastes. Use the tools keyboard to subm
 
 If the Host does not answer a step, Send cannot tell what reached the program. The Composer says so, offers **Edit Draft** instead of Retry, and never sends the message again, because a paste or an Enter the core was holding can still arrive. Look at the terminal first. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**. Check the terminal and send again.
 
-Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
+Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens.
 
 ## Images and files
 
-On a macOS or Linux Host, **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stages an image or file as on any other Host. Heeler uploads it over SFTP, puts its path on the Host in your draft, and copies the path. Nothing reaches the Agent yet: the draft waits, and since a core Host has no Send yet, paste the path into the terminal to use it.
+On a macOS or Linux Host, **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stages an image or file as on any other Host. Heeler uploads it over SFTP, puts its path on the Host in your draft, and copies the path. Nothing reaches the Agent until you send: the draft waits, and [Send](#send) delivers it with the path in it.
 
-Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens. Native Windows core Hosts do not offer it yet.
+Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens.
 
 ## Stop
 
@@ -111,8 +111,6 @@ While an Agent is **Working** and the draft is empty, **Stop** takes Send's plac
 Stop shows only while the Agent holds the terminal, never for the shell it left behind. A program that has not reported a status reads **Unknown** and has no Stop. Use the tools keyboard or Direct Input there.
 
 A Grok Build Agent's Composer keeps **Send** while it works, as on any other Host, because Esc does not stop its turns. Use the tools keyboard or Direct Input to press Ctrl+C.
-
-On a native Windows Host, Stop is not available yet.
 
 | Notice | What it means | What to do |
 | --- | --- | --- |
@@ -188,8 +186,6 @@ If a Terminal cannot be confirmed ended, Heeler says so and leaves the checkout 
 
 If the connection drops with **Worktree Details** open, the sheet goes with the Agent's screen. Whatever stopped the removal, or the Host not confirming it, then shows as an alert over the Console, and so does a Close that ends the same way from an Agent's screen. Check the Host before trying again.
 
-Native Windows core Hosts do not offer Worktrees yet.
-
 ## Chat
 
 Chat opens for a Claude Code Agent on a Linux core Host, where you can read its conversation, send to it, stop it and answer its questions.
@@ -211,8 +207,8 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the desktop.
-- Chat opens only for Claude Code on Linux. Other programs, macOS and native Windows core Hosts offer the terminal alone.
-- Native Windows core Hosts offer no Send or Stop yet. To stop an Agent or type on Windows, use the tools keyboard or Direct Input.
+- Chat opens only for Claude Code on Linux. Other programs and macOS core Hosts offer the terminal alone.
+- Heeler cannot connect to a native Windows core Host yet: its checks read **herdr-core Hosts is not yet supported on native Windows**.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 - If Heeler cannot read its saved herdr-core Hosts, the Hosts tab says so. Herdr TUI Hosts keep working and the saved data stays as it was, but no herdr-core Host can be added until it reads again.
