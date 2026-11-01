@@ -256,6 +256,32 @@ the facts they took on trust, so correct
 | No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
 | Off elsewhere | A Codex Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
 
+## Pi and Oh My Pi Chat
+
+Each program's Chat stays off until its check here passes: add it to
+`HostCapabilities.confirmedCoreChatPrograms` only then. Until then, use a debug build
+with that set widened for the run, and do not commit that edit. Sign Pi and Oh My Pi in
+on hc-lab, and install the Host Helper first unless a step says otherwise. Record each
+program's version and result as a versioned observation in
+[herdr compatibility](../agents/herdr-compatibility.md), keep what differs from the
+recordings beside `Tests/HeelerTests/ChatFixtures/host-evidence`, and update the
+Unverified list in [ADR 0034](../adr/0034-herdr-core-chat-binds-sessions-from-host-evidence.md).
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Started by Heeler | Start Pi, then Oh My Pi, from New Agent, send one message, open Chat | The conversation shows. The Terminal has the label `heeler.session` with `file`, `pid` and `start` |
+| `hc run` | Start each with `hc run`, send one message, open Chat | The same conversation binding, from the extension alone. No launch label |
+| Template | Start each from a Template, send one message, open Chat | The same |
+| `/new` | In an open Chat, run `/new` in the terminal and send one message | The new conversation shows by the next check |
+| Own folders | Start Pi with `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` naming scratch folders, Oh My Pi with `OMP_PROFILE` and with `PI_CONFIG_DIR`, while the default folders hold other sessions | Chat reads from the Agent's folder, not the default one |
+| Pi without the extension | Remove the Helper, start Pi from New Agent, open Chat, then send one message from the terminal | Chat waits, then shows the conversation. Now run `/new`: it stays on the old conversation |
+| Pi by hand, no extension | With the Helper still removed, start `pi` from a shell and from a Template | **Can't Tell the Conversation**, and the message names the Host Helper. Nothing binds from the folder |
+| Oh My Pi without the extension | With the Helper still removed, start `omp` and open Chat before the first message | **Can't Tell the Conversation**. Send one message: it binds only once `/proc/<pid>/fd` holds the file `terminal-sessions/pts-<n>` names. Record how long that took |
+| Reused terminal name | Exit that `omp` and leave its breadcrumb. Start `omp` again on the same terminal name, before a message | Nothing binds to the earlier session |
+| Security scan | With an OAuth account, run Oh My Pi's security scan, then a check | Record whether the breadcrumb goes back to the session. Chat must not show the scan's file as the conversation |
+| Stale label | Set `heeler.session` with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show its session |
+| One read per check | With the Host's sshd logging exec requests, open Chat on an idle Agent | One exec and at most one read per check, and nothing while idle. No `HERDR_*` variable changes the result |
+
 ## Chat typing
 
 Use the same box and Claude Code as [Chat evidence](#chat-evidence). The tests read

@@ -1240,7 +1240,7 @@ final class AgentChatStore {
                 hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
                 coreScope: source.coreScope),
             files: source.files, cache: source.cache, adapter: source.adapter,
-            claudeConfigRoot: source.sessionEvidence == nil ? nil : evidenceRoot, now: now)
+            transcriptRoot: source.sessionEvidence == nil ? nil : evidenceRoot, now: now)
     }
 
     // MARK: Start screen

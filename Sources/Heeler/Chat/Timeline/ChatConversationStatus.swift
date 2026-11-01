@@ -63,6 +63,10 @@ extension ChatUnavailableReason {
             problem.explanation
         case .startScreen(let program):
             "\(program.chatName) is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it."
+        case .cannotTellSession(.pi):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again."
+        case .cannotTellSession(.omp):
+            "Chat can't tell which conversation this Agent is in, and doesn't guess. Oh My Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again. Without it, Chat follows the conversation after its first message."
         case .cannotTellSession(let program):
             "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal. Chat checks again when the Agent's status changes."
         case .transcriptOff(let variable, let coreCarriesIt):
@@ -224,7 +228,7 @@ enum ChatAgentDeparture: Equatable, Sendable {
         switch self {
         case .restarting: "The program was lost. A new shell takes its place in a moment."
         case .ended: "Its program exited, so it will not come back."
-        case .shell: "A shell runs in its Terminal now. Chat follows the next Claude Code started there."
+        case .shell: "A shell runs in its Terminal now. Chat comes back with the next Agent it can read there."
         }
     }
 }

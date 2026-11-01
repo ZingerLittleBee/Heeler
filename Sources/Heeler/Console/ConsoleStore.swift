@@ -130,6 +130,7 @@ final class ConsoleStore {
     @ObservationIgnored private let coreSendClock: BlockedCardClock
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     @ObservationIgnored private let coreStopClock: BlockedCardClock
+    @ObservationIgnored private let coreChatPrograms: Set<ChatProgram>
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
     @ObservationIgnored private let connectCore: @Sendable (Host) async throws -> any HerdrCoreTransport
@@ -211,8 +212,10 @@ final class ConsoleStore {
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
-        coreSendClock: BlockedCardClock = .live
+        coreSendClock: BlockedCardClock = .live,
+        coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms
     ) {
+        self.coreChatPrograms = coreChatPrograms
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.coreStopClock = coreStopClock
@@ -865,7 +868,7 @@ final class ConsoleStore {
             source.coreScope = core.chatCacheScope
             source.sessionEvidence = { [weak self] in
                 guard let self else { throw TransportError.cancelled }
-                return try await self.checkChatSession(paneID: paneID, on: hostID)
+                return try await self.checkChatSession(paneID: paneID, program: program, on: hostID)
             }
             // Only events after this store exists are news to it.
             chatSessionEventRevisions[agent.id] = core.sessionEventRevision(of: paneID)
@@ -886,9 +889,11 @@ final class ConsoleStore {
         return plan.pressing(templateStopKey: stopKey)
     }
 
-    private func checkChatSession(paneID: String, on hostID: Host.ID) async throws -> ChatSessionEvidence {
+    private func checkChatSession(
+        paneID: String, program: ChatProgram, on hostID: Host.ID
+    ) async throws -> ChatSessionEvidence {
         guard let core = projections[hostID] as? HerdrCoreConsoleProjection else { throw TransportError.cancelled }
-        return try await core.checkChatSession(paneID: paneID)
+        return try await core.checkChatSession(paneID: paneID, program: program)
     }
 
     /// Chat's transcript reads and store queries on the Host's live
@@ -1857,7 +1862,8 @@ final class ConsoleStore {
             serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
             platform: hostPlatforms[hostID],
             desktopAppNaming: hostDesktopAppNaming[hostID],
-            coreKernel: hostCoreKernels[hostID])
+            coreKernel: hostCoreKernels[hostID],
+            coreChatPrograms: coreChatPrograms)
     }
 
     // MARK: Harness configuration edits
