@@ -245,7 +245,7 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
 | Marketing site | [landing](../../landing), its `package.json` scripts, [landing CI](../../.github/workflows/landing.yml) |
 | Docs site | [docs-site/README.md](../../docs-site/README.md) publishes selected `docs/guides/` (English and `docs/guides/zh/`); `pnpm test`, `pnpm run check`, `pnpm run build`, `pnpm run check:links` in `docs-site/`, [docs site CI](../../.github/workflows/docs-site.yml) |
 | Wire types | [generate-wire-types.py](../../scripts/generate-wire-types.py) consumes the committed [herdr-schema.json](../../scripts/herdr-schema.json); generated output is [Transport/Generated](../../Sources/Heeler/Transport/Generated) |
-| App/package CI | [ci.yml](../../.github/workflows/ci.yml), [run-ci-ios-tests.sh](../../scripts/run-ci-ios-tests.sh), [testing.md](testing.md) |
+| App/package CI | Daily build: [ci.yml](../../.github/workflows/ci.yml). Full manual/release verification: [ci-full.yml](../../.github/workflows/ci-full.yml), [run-ci-ios-tests.sh](../../scripts/run-ci-ios-tests.sh). Routing and evidence: [testing.md](testing.md) |
 | Node/codegen CI | [ci-node.yml](../../.github/workflows/ci-node.yml) |
 
 Find a symbol before reading a large file: `rg -n 'symbol' Sources Tests`.

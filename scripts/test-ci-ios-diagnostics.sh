@@ -7,11 +7,12 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-diagnostic-controls.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-# A skipped required check succeeds on GitHub, so manual diagnostics must not
-# publish the full gate's check names or artifacts, even as skipped jobs.
-python3 - "$repo_root/.github/workflows/ci.yml" "$repo_root/.github/workflows/ci-diagnostics.yml" <<'PYWORKFLOW'
+# Build-only feedback and manual diagnostics must not publish full-coverage
+# check names or artifacts, even as skipped jobs. Releases always call full CI.
+python3 - "$repo_root/.github/workflows/ci-full.yml" "$repo_root/.github/workflows/ci-diagnostics.yml" <<'PYWORKFLOW'
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 workflow, reusable = (Path(path).read_text() for path in sys.argv[1:])
@@ -27,39 +28,58 @@ def job(name, source=workflow):
         raise SystemExit(f"Missing CI job: {name}")
     return match.group(1)
 
+def events(source):
+    block = re.search(r"(?m)^on:\n(.*?)(?=^[^\s#]|\Z)", source, re.DOTALL)
+    if block is None:
+        raise SystemExit("Missing workflow triggers")
+    return set(re.findall(r"(?m)^  ([\w_]+):", block.group(1)))
+
 require_line(workflow, "workflow_dispatch:")
 require_line(workflow, "workflow_call:")
 release = Path(sys.argv[1]).with_name("release.yml").read_text()
 release_test = job("test", release)
-require_line(release_test, "uses: ./.github/workflows/ci.yml")
+require_line(release_test, "uses: ./.github/workflows/ci-full.yml")
 require_line(release_test, "contents: read")
 require_line(release_test, "actions: read")
-require_line(workflow, "diagnostic_target:")
-require_line(workflow, "options: [none, all, ssh-jump, staging, staging-method, weak, layout, changes-field, git-startup, git-startup-ssh]")
-require_line(workflow, "default: none")
-require_line(workflow, "pull_request:")
-diagnostics = job("diagnostics")
-require_line(diagnostics, "if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' }}")
-require_line(diagnostics, "uses: ./.github/workflows/ci-diagnostics.yml")
-require_line(diagnostics, "target: ${{ inputs.diagnostic_target }}")
-require_line(diagnostics, "iterations: ${{ inputs.diagnostic_iterations }}")
-
-diagnostic = "inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none'"
-normal = "inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none'"
+if events(workflow) != {"workflow_dispatch", "workflow_call"}:
+    raise SystemExit("Full native verification must be manual or release-only")
 names = {
-    "app-tests": ("Diagnostic mode (app coverage not run)", "format('App tests ({0})', matrix.shard)"),
-    "heelerssh-package-e2e": ("Diagnostic mode (package coverage not run)", "'HeelerSSH package E2E (iOS Simulator)'"),
-    "build-test": ("Diagnostic mode (full coverage not run)", "'Build & test (iOS Simulator)'"),
+    "app-tests": "App tests (${{ matrix.shard }})",
+    "heelerssh-package-e2e": "HeelerSSH package E2E (iOS Simulator)",
+    "build-test": "Build & test (iOS Simulator)",
 }
-for name, (diagnostic_name, normal_name) in names.items():
+for name, display in names.items():
     body = job(name)
-    require_line(body, "name: ${{ " + diagnostic + " && '" + diagnostic_name + "' || " + normal_name + " }}")
-    condition = f"always() && ({normal})" if name == "build-test" else normal
-    require_line(body, "if: ${{ " + condition + " }}")
+    require_line(body, "name: " + display)
+    if name != "build-test" and re.search(r"(?m)^    if:", body):
+        raise SystemExit(f"Full verification must not skip {name}")
+require_line(job("build-test"), "if: ${{ always() }}")
 require_line(job("build-test"), "needs: [app-tests, heelerssh-package-e2e]")
+
+fast = Path(sys.argv[1]).with_name("ci.yml").read_text()
+if events(fast) != {"workflow_dispatch", "pull_request", "push"}:
+    raise SystemExit("Daily builds must run on PR/push and support manual sampling")
+if re.findall(r"(?m)^  ([\w-]+):", fast.split("\njobs:\n", 1)[1]) != ["app-build"]:
+    raise SystemExit("Daily native feedback must have one build-only job")
+require_line(job("app-build", fast), "name: Build app (no tests)")
+if "ios-ci-evidence-" in fast or "test-ci-" in fast or "simctl" in fast:
+    raise SystemExit("Daily builds must not execute or claim native tests")
+for source in [fast, reusable]:
+    if any("name: " + display in source for display in names.values()):
+        raise SystemExit("Only full verification may publish full coverage check names")
+command = subprocess.check_output(
+    ["make", "--no-print-directory", "-n", "build-ci-app"],
+    cwd=Path(sys.argv[1]).resolve().parents[2], text=True)
+if not command.startswith("xcodebuild build ") or re.search(
+        r"\b(test|build-for-testing|test-without-building|xcodegen|simctl)\b", command):
+    raise SystemExit("Daily build entrypoint must compile the committed app without native tests")
+if "generic/platform=iOS Simulator" not in command:
+    raise SystemExit("Daily builds must not need a booted Simulator destination")
 
 require_line(reusable, "workflow_call:")
 require_line(reusable, "workflow_dispatch:")
+if events(reusable) != {"workflow_dispatch", "workflow_call"}:
+    raise SystemExit("Repeated diagnostics must remain opt-in")
 require_line(reusable, "options: [all, ssh-jump, staging, staging-method, weak, layout, changes-field, git-startup, git-startup-ssh]")
 require_line(reusable, "default: all")
 require_line(reusable, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"staging\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
@@ -77,7 +97,7 @@ if "ios-ci-evidence-" in reusable or re.search(r"\bmake test-ci-(?:app|package)\
     raise SystemExit("Diagnostic workflow publishes or runs the complete merge gate")
 if not any(line.strip().startswith("name: ios-diagnostic-") for line in reusable.splitlines()):
     raise SystemExit("Diagnostic workflow has no distinct artifact name")
-print("Passed workflow dispatch, reusable entrypoint and full-gate isolation contracts.")
+print("Passed daily build, full release verification and diagnostic isolation contracts.")
 PYWORKFLOW
 
 python3 - "$repo_root/Tests/HeelerTests/FileDiffLayoutViewTests.swift" <<'PYLAYOUT'

@@ -47,6 +47,7 @@ unset inherited_setting
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 gate_script="$repo_root/scripts/run-ci-ios-tests.sh"
+workflow="$repo_root/.github/workflows/ci-full.yml"
 green_log="$repo_root/scripts/testdata/gate-2f50170.log"
 work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-gate-guards.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
@@ -120,9 +121,9 @@ app_fixture_lane_count=$(grep -cE '^[[:space:]]*run_suite ' "$gate_script")
 # shellcheck disable=SC2016
 grep -qF 'if [[ "$ci_lane" == "package" ]]; then' "$gate_script" \
     || die "gate has no isolated package lane"
-grep -qF 'HEELER_CI_LANE: package' "$repo_root/.github/workflows/ci.yml" \
+grep -qF 'HEELER_CI_LANE: package' "$workflow" \
     || die "workflow has no package-only job"
-grep -qF 'HEELER_CI_LANE: app' "$repo_root/.github/workflows/ci.yml" \
+grep -qF 'HEELER_CI_LANE: app' "$workflow" \
     || die "workflow does not pin the app-only job"
 # All fixture processes must use the explicitly selected job runtime.
 if grep -qF '/usr/bin/python3' "$gate_script"; then
@@ -145,7 +146,7 @@ for worker_job in app-tests heelerssh-package-e2e; do
         in_job && /uses: actions\/setup-python@v6/ { selected = checkout }
         in_job && /python-version: .3\.12./ && selected { pinned = 1 }
         END { exit pinned ? 0 : 1 }
-    ' "$repo_root/.github/workflows/ci.yml" \
+    ' "$workflow" \
         || die "$worker_job must select Python 3.12 after checkout"
 done
 # shellcheck disable=SC2016
@@ -214,14 +215,14 @@ awk '
     END { exit (app_gate && flag) ? 0 : 1 }
 ' "$gate_script" \
     || die "clonedSourcePackagesDirPath must be gated inside run_xcodebuild"
-grep -qF 'Cache SwiftPM checkouts' "$repo_root/.github/workflows/ci.yml" \
+grep -qF 'Cache SwiftPM checkouts' "$workflow" \
     || die "workflow must cache SwiftPM checkouts for the app job"
-grep -qF '.ci/source-packages' "$repo_root/.github/workflows/ci.yml" \
+grep -qF '.ci/source-packages' "$workflow" \
     || die "workflow cache must include .ci/source-packages"
-if grep -qE '^[[:space:]]+xcrun simctl list runtimes' "$repo_root/.github/workflows/ci.yml"; then
+if grep -qE '^[[:space:]]+xcrun simctl list runtimes' "$workflow"; then
     die "workflow must not cold-start CoreSimulator via simctl list runtimes"
 fi
-grep -qF 'Show Xcode version' "$repo_root/.github/workflows/ci.yml" \
+grep -qF 'Show Xcode version' "$workflow" \
     || die "workflow must keep a lightweight Xcode version step"
 
 # cleanup reads these ownership slots even when a case never claimed a
@@ -236,6 +237,7 @@ grep -qF 'Show Xcode version' "$repo_root/.github/workflows/ci.yml" \
     run_lock_dir=""
     device_lock_dir=""
     diagnostic_root=""
+    diagnostic_sampler_pid=""
     phase_log="$work/phases.tsv"
     app_derived_data_path=""
     package_derived_data_path=""

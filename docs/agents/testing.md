@@ -2,8 +2,28 @@
 
 Use `make help` for available targets. Choose the lane from the changed owner
 in [navigation.md](navigation.md), and record the candidate and executed-test
-counts in [the review handoff](review-handoff.md). A successful command that
-selected no tests is a failed verification.
+counts in [the review handoff](review-handoff.md). A successful test command that
+selected no tests is a failed verification. Build-only success establishes
+compilation, not behavior or test coverage.
+
+## Daily feedback and full verification
+
+[Daily iOS CI](../../.github/workflows/ci.yml) compiles the committed app and
+extensions once with `make build-ci-app`, using a generic Simulator SDK
+destination, stable paths and compiler caching. It neither compiles the test
+target nor boots a Simulator. App/build changes trigger it on PRs and pushes
+to `main`; test-only, fixture and documentation edits still get the existing
+tooling checks. Node and site checks retain their own path filters.
+
+Run focused behavior tests for the feature being changed. The
+[full native workflow](../../.github/workflows/ci-full.yml) retains all app,
+UI, real-SSH and weak-network tests, package E2E and coverage checks. Run it
+manually for broader acceptance; `release.yml` requires it before signing a
+release. Daily build success cannot substitute for that result.
+
+```sh
+gh workflow run ci-full.yml --ref <candidate-branch>
+```
 
 ## Focused app tests
 
@@ -41,6 +61,7 @@ preparation and can miss SwiftUI labels on a clean Simulator (#339).
 
 | Change | Entry point | What it establishes |
 | --- | --- | --- |
+| App compilation only | `make build-ci-app` | Committed app and extensions compile; no Swift tests executed |
 | App stores, parsers, SwiftUI hosting | `make test-app TEST_SELECTOR='HeelerTests/<Suite>'` | Selected app behavior on the named candidate and Simulator |
 | Full local app and SSH package suites | `make test` or `make test-ipad` | App tests followed by the separate HeelerSSH test plan |
 | `Packages/HeelerSSH` | `make test-ci-package` | Committed-project package CI lane with disposable SSH fixtures and count gates |
@@ -59,12 +80,12 @@ plan. The standalone package runner is
 For CI parity, use the appropriate `test-ci-*` target. CI does not regenerate
 the Xcode project, so a regenerated local build cannot prove the committed
 project is complete. `make check-test-membership`, which `make test-tools` and
-the merge gate run, fails when the committed HeelerTests target omits a Swift
+full verification run, fails when the committed HeelerTests target omits a Swift
 file under `Tests/HeelerTests` or the shared scheme skips tests.
 
 ## CI evidence constraints
 
-The merge gate records every registered method and parameterized argument case
+Full verification records every registered method and parameterized argument case
 from each native result bundle, then requires the shards together to cover the
 whole target ([the recorder](../../scripts/verify-ci-ios-evidence.py)). Two
 test-writing rules follow:
@@ -80,13 +101,13 @@ test-writing rules follow:
 
 ## Intermittent CI diagnosis
 
-The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml), called through the existing `ci.yml` entrypoint, builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole nine-method suite to retain preceding window lifecycles and the failed-owner cleanup regression; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to normal merge CI or the existing `all` diagnostic.
+The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml) builds once and repeats the original TOFU, staging recovery, weak-network Changes, or diff-layout assertions with fresh per-round state. `staging` selects the whole nine-method suite to retain preceding window lifecycles and the failed-owner cleanup regression; `staging-method` isolates the recovery method. `layout` selects all eight `FileDiffLayoutViewTests` methods in the ordinary shard and repeats the topmost-line method with a fresh window and settings each round. Defaults are 50 SSH, 20 staging or layout, and 10 weak rounds. `all` selects only SSH, staging, and weak; layout requires an explicit selection and adds no work to daily CI or the existing `all` diagnostic.
 
-Repeated weak and layout diagnostics have a 30-minute outer deadlock limit. Normal merge CI retains the weak suite's two-minute limit and the layout suite's one-minute limit; every weak read still asserts its original 10-second deadline, and both layout setup waits retain eight seconds. Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace the normal merge gate.
+Repeated weak and layout diagnostics have a 30-minute outer deadlock limit. Full verification retains the weak suite's two-minute limit and the layout suite's one-minute limit; every weak read still asserts its original 10-second deadline, and both layout setup waits retain eight seconds. Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace full verification.
 
 ```sh
-gh workflow run ci.yml --ref <candidate-branch> -f diagnostic_target=all
-gh workflow run ci.yml --ref <candidate-branch> -f diagnostic_target=layout -f diagnostic_iterations=20
+gh workflow run ci-diagnostics.yml --ref <candidate-branch> -f target=all
+gh workflow run ci-diagnostics.yml --ref <candidate-branch> -f target=layout -f iterations=20
 ```
 
 The committed-project entrypoint is `make test-ci-diagnostics` with `HEELER_CI_DIAGNOSTIC_TARGET` and optional `HEELER_CI_DIAGNOSTIC_ITERATIONS` environment variables. Counts must be integers from 1 through 100. For layout, the runner passes the count as `HEELER_DIFF_LAYOUT_ITERATIONS` and requires eight executed tests plus `[diff-layout-test] completed N iterations`. Every selected test and requested round must pass; a missing or mismatched completion marker or any skip fails the diagnostic command. Fixture and iteration variables follow a replacement Simulator during destination recovery and are cleared from the shell and current Simulator during runner cleanup. `make test-ci-diagnostic-controls` verifies the workflow isolation, source contracts and fake native-boundary execution guards without Xcode; it does not prove native layout behavior. `make test-weak-network-proxy` exercises propagation, bandwidth, bounded buffering and cleanup over real local TCP.

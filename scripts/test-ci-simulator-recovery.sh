@@ -438,6 +438,7 @@ for reason in preparation-failure parent-cancellation; do
         package_derived_data_path="$fixture_dir/PackageDerivedData"
         xcodebuild_build_timeout_seconds=10
         diagnostic_root=""
+        diagnostic_sampler_pid=""
         evidence_dir=""
         background_build_pid=""
         simulator_destination="platform=iOS Simulator,id=$ORIGINAL"

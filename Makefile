@@ -54,6 +54,17 @@ build: generate ## Build Debug for a physical device without installing
 		-destination 'generic/platform=iOS' -derivedDataPath $(DERIVED) \
 		-allowProvisioningUpdates build
 
+.PHONY: build-ci-app
+build-ci-app: ## Compile the committed app and extensions, without tests or simulator boot
+	xcodebuild build -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		-destination 'generic/platform=iOS Simulator' -arch "$$(uname -m)" \
+		-derivedDataPath '$(CURDIR)/.ci/app-derived' \
+		-clonedSourcePackagesDirPath '$(CURDIR)/.ci/source-packages' \
+		COMPILATION_CACHE_ENABLE_CACHING=YES \
+		'COMPILATION_CACHE_CAS_PATH=$(CURDIR)/.ci/app-compilation-cache' \
+		COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES \
+		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
+
 test-app: generate ## Run app tests and verify execution (SIM_DESTINATION, TEST_SELECTOR, TEST_FLAGS)
 	python3 scripts/run-app-simulator-tests.py -project $(PROJECT) -scheme $(SCHEME) \
 		-destination '$(SIM_DESTINATION)' -derivedDataPath $(DERIVED) \
