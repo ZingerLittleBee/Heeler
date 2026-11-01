@@ -198,7 +198,7 @@ Chat opens for a Claude Code Agent on a Linux core Host, where you can read its 
 
 Typing from Chat does not change the terminal's size for anyone viewing it.
 
-Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. It checks when you open Chat, before each Send, and when the Agent's status, turn or foreground program changes, and at no other time.
+Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. It checks when you open or return to Chat, before each Send, when you retry, when a reconnect or the Agent's return brings its Terminal back, and when the Agent's status, turn or foreground program changes. No timer checks in between.
 
 | Chat says | What it means |
 | --- | --- |
