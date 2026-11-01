@@ -151,25 +151,11 @@ struct HerdrCoreProgramBinderTests {
         #expect(root == home)
     }
 
-    @Test func twoRootsAfterNewBindNothing() async throws {
-        let fixture = try HostEvidenceFixture.named("codex/no-daemon-after-new")
-        let scene = try fixture.scene("after-new-and-a-prompt")
-        let rig = Rig(program: .codex)
-        let pid = try #require(scene.agentProcess)
-        await rig.table.add(
-            ScriptedProcessTable.Process(
-                pid: pid, name: "codex", start: "1",
-                environment: ["HC_SCOPE": "scope", "CODEX_HOME": "/home/user/lab/iso/codexn/codex-home"],
-                files: try #require(scene.heldByAgentProcess)))
-        await rig.write(fixture.files)
+    private static let afterNewHome = "/home/user/lab/iso/codexn/codex-home"
 
-        let evidence = try await rig.binder.check(try Self.record(pid: pid, argv: ["codex", "--no-daemon"]))
-
-        #expect(evidence == .unavailable(.cannotTellSession(.codex)))
-    }
-
-    /// The same process before `/new`, in the same recording, binds its one root.
-    @Test func theSameProcessBeforeNewBindsItsOneRoot() async throws {
+    private static func afterNewEvidence(holding files: (HostEvidenceFixture.Scene) throws -> [String])
+        async throws -> ChatSessionEvidence
+    {
         let fixture = try HostEvidenceFixture.named("codex/no-daemon-after-new")
         let scene = try fixture.scene("before-new")
         let rig = Rig(program: .codex)
@@ -177,17 +163,58 @@ struct HerdrCoreProgramBinderTests {
         await rig.table.add(
             ScriptedProcessTable.Process(
                 pid: pid, name: "codex", start: "1",
-                environment: ["HC_SCOPE": "scope", "CODEX_HOME": "/home/user/lab/iso/codexn/codex-home"],
-                files: try #require(scene.heldByAgentProcess)))
+                environment: ["HC_SCOPE": "scope", "CODEX_HOME": afterNewHome], files: try files(scene)))
         await rig.write(fixture.files)
+        return try await rig.binder.check(try record(pid: pid, argv: ["codex", "--no-daemon"]))
+    }
 
-        let evidence = try await rig.binder.check(try Self.record(pid: pid, argv: ["codex", "--no-daemon"]))
+    @Test func twoRootsAfterNewBindNothing() async throws {
+        let scene = try HostEvidenceFixture.named("codex/no-daemon-after-new").scene("after-new-and-a-prompt")
+        let held = try #require(scene.heldByAgentProcess)
+
+        let evidence = try await Self.afterNewEvidence { _ in held }
+
+        #expect(evidence == .unavailable(.cannotTellSession(.codex)))
+    }
+
+    /// The same process before `/new`, in the same recording, binds its one root.
+    @Test func theSameProcessBeforeNewBindsItsOneRoot() async throws {
+        let evidence = try await Self.afterNewEvidence { try #require($0.heldByAgentProcess) }
 
         guard case .bound(let session, _, _) = evidence else {
             Issue.record("Expected a binding, got \(evidence)")
             return
         }
         #expect(session == Self.firstThread)
+    }
+
+    /// The recording's `observed`, which no scene holds: a prompt right after `/new`
+    /// leaves the new thread's lock and no rollout, so the screen is on a thread with
+    /// nothing to read while the old rollout is still the one held. This edits
+    /// `before-new` to that, with the old lock kept and let go, since "only the new
+    /// thread's lock" does not say which.
+    @Test(arguments: [true, false])
+    func aNewThreadsLockBeforeItsRolloutBindsNothing(keepingTheOldLock: Bool) async throws {
+        let newLock = "\(Self.afterNewHome)/thread-writer-locks/\(Self.secondThread).lock"
+
+        let evidence = try await Self.afterNewEvidence { scene in
+            let held = try #require(scene.heldByAgentProcess)
+            return (keepingTheOldLock ? held : held.filter { !$0.hasSuffix(".lock") }) + [newLock]
+        }
+
+        #expect(evidence == .unavailable(.cannotTellSession(.codex)))
+    }
+
+    /// Written for the test: a lock in a name Codex is not recorded using could be
+    /// any thread's.
+    @Test func aLockInAnUnknownNameBindsNothing() async throws {
+        let (rig, record) = try await Self.codexRig(holding: [
+            Self.rollout(): Self.meta(),
+            "\(Self.codexHome)/thread-writer-locks/\(Self.firstThread).lock": "",
+            "\(Self.codexHome)/thread-writer-locks/writer.lock": "",
+        ])
+
+        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.codex)))
     }
 
     private static func meta(thread: String = firstThread, fields: String = #""source":"cli""#) -> String {

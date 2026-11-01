@@ -413,7 +413,7 @@ extension ChatProgram {
     fileprivate var sessionEvidenceHelp: String {
         switch self {
         case .codex:
-            "Codex shows its conversation with the first message, so send one in the terminal. After /new it holds both conversations open, so exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick one."
+            "Codex shows its conversation with the first message, so send one in the terminal. Once a message follows /new, nothing says which conversation it shows, so exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick one."
         case .grok:
             "Grok Build lists its conversation while it runs. After /new it lists both, so Chat can't tell until you start Grok Build again."
         case .opencode:

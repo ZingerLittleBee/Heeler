@@ -39,7 +39,9 @@ extension HerdrCoreSessionBinder {
             else { return cannotTell }
             return .unavailable(.codexSharedDaemon)
         }
-        guard rollouts.count <= Self.heldRolloutLimit else { return cannotTell }
+        guard rollouts.count <= Self.heldRolloutLimit,
+            !Self.holdsALockWithoutItsRollout(process, rollouts: rollouts)
+        else { return cannotTell }
         var roots: [RolloutHead] = []
         for rollout in rollouts {
             guard let head = try await readRolloutHead(rollout) else { return cannotTell }
@@ -63,6 +65,27 @@ extension HerdrCoreSessionBinder {
     private struct HeldRollout {
         let path: String
         let name: CodexRolloutFileName
+    }
+
+    /// A thread-writer lock with no held rollout of its thread is a thread with
+    /// nothing to read yet, and the screen may be on it: the first prompt after
+    /// `/new` leaves this while the old rollout stays held (Codex CLI 0.165.0,
+    /// `host-evidence/codex/no-daemon-after-new.json`). A name no recording shows
+    /// could be any thread's.
+    private static func holdsALockWithoutItsRollout(
+        _ process: HostProcessReader.Facts, rollouts: [HeldRollout]
+    ) -> Bool {
+        guard case .value(let files) = process.openFiles else { return false }
+        let threads = Set(rollouts.compactMap { ConversationReference.canonicalUUID($0.name.threadID) })
+        return files.contains { path in
+            guard path.contains("/thread-writer-locks/"), let leaf = path.split(separator: "/").last else {
+                return false
+            }
+            guard leaf.hasSuffix(".lock"),
+                let thread = ConversationReference.canonicalUUID(String(leaf.dropLast(".lock".count)))
+            else { return true }
+            return !threads.contains(thread)
+        }
     }
 
     /// The process's open files that are rollouts. Its thread-writer locks and

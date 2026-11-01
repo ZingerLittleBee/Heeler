@@ -307,6 +307,32 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
+    /// `/new` moved the screen, and the first prompt there left the new thread's lock
+    /// with no rollout (`host-evidence/codex/no-daemon-after-new.json`, `observed`).
+    /// No status change comes, since that prompt shows no turn, so Send has to find it.
+    @Test func aSendFindsTheNewThreadsLockAndSendsNothing() async throws {
+        let rig = codexRig()
+        let row = Self.process(
+            name: "codex", environment: ["CODEX_HOME": Self.accountRoot], argv: ["codex", "--no-daemon"],
+            files: [Self.rollout(), "\(Self.accountRoot)/thread-writer-locks/\(Self.codexThread).lock"])
+        await rig.files.write(try ChatFixture.data("codex/probe1-rollout.jsonl"), at: Self.rollout())
+        try await rig.start([row])
+        let chat = try rig.chat(.codex)
+        chat.show()
+        try await rig.waitUntil("Chat to follow it") { chat.conversation.phase == .following(path: Self.rollout()) }
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+
+        var moved = row
+        moved.files.append("\(Self.accountRoot)/thread-writer-locks/01a10f87-e025-7fb1-8974-8dd09937767b.lock")
+        await rig.transport.processTable.add(moved)
+
+        let refusal = try #require(await chat.confirmSessionBeforeSend())
+        #expect(refusal.contains("can't tell"))
+        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.codex)))
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     // MARK: Grok Build
 
     /// The UUIDv4 a launch gives Grok Build with `-s`, the form the recording's
