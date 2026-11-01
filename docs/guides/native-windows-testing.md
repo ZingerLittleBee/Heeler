@@ -396,8 +396,8 @@ These steps are for the herdr-core Host of
 [#587](https://github.com/ZingerLittleBee/Heeler/issues/587), not the herdr
 sessions above, and need herdr-core 0.1.16 or newer from its installer. No lane
 runs them: the app's tests script the probe and the exec, so this is the first
-run of Heeler's own probe, its checkout read and its `cmd /d /c` `connect` line
-through sshd.
+run of Heeler's own probe, its checkout read, its `cmd /d /c` `connect` line, its
+agent discovery and launch, and its `terminal.put` through sshd.
 
 1. Stop the core. On the phone, add the machine with Session left blank or a
    plain name, and confirm **herdr-core**. The Host reads
@@ -406,8 +406,7 @@ through sshd.
 2. In your desktop session, in PowerShell, not as administrator, run the command
    the Host shows. Within its retry, the Host connects by itself.
 3. The Console lists the core's Terminals and Agents, each in a card named for
-   its directory. New Agent, New Terminal, New Workspace, Send, Stop, Chat,
-   Rename, Worktrees and the Composer's images and files are not offered.
+   its directory. Send, Stop, Chat, Rename and Worktrees are not offered.
 4. Open an Agent. Direct Input types into it and its output follows.
 5. Open a Shell Terminal. Rotate or resize it, run a full-screen program, and
    scroll back.
@@ -421,7 +420,28 @@ through sshd.
    Worktrees stay off. Outside a repository it takes its directory's. This is the
    first run of Heeler's PowerShell checkout read through sshd.
 9. Edit the Host's Session to a name with a space. The Host reads that the name is
-   refused, and New Agent and New Terminal are still not offered.
+   refused, and Send, Rename and Worktrees are still not offered.
+10. Install an agent the launch can find, with OpenCode too if you have it. New
+    Agent lists what a Windows PowerShell session over SSH finds, and OpenCode's
+    version reaches its launch (`-s ses_...` in the Terminal's argv on 2.1 or newer).
+    An agent installed under a junction may be missing; note which.
+11. Start one with an argument holding a space, a single quote and a non-ASCII
+    character. It shows as an Agent of its kind, and the program receives the
+    argument whole. Exit the agent: its Terminal ends and the Agent leaves the list.
+    Note the exit code the core reports. A `.ps1` shim blocked by the machine's
+    execution policy shows as listed and ends at once; note that too.
+12. New Terminal opens a Terminal in the directory you picked, in a shell, and it
+    is not listed as an Agent. Exit it: the Terminal ends.
+13. New Workspace at a picked directory, with the desktop app running on the
+    machine. The space appears in the desktop app, and the form has no name field.
+14. Add a small image in an Agent's Composer. The path inserted into the draft
+    names a file in `%LOCALAPPDATA%\herdr-core\<session>\files\<address>\`, and
+    a program in that Terminal reads it by that path with the same hash. Close the
+    Terminal: the file stays (recorded for `terminal.kill`). Note what removes it
+    on your machine, since the file goes only with `terminal.rm`.
+15. Add a 9 MiB file. Heeler says it is over the 8 MiB limit, the draft stays, and
+    no file appears in that folder. Add one of exactly 8 MiB: it lands with the same
+    hash, and the Host stays connected while it crosses on a slow link.
 
 ## Scope and results
 

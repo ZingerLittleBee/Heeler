@@ -264,6 +264,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         throw TransportError.hostFeatureUnavailable(feature: "locate")
     }
 
+    func stagesThroughCore() async throws -> Bool { false }
+
+    func putFile(_ source: HerdrCoreStaging.Source, terminal address: String, coreID: String?) async throws -> String {
+        throw TransportError.hostFeatureUnavailable(feature: "terminal.put")
+    }
+
     func lastLocation() async -> HerdrCoreLocator.Location? {
         location
     }

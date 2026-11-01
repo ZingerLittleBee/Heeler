@@ -3137,7 +3137,7 @@ struct ConsoleStoreTests {
             store.hostStatuses[host.id] == .connected
         }
         let runner = store.terminalRunner(for: host.id)
-        let stager = store.imageStager(for: host.id)
+        let stager = store.imageStager(for: host.id, beside: "w1:p1", keepingTo: TerminalCorePin())
 
         var edited = host
         edited.name = "alpha (renamed)"

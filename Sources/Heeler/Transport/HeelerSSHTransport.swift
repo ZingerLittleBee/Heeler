@@ -3784,8 +3784,12 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
         try await runWindowsProbe(command)
     }
 
-    private func runWindowsProbe(_ command: String) async throws -> GitExecResult {
-        let bound = Duration.seconds(20)
+    /// With a profile to load, as `runAgentDiscovery` has startup files.
+    func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult {
+        try await runWindowsProbe(command, bound: .seconds(25))
+    }
+
+    private func runWindowsProbe(_ command: String, bound: Duration = .seconds(20)) async throws -> GitExecResult {
         let result = try await withRequestDeadline(timeout: bound) {
             try await self.runExec(command, timeout: bound)
         }

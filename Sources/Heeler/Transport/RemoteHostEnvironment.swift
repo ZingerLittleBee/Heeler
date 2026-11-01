@@ -71,9 +71,10 @@ enum RemoteHostEnvironment: Sendable, Equatable {
 /// Paths are PowerShell literals inside UTF-16LE, never login-shell arguments.
 enum PowerShellCommand {
     static let streamMarker = "__HEELER_STREAM_READY__"
-    static func encoded(_ script: String) -> String {
+    static func encoded(_ script: String, loadingProfile: Bool = false) -> String {
         let bytes = script.utf16.flatMap { [UInt8($0 & 0xff), UInt8($0 >> 8)] }
-        return "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand "
+        let profile = loadingProfile ? "" : "-NoProfile "
+        return "powershell.exe -NoLogo \(profile)-NonInteractive -EncodedCommand "
             + Data(bytes).base64EncodedString()
     }
 

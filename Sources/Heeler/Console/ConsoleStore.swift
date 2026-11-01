@@ -477,9 +477,11 @@ final class ConsoleStore {
 
     /// Late-bound for the same reason as `terminalRunner(for:)`: a retryable
     /// upload taken before a Host edit must stage over the new session.
-    func imageStager(for hostID: Host.ID) -> ImageStager {
+    func imageStager(
+        for hostID: Host.ID, beside paneID: String, keepingTo corePin: TerminalCorePin
+    ) -> ImageStager {
         { [weak self] image, reporter in
-            guard let stager = await self?.liveImageStager(for: hostID) else {
+            guard let stager = await self?.projections[hostID]?.imageStager(beside: paneID, keepingTo: corePin) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
@@ -487,9 +489,11 @@ final class ConsoleStore {
         }
     }
 
-    func fileStager(for hostID: Host.ID) -> FileStager {
+    func fileStager(
+        for hostID: Host.ID, beside paneID: String, keepingTo corePin: TerminalCorePin
+    ) -> FileStager {
         { [weak self] file, reporter in
-            guard let stager = await self?.liveFileStager(for: hostID) else {
+            guard let stager = await self?.projections[hostID]?.fileStager(beside: paneID, keepingTo: corePin) else {
                 throw TransportError.sshUnreachable(
                     detail: "The Host is not connected.")
             }
@@ -501,12 +505,8 @@ final class ConsoleStore {
         projections[hostID]?.terminalRunner()
     }
 
-    private func liveImageStager(for hostID: Host.ID) -> ImageStager? {
-        projections[hostID]?.imageStager()
-    }
-
     /// Ranged Host-file reads for the terminal usage strip (#325). Late-bound
-    /// for the same reason as `imageStager(for:)`: the strip refreshes on a
+    /// for the same reason as `imageStager(for:beside:keepingTo:)`: the strip refreshes on a
     /// timer, and a reconnect between two refreshes must not leave it reading
     /// through the transport that was replaced.
     func sessionFileReader(for hostID: Host.ID) -> SessionFileReader {
@@ -539,10 +539,6 @@ final class ConsoleStore {
         for hostID: Host.ID
     ) -> ModelContextWindowResolver? {
         projections[hostID]?.modelContextWindowResolver()
-    }
-
-    private func liveFileStager(for hostID: Host.ID) -> FileStager? {
-        projections[hostID]?.fileStager()
     }
 
     func workspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {
@@ -787,7 +783,9 @@ final class ConsoleStore {
         }
         composer.isConnectionAvailable = isHostReadyForInput(hostID)
         let session = AgentComposerSession(
-            composer: composer, stageImage: imageStager(for: hostID), stageFile: fileStager(for: hostID),
+            composer: composer,
+            stageImage: imageStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
+            stageFile: fileStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             corePin: corePin)
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))

@@ -23,7 +23,11 @@ actor HerdrCoreLink {
     static let maximumUnclaimedChannels = 64
     private static let readChunkBytes = 64 * 1024
     private static let readPoll: Duration = .seconds(1)
-    private static let writeTimeout: Duration = .seconds(30)
+    private static let minimumWriteTimeout: Duration = .seconds(30)
+    private static let slowestWriteBytesPerSecond = 64 * 1024
+    /// A frame this long holds the writer for a while on a slow link. What queues
+    /// behind it has not had its turn, and the write's own timeout bounds that wait.
+    private static let longFrameBytes = 1024 * 1024
     private static let closeTimeout: Duration = .seconds(2)
     private static let helloID = "hello"
 
@@ -49,8 +53,11 @@ actor HerdrCoreLink {
         let isMutation: Bool
         let opensStream: Bool
         let creditsWhenConsumed: Bool
-        let timer: Task<Void, Never>
+        let deadline: Duration
+        var timer: Task<Void, Never>
         var dispatched = false
+        /// It has outlived its deadline behind a long frame.
+        var waitedBehindLongFrame = false
     }
 
     private struct Outbound {
@@ -116,6 +123,11 @@ actor HerdrCoreLink {
             await link.close()
             throw error
         }
+    }
+
+    /// How long one write may take: a whole frame has to cross a slow link.
+    static func writeTimeout(forBytes count: Int) -> Duration {
+        max(minimumWriteTimeout, .seconds(count / slowestWriteBytesPerSecond))
     }
 
     /// False once the link ended, on its own or by `close()`. It never reopens.
@@ -219,13 +231,10 @@ actor HerdrCoreLink {
                     continuation.resume(throwing: CancellationError())
                     return
                 }
-                let timer = Task { [sleep] in
-                    do { try await sleep(deadline) } catch { return }
-                    self.expireCall(id)
-                }
                 pending[id] = PendingCall(
                     continuation: continuation, isMutation: isMutation, opensStream: opensStream,
-                    creditsWhenConsumed: creditsWhenConsumed, timer: timer)
+                    creditsWhenConsumed: creditsWhenConsumed, deadline: deadline,
+                    timer: armTimer(id: id, deadline: deadline))
                 enqueue(Outbound(bytes: bytes, callID: id))
             }
         } onCancel: {
@@ -233,8 +242,23 @@ actor HerdrCoreLink {
         }
     }
 
+    private func armTimer(id: String, deadline: Duration) -> Task<Void, Never> {
+        Task { [sleep] in
+            do { try await sleep(deadline) } catch { return }
+            self.expireCall(id)
+        }
+    }
+
+    /// A keepalive queued behind a long frame must not read that wait as a lost link.
     private func expireCall(_ id: String) {
-        guard let call = pending.removeValue(forKey: id) else { return }
+        guard var call = pending[id] else { return }
+        if !call.dispatched, let inFlight, inFlight.bytes.count >= Self.longFrameBytes {
+            call.waitedBehindLongFrame = true
+            call.timer = armTimer(id: id, deadline: call.deadline)
+            pending[id] = call
+            return
+        }
+        pending[id] = nil
         abandon(call, id: id, with: TransportError.timedOut)
     }
 
@@ -368,7 +392,14 @@ actor HerdrCoreLink {
 
     private func begin(_ item: Outbound) {
         inFlight = item
-        if let id = item.callID { pending[id]?.dispatched = true }
+        guard let id = item.callID, var call = pending[id] else { return }
+        call.dispatched = true
+        if call.waitedBehindLongFrame {
+            // A full deadline for the core to answer, which it had no chance to yet.
+            call.timer.cancel()
+            call.timer = armTimer(id: id, deadline: call.deadline)
+        }
+        pending[id] = call
     }
 
     private func nextOutbound() async -> Outbound? {
@@ -390,7 +421,7 @@ actor HerdrCoreLink {
     private func runWriter() async {
         while let item = await nextOutbound() {
             do {
-                try await channel.write(item.bytes, timeout: Self.writeTimeout)
+                try await channel.write(item.bytes, timeout: Self.writeTimeout(forBytes: item.bytes.count))
             } catch {
                 // A partial write has already broken the framing for good.
                 tearDown(.failed(Self.linkFailure(error)))

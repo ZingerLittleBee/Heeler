@@ -9,14 +9,14 @@ extension ConsoleAgent {
     /// directory disables Open Terminal instead of letting herdr inherit some
     /// other focused Pane's cwd.
     var shellTerminalCreationRequest: ShellTerminalCreationRequest? {
-        if Self.isAbsoluteNonEmptyPath(agent.cwd) {
+        if isAbsoluteNonEmptyPath(agent.cwd) {
             return ShellTerminalCreationRequest(
                 workspaceID: agent.workspaceID,
                 cwd: agent.cwd)
         }
         if isLinkedWorktree,
             let checkoutPath,
-            Self.isAbsoluteNonEmptyPath(checkoutPath)
+            isAbsoluteNonEmptyPath(checkoutPath)
         {
             return ShellTerminalCreationRequest(
                 workspaceID: agent.workspaceID,
@@ -25,9 +25,10 @@ extension ConsoleAgent {
         return nil
     }
 
-    private static func isAbsoluteNonEmptyPath(_ value: String) -> Bool {
-        value.hasPrefix("/")
-            && !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func isAbsoluteNonEmptyPath(_ value: String) -> Bool {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return value.hasPrefix("/")
+            || (startsTerminalsInWindowsDirectories && RemoteHostPath.isWindowsAbsolute(value))
     }
 }
 

@@ -47,7 +47,13 @@ A session name there uses letters, digits, `-`, `_` and `.`, and does not start 
 
 The Console lists the core's Agents and Terminals, each in a card named for its directory or its space. A space nobody named takes its repository's folder when `git` is on the PATH of an SSH session there, and its directory's otherwise. Open one for its Agent detail with Direct Input, or as a Shell Terminal, and close it from there.
 
-Not offered there yet, whatever the Host reads: New Agent, New Terminal, New Workspace, images and files in the Composer, Send, Stop, Chat, Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
+**New Terminal** opens a Terminal as on any other core Host, in the shell the core runs. **New Agent** lists the agents Windows PowerShell can run, and starts the one you pick through it, so it has what your Windows PowerShell profile sets. PowerShell 7's profile is not read. When the agent exits, its Terminal ends and it leaves the list. Anything PowerShell can run counts, a script or an alias included. A program PowerShell cannot find over SSH is missing from the list even if a Terminal can run it, which can happen with an install under a junction, such as fnm's. Put it on the `PATH` of a plain SSH session to see it there.
+
+**New Workspace** creates a space at the directory you pick, which a running desktop app can show. It has no name field: the space takes its Checkout's folder or its directory's name until the desktop app names it. Worktrees are not offered there.
+
+**Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stage through the core, not over SFTP, one file of up to 8 MiB at a time. Heeler refuses a larger one before sending anything, and your draft stays as it was. The path the core gives goes in your draft and on the clipboard, and a program in that Terminal can read it. The draft has no Send there, so paste the path into the Terminal. The file is in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\`, which SYSTEM, Administrators and your account can read, and no one else. It stays after the Terminal is closed and goes only when the core removes the Terminal's record, with `terminal.rm`.
+
+Not offered there yet, whatever the Host reads: Send, Stop, Chat, Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
 
 ## Console
 
@@ -120,7 +126,7 @@ Send appears once the connection has told Heeler the Host's platform, a moment a
 
 On a macOS or Linux Host, **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stages an image or file as on any other Host. Heeler uploads it over SFTP, puts its path on the Host in your draft, and copies the path. Nothing reaches the Agent until you send: the draft waits, and [Send](#send) delivers it with the path in it.
 
-Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens.
+Add appears once the connection has told Heeler the Host's platform, a moment after the detail opens. On native Windows, Add goes through the core and takes up to 8 MiB, as [Native Windows](#native-windows) says.
 
 ## Stop
 

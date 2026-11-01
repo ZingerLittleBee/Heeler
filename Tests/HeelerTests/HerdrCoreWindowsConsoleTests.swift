@@ -4,8 +4,8 @@ import Testing
 @testable import Heeler
 
 /// A native Windows core Host in the Console, through `ConsoleStore`: where its
-/// Terminals land by their Windows directories, and what it offers until each later
-/// Windows ticket turns an action on.
+/// Terminals land by their Windows directories, and what it offers while each later
+/// Windows ticket has yet to turn its action on.
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
 struct HerdrCoreWindowsConsoleTests {
@@ -216,45 +216,45 @@ struct HerdrCoreWindowsConsoleTests {
 
     // MARK: What it offers
 
-    private func expectNothingToStart(_ offers: HostCapabilities, sourceLocation: SourceLocation = #_sourceLocation) {
+    /// New Agent, New Terminal, New Workspace and staging are on, its name field and
+    /// Rename off, and what later tickets turn on stays hidden.
+    private func expectWindowsOffers(_ offers: HostCapabilities, sourceLocation: SourceLocation = #_sourceLocation) {
         #expect(!offers.renameAgent, sourceLocation: sourceLocation)
         #expect(!offers.renameWorkspace(id: "space-s1"), sourceLocation: sourceLocation)
         #expect(!offers.worktrees, sourceLocation: sourceLocation)
-        #expect(!offers.startsAgents, sourceLocation: sourceLocation)
-        #expect(!offers.startsTerminals, sourceLocation: sourceLocation)
-        #expect(offers.newTerminalRequest(workspaceID: "w", cwd: #"C:\work"#) == nil, sourceLocation: sourceLocation)
+        #expect(offers.startsAgents, sourceLocation: sourceLocation)
+        #expect(offers.startsTerminals, sourceLocation: sourceLocation)
+        #expect(offers.newTerminalRequest(workspaceID: "w", cwd: #"C:\work"#) != nil, sourceLocation: sourceLocation)
         #expect(!offers.namesNewWorkspaces, sourceLocation: sourceLocation)
-        #expect(!offers.uploads, sourceLocation: sourceLocation)
+        #expect(offers.uploads, sourceLocation: sourceLocation)
         #expect(!offers.composerSend, sourceLocation: sourceLocation)
         #expect(!offers.composerStop, sourceLocation: sourceLocation)
         #expect(!offers.chat, sourceLocation: sourceLocation)
     }
 
-    @Test func aConnectedWindowsCoreHostOffersOnlyWhatItsLaterTicketsLeaveOn() async throws {
+    @Test func aConnectedWindowsCoreHostOffersWhatItsTicketsTurnedOn() async throws {
         let store = try await started(
             [Self.record("t1", cwd: #"C:\work"#)], services: ScriptedCoreServices(platform: .nativeWindows))
-        try await waitUntil("the kernel") { !store.capabilities(for: host.id).startsAgents }
+        try await waitUntil("the kernel") { store.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel }
 
         let offers = store.capabilities(for: host.id)
-        expectNothingToStart(offers)
+        expectWindowsOffers(offers)
         #expect(offers.closeTab)
         #expect(!offers.takeOver)
 
         let hosts = [host]
-        #expect(hosts.offeringNewItem(listsTerminals: true) { store.capabilities(for: $0.id) }.isEmpty)
-        #expect(hosts.offeringNewItem(listsTerminals: false) { store.capabilities(for: $0.id) }.isEmpty)
-        #expect(!hosts.offersNewItem(listsTerminals: true) { store.capabilities(for: $0.id) })
-        #expect(!hosts.offersNewItem(listsTerminals: false) { store.capabilities(for: $0.id) })
+        #expect(hosts.offeringNewItem(listsTerminals: true) { store.capabilities(for: $0.id) } == hosts)
+        #expect(hosts.offeringNewItem(listsTerminals: false) { store.capabilities(for: $0.id) } == hosts)
         await finish(store)
     }
 
-    @Test func thePlatformAloneHidesThemToo() {
-        expectNothingToStart(HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows))
-        expectNothingToStart(HostCapabilities(serverKind: .herdrCore, coreKernel: HerdrCoreLocator.windowsKernel))
+    @Test func thePlatformAloneSaysTheSame() {
+        expectWindowsOffers(HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows))
+        expectWindowsOffers(HostCapabilities(serverKind: .herdrCore, coreKernel: HerdrCoreLocator.windowsKernel))
     }
 
-    /// A stopped core has no snapshot, and New Agent must not wait for one.
-    @Test func aWindowsHostWhoseCoreIsStoppedOffersNothingToStartEither() async throws {
+    /// A stopped core has no snapshot, and what it offers must not wait for one.
+    @Test func aWindowsHostWhoseCoreIsStoppedOffersTheSameAndConnectsToNothing() async throws {
         let scripted = ScriptedCoreHost(
             windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
         let store = storeOnScripted(scripted)
@@ -263,13 +263,13 @@ struct HerdrCoreWindowsConsoleTests {
 
         try await waitUntil("the kernel") { store.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel }
 
-        expectNothingToStart(store.capabilities(for: host.id))
+        expectWindowsOffers(store.capabilities(for: host.id))
         #expect(await scripted.connectCommands.isEmpty)
         await finish(store)
     }
 
     /// These stop the session for good, so nothing later would bring the kernel.
-    @Test func aWindowsHostThatCannotConnectOffersNothingToStart() async throws {
+    @Test func aWindowsHostThatCannotConnectStillHidesWhatWindowsLacks() async throws {
         let cases: [(what: String, scripted: ScriptedCoreHost, session: String)] = [
             (
                 "update required",
@@ -303,13 +303,12 @@ struct HerdrCoreWindowsConsoleTests {
                 store.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel
             }
 
-            expectNothingToStart(store.capabilities(for: host.id))
+            expectWindowsOffers(store.capabilities(for: host.id))
             await finish(store)
         }
     }
 
-    /// Nothing can start before the first locator says which platform this is,
-    /// and on Windows nothing could after it either.
+    /// Nothing can start before the first locator says what this Host is.
     @Test func aCoreHostBeingLocatedForTheFirstTimeOffersNothingToStartYet() async throws {
         let gate = ScriptedTransportCallGate()
         let scripted = ScriptedCoreHost(
@@ -330,7 +329,7 @@ struct HerdrCoreWindowsConsoleTests {
     }
 
     /// A relaunch knows before the Host answers, or whether it answers at all.
-    @Test func aWindowsHostOnceLocatedOffersNothingToStartWhileItCannotBeReached() async throws {
+    @Test func aWindowsHostOnceLocatedHidesWhatWindowsLacksWhileItCannotBeReached() async throws {
         let defaults = try #require(UserDefaults(suiteName: "core-windows-\(UUID().uuidString)"))
         let scripted = ScriptedCoreHost(
             windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
@@ -345,13 +344,13 @@ struct HerdrCoreWindowsConsoleTests {
             scripted, memory: HerdrCoreHostMemory(defaults: defaults),
             before: { throw TransportError.sshUnreachable(detail: "gone") })
         relaunched.setHosts([host])
-        expectNothingToStart(relaunched.capabilities(for: host.id))
+        expectWindowsOffers(relaunched.capabilities(for: host.id))
         await relaunched.resume()
         try await waitUntil("the failed attempt") {
             if case .reconnecting = relaunched.hostStatuses[host.id] { return true }
             return false
         }
-        expectNothingToStart(relaunched.capabilities(for: host.id))
+        expectWindowsOffers(relaunched.capabilities(for: host.id))
         await finish(relaunched)
     }
 
@@ -374,10 +373,10 @@ struct HerdrCoreWindowsConsoleTests {
             locator: ScriptedCoreHost.locatorLines(socketFile: true), channel: .core(.init()))
         let store = storeOnScripted(scripted, memory: memory)
         store.setHosts([host])
-        #expect(!store.capabilities(for: host.id).startsAgents)
+        #expect(store.capabilities(for: host.id).uploads)
         await store.resume()
 
-        try await waitUntil("the Host's own kernel") { store.capabilities(for: host.id).startsAgents }
+        try await waitUntil("the Host's own kernel") { store.hostCoreKernels[host.id] == "Linux" }
         #expect(memory.kernel(for: host.id) == "Linux")
         await finish(store)
     }

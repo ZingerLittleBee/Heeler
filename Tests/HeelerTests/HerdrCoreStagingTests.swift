@@ -127,12 +127,10 @@ struct HerdrCoreStagingTests {
         await fixture.finish()
     }
 
-    /// macOS and Linux both answer POSIX. Native Windows stages through the
-    /// core's `terminal.put`, which is not built yet (ADR 0032).
-    @Test(arguments: [(HostPlatform.posix, true), (HostPlatform.nativeWindows, false)])
-    func aCoreHostOffersUploadsByThePlatformItsConnectionReports(
-        platform: HostPlatform, offered: Bool
-    ) async throws {
+    /// macOS and Linux both answer POSIX, and native Windows stages through the
+    /// core's `terminal.put` (ADR 0032).
+    @Test(arguments: [HostPlatform.posix, .nativeWindows])
+    func aCoreHostOffersUploadsOnceItsConnectionReportsItsPlatform(platform: HostPlatform) async throws {
         let fixture = try await Fixture(platform: platform)
         let console = fixture.console
         let hostID = fixture.host.id
@@ -141,7 +139,7 @@ struct HerdrCoreStagingTests {
         _ = try fixture.session
         try await Self.until("the platform") { console.hostPlatforms[hostID] == platform }
 
-        #expect(console.capabilities(for: hostID).uploads == offered)
+        #expect(console.capabilities(for: hostID).uploads)
         await fixture.finish()
     }
 

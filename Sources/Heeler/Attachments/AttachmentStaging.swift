@@ -54,7 +54,7 @@ struct StagedFile: Sendable, Equatable {
 
 private enum StagedHostPath {
     static func isValid(_ path: String) -> Bool {
-        guard path.hasPrefix("/"), path != "/" else { return false }
+        guard (path.hasPrefix("/") && path != "/") || RemoteHostPath.isWindowsAbsolute(path) else { return false }
         return path.unicodeScalars.allSatisfy { scalar in
             scalar.value >= 0x20 && scalar.value != 0x7F
                 && scalar.properties.generalCategory != .control
@@ -71,6 +71,8 @@ enum AttachmentStagingError: Error, Sendable, Equatable {
     case permissionEnforcementFailed
     case byteCountMismatch
     case transferFailed
+    /// Past what one `terminal.put` takes on a native Windows core Host.
+    case exceedsCoreFileLimit
     case cancelled
 
     var isRetryable: Bool {
@@ -79,7 +81,7 @@ enum AttachmentStagingError: Error, Sendable, Equatable {
             true
         case .invalidRemotePath, .invalidPreparedSource, .localReadFailed,
             .remoteTemporaryDirectoryFailed, .sftpUnavailable,
-            .permissionEnforcementFailed, .byteCountMismatch:
+            .permissionEnforcementFailed, .byteCountMismatch, .exceedsCoreFileLimit:
             false
         }
     }

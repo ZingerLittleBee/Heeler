@@ -37,6 +37,9 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Trailing terminal output (`pane.read`, ANSI stripped), fetched after
     /// snapshots and status changes; nil until the first read lands.
     var lastOutputSnippet: String?
+    /// Set for a core Host's rows: its Terminals can start in a Windows directory.
+    /// A Herdr TUI Host's on Windows have no such offer.
+    var startsTerminalsInWindowsDirectories = false
     /// Only the resolved directory from the latest PaneInfo, so frequent
     /// terminal-title updates do not change the Agent's value.
     private var paneDirectory: String?
