@@ -106,8 +106,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     // MARK: The live connection
 
     func terminalRunner() -> TerminalSessionRunner
-    func imageStager() -> ImageStager
-    func fileStager() -> FileStager
+    /// `paneID` and `corePin` are for a Host whose files go through the Terminal.
+    func imageStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> ImageStager
+    func fileStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> FileStager
     func sessionFileReader() -> SessionFileReader
     func modelContextWindowResolver() -> ModelContextWindowResolver
     func chatHostFiles() -> ChatHostFiles

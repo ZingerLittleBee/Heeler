@@ -540,6 +540,82 @@ struct HerdrCoreLinkTests {
         #expect(!methods.contains("terminal.send"))
     }
 
+    // MARK: A long frame on the wire
+
+    private static func longParams(bytes: Int = 2 * 1024 * 1024) -> JSONValue {
+        .object(["data": .string(String(repeating: "A", count: bytes))])
+    }
+
+    /// `terminal.put` is one frame of up to about 11 MiB, which takes minutes at the
+    /// slowest link this allows for. A keepalive behind it would otherwise end the link.
+    @Test func aCallQueuedBehindALongFrameOutlivesItsDeadlineAndGetsAFullOneOnceSent() async throws {
+        let harness = try await Harness()
+        await harness.socket.holdWrites()
+        let long = Task {
+            try await harness.link.call(
+                "terminal.put", params: Self.longParams(), deadline: .seconds(100), isMutation: true)
+        }
+        await harness.socket.waitForHeldWrite()
+        let queued = Task { try await harness.link.call("server.status", deadline: .seconds(3)) }
+        await harness.clock.untilParked(for: .seconds(3))
+
+        harness.clock.advance(.seconds(3))
+        await harness.clock.untilParked(for: .seconds(3))
+        harness.clock.advance(.seconds(2))
+
+        await harness.socket.releaseWrites()
+        let put = await harness.socket.nextRequest()
+        #expect(put.method == "terminal.put")
+        let status = await harness.socket.nextRequest()
+        #expect(status.method == "server.status")
+
+        // Sent with two seconds left of the wait behind the frame, it still has three.
+        await harness.clock.untilParked(for: .seconds(3))
+        harness.clock.advance(.seconds(2))
+        try await harness.socket.reply(to: put.id)
+        try await harness.socket.reply(to: status.id)
+        _ = try await long.value
+        _ = try await queued.value
+        #expect(await !harness.socket.isClosed)
+    }
+
+    @Test func aCallSentAfterItsWaitBehindALongFrameStillHasADeadline() async throws {
+        let harness = try await Harness()
+        await harness.socket.holdWrites()
+        let long = Task { try await harness.link.call("terminal.put", params: Self.longParams(), deadline: .seconds(100)) }
+        await harness.socket.waitForHeldWrite()
+        let queued = Task { try await harness.link.call("server.status", deadline: .seconds(3)) }
+        await harness.clock.untilParked(for: .seconds(3))
+        harness.clock.advance(.seconds(3))
+        await harness.clock.untilParked(for: .seconds(3))
+        await harness.socket.releaseWrites()
+        let put = await harness.socket.nextRequest()
+        _ = await harness.socket.nextRequest()
+        try await harness.socket.reply(to: put.id)
+        _ = try await long.value
+        await harness.clock.untilParked(for: .seconds(3))
+
+        harness.clock.advance(.seconds(3))
+
+        await #expect(throws: TransportError.timedOut) { try await queued.value }
+    }
+
+    @Test func aWriteGetsTimeForItsWholeFrameAtTheSlowestLink() async throws {
+        #expect(HerdrCoreLink.writeTimeout(forBytes: 80) == .seconds(30))
+        // 8 MiB as base64 is 11,184,812 bytes: 170 seconds at 64 KiB a second.
+        #expect(HerdrCoreLink.writeTimeout(forBytes: 11_184_812) == .seconds(170))
+
+        let harness = try await Harness()
+        let long = Task {
+            try await harness.link.call(
+                "terminal.put", params: Self.longParams(bytes: 6_553_600), deadline: .seconds(500))
+        }
+        let request = await harness.socket.nextRequest()
+        try await harness.socket.reply(to: request.id)
+        _ = try await long.value
+        #expect(await harness.socket.writeTimeouts.last == .seconds(100))
+    }
+
     @Test func aWriteFailureTearsTheLinkDownAndStreamInputInFlightIsOutcomeUnknown() async throws {
         let harness = try await Harness()
         let stream = try await harness.openStream(channel: 1)

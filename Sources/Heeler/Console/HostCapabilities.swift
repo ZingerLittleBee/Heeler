@@ -103,7 +103,7 @@ extension HostCapabilities {
             composerStop: offered || coreOnPosix,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChat ? coreChatPrograms : nil,
-            startsInWindowsDirectories: serverKind == .herdrCore)
+            startsInWindowsDirectories: coreOnWindows)
     }
 
     /// The programs whose Chat a Linux core Host opens. Binding works for Pi and Oh
@@ -114,6 +114,12 @@ extension HostCapabilities {
 
 extension Host {
     var capabilities: HostCapabilities { HostCapabilities(serverKind: serverKind) }
+
+    /// For a directory the Host reported, which says its own platform: a core
+    /// Host's is a Windows path only on native Windows.
+    func reportedDirectoryStartsTerminals(_ directory: String) -> Bool {
+        directory.hasPrefix("/") || (serverKind == .herdrCore && RemoteHostPath.isWindowsAbsolute(directory))
+    }
 }
 
 /// What an Agent's row offers besides its pin, by what its Host can do.

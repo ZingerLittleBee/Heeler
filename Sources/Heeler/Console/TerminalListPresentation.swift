@@ -255,7 +255,7 @@ struct TerminalListProjection {
             .map(\.agent.cwd)
         let candidates: [String?] =
             [workspace?.checkoutPath] + shells.map(\.pane.cwd) + agentDirectories.map { $0 }
-        return candidates.lazy.compactMap { $0 }.first(where: host.capabilities.startsIn)
+        return candidates.lazy.compactMap { $0 }.first(where: host.reportedDirectoryStartsTerminals)
     }
 
     private func issue(for host: Host) -> ConsoleHostStatusPresentation? {

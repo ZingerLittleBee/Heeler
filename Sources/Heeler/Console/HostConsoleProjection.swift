@@ -284,7 +284,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
         await refreshSidebarMetadata()
     }
 
-    func imageStager() -> ImageStager {
+    func imageStager(beside _: String, keepingTo _: TerminalCorePin) -> ImageStager {
         let session = session
         return { image, reporter in
             try await session.withTransport { transport in
@@ -357,7 +357,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
         }
     }
 
-    func fileStager() -> FileStager {
+    func fileStager(beside _: String, keepingTo _: TerminalCorePin) -> FileStager {
         let session = session
         return { file, reporter in
             try await session.withTransport { transport in

@@ -54,6 +54,8 @@ final class ComposerStagingStore {
             }
         }
 
+        fileprivate var noun: String { displayName.lowercased() }
+
         fileprivate var preparationIcon: String {
             switch self {
             case .image: "photo"
@@ -490,6 +492,31 @@ final class ComposerStagingStore {
                 medium: medium,
                 message: "The Host is not connected. Reconnect, then retry the upload.",
                 isRetryable: true)
+        case AttachmentStagingError.exceedsCoreFileLimit:
+            Failure(
+                medium: medium,
+                message: "This \(medium.noun) is over the 8 MiB limit on a native Windows Host. Nothing was sent.",
+                isRetryable: false)
+        case TransportError.coreMutationOutcomeUnknown:
+            Failure(
+                medium: medium,
+                message: "The Host did not confirm the \(medium.noun). Retry sends another copy.",
+                isRetryable: true)
+        case let refusal as HerdrAPIError where refusal.code == "finished" || refusal.code == "not_found":
+            Failure(
+                medium: medium,
+                message: "This Terminal has ended, so the \(medium.noun) was not sent.",
+                isRetryable: false)
+        case let refusal as HerdrAPIError:
+            Failure(
+                medium: medium,
+                message: "The Host refused the \(medium.noun): \(refusal.message)",
+                isRetryable: false)
+        case let transportError as TransportError where !isSSHUnreachable(transportError):
+            Failure(
+                medium: medium,
+                message: transportError.presentation.message,
+                isRetryable: transportError.isRetryable)
         case AttachmentStagingError.sftpUnavailable:
             Failure(
                 medium: medium,
@@ -546,6 +573,11 @@ final class ComposerStagingStore {
                 message: "\(medium.displayName) preparation failed.",
                 isRetryable: false)
         }
+    }
+
+    private static func isSSHUnreachable(_ error: TransportError) -> Bool {
+        if case .sshUnreachable = error { return true }
+        return false
     }
 
     private static func presentation(for state: State) -> Presentation? {

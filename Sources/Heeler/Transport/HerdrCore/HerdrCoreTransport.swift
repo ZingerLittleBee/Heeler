@@ -26,6 +26,15 @@ protocol HerdrCoreTransport: Sendable {
     /// What this connection has learned of the Host's kernel, reading no Host.
     func lastKernel() async -> String?
 
+    /// Whether a Staged file goes through the core's `terminal.put` rather than
+    /// over SFTP: a native Windows Host's does (ADR 0032).
+    func stagesThroughCore() async throws -> Bool
+
+    /// Writes one file beside the Terminal at `address` on the core `coreID` names,
+    /// and returns the path the core gives it. Past the limit it throws before
+    /// anything is sent. See `HerdrCoreStaging`.
+    func putFile(_ source: HerdrCoreStaging.Source, terminal address: String, coreID: String?) async throws -> String
+
     /// One named variable of one process, in one bounded exec, for finding where
     /// that process's program keeps its configuration. Never says why it could not.
     func processVariable(_ name: String, pid: Int) async -> HostProcessReader.Variable
@@ -487,6 +496,21 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             return try await connection.runWindowsAgentDiscovery(String(decoding: script, as: UTF8.self))
         }
         return try await connection.runAgentDiscovery(script)
+    }
+
+    func stagesThroughCore() async throws -> Bool {
+        try await resolvedPlatform() == .nativeWindows
+    }
+
+    /// The call's deadline runs from when it queues, so it covers the whole write.
+    func putFile(_ source: HerdrCoreStaging.Source, terminal address: String, coreID: String?) async throws -> String {
+        let params = try HerdrCoreStaging.params(for: source, terminal: try HerdrCoreWire.address(address))
+        let deadline =
+            Self.runDeadline + HerdrCoreLink.writeTimeout(forBytes: HerdrCoreStaging.encodedBytes(source.byteCount))
+        let result = try await onInventoryLink(meaning: coreID) { link in
+            try await link.call("terminal.put", params: params, deadline: deadline, isMutation: true)
+        }
+        return try HerdrCoreStaging.path(in: result, for: source)
     }
 
     func runTerminal(params: JSONValue) async throws -> JSONValue {
