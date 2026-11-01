@@ -115,12 +115,18 @@ class CoreConnection {
     this.#eventsChannel = snapshot.channel;
     clearTimeout(this.#timer);
     this.#timer = setTimeout(() => this.#end(new Error("The core went silent.")), this.#idleTimeoutMs);
-    this.#listener.connected?.({ coreId: this.coreId, pid: this.pid, inventory: this.inventory });
-    const early = this.#early;
-    this.#early = [];
-    for (const frame of early) {
-      if (this.#ended) break;
-      this.#route(frame);
+    // From here the listener has been told `connected`, so a failure is the end of a
+    // connection it knows of, which `closed` reports, and not a failed handshake.
+    try {
+      this.#listener.connected?.({ coreId: this.coreId, pid: this.pid, inventory: this.inventory });
+      const early = this.#early;
+      this.#early = [];
+      for (const frame of early) {
+        if (this.#ended) break;
+        this.#route(frame);
+      }
+    } catch (error) {
+      this.#end(error);
     }
   }
 
