@@ -241,6 +241,15 @@ suite("an update to a registered activity token", () => {
     ]);
   });
 
+  test("a layout with a Terminal label keeps its other fields and shows the label", async () => {
+    const layout = { rows: [[{ token: "agent" }, { token: "label:team.owner" }]] };
+    register(entry(KEY_A, ALERT_A, ACTIVITY_A, { live: { row_layout: layout } }));
+    await connected([agent("t1", { labels: { "team.owner": "ana" } })]);
+    await pushes(ACTIVITY_A, 1);
+
+    assert.deepEqual(opened(lastTo(ACTIVITY_A), KEY_A).agents[0].rows, [[{ text: "claude" }, { text: " · " }, { text: "ana" }]]);
+  });
+
   test("follows this device's pins and layout, each device its own", async () => {
     const layout = { rows: [[{ token: "agent" }, { token: "status" }, { token: "$branch" }]] };
     register(

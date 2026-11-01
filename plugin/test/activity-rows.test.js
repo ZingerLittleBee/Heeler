@@ -66,6 +66,26 @@ test("missing or malformed layout preserves legacy fallback; explicit empty layo
 });
 
 
+test("a Terminal label field shows that label's value beside the other fields", () => {
+  const labelled = { ...agent, tokens: { "team.owner": "ana", task: "ship" } };
+  assert.deepEqual(render([["agent", "label:team.owner", "label:absent", "$task"]], { agents: [labelled] }).rows, [
+    [{ text: "reviewer" }, { text: " · " }, { text: "ana" }, { text: " · " }, { text: "ship" }],
+  ]);
+});
+
+test("a label key the app would not offer makes the layout malformed", () => {
+  for (const key of ["", "   ", "a=b", "tab\there", "soft\u00adhyphen", "x".repeat(65), "é".repeat(33)]) {
+    assert.equal(parseActivityRowLayout({ rows: [[{ token: `label:${key}` }]] }), null, JSON.stringify(key));
+  }
+  for (const key of ["team.owner", "with space", "x".repeat(64), "é".repeat(32), "名前"]) {
+    assert.deepEqual(parseActivityRowLayout({ rows: [[{ token: `label:${key}` }]] }), { rows: [[{ token: `label:${key}` }]] }, key);
+  }
+});
+
+test("a label named like an object's own members shows nothing", () => {
+  assert.deepEqual(render([["label:constructor", "label:__proto__", "directory"]]).rows, [[{ text: "/work/Heeler" }]]);
+});
+
 test("field truncation preserves the first 80 graphemes without ellipsis or trailing-space trimming", () => {
   const text = "x".repeat(79) + " y";
   assert.equal(render([["$task"]], { agents: [{ ...agent, tokens: { task: text } }] }).rows[0][0].text,
