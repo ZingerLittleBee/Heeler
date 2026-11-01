@@ -147,6 +147,11 @@ herdr-core Hosts only.
   only while it is still the Terminal's own process, so a launcher in front of
   it needs the extension. That binding names the launch's session, so it is the
   in-process `/new` case above.
+- `terminal.label` has no compare, so clearing a stale label can remove the one
+  the next Agent wrote in the same moment. Heeler judges labels after its exec
+  and compares again before clearing. That leaves one round trip, and a Pi or
+  Oh My Pi Agent caught in it reads as cannot tell until its extension next
+  writes, at the next session.
 - A Transcript locator takes the config root from the Agent's own process
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.
