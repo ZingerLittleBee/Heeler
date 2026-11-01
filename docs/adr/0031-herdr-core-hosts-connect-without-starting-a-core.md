@@ -23,8 +23,9 @@ stays as it is.
   requests, the events subscription and every live terminal over one channel.
   Unix opens a direct-streamlocal channel to the core's socket, whose path the
   app reads from the core's `core.lock` with a read-only exec. Native Windows
-  reads `core.lock` the same way, checks that the named pipe it names exists,
-  and only then runs
+  reads `core.lock` from its second byte, since a running core holds the first
+  under a file lock, restores the leading backslash, checks with PowerShell's
+  `Test-Path` that the named pipe it names exists, and only then runs
   `.\AppData\Local\Programs\herdr-core\herdr-core.exe connect --session <s>`
   over SSH exec, because a pipe cannot be forwarded. As in ADR 0018, the
   Windows path is a platform branch, never a fallback. `<s>`, and the
@@ -189,6 +190,21 @@ confirm or refine these points with test clients, not the app.
   new channel.
 - On Windows a core that stops between the pipe check and `connect` is
   started by `connect`; the window is one round trip.
+- On Windows `core.lock` is unreadable as a whole while its core runs: a plain
+  read fails with a lock violation, an SFTP read at offset 0 fails too, and
+  only a read from byte 1 returns the path. A stopped core's file reads whole
+  and stays, so the file's presence says nothing about a running core and the
+  pipe does ([observation](../agents/herdr-compatibility.md)). `Test-Path`,
+  `[IO.File]::Exists` and a `GetFiles` listing told the two states apart;
+  `cmd /c if exist` and Node's `fs.existsSync` said no in both. The Windows
+  probe (#587) therefore cannot read the file as Unix does, and must name
+  `powershell.exe`, since an exec on a default server runs under `cmd.exe`.
+- Over Windows' `connect`, framing, credit, a several-MiB client frame and a
+  backlog past 4 MiB all held on a local run, with the same results as the
+  pipe. Three things remain unverified and block calling #587's link proven:
+  the stream across Windows OpenSSH's exec
+  channel, whether the pipe admits an administrator's elevated SSH token, and
+  the probe's reads from an SSH exec.
 - The state directory follows `XDG_STATE_HOME`. An override set only in an
   interactive shell's rc file is invisible to the probe, and a core started
   under it has another `core.id` behind the same socket path.

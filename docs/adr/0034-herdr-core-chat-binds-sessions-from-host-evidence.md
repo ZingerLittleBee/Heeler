@@ -149,10 +149,21 @@ herdr-core Hosts only.
   Pi's session files and Grok Build's `active_sessions.json` rows, all of which
   need a signed-in model; Grok Build's `pid_start` encoding and its leader
   mode; whether Oh My Pi's security scan rewrites the breadcrumb; OpenCode
-  2.x at runtime, read only from source; whether Claude Code's `procStart` on
-  macOS equals the start `ps -o lstart=` prints; `HC_TERMINAL_SOCKET`'s form on
-  Windows; and whether Windows Transcripts are read over SFTP or the core's
-  `file.read`.
+  2.x at runtime, read only from source; and whether Claude Code's `procStart`
+  on macOS equals the start `ps -o lstart=` prints.
+- On native Windows `HC_TERMINAL_SOCKET` holds the pipe path,
+  `\\.\pipe\herdr-core-<user>-<session>.sock`, and Node's `net.connect` reaches
+  it and gets a plain JSON-RPC reply
+  ([observation](../agents/herdr-compatibility.md)), so the extensions connect
+  by that value as they do to a Unix socket (#590). Pi and Oh My Pi themselves
+  have not run there.
+- Windows Transcripts are read over SFTP, the reader Unix already uses, without
+  `file.read`'s 8 MiB per read, 64 MiB per file and UTF-8 limits. A growing
+  file read correctly by both. This is provisional: `sftp-server.exe` ran locally, not through sshd, on
+  made-up files. A writer that shares nothing fails both.
+- Under PowerShell the foreground's pid is never the Agent's, so #590 binds
+  through PowerShell's children, not through the foreground's pid. A session
+  registry entry on Windows has not been read.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from

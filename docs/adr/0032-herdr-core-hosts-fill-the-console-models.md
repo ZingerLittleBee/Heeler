@@ -197,8 +197,18 @@ with test clients, not the app.
   alike.
 - When an Agent Heeler started exits, its Pane closes, where a Herdr TUI Pane
   returns to the shell. Its foreground is the agent itself from the moment the
-  shell replaces itself. Which process the core reports as the foreground
-  under PowerShell, which does not replace itself, is unverified.
+  shell replaces itself.
+- Under PowerShell, which does not replace itself, the foreground is
+  PowerShell for the Terminal's whole life: one event, with PowerShell's pid
+  and the launch arguments, never the child
+  ([observation](../agents/herdr-compatibility.md)). Recognizing a Windows
+  Agent therefore reads the program out of PowerShell's `-Command` argument
+  (#588). Under Heeler's form the Agent's exit finishes the Terminal with the
+  program's code, so its Pane closes as on Unix. Under the desktop's `-NoExit`
+  form the same exit changes nothing the core reports, so such a Terminal keeps
+  reading as that Agent until its shell exits, and "a shell in the foreground
+  ends the Agent" never fires. Only a read of PowerShell's children could tell;
+  until #588 or #590 adds one, that staleness stands.
 - Recognizing an Agent works on the foreground's arguments, not the launch
   arguments, and needs a table from reported `app` names (`claude-code`,
   `codex`, `opencode`, `pi`, `omp`, `grok-build`) to Heeler's agent kinds.
@@ -252,5 +262,9 @@ with test clients, not the app.
   therefore ship off, behind `HerdrAppControl.isRenameConfirmed`, until the
   owner's check on a desktop Mac passes; New Workspace does not depend on it.
 - On Windows a Staged Image or File larger than 8 MiB is refused before it is
-  sent. The files sit under the user's profile with whatever access it grants;
-  the core does not narrow it (unverified).
+  sent, as the core refuses it (`invalid_params`); exactly 8 MiB is accepted.
+  The files sit at `<state>\files\<address>\<cleaned name>` under the user's
+  profile, with the inherited access of SYSTEM, Administrators and the account
+  ([observation](../agents/herdr-compatibility.md)). A program in the Terminal
+  reads them by that path. The folder outlives `terminal.kill` and goes with
+  `terminal.rm`, so a kept Terminal's files stay until it is removed.
