@@ -327,12 +327,12 @@ struct HostHelperInstaller: Sendable {
         try await systemctl(["restart", HostHelperScript.unitName], step: "Starting the service")
     }
 
-    /// The property list with the Node.js the Host has now, and an empty private
-    /// log, since launchd would make its own world-readable one. `bootout` then
-    /// `bootstrap`, and never `kickstart`, which blocked for minutes in the VM
-    /// when the agent could not run (ADR 0033). The `bootout` has nothing to stop
-    /// on a first install, and whatever else keeps a copy loaded shows in the
-    /// `bootstrap`'s answer.
+    /// The property list with the Node.js the Host has now, and an empty log
+    /// that is private from the start and stays so as launchd appends to it.
+    /// `bootout` then `bootstrap`, and never `kickstart`, which blocked for minutes
+    /// in the VM when the agent could not run (ADR 0033). The `bootout` has nothing
+    /// to stop on a first install, and whatever else keeps a copy loaded shows in
+    /// the `bootstrap`'s answer.
     private func startLaunchAgent(_ plan: HostHelperInstallPlan) async throws {
         let layout = plan.layout
         try await write(Data(), to: layout.log, in: layout.directory, step: "Creating the log")
@@ -349,8 +349,7 @@ struct HostHelperInstaller: Sendable {
         guard result.exitStatus == 0 else {
             var detail = Self.detail(of: result)
             if result.exitStatus == Self.bootstrapRefused {
-                detail += " launchd answers this for more than one cause, such as another copy already "
-                    + "loaded for the desktop login."
+                detail += " launchd answers this for more than one cause, such as another copy already loaded."
             }
             throw HostHelperError.stepFailed(step: "Starting the service", detail: detail)
         }

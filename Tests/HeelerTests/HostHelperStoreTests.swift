@@ -457,6 +457,45 @@ struct HostHelperOnboardingTests {
         #expect(await core.log == ["locator", "open \(ScriptedCoreHost.socketPath)", "close"])
     }
 
+    /// A Mac's Helper takes over ten seconds to read (ADR 0033). The core's own
+    /// checks are not held up by it.
+    @Test func theChecksDoNotWaitForAMacsSecondHealthRead() async throws {
+        let helper = await ScriptedHelperHost.macOS()
+        let core = ScriptedCoreHost(helper: helper, channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let installing = HostHelperStore(
+            connect: { core.transport() }, bundle: { HostHelperFixture.bundle() }, healthGap: {})
+        await installing.refresh()
+        await installing.install()
+        #expect(installing.failure == nil)
+
+        let gate = AsyncStream<Void>.makeStream()
+        let started = AsyncStream<Void>.makeStream()
+        let store = HostOnboardingStore(
+            host: Host(address: "box.example", username: "dev", serverKind: .herdrCore, sessionName: "work"),
+            connector: reaching(core),
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: credentials,
+            hostHelperHealthGap: {
+                started.continuation.yield()
+                for await _ in gate.stream { return }
+            })
+        let run = Task { await store.runChecks() }
+        for await _ in started.stream { break }
+
+        let deadline = ContinuousClock.now + .seconds(5)
+        while store.report == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(store.report == .allPassed)
+        #expect(store.hostHelper?.reading == .checking)
+
+        gate.continuation.yield()
+        await run.value
+        #expect(store.hostHelper?.status == .installed(
+            version: HostHelperCompatibility.bundled, updateAvailable: false))
+        #expect(await core.log.last == "close")
+    }
+
     @Test func theHelperReadsWhileNoCoreRuns() async throws {
         let core = ScriptedCoreHost(channel: .refused)
         let store = try coreStore(core)
