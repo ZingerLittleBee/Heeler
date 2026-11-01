@@ -509,4 +509,18 @@ struct HerdrCoreChatPickBinderTests {
 
         #expect(answer == .noProcess)
     }
+
+    /// Past the walk's cap a launcher looks like the Agent, so a confirmation would
+    /// store the launcher's pid and start, and a Codex daemon under it is out of sight.
+    @Test(arguments: programs)
+    func aWalkPastItsCapListsNothing(_ program: ChatProgram) async throws {
+        let rig = await Rig(program)
+        var binder = rig.binder
+        binder.processes = { try Self.readPastTheWalkCap($0) }
+
+        let answer = try await binder.candidates(of: try Self.record(program, labels: [:]))
+
+        #expect(answer == .noProcess)
+        #expect(await rig.files.listings.isEmpty)
+    }
 }

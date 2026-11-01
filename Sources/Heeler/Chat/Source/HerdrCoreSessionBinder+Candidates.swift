@@ -59,7 +59,9 @@ extension HerdrCoreSessionBinder {
     func candidates(of record: HerdrCoreTerminalRecord) async throws -> ChatCandidatesAnswer {
         var ask = processAsk
         ask.readsOpenFiles = true
-        guard let tree = try await readTerminalProcesses(of: record, ask: ask),
+        // Past the walk's cap a launcher looks like the Agent, and a daemon under it
+        // is out of sight, so what a confirmation would bind to cannot be said.
+        guard let tree = try await readTerminalProcesses(of: record, ask: ask), tree.walkAnswered,
             let pid = agentProcess(in: tree), let process = tree.facts[pid], let number = Int(pid),
             case .value(let start) = process.start
         else { return .noProcess }
