@@ -30,9 +30,18 @@ extension HerdrCoreSessionBinder {
             try? await clearLabels([HerdrCoreSessionHint.pickLabel: value])
             return evidence
         }
-        guard let hint = HerdrCoreSessionHint(label: value), await !isDroppedPick(value),
-            tree.facts[String(hint.pid)]?.start == .value(hint.start)
-        else { return await dropped() }
+        guard let hint = HerdrCoreSessionHint(label: value), await !isDroppedPick(value) else {
+            return await dropped()
+        }
+        switch tree.facts[String(hint.pid)]?.start {
+        case .value(hint.start)?: break
+        case .value?: return await dropped()
+        case .unavailable?: return unconfirmed(evidence)
+        case nil:
+            // Past the walk's cap a process it did not list may still be under the foreground.
+            guard tree.walkAnswered else { return unconfirmed(evidence) }
+            return await dropped()
+        }
         guard let agent = agentProcess(in: tree) else {
             // Its process is still there, and which one is the Agent cannot be said.
             return unconfirmed(evidence)

@@ -303,6 +303,79 @@ struct HerdrCoreChatPickBinderTests {
         #expect(await log.cleared.isEmpty)
     }
 
+    /// The exec's answer when the foreground has more descendants than the walk
+    /// lists: `W <root> -` and no `T` lines, so the requested processes alone and
+    /// none of their names.
+    private static func readPastTheWalkCap(
+        _ request: HostProcessReader.Request, start: String = start
+    ) throws -> [String: HostProcessReader.Facts] {
+        func hex(_ text: String) -> String { text.utf8.map { String(format: "%02x", $0) }.joined() }
+        let nonce = "0123456789abcdef01234567"
+        let values = ["HC_SCOPE": "scope", "HOME": home]
+        var lines = ["__HEELER_PROC_BEGIN_\(nonce)"]
+        for pid in request.pids {
+            lines += ["S \(pid) \(start)", "E \(pid) ok", "O \(pid) ok", "B \(pid) ok"]
+            lines += request.valuesOf.compactMap { name in values[name].map { "V \(pid) \(name) \(hex($0))" } }
+        }
+        lines += ["W \(request.descendantsOf ?? "") -", "__HEELER_PROC_END_\(nonce)", ""]
+        return try HostProcessReader.parse(
+            stdout: Data(lines.joined(separator: "\n").utf8), nonce: nonce, request: request)
+    }
+
+    /// An Agent behind a launcher is out of a walk past its cap's sight, not gone.
+    @Test(arguments: programs)
+    func aPickBehindALauncherStandsWhenTheWalkIsPastItsCap(_ program: ChatProgram) async throws {
+        let rig = await Rig(program)
+        var binder = rig.binder
+        binder.processes = { try Self.readPastTheWalkCap($0) }
+        let label = Self.label(session: Self.conversation(program), pid: 41, start: "2")
+
+        let evidence = try await binder.check(try Self.record(program, labels: ["heeler.chat": label]))
+
+        #expect(evidence == .pickUnconfirmed(.cannotTellSession(program)))
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
+    /// The walk says nothing about the processes the exec names itself.
+    @Test func aForegroundOfAnotherStartDropsThePickWhenTheWalkIsPastItsCap() async throws {
+        let rig = await Rig(.grok)
+        var binder = rig.binder
+        binder.processes = { try Self.readPastTheWalkCap($0, start: "999") }
+
+        let evidence = try await binder.check(try Self.record(.grok, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .unavailable(.cannotTellSession(.grok)))
+        #expect(await rig.log.cleared == ["heeler.chat"])
+    }
+
+    @Test func aPickOnTheForegroundBindsWhenTheWalkIsPastItsCap() async throws {
+        let rig = await Rig(.grok)
+        var binder = rig.binder
+        binder.processes = { try Self.readPastTheWalkCap($0) }
+
+        let evidence = try await binder.check(try Self.record(.grok, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .picked(sessionID: Self.uuid, transcriptRoot: "\(Self.home)/.grok"))
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
+    /// A process whose start cannot be read may have changed or may not.
+    @Test func aPickWhoseStartCannotBeReadIsUnconfirmedAndKept() async throws {
+        let rig = await Rig(.grok)
+        var binder = rig.binder
+        let table = rig.table
+        binder.processes = { request in
+            var facts = try await table.read(request)
+            facts[String(Self.pid)]?.start = .unavailable
+            return facts
+        }
+
+        let evidence = try await binder.check(try Self.record(.grok, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .pickUnconfirmed(.cannotTellSession(.grok)))
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
     /// The label is read after the exec, as session labels are.
     @Test func aPickWrittenDuringTheExecBinds() async throws {
         let rig = await Rig(.grok)

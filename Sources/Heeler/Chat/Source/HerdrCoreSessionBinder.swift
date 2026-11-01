@@ -290,6 +290,11 @@ struct HerdrCoreTerminalProcesses: Sendable {
         return descendants
     }
 
+    /// Whether ``descendants`` is the whole tree, so a process it leaves out is not there.
+    var walkAnswered: Bool {
+        if case .value? = facts[root]?.descendants { true } else { false }
+    }
+
     /// The nearest process to the foreground that calls itself the program, or
     /// the foreground itself when nothing under it could be. Nil when two are
     /// equally near. A process `skips` names counts for nothing, and neither do

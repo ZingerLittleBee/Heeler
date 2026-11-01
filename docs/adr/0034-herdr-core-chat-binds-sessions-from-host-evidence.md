@@ -136,7 +136,8 @@ never show or send into a conversation it has guessed.
 - A dropped pick leaves the screen, unlike an exact binding that goes quiet, which
   keeps its last document readable because nothing says it was wrong. A pick was
   only the user's word, and a drop says that word no longer holds. A check that
-  cannot see the process to hold the label against (no scope to follow, an Agent
+  cannot see the process to hold the label against (no scope to follow, a walk
+  past its cap that leaves the process out, a start it could not read, an Agent
   that cannot be told apart, a process that cannot say where its Transcripts are)
   drops nothing: the label stands, the conversation stays under a banner with its
   send guard armed, and a Send is refused until a check can say.
