@@ -12,7 +12,7 @@ extension HerdrCoreSessionBinder {
     /// `session_meta`, line 1, carries the base instructions, which reach tens of
     /// kilobytes.
     private static let rolloutHeadLimit = 256 * 1024
-    private static let codexHomeVariable = "CODEX_HOME"
+    static let codexHomeVariable = "CODEX_HOME"
     /// `app-server --managed-daemon`, and its `app-server daemon pid-update-loop`.
     private static let codexDaemonArguments = ["--managed-daemon", "app-server", "pid-update-loop"]
 
@@ -20,26 +20,16 @@ extension HerdrCoreSessionBinder {
     /// daemon holds every window's and no window holds any, so a daemon under the
     /// Agent, or a launch on the shared server while its socket exists, gets no
     /// binding (ADR 0034).
-    func checkCodex(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
-        guard
-            let tree = try await readTerminalProcesses(
-                of: record, values: ["HOME", Self.codexHomeVariable], arguments: Self.codexDaemonArguments,
-                readsOpenFiles: true),
-            let pid = tree.agent(isAgent: { $0?.name == "codex" }, skips: Self.isCodexDaemon),
-            let process = tree.facts[pid],
-            let codexHome = Self.configRoot(of: process, variable: Self.codexHomeVariable, underHome: ".codex")
+    func checkCodex(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
+    ) async throws -> ChatSessionEvidence {
+        guard let pid = codexAgent(in: tree), let process = tree.facts[pid], let codexHome = codexHome(of: process)
         else { return cannotTell }
-        if tree.descendants.contains(where: { Self.isManagedDaemon(tree.facts[$0]) }) {
+        if try await isCodexOnSharedDaemon(record, tree: tree, process: process) {
             return .unavailable(.codexSharedDaemon)
         }
         let rollouts = Self.rollouts(heldBy: process)
-        if rollouts.isEmpty {
-            guard CodexLaunch.launchesOnSharedServer(foreground: record.foreground) == true,
-                try await files.status(CodexLaunch.controlSocketPath(codexHome: codexHome)) != nil
-            else { return cannotTell }
-            return .unavailable(.codexSharedDaemon)
-        }
-        guard rollouts.count <= Self.heldRolloutLimit,
+        guard !rollouts.isEmpty, rollouts.count <= Self.heldRolloutLimit,
             !Self.holdsALockWithoutItsRollout(process, rollouts: rollouts)
         else { return cannotTell }
         var roots: [RolloutHead] = []
@@ -49,6 +39,32 @@ extension HerdrCoreSessionBinder {
         }
         guard roots.count == 1, let root = roots.first else { return cannotTell }
         return .bound(sessionID: root.threadID, transcriptRoot: codexHome, directory: root.directory)
+    }
+
+    /// A daemon under the Agent, or a launch on the shared server, holding no
+    /// rollout of its own, while the server's socket exists.
+    func isCodexOnSharedDaemon(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses, process: HostProcessReader.Facts
+    ) async throws -> Bool {
+        if tree.descendants.contains(where: { Self.isManagedDaemon(tree.facts[$0]) }) { return true }
+        guard Self.rollouts(heldBy: process).isEmpty, let codexHome = codexHome(of: process),
+            CodexLaunch.launchesOnSharedServer(foreground: record.foreground) == true
+        else { return false }
+        return try await files.status(CodexLaunch.controlSocketPath(codexHome: codexHome)) != nil
+    }
+
+    var codexProcessAsk: ProcessAsk {
+        ProcessAsk(
+            values: [Self.homeVariable, Self.codexHomeVariable], arguments: Self.codexDaemonArguments,
+            readsOpenFiles: true)
+    }
+
+    func codexAgent(in tree: HerdrCoreTerminalProcesses) -> String? {
+        tree.agent(isAgent: { $0?.name == "codex" }, skips: Self.isCodexDaemon)
+    }
+
+    func codexHome(of process: HostProcessReader.Facts) -> String? {
+        Self.configRoot(of: process, variable: Self.codexHomeVariable, underHome: ".codex")
     }
 
     private static func isManagedDaemon(_ process: HostProcessReader.Facts?) -> Bool {
@@ -62,7 +78,7 @@ extension HerdrCoreSessionBinder {
             || (arguments.contains("app-server") && arguments.contains("pid-update-loop"))
     }
 
-    private struct HeldRollout {
+    struct HeldRollout {
         let path: String
         let name: CodexRolloutFileName
     }
@@ -90,7 +106,7 @@ extension HerdrCoreSessionBinder {
 
     /// The process's open files that are rollouts. Its thread-writer locks and
     /// anything else it holds are not.
-    private static func rollouts(heldBy process: HostProcessReader.Facts) -> [HeldRollout] {
+    static func rollouts(heldBy process: HostProcessReader.Facts) -> [HeldRollout] {
         guard case .value(let files) = process.openFiles else { return [] }
         return files.compactMap { path in
             guard path.contains("/sessions/") || path.contains("/archived_sessions/"),
@@ -101,7 +117,7 @@ extension HerdrCoreSessionBinder {
         }
     }
 
-    private struct RolloutHead {
+    struct RolloutHead {
         let threadID: String
         let isRoot: Bool
         let directory: String?
@@ -110,7 +126,7 @@ extension HerdrCoreSessionBinder {
     /// Line 1, when it is one `session_meta` naming the thread the file is named
     /// for. A head cut short or unreadable says nothing about whether this is the
     /// root, so the caller binds nothing.
-    private func readRolloutHead(_ rollout: HeldRollout) async throws -> RolloutHead? {
+    func readRolloutHead(_ rollout: HeldRollout) async throws -> RolloutHead? {
         let slice = try await files.read(
             RemoteFileRange(path: rollout.path, offset: 0, maxBytes: Self.rolloutHeadLimit))
         guard slice.length != nil, let newline = slice.data.firstIndex(of: UInt8(ascii: "\n")),
@@ -165,14 +181,9 @@ extension HerdrCoreSessionBinder {
     /// The one row whose `pid` and `pid_start` match the Agent's process. `/new`
     /// adds a second row for the same process and keeps the first, and nothing
     /// says which the screen shows, so two bind nothing (ADR 0034).
-    func checkGrokBuild(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
-        guard
-            let tree = try await readTerminalProcesses(of: record, values: ["HOME", Self.grokHomeVariable]),
-            let pid =
-                isOnWindows
-                ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" }),
-            let process = tree.facts[pid], case .value(let start) = process.start,
-            let grokHome = Self.configRoot(of: process, variable: Self.grokHomeVariable, underHome: ".grok")
+    func checkGrokBuild(_ tree: HerdrCoreTerminalProcesses) async throws -> ChatSessionEvidence {
+        guard let pid = agentProcess(in: tree), let process = tree.facts[pid],
+            case .value(let start) = process.start, let grokHome = grokHome(of: process)
         else { return cannotTell }
         let path = RemoteFilePath.join(grokHome, "active_sessions.json")
         let slice = try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.activeSessionsLimit))
@@ -185,6 +196,14 @@ extension HerdrCoreSessionBinder {
             let session = ConversationReference.lowercaseUUID(row.sessionID)
         else { return cannotTell }
         return .bound(sessionID: session, transcriptRoot: grokHome, directory: startDirectory(row.cwd))
+    }
+
+    var grokProcessAsk: ProcessAsk {
+        ProcessAsk(values: [Self.homeVariable, Self.grokHomeVariable])
+    }
+
+    func grokHome(of process: HostProcessReader.Facts) -> String? {
+        Self.configRoot(of: process, variable: Self.grokHomeVariable, underHome: ".grok")
     }
 
     /// One row of `active_sessions.json`. `pid_start` is a JSON number, field 22
@@ -211,11 +230,11 @@ extension HerdrCoreSessionBinder {
     /// which a launch writes before any process exists. The foreground's own argv
     /// ties that one to this process, and a Terminal that runs anything else no
     /// longer has it there (ADR 0034).
-    func checkOpenCode(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
-        guard
-            let tree = try await readTerminalProcesses(of: record),
-            let pid = tree.agent(isAgent: { $0?.name == "opencode" }),
-            let process = tree.facts[pid], process.name == "opencode", case .value(let start) = process.start
+    func checkOpenCode(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
+    ) async throws -> ChatSessionEvidence {
+        guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "opencode",
+            case .value(let start) = process.start
         else { return cannotTell }
         for hint in await readHints(in: record, pid: pid, start: start) {
             if let session = OpenCodeSessionID(hint.session) {

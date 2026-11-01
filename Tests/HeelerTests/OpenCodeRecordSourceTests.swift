@@ -35,6 +35,7 @@ struct OpenCodeRecordSourceTests {
                 case .poll: "poll"
                 case .older(let before, let budget): "older \(before) \(budget)"
                 case .row(let seq, let outputLimit): "row \(seq) \(outputLimit)"
+                case .recentSessions: "recent sessions"
                 }
             }
         }

@@ -17,7 +17,7 @@ extension HeelerSSHTransportBehaviorE2ETests {
         // The harness's connection stays open, so the store has its side
         // files, as a running OpenCode's does.
         let harness = try OpenCodeSQLiteHarness(fixture, journal: .wal)
-        try OpenCodeScratchStore.addRefusedCompaction(to: harness, session: tail.session)
+        try OpenCodeScratchStore.addRefusedCompaction(to: harness, session: try #require(tail.session))
         let files = try harness.storeFiles()
         try #require(Set(files.keys) == ["opencode.db", "opencode.db-wal", "opencode.db-shm"])
         try await OpenCodeScratchStore.with(files, environment: environment) { store in

@@ -16,8 +16,8 @@ import Foundation
 /// holding a per-request nonce.
 ///
 /// The only values that reach the script are the nonce, the validated
-/// session id inside SQL string literals, and integers. Nothing is
-/// interpolated into a shell word. The statements travel once, in one
+/// session id inside SQL string literals, a directory as a SQL hex literal, and
+/// integers. Nothing is interpolated into a shell word. The statements travel once, in one
 /// here-document that whichever reader runs reads, because every poll
 /// uploads the whole script.
 enum OpenCodeProbe {
@@ -238,6 +238,7 @@ enum OpenCodeProbe {
         var missingColumns: [String]?
         var eventSeq: Int64?
         var sessionMissing = false
+        var recentSessions: [OpenCodeRecentSession] = []
         var sessionLine: Data?
         var rows: [OpenCodeRowLine] = []
         var overBudget = false
@@ -299,6 +300,11 @@ enum OpenCodeProbe {
                 guard value.isEmpty else { return false }
                 sessionMissing = true
             case "S": sessionLine = Data(text.utf8)
+            case "Q":
+                guard let row = try? JSONDecoder().decode(OpenCodeRecentSession.self, from: Data(text.utf8)) else {
+                    return false
+                }
+                recentSessions.append(row)
             case "R":
                 let line = Data(text.utf8)
                 guard let head = try? JSONDecoder().decode(RowHead.self, from: line) else {
@@ -334,7 +340,8 @@ enum OpenCodeProbe {
             OpenCodeRecords(
                 sqliteVersion: version, eventSeq: eventSeq, sessionLine: sessionLine,
                 inboxLine: inboxLine, rows: rows.sorted { $0.seq < $1.seq }, firstSeq: firstSeq,
-                windowCount: windowCount, overflow: overflow, ignoredLines: ignoredLines)
+                windowCount: windowCount, overflow: overflow, ignoredLines: ignoredLines,
+                recentSessions: recentSessions)
         }
     }
 

@@ -17,9 +17,12 @@ struct OpenCodeQuery: Equatable, Sendable {
         /// One row again, its tool output cut at `outputLimit` characters
         /// rather than the usual 16 Ki.
         case row(seq: Int64, outputLimit: Int)
+        /// The newest root sessions started in a directory, for Chat's candidate
+        /// list (ADR 0034). It reads no session, so the query names none.
+        case recentSessions(directory: String, limit: Int)
     }
 
-    var session: OpenCodeSessionID
+    var session: OpenCodeSessionID?
     var kind: Kind
 }
 
@@ -72,6 +75,16 @@ struct OpenCodeRecords: Equatable, Sendable {
     /// Blank or untagged lines between the markers, such as a row cut at
     /// the output cap.
     var ignoredLines: Int
+    /// On a `recentSessions` read, newest first.
+    var recentSessions: [OpenCodeRecentSession] = []
+}
+
+/// One row of a `recentSessions` read.
+struct OpenCodeRecentSession: Decodable, Equatable, Sendable {
+    let id: String
+    let title: String?
+    /// Milliseconds since the epoch.
+    let updated: Int64
 }
 
 struct OpenCodeRowLine: Equatable, Sendable {

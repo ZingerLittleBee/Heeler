@@ -132,6 +132,8 @@ final class ConsoleStore {
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     @ObservationIgnored private let coreStopClock: BlockedCardClock
     @ObservationIgnored private let coreChatPrograms: Set<ChatProgram>
+    @ObservationIgnored private let chatTiming: AgentChatStore.Timing
+    @ObservationIgnored private let chatNow: @Sendable () -> Date
     @ObservationIgnored private let coreWindowsChatPrograms: Set<ChatProgram>
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
@@ -217,10 +219,14 @@ final class ConsoleStore {
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
         coreSendClock: BlockedCardClock = .live,
         coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms,
-        coreWindowsChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedWindowsCoreChatPrograms
+        coreWindowsChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedWindowsCoreChatPrograms,
+        chatTiming: AgentChatStore.Timing = AgentChatStore.Timing(),
+        chatNow: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.coreChatPrograms = coreChatPrograms
         self.coreWindowsChatPrograms = coreWindowsChatPrograms
+        self.chatTiming = chatTiming
+        self.chatNow = chatNow
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.coreStopClock = coreStopClock
@@ -877,10 +883,12 @@ final class ConsoleStore {
                 guard let self else { throw TransportError.cancelled }
                 return try await self.checkChatSession(paneID: paneID, program: program, on: hostID)
             }
+            source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: core.chatCacheScope)
             // Only events after this store exists are news to it.
             chatSessionEventRevisions[agent.id] = core.sessionEventRevision(of: paneID)
         }
-        let store = AgentChatStore(agentID: agent.id, agent: agent.agent, program: program, source: source)
+        let store = AgentChatStore(
+            agentID: agent.id, agent: agent.agent, program: program, source: source, timing: chatTiming, now: chatNow)
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
         return store
@@ -894,6 +902,30 @@ final class ConsoleStore {
             let stopKey = core.terminalRecord(at: agent.agent.paneID)?.stop
         else { return plan }
         return plan.pressing(templateStopKey: stopKey)
+    }
+
+    /// A confirmation is an action a detail takes on an address, so it keeps to the
+    /// detail's core (ADR 0031).
+    private func chatPicks(paneID: String, program: ChatProgram, on hostID: Host.ID, scope: String?) -> ChatPickIO {
+        ChatPickIO(
+            list: { [weak self] pin in
+                guard let self, let core = self.projections[hostID] as? HerdrCoreConsoleProjection else {
+                    throw TransportError.cancelled
+                }
+                guard !self.hasLeftCore(pin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                return try await core.chatCandidates(paneID: paneID, program: program)
+            },
+            confirm: { [weak self] candidate, list, pin in
+                guard let self, let core = self.projections[hostID] as? HerdrCoreConsoleProjection else {
+                    throw TransportError.cancelled
+                }
+                guard !self.hasLeftCore(pin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                try await core.writeChatPick(candidate, of: list, paneID: paneID)
+            },
+            drop: { [weak self] in
+                guard let core = self?.projections[hostID] as? HerdrCoreConsoleProjection else { return }
+                core.dropChatPick(paneID: paneID, scope: scope)
+            })
     }
 
     private func checkChatSession(

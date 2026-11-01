@@ -13,9 +13,11 @@ never show or send into a conversation it has guessed.
 ## Decision
 
 - The app binds a herdr-core Agent's session itself, lazily: when Chat opens,
-  before each Send, and on the Terminal's status, turn and foreground events,
-  and a change of its `heeler.*` session label: OpenCode 1.x reports no status,
-  so its plugin's label is the only thing that says the conversation moved.
+  before each Send, and on the Terminal's status, turn and foreground events
+  and a change to its `heeler.session` or `heeler.chat` label: OpenCode 1.x
+  reports no status, so its plugin's label is the only thing that says the
+  conversation moved, and a label is the only sign of a choice made on another
+  device or of a `/new` with no turn yet.
   Each check is at most one SFTP read and one exec on the Host, except that a
   Codex holding several rollouts costs one read of each one's first line, up to
   eight, since whether there is one root takes all of them. The Host Helper takes
@@ -116,6 +118,39 @@ never show or send into a conversation it has guessed.
   A confirmed candidate differs from that guess: the user saw the
   conversation before choosing it, and the guard drops it the first time it
   proves wrong.
+- Candidates serve every program whose Chat binds on core, and only a Chat that
+  already says it cannot tell offers them, on request. A list costs one exec, as
+  a check does, then the listings it takes: a directory's folder, or for OpenCode
+  a read-only query of its roots there, and for Codex the heads of its newest
+  rollouts, up to 24, since Codex files by day. A process walk past its cap lists
+  nothing, because a launcher would pass for the Agent and a daemon under it would
+  go unseen. A Status child is listed only when
+  its key reads as this program's session id, and such a record may name another
+  Terminal's session (herdr compatibility), which is why the user reads it first.
+  A confirmation needs a candidate whose conversation was read, goes through the
+  mutation dispatch to the core its list came from, and is not repeated when no
+  answer comes. A device the guard has dropped a pick on remembers that value, so
+  a label whose removal failed, reported again, is removed again and not adopted.
+  It remembers only until the core reports the label gone or holding another
+  value, in an event or a fresh inventory. After that the same value is the same
+  conversation confirmed again, here or on another device, and is adopted. A link
+  that was down through that gap cannot tell the two apart and removes the label
+  once more; having seen that removal, the device adopts the next confirmation.
+  The guard judges only after a turn the core reported: a read must start at
+  least two seconds after the turn ends, a `/` command does not arm it, and a
+  message the program put back or refused proves nothing. Neither does one the
+  Composer cannot say went, because it stayed in the input box or a step got no
+  answer, unless the program's own log says another session took it. A program
+  that reports no status never ends a turn, so its pick stays until the process
+  changes.
+- A dropped pick leaves the screen, unlike an exact binding that goes quiet, which
+  keeps its last document readable because nothing says it was wrong. A pick was
+  only the user's word, and a drop says that word no longer holds. A check that
+  cannot see the process to hold the label against (no scope to follow, a walk
+  past its cap that leaves the process out, a start it could not read, an Agent
+  that cannot be told apart, a process that cannot say where its Transcripts are)
+  drops nothing: the label stands, the conversation stays under a banner with its
+  send guard armed, and a Send is refused until a check can say.
 - Codex's shared daemon gets no binding of its own and no candidate list,
   since every daemon window's sessions look alike from outside: the
   title-prefix match rejected in
@@ -208,6 +243,11 @@ herdr-core Hosts only.
   and compares again before clearing. That leaves one round trip, and a Pi or
   Oh My Pi Agent caught in it reads as cannot tell until its extension next
   writes, at the next session.
+- A confirmed pick for a Pi without the extension, or an OpenCode without the
+  plugin, cannot see an in-process `/new`: nothing on the Host changes. Chat shows
+  the old conversation until the send guard drops it, and the user guide says so.
+  OpenCode's terminal title still refuses a Send while it names another
+  conversation, and a refused Send arms no guard.
 - A Transcript locator takes the config root from the Agent's own process
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.
@@ -274,7 +314,9 @@ herdr-core Hosts only.
   it is a native binary. Under `npx` the nearest runtime is the launcher, so Chat
   says it can't tell. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
   launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
-  is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper.
+  is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper,
+  and offers no candidates yet: open files are not read there, and no listing of a
+  Windows directory's Transcripts has been checked against a real one.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from

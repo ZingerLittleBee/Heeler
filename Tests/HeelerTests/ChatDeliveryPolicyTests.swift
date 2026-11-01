@@ -544,6 +544,25 @@ struct ChatComposerEchoesTests {
         #expect(echoes.map(\.state) == [.notDelivered])
     }
 
+    /// What the store's send guard goes on: a send the Composer saw go, against one
+    /// whose text stayed in the box.
+    @Test func textLeftInTheInputBoxIsTheOneThatMayNotHaveGone() async throws {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        store.replaceDraft(with: "went")
+        await store.send(policy: Self.policy())
+        store.replaceDraft(with: "stuck")
+        await store.send(policy: Self.policy(verify: { _ in false }))
+        try await waitUntil("the verify task should mark the message") {
+            store.messages.last?.state == .undelivered
+        }
+
+        let sent = ChatComposerEchoes.sentMessages(store.messages, rules: Self.rules)
+
+        #expect(sent.map(\.isDelivered) == [true, true])
+        #expect(sent.map(\.mayNotHaveGone) == [false, true])
+    }
+
     /// Text left in the input box that the user cleared there since: what
     /// the Chat store last saw in the box outranks the check after the send.
     @Test func textClearedFromTheInputBoxSinceShowsAsDiscarded() async throws {

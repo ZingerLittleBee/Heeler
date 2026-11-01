@@ -456,7 +456,11 @@ struct HerdrCoreSessionBinderTests {
 
         let evidence = try await rig.binder.check(try Self.record(labels: [label: Self.hint()]))
 
-        #expect(evidence == .bound(sessionID: Self.first, transcriptRoot: "\(Self.home)/.claude", directory: nil))
+        let root = "\(Self.home)/.claude"
+        #expect(
+            evidence == (label == "heeler.chat"
+                ? .picked(sessionID: Self.first, transcriptRoot: root)
+                : .bound(sessionID: Self.first, transcriptRoot: root, directory: nil)))
         #expect(await rig.labels.cleared.isEmpty)
     }
 
@@ -526,7 +530,7 @@ struct HerdrCoreSessionBinderTests {
 
         let evidence = try await rig.binder.check(try Self.record(labels: ["heeler.chat": Self.hint(pid: 9)]))
 
-        #expect(evidence == .unavailable(.cannotTellSession(.claude)))
+        #expect(evidence == .pickUnconfirmed(.cannotTellSession(.claude)))
         #expect(await rig.labels.cleared.isEmpty)
     }
 

@@ -273,6 +273,7 @@ struct HerdrCoreWindowsChatTests {
             chat.conversation.phase == .unavailable(.cannotTellSessionOnWindows(.claude))
         }
         #expect(await fixture.processReads == 1)
+        #expect(!chat.offersCandidates)
         fixture.finish()
     }
 

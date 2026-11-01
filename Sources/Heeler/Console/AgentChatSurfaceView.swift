@@ -76,6 +76,7 @@ struct AgentChatSurfaceView: View {
     /// it lists nothing.
     @State private var backgroundWorkHeight: CGFloat = 0
     @State private var isShowingBackgroundWork = false
+    @State private var isChoosingConversation = false
     /// The row the Background Work sheet opened from.
     @State private var backgroundWorkFocus: String?
     /// This view's own window, for hosts without a scene root.
@@ -236,6 +237,11 @@ struct AgentChatSurfaceView: View {
                         chat: chat, isHostConnected: isHostConnected, focus: backgroundWorkFocus,
                         sheetPresentation: $0)
                 }
+            }
+        }
+        .sheet(isPresented: $isChoosingConversation) {
+            if let chat {
+                ChatCandidatePickerView(chat: chat, corePin: session.corePin)
             }
         }
         .sheet(item: $viewingSkill) { skill in
@@ -610,6 +616,7 @@ struct AgentChatSurfaceView: View {
                 reason: reason, launchNotice: chat?.launchNotice,
                 retry: { chat?.retry() },
                 showAgentTerminal: { showAgentTerminal() },
+                chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: { openCodeEditFlow = console.openCodePluginEditFlow(for: agent.id, keepingTo: session.corePin) },
                 addExtension: { windowsExtensionFlow = console.windowsExtensionFlow(for: agent.id, keepingTo: session.corePin) })
             .sheet(item: $openCodeEditFlow) { flow in
@@ -623,6 +630,11 @@ struct AgentChatSurfaceView: View {
                 "Not Connected", systemImage: "wifi.slash",
                 description: Text("Chat shows the conversation once this Agent's Host connects."))
         }
+    }
+
+    /// Listing keeps to this detail's core, as everything it does on an address does.
+    private var offersCandidates: Bool {
+        (chat?.offersCandidates ?? false) && !console.hasLeftCore(session.corePin, on: agent.hostID)
     }
 
     /// Always present, so its measured height drops to zero with the last
@@ -674,7 +686,10 @@ struct AgentChatSurfaceView: View {
                 banner.actionTitle = "Retry"
                 banner.action = { chat?.retry() }
             case .unavailable(let reason, _):
-                if !reason.isWaiting {
+                if offersCandidates {
+                    banner.actionTitle = ChatCandidatePickerView.title
+                    banner.action = { isChoosingConversation = true }
+                } else if !reason.isWaiting {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
                     banner.action = { showAgentTerminal() }
                 }

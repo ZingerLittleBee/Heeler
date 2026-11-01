@@ -454,6 +454,7 @@ struct ChatUnavailableView: View {
     var launchNotice: ChatLaunchNotice?
     let retry: () -> Void
     let showAgentTerminal: () -> Void
+    var chooseConversation: (() -> Void)?
     /// Opens the one configuration edit that can settle this reason.
     var reviewEdit: (() -> Void)?
     /// Opens what writes Heeler's extension, on a native Windows core Host.
@@ -465,10 +466,19 @@ struct ChatUnavailableView: View {
         } description: {
             Text(reason.explanation(launchNotice: launchNotice))
         } actions: {
-            if let reviewEdit, reason.offersOpenCodePluginEdit {
-                Button("Let Chat Follow OpenCode…", action: reviewEdit)
+            if let chooseConversation {
+                Button(ChatCandidatePickerView.title, action: chooseConversation)
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("chat.chooseConversation")
+            }
+            if let reviewEdit, reason.offersOpenCodePluginEdit {
+                let edit = Button("Let Chat Follow OpenCode…", action: reviewEdit)
                     .accessibilityIdentifier("chat.unavailable.openCodeEdit")
+                if chooseConversation == nil {
+                    edit.buttonStyle(.borderedProminent)
+                } else {
+                    edit.buttonStyle(.bordered)
+                }
             }
             if let addExtension, reason.offersWindowsExtension {
                 Button("Add Heeler's Extension…", action: addExtension)

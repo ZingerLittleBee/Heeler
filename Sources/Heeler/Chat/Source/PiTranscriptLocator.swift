@@ -40,7 +40,7 @@ struct PiTranscriptLocator: Sendable {
         if reference.program == .omp {
             for directory in directories where directory.hasPrefix(home + "/") {
                 let relative = String(directory.dropFirst(home.count + 1))
-                queue.append(RemoteFilePath.join(root, "-" + Self.encoded(relative)))
+                queue.append(RemoteFilePath.join(root, Self.homeRelativeKey(relative)))
             }
         }
         let projects = try await files.list(
@@ -88,6 +88,10 @@ struct PiTranscriptLocator: Sendable {
 
     static func projectKey(_ directory: String) -> String {
         "--" + encoded(String(directory.dropFirst())) + "--"
+    }
+
+    static func homeRelativeKey(_ relative: String) -> String {
+        "-" + encoded(relative)
     }
 
     private static func encoded(_ path: String) -> String {

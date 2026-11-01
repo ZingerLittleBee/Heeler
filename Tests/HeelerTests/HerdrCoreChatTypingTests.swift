@@ -830,6 +830,7 @@ struct HerdrCoreChatTypingTests {
         let id = try #require(composer.messages.last?.id)
         let rules = ChatSendRules(program: .claude, commands: [])
         #expect(ChatComposerEchoes.sentMessages(composer.messages, rules: rules).map(\.isDelivered) == [true])
+        #expect(ChatComposerEchoes.sentMessages(composer.messages, rules: rules).map(\.mayNotHaveGone) == [true])
         for status in [nil, AgentChatStore.SendStatus.awaiting, .overdue] {
             let statuses = status.map { [id: $0] } ?? [:]
             #expect(ChatComposerEchoes.pending(composer.messages, statuses: statuses).map(\.state) == [.outcomeUnknown])

@@ -7,6 +7,14 @@ enum ChatSessionEvidence: Equatable, Sendable {
     /// started the session, when it says. A program that keeps no Transcript
     /// file has no root.
     case bound(sessionID: String, transcriptRoot: String?, directory: String?)
+    /// The user confirmed this conversation from candidates, with nothing on the
+    /// Host showing it, so a send guard watches it.
+    case picked(sessionID: String, transcriptRoot: String?)
+    /// A pick's label stands, and this check could not see the process to hold it
+    /// against. Nothing says the pick is wrong, so a Chat following it keeps the
+    /// conversation and sends nothing until a check can say.
+    case pickUnconfirmed(ChatUnavailableReason)
+    /// A Chat following a pick takes this as the pick's end.
     case unavailable(ChatUnavailableReason)
 }
 
@@ -14,9 +22,12 @@ enum ChatSessionEvidence: Equatable, Sendable {
 /// write a label, and one outlives the process that wrote it, so it counts only
 /// for the process it names, by pid and process start.
 struct HerdrCoreSessionHint: Equatable, Sendable {
-    /// The labels hold this JSON. `heeler.launch-session` is none of them: it
-    /// holds the id alone, written before any process exists (ADR 0034).
-    static let labels = ["heeler.session", "heeler.chat"]
+    /// What a program's own extension or plugin writes. The labels hold this JSON.
+    /// `heeler.launch-session` is none of them: it holds the id alone, written
+    /// before any process exists (ADR 0034).
+    static let sessionLabel = "heeler.session"
+    /// A conversation the user confirmed from candidates.
+    static let pickLabel = "heeler.chat"
 
     let session: String
     /// The session's file, in the label the Pi and Oh My Pi extension writes.
@@ -65,6 +76,10 @@ struct HerdrCoreSessionBinder: Sendable {
     /// The Terminal's labels as they stand now, nil when nothing newer than the
     /// record is known.
     var currentLabels: @Sendable () async -> [String: String]? = { nil }
+    /// Whether this value of the pick label is one a send guard already dropped,
+    /// whose removal may not have reached the core.
+    var isDroppedPick: @Sendable (String) async -> Bool = { _ in false }
+    var now: @Sendable () -> Date = { Date() }
     /// A native Windows Host, whose foreground is the Terminal's PowerShell and whose
     /// processes go by their image's name (herdr compatibility). Only the programs in
     /// `HostCapabilities.windowsCoreChatCandidates` are checked there.
@@ -82,13 +97,18 @@ struct HerdrCoreSessionBinder: Sendable {
     /// leak check, so a reason can point at the Host notice.
     func check(_ record: HerdrCoreTerminalRecord, coreCarries: Set<String> = []) async throws -> ChatSessionEvidence {
         if isOnWindows, !HostCapabilities.windowsCoreChatCandidates.contains(program) { return cannotTell }
-        return switch program {
-        case .claude: try await checkClaudeCode(record, coreCarries: coreCarries)
-        case .codex: try await checkCodex(record)
-        case .grok: try await checkGrokBuild(record)
-        case .opencode: try await checkOpenCode(record)
-        case .pi, .omp: try await checkPiFamily(record)
+        guard let tree = try await readTerminalProcesses(of: record, ask: processAsk) else {
+            return await evidenceWithoutProcesses(in: record)
         }
+        let evidence: ChatSessionEvidence =
+            switch program {
+            case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)
+            case .codex: try await checkCodex(record, tree: tree)
+            case .grok: try await checkGrokBuild(tree)
+            case .opencode: try await checkOpenCode(record, tree: tree)
+            case .pi, .omp: try await checkPiFamily(record, tree: tree)
+            }
+        return await applyingPick(to: evidence, record: record, tree: tree)
     }
 
     var cannotTell: ChatSessionEvidence {
@@ -102,20 +122,63 @@ struct HerdrCoreSessionBinder: Sendable {
         }
     }
 
-    private func checkClaudeCode(
-        _ record: HerdrCoreTerminalRecord, coreCarries: Set<String>
-    ) async throws -> ChatSessionEvidence {
-        guard
-            let tree = try await readTerminalProcesses(
-                of: record, values: [Self.homeVariable, Self.configVariable],
-                namesOf: ChatTranscriptOffVariable.allCases.map(\.rawValue)),
-            let pid =
-                isOnWindows
+    /// What one exec asks of a Terminal's processes, for this program's agent and
+    /// its evidence.
+    struct ProcessAsk {
+        var values: [String] = []
+        var namesOf: [String] = []
+        var arguments: [String] = []
+        var readsOpenFiles = false
+    }
+
+    var processAsk: ProcessAsk {
+        switch program {
+        case .claude:
+            ProcessAsk(
+                values: [Self.homeVariable, Self.configVariable],
+                namesOf: ChatTranscriptOffVariable.allCases.map(\.rawValue))
+        case .codex: codexProcessAsk
+        case .grok: grokProcessAsk
+        case .opencode: ProcessAsk()
+        case .pi, .omp: piFamilyProcessAsk
+        }
+    }
+
+    /// The process that is this program's Agent, by ADR 0034's rule for it. Nil when
+    /// two are equally near, or, for Pi and Oh My Pi, when no process is named for it.
+    func agentProcess(in tree: HerdrCoreTerminalProcesses) -> String? {
+        switch program {
+        case .claude:
+            isOnWindows
                 ? tree.agentOnWindows(
                     isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode,
                     runtimes: Self.windowsRuntimes)
-                : tree.agent(isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode),
-            let process = tree.facts[pid], case .value(let start) = process.start
+                : tree.agent(isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode)
+        case .codex: codexAgent(in: tree)
+        case .grok:
+            isOnWindows
+                ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
+        case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
+        case .pi, .omp: piFamilyAgent(in: tree)
+        }
+    }
+
+    /// Where the Agent's own process says its Transcripts are, which a program with
+    /// no files lacks (ADR 0034). Nil also when the process cannot say.
+    func transcriptRoot(of process: HostProcessReader.Facts) -> String? {
+        switch program {
+        case .claude: Self.configRoot(of: process, variable: Self.configVariable, underHome: ".claude")
+        case .codex: codexHome(of: process)
+        case .grok: grokHome(of: process)
+        case .opencode: nil
+        case .pi, .omp: piFamilySessions(of: process)
+        }
+    }
+
+    private func checkClaudeCode(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses, coreCarries: Set<String>
+    ) async throws -> ChatSessionEvidence {
+        guard let pid = agentProcess(in: tree), let process = tree.facts[pid], case .value(let start) = process.start
         else { return cannotTell }
 
         let hints = await readHints(in: record, pid: pid, start: start)
@@ -126,8 +189,7 @@ struct HerdrCoreSessionBinder: Sendable {
                     .transcriptOff(variable, coreCarriesIt: coreCarries.contains(variable.rawValue)))
             }
         }
-        guard let configRoot = Self.configRoot(of: process, variable: Self.configVariable, underHome: ".claude")
-        else { return cannotTell }
+        guard let configRoot = transcriptRoot(of: process) else { return cannotTell }
         if let entry = try await readEntry(under: configRoot, pid: pid, start: start) {
             return .bound(sessionID: entry.sessionID, transcriptRoot: configRoot, directory: entry.directory)
         }
@@ -144,8 +206,7 @@ struct HerdrCoreSessionBinder: Sendable {
     /// One exec's facts about a Terminal: its own process and the foreground's
     /// descendants. Nil when it shows no scope to follow.
     func readTerminalProcesses(
-        of record: HerdrCoreTerminalRecord, values: [String] = [], namesOf: [String] = [],
-        arguments: [String] = [], readsOpenFiles: Bool = false
+        of record: HerdrCoreTerminalRecord, ask: ProcessAsk
     ) async throws -> HerdrCoreTerminalProcesses? {
         guard let terminalPid = record.pid, let foreground = record.foreground?.pid else { return nil }
         let root = String(foreground)
@@ -153,10 +214,10 @@ struct HerdrCoreSessionBinder: Sendable {
         let request = HostProcessReader.Request(
             pids: Array(Set([String(terminalPid), root])).sorted(),
             readsStart: true,
-            valuesOf: [scopeVariable] + values,
-            namesOf: namesOf,
-            readsOpenFiles: readsOpenFiles,
-            argumentsAmong: arguments,
+            valuesOf: [scopeVariable] + ask.values,
+            namesOf: ask.namesOf,
+            readsOpenFiles: ask.readsOpenFiles,
+            argumentsAmong: ask.arguments,
             descendantsOf: root)
         let facts = try await processes(request)
         guard case .value(let scope)? = facts[String(terminalPid)]?.variables[scopeVariable], !scope.isEmpty
@@ -224,7 +285,7 @@ struct HerdrCoreSessionBinder: Sendable {
 
     // MARK: Hints
 
-    /// The hints for this process, after clearing those for another. The labels
+    /// The session hint for this process, after clearing one for another. The labels
     /// are read after the exec, not taken from the record the check began on: a
     /// process writes its label once, as its session starts, which may be while the
     /// exec runs. A failure to clear leaves it for the next check.
@@ -232,18 +293,12 @@ struct HerdrCoreSessionBinder: Sendable {
         in record: HerdrCoreTerminalRecord, pid: String, start: String
     ) async -> [HerdrCoreSessionHint] {
         let labels = await currentLabels() ?? record.labels
-        var matching: [HerdrCoreSessionHint] = []
-        var stale: [String: String] = [:]
-        for label in HerdrCoreSessionHint.labels {
-            guard let value = labels[label] else { continue }
-            if let hint = HerdrCoreSessionHint(label: value), String(hint.pid) == pid, hint.start == start {
-                matching.append(hint)
-            } else {
-                stale[label] = value
-            }
+        guard let value = labels[HerdrCoreSessionHint.sessionLabel] else { return [] }
+        if let hint = HerdrCoreSessionHint(label: value), String(hint.pid) == pid, hint.start == start {
+            return [hint]
         }
-        if !stale.isEmpty { try? await clearLabels(stale) }
-        return matching
+        try? await clearLabels([HerdrCoreSessionHint.sessionLabel: value])
+        return []
     }
 }
 
@@ -280,6 +335,11 @@ struct HerdrCoreTerminalProcesses: Sendable {
     var descendants: [String] {
         guard case .value(let descendants)? = facts[root]?.descendants else { return [] }
         return descendants
+    }
+
+    /// Whether ``descendants`` is the whole tree, so a process it leaves out is not there.
+    var walkAnswered: Bool {
+        if case .value? = facts[root]?.descendants { true } else { false }
     }
 
     /// The nearest process to the foreground that calls itself the program, or
