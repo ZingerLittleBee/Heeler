@@ -141,7 +141,8 @@ struct HerdrCoreChatPickBinderTests {
         #expect(await log.cleared == ["heeler.chat"])
     }
 
-    @Test func aPickADropAlreadyRemovedIsClearedAgainAndNotAdopted() async throws {
+    /// The projection says which values these are, for as long as the core may hold them.
+    @Test func aPickStillMarkedDroppedIsClearedAgainAndNotAdopted() async throws {
         var rig = await Rig(.grok)
         rig.droppedPicks = [Self.label()]
 

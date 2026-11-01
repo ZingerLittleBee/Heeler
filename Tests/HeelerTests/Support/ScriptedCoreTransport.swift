@@ -209,6 +209,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// The exact params of every `terminal.label`, oldest first.
     private(set) var labelWrites: [JSONValue] = []
     private var labelFailure: (any Error)?
+    private var labelGate: ScriptedTransportCallGate?
     /// The Terminal of every `terminal.kill`, oldest first.
     private(set) var kills: [String] = []
     private var killAnswers: [String: Result<JSONValue, any Error>] = [:]
@@ -422,6 +423,7 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
             return templateList
         case "terminal.label":
             labelWrites.append(params)
+            if let labelGate { await labelGate.waitUntilOpen() }
             if let labelFailure { throw labelFailure }
             return .null
         default:
@@ -585,6 +587,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
     /// still recorded, as a write that went and got no answer is.
     func setLabelFailure(_ failure: (any Error)?) {
         labelFailure = failure
+    }
+
+    /// Holds the answer to each `terminal.label`, already recorded, until `gate`
+    /// opens. Nil lets them through.
+    func holdLabelWrites(using gate: ScriptedTransportCallGate?) {
+        labelGate = gate
     }
 
     /// What a kill of this Terminal gets back instead of its ended record.

@@ -131,6 +131,11 @@ never show or send into a conversation it has guessed.
   mutation dispatch to the core its list came from, and is not repeated when no
   answer comes. A device the guard has dropped a pick on remembers that value, so
   a label whose removal failed, reported again, is removed again and not adopted.
+  It remembers only until the core reports the label gone or holding another
+  value, in an event or a fresh inventory. After that the same value is the same
+  conversation confirmed again, here or on another device, and is adopted. A link
+  that was down through that gap cannot tell the two apart and removes the label
+  once more; having seen that removal, the device adopts the next confirmation.
   The guard judges only after a turn the core reported: a read must start at
   least two seconds after the turn ends, a `/` command does not arm it, and a
   message the program put back or refused proves nothing. Neither does one the

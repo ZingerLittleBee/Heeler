@@ -65,8 +65,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var shownAgents: Set<String> = []
     /// Events that may mean a Terminal's session changed, for Chat (ADR 0034).
     private var sessionEventCounts: [String: UInt64] = [:]
-    /// Values of a Terminal's pick label a send guard dropped, whose removal may
-    /// not have reached the core (ADR 0034).
+    /// Values of a Terminal's pick label a send guard dropped, for as long as the
+    /// core may still hold them: the removal may not have reached it. Once the core
+    /// reports anything else the value is forgotten, and that value arriving again
+    /// is someone confirming it again (ADR 0034).
     private var droppedPicks: [String: Set<String>] = [:]
     private var inventoryReplacements: UInt64 = 0
     /// Leak checks that found a variable, which a Chat's reason depends on.
@@ -253,6 +255,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             readKernel()
             replaceInventory(with: snapshot)
         case .event(let event):
+            if case .labels(let terminal, let labels) = event {
+                forgetDroppedPicks(at: terminal, except: labels[HerdrCoreSessionHint.pickLabel])
+            }
             apply(event)
         }
     }
@@ -300,6 +305,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         records = snapshot.terminals
         foregroundChanges &+= 1
         hasInventory = true
+        for terminal in droppedPicks.keys {
+            let held = terminalRecord(at: terminal)?.labels[HerdrCoreSessionHint.pickLabel]
+            forgetDroppedPicks(at: terminal, except: held)
+        }
         for record in records {
             noteTurns(of: record.address) { state, kind in
                 state.noteSnapshot(
@@ -1567,10 +1576,23 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         Task { [weak self] in
             guard let self else { return }
             try? await self.clearStaleLabels([HerdrCoreSessionHint.pickLabel: value], at: paneID, on: core)
-            if self.terminalLabels(at: paneID, on: core)?[HerdrCoreSessionHint.pickLabel] == value {
+            // A value no longer remembered was reported gone or confirmed here since,
+            // so the label held now is newer than this removal.
+            if self.droppedPicks[paneID]?.contains(value) == true,
+                self.terminalLabels(at: paneID, on: core)?[HerdrCoreSessionHint.pickLabel] == value
+            {
                 self.setPickLabel(nil, at: paneID, on: core)
             }
         }
+    }
+
+    /// Takes the core's word for what a Terminal's pick label holds. A label this
+    /// device sets ahead of the core's event says nothing about it, so it does not
+    /// come through here.
+    private func forgetDroppedPicks(at terminal: String, except held: String?) {
+        guard let dropped = droppedPicks[terminal] else { return }
+        let kept = dropped.filter { $0 == held }
+        droppedPicks[terminal] = kept.isEmpty ? nil : kept
     }
 
     private func setPickLabel(_ value: String?, at paneID: String, on core: String?) {

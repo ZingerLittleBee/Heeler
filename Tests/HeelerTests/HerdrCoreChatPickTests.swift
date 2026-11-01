@@ -132,6 +132,15 @@ struct HerdrCoreChatPickTests {
         event(sequence: sequence, type: "labels", data: .object(["labels": .object(labels.mapValues(JSONValue.string))]))
     }
 
+    /// A whole new inventory, as `missed` carries it, with this Agent's Terminal in it.
+    private static func inventory(sequence: Int, labels: [String: String]) -> Data {
+        let terminal = record(.grok, app: "grok-build", labels: labels, children: [grokChild])
+        return (try? JSONEncoder().encode(JSONValue.object([
+            "jsonrpc": .string("2.0"), "method": .string("missed"),
+            "params": .object(["seq": .number(Double(sequence)), "terminals": .array([terminal])]),
+        ]))) ?? Data()
+    }
+
     private static func process(
         _ program: ChatProgram, pid: Int = pid, start: String = start, files: [String] = [], argv: [String] = []
     ) -> ScriptedProcessTable.Process {
@@ -1110,6 +1119,103 @@ struct HerdrCoreChatPickTests {
         try await rig.stepUntil(chat, "Chat to follow it") {
             chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
         }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// What the core can say that shows a value a guard dropped is no longer on it.
+    enum DroppedValueGone: CaseIterable {
+        case labelRemoved, onlyOtherLabels, anotherPick, inventoryWithoutIt
+    }
+
+    private static func report(_ gone: DroppedValueGone, sequence: Int) -> Data {
+        switch gone {
+        case .labelRemoved: labelsEvent(sequence: sequence, labels: [:])
+        case .onlyOtherLabels: labelsEvent(sequence: sequence, labels: ["other": "kept"])
+        case .anotherPick: labelsEvent(sequence: sequence, labels: ["heeler.chat": pickLabel(session: grokRecent)])
+        case .inventoryWithoutIt: inventory(sequence: sequence, labels: [:])
+        }
+    }
+
+    /// Once the core says the value is gone, the same value arriving is someone
+    /// confirming that conversation again on another device, which every device adopts.
+    @Test(arguments: DroppedValueGone.allCases)
+    func aDroppedPickConfirmedAgainElsewhereIsAdopted(after gone: DroppedValueGone) async throws {
+        let (rig, chat) = try await steppedFollowing()
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.grok)))
+        try await Self.waitForClear(rig)
+        let writes = await rig.pickWrites.count
+
+        await rig.transport.deliver(Self.report(gone, sequence: 40))
+        await rig.transport.deliver(
+            Self.labelsEvent(sequence: 41, labels: ["heeler.chat": Self.pickLabel(session: Self.grokHeld)]))
+
+        try await rig.stepUntil(chat, "Chat to follow it again") {
+            chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
+                && !chat.conversation.transcript.entries.isEmpty
+        }
+        #expect(await rig.pickWrites.count == writes)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// An inventory still holding the value is a removal that did not arrive, as a
+    /// labels event still holding it is.
+    @Test func aDroppedPickAFreshInventoryStillHoldsIsRemovedAgain() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        await rig.transport.setLabelFailure(TransportError.sshUnreachable(detail: "the link went"))
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        try await Self.waitForClear(rig)
+        let attempts = await rig.pickWrites.count
+
+        await rig.transport.setLabelFailure(nil)
+        await rig.transport.deliver(
+            Self.inventory(sequence: 40, labels: ["heeler.chat": Self.pickLabel(session: Self.grokHeld)]))
+
+        for _ in 0..<500 where await rig.pickWrites.count == attempts {
+            await chat.step()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await rig.pickWrites.dropFirst(attempts).first == "")
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A removal's answer can trail what the core reported after it. By then the label
+    /// the core holds is the newer choice, which that answer says nothing about.
+    @Test func aRemovalAnsweredAfterTheSameChoiceCameBackLeavesItStanding() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let answer = ScriptedTransportCallGate()
+        await rig.transport.holdLabelWrites(using: answer)
+        Self.send("this never reaches the bound conversation", on: chat)
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+        try await Self.waitForClear(rig)
+
+        await rig.transport.deliver(Self.labelsEvent(sequence: 40, labels: [:]))
+        let label = Self.pickLabel(session: Self.grokHeld)
+        await rig.transport.deliver(Self.labelsEvent(sequence: 41, labels: ["heeler.chat": label, "seen": "41"]))
+        // A check before both have landed would wait on the held answer too.
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        try await rig.waitUntil("both reports") { core.terminalRecord(at: "t1")?.labels["seen"] == "41" }
+        let following = ChatConversationSnapshot.Phase.following(path: Self.grokFile(Self.grokHeld))
+        try await rig.stepUntil(chat, "Chat to follow it again") { chat.conversation.phase == following }
+
+        await answer.open()
+
+        // Nothing says this answer has landed: long enough that a label it took away
+        // would have reached a check, and a pass does not depend on how long.
+        for _ in 0..<30 {
+            await chat.step()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(chat.conversation.phase == following)
         chat.end()
         rig.store.setHosts([])
     }
