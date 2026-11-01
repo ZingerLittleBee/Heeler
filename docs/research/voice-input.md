@@ -8,13 +8,40 @@ user-configured bilingual pairs such as zh + en with switching inside a sentence
 and AI cleanup of fillers and self-corrections. Typical input is a spoken coding
 instruction full of English identifiers.
 
-Method: six independent research passes (Apple APIs, X posts, cloud APIs, cleanup,
-Voxt source, third-party on-device models), then one adversarial check per pass
-against primary sources, then a cross-report critique. Of 224 checked claims, 90
-were confirmed as written and 134 were corrected, refuted, or unverifiable. Only
-surviving facts appear below. **No candidate has been tested with real Heeler
-speech on an iPhone.** Every ranking here is a hypothesis for the evaluation in
+Method: two rounds. Round one was six independent research passes (Apple APIs, X posts,
+cloud APIs, cleanup, Voxt source, third-party on-device models), one adversarial check
+per pass against primary sources, and a cross-report critique: of 224 checked claims, 90
+were confirmed as written and 134 were corrected, refuted, or unverifiable. Round two
+asked how shipped iOS apps deliver speech to text: four research passes, 81 checked
+claims with 47 not confirmed as written, a survey of hosted Qwen models, and a costed
+comparison of who provides the API. Only surviving facts appear below. **No candidate has
+been tested with real Heeler speech on an iPhone, and no vendor API has been called with
+a real key.** Every ranking here is a hypothesis for the checks in
 [Evaluation before picking defaults](#evaluation-before-picking-defaults).
+
+## Decisions
+
+Owner decisions (2026-11-02):
+
+- A cloud API is the default engine, and iOS built-in speech is the path for people who
+  do not want an API.
+- Heeler does not run third-party speech models on the phone, and does not require users
+  to install a model on their computer. This also accepts that spoken prompts reach a
+  third party, with consent.
+
+Recommendation, pending owner confirmation:
+
+- **Bring your own key first. No Heeler proxy is scheduled.** See
+  [Who provides the API](#who-provides-the-api).
+- **One OpenAI-compatible upload adapter with two presets:** DeepInfra overseas and
+  SiliconFlow CN in mainland China, both serving `Qwen/Qwen3-ASR-1.7B`. See
+  [Launch presets](#launch-presets).
+- **The first slice has no streaming and no partial preview.** Audio uploads when the
+  user stops. Live text is added only if evaluation or users demand it.
+
+"Default" has a limit under this recommendation: with no key configured, the first mic
+tap offers a choice between connecting a cloud service (recommended) and using the
+device. It is not zero configuration.
 
 ## Conclusions the facts force
 
@@ -36,12 +63,12 @@ speech on an iPhone.** Every ranking here is a hypothesis for the evaluation in
   documents no way to also get the uncleaned text, so it cannot be the default.
 - **Voice only fills the draft.** It never sends. This matches the Composer
   definition in [CONTEXT.md](../../CONTEXT.md).
-- **No single cloud vendor is verified to cover the audience, so plan for at least
-  two adapters.** The Gemini, OpenAI, and Anthropic supported-region lists exclude
-  mainland China and Hong Kong, and Heeler is on the Hong Kong store. Alibaba offers
-  Beijing and Singapore with separate per-region keys, and other vendors' mainland
-  reachability is untested. Volcengine requires real-name verification and Bailian
-  may; whether overseas identities can pass either is unverified.
+- **No single cloud vendor is verified to cover the audience, so plan for one overseas
+  and one mainland endpoint.** The Gemini, OpenAI, and Anthropic supported-region lists
+  exclude mainland China and Hong Kong, and Heeler is on the Hong Kong store. The launch
+  presets share one API shape, so this needs presets rather than a second adapter, if the
+  SiliconFlow smoke test passes. Mainland reachability is untested for every vendor, and
+  whether overseas identities can pass Bailian or Volcengine verification is unverified.
 - **Cloud speech needs explicit consent per vendor.**
   [Guideline 5.1.2(i)](https://developer.apple.com/app-store/review/guidelines/)
   names third-party AI and has no bring-your-own-key exception.
@@ -68,17 +95,20 @@ rationale was recorded when it was removed together with `AgentInputBar`.
 
 ```text
 Composer mic -> VoiceInputSession (one app-level owner; AVAudioSession is per process)
-                 -> capture: 16 kHz mono, buffered locally until the socket is ready
-                 -> SpeechEngine: Apple (iOS 26+) | cloud adapters | later on-device
-                 -> frozen raw speech text, partials in a preview only
-                 -> VoiceTextPolisher: none | BYOK LLM | later Foundation Models
+                 -> capture: AVAudioRecorder, AAC, 16 kHz mono, about 120 s cap (tune later)
+                 -> SpeechEngine: cloud preset (BYOK) | Apple (iOS 26+)
+                 -> frozen raw speech text
+                 -> VoiceTextPolisher: none | same-key LLM | later Foundation Models
                  -> guard: fall back to raw on any failed check
                  -> one insertion into the draft, with one-tap restore of raw
 ```
 
-- **Do not stream into the draft.** Partials go to a separate preview. Live writes
-  would flip Stop to Send, allow sending half a sentence, grow the editor and resize
-  the PTY, and overwrite marked text during IME composition.
+- **Do not write into the draft while recording.** Upload has no partials. If a streaming
+  engine arrives later, partials go to a separate preview. Live writes would flip Stop to
+  Send, allow sending half a sentence, grow the editor and resize the PTY, and overwrite
+  marked text during IME composition.
+- **Keep the recording until the result lands.** A failed upload stays local so the user
+  can retry or switch engines. Delete it on success or dismissal.
 - **Keep recording state outside the draft.** `AgentComposerStore.canSend` already
   blocks Send while a dropped image uploads, and voice can add the same kind of gate.
   Do not reuse its private-use placeholder: a token makes the draft non-blank, which
@@ -94,14 +124,16 @@ Composer mic -> VoiceInputSession (one app-level owner; AVAudioSession is per pr
   this, Send clears the draft and a late write puts the text back, ready to send twice.
   Offer restore only while the draft still equals the polished text.
 - **Composer height does not change while recording.** Height inside the terminal
-  Composer resizes the remote PTY, so the preview is a fixed-height overlay or uses the
-  editor's existing frame. The final insertion may resize once, like typing.
+  Composer resizes the remote PTY, so any recording or uploading state is a fixed-height
+  overlay or uses the editor's existing frame. The final insertion may resize once, like
+  typing.
 - **Mic placement:** its own control beside the primary button, not a third primary
   state, so it stays available while Stop is showing and when text exists.
 - **Surfaces:** Agent terminal and Chat Composers only. Direct Input and Shell
   Terminal write straight to a PTY with no review step.
-- **Gesture:** tap to toggle and hold to talk, with a VoiceOver action. X posts show
-  both styles in use, with no measured preference.
+- **Gesture:** tap to start and stop first, with a VoiceOver action. Hold to talk can
+  follow. Moshi treats long press as an optional setting, and X posts show both styles
+  with no measured preference.
 - **Lifecycle:** recording stops on background and when the Composer leaves the
   screen. Do not add the `audio` background mode, which an SSH companion would
   struggle to justify under guideline 2.5.4. The owner sits above scenes for iPad
@@ -112,11 +144,18 @@ Composer mic -> VoiceInputSession (one app-level owner; AVAudioSession is per pr
   (`detailDidDisappear`) cancels the pending result instead of inserting into a hidden
   draft (ADR 0016). A Chat and terminal swap keeps the draft and needs an explicit
   decision during implementation.
-- **Older systems:** iOS 18 to 25 get cloud engines when a key exists, otherwise the
-  system keyboard. No `SFSpeechRecognizer` tier: it needs its own authorization even
+- **Older systems:** iOS 18 to 25 use a cloud preset when a key exists, otherwise the
+  system keyboard mic. No `SFSpeechRecognizer` tier: it needs its own authorization even
   on device, and a [vendor benchmark](https://lyonesse.app/blog/apple-speech-api-benchmark.html)
   measured 9.02% WER against `SpeechAnalyzer`'s 2.12% on clean English (the article
   does not name the module; Mac, published by a transcription app team).
+- **Third-party keyboards still work.** By source reading, the Composer has no secure-entry
+  or keyboard restriction, so input method voice features can be used in it; no device test
+  yet. WeChat and Baidu input methods are listed on all seven storefronts checked (cn, us,
+  hk, tw, jp, sg, mo), Doubao only on cn, hk, and mo. Their first voice use can jump to the
+  input method's app, and past `AppActivityCoordinator.defaultGracePeriod` (15 s) Heeler
+  tears down its Host connection. Reachability of their voice clouds from overseas is
+  untested, so this is a suggestion to users, not a feature.
 
 ## Bilingual model
 
@@ -128,7 +167,18 @@ the setting means different things:
 | --- | --- |
 | Single locale (Apple) | Primary locale only. A real constraint; the second language is best effort. |
 | Auto-detect with hints (Deepgram, Soniox, Gemini) | A bias, not a limit: Deepgram documents "Hints bias detection; they do not restrict it". |
-| Chinese vendors | Vendor-specific; some models take only one language value. |
+| Qwen3-ASR 1.7B (DeepInfra, SiliconFlow) | One `language` value or none. Whether to send the primary is the first evaluation axis, see below. |
+| Alibaba `qwen3-asr-flash` | One value, and the docs say to omit it for mixed languages. |
+| Alibaba `qwen-audio-3.1` | `language_hints` such as `["zh","en"]`, up to 4; same-sentence behavior is not stated. |
+
+**The owner's good Mac results may come from forced Chinese.** Voxt registers Qwen3 as
+requiring an explicit primary language, and its tests assert that zh-Hans + en resolves to
+`Simplified Chinese`. The installed version and settings are unconfirmed. In `qwen_asr`,
+forcing a language only appends `language X<asr_text>` after the assistant prompt and skips
+language identification; the code has no vocabulary restriction, so English words remain
+possible (our reading, untested). To reproduce that experience, send `language=zh` when
+Chinese is primary and A/B it against omitting the value on real mixed sentences. The rule
+flips on Alibaba Flash, so do not copy Voxt's remote path, which passes the primary.
 
 Whether passing the pair helps or hurts switching is undocumented for Gemini, so it
 is an evaluation axis, not a setting to infer. Evidence covers zh + en. ja + en has
@@ -138,10 +188,106 @@ separate mode, off by default.
 
 ## Speech engines
 
-### Cloud candidates for evaluation
+### Launch presets
 
-Hourly prices are from vendor pricing pages. "Inside a sentence" means the vendor's
-documentation says so explicitly.
+| Preset | Model | Price | API | Status |
+| --- | --- | --- | --- | --- |
+| DeepInfra (overseas) | `Qwen/Qwen3-ASR-1.7B` | [$0.00045/min](https://deepinfra.com/Qwen/Qwen3-ASR-1.7B) | `/v1/audio/transcriptions`, upload only | Model page labels it zero retention; file size limit not documented |
+| SiliconFlow CN (mainland) | `Qwen/Qwen3-ASR-1.7B` | [¥0.00022/s](https://siliconflow.cn/pricing), about ¥0.0132/min | `https://api.siliconflow.cn/v1`, upload only | Must pass a real-key smoke test first |
+
+Why these two: they are the only pay-per-use, single-key hosts found for the open 1.7B
+family the owner likes, and each also sells a cleanup model on the same key (see
+[Cleanup](#cleanup)). OpenRouter's 1.7B only forwards to DeepInfra, with a 60 s upstream
+timeout and a minimum top-up. Baseten and FriendliAI are dedicated GPU deployments, which
+do not suit a single user's key. fal and Replicate's official organization have no listing
+found, and Together and Fireworks list none on their pricing pages.
+
+Known problems with the choice:
+
+- SiliconFlow's speech API reference enumerates only `FunAudioLLM/SenseVoiceSmall` and
+  `TeleAI/TeleSpeechASR`, contradicting its pricing page. A third-party issue reports 1.7B
+  working. Its real-name requirement comes from third-party guides, and its retention
+  policy has not been read.
+- Hosts do not disclose quantization, and the owner's Mac runs a 6-bit MLX build, so the
+  hosted result may differ from what they use today.
+- If SiliconFlow fails, the mainland fallback is Bailian Beijing `qwen3-asr-flash` at the
+  same price. It uses `chat/completions` with `input_audio`, so it needs a second adapter.
+
+### Qwen API models are not the open weights
+
+Alibaba never states that its API models match the open 1.7B. The Model Studio pages do not
+mention it. The Qwen technical report ([arXiv 2601.21337](https://arxiv.org/html/2601.21337v2))
+calls Qwen3-ASR-Flash-1208 a member of the family "for reference", and its self-reported WER
+differs from 1.7B: AISHELL-2 2.71 vs 2.53, CV-zh 5.35 vs 4.45, LibriSpeech clean 1.63 vs 1.33,
+but GigaSpeech 8.45 vs 8.82. Which snapshot the current `qwen3-asr-flash` serves is not
+documented. The report has no same-sentence zh + en data for ASR. Treat them as separate
+models.
+
+| Alibaba model | Mode | Price (Singapore / Beijing) | Use |
+| --- | --- | --- | --- |
+| `qwen3-asr-flash` | Upload, up to 5 min and 10 MB | $0.0021 / about $0.0019 per min | Mainland fallback |
+| `qwen3-asr-flash-realtime` | WebSocket, PCM or Opus | $0.0054 / about $0.0028 per min | If live text becomes a hard requirement |
+| `qwen-audio-3.1-asr-flash-message` | WebSocket, 16 kHz only | Token priced, about $0.0014 to $0.0023/min input by estimate, plus output | Alibaba's recommendation for input methods; has `disfluency_removal_enabled`, off by default, and hotwords; furthest from the Qwen3-ASR behavior the owner likes |
+
+### Who provides the API
+
+Apps that need no key (ChatGPT, Claude, Wispr Flow, and others) run on a vendor backend paid
+by subscriptions. The closest competitor, Moshi, does both: a hosted cloud with 3 free
+minutes a month and 60 on Pro, which its [privacy policy](https://getmoshi.app/privacy)
+(August 2026) says uses OpenAI, plus a BYOK list behind Pro. Its Cloud requires a registered
+push token. [Ramble](https://github.com/Jpoliachik/ramble-ios) is the nearest public blueprint
+for a proxy: a stateless Cloudflare Worker with App Attest and StoreKit 2 JWS verification,
+no accounts, Apple Speech as the free tier. It has three ratings and no public cost or abuse
+data. Spokenly's [iPhone docs](https://spokenly.app/docs/models) list many BYOK vendors, so
+the shape exists on the App Store.
+
+| | BYOK | Heeler proxy |
+| --- | --- | --- |
+| First-use steps | About 8: choose, open site, register, pay or verify, create key, paste, consent, mic | 2: consent, mic |
+| Owner's bill | A limited Review key, under $1 a year by estimate | Speech, Workers, tax, refunds, support |
+| App changes | Consent, Keychain, HTTP client | All of that plus StoreKit, paywall, restore, quota copy |
+| Backend | None | New, with quota counts and a global spending breaker |
+| Privacy | Phone to vendor | Spoken prompts pass developer infrastructure, opposite to the Push Relay's stance |
+| Mainland China | Direct to a domestic vendor, if reachable | Workers custom domains are best effort, and local hosting needs ICP filing and a Chinese entity |
+
+The money is not the deciding factor. At an assumed 330 minutes a month, a heavy user pays
+about $0.15 on DeepInfra and $0.63 on SiliconFlow, plus about $0.33 for cleanup on DeepInfra.
+A modeled proxy (5% conversion at $2.99, 200 paid minutes, 15 free minutes, Small Business
+commission) nets about $6 a month at 100 voice users, $100 at 1,000, and $1,050 at 10,000. At
+2% conversion the same sizes net about -$2, $29, and $337. Those assumptions are ours, not
+measurements, and they are too small to pay for operating a paid service.
+
+The abuse risk is documented in adjacent cases only. [Soniox says](https://soniox.com/blog/2025-10-27-free-credits-update-for-soniox-api) fake accounts farmed its $200
+free credit. [arXiv 2606.12212](https://arxiv.org/html/2606.12212) found 282 of 444 iOS LLM apps
+exploitable, 33% of them through unauthenticated proxies, and only 28% fixed three months after
+disclosure. No first-person report of an abused transcription proxy turned up, but logged-in X
+search was not available, so that absence proves little. App Attest proves an app instance, not
+a user. Its keys are lost on reinstall, so a free tier per device would also need DeviceCheck.
+
+Revisit a proxy only if one of these holds. The thresholds are judgment, not measurement.
+
+- Of 10 or more TestFlight testers with no speech vendor account, fewer than half configure a
+  key within 10 minutes, and those who give up blame the key.
+- Voice users can reasonably reach about 4,000, or the owner decides to charge for Heeler anyway.
+- From a mainland SIM, both presets are unreliable and a custom-domain Worker is stable.
+
+If a proxy ever happens, it is paid and overseas only, with the Apple engine as the free tier
+and StoreKit's introductory offer as the trial. Vendors advise against long-lived keys in mobile
+clients; under BYOK the exposed key is the user's own, so settings explain that and suggest a
+spending limit. Store keys device-only in a separate Keychain service, since
+`SecretStore.readAll` walks a whole service. These would be the app's first HTTP calls from Swift
+(no `URLSession` exists today) and the first to send user content to a third party; overlay
+networks only exchange metadata with theirs.
+
+[VibeTunnel's PR #685](https://github.com/amantus-ai/vibetunnel/pull/685) shows the rough size of a
+single-vendor client (`AVAudioRecorder`, multipart upload, Keychain): 462 new lines of Swift and no
+dependencies. Heeler needs more, for Composer rules, consent, and the Apple engine.
+
+### Streaming alternatives
+
+Only relevant if evaluation rules out the presets or live text becomes a requirement. Hourly
+prices are from vendor pricing pages. "Inside a sentence" means the vendor's documentation says so
+explicitly.
 
 | Service | Inside a sentence | Vocabulary | Streaming price | Notes |
 | --- | --- | --- | --- | --- |
@@ -151,7 +297,6 @@ documentation says so explicitly.
 | Deepgram Nova-3 `multi` | Yes, includes zh | Keyterms, +$0.0013/min | $0.55 to $0.63 | zh added 2026-10-23, no independent zh + en data; accepts Opus; needs `mip_opt_out=true` |
 | Gemini 3.5 Transcribe Live | Across utterances only; "intra-sentence" is the file model | Up to 1000 | About $0.54 | PCM only; `cmn-Hans-CN` but no `cmn-Hant-TW`; free tier trains; no China or Hong Kong |
 | Doubao streaming ASR 2.0 | Language coverage only | Hotwords + context, 100 tokens total | 1 CNY | Now one API key; `enable_ddc` removes disfluency, off by default |
-| Alibaba `qwen-audio-3.1-asr-flash-message` | Not stated | Hotwords, context | Token priced | Recommended for input methods; `disfluency_removal_enabled` handles self-correction |
 
 Excluded: Azure continuous language identification (documented as not supporting
 same-sentence switching); `whisper-1` and `gpt-4o-*-transcribe` (shut down
@@ -164,22 +309,6 @@ Qwen3-Omni .040/.039, Gemini 3 Flash .090/.041, AssemblyAI U3.5 .093/.046. These
 use ElevenLabs TTS audio, which the paper says favors Scribe and makes results an
 upper bound, with no disfluencies, batch configurations, 294 sentences, and different
 models from those above. They guide test design, not selection.
-
-Working bets until the evaluation replaces them: Scribe v2 Realtime overseas,
-Doubao 2.0 in mainland China. Neither bet is verified on our sentences.
-
-Price is unlikely to separate these. At an assumed 60 clips of 15 seconds per workday,
-speech runs about $0.70 to $3.50 per month on the overseas vendors above and cleanup
-about $0.20 to $0.60. Setup is the larger cost: account, billing or real-name checks,
-a key made on a computer, then the same again for the LLM. A single key covering both
-stages would remove a step, but that needs confirming per vendor.
-
-Vendors advise against long-lived keys in mobile clients. Without a backend this is
-the only direct shape, and the exposed key is the user's own, so settings explain the
-risk and suggest a restricted key. Store them in a separate Keychain service, since
-`SecretStore.readAll` walks a whole service. These would be the app's first HTTP calls
-from Swift (no `URLSession` exists today) and the first to send user content to a third
-party; overlay networks only exchange metadata with theirs.
 
 ### Apple on-device (iOS 26+, zero key)
 
@@ -199,29 +328,11 @@ party; overlay networks only exchange metadata with theirs.
   locales, and `DictationTranscriber` lists locales but has no audio formats and fails
   to analyze, so `supportedLocales` does not prove it can transcribe there.
 
-### Third-party on-device (deferred)
+### Third-party models on the phone or computer
 
-Worth a later A/B for offline use and iOS 18, not the first release. No candidate has
-a zh + en number on an iPhone.
-
-- **sherpa-onnx v2.0.1:** SwiftPM product with checksummed binaries, Apache-2.0, iOS 15.
-- **SenseVoice-Small `2024-07-17-int8`:** the pretrained model leads on ASCEND
-  ([paper](https://arxiv.org/html/2501.12122v2): WER .114 vs Whisper .289, Paraformer
-  .424; the int8 export is not itself scored). Avoid `2025-09-09`, which has no
-  punctuation and is tuned on Cantonese. Commercial use is
-  unsettled: the maintainer reopened and downgraded their answer in
-  [#334](https://github.com/QwenAudio/SenseVoice/issues/334).
-- **X-ASR-zh-en:** Apache-2.0, streaming, roughly 134 MB archive, self-reported numbers.
-- **Zipformer bilingual 2023:** real streaming and hotwords, but hotwords require
-  `modified_beam_search`, it has no Japanese, and it is dated.
-- **WhisperKit:** not a mixed-speech primary. A `nil` language prefills English instead
-  of detecting, and one third-party test had Large v3 Turbo out of memory on a 4 GB iPad.
-- **Excluded:** Parakeet, Canary, Voxtral Mini 3B (no Chinese); Audio8 (CC-BY-NC);
-  Argmax Pro (1000 device-month minimum).
-
-Apple DTS [said](https://developer.apple.com/forums/thread/793131) post-install model
-updates are not known to conflict with the guidelines, and suggested confirming with
-App Review. Do not depend on `huggingface.co` at runtime from mainland China.
+Out of scope by owner decision. sherpa-onnx, SenseVoice, X-ASR, and WhisperKit were researched in
+round one and are not on the roadmap. Foundation Models for cleanup is a system framework, not a
+bundled model, and stays a later option.
 
 ## Cleanup
 
@@ -251,6 +362,7 @@ silently degrade on others:**
 | Claude Haiku 5.5 | `thinking: disabled`, no non-default temperature, no prefill (400), `output_config.format`; handle `refusal` stop reason, including false cyber positives | About $0.00016 |
 | GPT-6 Luna | Reasoning `none` set explicitly; structured outputs; about 115 tok/s, so 150 tokens decode in about 1.3 s | About $0.00016 |
 | DeepSeek V4.1 Flash | `thinking: disabled`; `json_object` only, and blank content can arrive with `stop`; workday hours in Beijing are peak | About $0.00042 at peak |
+| DeepSeek V4.1 Flash on DeepInfra | Same-key default to test; parameter support on this host is unverified | About $0.00025 at [listed prices](https://api.deepinfra.com/v1/openai/models) |
 | Foundation Models (later) | iOS 26+, Apple Intelligence; prompts need retesting on iOS 27; Apple says it may not be suitable for creating code or logical reasoning, while refining or editing text is a listed capability | Free |
 
 `max_tokens` needs a floor for short clips and room for any reasoning tokens. Sampling
@@ -258,20 +370,26 @@ is not deterministic on these models, so run each injection case repeatedly. `gp
 is deprecated and `gpt-5-nano` shuts down 2026-12-11. Groq's `gpt-oss` documents no way to
 turn reasoning off.
 
+**One key for both stages.** DeepInfra and SiliconFlow both list `deepseek-ai/DeepSeek-V4.1-Flash`
+alongside `Qwen/Qwen3-ASR-1.7B`, so a preset's key can serve speech and cleanup, removing a second
+signup. Whether DeepSeek's `thinking` control and JSON mode carry over to these hosts, and whether
+DeepInfra's zero retention label applies to the LLM, still need checking.
+
 **Latency:** Wispr's public budget is [700 ms end to end](https://wisprflow.ai/post/technical-challenges)
 on dedicated inference. Whether public BYOK endpoints can come close is unmeasured; the
-only public figures use a 10k-token input. Since partials are already visible, start with
-a hard timeout of about 2.5 s (an unmeasured working value; set it from evaluation data)
-and fall back to raw. Cross-border WebSocket setup adds about 0.6 to
-1.2 s by estimate, so audio must buffer locally from the first frame.
+only public figures use a 10k-token input. The user is already waiting on an upload, so start with
+a hard timeout of about 2.5 s (an unmeasured working value; set it from evaluation data) and fall
+back to raw.
 
 **Levels:** off, clean (default once configured), and restructure (off by default). Users
 disagree on rewriting: some want tidy instructions, others want their own wording.
 
 **Vocabulary:** feed ASR first, since an LLM cannot restore what ASR lost. Limits differ too
-much for one shared list (see the table above), so keep it short and per engine: Voxt uses 8
-terms and 220 characters selected by match score. Sources in Heeler include the cwd, Skills,
-and sent messages. File names and Agent Transcripts are third-party content, and sending them
+much for one shared list, so keep it short and per engine: Voxt uses 8
+terms and 220 characters selected by match score. Whether DeepInfra's `initial_prompt` or `prompt`
+maps to Qwen's context is unverified, and Alibaba's documents disagree about context on its Flash
+models. VibeTunnel attaches a fixed English term prompt, whose effect on mixed Chinese is unknown.
+Sources in Heeler include the cwd, Skills, and sent messages. File names and Agent Transcripts are third-party content, and sending them
 widens the privacy disclosure and the injection surface. Whisper
 [considers only the final 224 tokens](https://developers.openai.com/cookbook/examples/whisper_prompting_guide)
 of a prompt, so order matters on that family.
@@ -305,7 +423,7 @@ Do not take:
   shows it is required (the earlier `SpeechTranscriber` branch omitted it, though Apple's key
   page says to include it for Speech framework use). Keep no "never leaves your phone" wording.
 - Per-vendor consent screen on first use and on vendor change (5.1.2(i)); a visible recording
-  indicator (2.5.14); Review Notes with a limited test key or a zero-key path (2.3.1(a)); no
+  indicator (2.5.14); Review Notes with a limited test key (2.3.1(a)); no
   hidden remote toggle (2.5.19).
 - App Privacy label for BYOK audio is undefined by Apple's text. Declare conservatively or
   explain in Review Notes, and ask App Review before submission.
@@ -325,47 +443,58 @@ Do not take:
 
 ## Evaluation before picking defaults
 
-No engine choice is final until this runs.
+No engine choice is final until this runs. The owner records the corpus and provides the keys.
 
+- **Smoke test first, about half a day:** one real key on each preset. Confirm SiliconFlow serves
+  1.7B and honors `language`, accepted formats and file limits, cold starts, and the median time from
+  a 15 s clip to its result. Run both presets on an iPhone on a mainland SIM with no proxy; earlier
+  probes went through a proxy and prove nothing about direct access.
 - **Corpus:** 40 to 60 real sentences recorded on an iPhone, by at least the owner, in quiet and
   noisy settings and with AirPods. Cover zh + en with identifiers, paths, and negations, plus
-  self-corrections and its counterexamples, and instruction-shaped sentences.
-- **Engines:** the cloud table above (with and without language hints), Apple zh-CN with both
-  modules, keyboard dictation as the baseline, SenseVoice and X-ASR on a Mac for accuracy only.
-- **Metrics:** identifier retention, negation retention, CER, time to final, reconnect behavior
-  on a weak network, and whether WebSocket works under common proxy setups (reports suggest
-  `URLSessionWebSocketTask` may ignore system HTTP proxies; unconfirmed). File upload is the
-  fallback if streaming fails.
+  self-corrections and its counterexamples, and instruction-shaped sentences. The owner's praise for
+  Qwen came from a Hollyland wireless USB mic, so the iPhone mic is the real question.
+- **Engines:** both presets with `language=zh` and with it omitted, Alibaba `qwen3-asr-flash` as a
+  reference, Scribe v2 as the strongest alternative, Apple zh-CN with both modules, and keyboard
+  dictation as the baseline.
+- **Metrics:** identifier retention, negation retention, CER, time to final, and retry behavior on a
+  weak network.
+- **Switch vendors, not the decision, if:** DeepInfra's median for a 15 s clip exceeds about 3 s, or it
+  has visible cold starts; the Mac result does not reproduce on hosted 1.7B; or Flash or Scribe clearly
+  keeps identifiers and negations better.
 - **Cleanup:** 80 to 150 text pairs with repeated runs on injection cases; no injection may pass
   the guard into the draft.
 
 ## Delivery order
 
-1. **Evaluation** (above). It also tests the [UITextInput](https://developer.apple.com/documentation/uikit/uitextinput)
+1. **Smoke test and evaluation** (above). They also test the [UITextInput](https://developer.apple.com/documentation/uikit/uitextinput)
    dictation callbacks on `AgentComposerUITextView`.
-2. **Cleanup first:** `VoiceTextPolisher`, guard, and a Composer action. It should also apply to
-   keyboard dictation and third-party input methods on iOS 18 (third-party input in Heeler is
-   untested), with no microphone or audio work, and it exercises the riskiest layer first. It
-   still triggers the consent and privacy work. Its input is the current selection or whole draft,
-   not speech text. That may contain pasted text, Snippets, Skill tokens, and Host paths, so consent
-   copy says the draft is sent, the action is disabled while `hasPendingDroppedImages` is true, and
-   the guard also retains paths and Skill tokens.
-3. **In-app capture with cloud engines:** language list, vocabulary, consent, one overseas and one
-   mainland adapter. This is what delivers configurable bilingual input.
-4. **Apple engine** for a zero-key path on iOS 26+.
-5. **Optional, each behind evidence:** sherpa-onnx, Foundation Models cleanup (the Chinese rollout
-   in 27.3 is announced, but third-party framework access is unknown), Host relay or inference.
-   Host inference could suit Heeler because it already has an encrypted channel to the user's
-   machine: audio would stay on those machines and phone memory would stop mattering. There is no
-   data yet. `HeelerSSH` exposes direct-streamlocal and exec channels publicly, but direct-tcpip stays
-   internal to Jump Hosts and it has no remote forwarding, so a relay needs a prototype over a Unix
-   socket or exec.
+2. **In-app capture with both presets:** mic in the terminal and Chat Composers, the first-tap choice,
+   consent per vendor, recording indicator, single insertion, retry from the local recording, and a new
+   ADR with the PRIVACY.md, CONTEXT.md, and App Privacy updates.
+3. **Apple engine** for the no-API path on iOS 26+, labeled single language.
+4. **Cleanup:** `VoiceTextPolisher` and its guard, using the preset's key. Polishing was a core request,
+   so voice input is not complete until this ships, but it stays a separate slice because its corpus and
+   guard are the riskiest layer. It should also offer a Composer action for keyboard dictation and third-
+   party input methods. That input is the current selection or whole draft, not speech text. It may
+   contain pasted text, Snippets, Skill tokens, and Host paths, so consent copy says the draft is sent, the
+   action is disabled while `hasPendingDroppedImages` is true, and the guard also retains paths and Skill
+   tokens.
+5. **Bilingual settings:** the ordered language list and per-engine strategy. Until then, the primary
+   comes from the system language, and only zh + en is promised.
+6. **Optional, each behind evidence:** streaming with partials, vocabulary, Foundation Models cleanup
+   (the Chinese rollout in 27.3 is announced, but third-party framework access is unknown), custom
+   endpoints, and a proxy.
 
 ## Not verified
 
-- Connectivity from mainland China for any vendor, and whether non-mainland identities can open
-  Doubao or Bailian accounts.
-- Any engine's accuracy on Heeler-style speech, iPhone memory and thermals, Opus encoding on iOS.
+- Any vendor call with a real key, so all latency and accuracy statements remain documentation or model
+  cards.
+- Connectivity from mainland China for any vendor, and from overseas to SiliconFlow and Alibaba Beijing.
+- Whether non-mainland identities can open SiliconFlow, Doubao, or Bailian accounts, and whether DeepInfra
+  accepts Chinese-issued cards.
+- Any engine's accuracy on Heeler-style speech. No official or independent same-sentence zh + en ASR data
+  exists for Qwen3-ASR.
+- All usage, conversion, and proxy numbers, which are our assumptions.
 - Two concurrent recognizers on an iPhone, and microphone behavior with two foreground iPad apps.
 - OpenAI usage terms and Codex help pages (HTTP 403 during checking).
 - The legal reading of Anthropic's terms for Host CLI use, which is our interpretation.
