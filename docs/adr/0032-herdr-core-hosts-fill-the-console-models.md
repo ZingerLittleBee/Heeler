@@ -208,8 +208,7 @@ with test clients, not the app.
   Claude Code stopped by two Ctrl+C keys finished it with 1, not separated from
   PowerShell's own code, and no Agent has exited normally there. Under the
   desktop's `-NoExit` form an Agent's exit leaves the foreground's pid, name and
-  arguments unchanged
-  and sends no new foreground event, so recognition from the foreground keeps
+  arguments unchanged and sends no new foreground event, so recognition from the foreground keeps
   reading such a Terminal as that Agent until its shell exits, and "a shell in
   the foreground ends the Agent" never fires. A read of PowerShell's children
   showed the exit, and the attach stream later carried PowerShell's prompt; the
