@@ -236,11 +236,10 @@ struct HerdrCorePiChatTests {
         try await rig.waitUntil("the first conversation") { Self.following(chat) == firstFile }
         #expect(await rig.checks == 1)
 
-        // `/new`: the extension rewrites its label. The next check finds it.
+        // `/new`: the extension rewrites its label, and that alone calls for a check.
         await rig.transport.deliver(
             Self.labelsEvent(
                 sequence: 2, labels: ["heeler.session": Self.label(session: Self.second, file: secondFile)]))
-        await rig.transport.deliver(Self.statusEvent(sequence: 3, state: "working", app: program.rawValue))
         try await rig.waitForChecks(2)
         try await rig.waitUntil("the new conversation") { Self.following(chat) == secondFile }
 

@@ -438,6 +438,7 @@ struct ChatUnavailableView: View {
     var launchNotice: ChatLaunchNotice?
     let retry: () -> Void
     let showAgentTerminal: () -> Void
+    var chooseConversation: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -445,6 +446,11 @@ struct ChatUnavailableView: View {
         } description: {
             Text(reason.explanation(launchNotice: launchNotice))
         } actions: {
+            if let chooseConversation {
+                Button(ChatCandidatePickerView.title, action: chooseConversation)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("chat.chooseConversation")
+            }
             Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
                 .buttonStyle(.bordered)
             if reason.offersRetry {

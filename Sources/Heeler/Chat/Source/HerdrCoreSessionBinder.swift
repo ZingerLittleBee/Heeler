@@ -74,6 +74,7 @@ struct HerdrCoreSessionBinder: Sendable {
     /// Whether this value of the pick label is one a send guard already dropped,
     /// whose removal may not have reached the core.
     var isDroppedPick: @Sendable (String) async -> Bool = { _ in false }
+    var now: @Sendable () -> Date = { Date() }
 
     static let scopeVariable = HerdrCoreTerminalProcesses.scopeVariable
     static let homeVariable = "HOME"

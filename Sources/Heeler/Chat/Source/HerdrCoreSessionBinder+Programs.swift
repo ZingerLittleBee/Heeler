@@ -25,17 +25,11 @@ extension HerdrCoreSessionBinder {
     ) async throws -> ChatSessionEvidence {
         guard let pid = codexAgent(in: tree), let process = tree.facts[pid], let codexHome = codexHome(of: process)
         else { return cannotTell }
-        if tree.descendants.contains(where: { Self.isManagedDaemon(tree.facts[$0]) }) {
+        if try await isCodexOnSharedDaemon(record, tree: tree, process: process) {
             return .unavailable(.codexSharedDaemon)
         }
         let rollouts = Self.rollouts(heldBy: process)
-        if rollouts.isEmpty {
-            guard CodexLaunch.launchesOnSharedServer(foreground: record.foreground) == true,
-                try await files.status(CodexLaunch.controlSocketPath(codexHome: codexHome)) != nil
-            else { return cannotTell }
-            return .unavailable(.codexSharedDaemon)
-        }
-        guard rollouts.count <= Self.heldRolloutLimit,
+        guard !rollouts.isEmpty, rollouts.count <= Self.heldRolloutLimit,
             !Self.holdsALockWithoutItsRollout(process, rollouts: rollouts)
         else { return cannotTell }
         var roots: [RolloutHead] = []
@@ -45,6 +39,18 @@ extension HerdrCoreSessionBinder {
         }
         guard roots.count == 1, let root = roots.first else { return cannotTell }
         return .bound(sessionID: root.threadID, transcriptRoot: codexHome, directory: root.directory)
+    }
+
+    /// A daemon under the Agent, or a launch on the shared server, holding no
+    /// rollout of its own, while the server's socket exists.
+    func isCodexOnSharedDaemon(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses, process: HostProcessReader.Facts
+    ) async throws -> Bool {
+        if tree.descendants.contains(where: { Self.isManagedDaemon(tree.facts[$0]) }) { return true }
+        guard Self.rollouts(heldBy: process).isEmpty, let codexHome = codexHome(of: process),
+            CodexLaunch.launchesOnSharedServer(foreground: record.foreground) == true
+        else { return false }
+        return try await files.status(CodexLaunch.controlSocketPath(codexHome: codexHome)) != nil
     }
 
     var codexProcessAsk: ProcessAsk {
@@ -72,7 +78,7 @@ extension HerdrCoreSessionBinder {
             || (arguments.contains("app-server") && arguments.contains("pid-update-loop"))
     }
 
-    private struct HeldRollout {
+    struct HeldRollout {
         let path: String
         let name: CodexRolloutFileName
     }
@@ -100,7 +106,7 @@ extension HerdrCoreSessionBinder {
 
     /// The process's open files that are rollouts. Its thread-writer locks and
     /// anything else it holds are not.
-    private static func rollouts(heldBy process: HostProcessReader.Facts) -> [HeldRollout] {
+    static func rollouts(heldBy process: HostProcessReader.Facts) -> [HeldRollout] {
         guard case .value(let files) = process.openFiles else { return [] }
         return files.compactMap { path in
             guard path.contains("/sessions/") || path.contains("/archived_sessions/"),
@@ -111,7 +117,7 @@ extension HerdrCoreSessionBinder {
         }
     }
 
-    private struct RolloutHead {
+    struct RolloutHead {
         let threadID: String
         let isRoot: Bool
         let directory: String?
@@ -120,7 +126,7 @@ extension HerdrCoreSessionBinder {
     /// Line 1, when it is one `session_meta` naming the thread the file is named
     /// for. A head cut short or unreadable says nothing about whether this is the
     /// root, so the caller binds nothing.
-    private func readRolloutHead(_ rollout: HeldRollout) async throws -> RolloutHead? {
+    func readRolloutHead(_ rollout: HeldRollout) async throws -> RolloutHead? {
         let slice = try await files.read(
             RemoteFileRange(path: rollout.path, offset: 0, maxBytes: Self.rolloutHeadLimit))
         guard slice.length != nil, let newline = slice.data.firstIndex(of: UInt8(ascii: "\n")),

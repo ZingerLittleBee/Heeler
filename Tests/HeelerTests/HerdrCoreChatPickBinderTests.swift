@@ -255,4 +255,117 @@ struct HerdrCoreChatPickBinderTests {
 
         #expect(await rig.table.requests.count == 1)
     }
+
+    // MARK: Candidates of each program
+
+    private static func list(_ rig: Rig, record: HerdrCoreTerminalRecord? = nil) async throws -> ChatSessionCandidates {
+        var binder = rig.binder
+        binder.now = { Date(timeIntervalSince1970: 1_791_288_000) }
+        let answer = try await binder.candidates(of: try record ?? Self.record(rig.program, labels: [:]))
+        guard case .listed(let list) = answer else {
+            Issue.record("expected a list, read \(answer)")
+            throw CancellationError()
+        }
+        return list
+    }
+
+    private static func holding(_ rig: Rig, _ files: [String]) async {
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: pid, name: rig.program.rawValue, start: start,
+                environment: ["HC_SCOPE": "scope", "HOME": home], openFiles: files))
+    }
+
+    @Test func claudeCodeListsItsHeldAndRecentTranscripts() async throws {
+        let rig = await Rig(.claude)
+        let folder = "\(Self.home)/.claude/projects/-work-app"
+        await rig.files.write("{}\n", at: "\(folder)/\(Self.other).jsonl")
+        await rig.files.write("{}\n", at: "\(folder)/\(Self.uuid).jsonl")
+        await rig.files.write("", at: "\(folder)/11111111-1111-4111-8111-111111111111.jsonl")
+        await Self.holding(rig, ["\(folder)/\(Self.other).jsonl", "\(folder)/\(Self.other)/subagents/agent-1.jsonl"])
+
+        let list = try await Self.list(rig)
+
+        #expect(list.transcriptRoot == "\(Self.home)/.claude")
+        #expect(list.candidates.map(\.sessionID) == [Self.other, Self.uuid])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen, .recentTranscript], [.recentTranscript]])
+        #expect(list.candidates.allSatisfy { $0.file == nil })
+    }
+
+    @Test(arguments: [ChatProgram.pi, .omp])
+    func thePiFamilyListsSessionFilesByTheirFile(_ program: ChatProgram) async throws {
+        let rig = await Rig(program)
+        let root = try #require(Self.root(program))
+        let file = "\(root)/--work-app--/2026-11-01T07-19-26-219Z_\(Self.uuid).jsonl"
+        await rig.files.write("{}\n", at: file)
+
+        let list = try await Self.list(rig)
+
+        let candidate = try #require(list.candidates.first)
+        #expect(list.candidates.count == 1)
+        #expect(candidate.sessionID == Self.uuid)
+        #expect(candidate.file == file)
+        #expect(candidate.conversationID == file)
+    }
+
+    /// A confirmed file is what the next check reads, so the label names it.
+    @Test func aPiCandidatesLabelBindsItsFile() async throws {
+        let rig = await Rig(.pi)
+        let file = "\(Self.home)/.pi/agent/sessions/--work-app--/2026-11-01T07-19-26-219Z_\(Self.uuid).jsonl"
+        await rig.files.write("{}\n", at: file)
+        let list = try await Self.list(rig)
+        let candidate = try #require(list.candidates.first)
+
+        let label = HerdrCoreSessionHint.pickLabelValue(
+            session: candidate.sessionID, file: candidate.file, pid: list.pid, start: list.start)
+        let evidence = try await rig.binder.check(
+            try Self.record(.pi, labels: ["heeler.chat": try #require(label)]))
+
+        #expect(evidence == .picked(sessionID: file, transcriptRoot: Self.root(.pi)))
+    }
+
+    /// Codex files rollouts by day, and only its head says where one started.
+    @Test func codexListsRolloutsThatStartedInTheDirectory() async throws {
+        let fixture = try ChatFixture.text("codex/probe1-rollout.jsonl")
+        let thread = "01a10f87-e025-7fb1-8974-8dd09937767a"
+        #expect(fixture.contains(thread))
+        let rig = await Rig(.codex)
+        let folder = "\(Self.home)/.codex/sessions/2026/10/06"
+        let name = "rollout-2026-10-06T12-45-25-\(thread).jsonl"
+        await rig.files.write(fixture, at: "\(folder)/\(name)")
+        let directory = try #require(
+            fixture.split(separator: "\n").first.flatMap {
+                try? JSONDecoder().decode(JSONValue.self, from: Data($0.utf8))["payload"]?["cwd"]?.stringValue
+            })
+        let record = try JSONDecoder().decode(
+            HerdrCoreTerminalRecord.self,
+            from: try JSONEncoder().encode(
+                JSONValue.object([
+                    "address": .string("t1"), "cwd": .string(directory), "state": .string("live"),
+                    "argv": .array([.string("codex")]), "keep": .bool(false), "title": .string(""),
+                    "cols": .number(80), "rows": .number(24), "name": .null, "reason": .null,
+                    "pid": .number(Double(Self.pid)),
+                    "foreground": .object([
+                        "pid": .number(Double(Self.pid)), "name": .string("codex"),
+                        "argv": .array([.string("codex"), .string("--no-daemon")]), "cwd": .string(directory),
+                    ]),
+                ])))
+
+        let elsewhere = try await Self.list(rig)
+        let here = try await Self.list(rig, record: record)
+
+        #expect(elsewhere.candidates.isEmpty)
+        #expect(here.candidates.map(\.sessionID) == [thread])
+        #expect(here.candidates.first?.origins == [.recentTranscript])
+    }
+
+    /// The Agent's process is what a confirmation binds to, so no process, no list.
+    @Test func noResolvedProcessListsNothing() async throws {
+        let rig = await Rig(.grok)
+        await rig.table.remove(Self.pid)
+
+        let answer = try await rig.binder.candidates(of: try Self.record(.grok, labels: [:]))
+
+        #expect(answer == .noProcess)
+    }
 }

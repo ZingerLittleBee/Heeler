@@ -65,6 +65,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private var shownAgents: Set<String> = []
     /// Events that may mean a Terminal's session changed, for Chat (ADR 0034).
     private var sessionEventCounts: [String: UInt64] = [:]
+    /// Values of a Terminal's pick label a send guard dropped, whose removal may
+    /// not have reached the core (ADR 0034).
+    private var droppedPicks: [String: Set<String>] = [:]
     private var inventoryReplacements: UInt64 = 0
     /// Leak checks that found a variable, which a Chat's reason depends on.
     private var leakAnswers: UInt64 = 0
@@ -366,6 +369,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             update(terminal) { $0.turn = turn }
             noteTurns(of: terminal) { state, _ in state.noteTurn(turn) }
         case .labels(let terminal, let labels):
+            let before = self.records.first { $0.address == terminal }?.labels ?? [:]
+            let names = [HerdrCoreSessionHint.sessionLabel, HerdrCoreSessionHint.pickLabel]
+            if names.contains(where: { before[$0] != labels[$0] }) { sessionEventCounts[terminal, default: 0] += 1 }
             update(terminal) { $0.labels = labels }
             sidebarRevision &+= 1
         case .keep(let terminal, let keep):
@@ -1418,10 +1424,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     // MARK: Chat
 
-    /// Moves with each status, turn or foreground event of the Terminal, each
-    /// fresh inventory, since those events may have been missed, and each leak
-    /// check that found something, since a reason names what the core carries.
-    /// Chat checks the Agent's process again when it moves (ADR 0034).
+    /// Moves with each status, turn or foreground event of the Terminal, each change
+    /// to its session or pick label, each fresh inventory, since those events may
+    /// have been missed, and each leak check that found something, since a reason
+    /// names what the core carries. Chat checks the Agent's process again when it
+    /// moves (ADR 0034).
     func sessionEventRevision(of address: String) -> UInt64 {
         inventoryReplacements &+ leakAnswers &+ (sessionEventCounts[address] ?? 0)
     }
@@ -1443,9 +1450,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         guard let record = terminalRecord(at: paneID) else {
             return .unavailable(.cannotTellSession(program))
         }
+        return try await chatBinder(paneID: paneID, program: program, core: inventoryCore)
+            .check(record, coreCarries: leakedEnvironmentNames)
+    }
+
+    private func chatBinder(paneID: String, program: ChatProgram, core: String?) -> HerdrCoreSessionBinder {
         let session = session
-        let core = inventoryCore
-        let binder = HerdrCoreSessionBinder(
+        return HerdrCoreSessionBinder(
             program: program,
             processes: { request in
                 try await session.withTransport { try await $0.readProcesses(request) }
@@ -1456,8 +1467,62 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             },
             currentLabels: {
                 await self.terminalLabels(at: paneID, on: core)
+            },
+            isDroppedPick: { value in
+                await self.droppedPicks[paneID]?.contains(value) ?? false
             })
-        return try await binder.check(record, coreCarries: leakedEnvironmentNames)
+    }
+
+    /// What the user could confirm for this Agent, on request (ADR 0034).
+    func chatCandidates(paneID: String, program: ChatProgram) async throws -> ChatCandidatesAnswer {
+        guard hasInventory, departedAgentsByPane[paneID] == nil else { throw TransportError.cancelled }
+        guard let record = terminalRecord(at: paneID) else { return .noProcess }
+        let core = inventoryCore
+        let answer = try await chatBinder(paneID: paneID, program: program, core: core).candidates(of: record)
+        guard case .listed(var list) = answer else { return answer }
+        list.core = core
+        return .listed(list)
+    }
+
+    /// Stores a confirmed candidate as the Terminal's label, on the core its listing
+    /// came from. An answer that never comes throws
+    /// `.coreMutationOutcomeUnknown`, and nothing here sends it again.
+    func writeChatPick(_ candidate: ChatSessionCandidate, of list: ChatSessionCandidates, paneID: String) async throws {
+        guard
+            let value = HerdrCoreSessionHint.pickLabelValue(
+                session: candidate.sessionID, file: candidate.file, pid: list.pid, start: list.start)
+        else { throw TransportError.cancelled }
+        let transport = try await session.withTransport(servingCore: list.core) { $0 }
+        droppedPicks[paneID]?.remove(value)
+        let params = JSONValue.object([
+            "terminal": .string(paneID),
+            "labels": .object([HerdrCoreSessionHint.pickLabel: .string(value)]),
+        ])
+        _ = try await transport.call("terminal.label", params: params, isMutation: true)
+        // The core's own event may lag, and the check after this reads the record.
+        setPickLabel(value, at: paneID, on: list.core)
+    }
+
+    /// A send guard's verdict: this device stops adopting the label at once, whether
+    /// or not the removal gets through, and a later check removes it again if not.
+    func dropChatPick(paneID: String, scope: String?) {
+        guard chatCacheScope == scope, let value = terminalRecord(at: paneID)?.labels[HerdrCoreSessionHint.pickLabel]
+        else { return }
+        droppedPicks[paneID, default: []].insert(value)
+        let core = inventoryCore
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.clearStaleLabels([HerdrCoreSessionHint.pickLabel: value], at: paneID, on: core)
+            if self.terminalLabels(at: paneID, on: core)?[HerdrCoreSessionHint.pickLabel] == value {
+                self.setPickLabel(nil, at: paneID, on: core)
+            }
+        }
+    }
+
+    private func setPickLabel(_ value: String?, at paneID: String, on core: String?) {
+        guard !hasEnded, var labels = terminalLabels(at: paneID, on: core) else { return }
+        labels[HerdrCoreSessionHint.pickLabel] = value
+        apply(.labels(terminal: paneID, labels))
     }
 
     /// The Terminal's labels while these records are still the core's a check began on.

@@ -27,7 +27,10 @@ extension OpenCodeProbe {
     static let openRowLimit = 64
 
     static func statements(_ query: OpenCodeQuery) -> [String] {
-        let session = "'\(query.session.rawValue)'"
+        if case .recentSessions(let directory, let limit) = query.kind {
+            return [versionStatement, tablesStatement, layoutStatement, recentSessions(directory, limit: limit)]
+        }
+        let session = "'\(query.session?.rawValue ?? "")'"
         var statements = [
             versionStatement, tablesStatement, layoutStatement,
             "SELECT 'E ' || coalesce((SELECT seq FROM event_sequence WHERE aggregate_id = \(session)), '')",
@@ -77,8 +80,20 @@ extension OpenCodeProbe {
                 WITH \(slimmed(rows, outputLimit: max(0, outputLimit)))
                 SELECT 'R ' || \(rowObject(dataLimit: nil)) FROM r
                 """)
+        case .recentSessions:
+            break
         }
         return statements
+    }
+
+    /// The directory travels as hex, so nothing of it can leave its literal.
+    private static func recentSessions(_ directory: String, limit: Int) -> String {
+        let hex = directory.utf8.map { String(format: "%02x", $0) }.joined()
+        return """
+            SELECT 'Q ' || json_object('id',id,'title',substr(title,1,512),'updated',time_updated)
+              FROM session_v2 WHERE directory = CAST(x'\(hex)' AS TEXT) AND parent_id IS NULL
+             ORDER BY time_updated DESC LIMIT \(max(0, limit))
+            """
     }
 
     // MARK: Store checks

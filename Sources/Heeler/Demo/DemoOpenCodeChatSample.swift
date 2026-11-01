@@ -17,7 +17,7 @@
         /// changes, so every poll finds the event counter where the first
         /// read left it. Any other session is missing.
         static func response(_ query: OpenCodeQuery) -> OpenCodeQueryResponse {
-            guard query.session.rawValue == sessionID else { return .sessionMissing(otherStores: []) }
+            guard query.session?.rawValue == sessionID else { return .sessionMissing(otherStores: []) }
             switch query.kind {
             case .tail:
                 return records(conversation.rows)
@@ -27,6 +27,8 @@
                 return records(conversation.rows.filter { $0.seq < before })
             case .row(let seq, _):
                 return records(conversation.rows.filter { $0.seq == seq })
+            case .recentSessions:
+                return records([])
             }
         }
 

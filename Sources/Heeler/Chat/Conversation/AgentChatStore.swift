@@ -30,6 +30,43 @@ struct AgentChatSource: Sendable {
     /// The core session and core id, which key the cache beside the Host: nil
     /// on Herdr TUI, whose session the socket location names.
     var coreScope: String?
+    /// Listing and confirming candidates, where a check can find nothing (ADR 0034).
+    var picks: ChatPickIO?
+}
+
+/// What a confirmed candidate goes through, keeping to the detail's core.
+struct ChatPickIO: Sendable {
+    var list: @MainActor @Sendable (TerminalCorePin?) async throws -> ChatCandidatesAnswer
+    var confirm:
+        @MainActor @Sendable (ChatSessionCandidate, ChatSessionCandidates, TerminalCorePin?) async throws -> Void
+    /// The send guard failed: forgets the choice on this device and removes its label.
+    var drop: @MainActor @Sendable () -> Void
+}
+
+/// Chat's candidate list on request.
+enum ChatCandidatesState: Equatable, Sendable {
+    case notAsked
+    case loading
+    case listed(ChatSessionCandidates)
+    /// Why there is nothing to choose from.
+    case unavailable(String)
+}
+
+/// Where the user's confirmation stands.
+enum ChatPickConfirmation: Equatable, Sendable {
+    case none
+    case saving
+    case confirmed
+    /// The core refused, or the write never went.
+    case failed(String)
+    /// The write went and no answer came. It may have landed, so it is not repeated.
+    case outcomeUnknown
+}
+
+/// What a candidate holds, for the user to read before choosing it.
+enum ChatCandidatePreview: Equatable, Sendable {
+    case conversation(title: String?, entries: [ChatEntry])
+    case unreadable(String)
 }
 
 /// One Agent's Chat (ADR 0024): the conversation herdr says the Agent is
@@ -78,6 +115,11 @@ final class AgentChatStore {
         /// box for unrecorded sends, overdue or not, that the turn which
         /// just ended put back.
         var returnCheckDelay: TimeInterval = 1
+        /// How long after a confirmed pick's turn ends a read must start before its
+        /// send guard judges the Transcript: the program may still be writing, a
+        /// queued send may be about to start the next turn, and Pi's return check
+        /// runs in this time.
+        var pickGuardSettle: TimeInterval = 2
         var backgroundWorkStaleness = ChatBackgroundWork.Staleness()
     }
 
@@ -163,6 +205,10 @@ final class AgentChatStore {
     /// Whether a read of the launch has finished, so a missing notice
     /// means none rather than not known yet.
     private(set) var hasCheckedLaunch = false
+    /// The candidate list the user asked for.
+    private(set) var candidates = ChatCandidatesState.notAsked
+    /// Where the user's confirmation of a candidate stands.
+    private(set) var pickConfirmation = ChatPickConfirmation.none
 
     /// Until the first read of the launch, waiting for a session may be
     /// the notice's case, which a prompt won't end: Chat keeps looking
@@ -191,6 +237,13 @@ final class AgentChatStore {
     /// another (`checkStartScreen`).
     @ObservationIgnored private var staleSession: ConversationReference?
     @ObservationIgnored private var staleTitle: String?
+    /// Whether the last check bound a confirmed pick, which a send guard watches.
+    @ObservationIgnored private var followsPick = false
+    /// Sends made on the pick, until a turn's end says whether each arrived.
+    @ObservationIgnored private var pickGuardSends: Set<UUID> = []
+    @ObservationIgnored private var pickGuardTurnEnd: Date?
+    /// Candidates the user has read, the only ones a confirmation may name.
+    @ObservationIgnored private var previewedCandidates: Set<String> = []
     /// Why the last check of the Agent's process bound nothing.
     @ObservationIgnored private var evidenceReason: ChatUnavailableReason?
     /// Where the last check that bound says the Agent keeps its Transcripts,
@@ -588,6 +641,7 @@ final class AgentChatStore {
         discardedSends.formIntersection(ids)
         extendedSends.formIntersection(ids)
         returnChecked.formIntersection(ids)
+        pickGuardSends.formIntersection(ids)
         refusedSends = refusedSends.filter { ids.contains($0.key) }
         compactChecked.formIntersection(ids)
         compactingSeen = compactingSeen.filter { ids.contains($0.key) }
@@ -599,6 +653,7 @@ final class AgentChatStore {
                 guard message.isDelivered != (sends[index].deliveredAt != nil) else { continue }
                 sends[index].deliveredAt = message.isDelivered ? now() : nil
                 if message.isDelivered {
+                    if followsPick, !Self.isCommand(message.text) { pickGuardSends.insert(message.id) }
                     witnessDelivery(of: message.id)
                     noteSent()
                 }
@@ -721,6 +776,7 @@ final class AgentChatStore {
         let activity = ChatAgentActivity(next.status)
         blocked.update(activity: activity)
         noteActivity(activity)
+        notePickGuardActivity(from: previous, to: activity)
         idleSince = activity == .idle ? now() : nil
         // Answering a dialog resumes the turn it interrupted.
         if activity == .working, previous != .working, previous != .blocked { turnStartedAt = now() }
@@ -816,6 +872,8 @@ final class AgentChatStore {
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         await checkSendWitnesses()
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
+        judgePickGuard()
+        guard !isAwaitingSession else { return }
         // A journal read adds a deadline of its own, so a round whose
         // transcript read failed leaves the journals for later.
         if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
@@ -1038,10 +1096,13 @@ final class AgentChatStore {
     private func adoptEvidence(_ evidence: ChatSessionEvidence) {
         switch evidence {
         case .bound(let sessionID, let transcriptRoot, let directory):
+            forgetPick()
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: directory)
         case .picked(let sessionID, let transcriptRoot):
+            followsPick = true
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
         case .unavailable(let reason):
+            forgetPick()
             evidenceReason = reason
             guard resolution == .noSession else {
                 adopt(.noSession)
@@ -1192,6 +1253,9 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        // What was sent went into the last conversation.
+        pickGuardSends = []
+        pickGuardTurnEnd = nil
         transcriptReadFailure = nil
         conversationGeneration += 1
         // herdr reports another session: whatever went astray, Chat follows
@@ -1248,6 +1312,143 @@ final class AgentChatStore {
             files: source.files, cache: source.cache, adapter: source.adapter,
             transcriptRoot: source.sessionEvidence == nil ? nil : evidenceRoot,
             sessionMayPrecedeItsStore: source.sessionEvidence != nil, now: now)
+    }
+
+    // MARK: Candidates
+
+    /// Whether Chat can list candidates: a check on a core found nothing exact. A
+    /// Codex on its shared daemon reads as another reason and gets no list, and
+    /// Herdr TUI has no picks to make (ADR 0034).
+    var offersCandidates: Bool {
+        guard source.picks != nil, case .unavailable(.cannotTellSession) = conversation.phase else { return false }
+        return true
+    }
+
+    /// Lists candidates, on the user's request. Nothing about the Chat changes until
+    /// the user confirms one.
+    func listCandidates(keepingTo pin: TerminalCorePin? = nil) async {
+        guard let picks = source.picks, offersCandidates else { return }
+        candidates = .loading
+        pickConfirmation = .none
+        previewedCandidates = []
+        do {
+            switch try await picks.list(pin) {
+            case .listed(let list):
+                candidates = .listed(list)
+            case .sharedDaemon:
+                candidates = .unavailable(ChatUnavailableReason.codexSharedDaemon.explanation)
+            case .noProcess:
+                candidates = .unavailable(
+                    "Heeler can't read this Agent's process now, and a choice needs it. Check that the program still runs in its terminal, then try again.")
+            }
+        } catch {
+            candidates = .unavailable(Self.message(for: error))
+        }
+    }
+
+    /// Reads a candidate's conversation, for the user to read before choosing it.
+    /// It touches nothing Chat follows, and its read is kept nowhere.
+    func previewCandidate(_ candidate: ChatSessionCandidate) async -> ChatCandidatePreview {
+        guard case .listed(let list) = candidates else { return .unreadable("This list is out of date.") }
+        let reference = ConversationReference(program: program, sessionID: candidate.conversationID)
+        let engine = ChatConversationEngine(
+            reference: reference,
+            cacheKey: ChatCacheKey(
+                hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
+                coreScope: source.coreScope),
+            files: source.files, cache: VolatileChatTranscriptCache(), adapter: source.adapter,
+            transcriptRoot: list.transcriptRoot, now: now)
+        let snapshot = await engine.open(directories: list.directories, context: projectionContext)
+        if case .unavailable(let reason) = snapshot.phase { return .unreadable(reason.explanation) }
+        if let failure = snapshot.readFailure { return .unreadable(failure.presentation.message) }
+        let entries = snapshot.transcript.entries.filter { entry in
+            switch entry.content {
+            case .user, .assistant: true
+            default: false
+            }
+        }
+        guard !entries.isEmpty else { return .unreadable("This conversation has no messages to show yet.") }
+        previewedCandidates.insert(candidate.id)
+        return .conversation(title: snapshot.transcript.title, entries: Array(entries.suffix(Self.previewEntryLimit)))
+    }
+
+    private static let previewEntryLimit = 40
+
+    /// Stores the user's choice as the Terminal's label, which the next check adopts
+    /// on this device and any other. Only a candidate the user has read can go, and
+    /// a write that gets no answer goes once: asking again takes a fresh list.
+    func confirmCandidate(_ candidate: ChatSessionCandidate, keepingTo pin: TerminalCorePin? = nil) async {
+        guard let picks = source.picks, case .listed(let list) = candidates, list.candidates.contains(candidate),
+            previewedCandidates.contains(candidate.id), pickConfirmation != .saving,
+            pickConfirmation != .outcomeUnknown
+        else { return }
+        pickConfirmation = .saving
+        do {
+            try await picks.confirm(candidate, list, pin)
+            pickConfirmation = .confirmed
+            candidates = .notAsked
+            sessionEvidenceMayHaveChanged()
+        } catch TransportError.coreMutationOutcomeUnknown {
+            pickConfirmation = .outcomeUnknown
+            // If it landed, the core's labels event brings it to the next check.
+            sessionEvidenceMayHaveChanged()
+        } catch {
+            pickConfirmation = .failed(Self.message(for: error))
+        }
+    }
+
+    private static func message(for error: any Error) -> String {
+        if let refusal = error as? HerdrAPIError { return refusal.message }
+        if let failure = error as? TransportError { return failure.presentation.message }
+        return "Heeler couldn't reach this Host. Try again."
+    }
+
+    private func forgetPick() {
+        followsPick = false
+        pickGuardSends = []
+        pickGuardTurnEnd = nil
+    }
+
+    /// A `/` command is the program's to answer, and many never reach a Transcript,
+    /// so it says nothing about which conversation took it.
+    private static func isCommand(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
+    }
+
+    private func notePickGuardActivity(from previous: ChatAgentActivity, to next: ChatAgentActivity) {
+        switch next {
+        case .working, .blocked:
+            pickGuardTurnEnd = nil
+        case .idle:
+            if previous == .working || previous == .blocked, !pickGuardSends.isEmpty { pickGuardTurnEnd = now() }
+        case .unknown:
+            break
+        }
+    }
+
+    /// The send guard: once the Agent's turn has ended and a read has started since,
+    /// a message Chat sent that the bound Transcript still does not hold says the
+    /// pick is wrong, and Chat stops showing it. A message the program put back or
+    /// refused went nowhere, so it proves nothing (ADR 0034).
+    private func judgePickGuard() {
+        guard followsPick, let turnEnd = pickGuardTurnEnd, !pickGuardSends.isEmpty,
+            let read = lastReadStartedAt, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
+        else { return }
+        var missing = false
+        for send in sends where pickGuardSends.contains(send.id) {
+            guard let delivered = send.deliveredAt, delivered <= turnEnd else { continue }
+            pickGuardSends.remove(send.id)
+            switch sendStatuses[send.id] {
+            case .awaiting?, .overdue?, .misdirected?: missing = true
+            default: break
+            }
+        }
+        pickGuardTurnEnd = nil
+        guard missing else { return }
+        // A check on its way read the label as it was.
+        sessionRecordRevision += 1
+        source.picks?.drop()
+        adoptEvidence(.unavailable(.cannotTellSession(program)))
     }
 
     // MARK: Start screen
