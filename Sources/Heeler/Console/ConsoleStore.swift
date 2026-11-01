@@ -114,6 +114,7 @@ final class ConsoleStore {
     /// Writes the widgets' snapshot of those readings. Only the app passes
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
+    @ObservationIgnored private let usageSettings: AgentUsageSettings
     /// Reads made only because a widget's figures went stale, per Host.
     @ObservationIgnored private var widgetUsageRefreshes: [Host.ID: (id: UUID, task: Task<Void, Never>)] = [:]
     /// The catalog in its order, which the widgets' snapshot keeps.
@@ -149,6 +150,7 @@ final class ConsoleStore {
         rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
         usageWidgets: AgentUsageWidgetPublisher? = nil,
+        usageSettings: AgentUsageSettings = AgentUsageSettings(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory(),
         chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = {
@@ -158,6 +160,7 @@ final class ConsoleStore {
         self.chatCache = chatCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
+        self.usageSettings = usageSettings
         self.chatAdapter = chatAdapter
         let terminalBudget = TerminalRetentionBudget()
         terminalConnections = TerminalConnectionPool(budget: terminalBudget)
@@ -1246,9 +1249,32 @@ final class ConsoleStore {
         return store
     }
 
+    /// Whether Usage is on: its tab, its Host section, and its reads.
+    var isUsageEnabled: Bool { usageSettings.isEnabled }
+
+    /// Turning Usage off ends its reads and forgets its figures, here and in
+    /// the widgets. Each Host's Claude Code limits consent stays for when it
+    /// returns, and the widgets read again then if any is installed.
+    func setUsageEnabled(_ enabled: Bool) {
+        guard enabled != isUsageEnabled else { return }
+        usageSettings.setEnabled(enabled)
+        if !enabled {
+            for refresh in widgetUsageRefreshes.values { refresh.task.cancel() }
+            widgetUsageRefreshes.removeAll()
+            for store in agentUsageStores.values { store.invalidate() }
+            agentUsageStores.removeAll()
+        }
+        publishUsageWidgets()
+        refreshStaleWidgetUsage()
+    }
+
     /// Hands every catalog Host's current Usage reading to the widgets.
     private func publishUsageWidgets() {
         guard let usageWidgets else { return }
+        guard isUsageEnabled else {
+            usageWidgets.publishUsageOff(hosts: catalog)
+            return
+        }
         usageWidgets.publish(catalog.map { host in
             let store = agentUsageStores[host.id]
             return AgentUsageWidgetReading(
@@ -1261,7 +1287,7 @@ final class ConsoleStore {
     /// stale, so returning to the app updates the widgets without opening
     /// Usage. Nothing is read while no Usage widget is installed.
     private func refreshStaleWidgetUsage() {
-        guard let usageWidgets, isActive else { return }
+        guard let usageWidgets, isActive, isUsageEnabled else { return }
         let hostIDs = catalog.map(\.id).filter { id in
             hostStatuses[id] == .connected && widgetUsageRefreshes[id] == nil
                 && agentUsageStores[id]?.isLoading != true

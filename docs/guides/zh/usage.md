@@ -35,6 +35,10 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 
 Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limits** 旁的 **Details**，然后打开 **Claude Code limits**。插件会向那台电脑上的 Claude Code 询问你的套餐额度；Heeler 从不经手你的登录信息。
 
+## 关闭 Usage
+
+如果不需要 Usage，在 **Settings** 中关闭 **Usage**。标签页和每台 Host 的 Usage 区块会消失，Heeler 不再从 Host 读取用量，Usage 小组件也会清空数字。随时可以重新打开。
+
 ## 添加 Claude Code Account
 
 如果一台 Host 上同时用着不止一个 Claude Code 订阅，各自从自己的配置目录登录（例如用 `CLAUDE_CONFIG_DIR=~/.claude-2` 启动的 Agent），就把每个目录添加为一个 Account，Usage 会把它们分开统计。Account 需要那台 Host 装有 Heeler 插件 0.8.0 或更新版本；上面的安装命令也能用来更新。
