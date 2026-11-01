@@ -37,6 +37,8 @@ struct HostOnboardingDependencies: Sendable {
     var credentials = HostCredentialsProvider()
     /// An action on a Host's Helper has run, so what follows it should look again.
     var hostHelperDidChange: @MainActor @Sendable () -> Void = {}
+    /// What this device applied, for removing the Helper to undo what goes with it.
+    var harnessEdits: HarnessConfigEditStore?
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -116,6 +118,7 @@ final class HostOnboardingStore {
     @ObservationIgnored private var currentRun = UUID()
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
+    @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
 
     init(
         host: Host,
@@ -129,9 +132,11 @@ final class HostOnboardingStore {
         hostHelperDidChange: @escaping @MainActor () -> Void = {},
         hostHelperHealthGap: @escaping @Sendable () async throws -> Void = {
             try await Task.sleep(for: HostHelperLaunchAgent.healthGap)
-        }
+        },
+        harnessEdits: HarnessConfigEditStore? = nil
     ) {
         self.hostHelperHealthGap = hostHelperHealthGap
+        self.harnessEdits = harnessEdits
         self.coreHolderRestart = coreHolderRestart
         self.sleep = sleep
         self.host = host
@@ -372,7 +377,10 @@ final class HostOnboardingStore {
                         host: host, credentials: try credentials.credentials(for: host),
                         hostKeyPolicy: policy, overlays: overlays))
             },
-            healthGap: hostHelperHealthGap)
+            healthGap: hostHelperHealthGap,
+            undoEdits: { [harnessEdits, hostID = host.id] services in
+                try await harnessEdits?.undoEditsGoingWithTheHelper(on: hostID, over: services)
+            })
         store.onChanged = hostHelperDidChange
         return store
     }

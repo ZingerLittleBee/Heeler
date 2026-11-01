@@ -48,6 +48,7 @@ final class ConsoleStore {
     private(set) var coreStatusExplanations: [ConsoleAgent.ID: HerdrCoreStatusExplanation] = [:]
     /// The harness configuration edits this device applied (ADR 0033).
     let harnessEdits: HarnessConfigEditStore
+    private let openCodePluginBundle: @Sendable () throws -> HostHelperBundle
     private(set) var hostConnectionGenerations: [Host.ID: UInt64] = [:]
     /// Hosts whose current connection has not produced its first snapshot.
     /// Their empty Agent projection is loading state, not proof that a pane
@@ -212,6 +213,7 @@ final class ConsoleStore {
         coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
+        openCodePluginBundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
         coreSendClock: BlockedCardClock = .live,
         coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms,
@@ -225,6 +227,7 @@ final class ConsoleStore {
         self.herdrAppRename = herdrAppRename
         self.coreHostMemory = coreHostMemory
         self.harnessEdits = harnessEdits
+        self.openCodePluginBundle = openCodePluginBundle
         self.chatCache = chatCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
@@ -1911,6 +1914,26 @@ final class ConsoleStore {
             })
     }
 
+    /// The OpenCode edit a Chat that can't bind offers. It keeps to `corePin`, as
+    /// anything a detail does: past that core there is no Agent left to do it for.
+    func openCodePluginEditFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HarnessConfigEditFlow {
+        let hostID = agentID.hostID
+        return HarnessConfigEditFlow(
+            hostID: hostID, editID: OpenCodePluginEdit.id, store: harnessEdits,
+            services: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                guard !self.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                return try await self.harnessEditServices(on: hostID)
+            },
+            makeEdit: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                guard !self.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+                return try await self.openCodePluginEdit(paneID: agentID.paneID, on: hostID)
+            })
+    }
+
     /// A Host detail row's own way to its edit, which can only undo it.
     func harnessEditFlow(for edit: HarnessConfigAppliedEdit, on hostID: Host.ID) -> HarnessConfigEditFlow {
         HarnessConfigEditFlow(
@@ -1943,6 +1966,39 @@ final class ConsoleStore {
             throw HarnessConfigEditError.unresolvedPath
         }
         return GrokBuildProgramStatusEdit.edit(path: path)
+    }
+
+    private func openCodePluginEdit(paneID: String, on hostID: Host.ID) async throws -> HarnessConfigEdit {
+        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
+            throw TransportError.hostFeatureUnavailable(feature: "Editing Host files")
+        }
+        guard let form = OpenCodePluginEdit.ConfigForm.of(version: try await core.probedOpenCodeVersion()) else {
+            throw HarnessConfigEditError.openCodeVersionUnknown
+        }
+        // Only an environment that was read can say a variable is unset.
+        guard let process = core.foregroundProcess(of: paneID) else {
+            throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let services = try await harnessEditServices(on: hostID)
+        let home: String
+        switch await core.processVariable("HOME", pid: process) {
+        case .value(let value): home = value
+        case .unset: home = try await services.hostHomeDirectory()
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let xdgConfigHome: String?
+        switch await core.processVariable("XDG_CONFIG_HOME", pid: process) {
+        case .value(let value): xdgConfigHome = value
+        case .unset: xdgConfigHome = nil
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        guard let directory = OpenCodePluginEdit.configDirectory(xdgConfigHome: xdgConfigHome, home: home) else {
+            throw HarnessConfigEditError.unresolvedPath
+        }
+        return OpenCodePluginEdit.edit(
+            configDirectory: directory,
+            fileName: try await OpenCodePluginEdit.fileName(in: directory, form: form, over: services),
+            form: form, files: try OpenCodePluginEdit.pluginFiles(from: try openCodePluginBundle()))
     }
 
     func chatProgram(for agent: ConsoleAgent, keepingTo corePin: TerminalCorePin? = nil) -> ChatProgram? {

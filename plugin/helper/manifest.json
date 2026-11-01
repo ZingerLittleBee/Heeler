@@ -1,5 +1,5 @@
 {
-  "version": "0.5.1",
+  "version": "0.5.2",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -44,6 +44,18 @@
     {
       "path": "extensions/heeler-session.js",
       "sha256": "a31a9ef002fe0fc7e40440d7aa0a518ae1c11e8566132299ab1ed84513d9deed"
+    },
+    {
+      "path": "extensions/opencode/index.js",
+      "sha256": "90acb9b606b7a75213dda8add2e76db029e6a0dde10d9394a609fa6ca403fcdf"
+    },
+    {
+      "path": "extensions/opencode/package.json",
+      "sha256": "5a065fe7d8eab2a582f428e11c2ea63aaf70607a54f69cfd5c711b5c53d91b32"
+    },
+    {
+      "path": "extensions/opencode/tui.js",
+      "sha256": "2065849c4d6fcfa7924e64ff4f64cc53ef793d8e97e79de19a40be6268b2fb0e"
     },
     {
       "path": "main.js",
@@ -207,7 +219,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "2744011faa63cd904b88ea9f1e1088432deca42328da05c34b0f89252f2aadf8"
+      "sha256": "5ac6b1889d083e426c0a6868c0088f1746c87970de4b72c3f2489912c50cdd4d"
     }
   ]
 }

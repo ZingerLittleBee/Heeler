@@ -137,6 +137,12 @@ extension ChatUnavailableReason {
         }
     }
 
+    /// A core's OpenCode with no id of Heeler's: the plugin is what names its session
+    /// (ADR 0033). Nothing on Herdr TUI reads this reason, where herdr reports it.
+    var offersOpenCodePluginEdit: Bool {
+        self == .cannotTellSession(.opencode)
+    }
+
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
@@ -421,7 +427,7 @@ extension ChatProgram {
         case .grok:
             "Grok Build lists its conversation while it runs. After /new it lists both, so Chat can't tell until you start Grok Build again."
         case .opencode:
-            "OpenCode shows its conversation only when Heeler starts OpenCode 2.1 or later from New Agent."
+            "OpenCode shows its conversation when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration."
         case .claude, .pi, .omp:
             "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal."
         }
@@ -439,6 +445,8 @@ struct ChatUnavailableView: View {
     let retry: () -> Void
     let showAgentTerminal: () -> Void
     var chooseConversation: (() -> Void)?
+    /// Opens the one configuration edit that can settle this reason.
+    var reviewEdit: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -450,6 +458,15 @@ struct ChatUnavailableView: View {
                 Button(ChatCandidatePickerView.title, action: chooseConversation)
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("chat.chooseConversation")
+            }
+            if let reviewEdit, reason.offersOpenCodePluginEdit {
+                let edit = Button("Let Chat Follow OpenCode…", action: reviewEdit)
+                    .accessibilityIdentifier("chat.unavailable.openCodeEdit")
+                if chooseConversation == nil {
+                    edit.buttonStyle(.borderedProminent)
+                } else {
+                    edit.buttonStyle(.bordered)
+                }
             }
             Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
                 .buttonStyle(.bordered)

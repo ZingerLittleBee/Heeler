@@ -203,6 +203,8 @@ expect_helper_only_change_publishes_nothing() {
 mkdir -p plugin/helper/extensions
 echo 'export const helper = 1;' > plugin/helper/index.js
 echo '// extension' > plugin/helper/extensions/pi.js
+mkdir -p plugin/helper/extensions/opencode
+echo '// OpenCode plugin' > plugin/helper/extensions/opencode/tui.js
 git add plugin/helper
 git commit --quiet --message "add the Host Helper"
 git push --quiet origin main

@@ -369,9 +369,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             update(terminal) { $0.turn = turn }
             noteTurns(of: terminal) { state, _ in state.noteTurn(turn) }
         case .labels(let terminal, let labels):
-            let before = self.records.first { $0.address == terminal }?.labels ?? [:]
+            // A plugin names a new conversation with no other event: OpenCode 1.x
+            // reports no status at all. A choice made on another device has none either.
+            let held = records.first { $0.address == terminal }?.labels
             let names = [HerdrCoreSessionHint.sessionLabel, HerdrCoreSessionHint.pickLabel]
-            if names.contains(where: { before[$0] != labels[$0] }) { sessionEventCounts[terminal, default: 0] += 1 }
+            if names.contains(where: { held?[$0] != labels[$0] }) {
+                sessionEventCounts[terminal, default: 0] += 1
+            }
             update(terminal) { $0.labels = labels }
             sidebarRevision &+= 1
         case .keep(let terminal, let keep):
@@ -703,6 +707,19 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
         openCodeVersion = installed.openCodeVersion
         return installed.kinds
+    }
+
+    /// OpenCode's own words for its version, asked of the Host when nothing has yet.
+    func probedOpenCodeVersion() async throws -> String? {
+        if let openCodeVersion { return openCodeVersion }
+        _ = try await availableAgentKinds()
+        return openCodeVersion
+    }
+
+    /// The process whose environment says where this Terminal's program keeps its
+    /// configuration.
+    func foregroundProcess(of paneID: String) -> Int? {
+        terminalRecord(at: paneID)?.foreground?.pid
     }
 
     func availableTemplates() async throws -> [AgentTemplate] {

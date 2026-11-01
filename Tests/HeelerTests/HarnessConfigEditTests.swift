@@ -201,7 +201,7 @@ import Testing
         let done = HarnessConfigEdit(id: "a", harness: "Tool", path: Self.path) { _ in .alreadyApplied }
         let no = HarnessConfigEdit(id: "a", harness: "Tool", path: Self.path) { _ in .refused(reason: "No.") }
         #expect(try await editor.propose(done) == .alreadyApplied(path: Self.path))
-        #expect(try await editor.propose(no) == .refused(path: Self.path, reason: "No."))
+        #expect(try await editor.propose(no) == .refused(path: Self.path, reason: "No.", manualInstruction: nil))
     }
 
     @Test func aFilePastTheLimitIsRefused() async throws {

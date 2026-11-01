@@ -15,7 +15,8 @@ enum GrokBuildProgramStatusEdit {
     static let manualInstruction = #"Add program_status = "on" under [ui.notifications] in Grok Build's config.toml."#
 
     static func edit(path: String) -> HarnessConfigEdit {
-        HarnessConfigEdit(id: id, harness: harness, path: path, transform: transform)
+        HarnessConfigEdit(
+            id: id, harness: harness, path: path, transform: transform, manualInstruction: manualInstruction)
     }
 
     /// `$GROK_HOME/config.toml`, by default `~/.grok/config.toml`. Nil when the

@@ -56,6 +56,7 @@ struct AgentChatSurfaceView: View {
     @State private var collapseControlHeight: CGFloat = 0
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var isConfirmingClose = false
+    @State private var openCodeEditFlow: HarnessConfigEditFlow?
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
@@ -614,7 +615,11 @@ struct AgentChatSurfaceView: View {
                 reason: reason, launchNotice: chat?.launchNotice,
                 retry: { chat?.retry() },
                 showAgentTerminal: { showAgentTerminal() },
-                chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil)
+                chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
+                reviewEdit: { openCodeEditFlow = console.openCodePluginEditFlow(for: agent.id, keepingTo: session.corePin) })
+            .sheet(item: $openCodeEditFlow) { flow in
+                OpenCodePluginEditSheet(flow: flow)
+            }
         case .disconnected:
             ContentUnavailableView(
                 "Not Connected", systemImage: "wifi.slash",

@@ -206,6 +206,28 @@ account.
 | Symlink | Make the file a symlink and repeat Apply and Undo | It stays a symlink, and the target takes the change |
 | Others untouched | Compare Claude Code's settings, Codex's hooks and `~/.grok`'s global hooks before and after | No change |
 
+### OpenCode edit
+
+Run this once with OpenCode 1.x and once with 2.x, each signed in with the lab's account, with Chat on for OpenCode in the build. Save a copy of `~/.config/opencode` first, or note that it is absent. Take a zoomed screenshot of each sheet.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Offer | Start `opencode` by hand, and on 2.x also with `hc run` and from a Template, then open Chat | **Can't Tell the Conversation** with **Let Chat Follow OpenCode…**, and nothing has changed on the Host |
+| Shown change | Tap it, then **Review the Change** | The file (`tui.json` or `tui.jsonc` on 1.x, `cli.json` on 2.x), the one line `"./heeler-opencode"`, the folder and its three files. Still nothing has changed |
+| Changed under it | Add a comment to the file on the box, then tap **Apply This Change** | **The file changed after Heeler read it, so nothing was written**, no folder appeared, and the file keeps your comment. Remove it, and tap **OK** |
+| Apply | Review again and tap **Apply This Change** | `diff` against the saved copy shows the one entry and the folder, and no `.heeler-` file is left beside them |
+| Binds | Quit OpenCode, start it again the same way, and open a conversation | The label `heeler.session` names it with the process's pid and start, and Chat binds. On 1.x record whether Chat reads the store or says it keeps the 1.x format |
+| `/new` | Run `/new` and send a prompt, then pick the first conversation in OpenCode's list | A new label each time, and Chat follows |
+| Wrong list | Record in [the compatibility notes](../agents/herdr-compatibility.md) the plugin list's form on each release you ran | Provisional from source until this step |
+| Host detail | Open the Host's detail | **Harness Edits** lists OpenCode with the same lines, the folder and **Undo** |
+| Undo | Tap **Undo** there | The file matches the saved copy byte for byte, or is gone again if it was absent, the folder is gone, and the row goes |
+| Undo a changed file | Apply again, change another setting in the file, and tap **Undo** | The entry goes, your setting stays, and the folder is gone |
+| Apply again | Apply once more | The same change as the first |
+| Remove the Helper | With the edit applied, remove the Host Helper | The service stops, its listed files and folders go, the entry and then the folder go, and then the Helper's directory. `diff -r` against the saved copy is clean, and the row goes |
+| No edit | Install the Helper and remove it with no edit applied | No OpenCode file is touched |
+| Others untouched | Compare `opencode.json` and every other OpenCode setting before and after | No change |
+| Herdr TUI | Open Chat for OpenCode on a Herdr TUI Host | Its session comes from herdr, with no offer |
+
 ## Composer Send
 
 `composerPasteThenSubmit` holds the bytes against a stub on the scripted check's real
@@ -541,7 +563,7 @@ besides the default (`omp --profile work` makes one).
 | Slow socket | Start Pi in a core Terminal with `HC_TERMINAL_SOCKET` pointing at a socket that accepts and never answers | Pi starts as usual, with no delay and no message on screen |
 | Pi status | Run Pi 1.0.4 and Pi 1.4.0 in core Terminals through a prompt | 1.0.4 reports idle, working and done through the extension, with an intact screen during the run, which the spike could not test without a model. 1.4.0 reports for itself, and `app=pi` reports do not double |
 | New profile | Make another Oh My Pi profile, then check the Host | The row still reads the version, and the sheet offers **Repair**, which adds that profile's file and touches no other file of the Helper |
-| Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, no `heeler-session.js` is left, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched |
+| Remove | Tap **Remove** and confirm | The unit is gone and inactive, the Helper directory and every folder the install created are gone, no `heeler-session.js` is left, and the saved listing matches again. Linger stays on, and the Grok Build setting is untouched. For an applied OpenCode edit, see [OpenCode edit](#opencode-edit) |
 
 Every step must leave the core as it found it: the Helper only ever follows a core,
 and never starts one. The extensions only ever write the one label on their own
