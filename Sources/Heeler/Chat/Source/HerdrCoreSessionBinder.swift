@@ -84,6 +84,12 @@ struct HerdrCoreSessionBinder: Sendable {
     /// processes go by their image's name (herdr compatibility). Only the programs in
     /// `HostCapabilities.windowsCoreChatCandidates` are checked there.
     var isOnWindows = false
+    /// A macOS Host, where Grok Build's start, Oh My Pi's terminal name and a Terminal
+    /// that runs one of Apple's own binaries each read differently (herdr compatibility).
+    var isOnMacOS = false
+    /// The programs a macOS Host binds exactly. Any other reads as cannot tell there,
+    /// which leaves it to the candidate list and one confirmation.
+    var macOSExactPrograms = HostCapabilities.macOSExactCoreChatPrograms
 
     /// What an npm install runs as on Windows, where a program cannot retitle itself.
     static let windowsRuntimes: Set<String> = ["node", "bun"]
@@ -100,15 +106,31 @@ struct HerdrCoreSessionBinder: Sendable {
         guard let tree = try await readTerminalProcesses(of: record, ask: processAsk) else {
             return await evidenceWithoutProcesses(in: record)
         }
-        let evidence: ChatSessionEvidence =
-            switch program {
-            case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)
-            case .codex: try await checkCodex(record, tree: tree)
-            case .grok: try await checkGrokBuild(tree)
-            case .opencode: try await checkOpenCode(record, tree: tree)
-            case .pi, .omp: try await checkPiFamily(record, tree: tree)
-            }
+        let evidence: ChatSessionEvidence
+        if isOnMacOS, !macOSExactPrograms.contains(program) {
+            evidence = try await evidenceOfAnUnconfirmedProgram(record, tree: tree)
+        } else {
+            evidence =
+                switch program {
+                case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)
+                case .codex: try await checkCodex(record, tree: tree)
+                case .grok: try await checkGrokBuild(tree)
+                case .opencode: try await checkOpenCode(record, tree: tree)
+                case .pi, .omp: try await checkPiFamily(record, tree: tree)
+                }
+        }
         return await applyingPick(to: evidence, record: record, tree: tree)
+    }
+
+    /// Nothing binds exactly, and a Codex on the shared daemon still gets only its
+    /// message, because a confirmation could not hold there either (ADR 0034).
+    private func evidenceOfAnUnconfirmedProgram(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
+    ) async throws -> ChatSessionEvidence {
+        guard program == .codex, let pid = codexAgent(in: tree), let process = tree.facts[pid],
+            try await isCodexOnSharedDaemon(record, tree: tree, process: process)
+        else { return cannotTell }
+        return .unavailable(.codexSharedDaemon)
     }
 
     var cannotTell: ChatSessionEvidence {
@@ -204,7 +226,11 @@ struct HerdrCoreSessionBinder: Sendable {
     // MARK: Process
 
     /// One exec's facts about a Terminal: its own process and the foreground's
-    /// descendants. Nil when it shows no scope to follow.
+    /// descendants. Nil when it shows no scope to follow, which on macOS takes more:
+    /// the Terminal's own process is usually `/bin/zsh`, whose environment macOS
+    /// withholds, so the foreground's scope stands in for it. With both withheld, a
+    /// walk that answered still says which processes are there, and no process is the
+    /// Agent (herdr compatibility).
     func readTerminalProcesses(
         of record: HerdrCoreTerminalRecord, ask: ProcessAsk
     ) async throws -> HerdrCoreTerminalProcesses? {
@@ -220,9 +246,16 @@ struct HerdrCoreSessionBinder: Sendable {
             argumentsAmong: ask.arguments,
             descendantsOf: root)
         let facts = try await processes(request)
-        guard case .value(let scope)? = facts[String(terminalPid)]?.variables[scopeVariable], !scope.isEmpty
-        else { return nil }
-        return HerdrCoreTerminalProcesses(facts: facts, root: root, scope: scope)
+        func scope(of pid: String) -> String? {
+            guard case .value(let scope)? = facts[pid]?.variables[scopeVariable], !scope.isEmpty else { return nil }
+            return scope
+        }
+        if let scope = scope(of: String(terminalPid)) {
+            return HerdrCoreTerminalProcesses(facts: facts, root: root, scope: scope)
+        }
+        guard isOnMacOS, facts[String(terminalPid)]?.variables[scopeVariable] == .unavailable else { return nil }
+        let tree = HerdrCoreTerminalProcesses(facts: facts, root: root, scope: scope(of: root))
+        return tree.scope != nil || tree.walkAnswered ? tree : nil
     }
 
     private static func isToolOfClaudeCode(_ process: HostProcessReader.Facts?) -> Bool {
@@ -308,7 +341,14 @@ struct HerdrCoreTerminalProcesses: Sendable {
 
     let facts: [String: HostProcessReader.Facts]
     let root: String
-    let scope: String
+    /// Nil when macOS withheld every process that could say it, so none is the Agent.
+    let scope: String?
+
+    /// Whether this process is in the Terminal, as far as its environment says.
+    func sharesScope(_ pid: String) -> Bool {
+        guard let scope else { return false }
+        return facts[pid]?.variables[Self.scopeVariable] == .value(scope)
+    }
 
     /// On Windows the foreground is the Terminal's PowerShell, which is never the
     /// Agent, and a program under npm goes by its runtime's image. So: the nearest
@@ -353,9 +393,6 @@ struct HerdrCoreTerminalProcesses: Sendable {
         isTool: (HostProcessReader.Facts?) -> Bool = { _ in false },
         skips: (HostProcessReader.Facts?) -> Bool = { _ in false }
     ) -> String? {
-        func sharesScope(_ pid: String) -> Bool {
-            facts[pid]?.variables[Self.scopeVariable] == .value(scope)
-        }
         guard sharesScope(root) else { return nil }
         var children: [String: [String]] = [:]
         for pid in descendants where sharesScope(pid) && !skips(facts[pid]) {

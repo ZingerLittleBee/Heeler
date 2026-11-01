@@ -1030,6 +1030,28 @@ class MacOSReadTests(ReaderTestCase):
                 self.assertNotEqual(facts[child]["start"], "unavailable")
         self.for_each_shell(check)
 
+    def test_a_check_of_a_tree_carries_only_the_named_variables(self) -> None:
+        # What a check of an Agent asks: the Terminal, the walk and every process
+        # under it. Its environment holds HERDR_* and what nothing asked for.
+        root, children = self.tree(f"{self.sleep} 300")
+
+        def check(shell: list[str]) -> None:
+            request = {
+                "pids": [root], "start": True, "values": ["HC_SCOPE", "NAMED"], "names": ["TMUX"],
+                "files": True, "arguments": ["--managed-daemon"], "descendants": root, "macOS": True,
+            }
+            raw = self.run_script(shell, **request)
+            facts = self.parse(raw, **request)
+            self.assertEqual(facts[children[0]]["variables"], {
+                "HC_SCOPE": "unset", "NAMED": {"value": self.ENV["NAMED"]}})
+            self.assertEqual(facts[children[0]]["names"], ["TMUX"])
+            printed = {line.split(" ")[2] for line in raw.splitlines() if line.startswith("V ")}
+            self.assertEqual(printed, {"NAMED"})
+            for word in (b"sekrit", b"NOT_ASKED", b"HERDR_", b"/run/herdr.sock", b"/tmp/tmux-sock", b"/usr/bin:/bin"):
+                self.assertNotIn(word, raw.encode())
+                self.assertNotIn(word.hex().encode(), raw.encode())
+        self.for_each_shell(check)
+
     def test_a_walk_with_no_children_answers_an_empty_tree(self) -> None:
         pid = self.start()
 

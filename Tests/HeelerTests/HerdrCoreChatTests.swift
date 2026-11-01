@@ -217,10 +217,9 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
-    @Test(arguments: ["Darwin", "FreeBSD"])
-    func chatStaysOffOnOtherKernels(_ kernel: String) async throws {
+    @Test func chatStaysOffOnOtherKernels() async throws {
         let rig = Rig(host: host)
-        try await rig.start(kernel: kernel)
+        try await rig.start(kernel: "FreeBSD")
 
         #expect(rig.store.chatProgram(for: try #require(rig.agent)) == nil)
         #expect(rig.store.chatStore(for: try #require(rig.agent), program: .claude) == nil)
@@ -245,12 +244,14 @@ struct HerdrCoreChatTests {
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix).chat)
         #expect(!HostCapabilities(serverKind: .herdrCore, coreKernel: "Linux").chat)
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Linux").chat)
-        #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Darwin").chat)
-        let linux = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux")
-        #expect(linux.chat)
-        for program in ChatProgram.allCases {
-            #expect(linux.offersChat(for: program) == (program == .claude))
-            #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: program))
+        #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "FreeBSD").chat)
+        for kernel in ["Linux", "Darwin"] {
+            let capabilities = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)
+            #expect(capabilities.chat)
+            for program in ChatProgram.allCases {
+                #expect(capabilities.offersChat(for: program) == (program == .claude))
+                #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: program))
+            }
         }
     }
 

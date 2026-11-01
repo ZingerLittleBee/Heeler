@@ -169,6 +169,21 @@ struct HostProcessReaderTests {
         #expect(script.contains("\n*)\ns() { printf 'S %s -\\n' \"$1\"; }\n"))
     }
 
+    /// Against `calendar.timegm`.
+    @Test(arguments: [
+        ("Sun Nov  1 22:42:20 2026", Int64(1_793_572_940)),
+        ("Tue Feb 29 00:00:00 2028", 1_835_395_200),
+        ("Sun Jan 31 23:59:59 2027", 1_801_439_999),
+    ])
+    func aMacOSStartReadsAsTheSecondsItSays(_ start: String, _ seconds: Int64) {
+        #expect(HostProcessReader.macOSStartSeconds(start) == seconds)
+    }
+
+    @Test(arguments: ["145585", "", "Sun Xxx  1 22:42:20 2026", "Sun Nov  1 22:42 2026", "Sun Feb 31 22:42:20 2026"])
+    func anythingElseReadsAsNoStart(_ start: String) {
+        #expect(HostProcessReader.macOSStartSeconds(start) == nil)
+    }
+
     @Test func theMacOSFormUsesOnlyTheRecordedMethods() throws {
         let script = String(
             decoding: try HostProcessReader.script(

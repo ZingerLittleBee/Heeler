@@ -80,8 +80,9 @@ enum HostProcessReader {
         var parent: String?
         var name: String?
         /// On the walk's root: everything under it, each with its own facts.
-        /// Unavailable on a platform with no recorded method, or past the cap,
-        /// where part of a tree could hide the process a caller looks for.
+        /// Unavailable on a platform with no recorded method, past the cap, where
+        /// part of a tree could hide the process a caller looks for, or when nothing
+        /// could be listed. So a process it leaves out is not there.
         var descendants: Reading<[String]> = .unavailable
     }
 
@@ -287,10 +288,11 @@ enum HostProcessReader {
         ]
     }
 
-    /// Only the methods the macOS spike confirmed; herdr compatibility records
+    /// Only the methods the macOS recordings confirmed; herdr compatibility records
     /// each one with its macOS version. `ps -o lstart=` for the start,
     /// `KERN_PROCARGS2` through `/usr/bin/perl` for variables (`ps -E` cannot
-    /// frame a value holding a space), `lsof -F` for descriptors. macOS
+    /// frame a value holding a space) and arguments, `lsof -F` for descriptors,
+    /// `ps -ax` for the walk, whose `W ok` says the tree is whole. macOS
     /// withholds a platform binary's environment and ends the buffer there, so
     /// no entries read as unavailable, as an empty read does on Linux. Anywhere
     /// else dyld's own `apple` strings follow the environment, so an empty
@@ -580,6 +582,25 @@ enum HostProcessReader {
         case UInt8(ascii: "a")...UInt8(ascii: "f"): byte - UInt8(ascii: "a") + 10
         default: nil
         }
+    }
+
+    /// The whole seconds since the epoch of a macOS start, which the script reads in
+    /// UTC. `Sun Nov  1 22:42:20 2026` is 1793572940. Nil for any other form, such as
+    /// Linux's clock ticks.
+    static func macOSStartSeconds(_ start: String) -> Int64? {
+        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        let parts = start.split(separator: " ")
+        guard parts.count == 5, let month = months.firstIndex(of: String(parts[1])), let day = Int(parts[2]),
+            let year = Int(parts[4])
+        else { return nil }
+        let time = parts[3].split(separator: ":").compactMap { Int($0) }
+        guard time.count == 3 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        let components = DateComponents(
+            year: year, month: month + 1, day: day, hour: time[0], minute: time[1], second: time[2])
+        guard components.isValidDate(in: calendar), let date = calendar.date(from: components) else { return nil }
+        return Int64(date.timeIntervalSince1970)
     }
 
     /// Clock ticks from Linux's stat, or `ps -o lstart=` from macOS with the

@@ -1533,7 +1533,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             isDroppedPick: { value in
                 await self.droppedPicks[paneID]?.contains(value) ?? false
             },
-            isOnWindows: kernel == HerdrCoreLocator.windowsKernel)
+            isOnWindows: kernel == HerdrCoreLocator.windowsKernel,
+            isOnMacOS: kernel == HerdrCoreLocator.macOSKernel)
     }
 
     /// What the user could confirm for this Agent, on request (ADR 0034).
