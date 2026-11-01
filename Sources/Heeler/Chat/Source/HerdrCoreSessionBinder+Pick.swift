@@ -35,7 +35,7 @@ extension HerdrCoreSessionBinder {
         else { return await dropped() }
         guard let agent = agentProcess(in: tree) else {
             // Its process is still there, and which one is the Agent cannot be said.
-            return evidence
+            return unconfirmed(evidence)
         }
         guard agent == String(hint.pid), let process = tree.facts[agent] else { return await dropped() }
         // A session label from this very process is the program saying it moved.
@@ -47,8 +47,21 @@ extension HerdrCoreSessionBinder {
         guard evidence == cannotTell else { return await dropped() }
         guard let conversation = pickedConversation(hint) else { return await dropped() }
         let root = transcriptRoot(of: process)
-        guard root != nil || program == .opencode else { return evidence }
+        guard root != nil || program == .opencode else { return unconfirmed(evidence) }
         return .picked(sessionID: conversation, transcriptRoot: root)
+    }
+
+    /// What a check says with no processes to read: a pick label still there stands
+    /// until a check can hold it against them.
+    func evidenceWithoutProcesses(in record: HerdrCoreTerminalRecord) async -> ChatSessionEvidence {
+        let labels = await currentLabels() ?? record.labels
+        guard let value = labels[HerdrCoreSessionHint.pickLabel], await !isDroppedPick(value) else { return cannotTell }
+        return unconfirmed(cannotTell)
+    }
+
+    private func unconfirmed(_ evidence: ChatSessionEvidence) -> ChatSessionEvidence {
+        guard case .unavailable(let reason) = evidence else { return evidence }
+        return .pickUnconfirmed(reason)
     }
 
     /// The id or file the label names, in the form this program's Chat reads it.

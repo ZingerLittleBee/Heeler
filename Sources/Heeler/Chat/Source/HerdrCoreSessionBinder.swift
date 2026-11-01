@@ -10,6 +10,11 @@ enum ChatSessionEvidence: Equatable, Sendable {
     /// The user confirmed this conversation from candidates, with nothing on the
     /// Host showing it, so a send guard watches it.
     case picked(sessionID: String, transcriptRoot: String?)
+    /// A pick's label stands, and this check could not see the process to hold it
+    /// against. Nothing says the pick is wrong, so a Chat following it keeps the
+    /// conversation and sends nothing until a check can say.
+    case pickUnconfirmed(ChatUnavailableReason)
+    /// A Chat following a pick takes this as the pick's end.
     case unavailable(ChatUnavailableReason)
 }
 
@@ -85,7 +90,9 @@ struct HerdrCoreSessionBinder: Sendable {
     /// `coreCarries` is what the core's own environment holds, from the Host's
     /// leak check, so a reason can point at the Host notice.
     func check(_ record: HerdrCoreTerminalRecord, coreCarries: Set<String> = []) async throws -> ChatSessionEvidence {
-        guard let tree = try await readTerminalProcesses(of: record, ask: processAsk) else { return cannotTell }
+        guard let tree = try await readTerminalProcesses(of: record, ask: processAsk) else {
+            return await evidenceWithoutProcesses(in: record)
+        }
         let evidence: ChatSessionEvidence =
             switch program {
             case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)

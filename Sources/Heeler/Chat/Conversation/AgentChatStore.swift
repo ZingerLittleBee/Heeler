@@ -873,7 +873,7 @@ final class AgentChatStore {
         await checkSendWitnesses()
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         judgePickGuard()
-        guard !isAwaitingSession else { return }
+        guard engine === self.engine, !isAwaitingSession else { return }
         // A journal read adds a deadline of its own, so a round whose
         // transcript read failed leaves the journals for later.
         if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
@@ -1102,17 +1102,31 @@ final class AgentChatStore {
             followsPick = true
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
         case .unavailable(let reason):
+            let leavesPick = followsPick
             forgetPick()
             evidenceReason = reason
-            guard resolution == .noSession else {
-                adopt(.noSession)
-                return
-            }
-            if isAwaitingSession {
-                conversation.phase = .unavailable(reason)
+            if leavesPick {
+                leavePickedConversation()
             } else {
-                showUnavailable()
+                awaitSession(reason)
             }
+        case .pickUnconfirmed(let reason):
+            evidenceReason = reason
+            awaitSession(reason)
+        }
+    }
+
+    /// Nothing the check found names a session. Whatever Chat has been showing stays
+    /// readable (`isAwaitingSession`).
+    private func awaitSession(_ reason: ChatUnavailableReason) {
+        guard resolution == .noSession else {
+            adopt(.noSession)
+            return
+        }
+        if isAwaitingSession {
+            conversation.phase = .unavailable(reason)
+        } else {
+            showUnavailable()
         }
     }
 
@@ -1409,6 +1423,16 @@ final class AgentChatStore {
         pickGuardTurnEnd = nil
     }
 
+    /// The pick was all that said this is the Agent's conversation, and it no longer
+    /// stands. An exact binding that goes quiet keeps its last document readable, since
+    /// nothing says it was wrong. This one was only ever the user's word, so nothing
+    /// of it stays on screen (ADR 0034).
+    private func leavePickedConversation() {
+        resolution = .noSession
+        continuedSession = nil
+        followReference()
+    }
+
     /// A `/` command is the program's to answer, and many never reach a Transcript,
     /// so it says nothing about which conversation took it.
     private static func isCommand(_ text: String) -> Bool {
@@ -1581,8 +1605,11 @@ final class AgentChatStore {
         adoptEvidence(evidence)
         if resolution != before { wake() }
         let name = program.chatName
-        if case .unavailable = evidence {
+        switch evidence {
+        case .unavailable, .pickUnconfirmed:
             return "Heeler can't tell which conversation \(name) shows, so it sent nothing."
+        case .bound, .picked:
+            break
         }
         if followed != shown {
             return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."

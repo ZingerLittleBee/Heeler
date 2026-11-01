@@ -133,7 +133,10 @@ struct HerdrCoreChatPickTests {
         let host: Host
         let program: ChatProgram
 
-        init(host: Host, program: ChatProgram, record: JSONValue, openCodeStore: PickOpenCodeStore? = nil) {
+        init(
+            host: Host, program: ChatProgram, record: JSONValue, openCodeStore: PickOpenCodeStore? = nil,
+            echoTimeout: TimeInterval? = nil
+        ) {
             self.host = host
             self.program = program
             let result = JSONValue.object(["seq": .number(1), "terminals": .array([record]), "channel": .number(1)])
@@ -146,6 +149,7 @@ struct HerdrCoreChatPickTests {
             timing.idleInterval = .milliseconds(20)
             timing.queryActiveInterval = .milliseconds(20)
             timing.pickGuardSettle = 0.05
+            if let echoTimeout { timing.echoTimeout = echoTimeout }
             store = ConsoleStore(
                 chatCache: VolatileChatTranscriptCache(),
                 makeSession: { _, subscriptions in
@@ -193,6 +197,20 @@ struct HerdrCoreChatPickTests {
                 "Chat to say it cannot tell", { chat.conversation.phase == cannotTell }, sourceLocation: sourceLocation)
         }
 
+        /// Chat says it cannot tell in place of the conversation: none of the dropped
+        /// pick's rows are left to read, and the fix is on offer.
+        func expectLeftConversation(_ chat: AgentChatStore, sourceLocation: SourceLocation = #_sourceLocation) {
+            let reason = ChatUnavailableReason.cannotTellSession(program)
+            #expect(chat.conversation.phase == .unavailable(reason), sourceLocation: sourceLocation)
+            #expect(chat.conversation.transcript.entries.isEmpty, sourceLocation: sourceLocation)
+            #expect(!chat.conversation.isFromCache, sourceLocation: sourceLocation)
+            #expect(
+                ChatSurfacePresentation(conversation: chat.conversation, hasPendingEchoes: false, isHostConnected: true)
+                    == .unavailable(reason),
+                sourceLocation: sourceLocation)
+            #expect(chat.offersCandidates, sourceLocation: sourceLocation)
+        }
+
         /// The value of each write of the pick label, oldest first.
         var pickWrites: [String] {
             get async {
@@ -201,6 +219,28 @@ struct HerdrCoreChatPickTests {
         }
 
         var turnPhaseSequence = 10
+
+        /// The Terminal's own process goes out of sight and back, as an exec that shows
+        /// no scope does, with the pick's process and label where they were.
+        func hideTerminalProcess() async {
+            await transport.processTable.remove(HerdrCoreChatPickTests.shell)
+        }
+
+        func showTerminalProcess() async {
+            await transport.processTable.add(
+                ScriptedProcessTable.Process(
+                    pid: HerdrCoreChatPickTests.shell, name: "bash", start: "1", environment: ["HC_SCOPE": "scope"]))
+        }
+
+        /// An event that asks Chat to check the process again, naming the one it has.
+        func nudgeCheck() async {
+            turnPhaseSequence += 1
+            await transport.deliver(
+                HerdrCoreChatPickTests.event(
+                    sequence: turnPhaseSequence, type: "foreground",
+                    data: HerdrCoreChatPickTests.foreground(
+                        argv: [.string(program.rawValue)], name: program.rawValue, pid: HerdrCoreChatPickTests.pid)))
+        }
 
         /// One turn, as the core reports it.
         func runTurn(whileWorking: () async throws -> Void = {}) async throws {
@@ -240,10 +280,12 @@ struct HerdrCoreChatPickTests {
     }
 
     /// Candidates on disk and under the process, for an Agent no row matches.
-    private func grokRig(labels: [String: String] = [:], children: [String] = [grokChild]) async throws -> Rig {
+    private func grokRig(
+        labels: [String: String] = [:], children: [String] = [grokChild], echoTimeout: TimeInterval? = nil
+    ) async throws -> Rig {
         let rig = Rig(
             host: host, program: .grok,
-            record: Self.record(.grok, app: "grok-build", labels: labels, children: children))
+            record: Self.record(.grok, app: "grok-build", labels: labels, children: children), echoTimeout: echoTimeout)
         await rig.files.write(
             #"[{"session_id":"\#(Self.grokRecent)","pid":9,"pid_start":1,"cwd":"/work/app"}]"#,
             at: "\(Self.home)/.grok/active_sessions.json")
@@ -619,8 +661,11 @@ struct HerdrCoreChatPickTests {
             chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
         }
 
+        try await rig.waitUntil("its rows") { !chat.conversation.transcript.entries.isEmpty }
+
         await rig.transport.deliver(Self.labelsEvent(sequence: 3, labels: [:]))
         try await rig.waitUntilCannotTell(chat)
+        rig.expectLeftConversation(chat)
         chat.end()
         rig.store.setHosts([])
     }
@@ -643,14 +688,17 @@ struct HerdrCoreChatPickTests {
 
     // MARK: Dropping
 
-    private func following(labels: [String: String] = [:]) async throws -> (Rig, AgentChatStore) {
+    private func following(
+        labels: [String: String] = [:], echoTimeout: TimeInterval? = nil
+    ) async throws -> (Rig, AgentChatStore) {
         let label = Self.pickLabel(session: Self.grokHeld)
-        let rig = try await grokRig(labels: labels.merging(["heeler.chat": label]) { $1 })
+        let rig = try await grokRig(labels: labels.merging(["heeler.chat": label]) { $1 }, echoTimeout: echoTimeout)
         let chat = try rig.chat()
         chat.show()
         try await rig.waitUntil("Chat to follow it") {
             chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
         }
+        try await rig.waitUntil("its rows") { !chat.conversation.transcript.entries.isEmpty }
         return (rig, chat)
     }
 
@@ -673,6 +721,7 @@ struct HerdrCoreChatPickTests {
                 data: Self.foreground(argv: [.string("grok")], name: "grok", pid: pid)))
 
         try await rig.waitUntilCannotTell(chat)
+        rig.expectLeftConversation(chat)
         try await Self.waitForClear(rig)
         chat.end()
         rig.store.setHosts([])
@@ -687,6 +736,7 @@ struct HerdrCoreChatPickTests {
             Self.labelsEvent(sequence: 2, labels: ["heeler.chat": label, "heeler.session": session]))
 
         try await rig.waitUntilCannotTell(chat)
+        rig.expectLeftConversation(chat)
         try await Self.waitForClear(rig)
         chat.end()
         rig.store.setHosts([])
@@ -706,9 +756,29 @@ struct HerdrCoreChatPickTests {
         }
 
         try await rig.waitUntilCannotTell(chat)
+        rig.expectLeftConversation(chat)
         try await Self.waitForClear(rig)
         // Nothing is left that claims a conversation.
         #expect(await chat.confirmSessionBeforeSend() != nil)
+        try await Task.sleep(for: .milliseconds(100))
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// The message the guard judged stays as an echo only until its clock runs out,
+    /// and then nothing holds a timeline up over the reason.
+    @Test func aMissingMessageLeavesNoTimelineOnceItsEchoEnds() async throws {
+        let (rig, chat) = try await following(echoTimeout: 0.3)
+        let id = UUID()
+        chat.updateSends([Self.sent(id, "this never reaches the bound conversation", delivered: false)])
+        chat.updateSends([Self.sent(id, "this never reaches the bound conversation")])
+
+        try await rig.runTurn()
+        try await rig.waitUntilCannotTell(chat)
+        try await rig.waitUntil("the echo to end") { chat.sendStatuses[id] == .abandoned }
+
+        rig.expectLeftConversation(chat)
         chat.end()
         rig.store.setHosts([])
     }
@@ -763,7 +833,75 @@ struct HerdrCoreChatPickTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(await rig.pickWrites.dropFirst(attempts).first == "")
-        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.grok)))
+        rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A check that sees no process to hold the pick against says nothing about the
+    /// pick: the conversation stays readable, and sending waits for a check that can say.
+    @Test func aCheckThatCannotSeeTheProcessKeepsThePick() async throws {
+        let (rig, chat) = try await following()
+        let shown = chat.conversation.transcript.entries
+
+        await rig.hideTerminalProcess()
+        await rig.nudgeCheck()
+        try await rig.waitUntilCannotTell(chat)
+
+        #expect(chat.conversation.transcript.entries == shown)
+        #expect(chat.conversation.isFromCache)
+        #expect(
+            ChatSurfacePresentation(conversation: chat.conversation, hasPendingEchoes: false, isHostConnected: true)
+                == .timeline)
+        #expect(await chat.confirmSessionBeforeSend() != nil)
+        #expect(await rig.pickWrites.isEmpty)
+
+        await rig.showTerminalProcess()
+        await rig.nudgeCheck()
+        try await rig.waitUntil("Chat to follow it again") {
+            chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
+        }
+        #expect(chat.conversation.transcript.entries == shown)
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// The pick's guard outlasts such a check: what was sent before it is still judged.
+    @Test func aCheckThatCannotSeeTheProcessKeepsTheSendGuard() async throws {
+        let (rig, chat) = try await following()
+        Self.send("this never reaches the bound conversation", on: chat)
+
+        try await rig.runTurn {
+            await rig.hideTerminalProcess()
+            await rig.nudgeCheck()
+            try await rig.waitUntilCannotTell(chat)
+            await rig.showTerminalProcess()
+            await rig.nudgeCheck()
+            try await rig.waitUntil("Chat to follow it again") {
+                chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
+            }
+        }
+
+        try await rig.waitUntilCannotTell(chat)
+        rig.expectLeftConversation(chat)
+        try await Self.waitForClear(rig)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Once the label is gone the pick is too, even while Chat waited on a check.
+    @Test func aLabelRemovedWhileAwaitingACheckLeavesTheConversation() async throws {
+        let (rig, chat) = try await following()
+        await rig.hideTerminalProcess()
+        await rig.nudgeCheck()
+        try await rig.waitUntilCannotTell(chat)
+        #expect(!chat.conversation.transcript.entries.isEmpty)
+
+        await rig.transport.deliver(Self.labelsEvent(sequence: 90, labels: [:]))
+
+        try await rig.waitUntil("the conversation to go") { chat.conversation.transcript.entries.isEmpty }
+        rig.expectLeftConversation(chat)
         chat.end()
         rig.store.setHosts([])
     }

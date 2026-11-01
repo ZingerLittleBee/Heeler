@@ -530,7 +530,7 @@ struct HerdrCoreSessionBinderTests {
 
         let evidence = try await rig.binder.check(try Self.record(labels: ["heeler.chat": Self.hint(pid: 9)]))
 
-        #expect(evidence == .unavailable(.cannotTellSession(.claude)))
+        #expect(evidence == .pickUnconfirmed(.cannotTellSession(.claude)))
         #expect(await rig.labels.cleared.isEmpty)
     }
 

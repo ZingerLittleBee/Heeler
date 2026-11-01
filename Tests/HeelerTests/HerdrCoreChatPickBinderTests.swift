@@ -235,6 +235,74 @@ struct HerdrCoreChatPickBinderTests {
         #expect(await rig.log.cleared == ["heeler.chat"])
     }
 
+    // MARK: A check that cannot say
+
+    /// Nothing here says the pick is wrong, so its label stays and a Chat following it
+    /// keeps the conversation.
+    @Test func aPickWithNoScopeToFollowIsUnconfirmedAndKept() async throws {
+        let rig = await Rig(.grok)
+        await rig.table.remove(Self.pid)
+
+        let evidence = try await rig.binder.check(try Self.record(.grok, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .pickUnconfirmed(.cannotTellSession(.grok)))
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
+    @Test func noPickWithNoScopeToFollowIsPlainCannotTell() async throws {
+        let rig = await Rig(.grok)
+        await rig.table.remove(Self.pid)
+
+        let evidence = try await rig.binder.check(try Self.record(.grok, labels: [:]))
+
+        #expect(evidence == .unavailable(.cannotTellSession(.grok)))
+    }
+
+    /// A value a guard dropped does not stand, whatever the check can see.
+    @Test func aDroppedPickWithNoScopeToFollowIsPlainCannotTell() async throws {
+        var rig = await Rig(.grok)
+        rig.droppedPicks = [Self.label()]
+        await rig.table.remove(Self.pid)
+
+        let evidence = try await rig.binder.check(try Self.record(.grok, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .unavailable(.cannotTellSession(.grok)))
+    }
+
+    @Test func aPickWhoseAgentCannotBeToldIsUnconfirmedAndKept() async throws {
+        let table = ScriptedProcessTable()
+        let scope = ["HC_SCOPE": "scope", "HOME": Self.home]
+        await table.add(ScriptedProcessTable.Process(pid: Self.pid, name: "bash", start: Self.start, environment: scope))
+        for pid in [41, 42] {
+            await table.add(
+                ScriptedProcessTable.Process(pid: pid, parent: Self.pid, name: "grok", start: "2", environment: scope))
+        }
+        let log = LabelLog()
+        let binder = HerdrCoreSessionBinder(
+            program: .grok, processes: { try await table.read($0) },
+            files: VirtualHostFiles(home: Self.home).hostFiles(), clearLabels: { await log.clear($0.keys.sorted()) })
+
+        let evidence = try await binder.check(try Self.record(.grok, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .pickUnconfirmed(.cannotTellSession(.grok)))
+        #expect(await log.cleared.isEmpty)
+    }
+
+    @Test func aPickWhoseProcessCannotSayWhereItsTranscriptsAreIsUnconfirmedAndKept() async throws {
+        let table = ScriptedProcessTable()
+        await table.add(
+            ScriptedProcessTable.Process(pid: Self.pid, name: "grok", start: Self.start, environment: ["HC_SCOPE": "scope"]))
+        let log = LabelLog()
+        let binder = HerdrCoreSessionBinder(
+            program: .grok, processes: { try await table.read($0) },
+            files: VirtualHostFiles(home: Self.home).hostFiles(), clearLabels: { await log.clear($0.keys.sorted()) })
+
+        let evidence = try await binder.check(try Self.record(.grok, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .pickUnconfirmed(.cannotTellSession(.grok)))
+        #expect(await log.cleared.isEmpty)
+    }
+
     /// The label is read after the exec, as session labels are.
     @Test func aPickWrittenDuringTheExecBinds() async throws {
         let rig = await Rig(.grok)
