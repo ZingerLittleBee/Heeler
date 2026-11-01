@@ -85,6 +85,13 @@ test-ci-package: ## Run the committed-project CI SSH package lane (SIMULATOR_UDI
 profile-ci-build: ## Compare compilation caching (PROFILE_PHASE=seed or restored, no test execution)
 	python3 scripts/profile-ci-build.py --phase '$(PROFILE_PHASE)'
 
+.PHONY: profile-git-startup
+profile-git-startup: ## Compare Git launchers with fresh HOME directories (no App build)
+	python3 scripts/profile-git-startup.py \
+		--iterations '$(or $(GIT_STARTUP_ITERATIONS),20)' \
+		--first-path '$(or $(GIT_STARTUP_FIRST),system)' \
+		--output '$(or $(GIT_STARTUP_OUTPUT),.ci/git-startup)'
+
 .PHONY: test-ci-diagnostics test-ci-diagnostic-controls test-weak-network-proxy
 test-ci-diagnostics: ## Diagnose one scenario (HEELER_CI_DIAGNOSTIC_TARGET, optional iterations)
 	@test -n "$$HEELER_CI_DIAGNOSTIC_TARGET" || { echo "HEELER_CI_DIAGNOSTIC_TARGET is required" >&2; exit 2; }
