@@ -53,6 +53,18 @@ struct AgentListFieldsPreviewTests {
             "The settings preview must show where the list puts a Checkout's totals")
     }
 
+    /// A core Agent's row reads Changes as any other does, so its preview shows
+    /// where the totals go too.
+    @MainActor
+    @Test func aCoreHostsPreviewMatchesItsAgentCardWithTheChangesTotals() throws {
+        let agent = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac", followsPlugin: false)
+        let layout = AgentRowLayout(rows: [[.init(.terminalTitleStripped)], [.init(.directory)]])
+        #expect(
+            try pixels(AgentListFieldsPreview(layout: layout, hostName: "Studio Mac", followsPlugin: false))
+                == pixels(AgentCardView(
+                    agent: agent, layout: layout, sampleChanges: AgentListFieldsPreview.sampleChanges)))
+    }
+
     @MainActor
     private func pixels(_ view: some View) throws -> Data {
         let renderer = ImageRenderer(content: view

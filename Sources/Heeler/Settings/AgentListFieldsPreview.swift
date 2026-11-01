@@ -14,7 +14,7 @@ struct AgentListFieldsPreview: View {
         AgentCardView(
             agent: Self.sampleAgent(hostName: hostName, layout: layout, followsPlugin: followsPlugin),
             layout: layout,
-            sampleChanges: Self.sampleChanges(followsPlugin: followsPlugin))
+            sampleChanges: Self.sampleChanges)
             .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isStaticText)
@@ -64,11 +64,6 @@ struct AgentListFieldsPreview: View {
     /// Where the list shows a Checkout's line totals, with sample counts.
     static let sampleChanges = ChangesBadge(
         totals: ChangesTotals(trackedFiles: 3, added: 12, removed: 7))
-
-    /// A row with no plugin to follow is on a Host whose rows read no Changes yet.
-    static func sampleChanges(followsPlugin: Bool) -> ChangesBadge? {
-        followsPlugin ? sampleChanges : nil
-    }
 
     private static let sampleHostID = UUID(uuid: (
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
