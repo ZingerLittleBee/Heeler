@@ -1539,6 +1539,38 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         _ = try await transport.call("terminal.label", params: params, isMutation: true)
     }
 
+    /// The folders Heeler's extension goes in on this native Windows Host: one SFTP
+    /// listing, for Oh My Pi's profiles (ADR 0033).
+    func windowsExtensionFolders() async throws -> [String] {
+        let transport = try await session.withTransport { $0 }
+        guard let location = await transport.lastLocation(), location.isNativeWindows, let home = location.home else {
+            throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension on this Host")
+        }
+        let services = transport.hostServices
+        let profiles = RemoteFilePath.join(RemoteFilePath.windowsForSFTP(home), ".omp", "profiles")
+        let listing = try await services.listFiles(
+            RemoteFileListingRequest(directory: profiles, kinds: [.directory, .symlink]))
+        var names: [String] = []
+        for entry in listing?.entries ?? [] where HerdrCoreWindowsExtensions.isProfileName(entry.name) {
+            if entry.status.kind == .symlink {
+                let target = try await services.fileStatus(atPath: RemoteFilePath.join(profiles, entry.name))
+                guard target?.kind == .directory else { continue }
+            }
+            names.append(entry.name)
+        }
+        return HerdrCoreWindowsExtensions.folders(home: home, profiles: names)
+    }
+
+    /// One `file.write` for `folder`, on the core this projection serves right now.
+    func writeWindowsExtension(_ contents: Data, to folder: String) async throws {
+        let transport = try await session.withTransport(servingCore: inventoryCore) { $0 }
+        let params = HerdrCoreWindowsExtensions.writeParams(folder: folder, contents: contents)
+        let result = try await transport.call("file.write", params: params, isMutation: true)
+        guard result["bytes"] == .number(Double(contents.count)) else {
+            throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension in \(folder)")
+        }
+    }
+
     func chatHostFiles() -> ChatHostFiles {
         let session = session
         return ChatHostFiles(

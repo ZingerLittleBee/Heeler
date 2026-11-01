@@ -147,6 +147,12 @@ extension ChatUnavailableReason {
         self == .cannotTellSession(.opencode)
     }
 
+    /// A Pi or Oh My Pi on a native Windows core Host, which has no Helper to bring the
+    /// extension that names its session (ADR 0033).
+    var offersWindowsExtension: Bool {
+        self == .cannotTellSessionOnWindows(.pi) || self == .cannotTellSessionOnWindows(.omp)
+    }
+
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
@@ -450,6 +456,8 @@ struct ChatUnavailableView: View {
     let showAgentTerminal: () -> Void
     /// Opens the one configuration edit that can settle this reason.
     var reviewEdit: (() -> Void)?
+    /// Opens what writes Heeler's extension, on a native Windows core Host.
+    var addExtension: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -461,6 +469,11 @@ struct ChatUnavailableView: View {
                 Button("Let Chat Follow OpenCode…", action: reviewEdit)
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("chat.unavailable.openCodeEdit")
+            }
+            if let addExtension, reason.offersWindowsExtension {
+                Button("Add Heeler's Extension…", action: addExtension)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("chat.unavailable.windowsExtension")
             }
             Button(AgentDetailSurface.terminal.showTitle, action: showAgentTerminal)
                 .buttonStyle(.bordered)

@@ -1894,6 +1894,35 @@ final class ConsoleStore {
 
     /// The OpenCode edit a Chat that can't bind offers. It keeps to `corePin`, as
     /// anything a detail does: past that core there is no Agent left to do it for.
+    /// Heeler's extension on a native Windows core Host (ADR 0033). A detail keeps to
+    /// its own core: a Host that has moved on writes nothing more, even part way.
+    func windowsExtensionFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HerdrCoreWindowsExtensionFlow {
+        let hostID = agentID.hostID
+        func core(of store: ConsoleStore) throws -> HerdrCoreConsoleProjection {
+            guard !store.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+            guard let core = store.projections[hostID] as? HerdrCoreConsoleProjection else {
+                throw TransportError.cancelled
+            }
+            return core
+        }
+        return HerdrCoreWindowsExtensionFlow(
+            locate: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await core(of: self).windowsExtensionFolders()
+            },
+            write: { [weak self] folders in
+                guard let self else { throw TransportError.cancelled }
+                guard let contents = try self.openCodePluginBundle().files[HerdrCoreWindowsExtensions.bundlePath] else {
+                    throw HostHelperBundle.LoadError.unreadable(HerdrCoreWindowsExtensions.bundlePath)
+                }
+                for folder in folders {
+                    try await core(of: self).writeWindowsExtension(contents, to: folder)
+                }
+            })
+    }
+
     func openCodePluginEditFlow(
         for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
     ) -> HarnessConfigEditFlow {
