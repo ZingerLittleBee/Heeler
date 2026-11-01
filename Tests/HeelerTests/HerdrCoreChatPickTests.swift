@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -40,6 +41,20 @@ private actor PickOpenCodeStore {
 
     func response(_ query: OpenCodeQuery) throws -> OpenCodeQueryResponse {
         try harness.response(query)
+    }
+}
+
+@MainActor @Observable
+final class ChatPickerPresence {
+    var isOpen = true
+}
+
+/// Time for a Chat under test, which passes only when the test says so.
+private final class PickClock: @unchecked Sendable {
+    var now = Date(timeIntervalSince1970: 1_792_440_000)
+
+    func advance(_ seconds: TimeInterval) {
+        now = now.addingTimeInterval(seconds)
     }
 }
 
@@ -132,10 +147,12 @@ struct HerdrCoreChatPickTests {
         let store: ConsoleStore
         let host: Host
         let program: ChatProgram
+        let clock = PickClock()
 
+        /// `steppedByTheTest` puts the Chat on `clock`, for a test that moves it itself.
         init(
             host: Host, program: ChatProgram, record: JSONValue, openCodeStore: PickOpenCodeStore? = nil,
-            echoTimeout: TimeInterval? = nil
+            steppedByTheTest: Bool = false
         ) {
             self.host = host
             self.program = program
@@ -148,8 +165,7 @@ struct HerdrCoreChatPickTests {
             timing.activeInterval = .milliseconds(20)
             timing.idleInterval = .milliseconds(20)
             timing.queryActiveInterval = .milliseconds(20)
-            timing.pickGuardSettle = 0.05
-            if let echoTimeout { timing.echoTimeout = echoTimeout }
+            let clock = clock
             store = ConsoleStore(
                 chatCache: VolatileChatTranscriptCache(),
                 makeSession: { _, subscriptions in
@@ -160,7 +176,8 @@ struct HerdrCoreChatPickTests {
                 },
                 makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
                 coreChatPrograms: Set(ChatProgram.allCases),
-                chatTiming: timing)
+                chatTiming: timing,
+                chatNow: { steppedByTheTest ? clock.now : Date() })
         }
 
         func start(_ rows: [ScriptedProcessTable.Process]) async throws {
@@ -242,6 +259,28 @@ struct HerdrCoreChatPickTests {
                         argv: [.string(program.rawValue)], name: program.rawValue, pid: HerdrCoreChatPickTests.pid)))
         }
 
+        /// Steps the Chat until `condition` holds, for what comes from the core's events.
+        func stepUntil(
+            _ chat: AgentChatStore, _ what: String, _ condition: @MainActor () -> Bool,
+            sourceLocation: SourceLocation = #_sourceLocation
+        ) async throws {
+            for _ in 0..<500 {
+                await chat.step()
+                if condition() { return }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+        }
+
+        /// Lets the time a guard waits after a turn pass, and starts a read. When this
+        /// returns the guard has judged that read: `step` runs it before it ends. A test
+        /// that expects a pick to stay goes through this same step as one that expects
+        /// it to go.
+        func passGuardSettle(_ chat: AgentChatStore) async {
+            clock.advance(AgentChatStore.Timing().pickGuardSettle)
+            await chat.step()
+        }
+
         /// One turn, as the core reports it.
         func runTurn(whileWorking: () async throws -> Void = {}) async throws {
             let app = program == .grok ? "grok-build" : program.rawValue
@@ -281,11 +320,12 @@ struct HerdrCoreChatPickTests {
 
     /// Candidates on disk and under the process, for an Agent no row matches.
     private func grokRig(
-        labels: [String: String] = [:], children: [String] = [grokChild], echoTimeout: TimeInterval? = nil
+        labels: [String: String] = [:], children: [String] = [grokChild], steppedByTheTest: Bool = false
     ) async throws -> Rig {
         let rig = Rig(
             host: host, program: .grok,
-            record: Self.record(.grok, app: "grok-build", labels: labels, children: children), echoTimeout: echoTimeout)
+            record: Self.record(.grok, app: "grok-build", labels: labels, children: children),
+            steppedByTheTest: steppedByTheTest)
         await rig.files.write(
             #"[{"session_id":"\#(Self.grokRecent)","pid":9,"pid_start":1,"cwd":"/work/app"}]"#,
             at: "\(Self.home)/.grok/active_sessions.json")
@@ -349,8 +389,10 @@ struct HerdrCoreChatPickTests {
         return chat
     }
 
-    private static func sent(_ id: UUID, _ text: String, delivered: Bool = true) -> AgentChatStore.SentMessage {
-        AgentChatStore.SentMessage(id: id, text: text, isDelivered: delivered)
+    private static func sent(
+        _ id: UUID, _ text: String, delivered: Bool = true, mayNotHaveGone: Bool = false
+    ) -> AgentChatStore.SentMessage {
+        AgentChatStore.SentMessage(id: id, text: text, isDelivered: delivered, mayNotHaveGone: mayNotHaveGone)
     }
 
     private static func send(_ text: String, on chat: AgentChatStore) {
@@ -416,6 +458,7 @@ struct HerdrCoreChatPickTests {
         chat.show()
         try await rig.waitUntilCannotTell(chat)
 
+        #expect(chat.acceptsPicks)
         #expect(chat.offersCandidates)
         #expect(chat.candidates == .notAsked)
         #expect(await rig.files.listings.isEmpty)
@@ -553,7 +596,6 @@ struct HerdrCoreChatPickTests {
         await chat.confirmCandidate(candidate)
         #expect(chat.pickConfirmation == .outcomeUnknown)
         await chat.confirmCandidate(candidate)
-        try await Task.sleep(for: .milliseconds(100))
 
         #expect(chat.pickConfirmation == .outcomeUnknown)
         #expect(await rig.transport.labelWrites.count == 1)
@@ -688,11 +730,8 @@ struct HerdrCoreChatPickTests {
 
     // MARK: Dropping
 
-    private func following(
-        labels: [String: String] = [:], echoTimeout: TimeInterval? = nil
-    ) async throws -> (Rig, AgentChatStore) {
-        let label = Self.pickLabel(session: Self.grokHeld)
-        let rig = try await grokRig(labels: labels.merging(["heeler.chat": label]) { $1 }, echoTimeout: echoTimeout)
+    private func following() async throws -> (Rig, AgentChatStore) {
+        let rig = try await grokRig(labels: ["heeler.chat": Self.pickLabel(session: Self.grokHeld)])
         let chat = try rig.chat()
         chat.show()
         try await rig.waitUntil("Chat to follow it") {
@@ -744,23 +783,50 @@ struct HerdrCoreChatPickTests {
 
     // MARK: The send guard
 
+    /// A Chat only the test moves, on a clock only the test moves, so a test knows a
+    /// read started after the turn and that the guard judged it.
+    private func steppedFollowing() async throws -> (Rig, AgentChatStore) {
+        let rig = try await grokRig(
+            labels: ["heeler.chat": Self.pickLabel(session: Self.grokHeld)], steppedByTheTest: true)
+        let chat = try rig.chat()
+        try await rig.stepUntil(chat, "Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
+                && !chat.conversation.transcript.entries.isEmpty
+        }
+        return (rig, chat)
+    }
+
+    /// The picked conversation is still what Chat follows, and no label was written.
+    private static func expectPickKept(
+        _ rig: Rig, _ chat: AgentChatStore, sourceLocation: SourceLocation = #_sourceLocation
+    ) async {
+        #expect(chat.conversation.phase == .following(path: grokFile(grokHeld)), sourceLocation: sourceLocation)
+        #expect(await rig.pickWrites.isEmpty, sourceLocation: sourceLocation)
+    }
+
     @Test func aMessageMissingOnceTheTurnEndsDropsThePick() async throws {
-        let (rig, chat) = try await following()
+        let (rig, chat) = try await steppedFollowing()
         Self.send("this never reaches the bound conversation", on: chat)
 
         try await rig.runTurn {
             // A turn under way says nothing yet, however long it takes.
-            try await Task.sleep(for: .milliseconds(150))
-            #expect(chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld)))
-            #expect(await rig.pickWrites.isEmpty)
+            await rig.passGuardSettle(chat)
+            rig.clock.advance(60)
+            await chat.step()
+            await Self.expectPickKept(rig, chat)
         }
+        // Nor does a read before the program had its time to write.
+        rig.clock.advance(AgentChatStore.Timing().pickGuardSettle / 2)
+        await chat.step()
+        await Self.expectPickKept(rig, chat)
 
-        try await rig.waitUntilCannotTell(chat)
+        await rig.passGuardSettle(chat)
+
         rig.expectLeftConversation(chat)
         try await Self.waitForClear(rig)
         // Nothing is left that claims a conversation.
         #expect(await chat.confirmSessionBeforeSend() != nil)
-        try await Task.sleep(for: .milliseconds(100))
+        await chat.step()
         rig.expectLeftConversation(chat)
         chat.end()
         rig.store.setHosts([])
@@ -769,47 +835,144 @@ struct HerdrCoreChatPickTests {
     /// The message the guard judged stays as an echo only until its clock runs out,
     /// and then nothing holds a timeline up over the reason.
     @Test func aMissingMessageLeavesNoTimelineOnceItsEchoEnds() async throws {
-        let (rig, chat) = try await following(echoTimeout: 0.3)
+        let (rig, chat) = try await steppedFollowing()
         let id = UUID()
         chat.updateSends([Self.sent(id, "this never reaches the bound conversation", delivered: false)])
         chat.updateSends([Self.sent(id, "this never reaches the bound conversation")])
 
         try await rig.runTurn()
-        try await rig.waitUntilCannotTell(chat)
-        try await rig.waitUntil("the echo to end") { chat.sendStatuses[id] == .abandoned }
+        await rig.passGuardSettle(chat)
+        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.grok)))
+        rig.clock.advance(AgentChatStore.Timing().echoTimeout)
+        await chat.step()
 
+        #expect(chat.sendStatuses[id] == .abandoned)
         rig.expectLeftConversation(chat)
         chat.end()
         rig.store.setHosts([])
     }
 
     @Test func aMessageThatAppearsKeepsThePick() async throws {
-        let (rig, chat) = try await following()
-        Self.send(Self.grokPrompt, on: chat)
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        chat.updateSends([Self.sent(id, Self.grokPrompt, delivered: false)])
+        chat.updateSends([Self.sent(id, Self.grokPrompt)])
 
         try await rig.runTurn {
             await rig.files.write(
                 try Self.grokTranscript(session: Self.grokHeld, lines: 7), at: Self.grokFile(Self.grokHeld))
         }
-        try await rig.waitUntil("the message") { chat.conversation.transcript.recordedPrompts.count >= 2 }
-        try await Task.sleep(for: .milliseconds(300))
+        await rig.passGuardSettle(chat)
 
-        #expect(chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld)))
-        #expect(await rig.pickWrites.isEmpty)
+        #expect(chat.sendStatuses[id] == .recorded)
+        await Self.expectPickKept(rig, chat)
         chat.end()
         rig.store.setHosts([])
     }
 
-    /// A `/` command is the program's to answer, and many never reach a Transcript.
+    /// A `/` command is the program's to answer, and many never reach a Transcript. The
+    /// message beside it is what the guard goes on.
     @Test func aCommandSaysNothingAboutThePick() async throws {
-        let (rig, chat) = try await following()
+        let (rig, chat) = try await steppedFollowing()
         Self.send("/compact", on: chat)
 
         try await rig.runTurn()
-        try await Task.sleep(for: .milliseconds(300))
+        await rig.passGuardSettle(chat)
 
-        #expect(chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld)))
-        #expect(await rig.pickWrites.isEmpty)
+        await Self.expectPickKept(rig, chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// The failure this rule is for: verify finds the text still in the input box, the
+    /// user clears it in the terminal, and the next Send goes where the pick says.
+    @Test func aMessageLeftInTheInputBoxSaysNothingAboutThePick() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let (first, second) = (UUID(), UUID())
+        let left = "left in the input box"
+        chat.updateSends([Self.sent(first, left, delivered: false)])
+        chat.updateSends([Self.sent(first, left)])
+        chat.updateSends([Self.sent(first, left, mayNotHaveGone: true)])
+        chat.updateSends([
+            Self.sent(first, left, mayNotHaveGone: true), Self.sent(second, Self.grokPrompt, delivered: false),
+        ])
+        chat.updateSends([Self.sent(first, left, mayNotHaveGone: true), Self.sent(second, Self.grokPrompt)])
+
+        try await rig.runTurn {
+            await rig.files.write(
+                try Self.grokTranscript(session: Self.grokHeld, lines: 7), at: Self.grokFile(Self.grokHeld))
+        }
+        rig.clock.advance(AgentChatStore.Timing().echoTimeout)
+        await rig.passGuardSettle(chat)
+
+        #expect(chat.sendStatuses[second] == .recorded)
+        #expect(chat.sendStatuses[first] == .overdue)
+        await Self.expectPickKept(rig, chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A paste that got no answer may never have reached the program, whatever turn
+    /// ends after it.
+    @Test func aSendWithNoAnswerSaysNothingAboutThePick() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let id = UUID()
+        let text = "this paste got no answer"
+        chat.updateSends([Self.sent(id, text, delivered: false)])
+        chat.updateSends([Self.sent(id, text, mayNotHaveGone: true)])
+
+        try await rig.runTurn()
+        rig.clock.advance(AgentChatStore.Timing().echoTimeout)
+        await rig.passGuardSettle(chat)
+
+        #expect(chat.sendStatuses[id] == .overdue)
+        await Self.expectPickKept(rig, chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// One send in doubt takes nothing from the one beside it that went.
+    @Test func aMessageThatWentStillDropsThePickBesideOneInDoubt() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let (first, second) = (UUID(), UUID())
+        let (left, gone) = ("left in the input box", "this never reaches the bound conversation")
+        chat.updateSends([Self.sent(first, left, delivered: false), Self.sent(second, gone, delivered: false)])
+        chat.updateSends([Self.sent(first, left, mayNotHaveGone: true), Self.sent(second, gone)])
+
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+
+        rig.expectLeftConversation(chat)
+        try await Self.waitForClear(rig)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// The program's own log naming another session says the send went, and where,
+    /// whatever the Composer could tell.
+    @Test func aSendInDoubtTheLogPlacesElsewhereDropsThePick() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let history = "\(Self.home)/.grok/sessions/%2Fwork%2Fapp/prompt_history.jsonl"
+        func logged(_ prompt: String, session: String) -> String {
+            #"{"is_bash":false,"prompt":"\#(prompt)","session_id":"\#(session)"}"# + "\n"
+        }
+        await rig.files.write(logged("earlier", session: Self.grokHeld), at: history)
+        let id = UUID()
+        let text = "Reply with the word lime."
+        chat.updateSends([Self.sent(id, text, delivered: false)])
+        await chat.witnessMarksSettled()
+        #expect(chat.sendConcern(for: text, after: GrokScreenBuilder(scrollback: []).screen) == nil)
+        chat.updateSends([Self.sent(id, text, mayNotHaveGone: true)])
+        await rig.files.append(logged(GrokTranscriptReducer.echoKey(text), session: Self.grokRecent), to: history)
+        rig.clock.advance(AgentChatStore.Timing().witnessFirstRead)
+        await chat.step()
+        #expect(chat.sendStatuses[id] == .misdirected)
+
+        try await rig.runTurn()
+        await rig.passGuardSettle(chat)
+
+        rig.expectLeftConversation(chat)
+        try await Self.waitForClear(rig)
         chat.end()
         rig.store.setHosts([])
     }
@@ -817,11 +980,12 @@ struct HerdrCoreChatPickTests {
     /// The label may outlast the drop, when its removal gets no further and the core
     /// reports it again. This device does not take it back, and removes it again.
     @Test func aDroppedPickStaysDroppedWhenItsRemovalFails() async throws {
-        let (rig, chat) = try await following()
+        let (rig, chat) = try await steppedFollowing()
         await rig.transport.setLabelFailure(TransportError.sshUnreachable(detail: "the link went"))
         Self.send("this never reaches the bound conversation", on: chat)
         try await rig.runTurn()
-        try await rig.waitUntilCannotTell(chat)
+        await rig.passGuardSettle(chat)
+        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.grok)))
         try await Self.waitForClear(rig)
         let attempts = await rig.pickWrites.count
 
@@ -830,10 +994,32 @@ struct HerdrCoreChatPickTests {
             Self.labelsEvent(sequence: 40, labels: ["heeler.chat": Self.pickLabel(session: Self.grokHeld)]))
 
         for _ in 0..<500 where await rig.pickWrites.count == attempts {
+            await chat.step()
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(await rig.pickWrites.dropFirst(attempts).first == "")
         rig.expectLeftConversation(chat)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A guard's verdict is about the core it judged. On the core that took its place
+    /// the same address and label mean another Terminal (ADR 0031).
+    @Test func aGuardDropFromAnEarlierCoreLeavesThisCoreAlone() async throws {
+        let (rig, chat) = try await steppedFollowing()
+        let core = try #require(rig.store.coreProjection(on: host.id))
+        let picked = ChatSessionEvidence.picked(sessionID: Self.grokHeld, transcriptRoot: "\(Self.home)/.grok")
+        #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == picked)
+
+        core.dropChatPick(paneID: "t1", scope: "an earlier core")
+
+        #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == picked)
+        #expect(await rig.pickWrites.isEmpty)
+
+        core.dropChatPick(paneID: "t1", scope: core.chatCacheScope)
+
+        #expect(try await core.checkChatSession(paneID: "t1", program: .grok) == .unavailable(.cannotTellSession(.grok)))
+        try await Self.waitForClear(rig)
         chat.end()
         rig.store.setHosts([])
     }
@@ -869,21 +1055,23 @@ struct HerdrCoreChatPickTests {
 
     /// The pick's guard outlasts such a check: what was sent before it is still judged.
     @Test func aCheckThatCannotSeeTheProcessKeepsTheSendGuard() async throws {
-        let (rig, chat) = try await following()
+        let (rig, chat) = try await steppedFollowing()
         Self.send("this never reaches the bound conversation", on: chat)
 
         try await rig.runTurn {
             await rig.hideTerminalProcess()
             await rig.nudgeCheck()
-            try await rig.waitUntilCannotTell(chat)
+            try await rig.stepUntil(chat, "Chat to say it cannot tell") {
+                chat.conversation.phase == .unavailable(.cannotTellSession(.grok))
+            }
             await rig.showTerminalProcess()
             await rig.nudgeCheck()
-            try await rig.waitUntil("Chat to follow it again") {
+            try await rig.stepUntil(chat, "Chat to follow it again") {
                 chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
             }
         }
+        await rig.passGuardSettle(chat)
 
-        try await rig.waitUntilCannotTell(chat)
         rig.expectLeftConversation(chat)
         try await Self.waitForClear(rig)
         chat.end()
@@ -908,17 +1096,18 @@ struct HerdrCoreChatPickTests {
 
     /// The user can choose the same conversation again after it was dropped.
     @Test func aPickDroppedEarlierCanBeChosenAgain() async throws {
-        let (rig, chat) = try await following()
+        let (rig, chat) = try await steppedFollowing()
         Self.send("this never reaches the bound conversation", on: chat)
         try await rig.runTurn()
-        try await rig.waitUntilCannotTell(chat)
+        await rig.passGuardSettle(chat)
+        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.grok)))
 
         await chat.listCandidates()
         let candidate = try Self.candidate(Self.grokHeld, in: chat)
         _ = await chat.previewCandidate(candidate)
         await chat.confirmCandidate(candidate)
 
-        try await rig.waitUntil("Chat to follow it") {
+        try await rig.stepUntil(chat, "Chat to follow it") {
             chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
         }
         chat.end()
@@ -928,25 +1117,23 @@ struct HerdrCoreChatPickTests {
     /// Exact evidence needs no guard: a send it does not find proves nothing about
     /// which conversation the Agent is in.
     @Test func anExactBindingHasNoSendGuard() async throws {
-        let rig = Rig(host: host, program: .grok, record: Self.record(.grok, app: "grok-build"))
+        let rig = Rig(host: host, program: .grok, record: Self.record(.grok, app: "grok-build"), steppedByTheTest: true)
         await rig.files.write(
             #"[{"session_id":"\#(Self.grokHeld)","pid":40,"pid_start":145585,"cwd":"/work/app"}]"#,
             at: "\(Self.home)/.grok/active_sessions.json")
         await rig.files.write(try Self.grokTranscript(session: Self.grokHeld), at: Self.grokFile(Self.grokHeld))
         try await rig.start([Self.process(.grok)])
         let chat = try rig.chat()
-        chat.show()
-        try await rig.waitUntil("Chat to follow it") {
+        try await rig.stepUntil(chat, "Chat to follow it") {
             chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld))
         }
         #expect(!chat.offersCandidates)
         Self.send("this never arrives", on: chat)
 
         try await rig.runTurn()
-        try await Task.sleep(for: .milliseconds(300))
+        await rig.passGuardSettle(chat)
 
-        #expect(chat.conversation.phase == .following(path: Self.grokFile(Self.grokHeld)))
-        #expect(await rig.transport.labelWrites.isEmpty)
+        await Self.expectPickKept(rig, chat)
         chat.end()
         rig.store.setHosts([])
     }
@@ -989,29 +1176,75 @@ struct HerdrCoreChatPickTests {
         rig.store.setHosts([])
     }
 
-    /// Herdr TUI wires no picks, so whatever it cannot tell stays that way.
-    @Test func aChatWithNoPicksOffersNoList() async throws {
-        let files = VirtualHostFiles()
-        let agent = Agent(
-            terminalID: "t1", kind: "grok", title: "", status: .idle, workspaceID: "w1", tabID: "t1",
-            paneID: "t1", cwd: Self.directory, revision: 1, agentSession: nil)
-        let chat = AgentChatStore(
-            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "t1"), agent: agent, program: .grok,
-            source: AgentChatSource(
-                hostID: host.id, socketLocation: .defaultSession, files: files.hostFiles(),
-                agentInfo: { agent }, cache: VolatileChatTranscriptCache(),
-                adapter: try #require(ChatTranscriptAdapter.standard(for: .grok)),
-                cachedSession: { _ in nil },
-                sessionEvidence: { .unavailable(.cannotTellSession(.grok)) }))
-        chat.show()
-        for _ in 0..<500 where chat.conversation.phase != .unavailable(.cannotTellSession(.grok)) {
+    /// Herdr TUI wires no picks: its Console builds this Chat with nothing to list
+    /// through.
+    @Test func aHerdrTUIChatOffersNoList() async throws {
+        let tui = Host(address: "tui.example", username: "dev", serverKind: .herdrTUI)
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = ConsoleStore(
+            chatCache: VolatileChatTranscriptCache(),
+            makeSession: { _, subscriptions in
+                EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+            })
+        defer { store.setHosts([]) }
+        store.setHosts([tui])
+        await store.resume()
+        for _ in 0..<500 where store.agents.isEmpty {
             try await Task.sleep(for: .milliseconds(10))
         }
-        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.grok)))
+        let agent = try #require(store.agents.first)
 
+        let chat = try #require(store.chatStore(for: agent, program: .grok))
+
+        #expect(!chat.acceptsPicks)
         #expect(!chat.offersCandidates)
         await chat.listCandidates()
         #expect(chat.candidates == .notAsked)
         chat.end()
+    }
+
+    // MARK: The picker
+
+    private struct PickerSheet: View {
+        @Bindable var presence: ChatPickerPresence
+        let chat: AgentChatStore
+        let pin: TerminalCorePin
+
+        var body: some View {
+            Color.clear.sheet(isPresented: $presence.isOpen) {
+                ChatCandidatePickerView(chat: chat, corePin: pin)
+            }
+        }
+    }
+
+    /// The write that says confirmed also empties the list, which takes the preview
+    /// off the screen, so the sheet's own root is what closes it, with no preview there.
+    @Test func aConfirmationClosesThePickerFromItsRoot() async throws {
+        let rig = try await grokRig()
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntilCannotTell(chat)
+        let pin = TerminalCorePin(joined: "c1")
+        let presence = ChatPickerPresence()
+        let controller = UIHostingController(rootView: PickerSheet(presence: presence, chat: chat, pin: pin))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await rig.waitUntil("the sheet") { controller.presentedViewController != nil }
+            try await rig.waitUntil("the list") {
+                if case .listed = chat.candidates { true } else { false }
+            }
+            let candidate = try Self.candidate(Self.grokHeld, in: chat)
+            _ = await chat.previewCandidate(candidate)
+
+            await chat.confirmCandidate(candidate, keepingTo: pin)
+
+            #expect(chat.pickConfirmation == .confirmed)
+            try await rig.waitUntil("the sheet to close") { !presence.isOpen }
+            try await rig.waitUntil("the sheet to leave") { controller.presentedViewController == nil }
+        }
+        chat.end()
+        rig.store.setHosts([])
     }
 }

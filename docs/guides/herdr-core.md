@@ -235,7 +235,7 @@ Your choice is dropped, and Chat goes back to **Can't Tell the Conversation**, w
 
 - another process takes over the terminal, such as the program restarting
 - the program names a session for itself, or Chat finds exact evidence
-- a message you sent from Chat is missing from the conversation once the Agent's next turn ends
+- a message you sent from Chat is missing from the conversation once the Agent's next turn ends. A message Chat says stayed in the input box, or got no answer, doesn't count, because it may never have reached the program
 
 Chat then stops showing that conversation. A check that can't see the Agent's process for a moment drops nothing: Chat keeps the conversation under a banner, and a Send sends nothing until a check can say.
 
@@ -271,6 +271,8 @@ On a native Windows core Host, each program's Chat turns on only once it has pas
 |---------|-----------------------------|
 | Claude Code, Grok Build, Pi, Oh My Pi | Off until its check passes. None has yet, so each offers the terminal alone |
 | Codex, OpenCode | Not offered |
+
+**Choose a Conversation** is not offered on a Windows core Host yet.
 
 A native Windows Herdr TUI Host offers no Chat for any Agent.
 

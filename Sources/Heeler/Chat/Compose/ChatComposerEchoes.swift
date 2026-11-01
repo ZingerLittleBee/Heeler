@@ -18,8 +18,14 @@ enum ChatComposerEchoes {
                 case .delivered, .undelivered, .outcomeUnknown: true
                 case .sending, .failed: false
                 }
+            let mayNotHaveGone =
+                switch message.state {
+                case .undelivered, .outcomeUnknown: true
+                case .sending, .delivered, .failed: false
+                }
             return AgentChatStore.SentMessage(
-                id: message.id, text: rules.outgoingText(message.text), isDelivered: isDelivered)
+                id: message.id, text: rules.outgoingText(message.text), isDelivered: isDelivered,
+                mayNotHaveGone: mayNotHaveGone)
         }
     }
 

@@ -132,6 +132,9 @@ final class AgentChatStore {
         /// `agent.prompt` took it, or a herdr-core step got no answer: either
         /// way the program may record it.
         let isDelivered: Bool
+        /// It stayed in the Agent's input box, or a herdr-core step got no answer, so it
+        /// may never have reached the program, and a Transcript without it proves nothing.
+        var mayNotHaveGone = false
     }
 
     /// Where a sent message stands against the transcript.
@@ -380,6 +383,7 @@ final class AgentChatStore {
         /// First seen already delivered, so its floor is unknown.
         let isOrphan: Bool
         var deliveredAt: Date?
+        var mayNotHaveGone: Bool
     }
 
     /// Where a send's witness stands: its mark, taken when the send first
@@ -650,6 +654,7 @@ final class AgentChatStore {
         misdirectedSends.formIntersection(ids)
         for message in messages {
             if let index = sends.firstIndex(where: { $0.id == message.id }) {
+                sends[index].mayNotHaveGone = message.mayNotHaveGone
                 guard message.isDelivered != (sends[index].deliveredAt != nil) else { continue }
                 sends[index].deliveredAt = message.isDelivered ? now() : nil
                 if message.isDelivered {
@@ -665,7 +670,8 @@ final class AgentChatStore {
                         id: message.id, key: source.adapter.echoKey(message.text), text: message.text,
                         generation: conversationGeneration, layout: conversation.layoutGeneration,
                         floor: conversation.readOffset, knownEntries: knownEntries,
-                        isOrphan: message.isDelivered, deliveredAt: message.isDelivered ? now() : nil))
+                        isOrphan: message.isDelivered, deliveredAt: message.isDelivered ? now() : nil,
+                        mayNotHaveGone: message.mayNotHaveGone))
                 if !message.isDelivered { takeWitnessMark(for: message.id) }
             }
         }
@@ -1334,9 +1340,12 @@ final class AgentChatStore {
     /// Codex on its shared daemon reads as another reason and gets no list, and
     /// Herdr TUI has no picks to make (ADR 0034).
     var offersCandidates: Bool {
-        guard source.picks != nil, case .unavailable(.cannotTellSession) = conversation.phase else { return false }
+        guard acceptsPicks, case .unavailable(.cannotTellSession) = conversation.phase else { return false }
         return true
     }
+
+    /// Whether this Chat's Host keeps a pick at all, which only a core does.
+    var acceptsPicks: Bool { source.picks != nil }
 
     /// Lists candidates, on the user's request. Nothing about the Chat changes until
     /// the user confirms one.
@@ -1453,7 +1462,9 @@ final class AgentChatStore {
     /// The send guard: once the Agent's turn has ended and a read has started since,
     /// a message Chat sent that the bound Transcript still does not hold says the
     /// pick is wrong, and Chat stops showing it. A message the program put back or
-    /// refused went nowhere, so it proves nothing (ADR 0034).
+    /// refused went nowhere, and one left in the input box or with no answer may not
+    /// have gone at all, so those prove nothing, unless the program's own log says
+    /// another session took it (ADR 0034).
     private func judgePickGuard() {
         guard followsPick, let turnEnd = pickGuardTurnEnd, !pickGuardSends.isEmpty,
             let read = lastReadStartedAt, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
@@ -1463,7 +1474,8 @@ final class AgentChatStore {
             guard let delivered = send.deliveredAt, delivered <= turnEnd else { continue }
             pickGuardSends.remove(send.id)
             switch sendStatuses[send.id] {
-            case .awaiting?, .overdue?, .misdirected?: missing = true
+            case .misdirected?: missing = true
+            case .awaiting?, .overdue?: missing = missing || !send.mayNotHaveGone
             default: break
             }
         }

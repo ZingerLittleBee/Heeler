@@ -133,8 +133,11 @@ never show or send into a conversation it has guessed.
   a label whose removal failed, reported again, is removed again and not adopted.
   The guard judges only after a turn the core reported: a read must start at
   least two seconds after the turn ends, a `/` command does not arm it, and a
-  message the program put back or refused proves nothing. A program that reports
-  no status never ends a turn, so its pick stays until the process changes.
+  message the program put back or refused proves nothing. Neither does one the
+  Composer cannot say went, because it stayed in the input box or a step got no
+  answer, unless the program's own log says another session took it. A program
+  that reports no status never ends a turn, so its pick stays until the process
+  changes.
 - A dropped pick leaves the screen, unlike an exact binding that goes quiet, which
   keeps its last document readable because nothing says it was wrong. A pick was
   only the user's word, and a drop says that word no longer holds. A check that
@@ -306,7 +309,9 @@ herdr-core Hosts only.
   it is a native binary. Under `npx` the nearest runtime is the launcher, so Chat
   says it can't tell. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
   launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
-  is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper.
+  is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper,
+  and offers no candidates yet: open files are not read there, and no listing of a
+  Windows directory's Transcripts has been checked against a real one.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from

@@ -27,6 +27,11 @@ struct ChatCandidatePickerView: View {
             // Chat found the conversation by itself before the list opened.
             if chat.candidates == .notAsked { dismiss() }
         }
+        // Watched from the root: the write that says confirmed also empties the list,
+        // which takes the preview off the screen.
+        .onChange(of: chat.pickConfirmation) { _, state in
+            if state == .confirmed { dismiss() }
+        }
     }
 
     @ViewBuilder
@@ -102,7 +107,7 @@ private struct ChatCandidatePreviewView: View {
     let chat: AgentChatStore
     let candidate: ChatSessionCandidate
     let corePin: TerminalCorePin
-    let onChosen: () -> Void
+    let onDone: () -> Void
 
     @State private var preview: ChatCandidatePreview?
 
@@ -132,9 +137,6 @@ private struct ChatCandidatePreviewView: View {
         .navigationTitle(previewTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task { preview = await chat.previewCandidate(candidate) }
-        .onChange(of: chat.pickConfirmation) { _, state in
-            if state == .confirmed { onChosen() }
-        }
     }
 
     private var previewTitle: String {
@@ -156,7 +158,7 @@ private struct ChatCandidatePreviewView: View {
                     "Heeler sent your choice and got no answer, so it may or may not be saved. Chat shows this conversation if it was. To choose again, reopen this list.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                Button("Done", action: onChosen)
+                Button("Done", action: onDone)
                     .buttonStyle(.bordered)
             case .saving:
                 ProgressView()

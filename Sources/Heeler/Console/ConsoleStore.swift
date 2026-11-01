@@ -133,6 +133,7 @@ final class ConsoleStore {
     @ObservationIgnored private let coreStopClock: BlockedCardClock
     @ObservationIgnored private let coreChatPrograms: Set<ChatProgram>
     @ObservationIgnored private let chatTiming: AgentChatStore.Timing
+    @ObservationIgnored private let chatNow: @Sendable () -> Date
     @ObservationIgnored private let coreWindowsChatPrograms: Set<ChatProgram>
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
@@ -219,11 +220,13 @@ final class ConsoleStore {
         coreSendClock: BlockedCardClock = .live,
         coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms,
         coreWindowsChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedWindowsCoreChatPrograms,
-        chatTiming: AgentChatStore.Timing = AgentChatStore.Timing()
+        chatTiming: AgentChatStore.Timing = AgentChatStore.Timing(),
+        chatNow: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.coreChatPrograms = coreChatPrograms
         self.coreWindowsChatPrograms = coreWindowsChatPrograms
         self.chatTiming = chatTiming
+        self.chatNow = chatNow
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.coreStopClock = coreStopClock
@@ -885,7 +888,7 @@ final class ConsoleStore {
             chatSessionEventRevisions[agent.id] = core.sessionEventRevision(of: paneID)
         }
         let store = AgentChatStore(
-            agentID: agent.id, agent: agent.agent, program: program, source: source, timing: chatTiming)
+            agentID: agent.id, agent: agent.agent, program: program, source: source, timing: chatTiming, now: chatNow)
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
         return store
