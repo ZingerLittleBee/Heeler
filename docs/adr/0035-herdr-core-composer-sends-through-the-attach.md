@@ -192,10 +192,13 @@ confirm or refine these points with test clients, not the app.
   Heeler's form until it has another check before submitting, such as a read of
   PowerShell's children. This narrows that ticket's Ctrl+C on the `-NoExit`
   wrapper, and it needs the owner's decision if that wrapper must have Send.
-- At PowerShell 5.1's prompt the attach never showed bracketed paste turned on,
-  so the mode gate refuses a paste there unless a dead Agent's flag stayed set,
-  which was not tried on Windows. When a paste does reach the prompt, one 0x03
-  drops it unrun ([observation](../agents/herdr-compatibility.md)).
+- At PowerShell 5.1's prompt the attach showed no `CSI ?2004h` in the 6 seconds
+  or so from the end of the first paint to a paste. That first paint was not
+  kept and the bytes after the paste were not searched, so the mode being off
+  there is not settled. If it stays off, the mode gate refuses a paste there
+  unless a dead Agent's flag stayed set, which was not tried on Windows. When a
+  paste does reach the prompt, one 0x03 drops it unrun
+  ([observation](../agents/herdr-compatibility.md)).
 - On Windows an attach delivered input to a raw-mode program at about 80 KB/s,
   so a very long draft can still be arriving when Enter is queued behind it. Valid
   UTF-8, the paste envelope, 0x03 and `CSI 13 u` reached a raw-mode program
