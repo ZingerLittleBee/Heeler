@@ -48,6 +48,64 @@
       "openFiles": []
     }
   },
+  "piVersionsPolled": {
+    "holdSeconds": 10,
+    "note": "Only the lines around each change of state. requests counts what the fake model received, which it logs before holding.",
+    "runs": {
+      "pi 0.85.1": {
+        "launchWithSessionIdRun1": [
+          "0.8 prompt_on_screen=1 reply=0 new_files=0 requests=1",
+          "10.0 prompt_on_screen=1 reply=0 new_files=0 requests=1",
+          "10.9 prompt_on_screen=1 reply=1 new_files=1 requests=1",
+          "15.3 prompt_on_screen=1 reply=1 new_files=1 requests=1"
+        ],
+        "launchWithSessionIdRun2": [
+          "0.6 prompt_on_screen=1 reply=0 new_files=0 requests=1",
+          "10.1 prompt_on_screen=1 reply=0 new_files=0 requests=1",
+          "10.5 prompt_on_screen=1 reply=1 new_files=1 requests=1",
+          "12.2 prompt_on_screen=1 reply=1 new_files=1 requests=1"
+        ],
+        "afterNewInRun2": [
+          "0.6 prompt_on_screen=1 reply=0 new_files=0 requests=1",
+          "10.1 prompt_on_screen=1 reply=0 new_files=0 requests=1",
+          "10.5 prompt_on_screen=1 reply=1 new_files=1 requests=1",
+          "12.2 prompt_on_screen=1 reply=1 new_files=1 requests=1"
+        ],
+        "noFlag": [
+          "0.6 prompt_on_screen=1 reply=0 new_files=0 requests=1",
+          "10.1 prompt_on_screen=1 reply=0 new_files=0 requests=1",
+          "10.5 prompt_on_screen=1 reply=1 new_files=1 requests=1",
+          "12.2 prompt_on_screen=1 reply=1 new_files=1 requests=1"
+        ]
+      },
+      "pi 1.4.0": {
+        "launchWithSessionIdRun1": [
+          "0.6 prompt_on_screen=1 reply=0 new_files=1 requests=1",
+          "10.1 prompt_on_screen=1 reply=0 new_files=1 requests=1",
+          "10.5 prompt_on_screen=1 reply=1 new_files=1 requests=1",
+          "12.2 prompt_on_screen=1 reply=1 new_files=1 requests=1"
+        ],
+        "launchWithSessionIdRun2": [
+          "0.7 prompt_on_screen=1 reply=0 new_files=1 requests=1",
+          "10.0 prompt_on_screen=1 reply=0 new_files=1 requests=1",
+          "10.5 prompt_on_screen=1 reply=1 new_files=1 requests=1",
+          "12.2 prompt_on_screen=1 reply=1 new_files=1 requests=1"
+        ],
+        "afterNewInRun2": [
+          "0.7 prompt_on_screen=1 reply=0 new_files=1 requests=1",
+          "10.1 prompt_on_screen=1 reply=0 new_files=1 requests=1",
+          "10.6 prompt_on_screen=1 reply=1 new_files=1 requests=1",
+          "12.3 prompt_on_screen=1 reply=1 new_files=1 requests=1"
+        ],
+        "noFlag": [
+          "0.7 prompt_on_screen=1 reply=0 new_files=1 requests=1",
+          "9.8 prompt_on_screen=1 reply=0 new_files=1 requests=1",
+          "10.3 prompt_on_screen=1 reply=1 new_files=1 requests=1",
+          "12.5 prompt_on_screen=1 reply=1 new_files=1 requests=1"
+        ]
+      }
+    }
+  },
   "opencode": {
     "version": "opencode v2.2.5",
     "launch": "-s ses",
@@ -71,6 +129,24 @@
       "17.1 screen_canned_lines=3 rows=1 messages=['user', 'assistant', 'idle']",
       "18.1 screen_canned_lines=3 rows=1 messages=['user', 'assistant', 'idle']",
       "19.2 screen_canned_lines=3 rows=1 messages=['user', 'assistant', 'idle']"
+    ]
+  },
+  "opencode2032": {
+    "version": "opencode v2.0.32",
+    "launch": "-s ses",
+    "holdSeconds": 10,
+    "run1": [
+      "1.0 screen_canned_lines=1 rows=1 messages=['user'] requests=2",
+      "9.5 screen_canned_lines=1 rows=1 messages=['user'] requests=2",
+      "10.3 screen_canned_lines=1 rows=1 messages=['user', 'assistant', 'idle'] requests=2",
+      "11.1 screen_canned_lines=3 rows=1 messages=['user', 'assistant', 'idle'] requests=2",
+      "13.7 screen_canned_lines=3 rows=1 messages=['user', 'assistant', 'idle'] requests=2"
+    ],
+    "run2": [
+      "1.0 screen_canned_lines=1 rows=1 messages=['user'] requests=2",
+      "10.2 screen_canned_lines=1 rows=1 messages=['user'] requests=2",
+      "11.1 screen_canned_lines=3 rows=1 messages=['user', 'assistant', 'idle'] requests=2",
+      "13.6 screen_canned_lines=3 rows=1 messages=['user', 'assistant', 'idle'] requests=2"
     ]
   },
   "omp": {
@@ -126,7 +202,42 @@
       "11.9 reply=1 open:",
       "12.4 reply=1 open:",
       "13.0 reply=2 open: 44 -> /home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-44-33-389Z_01900000-0000-7000-8000-000000000005.jsonl"
-    ]
+    ],
+    "holdSixSecondsNote": "The hold was lifted 8 seconds in, so only the first two requests were held.",
+    "openFileEveryRequestHeld": {
+      "run1": {
+        "polled": [
+          "0.8 file=0 title_slot_filled=- open=0",
+          "9.9 file=0 title_slot_filled=- open=0",
+          "10.4 file=1 title_slot_filled=0 open=0",
+          "40.2 file=1 title_slot_filled=0 open=0",
+          "40.8 file=1 title_slot_filled=1 open=1",
+          "41.8 file=1 title_slot_filled=1 open=1"
+        ],
+        "requests": [
+          "request at 0.3 tools=12",
+          "request at 10.3 tools=12",
+          "request at 20.3 tools=0",
+          "request at 30.4 tools=0"
+        ]
+      },
+      "run2": {
+        "polled": [
+          "0.8 file=0 title_slot_filled=- open=0",
+          "9.9 file=0 title_slot_filled=- open=0",
+          "10.4 file=1 title_slot_filled=0 open=0",
+          "40.0 file=1 title_slot_filled=0 open=0",
+          "40.5 file=1 title_slot_filled=1 open=1",
+          "41.6 file=1 title_slot_filled=1 open=1"
+        ],
+        "requests": [
+          "request at 0.3 tools=12",
+          "request at 10.3 tools=12",
+          "request at 20.4 tools=0",
+          "request at 30.4 tools=0"
+        ]
+      }
+    }
   },
-  "observed": "Codex's rollout and Pi's session file appear at the prompt, before the reply. Grok Build's row predates the prompt. OpenCode's row and user message appear at the prompt, and the assistant message with the reply. Oh My Pi's file appears only with the reply. The OMP lock column counts @omp-file-lock lines in /proc/net/unix across the VM: one was there before the prompt, and a separate run saw no such socket on the Terminal's process at its prompt, so the rise to two marks the lease. OpenCode's one screen line during the hold is a row of earlier sessions' generated titles on its home view, not this reply. Pi 0.85.1 and OpenCode 2.0.32 were not run under a hold."
+  "observed": "Codex's rollout appears at the prompt, before the reply. Pi 1.4.0's session file appears at the prompt, before the reply; Pi 0.85.1's appears only with the reply. Grok Build's row predates the prompt. On OpenCode 2.0.32 and 2.2.5 the row and user message appear at the prompt, and the assistant message with the reply. Oh My Pi's file and lock appear with the reply. With every request held, the process opened the file in the same sample as the title slot filling, as the last of four requests returned, 30 seconds after the file; with no hold it was already open at the first sample. The OMP lock column counts @omp-file-lock lines in /proc/net/unix across the VM: one was there before the prompt, and a separate run saw no such socket on the Terminal's process at its prompt, so the rise to two marks the lease; omp/session-lock-by-id.json reads the process's own sockets. OpenCode's one screen line during a hold is a row of earlier sessions' generated titles on its home view, there before the prompt, not this reply."
 }

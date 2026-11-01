@@ -137,5 +137,5 @@
       ]
     }
   },
-  "observed": "No session file exists at the prompt. It appears at the first prompt, before the reply (reply-held.json). Its name holds a timestamp from when the session was made and the id: the --session-id one, or a UUIDv7 for `/new` and a plain start. No file descriptor on the session file and no lock file were seen at any sample. /proc/<pid>/cmdline reads only `pi`, because the program rewrites its title, so `--session-id` is visible only in the Terminal's launch argv."
+  "observed": "No session file exists at the prompt. It appears only with the first reply, not before it: with the reply held 10 seconds there was no file until the reply, with `--session-id`, after `/new` and with no flag (reply-held.json). Its name holds a timestamp from when the session was made and the id: the --session-id one, or a UUIDv7 for `/new` and a plain start. No file descriptor on the session file and no lock file were seen at any sample. /proc/<pid>/cmdline reads only `pi`, because the program rewrites its title, so `--session-id` is visible only in the Terminal's launch argv."
 }

@@ -263,7 +263,7 @@
     }
   ],
   "sessionLock": {
-    "form": "an abstract Unix socket on Linux, no file: @omp-file-lock-<hash>",
+    "form": "an abstract Unix socket on Linux, no file: @omp-file-lock-<hash>. One lock per session, keyed by the session id; see session-lock-by-id.json",
     "heldAtPrompt": false,
     "afterFirstReply": "fd 43 state 01 name @omp-file-lock-037d18d6822ccb83fedf06eb91e6253f",
     "afterNew": "fd 43 state 01 name @omp-file-lock-e7e10615988f5ae5607b862811cc9bc4"
@@ -273,5 +273,5 @@
     "createSessionProbe": "tty pts-0\nbefore:\n/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/sessions/--home-user-lab-iso-projects-omp--/2026-11-01T07-27-17-521Z_01900000-0000-7000-8000-000000000004.jsonl\ncwdstat 64769 1048610\n\ncreated /home/user/lab/iso/omp/home/.omp/agent/scan-probe-sessions/2026-11-01T07-29-01-423Z_01900000-0000-7000-8000-000000000005.jsonl\nafter create:\n/home/user/lab/iso/projects/omp\n/home/user/lab/iso/omp/home/.omp/agent/scan-probe-sessions/2026-11-01T07-29-01-423Z_01900000-0000-7000-8000-000000000005.jsonl\nfresh\ncwdstat 64769 1048610\n\n",
     "scanItself": "not run: needs a stored OAuth account"
   },
-  "observed": "The breadcrumb appears at startup marked fresh, naming a file that does not exist yet. The first reply, not the prompt, writes the file, drops fresh and takes the lock. The process opens the file only at its next write, which with the fake model's instant title came at once and with a held title came 6 s later (reply-held.json). `/new` writes the new file at once and moves the crumb, the open file and the lock to it. The crumb outlives the process, and the next process on the same terminal name overwrites it at its own startup. A child `omp daemon broker` and its `omp` worker share the Terminal's HC_SCOPE."
+  "observed": "The breadcrumb appears at startup marked fresh, naming a file that does not exist yet. The first reply, not the prompt, writes the file, drops fresh and takes the session's lock. The process opens the file later: with no hold it was open by the first sample, and with every request held it opened 30 seconds after the file, in the same sample as the title slot filling (reply-held.json). `/new` writes the new file at once and moves the crumb, the open file and the lock to it. The crumb outlives the process, and the next process on the same terminal name overwrites it at its own startup. A child `omp daemon broker` and its `omp` worker share the Terminal's HC_SCOPE."
 }
