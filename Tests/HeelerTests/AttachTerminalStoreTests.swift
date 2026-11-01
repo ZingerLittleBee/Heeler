@@ -610,6 +610,98 @@ struct AttachTerminalStoreTests {
 @MainActor
 @Suite("Agent Attach store")
 struct AgentAttachStoreTests {
+    @Test func automaticReattachKeepsTheTerminalSurfaceAcrossTransportReplacement() async throws {
+        let transport = ScriptedTransport()
+        let generation = TerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.acquire()
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = makeStore(transport: transport, generation: 1, runTerminal: runner)
+        try await goLive(store, transport)
+        let surface = store.terminalID
+        let feed = store.terminal.feed
+        let readyGate = ScriptedTransportCallGate()
+        await generation.set(2)
+        await generation.gateNextAcquisition(using: readyGate)
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await readyGate.waitForEntry()
+        #expect(store.terminalStatus == .reconnecting)
+
+        store.transportGenerationDidChange(2)
+        #expect(store.terminalID == surface)
+        #expect(store.terminal.feed === feed)
+        await readyGate.open()
+        try await paint(transport)
+        try await waitUntil("the existing terminal should recover") { store.terminalStatus == .live }
+        #expect(store.terminalID == surface)
+        #expect(store.terminal.feed === feed)
+        #expect(await transport.attachRequests.count == 2)
+        await store.leave().value
+    }
+
+    @Test func aReattachHoldingAnOlderTransportIsReplacedWhenTheHostRedials() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 1, runTerminal: readyRunner(transport))
+        try await goLive(store, transport)
+        let surface = store.terminalID
+        let opening = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: opening)
+
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await opening.waitForEntry()
+        #expect(store.terminalStatus == .reconnecting)
+        store.transportGenerationDidChange(2)
+        await opening.open()
+
+        try await waitUntil("the stale attempt should be replaced") { store.terminalID != surface }
+        await store.leave().value
+    }
+
+    @Test func agentInputDuringAReattachWaitsForTheNewOutput() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport, generation: 1, runTerminal: readyRunner(transport))
+        try await goLive(store, transport)
+        let opening = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: opening)
+
+        await transport.failAttachStream(.sshUnreachable(detail: "connection lost"))
+        await opening.waitForEntry()
+        store.viewDidResize(cols: 101, rows: 31)
+        await opening.open()
+        // The catch-up resize follows the point a writer used to be installed.
+        try await waitUntil("the reattach should reach its session") {
+            await transport.attachInputs.contains(.resize(cols: 101, rows: 31))
+        }
+        #expect(store.terminalStatus == .reconnecting)
+        store.send(Data("y".utf8))
+        #expect(!store.sendEscapeKey())
+        store.insertSnippet("y", bracketedPaste: false)
+        store.requestPaste("y", bracketedPaste: false)
+
+        try await paint(transport)
+        try await waitUntil("the reattach should go live") { store.terminalStatus == .live }
+        store.send(Data("n".utf8))
+        func keystrokes() async -> [Data] {
+            await transport.attachInputs.compactMap {
+                if case .keystrokes(let bytes) = $0 { bytes } else { nil }
+            }
+        }
+        try await waitUntil("the live key should arrive") { await !keystrokes().isEmpty }
+        #expect(await keystrokes() == [Data("n".utf8)])
+        await store.leave().value
+    }
+
+    private func readyRunner(_ transport: ScriptedTransport) -> TerminalSessionRunner {
+        { request, handler in
+            await handler.transportDidBecomeReady(1)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+    }
+
     @Test func unchangedGenerationAllowsConsecutiveForegroundRecoveries() async throws {
         let transport = ScriptedTransport()
         let generation = TerminalGenerationSource(1)

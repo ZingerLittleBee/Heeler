@@ -1483,6 +1483,63 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    /// A slow reply pauses what reaches the Host, not the keyboard: losing it
+    /// would also resize the terminal on every blip of a weak network.
+    @Test func connectionRecoveryKeepsTheDirectKeyboardUp() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: transport)
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                interactionProbe: interactions))
+        let window = Self.makeLocalTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live
+                && interactions.isConnected
+        })
+
+        try #require(try await Self.activateControl(
+            labeled: AgentDirectInputPresentation.hideComposerAccessibilityLabel,
+            in: controller.view,
+            probe: { interactions.selectInputMode(.direct) }))
+        try #require(await Self.eventually { inputMode.mode == AgentInputMode.direct })
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        try #require(await Self.eventually { terminal.isFirstResponder })
+
+        owner.input.isEnabled = false
+        try await Task.sleep(for: .milliseconds(200))
+        controller.view.layoutIfNeeded()
+        #expect(terminal.isFirstResponder)
+        #expect(terminal.isLocalInputEnabled)
+        #expect(!owner.input.send(Data("dropped".utf8)))
+
+        owner.input.isEnabled = true
+        try await Task.sleep(for: .milliseconds(200))
+        controller.view.layoutIfNeeded()
+        #expect(terminal.isFirstResponder)
+        let typed = Data("typed".utf8)
+        #expect(owner.input.send(typed))
+        try #require(await Self.eventually {
+            await transport.attachInputs.contains(.keystrokes(typed))
+        })
+        #expect(await !transport.attachInputs.contains(.keystrokes(Data("dropped".utf8))))
+
+        await owner.leave().value
+    }
+
     @Test func terminalReplacementWhileDirectOwnsKeyboardClaimsIntent() async throws {
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { _ in

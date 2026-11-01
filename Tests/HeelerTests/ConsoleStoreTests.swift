@@ -944,6 +944,9 @@ struct ConsoleStoreTests {
         store.setHosts([host])
         await store.resume()
         try await waitUntil("the initial agent should arrive") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+        let composer = store.composerStore(for: agent)
+        composer.replaceDraft(with: "keep this unsent draft")
 
         // Publishing the snapshot precedes installing its pane subscription.
         // Inject the failure only after that replacement stream is live.
@@ -957,6 +960,19 @@ struct ConsoleStoreTests {
         }
 
         #expect(store.agents.isEmpty)
+        #expect(store.agentForDetail(agent.id) == agent)
+        #expect(!composer.canSend)
+        #expect(await composer.send() == .ignored)
+        #expect(composer.draft == "keep this unsent draft")
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        await transport.setSnapshot(.fixture(agents: []))
+        await store.retryHost(host.id)
+        try await waitUntil("a fresh empty inventory must retire the retained detail") {
+            store.hostStatuses[host.id] == .connected && !store.hostsAwaitingSnapshot.contains(host.id)
+        }
+        #expect(store.agentForDetail(agent.id) == nil)
+        #expect(composer.draft == "keep this unsent draft")
 
         store.setHosts([])
     }
@@ -1988,21 +2004,12 @@ struct ConsoleStoreTests {
         await #expect(throws: TransportError.timedOut) {
             try await store.focusAgent("pane", on: host.id)
         }
-        // The single retry rides the replacement, so the focus reaches the
-        // transport once per attempt.
-        #expect(await transport.agentFocuses == [
-            AgentTarget(target: "pane"), AgentTarget(target: "pane"),
-        ])
-        // The redial ends the stale events channel, and the fresh
-        // `.connected` that follows is the consumer's usual re-snapshot
-        // signal: exactly one resync beyond the pre-focus count. A FAILED
-        // focus must not add a success resync on top of it.
-        try await waitUntil("the reconnect resync should land") {
-            await transport.snapshotFetchCount == before + 1
-        }
+        // The Host still answers its health check, so an uncertain focus
+        // delivery is neither replayed nor treated as a new connection.
+        #expect(await transport.agentFocuses == [AgentTarget(target: "pane")])
         // Give an incorrectly scheduled success refresh time to reach the transport.
         try await Task.sleep(for: .milliseconds(25))
-        #expect(await transport.snapshotFetchCount == before + 1)
+        #expect(await transport.snapshotFetchCount == before)
         #expect(store.agents.map(\.agent.status) == [.done])
     }
 
@@ -2805,6 +2812,75 @@ struct ConsoleStoreTests {
         }
 
         store.setHosts([])
+    }
+
+    /// A lost link can be replaced behind a status that never leaves
+    /// `.connected`. The new `.connected` alone proves nothing about the Host.
+    @Test func aSilentReplacementKeepsInputPausedUntilItsSnapshotLands() async throws {
+        let host = Host.fixture()
+        let first = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let second = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let snapshotGate = ScriptedTransportCallGate()
+        await second.gateNextSnapshot(using: snapshotGate)
+        let store = makeStore(
+            transportQueues: [host.id: TransportQueue([first, second])])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the first snapshot should open input") {
+            store.isHostReadyForInput(host.id) && store.agents.count == 1
+        }
+        #expect(store.connectionRecoveryTitle(for: host.id) == nil)
+
+        await first.setAgentPromptFailure(TransportError.sshUnreachable(detail: "connection lost"))
+        await #expect(throws: TransportError.sshUnreachable(detail: "connection lost")) {
+            _ = try await store.promptAgent(
+                AgentPromptParams(target: "w1:p1", text: "once"), on: host.id)
+        }
+        await snapshotGate.waitForEntry()
+        try await waitUntil("the replacement should announce itself") {
+            store.hostConnectionGenerations[host.id] == 1
+                && store.hostStatuses[host.id] == .connected
+                && !store.hostsCheckingConnection.contains(host.id)
+        }
+        #expect(!store.isHostReadyForInput(host.id))
+        #expect(store.connectionRecoveryTitle(for: host.id) == "Updating session…")
+        #expect(store.agents.count == 1, "a silent replacement keeps its rows listed")
+        await #expect(throws: TransportError.self) {
+            try await store.sendAgentKeys(["enter"], to: "w1:p1", on: host.id)
+        }
+        await #expect(throws: TransportError.self) {
+            try await store.pasteIntoAgent("note", paneID: "w1:p1", on: host.id)
+        }
+
+        await snapshotGate.open()
+        try await waitUntil("the replacement's snapshot should reopen input") {
+            store.isHostReadyForInput(host.id)
+        }
+        #expect(store.connectionRecoveryTitle(for: host.id) == nil)
+        #expect(await second.agentPromptParams.isEmpty, "a lost send must not run again")
+    }
+
+    @Test func leavingPastTheGracePeriodKeepsTheDetailsAgent() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1")]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Agent should arrive") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+
+        await store.suspend()
+        try await waitUntil("the Host should suspend") {
+            store.hostStatuses[host.id] == .suspended
+        }
+        #expect(store.agents.isEmpty)
+        #expect(store.agentForDetail(agent.id) == agent)
+        #expect(!store.isHostReadyForInput(host.id))
     }
 
     @Test func terminalRunnerAndImageStagerSurviveAHostEdit() async throws {

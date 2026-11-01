@@ -83,6 +83,7 @@ final class AgentTerminalCache {
                 guard let console else { throw CancellationError() }
                 try await console.closePane(agent.agent.paneID, on: agent.hostID)
             })
+        attach.input.isEnabled = console.isHostReadyForInput(agent.hostID)
         let entry = Entry(
             agentID: agent.id, terminalID: agent.agent.terminalID,
             attach: attach, lifetime: lifetime, ownerID: ownerID)

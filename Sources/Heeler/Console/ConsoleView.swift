@@ -1361,15 +1361,14 @@ struct ConsoleView: View {
     }
 
     /// The detail column. Not keyed off the live Agent list alone: the
-    /// selection must survive the list emptying while an Agent is shown
-    /// (a reconnect empties it briefly), so a vanished Agent shows a
-    /// placeholder instead of clearing the selection.
+    /// selection and terminal remain mounted while recovery temporarily empties
+    /// the inventory. A fresh snapshot still decides whether the Agent exists.
     @ViewBuilder
     private func detail(in tab: ConsoleTab) -> some View {
         if let id = notificationRouter.path.last {
             if let receipt = matchingRemovedWorktreeReceipt(for: id) {
                 removedWorktreeSurface(receipt)
-            } else if let agent = console.chatDisplayAgents.first(where: { $0.id == id }) {
+            } else if let agent = console.agentForDetail(id) {
                 AgentDetailView(
                     agent: agent,
                     console: console,
@@ -1386,7 +1385,7 @@ struct ConsoleView: View {
                         // terminal on a spurious reappearance.
                         isVisible: { [notificationRouter] in
                             notificationRouter.path.last == id
-                                && console.chatDisplayAgents.contains(where: { $0.id == id })
+                                && console.agentForDetail(id) != nil
                                 && currentTab == tab
                         },
                         terminalAccess: { [sceneRouting] in
