@@ -1,0 +1,14 @@
+{"jsonrpc":"2.0","method":"event","params":{"data":{"address":"t1c","argv":["/home/user/lab/pi085/node_modules/.bin/pi","<scrubbed>","<scrubbed>"],"cols":200,"created_ms":1793517500981,"cwd":"/home/user/lab/iso/projects/pi","die_with_parent":false,"exit_code":null,"finished_ms":null,"identity":"ghostty","keep":false,"labels":{},"name":"pi-a","notify":true,"parent":null,"pid":7406,"reason":null,"reported":false,"rm":false,"rows":120,"screen":"exact","signal":null,"state":"live","status":null,"status_ms":null,"template":null,"title":"","turn":0},"seq":335,"terminal":"t1c","type":"created"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"title":"<scrubbed>"},"seq":336,"terminal":"t1c","type":"title"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"argv":["pi"],"cwd":"/home/user/lab/iso/projects/pi","name":"pi","pid":7406},"seq":337,"terminal":"t1c","type":"foreground"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"title":"<scrubbed>"},"seq":338,"terminal":"t1c","type":"title"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"title":"<scrubbed>"},"seq":339,"terminal":"t1c","type":"title"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"address":"t1d","argv":["/home/user/lab/pi085/node_modules/.bin/pi"],"cols":200,"created_ms":1793517512477,"cwd":"/home/user/lab/iso/projects/pi","die_with_parent":false,"exit_code":null,"finished_ms":null,"identity":"ghostty","keep":false,"labels":{},"name":"pi-b","notify":true,"parent":null,"pid":7530,"reason":null,"reported":false,"rm":false,"rows":120,"screen":"exact","signal":null,"state":"live","status":null,"status_ms":null,"template":null,"title":"","turn":0},"seq":340,"terminal":"t1d","type":"created"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"title":"<scrubbed>"},"seq":341,"terminal":"t1d","type":"title"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"argv":["pi"],"cwd":"/home/user/lab/iso/projects/pi","name":"pi","pid":7530},"seq":342,"terminal":"t1d","type":"foreground"}}
+{"jsonrpc":"2.0","method":"heartbeat","params":{"seq":342}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"title":"<scrubbed>"},"seq":343,"terminal":"t1c","type":"title"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"exit_code":0,"finished_ms":1793517519179,"reason":"killed","signal":null},"seq":344,"terminal":"t1c","type":"finished"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"title":"<scrubbed>"},"seq":345,"terminal":"t1d","type":"title"}}
+{"jsonrpc":"2.0","method":"event","params":{"data":{"exit_code":0,"finished_ms":1793517519256,"reason":"killed","signal":null},"seq":346,"terminal":"t1d","type":"finished"}}
+{"jsonrpc":"2.0","method":"heartbeat","params":{"seq":346}}

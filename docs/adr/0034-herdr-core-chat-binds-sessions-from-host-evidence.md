@@ -135,7 +135,7 @@ herdr-core Hosts only.
   catches it.
 - Ending the Terminal that started Codex's shared daemon ends the daemon, and
   every other default-mode Codex on the same `CODEX_HOME` loses its backend
-  while it still reports Idle.
+  while it keeps reporting its last status, such as Idle or Done.
 - Oh My Pi reports Idle while its sign-in waits, so that sign-in shows as
   Idle, not Blocked.
 - Oh My Pi's breadcrumb names a session file before the file exists and
@@ -145,14 +145,38 @@ herdr-core Hosts only.
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.
   The two differ when the user's shell rc sets the variable.
-- Unverified: the rollout Codex holds open in embedded mode, Pi's and Oh My
-  Pi's session files and Grok Build's `active_sessions.json` rows, all of which
-  need a signed-in model; Grok Build's `pid_start` encoding and its leader
-  mode; whether Oh My Pi's security scan rewrites the breadcrumb; OpenCode
-  2.x at runtime, read only from source; whether Claude Code's `procStart` on
-  macOS equals the start `ps -o lstart=` prints; `HC_TERMINAL_SOCKET`'s form on
-  Windows; and whether Windows Transcripts are read over SFTP or the core's
-  `file.read`.
+- Unverified: whether Oh My Pi's security scan leaves the breadcrumb rewritten,
+  since the scan needs a stored OAuth account; whether a signed-in account
+  changes any of the evidence below, which never saw one; whether Claude Code's
+  `procStart` on macOS equals the start `ps -o lstart=` prints;
+  `HC_TERMINAL_SOCKET`'s form on Windows; whether Windows Transcripts are
+  read over SFTP or the core's `file.read`; and whether a Host can work out an
+  Oh My Pi lock's name without running its code, since the hash is not
+  identified; and whether Heeler's OpenCode store query runs against either
+  schema, since only its table and column names were checked. Owner
+  confirmation with a signed-in
+  harness on hc-lab remains available, and is listed in #578's Owner acceptance.
+- Settled with a local fake model and no sign-in, in a throwaway Linux VM and
+  not on hc-lab ([herdr compatibility](../agents/herdr-compatibility.md), which
+  says what could differ for each program;
+  `Tests/HeelerTests/ChatFixtures/host-evidence`): Codex's embedded native
+  process holds the rollout open from the first prompt, and its `session_meta`
+  tells a root from a subagent; after `/new` it holds two roots, so one root
+  thread binds nothing. Pi 1.4.0's file appears at the first prompt, before the
+  reply, Pi 0.85.1's only with the reply, and no process holds either. Oh My
+  Pi's file and session lock appear together with the first reply, and the
+  process opens the file later, seen in one sample with the title slot filling,
+  which does not show cause. The lock is one per
+  session, and the owners directory and session id decide its name, so it
+  covers the time the file is not open, though only the program's own code has
+  checked a name so far.
+  Grok Build's row appears at startup, its `pid_start` is `/proc/<pid>/stat`'s
+  start in clock ticks, `/new` adds a second matching row, and in leader mode
+  the row still names the Terminal's process. OpenCode 2.0.32 and 2.2.5 create
+  the given `ses` id's row at the first prompt the prompt box takes; on 2.2.5 one
+  sent before the box appeared left no row. For the scan, only its one
+  `SessionManager.create` call ran, on its own, and it did rewrite the
+  breadcrumb.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from

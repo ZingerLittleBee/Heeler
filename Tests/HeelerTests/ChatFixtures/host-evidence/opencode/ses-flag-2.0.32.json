@@ -1,0 +1,203 @@
+{
+  "program": "opencode",
+  "version": "opencode v2.0.32",
+  "core": "0.1.13",
+  "source": "Two Terminals running OpenCode with `-s <ses id>` in Heeler's id form, on one background service",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "timeline": [
+    {
+      "phase": "start_a",
+      "seconds": 0.0
+    },
+    {
+      "phase": "prompt_visible",
+      "seconds": 0.73
+    },
+    {
+      "phase": "send_first",
+      "seconds": 3.78
+    },
+    {
+      "phase": "reply_seen",
+      "seconds": 4.34
+    },
+    {
+      "phase": "start_b",
+      "seconds": 5.36
+    },
+    {
+      "phase": "send_b",
+      "seconds": 7.76
+    },
+    {
+      "phase": "new_a",
+      "seconds": 9.02
+    },
+    {
+      "phase": "kill_a",
+      "seconds": 13.77
+    },
+    {
+      "phase": "end",
+      "seconds": 21.3
+    }
+  ],
+  "launchIds": {
+    "terminalA": "ses_e6a000000001Abcdefghijklmn",
+    "terminalB": "ses_e6a000000002Abcdefghijklmn"
+  },
+  "sessionRowsBeforeFirstPrompt": 0,
+  "sessionRowsAfterFirstPrompt": 1,
+  "sessionRows": [
+    {
+      "id": "ses_e6a000000001Abcdefghijklmn",
+      "project_id": "global",
+      "parent_id": null,
+      "directory": "/home/user/lab/iso/projects/opencode",
+      "title": "<scrubbed>",
+      "version": "2.0.32",
+      "agent": "build",
+      "model": "{\"id\":\"fake-model\",\"providerID\":\"fake\"}",
+      "time_created": 1793517436410,
+      "time_updated": 1793517436483
+    },
+    {
+      "id": "ses_e6a000000002Abcdefghijklmn",
+      "project_id": "global",
+      "parent_id": null,
+      "directory": "/home/user/lab/iso/projects/opencode",
+      "title": "<scrubbed>",
+      "version": "2.0.32",
+      "agent": "build",
+      "model": "{\"id\":\"fake-model\",\"providerID\":\"fake\"}",
+      "time_created": 1793517440382,
+      "time_updated": 1793517440451
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg_195f00000001Abcdefghijklmn",
+      "session_id": "ses_e6a000000002Abcdefghijklmn",
+      "type": "user",
+      "seq": 4,
+      "time_created": 1793517440420,
+      "dataKeys": [
+        "agents",
+        "files",
+        "text",
+        "time"
+      ]
+    },
+    {
+      "id": "msg_195f00000002Abcdefghijklmn",
+      "session_id": "ses_e6a000000002Abcdefghijklmn",
+      "type": "assistant",
+      "seq": 7,
+      "time_created": 1793517440432,
+      "dataKeys": [
+        "agent",
+        "content",
+        "cost",
+        "finish",
+        "model",
+        "rawFinish",
+        "snapshot",
+        "time",
+        "tokens"
+      ]
+    },
+    {
+      "id": "msg_195f00000003Abcdefghijklmn",
+      "session_id": "ses_e6a000000002Abcdefghijklmn",
+      "type": "idle",
+      "seq": 12,
+      "time_created": 1793517440453,
+      "dataKeys": [
+        "outcome",
+        "time"
+      ]
+    },
+    {
+      "id": "msg_195f00000004Abcdefghijklmn",
+      "session_id": "ses_e6a000000001Abcdefghijklmn",
+      "type": "user",
+      "seq": 4,
+      "time_created": 1793517436441,
+      "dataKeys": [
+        "agents",
+        "files",
+        "text",
+        "time"
+      ]
+    },
+    {
+      "id": "msg_195f00000005Abcdefghijklmn",
+      "session_id": "ses_e6a000000001Abcdefghijklmn",
+      "type": "assistant",
+      "seq": 7,
+      "time_created": 1793517436454,
+      "dataKeys": [
+        "agent",
+        "content",
+        "cost",
+        "finish",
+        "model",
+        "rawFinish",
+        "snapshot",
+        "time",
+        "tokens"
+      ]
+    },
+    {
+      "id": "msg_195f00000006Abcdefghijklmn",
+      "session_id": "ses_e6a000000001Abcdefghijklmn",
+      "type": "idle",
+      "seq": 12,
+      "time_created": 1793517436485,
+      "dataKeys": [
+        "outcome",
+        "time"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "name": "first-terminal",
+      "processes": [
+        {
+          "pid": 7016,
+          "parent": 2630,
+          "name": "opencode",
+          "start": "152296",
+          "argv": [
+            "/home/user/lab/oc2032/node_modules/.bin/opencode",
+            "-s",
+            "ses_e6a000000001Abcdefghijklmn"
+          ],
+          "environment": {
+            "HC_SCOPE": "152295-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 7037,
+          "parent": 7016,
+          "name": "opencode.exe",
+          "start": "152304",
+          "argv": [
+            "/home/user/lab/oc2032/node_modules/@opencode/cli/bin/opencode.exe",
+            "serve",
+            "--service"
+          ],
+          "environment": {
+            "HC_SCOPE": "152295-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/opencode-oc2032/home/.local/share/opencode/opencode.db"
+          ]
+        }
+      ]
+    }
+  ],
+  "observed": "No row exists at the prompt. The first prompt creates the session_v2 row under the -s id, with its session_message rows. The first OpenCode's process starts `opencode.exe serve --service`, its own session and no controlling terminal, carrying that Terminal's HC_SCOPE. The service holds the database open and the Terminal's process does not. A second Terminal's OpenCode joins the service and starts none. Ending the first Terminal ended the service; the second OpenCode then showed a connection error and its next prompt added no message. `/new` makes no row until a prompt."
+}
