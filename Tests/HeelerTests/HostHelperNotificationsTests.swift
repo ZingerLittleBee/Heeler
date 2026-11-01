@@ -775,6 +775,69 @@ struct HostHelperNotificationsTests {
         try await waitUntil("the mark") { await rig.helper.files[path] != nil }
     }
 
+    @Test func turningOnWritesWhatThisDeviceAlreadySawOnTheHost() async throws {
+        let rig = try await rig(try await installedHelper())
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        rig.console.setAgentShown(id("t1"), viewer: viewer, scene: window)
+        try await waitUntil("t1 read as seen") { rig.console.agents.first?.agent.status == .idle }
+        try await settleWrites(rig)
+        #expect(await markWrites(rig.helper).isEmpty)
+
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+
+        let path = try markPath()
+        try await waitUntil("the mark") { await rig.helper.files[path] != nil }
+        let contents = try #require(await rig.helper.files[path]?.contents)
+        #expect(String(decoding: contents, as: UTF8.self).contains(#""terminal":"t1","turn":3"#))
+        try await settleWrites(rig)
+        #expect(await markWrites(rig.helper) == [path])
+    }
+
+    @Test func turningOffAndOnWritesTheMarksUnderTheNewKey() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        rig.console.setAgentShown(id("t1"), viewer: viewer, scene: window)
+        let first = try markPath()
+        try await waitUntil("the mark") { await rig.helper.files[first] != nil }
+        try await settleWrites(rig)
+
+        await rig.preferences.setNotificationsEnabled(false, for: host)
+        #expect(await rig.helper.files[first] == nil)
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+
+        let second = try markPath()
+        #expect(second != first)
+        try await waitUntil("the mark under the new key") { await rig.helper.files[second] != nil }
+        #expect(await rig.helper.files[first] == nil)
+    }
+
+    @Test func changingTheDoneFlagWritesNoMark() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        rig.console.setAgentShown(id("t1"), viewer: viewer, scene: window)
+        let path = try markPath()
+        try await waitUntil("the mark") { await rig.helper.files[path] != nil }
+        try await settleWrites(rig)
+        await rig.helper.configure { $0.clearLog() }
+
+        await rig.preferences.setDoneEnabled(false, for: host)
+
+        try await settleWrites(rig)
+        #expect(await markWrites(rig.helper).isEmpty)
+    }
+
+    @Test func turningOnWithNothingSeenWritesNoMark() async throws {
+        let rig = try await rig(try await installedHelper())
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+
+        await rig.preferences.setNotificationsEnabled(true, for: host)
+
+        try await settleWrites(rig)
+        #expect(await markWrites(rig.helper).isEmpty)
+    }
+
     @Test func noMarkOnAHostWithoutTheHelper() async throws {
         let helper = ScriptedHelperHost()
         let rig = try await rig(helper)

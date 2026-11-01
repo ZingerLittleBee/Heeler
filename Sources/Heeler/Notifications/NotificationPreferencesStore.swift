@@ -82,6 +82,9 @@ final class NotificationPreferencesStore {
     /// write before them. Each holds every mark, so a newer one replaces an older.
     private var pendingSeenMarks: [Host.ID: PendingSeenMarks] = [:]
     private var seenMarkWrites: [Host.ID: Task<Void, Never>] = [:]
+    /// Every mark this device holds on a core Host, for a registration that has
+    /// no file of them yet.
+    @ObservationIgnored private var heldSeenMarks: @MainActor (Host.ID) -> PendingSeenMarks? = { _ in nil }
 
     private let transports: any NotificationTransportProvider
     private let deviceToken: @MainActor () -> APNSDeviceToken?
@@ -353,6 +356,10 @@ final class NotificationPreferencesStore {
             }
             guard isCurrent(operationID, for: host) else { return }
             states[host.id] = .idle(confirmed)
+            // A new key has no file yet, and the projection only reports changes.
+            if registers, !settings.isRegistered, pendingSeenMarks[host.id] == nil {
+                pendingSeenMarks[host.id] = heldSeenMarks(host.id)
+            }
             if registers {
                 onRegistered?(host.id)
                 await reloadRegisteredHosts(except: host.id)
@@ -431,6 +438,10 @@ final class NotificationPreferencesStore {
     func followSeenMarks(of console: ConsoleStore) {
         console.onCoreSeenMarksChanged = { [weak self] hostID, core, marks in
             self?.noteSeenMarks(core: core, marks: marks, for: hostID)
+        }
+        heldSeenMarks = { [weak console] hostID in
+            guard let held = console?.coreSeenMarks(on: hostID), !held.marks.isEmpty else { return nil }
+            return PendingSeenMarks(core: held.core, marks: held.marks)
         }
     }
 

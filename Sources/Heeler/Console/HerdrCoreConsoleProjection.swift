@@ -441,6 +441,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         memory.turnStates(for: host.id).compactMapValues(\.seen)
     }
 
+    /// Every mark this device holds, for a new registration's first file.
+    var currentSeenMarks: (core: String, marks: [String: HerdrCoreTurnState.Mark])? {
+        memory.coreID(for: host.id).map { ($0, seenMarks) }
+    }
+
     private func reportSeenMarks(ifChangedFrom before: [String: HerdrCoreTurnState.Mark]) {
         let marks = seenMarks
         guard marks != before, let core = memory.coreID(for: host.id) else { return }
