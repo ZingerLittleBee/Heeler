@@ -588,6 +588,58 @@ struct HostHelperNotificationsTests {
         await finish(coordinator, controller)
     }
 
+    /// The Helper answers with no core running, so turning off succeeds, and it no
+    /// longer holds the token that could end the activity later.
+    @Test func turningNotificationsOffEndsTheActivityWhileTheCoreIsStopped() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        let controller = FakeLiveActivityController()
+        var status: EventsSessionStatus? = .connected
+        let coordinator = try coordinator(rig, controller: controller, connectionStatus: { _ in status })
+        coordinator.agentsDidChange(rig.console.agents)
+        try await waitUntil("the activity") { !controller.requestedHandles.isEmpty }
+
+        status = .reconnecting(
+            attempt: 1, delay: .seconds(1),
+            failure: .herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
+        coordinator.connectionsDidChange()
+        coordinator.registrationsDidChange()
+        try await settleWrites(rig)
+        // The Agent list is unknown and the registration stands, so it holds.
+        #expect(controller.ended.isEmpty)
+
+        await rig.preferences.setNotificationsEnabled(false, for: host)
+        coordinator.registrationsDidChange()
+
+        try await waitUntil("the end") { !controller.ended.isEmpty }
+        await finish(coordinator, controller)
+    }
+
+    @Test func aRegistrationReadThatFailsKeepsTheActivityWhileTheCoreIsStopped() async throws {
+        let rig = try await registeredRig()
+        defer { rig.console.setHosts([]) }
+        await rig.preferences.refresh()
+        let controller = FakeLiveActivityController()
+        var status: EventsSessionStatus? = .connected
+        let coordinator = try coordinator(rig, controller: controller, connectionStatus: { _ in status })
+        coordinator.agentsDidChange(rig.console.agents)
+        try await waitUntil("the activity") { !controller.requestedHandles.isEmpty }
+
+        status = .reconnecting(
+            attempt: 1, delay: .seconds(1),
+            failure: .herdrCoreNotRunning(socketPath: "/run/core.sock", socketFilePresent: false))
+        coordinator.connectionsDidChange()
+        rig.console.setHosts([])
+        await rig.preferences.refresh()
+        coordinator.registrationsDidChange()
+        try await settleWrites(rig)
+
+        #expect(rig.preferences.liveActivityGate(forCoreHost: host.id) == .unknown)
+        #expect(controller.ended.isEmpty)
+        await finish(coordinator, controller)
+    }
+
     /// A launch adopts what ActivityKit kept before the registration has been read.
     @Test func anActivityStaysWhileItsRegistrationIsBeingRead() async throws {
         let rig = try await registeredRig()
