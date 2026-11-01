@@ -12,7 +12,7 @@ extension HerdrCoreSessionBinder {
     /// `session_meta`, line 1, carries the base instructions, which reach tens of
     /// kilobytes.
     private static let rolloutHeadLimit = 256 * 1024
-    private static let codexHomeVariable = "CODEX_HOME"
+    static let codexHomeVariable = "CODEX_HOME"
     /// `app-server --managed-daemon`, and its `app-server daemon pid-update-loop`.
     private static let codexDaemonArguments = ["--managed-daemon", "app-server", "pid-update-loop"]
 
@@ -20,14 +20,10 @@ extension HerdrCoreSessionBinder {
     /// daemon holds every window's and no window holds any, so a daemon under the
     /// Agent, or a launch on the shared server while its socket exists, gets no
     /// binding (ADR 0034).
-    func checkCodex(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
-        guard
-            let tree = try await readTerminalProcesses(
-                of: record, values: ["HOME", Self.codexHomeVariable], arguments: Self.codexDaemonArguments,
-                readsOpenFiles: true),
-            let pid = tree.agent(isAgent: { $0?.name == "codex" }, skips: Self.isCodexDaemon),
-            let process = tree.facts[pid],
-            let codexHome = Self.configRoot(of: process, variable: Self.codexHomeVariable, underHome: ".codex")
+    func checkCodex(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
+    ) async throws -> ChatSessionEvidence {
+        guard let pid = codexAgent(in: tree), let process = tree.facts[pid], let codexHome = codexHome(of: process)
         else { return cannotTell }
         if tree.descendants.contains(where: { Self.isManagedDaemon(tree.facts[$0]) }) {
             return .unavailable(.codexSharedDaemon)
@@ -49,6 +45,20 @@ extension HerdrCoreSessionBinder {
         }
         guard roots.count == 1, let root = roots.first else { return cannotTell }
         return .bound(sessionID: root.threadID, transcriptRoot: codexHome, directory: root.directory)
+    }
+
+    var codexProcessAsk: ProcessAsk {
+        ProcessAsk(
+            values: [Self.homeVariable, Self.codexHomeVariable], arguments: Self.codexDaemonArguments,
+            readsOpenFiles: true)
+    }
+
+    func codexAgent(in tree: HerdrCoreTerminalProcesses) -> String? {
+        tree.agent(isAgent: { $0?.name == "codex" }, skips: Self.isCodexDaemon)
+    }
+
+    func codexHome(of process: HostProcessReader.Facts) -> String? {
+        Self.configRoot(of: process, variable: Self.codexHomeVariable, underHome: ".codex")
     }
 
     private static func isManagedDaemon(_ process: HostProcessReader.Facts?) -> Bool {
@@ -165,12 +175,9 @@ extension HerdrCoreSessionBinder {
     /// The one row whose `pid` and `pid_start` match the Agent's process. `/new`
     /// adds a second row for the same process and keeps the first, and nothing
     /// says which the screen shows, so two bind nothing (ADR 0034).
-    func checkGrokBuild(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
-        guard
-            let tree = try await readTerminalProcesses(of: record, values: ["HOME", Self.grokHomeVariable]),
-            let pid = tree.agent(isAgent: { $0?.name == "grok" }),
-            let process = tree.facts[pid], case .value(let start) = process.start,
-            let grokHome = Self.configRoot(of: process, variable: Self.grokHomeVariable, underHome: ".grok")
+    func checkGrokBuild(_ tree: HerdrCoreTerminalProcesses) async throws -> ChatSessionEvidence {
+        guard let pid = agentProcess(in: tree), let process = tree.facts[pid],
+            case .value(let start) = process.start, let grokHome = grokHome(of: process)
         else { return cannotTell }
         let path = RemoteFilePath.join(grokHome, "active_sessions.json")
         let slice = try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.activeSessionsLimit))
@@ -184,6 +191,14 @@ extension HerdrCoreSessionBinder {
         else { return cannotTell }
         return .bound(
             sessionID: session, transcriptRoot: grokHome, directory: row.cwd.flatMap { $0.hasPrefix("/") ? $0 : nil })
+    }
+
+    var grokProcessAsk: ProcessAsk {
+        ProcessAsk(values: [Self.homeVariable, Self.grokHomeVariable])
+    }
+
+    func grokHome(of process: HostProcessReader.Facts) -> String? {
+        Self.configRoot(of: process, variable: Self.grokHomeVariable, underHome: ".grok")
     }
 
     /// One row of `active_sessions.json`. `pid_start` is a JSON number, field 22
@@ -208,11 +223,11 @@ extension HerdrCoreSessionBinder {
     /// which a launch writes before any process exists. The foreground's own argv
     /// ties that one to this process, and a Terminal that runs anything else no
     /// longer has it there (ADR 0034).
-    func checkOpenCode(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
-        guard
-            let tree = try await readTerminalProcesses(of: record),
-            let pid = tree.agent(isAgent: { $0?.name == "opencode" }),
-            let process = tree.facts[pid], process.name == "opencode", case .value(let start) = process.start
+    func checkOpenCode(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
+    ) async throws -> ChatSessionEvidence {
+        guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "opencode",
+            case .value(let start) = process.start
         else { return cannotTell }
         for hint in await readHints(in: record, pid: pid, start: start) {
             if let session = OpenCodeSessionID(hint.session) {

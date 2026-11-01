@@ -1038,12 +1038,9 @@ final class AgentChatStore {
     private func adoptEvidence(_ evidence: ChatSessionEvidence) {
         switch evidence {
         case .bound(let sessionID, let transcriptRoot, let directory):
-            evidenceReason = nil
-            evidenceDirectory = directory
-            // The same id under another root is another file.
-            let movedRoot = followed != nil && evidenceRoot != transcriptRoot
-            evidenceRoot = transcriptRoot
-            adopt(.bound(ConversationReference(program: program, sessionID: sessionID)), replacingAgent: movedRoot)
+            adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: directory)
+        case .picked(let sessionID, let transcriptRoot):
+            adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
         case .unavailable(let reason):
             evidenceReason = reason
             guard resolution == .noSession else {
@@ -1056,6 +1053,15 @@ final class AgentChatStore {
                 showUnavailable()
             }
         }
+    }
+
+    private func adoptBinding(sessionID: String, transcriptRoot: String?, directory: String?) {
+        evidenceReason = nil
+        evidenceDirectory = directory
+        // The same id under another root is another file.
+        let movedRoot = followed != nil && evidenceRoot != transcriptRoot
+        evidenceRoot = transcriptRoot
+        adopt(.bound(ConversationReference(program: program, sessionID: sessionID)), replacingAgent: movedRoot)
     }
 
     /// Due while Chat shows the conversation, after anything that may mean

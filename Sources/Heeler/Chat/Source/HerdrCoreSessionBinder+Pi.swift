@@ -7,32 +7,22 @@ import Foundation
 extension HerdrCoreSessionBinder {
     private static let breadcrumbLimit = 16 * 1024
 
-    func checkPiFamily(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
-        let cannotTell = ChatSessionEvidence.unavailable(.cannotTellSession(program))
-        guard let terminalPid = record.pid, let foreground = record.foreground?.pid else { return cannotTell }
-        let root = String(foreground)
-        let layout = PiSessionLayout(program: program)
-        let request = HostProcessReader.Request(
-            pids: Array(Set([String(terminalPid), root])).sorted(),
-            readsStart: true,
-            valuesOf: [Self.scopeVariable, Self.homeVariable] + layout.variables,
-            readsOpenFiles: program == .omp,
-            descendantsOf: root)
-        let facts = try await processes(request)
-        guard case .value(let scope)? = facts[String(terminalPid)]?.variables[Self.scopeVariable], !scope.isEmpty,
-            let pid = nearestProcess(from: root, in: facts, scope: scope), let process = facts[pid],
+    func checkPiFamily(
+        _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
+    ) async throws -> ChatSessionEvidence {
+        guard let pid = piFamilyAgent(in: tree), let process = tree.facts[pid],
             case .value(let start) = process.start
         else { return cannotTell }
 
         let hints = await readHints(in: record, pid: pid, start: start)
-        guard let places = layout.places(in: process.variables) else { return cannotTell }
+        guard let places = PiSessionLayout(program: program).places(in: process.variables) else { return cannotTell }
         func bound(_ session: String) -> ChatSessionEvidence {
             .bound(sessionID: session, transcriptRoot: places.sessions, directory: nil)
         }
         for hint in hints {
             if let session = hint.piSession { return bound(session) }
         }
-        if program == .pi, pid == String(terminalPid), let id = record.piLaunchSession {
+        if program == .pi, pid == record.pid.map(String.init), let id = record.piLaunchSession {
             return bound(id)
         }
         if program == .omp, let file = try await confirmedBreadcrumbFile(of: process, agentDirectory: places.agent) {
@@ -41,26 +31,33 @@ extension HerdrCoreSessionBinder {
         return cannotTell
     }
 
+    var piFamilyProcessAsk: ProcessAsk {
+        ProcessAsk(
+            values: [Self.homeVariable] + PiSessionLayout(program: program).variables,
+            readsOpenFiles: program == .omp)
+    }
+
+    /// Where this process keeps its sessions, from its own environment.
+    func piFamilySessions(of process: HostProcessReader.Facts) -> String? {
+        PiSessionLayout(program: program).places(in: process.variables)?.sessions
+    }
+
     /// The nearest process to the foreground that calls itself the program, since
     /// both take their name as their title (herdr compatibility). Nil when two are
     /// equally near. Oh My Pi's own broker and worker sit further from the foreground
     /// than it, and a worker takes the same name.
-    private func nearestProcess(
-        from root: String, in facts: [String: HostProcessReader.Facts], scope: String
-    ) -> String? {
+    func piFamilyAgent(in tree: HerdrCoreTerminalProcesses) -> String? {
         func sharesScope(_ pid: String) -> Bool {
-            facts[pid]?.variables[Self.scopeVariable] == .value(scope)
+            tree.facts[pid]?.variables[Self.scopeVariable] == .value(tree.scope)
         }
-        guard sharesScope(root) else { return nil }
+        guard sharesScope(tree.root) else { return nil }
         var children: [String: [String]] = [:]
-        if case .value(let descendants)? = facts[root]?.descendants {
-            for pid in descendants where sharesScope(pid) {
-                if let parent = facts[pid]?.parent { children[parent, default: []].append(pid) }
-            }
+        for pid in tree.descendants where sharesScope(pid) {
+            if let parent = tree.facts[pid]?.parent { children[parent, default: []].append(pid) }
         }
-        var level = [root]
+        var level = [tree.root]
         while !level.isEmpty {
-            let named = level.filter { facts[$0]?.name == program.rawValue }
+            let named = level.filter { tree.facts[$0]?.name == program.rawValue }
             if named.count > 1 { return nil }
             if let found = named.first { return found }
             level = level.flatMap { children[$0] ?? [] }
@@ -103,7 +100,7 @@ extension HerdrCoreSessionHint {
     /// What an extension's label names: its file when the label gives one, which
     /// must be under the session's own name, else its id. A label whose file holds
     /// another session's name names nothing.
-    fileprivate var piSession: String? {
+    var piSession: String? {
         guard let file else { return ConversationReference.canonicalUUID(session) }
         guard RemoteFilePath.isAcceptable(file), let name = file.split(separator: "/").last,
             name == "\(session).jsonl" || name.hasSuffix("_\(session).jsonl")
