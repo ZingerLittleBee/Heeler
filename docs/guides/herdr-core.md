@@ -254,6 +254,7 @@ With the Host Helper running, a herdr-core Host notifies you as any other Host d
 - **Done** has its own switch, and is per device. A device gets no Done for a turn it has seen: it had the Agent open as the turn ended, or opened the Agent before the notification was due. To know that, Heeler writes a small file for this device in the Helper's directory, holding only Terminal addresses and turn counts, whenever you open an Agent or a turn ends while it is open. Your other devices still get theirs.
 - A Terminal that has no Agent, or whose Agent has given way to a shell, sends nothing. A status that lasts under about five seconds sends nothing either.
 - What a core had already reported when the Helper first saw it is not announced.
+- If the Helper cannot reach the Push Relay, it tries again by itself for about twelve minutes, for the devices that missed it and only while what it says still holds. After that, the Terminal's next change tries again.
 
 Turning notifications off, or removing the Host while Heeler can reach it, with its core stopped too, removes this device's entry and its file from the Host. If you remove a Host Heeler cannot reach, the entry stays and Heeler says so: reconnect first to stop them.
 

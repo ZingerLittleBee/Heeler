@@ -7,6 +7,8 @@
 // Sending decides from state, not from the event at hand, so a connection that ended
 // inside the debounce, or a Helper that restarted there, loses nothing: what each
 // Terminal was last notified of is kept on disk, and every connection looks again.
+// A send that failed also looks again by itself, a limited number of times, since a
+// quiet Terminal has no event to bring the next decision.
 // A core seen for the first time sets that memory without sending, so installing
 // the Helper, or a new core id, does not announce everything that already happened.
 
@@ -28,6 +30,20 @@ import { readSeenMark, removeSeenMarks } from "./seen-marks.js";
 const MEMORY_VERSION = 1;
 // Error is sent under the Blocked trigger, in its own word.
 const ATTENTION_STATUSES = new Set(["blocked", "error"]);
+// A failed send's next tries, each wait double the last up to the ceiling. Kept in
+// memory only: after them, or a restart, the next decision is what tries again.
+const RETRY_FIRST_DELAY_MS = 30_000;
+const RETRY_DELAY_CEILING_MS = 5 * 60_000;
+const RETRY_ATTEMPT_LIMIT = 5;
+
+const realRetryTimers = {
+  set(run, delayMs) {
+    const timer = setTimeout(run, delayMs);
+    timer.unref?.();
+    return timer;
+  },
+  clear: clearTimeout,
+};
 
 const sameMark = (left, right) => left?.turn === right?.turn && left?.word === right?.word;
 const tokensFrom = (value) => (Array.isArray(value) ? value.filter((token) => typeof token === "string") : []);
@@ -46,6 +62,10 @@ class Terminal {
   /** What the pending timer's wait is about. */
   signature = null;
   deciding = Promise.resolve();
+  /** The wait before trying a failed send again, apart from the debounce. */
+  retryTimer = null;
+  /** Waits armed since a send last reached everyone or the state changed. */
+  retryAttempts = 0;
 
   toJSON() {
     return {
@@ -69,7 +89,7 @@ class Terminal {
 }
 
 /** A listener for `followCoreSession`, sending for the registrations under the Helper's `directory`. */
-export function notificationListener({ directory, log = () => {} }) {
+export function notificationListener({ directory, log = () => {}, retryTimers = realRetryTimers }) {
   const sessions = new Map();
   const say = (session, line) => log(`core session ${JSON.stringify(session)}: ${line}`);
   const memoryPath = (session) => join(directory, "state", "notify", `${session}.json`);
@@ -106,10 +126,16 @@ export function notificationListener({ directory, log = () => {} }) {
     }
   }
 
+  function clearRetry(terminal) {
+    retryTimers.clear(terminal.retryTimer);
+    terminal.retryTimer = null;
+  }
+
   function forgetTimers(memory) {
     for (const terminal of memory.terminals.values()) {
       clearTimeout(terminal.timer);
       terminal.timer = null;
+      clearRetry(terminal);
     }
   }
 
@@ -154,6 +180,20 @@ export function notificationListener({ directory, log = () => {} }) {
     const terminal = memory.terminals.get(address);
     const record = memory.inventory?.get(address);
     if (terminal === undefined || record === undefined) return;
+    const { notified, notifiedTurn } = terminal;
+    await send(session, memory, address, terminal, record);
+    const isNewState = terminal.notified !== notified || !sameMark(terminal.notifiedTurn, notifiedTurn);
+    const hasUnsent = terminal.unsentStatus.length > 0 || terminal.unsentTurn.length > 0;
+    if (isNewState || !hasUnsent) {
+      clearRetry(terminal);
+      terminal.retryAttempts = 0;
+    }
+    // During the send the connection can have ended or the core's Terminal gone.
+    if (!hasUnsent || memory.inventory === null || memory.terminals.get(address) !== terminal) return;
+    if (terminal.retryTimer === null) retryLater(session, memory, address, terminal);
+  }
+
+  async function send(session, memory, address, terminal, record) {
     const agent = agentIn(record);
     // A send that failed waits for the next decision while what it said still holds.
     // What was notified is noted only once `deliver` returns: a report during the send
@@ -189,6 +229,15 @@ export function notificationListener({ directory, log = () => {} }) {
     remember(session, memory);
   }
 
+  // One at a time per Terminal: the relay can take a while, and a decision made
+  // during another's send must see what that send settled.
+  function decideNext(session, memory, address, terminal) {
+    terminal.deciding = terminal.deciding
+      .then(() => decide(session, memory, address))
+      .catch((error) => say(session, `could not decide about ${JSON.stringify(address)}: ${error.message}`));
+    return terminal.deciding;
+  }
+
   /** Only a status that still holds after the debounce notifies, so a flap never reaches the user. */
   function decideLater(session, memory, address) {
     const terminal = memory.terminals.get(address);
@@ -196,13 +245,21 @@ export function notificationListener({ directory, log = () => {} }) {
     clearTimeout(terminal.timer);
     terminal.timer = setTimeout(() => {
       terminal.timer = null;
-      // One at a time per Terminal: the relay can take a while, and a decision made
-      // during another's send must see what that send settled.
-      terminal.deciding = terminal.deciding
-        .then(() => decide(session, memory, address))
-        .catch((error) => say(session, `could not decide about ${JSON.stringify(address)}: ${error.message}`));
+      decideNext(session, memory, address, terminal);
     }, readNotificationConfig(directory).debounceMs);
     terminal.timer.unref?.();
+  }
+
+  /** Decides again by itself, apart from the debounce and whatever it is waiting for. */
+  function retryLater(session, memory, address, terminal) {
+    if (terminal.retryAttempts >= RETRY_ATTEMPT_LIMIT) return;
+    const delayMs = Math.min(RETRY_FIRST_DELAY_MS * 2 ** terminal.retryAttempts, RETRY_DELAY_CEILING_MS);
+    terminal.retryAttempts += 1;
+    terminal.retryTimer = retryTimers.set(() => {
+      terminal.retryTimer = null;
+      // A debounce under way is about a change, and its decision tries this too.
+      return terminal.timer === null ? decideNext(session, memory, address, terminal) : undefined;
+    }, delayMs);
   }
 
   /** A snapshot's Terminals. With `settled`, what they show already counts as notified. */
@@ -211,6 +268,7 @@ export function notificationListener({ directory, log = () => {} }) {
     for (const [address, terminal] of memory.terminals) {
       if (inventory.has(address)) continue;
       clearTimeout(terminal.timer);
+      clearRetry(terminal);
       memory.terminals.delete(address);
     }
     for (const [address, record] of inventory) {
@@ -260,6 +318,7 @@ export function notificationListener({ directory, log = () => {} }) {
       if (event.type === "removed") {
         const terminal = memory.terminals.get(event.terminal);
         clearTimeout(terminal?.timer);
+        if (terminal !== undefined) clearRetry(terminal);
         memory.terminals.delete(event.terminal);
         remember(session, memory);
         return;

@@ -55,8 +55,8 @@ async function startRelay(respond = () => ({ status: 200, body: {} })) {
   return { url: `http://127.0.0.1:${server.address().port}`, requests };
 }
 
-function writeConfig(relayUrl) {
-  writeFileSync(join(directory, "notify.json"), JSON.stringify({ relay_url: relayUrl, debounce_ms: DEBOUNCE_MS, retry_delay_ms: 1 }));
+function writeConfig(relayUrl, debounceMs = DEBOUNCE_MS) {
+  writeFileSync(join(directory, "notify.json"), JSON.stringify({ relay_url: relayUrl, debounce_ms: debounceMs, retry_delay_ms: 1 }));
 }
 
 function entry(key, token, { session = SESSION, blocked = true, done = true } = {}) {
@@ -105,12 +105,12 @@ async function startCore(terminals, seq = 1) {
   return core;
 }
 
-function follow() {
+function follow(listenerOptions = {}) {
   const log = (line) => logs.push(line);
   const handle = followCoreSession(SESSION, {
     env,
     runUserDirectory: join(root, "none"),
-    listener: notificationListener({ directory, log }),
+    listener: notificationListener({ directory, log, ...listenerOptions }),
     log,
     retryDelayMs: 5,
   });
@@ -119,9 +119,9 @@ function follow() {
 }
 
 /** A core and the Helper following it, past the subscribe snapshot. */
-async function connected(terminals) {
+async function connected(terminals, listenerOptions) {
   const core = await startCore(terminals);
-  follow();
+  follow(listenerOptions);
   await waitFor(() => core.last?.methods.includes("events.subscribe"), "the subscription");
   await waitFor(() => logs.some((line) => line.includes("connected to core")), "the connection");
   return core;
@@ -653,6 +653,225 @@ suite("one device's send that failed", () => {
     status(core, "t1", "blocked");
     await waitFor(() => sentTo(KEY_B, "t1").length === tries + 1, "the new Blocked");
     assert.equal(sentTo(KEY_A, "t1").length, 2);
+  });
+
+  suite("tries again by itself", () => {
+    /** The clock of a failed send's next try: a test ends each wait and reads how long it was. */
+    function manualRetryTimers() {
+      const armed = new Set();
+      const delays = [];
+      return {
+        delays,
+        get pending() {
+          return armed.size;
+        },
+        set(run, ms) {
+          const timer = { run };
+          armed.add(timer);
+          delays.push(ms);
+          return timer;
+        },
+        clear(timer) {
+          armed.delete(timer);
+        },
+        /** Ends the wait under way, and returns once its decision is made. */
+        async fire() {
+          const [timer] = armed;
+          armed.delete(timer);
+          await timer.run();
+        },
+      };
+    }
+
+    /** A Blocked Agent whose send to `TOKEN_B` failed, with the next try waiting. */
+    async function blockedAndWaiting(terminals = [agent("t1")]) {
+      const failing = await relayFailing(TOKEN_B);
+      register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B));
+      const retryTimers = manualRetryTimers();
+      const core = await connected(terminals, { retryTimers });
+      status(core, "t1", "working");
+      status(core, "t1", "blocked");
+      await failedOnce();
+      await waitFor(() => retryTimers.pending === 1, "the next try");
+      return { failing, retryTimers, core, tries: sentTo(KEY_B, "t1").length };
+    }
+
+    /** Returns once the core's earlier events have been folded, which a debounce would hide. */
+    let nextMarker = 0;
+    async function folded(core) {
+      nextMarker += 1;
+      const marker = `marker${nextMarker}`;
+      send(core, "created", marker, agent(marker));
+      const memory = join(directory, "state", "notify", `${SESSION}.json`);
+      await waitFor(() => existsSync(memory) && marker in JSON.parse(readFileSync(memory, "utf8")).terminals, "the report");
+    }
+
+    /** What a failed `deliver` runs next has run: the promise chain is empty at a new turn. */
+    const decisionsRun = () => new Promise((done) => setImmediate(done));
+
+    test("with no event, once the relay recovers", async () => {
+      const failing = await relayFailing(TOKEN_A);
+      register(entry(KEY_A, TOKEN_A));
+      const retryTimers = manualRetryTimers();
+      const core = await connected([agent("t1")], { retryTimers });
+      status(core, "t1", "working");
+      status(core, "t1", "blocked");
+      await failedOnce();
+      await waitFor(() => retryTimers.pending === 1, "the next try");
+      const tries = sentTo(KEY_A, "t1").length;
+
+      failing.on = false;
+      await retryTimers.fire();
+
+      assert.equal(sentTo(KEY_A, "t1").length, tries + 1);
+      assert.equal(open(sentTo(KEY_A, "t1").at(-1).envelope, KEY_A).status, "blocked");
+      assert.equal(retryTimers.pending, 0);
+      assert.deepEqual(retryTimers.delays, [30_000]);
+    });
+
+    test("for the failed device alone", async () => {
+      const { failing, retryTimers, tries } = await blockedAndWaiting();
+
+      failing.on = false;
+      await retryTimers.fire();
+
+      assert.equal(sentTo(KEY_A, "t1").length, 1);
+      assert.equal(sentTo(KEY_B, "t1").length, tries + 1);
+    });
+
+    test("up to a limit, each wait double the last up to a ceiling", async () => {
+      const { failing, retryTimers, core, tries } = await blockedAndWaiting();
+
+      while (retryTimers.pending > 0) await retryTimers.fire();
+
+      assert.deepEqual(retryTimers.delays, [30_000, 60_000, 120_000, 240_000, 300_000]);
+      assert.equal(sentTo(KEY_B, "t1").length, tries * 6);
+
+      // Past the limit a report's decision still tries, and arms nothing more.
+      send(core, "foreground", "t1", CLAUDE);
+      await waitFor(() => sentTo(KEY_B, "t1").length === tries * 7, "the report's try");
+      await decisionsRun();
+      assert.equal(retryTimers.pending, 0);
+      assert.equal(retryTimers.delays.length, 5);
+
+      failing.on = false;
+      send(core, "foreground", "t1", CLAUDE);
+      await waitFor(() => sentTo(KEY_B, "t1").length === tries * 7 + 1, "the recovered try");
+      assert.equal(open(sentTo(KEY_B, "t1").at(-1).envelope, KEY_B).status, "blocked");
+    });
+
+    test("and stops when the Agent moves on, starting over at its next state", async () => {
+      const { failing, retryTimers, core, tries } = await blockedAndWaiting();
+      await retryTimers.fire();
+      assert.deepEqual(retryTimers.delays, [30_000, 60_000]);
+      const triesSoFar = sentTo(KEY_B, "t1").length;
+      assert.equal(triesSoFar, tries * 2);
+
+      status(core, "t1", "working");
+      await waitFor(() => retryTimers.pending === 0, "the wait to go");
+      assert.equal(sentTo(KEY_B, "t1").length, triesSoFar);
+
+      status(core, "t1", "blocked");
+      await waitFor(() => retryTimers.pending === 1, "the new Blocked's next try");
+      assert.deepEqual(retryTimers.delays, [30_000, 60_000, 30_000]);
+
+      failing.on = false;
+      await retryTimers.fire();
+      assert.equal(retryTimers.pending, 0);
+      assert.equal(sentTo(KEY_A, "t1").length, 2);
+    });
+
+    test("and sends nothing for a Done that device has since seen", async () => {
+      const failing = await relayFailing(TOKEN_B);
+      register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B));
+      const retryTimers = manualRetryTimers();
+      const core = await connected([agent("t1")], { retryTimers });
+      status(core, "t1", "working");
+      finishTurn(core, "t1", 1);
+      await failedOnce();
+      await waitFor(() => retryTimers.pending === 1, "the next try");
+      const tries = sentTo(KEY_B, "t1").length;
+
+      failing.on = false;
+      writeMark(KEY_B, [{ terminal: "t1", turn: 1, word: "done" }]);
+      await retryTimers.fire();
+
+      assert.equal(sentTo(KEY_B, "t1").length, tries);
+      assert.equal(retryTimers.pending, 0);
+    });
+
+    test("leaving a change's debounce to run", async () => {
+      const { failing, retryTimers, core, tries } = await blockedAndWaiting();
+      failing.on = false;
+      writeConfig(relay.url, 500);
+
+      status(core, "t1", "error");
+      await folded(core);
+      await retryTimers.fire();
+
+      // A status that has not held through its debounce says nothing yet.
+      assert.equal(sentTo(KEY_A, "t1").length, 1);
+      assert.equal(sentTo(KEY_B, "t1").length, tries);
+
+      await waitFor(() => sentTo(KEY_A, "t1").length === 2, "the debounce's decision");
+      assert.equal(open(sentTo(KEY_A, "t1").at(-1).envelope, KEY_A).status, "error");
+    });
+
+    test("and keeps its wait through a report's own try", async () => {
+      const { retryTimers, core, tries } = await blockedAndWaiting();
+
+      send(core, "foreground", "t1", CLAUDE);
+      await waitFor(() => sentTo(KEY_B, "t1").length === tries * 2, "the report's try");
+      await decisionsRun();
+
+      assert.equal(retryTimers.pending, 1);
+      assert.deepEqual(retryTimers.delays, [30_000]);
+    });
+
+    test("and goes with the Terminal", async () => {
+      const { retryTimers, core } = await blockedAndWaiting();
+
+      send(core, "removed", "t1", {});
+
+      await waitFor(() => retryTimers.pending === 0, "the wait to go");
+    });
+
+    test("and goes with the connection", async () => {
+      const { retryTimers, core } = await blockedAndWaiting();
+
+      await core.stop();
+      await waitFor(() => logs.some((line) => line.includes("ended")), "the connection's end");
+
+      assert.equal(retryTimers.pending, 0);
+      assert.equal(retryTimers.delays.length, 1);
+    });
+
+    test("but not after a connection that ended during the send", async () => {
+      let answer;
+      let isAsked = false;
+      const answered = new Promise((done) => (answer = done));
+      relay = await startRelay(async () => {
+        isAsked = true;
+        await answered;
+        return { status: 500, body: {} };
+      });
+      writeConfig(relay.url);
+      register(entry(KEY_A, TOKEN_A));
+      const retryTimers = manualRetryTimers();
+      const core = await connected([agent("t1")], { retryTimers });
+      status(core, "t1", "working");
+      status(core, "t1", "blocked");
+      await waitFor(() => isAsked, "the send");
+
+      await core.stop();
+      await waitFor(() => logs.some((line) => line.includes("ended")), "the connection's end");
+      answer();
+      await failedOnce();
+      await decisionsRun();
+
+      assert.equal(retryTimers.pending, 0);
+      assert.deepEqual(retryTimers.delays, []);
+    });
   });
 
   test("goes when the device has left", async () => {
