@@ -241,16 +241,17 @@ struct HeelerSSHJumpHostGateE2ETests {
 
         let cancelledJump = try await environment.connectJump()
         let forwardingOpen = Task {
-            await Task.yield()
+            // Cancel before admission, not at a scheduler-dependent point in
+            // the native open. No libssh2 state belongs to this request yet.
+            withUnsafeCurrentTask { $0?.cancel() }
             return try await cancelledJump.connectThrough(
                 to: environment.targetEndpoint,
                 timeout: .seconds(30))
         }
-        forwardingOpen.cancel()
         await #expect(throws: SSHError.cancelled) { _ = try await forwardingOpen.value }
-        await #expect(throws: SSHError.connectionInvalidated) {
-            _ = try await cancelledJump.execute("printf poisoned", timeout: .seconds(1))
-        }
+        let result = try await cancelledJump.execute("printf reusable", timeout: .seconds(1))
+        #expect(result.stdout == Data("reusable".utf8))
+        try await cancelledJump.close(timeout: .seconds(3))
     }
 
     @Test("inner handshake and authentication cancellation terminate promptly")
