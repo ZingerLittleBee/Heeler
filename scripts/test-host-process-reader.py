@@ -33,6 +33,7 @@ struct Input: Decodable {
     var names: [String]?
     var prefixes: [String]?
     var files: Bool?
+    var arguments: [String]?
     var descendants: String?
     var root: String?
     var macOS: Bool?
@@ -49,6 +50,7 @@ let request = HostProcessReader.Request(
     namesOf: input.names ?? [],
     namesWithPrefix: input.prefixes ?? [],
     readsOpenFiles: input.files ?? false,
+    argumentsAmong: input.arguments ?? [],
     descendantsOf: input.descendants)
 let nonce = "0123456789abcdef01234567"
 
@@ -101,6 +103,12 @@ case "parse":
             "names": names,
             "files": reading(fact.openFiles),
         ]
+        if !request.argumentsAmong.isEmpty {
+            switch fact.arguments {
+            case .value(let found): entry["arguments"] = found.sorted()
+            case .unavailable: entry["arguments"] = "unavailable"
+            }
+        }
         if let parent = fact.parent { entry["parent"] = parent }
         if let name = fact.name { entry["name"] = name }
         if pid == input.descendants { entry["descendants"] = reading(fact.descendants) }
@@ -596,6 +604,85 @@ class DescendantTests(ReaderTestCase):
             )
             self.assertEqual(self.parse(result.stdout.decode(), **request)["1"]["descendants"], "unavailable")
         self.for_each_shell(check)
+
+
+class ArgumentTests(ReaderTestCase):
+    """Codex's shared daemon and the program it serves share a name and a scope,
+    and only the arguments tell them apart."""
+
+    ASKED = ["--managed-daemon", "app-server"]
+
+    def cmdline(self, pid: int, data: bytes) -> None:
+        (self.process(pid, command="codex") / "cmdline").write_bytes(data)
+
+    def test_reports_only_the_arguments_it_was_asked_about(self) -> None:
+        self.cmdline(10, b"/home/dev/.codex/bin/codex\0app-server\0--listen\0unix://\0--managed-daemon\0")
+        self.cmdline(11, b"/usr/bin/codex\0--no-daemon\0")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["10", "11"], arguments=self.ASKED)
+            self.assertEqual(facts["10"]["arguments"], ["--managed-daemon", "app-server"])
+            self.assertEqual(facts["11"]["arguments"], [])
+        self.for_each_shell(check)
+
+    def test_a_last_argument_without_its_nul_still_counts(self) -> None:
+        self.cmdline(10, b"codex\0--managed-daemon")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["10"], arguments=self.ASKED)
+            self.assertEqual(facts["10"]["arguments"], ["--managed-daemon"])
+        self.for_each_shell(check)
+
+    def test_an_argument_merely_holding_an_asked_word_does_not_count(self) -> None:
+        self.cmdline(10, b"codex\0fix app-server\0--managed-daemon=no\0")
+
+        def check(shell: list[str]) -> None:
+            self.assertEqual(self.read(shell, pids=["10"], arguments=self.ASKED)["10"]["arguments"], [])
+        self.for_each_shell(check)
+
+    def test_nothing_else_in_the_arguments_leaves_the_host(self) -> None:
+        self.cmdline(10, b"codex\0--token\0do-not-print\0app-server\0")
+
+        def check(shell: list[str]) -> None:
+            raw = self.run_script(shell, pids=["10"], arguments=self.ASKED)
+            self.assertNotIn("do-not-print", raw)
+            self.assertNotIn(b"do-not-print".hex(), raw)
+            self.assertNotIn(b"--token".hex(), raw)
+        self.for_each_shell(check)
+
+    def test_arguments_that_cannot_be_read_are_not_an_empty_list(self) -> None:
+        self.process(10, command="codex")
+        (self.process(11, command="codex") / "cmdline").write_bytes(b"")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["10", "11", "99"], arguments=self.ASKED)
+            self.assertEqual(facts["10"]["arguments"], "unavailable")
+            self.assertEqual(facts["11"]["arguments"], "unavailable")
+            self.assertEqual(facts["99"]["arguments"], "unavailable")
+        self.for_each_shell(check)
+
+    def test_each_descendant_is_read_the_same_way(self) -> None:
+        self.cmdline(10, b"codex\0")
+        (self.process(11, command="codex", parent=10) / "cmdline").write_bytes(b"codex\0app-server\0")
+
+        def check(shell: list[str]) -> None:
+            facts = self.read(shell, pids=["10"], arguments=self.ASKED, descendants="10")
+            self.assertEqual(facts["11"]["arguments"], ["app-server"])
+        self.for_each_shell(check)
+
+    def test_a_word_that_could_become_shell_or_awk_text_is_refused(self) -> None:
+        self.process(10, command="codex")
+        request = {"pids": ["10"], "root": str(self.proc), "arguments": ['a"b']}
+        result = subprocess.run([str(self.binary), "script", json.dumps(request)], capture_output=True)
+        self.assertEqual(result.returncode, 65)
+
+    def test_macos_has_no_recorded_method_for_arguments(self) -> None:
+        request = {"pids": ["1"], "macOS": True, "arguments": self.ASKED}
+        script = subprocess.run(
+            [str(self.binary), "script", json.dumps(request)], check=True, capture_output=True
+        ).stdout
+        result = subprocess.run(["/bin/sh"], input=script, capture_output=True, timeout=60)
+        self.assertIn("B 1 -", result.stdout.decode())
 
 
 class UnknownKernelTests(ReaderTestCase):

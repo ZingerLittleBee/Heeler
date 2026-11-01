@@ -20,6 +20,9 @@ enum HostProcessReader {
         /// As ``namesOf``, for any name starting with one of these.
         var namesWithPrefix: [String] = []
         var readsOpenFiles = false
+        /// Exact arguments reported when a process's argv holds them. Nothing
+        /// else in an argv leaves the Host, since an argv can hold a secret.
+        var argumentsAmong: [String] = []
         /// One of ``pids``: also finds its descendants on the Host and reads
         /// each of them the same way, since nothing can name them beforehand.
         var descendantsOf: String?
@@ -27,6 +30,8 @@ enum HostProcessReader {
         var readsEnvironment: Bool {
             !valuesOf.isEmpty || !namesOf.isEmpty || !namesWithPrefix.isEmpty
         }
+
+        var readsArguments: Bool { !argumentsAmong.isEmpty }
     }
 
     /// Which reads the script carries. Production asks the Host's kernel, in
@@ -43,6 +48,7 @@ enum HostProcessReader {
         case variableName(String)
         case procRoot(String)
         case descendantRoot(String)
+        case argument(String)
     }
 
     /// The output was cut short or does not read as this script's.
@@ -67,6 +73,8 @@ enum HostProcessReader {
         var variables: [String: Variable] = [:]
         var nonEmptyNames: Reading<Set<String>> = .unavailable
         var openFiles: Reading<[String]> = .unavailable
+        /// Those of ``Request/argumentsAmong`` the argv holds.
+        var arguments: Reading<Set<String>> = .unavailable
         /// In ``Request/descendantsOf``'s walk: the parent, and the kernel's
         /// name for the process, `-` when it holds anything but `[A-Za-z0-9._-]`.
         var parent: String?
@@ -109,6 +117,9 @@ enum HostProcessReader {
         where !isVariableName(name) {
             throw Refusal.variableName(name)
         }
+        for argument in request.argumentsAmong where !isArgumentWord(argument) {
+            throw Refusal.argument(argument)
+        }
         var lines = [
             "LC_ALL=C",
             "export LC_ALL",
@@ -140,6 +151,7 @@ enum HostProcessReader {
             if request.readsStart { lines.append("s \(pid)") }
             if request.readsEnvironment { lines.append("e \(pid)") }
             if request.readsOpenFiles { lines.append("f \(pid)") }
+            if request.readsArguments { lines.append("a \(pid)") }
         }
         if let root = request.descendantsOf {
             lines += [
@@ -150,6 +162,7 @@ enum HostProcessReader {
             if request.readsStart { lines.append("s \"$x\"") }
             if request.readsEnvironment { lines.append("e \"$x\"") }
             if request.readsOpenFiles { lines.append("f \"$x\"") }
+            if request.readsArguments { lines.append("a \"$x\"") }
             lines += [":", "done"]
         }
         lines.append("printf '\\n%s\\n' '\(endMarker(nonce))'")
@@ -227,6 +240,17 @@ enum HostProcessReader {
             "$1==\"ok\"{k=1;next}",
             "{for(i=1;i<=NF;i++){if($i==\"00\"){o=o \"F \" p \" \" v \"\\n\";v=\"\"}else v=v $i}}",
             "END{if(k){printf \"%s\",o;print \"O\",p,\"ok\"}else print \"O\",p,\"-\"}",
+            "'",
+            "}",
+            // Compared as hex, so an argument cannot be taken for anything but
+            // itself. An empty read (a zombie, a kernel thread) says nothing.
+            "a() {",
+            "  { od -An -v -tx1 <\"$R/$1/cmdline\" && echo ok; } | awk -v p=\"$1\" '",
+            "BEGIN{\(request.argumentsAmong.map { "W[\"\(hex($0))\"]=1" }.joined(separator: ";"))}",
+            "function t(){if(v in W)o=o \"A \" p \" \" v \"\\n\";v=\"\"}",
+            "$1==\"ok\"{k=1;next}",
+            "{for(i=1;i<=NF;i++){c=1;if($i==\"00\")t();else v=v $i}}",
+            "END{t();if(k&&c){printf \"%s\",o;print \"B\",p,\"ok\"}else print \"B\",p,\"-\"}",
             "'",
             "}",
             // `read` needs no process per entry of /proc. The parent is counted
@@ -316,6 +340,7 @@ enum HostProcessReader {
             "}",
             // No method confirmed yet, so a walk reads as unavailable (ADR 0034).
             "w() { printf 'W %s -\\n' \"$1\"; }",
+            "a() { printf 'B %s -\\n' \"$1\"; }",
         ]
     }
 
@@ -330,6 +355,7 @@ enum HostProcessReader {
             "e() { printf 'E %s -\\n' \"$1\"; }",
             "f() { printf 'O %s -\\n' \"$1\"; }",
             "w() { printf 'W %s -\\n' \"$1\"; }",
+            "a() { printf 'B %s -\\n' \"$1\"; }",
         ]
     }
 
@@ -351,6 +377,15 @@ enum HostProcessReader {
         guard let first = text.utf8.first, !(UInt8(ascii: "0")...UInt8(ascii: "9")).contains(first)
         else { return false }
         return text.utf8.allSatisfy { nameBytes.utf8.contains($0) }
+    }
+
+    private static func isArgumentWord(_ text: String) -> Bool {
+        !text.isEmpty
+            && text.utf8.allSatisfy { nameBytes.utf8.contains($0) || $0 == UInt8(ascii: "-") }
+    }
+
+    private static func hex(_ text: String) -> String {
+        text.utf8.map { String(format: "%02x", $0) }.joined()
     }
 
     private static func isProcRoot(_ text: String) -> Bool {
@@ -384,6 +419,8 @@ enum HostProcessReader {
         var names: [String: Set<String>] = [:]
         var listed: Set<String> = []
         var files: [String: [String]] = [:]
+        var arguments: [String: Set<String>] = [:]
+        var argumentsRead: Set<String> = []
         var known = request.pids
         var walked: [String] = []
         let root = request.descendantsOf
@@ -446,6 +483,15 @@ enum HostProcessReader {
                 guard fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
                 if fields[2] == "ok" { listed.insert(pid) }
                 answered.insert("O \(pid)")
+            case "A":
+                guard let bytes = bytes(fromHex: Substring(fields[2])),
+                    let argument = String(data: bytes, encoding: .utf8), request.argumentsAmong.contains(argument)
+                else { throw MalformedOutput() }
+                arguments[pid, default: []].insert(argument)
+            case "B":
+                guard fields[2] == "ok" || fields[2] == "-" else { throw MalformedOutput() }
+                if fields[2] == "ok" { argumentsRead.insert(pid) }
+                answered.insert("B \(pid)")
             default:
                 throw MalformedOutput()
             }
@@ -455,8 +501,10 @@ enum HostProcessReader {
             if request.readsStart, !answered.contains("S \(pid)") { throw MalformedOutput() }
             if request.readsEnvironment, !answered.contains("E \(pid)") { throw MalformedOutput() }
             if request.readsOpenFiles, !answered.contains("O \(pid)") { throw MalformedOutput() }
+            if request.readsArguments, !answered.contains("B \(pid)") { throw MalformedOutput() }
             var fact = facts[pid] ?? Facts()
             if listed.contains(pid) { fact.openFiles = .value(files[pid] ?? []) }
+            if argumentsRead.contains(pid) { fact.arguments = .value(arguments[pid] ?? []) }
             let isReadable = readable.contains(pid)
             for name in request.valuesOf {
                 fact.variables[name] = isReadable ? values[pid]?[name] ?? .unset : .unavailable
