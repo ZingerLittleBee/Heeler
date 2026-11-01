@@ -39,6 +39,8 @@ struct OpenCodeSession: Decodable, Sendable {
     /// The OpenCode version that created the session. One OpenCode 2
     /// imported from 1.x keeps its 1.x version.
     var version: String?
+    /// The folder the session is in now; a move rewrites it.
+    var directory: String?
     /// The boundary message of a staged `/undo`.
     var revertMessage: String?
     /// The boundary message's `seq`; nil when its row is gone.
@@ -49,6 +51,7 @@ struct OpenCodeSession: Decodable, Sendable {
         parent = container.lenient(String.self, "parent")
         title = container.lenient(String.self, "title")
         version = container.lenient(String.self, "version")
+        directory = container.lenient(String.self, "directory")
         revertMessage = container.lenient(String.self, "revertMessage")
         revertSeq = container.lenient(Int64.self, "revertSeq")
     }
@@ -106,7 +109,9 @@ struct OpenCodeRow: Sendable {
         case shell(OpenCodeShell)
         case agentSwitched(agent: String?)
         case modelSwitched(model: String?)
-        case locationSwitched(directory: String?)
+        /// A move to `directory` from `previous`. A row over the source's
+        /// limit for small rows keeps neither.
+        case locationSwitched(directory: String?, previous: String?)
         /// A type this reader does not know; the source keeps only its time.
         case unknown
         /// The stored data is not JSON (`{"k":"invalid"}`).
@@ -159,7 +164,9 @@ struct OpenCodeRow: Sendable {
         case "agent-switched": .agentSwitched(agent: data.lenient(String.self, "agent"))
         case "model-switched": .modelSwitched(model: data.object("model")?.lenient(String.self, "id"))
         case "location-switched":
-            .locationSwitched(directory: data.object("location")?.lenient(String.self, "directory"))
+            .locationSwitched(
+                directory: data.object("location")?.lenient(String.self, "directory"),
+                previous: data.object("previous")?.object("location")?.lenient(String.self, "directory"))
         default: .unknown
         }
     }
@@ -288,6 +295,8 @@ struct OpenCodeTool: Sendable {
     var output: String?
     /// The joined output's length in characters before the cut.
     var outputLength: Int?
+    /// The path of the first image the call returned, as OpenCode named it.
+    var image: String?
 
     fileprivate init?(_ container: KeyedDecodingContainer<OpenCodeKey>) {
         guard let name = container.lenient(String.self, "name") else { return nil }
@@ -299,6 +308,7 @@ struct OpenCodeTool: Sendable {
         metadata = container.lenient(OpenCodeToolMetadata.self, "meta")
         output = container.lenient(String.self, "out")
         outputLength = container.lenient(Int.self, "outN")
+        image = container.lenient(String.self, "image")
     }
 }
 

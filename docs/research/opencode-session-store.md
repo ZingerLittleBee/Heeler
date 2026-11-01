@@ -228,6 +228,21 @@ stayed `idle`, and OpenCode queued an inbox `synthetic` note
   `relativePath`, `diff` and `type`.
 - `shell`: input `{command}`, `content[{type: text, text}]`,
   `metadata{status, truncated, exit}`, plus `shellID` when interrupted.
+- `read`: input `{path, offset?, limit?}`, a path the model may give relative
+  to the session's location. OpenCode resolves it against
+  `location.directory`, not the subpath, expanding a leading `~/`
+  **(source, `core/src/file-access.ts:67-94`)**. An image or PDF comes back as
+  `content[{type: text, text: "Image read successfully"` or `"PDF read
+  successfully"}, {type: file, uri: "data:<mime>;base64,…", mime, name}]`,
+  `name` being the path it read: the input's, or a file of another case it
+  found in the same folder **(source, `core/src/tool/plugin/read.ts:62-79,
+  175-185`)**. Seen live on 2026-11-02 with input `{"path":"shots/x.png"}`
+  and `name` the same.
+- A move rewrites the session's `directory` (and `path` to the subpath) and
+  writes a `location-switched` row whose `previous.location.directory` is
+  where it was **(source, `core/src/session/projector.ts:475-490`;
+  `core/src/session/message-updater.ts:119-133`)**, so only the newest
+  folder is in `session_v2`.
 - `patch` (the edit tool this model used): input `{patchText}`, the content
   "Success. Updated the following files:" with one line per file, and
   `metadata.files` as above.

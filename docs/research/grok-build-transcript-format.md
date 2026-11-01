@@ -229,6 +229,13 @@ pull (source). Live, it stayed append-only through restarts, `/compact`,
   call whose id is `bash-mode-<uuid>`.
 - Image blocks are possible (source) but none were seen; `image_dropped`
   and `image_compressed` are Grok's notices about them.
+- A `read_file` of an image names the file only in its call
+  (`rawInput.target_file`) and input update (`locations[].path`); the result
+  holds the image as a `content` block `{type: "image", data, mimeType}` and
+  as `rawOutput{type: "ReadFile", ImageContent{data, mime_type}}`, with no
+  path. A text read's `rawOutput` holds `FileContent` instead. (Grok Build
+  1.0.70, live on 2026-11-02; a local session from 2026-08-27 had the same
+  shape.)
 
 A chunk with a `promptIndex` opens a turn, and `turn_completed{prompt_id,
 stop_reason, agent_result?, error_kind?, usage, elapsed_ms?}` closes it. The

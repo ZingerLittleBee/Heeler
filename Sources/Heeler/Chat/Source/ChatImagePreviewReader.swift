@@ -1,6 +1,45 @@
 import Foundation
 import ImageIO
 
+/// The Host file an image row shows, as transcripts record it.
+enum ChatImagePath {
+    /// Resolves only recorded filesystem paths: an absolute path or a
+    /// `file:` URL, or a relative path joined to the recorded working
+    /// directory. Joining preserves remote symlink semantics; local URL
+    /// standardization must not rewrite a Host's path.
+    static func resolve(_ value: String?, cwd: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        if value.lowercased().hasPrefix("file:") {
+            guard let url = URL(string: value), url.isFileURL,
+                url.host == nil || url.host == "" || url.host?.lowercased() == "localhost",
+                url.query == nil, url.fragment == nil
+            else { return nil }
+            let path = url.path(percentEncoded: false)
+            return RemoteHostPath.isAbsolute(path) ? path : nil
+        }
+        if RemoteHostPath.isAbsolute(value) { return value }
+        // Schemes, drive-relative paths and home-relative paths need context
+        // the transcript does not provide. They must not become cwd children.
+        guard URLComponents(string: value)?.scheme == nil,
+            !value.hasPrefix("~"), !value.hasPrefix("\\"),
+            let cwd, RemoteHostPath.isAbsolute(cwd)
+        else { return nil }
+        let path = RemoteHostPath.childPath(cwd, name: value)
+        return RemoteHostPath.isAbsolute(path) ? path : nil
+    }
+
+    /// Whether the path names a file of an image type, for a record that
+    /// says nothing else about what was read.
+    static func hasImageExtension(_ path: String) -> Bool {
+        guard let dot = path.lastIndex(of: "."), !path[dot...].contains("/") else { return false }
+        return imageExtensions.contains(path[path.index(after: dot)...].lowercased())
+    }
+
+    private static let imageExtensions: Set<String> = [
+        "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "tif", "tiff", "webp",
+    ]
+}
+
 /// Reads only the recorded Host file, on demand. Image bytes never join the
 /// transcript cache and a long press never runs a command on the Host.
 enum ChatImagePreviewReader {
