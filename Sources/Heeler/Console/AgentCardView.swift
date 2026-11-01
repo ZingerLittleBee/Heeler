@@ -5,8 +5,11 @@ import UIKit
 /// mark inside a ring that shows its status; Heeler Pin follows Row 1, and
 /// each row's right side ends its line (`AgentCardLines`): by default the
 /// Host name ends the first additional row and the Checkout's Changes
-/// totals the last. Fields retain their emphasis using accessible semantic
-/// colors; plugin colors and weights do not replace app typography.
+/// totals the last. On a Workspace card Row 1 reads one way whether the Agent
+/// shares its checkout's or stands under the title alone: a size under a
+/// list row's, in the regular weight beside the card's semibold titles.
+/// Fields retain their emphasis using accessible semantic colors; plugin
+/// colors and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var layout: AgentRowLayout = .heelerDefault
@@ -37,6 +40,8 @@ struct AgentCardView: View {
     /// A list row's avatar and the gap after it.
     private static let rowAvatarDiameter: CGFloat = 34
     private static let rowLeadSpacing: CGFloat = 12
+    /// Row 1 on a Workspace card.
+    fileprivate static let cardTitleFont = Font.subheadline
 
     private var totalsSource: ChangesRowTotals.Source? {
         if let changes { .store(changes) } else { sampleChanges.map { .sample($0) } }
@@ -72,7 +77,9 @@ struct AgentCardView: View {
                     HStack(alignment: .center, spacing: cardColumn.spacing) {
                         markView(side: cardColumn.value, speaksStatus: speaksStatus)
                         VStack(alignment: .leading, spacing: 6) {
-                            detailLineViews(lines.details)
+                            detailLineViews(
+                                lines.details,
+                                titleLine: lines.details.firstIndex { !$0.leading.isEmpty })
                         }
                     }
                 }
@@ -121,7 +128,8 @@ struct AgentCardView: View {
                 ConsoleCheckoutTitleText(title: heading.title, font: heading.font)
             } else {
                 AgentCardTitle(
-                    tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil)
+                    tokens: presentation.rows.first ?? [], qualifier: qualifier, isSaved: saved != nil,
+                    isOnCard: lead == .card)
             }
             if isPinned {
                 Image(systemName: "pin.fill")
@@ -146,20 +154,22 @@ struct AgentCardView: View {
         totalsSource.map { ChangesRowTotals(source: $0).hasTotals } ?? false
     }
 
-    /// The lines under the title.
+    /// The lines under the title. `titleLine` is the one holding Row 1 under
+    /// a card's heading, which reads as Row 1 does on the card's other rows.
     ///
     /// SwiftUI can build these lines on its async render thread, as it built
     /// the file counts in `ChangesRowTotals.fileCounts(_:style:)` (#471), so
     /// the content is `@Sendable` and builds each line in `MainActorContent`.
     func detailLineViews(
-        _ lines: [AgentCardLines.Line]
+        _ lines: [AgentCardLines.Line], titleLine: Int? = nil
     ) -> ForEach<[(offset: Int, element: AgentCardLines.Line)], Int, some View> {
-        ForEach(Array(lines.enumerated()), id: \.offset) { @Sendable _, line in
+        ForEach(Array(lines.enumerated()), id: \.offset) { @Sendable index, line in
+            let isTitle = index == titleLine
             MainActorContent {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     if !line.leading.isEmpty {
-                        AgentRowText(tokens: line.leading, isSecondary: true)
-                            .font(.caption)
+                        AgentRowText(tokens: line.leading, isSecondary: !isTitle || saved != nil)
+                            .font(isTitle ? Self.cardTitleFont : .caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -263,6 +273,12 @@ private struct AgentCardTitle: View {
     let qualifier: String?
     /// A saved entry's title recedes, so it never reads as a running Agent.
     var isSaved = false
+    var isOnCard = false
+
+    private var font: Font {
+        if isOnCard { return AgentCardView.cardTitleFont }
+        return isSaved ? .body.weight(.medium) : .headline
+    }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -276,7 +292,7 @@ private struct AgentCardTitle: View {
                     .accessibilityLabel(Text(verbatim: qualifier))
             }
         }
-        .font(isSaved ? .body.weight(.medium) : .headline)
+        .font(font)
     }
 }
 

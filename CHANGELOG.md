@@ -41,6 +41,8 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Give an Agent's title on a By Workspace card one size and color, whether
+  the Agent shares its checkout or stands alone under the checkout's title.
 - Raise and lower the Composer with the keyboard, in step with it, and move
   Chat's conversation and fold along instead of jumping ahead of it. (#594)
 - Run animation at up to 120Hz on iPhones with ProMotion. (#594)
