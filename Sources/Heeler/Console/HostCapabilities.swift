@@ -32,6 +32,8 @@ struct HostCapabilities: Equatable, Sendable {
     var desktopAppNaming: HerdrAppNaming?
     /// The programs Chat opens for; nil for every one it can read.
     var chatPrograms: Set<ChatProgram>?
+    /// A core runs what it is given in a directory of its own machine's form.
+    var startsInWindowsDirectories = false
 
     func offersChat(for program: ChatProgram) -> Bool {
         chat && chatPrograms?.contains(program) != false
@@ -48,8 +50,14 @@ struct HostCapabilities: Equatable, Sendable {
     /// Host that starts none, and for a directory that is not usable, rather
     /// than letting the server pick some other Pane's.
     func newTerminalRequest(workspaceID: String, cwd: String) -> ShellTerminalCreationRequest? {
-        guard startsTerminals, cwd.hasPrefix("/") else { return nil }
+        guard startsTerminals, startsIn(cwd) else { return nil }
         return ShellTerminalCreationRequest(workspaceID: workspaceID, cwd: cwd)
+    }
+
+    /// Whether a Terminal here can start in this directory.
+    func startsIn(_ directory: String) -> Bool {
+        directory.hasPrefix("/")
+            || (startsInWindowsDirectories && RemoteHostPath.isWindowsAbsolute(directory))
     }
 
     /// What a window may do with this Host's terminals. Windows only take
@@ -61,17 +69,15 @@ struct HostCapabilities: Equatable, Sendable {
 
 extension HostCapabilities {
     /// `platform` is what the Host's connection reported, nil until it has. A
-    /// core Host offers uploads once it is known to take them over SFTP: native
-    /// Windows stages through the core's `terminal.put` instead (ADR 0032), and
-    /// has no Rename or Worktrees until each passes a test there. Nor does it start
-    /// Agents, Terminals or Workspaces yet, which show their own tickets. It offers Send
-    /// and Stop once it is known to be POSIX too, because the foreground that Send
-    /// checks takes another form on native Windows (ADRs 0032 and 0035). `coreKernel`
-    /// is the core Host's `uname -s`, known once its locator ran with or without a
-    /// core: its Chat opens on Linux, whose process reads a check of an Agent's session
-    /// uses, for `coreChatPrograms`. `isLocatingCore` is a connection on its way: a core
-    /// Host nothing is known of yet may turn out to be Windows, and nothing could start
-    /// on any core Host before that attempt says.
+    /// core Host offers uploads once it is known to take them: over SFTP on POSIX,
+    /// through the core's `terminal.put` on native Windows (ADR 0032), which has no
+    /// Rename or Worktrees until each passes a test there. It offers Send and Stop
+    /// once it is known to be POSIX, because the foreground that Send checks takes
+    /// another form on native Windows (ADRs 0032 and 0035). `coreKernel` is the core
+    /// Host's `uname -s`, known once its locator ran with or without a core: its Chat
+    /// opens on Linux, whose process reads a check of an Agent's session uses, for
+    /// `coreChatPrograms`. `isLocatingCore` is a connection on its way: nothing could
+    /// start on a core Host before that attempt says what it is.
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
         desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil,
@@ -86,17 +92,18 @@ extension HostCapabilities {
             && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
         let coreStillUnknown =
             serverKind == .herdrCore && isLocatingCore && platform == nil && coreKernel == nil
-        let starts = !coreOnWindows && !coreStillUnknown
+        let starts = !coreStillUnknown
         self.init(
             startsAgents: starts, startsTerminals: starts,
             renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
-            uploads: offered || coreOnPosix,
+            uploads: offered || coreOnPosix || coreOnWindows,
             composerSend: offered || coreOnPosix, chat: offered || coreChat,
             tabNames: offered, closeTab: true,
             syncLayoutFromPlugin: offered, takeOver: offered,
             composerStop: offered || coreOnPosix,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
-            chatPrograms: coreChat ? coreChatPrograms : nil)
+            chatPrograms: coreChat ? coreChatPrograms : nil,
+            startsInWindowsDirectories: serverKind == .herdrCore)
     }
 
     /// The programs whose Chat a Linux core Host opens. Binding works for Pi and Oh

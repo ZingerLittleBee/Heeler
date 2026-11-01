@@ -17,10 +17,20 @@ enum HerdrCoreShellLaunch {
         let version: String?
     }
 
+    /// A native Windows launch goes through Windows PowerShell: always there, and
+    /// the only form recorded on a Windows machine. PowerShell 7's profile is not read.
+    static let windowsShell = "powershell.exe"
+
     /// The shell replaces itself with `program`. Each argument stays a separate
     /// argv entry, so nothing in one ever reaches the shell's command string.
+    /// PowerShell does not replace itself, so there the agent is its child, each
+    /// word a literal in `-Command`, and the Terminal ends when it exits.
     static func argv(shell: String, program: [String]) -> [String] {
-        isFish(shell)
+        if shell == windowsShell {
+            let words = program.map(PowerShellCommand.literal).joined(separator: " ")
+            return [shell, "-Command", "& \(words); exit $LASTEXITCODE"]
+        }
+        return isFish(shell)
             ? [shell, "-ic", "exec $argv[2..]", "fish"] + program
             : [shell, "-ic", "exec \"$@\"", shell] + program
     }

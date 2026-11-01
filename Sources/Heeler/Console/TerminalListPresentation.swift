@@ -240,22 +240,22 @@ struct TerminalListProjection {
                 workspaceID: id,
                 title: label.flatMap { $0.isEmpty ? nil : $0 } ?? "Workspace \(id)",
                 terminals: matching,
-                directory: directory(of: workspace, hostID: host.id, workspaceID: id, shells: all),
+                directory: directory(of: workspace, host: host, workspaceID: id, shells: all),
                 // A search result is never hidden behind a collapsed card.
                 isCollapsed: needle.isEmpty && collapsedWorkspaces.contains(groupID))
         }
     }
 
     private func directory(
-        of workspace: ConsoleWorkspace?, hostID: Host.ID, workspaceID: String,
+        of workspace: ConsoleWorkspace?, host: Host, workspaceID: String,
         shells: [ConsoleTerminal]
     ) -> String? {
         let agentDirectories = agents
-            .filter { $0.hostID == hostID && $0.agent.workspaceID == workspaceID }
+            .filter { $0.hostID == host.id && $0.agent.workspaceID == workspaceID }
             .map(\.agent.cwd)
         let candidates: [String?] =
             [workspace?.checkoutPath] + shells.map(\.pane.cwd) + agentDirectories.map { $0 }
-        return candidates.lazy.compactMap { $0 }.first { $0.hasPrefix("/") }
+        return candidates.lazy.compactMap { $0 }.first(where: host.capabilities.startsIn)
     }
 
     private func issue(for host: Host) -> ConsoleHostStatusPresentation? {

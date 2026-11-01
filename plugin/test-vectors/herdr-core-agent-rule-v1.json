@@ -1912,6 +1912,39 @@
       }
     },
     {
+      "name": "Heeler's PowerShell launch in the foreground form recorded on Windows",
+      "source": "docs/agents/herdr-compatibility.md, herdr-core 0.1.16 on native Windows: the Terminal's pid, powershell.exe, its absolute path and the launch's arguments",
+      "record": {
+        "address": "t1k",
+        "state": "live",
+        "pid": 29940,
+        "reason": null,
+        "argv": [
+          "powershell.exe",
+          "-Command",
+          "& 'claude' '--session-id' 'x' 'it''s 修复'; exit $LASTEXITCODE"
+        ],
+        "cwd": "C:\\Users\\user\\work",
+        "foreground": {
+          "pid": 29940,
+          "name": "powershell.exe",
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-Command",
+            "& 'claude' '--session-id' 'x' 'it''s 修复'; exit $LASTEXITCODE"
+          ],
+          "cwd": "C:\\Users\\user\\work"
+        },
+        "status": null,
+        "reported": false
+      },
+      "expected": {
+        "kind": "claude",
+        "known": true,
+        "status": "unknown"
+      }
+    },
+    {
       "name": "a launch command stands in only until a foreground arrives",
       "source": "docs/agents/herdr-compatibility.md \"herdr-core kept Terminals, notes and wrappers\" (core 0.1.13, 2026-10-30)",
       "record": {

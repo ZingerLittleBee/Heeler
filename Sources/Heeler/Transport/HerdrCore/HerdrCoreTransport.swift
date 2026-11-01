@@ -78,6 +78,7 @@ protocol HerdrCoreTransport: Sendable {
     /// The user's shell for a launch, which supplies the Agent's PATH and
     /// variables: the login shell the locator reports, else the `SHELL` the core
     /// process holds, read by name (ADR 0032). Throws when the Host says neither.
+    /// On native Windows it is PowerShell, with no read.
     func launchShell() async throws -> String
 
     /// Runs installed-agent discovery's script in one bounded exec.
@@ -460,6 +461,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     func launchShell() async throws -> String {
         let location = if let located { located } else { try await locate() }
+        if location.isNativeWindows { return HerdrCoreShellLaunch.windowsShell }
         if let shell = location.loginShell, !shell.isEmpty { return shell }
         let pid = String(try await serverStatus().pid)
         let request = HostProcessReader.Request(pids: [pid], valuesOf: ["SHELL"])
