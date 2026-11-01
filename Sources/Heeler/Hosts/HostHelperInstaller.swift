@@ -279,7 +279,7 @@ struct HostHelperInstaller: Sendable {
         } catch let error as HostHelperError {
             throw error
         } catch {
-            throw HostHelperError.stepFailed(step: step, detail: "\(error)")
+            throw HostHelperError.stepFailed(step: step, detail: Self.detail(of: error))
         }
     }
 
@@ -291,6 +291,15 @@ struct HostHelperInstaller: Sendable {
 
     private static func detail(of result: GitExecResult) -> String {
         String(decoding: result.stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// In words a person can read. What has none says nothing, not its type's name.
+    private static func detail(of error: any Error) -> String {
+        switch error {
+        case NotificationRegistrationError.writeFailed(let detail): detail
+        case let error as TransportError: error.presentation.message
+        default: ""
+        }
     }
 
     private static func deepestFirst(_ first: String, _ second: String) -> Bool {

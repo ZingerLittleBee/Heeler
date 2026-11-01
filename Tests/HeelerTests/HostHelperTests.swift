@@ -122,6 +122,22 @@ struct HostHelperInstallTests {
         return ""
     }
 
+    @Test func aFailedUploadSaysWhyInTheHostsWords() async throws {
+        let message = try await uploadFailureMessage(
+            NotificationRegistrationError.writeFailed(detail: "The SSH connection is unavailable."))
+        #expect(message == "Uploading the Host Helper failed: The SSH connection is unavailable.")
+    }
+
+    @Test func aFailedUploadOverATransportErrorSaysWhatThatErrorSays() async throws {
+        let message = try await uploadFailureMessage(TransportError.timedOut)
+        #expect(message == "Uploading the Host Helper failed: \(TransportError.timedOut.presentation.message)")
+    }
+
+    @Test func aFailedUploadForAnotherReasonShowsNoTypeName() async throws {
+        let message = try await uploadFailureMessage(ScriptedHelperHost.Failure())
+        #expect(message == "Uploading the Host Helper failed.")
+    }
+
     @Test func aFolderThatCannotBeMadeTakesBackTheOnesMadeBeforeIt() async throws {
         await host.seedFolder("/home/me/.config")
         let before = await host.folders
