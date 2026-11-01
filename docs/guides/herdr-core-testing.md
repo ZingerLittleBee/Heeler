@@ -475,6 +475,26 @@ Every step must leave the core as it found it: the Helper only ever follows a co
 and never starts one. The extensions only ever write the one label on their own
 Terminal.
 
+### The Helper on macOS
+
+This one needs a Mac, not hc-lab: the Mac Host you have named for the run, with
+Node.js and no earlier Helper. Before installing, save
+`cd ~; find Library/LaunchAgents "Library/Application Support/heeler" .pi .omp -print 2>/dev/null | sort`,
+and read the steps in `launchctl print user/$(id -u)/dev.bybee.heeler.host-helper`
+as the agent.
+
+| Step | What to do | What must happen |
+| --- | --- | --- |
+| Install | Tap **Host Helper**, read the sheet, and tap **Install** | The sheet has no linger row, and it lists every file, the property list and `helper.log` included, and those are the files on the Host. `state = running` with the absolute Node.js path in `program`, `domain = user/<uid>` |
+| Privacy | `ls -la` the Helper directory, its `app` folder and the property list | Directories `0700`, files `0600`, the log still `0600` after the agent has written to it |
+| Log out | End every SSH session, and log out of the desktop if someone is logged in. Wait a minute, and SSH back | The same `pid`, and `runs` unchanged |
+| Kill | `kill -9` the agent's `pid` | A new `pid` and a higher `runs`, and the row still reads the version |
+| Node.js moved | Rename the Node.js executable the property list names, kill the agent, and check the Host | `state = spawn scheduled`, `last exit code = 78: EX_CONFIG`, and the row reads **Service Failed** or **Node.js Missing**. Restore Node.js and tap **Repair**: it runs again |
+| Restart | Restart the Mac, wait for sshd, and read the agent before opening Heeler | Write down whether anything loaded it (in a VM of macOS 26.5, nothing did). Open the Host's detail: the agent runs, without an install |
+| Background notice | Read the desktop's notifications and Login Items | Write down what it says, and what turning the entry off does (not tried yet) |
+| Usage Limits | With Claude Code signed in with an account of the Mac's own, turn on Usage Limits for the Host | They read that they need your own login on this Mac, with Token Usage still counting |
+| Remove | Tap **Remove** and confirm | `launchctl print` answers 113, no agent process is left, and the saved listing matches again |
+
 ### The Helper and the core
 
 Use a unique non-default session `<s>` of your own, plus a second one `<s2>` for the
