@@ -32,14 +32,41 @@ struct HarnessConfigChangeLines: View {
     }
 }
 
+/// A folder of Heeler's own that an edit places, and each file in it.
+struct HarnessConfigFolderLines: View {
+    let path: String
+    let filePaths: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: path)
+                .font(.footnote.monospaced())
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("harness-edit.folder")
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(filePaths, id: \.self) { @Sendable file in
+                    MainActorContent { row(file) }
+                }
+            }
+        }
+    }
+
+    private func row(_ file: String) -> some View {
+        (Text(verbatim: "+ ").foregroundStyle(Color.green)
+            + Text(verbatim: (file as NSString).lastPathComponent))
+            .font(.footnote.monospaced())
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Added: \(file)")
+    }
+}
+
 /// An offer's place: the change for the user's word, and its undo afterwards.
 struct HarnessConfigEditOffer: View {
     let flow: HarnessConfigEditFlow
     let offer: String
     let actionTitle: String
     let afterApplying: String
-    /// What to do by hand where Heeler won't change the file.
-    let manualInstruction: String
 
     var body: some View {
         switch flow.phase {
@@ -47,6 +74,9 @@ struct HarnessConfigEditOffer: View {
             if let applied = flow.applied {
                 Section("Applied") {
                     HarnessConfigChangeLines(path: applied.path, lines: applied.shownLines)
+                    if let folder = applied.folder {
+                        HarnessConfigFolderLines(path: folder.path, filePaths: folder.filePaths)
+                    }
                     Text(afterApplying).font(.footnote).foregroundStyle(.secondary)
                     Button("Undo") { Task { await flow.undo() } }
                         .accessibilityIdentifier("harness-edit.undo")
@@ -66,22 +96,31 @@ struct HarnessConfigEditOffer: View {
         case .review(let change):
             Section {
                 HarnessConfigChangeLines(path: change.path, lines: change.shownLines)
+                if let folder = change.folder {
+                    HarnessConfigFolderLines(path: folder.path, filePaths: folder.filePaths)
+                }
                 Button("Apply This Change") { Task { await flow.accept() } }
                     .accessibilityIdentifier("harness-edit.apply")
                 Button("Cancel", role: .cancel) { flow.cancel() }
             } header: {
-                Text(change.createsFile ? "Creates This File" : "Changes This File")
+                if change.folder == nil {
+                    Text(change.createsFile ? "Creates This File" : "Changes This File")
+                } else {
+                    Text(change.createsFile ? "Creates These Files" : "Changes These Files")
+                }
             }
         case .alreadyApplied(let path):
             Section {
                 Text(verbatim: path).font(.footnote.monospaced()).foregroundStyle(.secondary)
                 Text("This file already has the setting. \(afterApplying)")
             }
-        case .refused(let path, let reason):
+        case .refused(let path, let reason, let manualInstruction):
             Section {
                 Text(verbatim: path).font(.footnote.monospaced()).foregroundStyle(.secondary)
                 Text(reason)
-                Text(manualInstruction).font(.footnote).foregroundStyle(.secondary)
+                if let manualInstruction {
+                    Text(manualInstruction).font(.footnote).foregroundStyle(.secondary)
+                }
             }
         case .failed(let message):
             Section {
@@ -124,8 +163,7 @@ struct HerdrCoreStatusExplanationSheet: View {
                         flow: flow,
                         offer: "Grok Build's automatic check left its status off. One change to its configuration turns it on, and you see the change first.",
                         actionTitle: "Turn On Grok Build's Status",
-                        afterApplying: "Start Grok Build again to see its status.",
-                        manualInstruction: GrokBuildProgramStatusEdit.manualInstruction)
+                        afterApplying: "Start Grok Build again to see its status.")
                 }
             }
             .task { await flow?.locate() }
@@ -140,6 +178,40 @@ struct HerdrCoreStatusExplanationSheet: View {
         .presentationDetents([.medium, .large])
         // Opaque: over a terminal's dark ground the default glass turns the change's
         // colored lines and every footnote hard to read.
+        .presentationBackground(ConsoleStatusSheetPresentationModifier.formBackground)
+    }
+}
+
+/// Chat's offer on an OpenCode Agent it can't bind (ADR 0033): the one edit that
+/// loads Heeler's plugin, shown exactly and applied only on the user's word.
+struct OpenCodePluginEditSheet: View {
+    @State private var flow: HarnessConfigEditFlow
+    @Environment(\.dismiss) private var dismiss
+
+    init(flow: HarnessConfigEditFlow) {
+        _flow = State(initialValue: flow)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                HarnessConfigEditOffer(
+                    flow: flow,
+                    offer: "OpenCode says which conversation it shows through Heeler's plugin. Loading the plugin takes one change to OpenCode's configuration and a folder beside it. You see both first, and you can undo them.",
+                    actionTitle: "Review the Change",
+                    afterApplying: "Start OpenCode again to load the plugin. Chat then follows its conversation.")
+            }
+            .task { await flow.locate() }
+            .navigationTitle("Follow OpenCode")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        // Opaque, as the status explanation's sheet is, for the same reason.
         .presentationBackground(ConsoleStatusSheetPresentationModifier.formBackground)
     }
 }
@@ -204,7 +276,7 @@ struct HarnessConfigEditsSection: View {
             } header: {
                 Text("Harness Edits")
             } footer: {
-                Text("Heeler made these changes. Removing the Host Helper leaves them in place.")
+                Text("Heeler made these changes. Removing the Host Helper undoes OpenCode's and leaves any other in place.")
             }
         }
     }
@@ -223,6 +295,9 @@ private struct HarnessConfigEditRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: edit.harness)
             HarnessConfigChangeLines(path: edit.path, lines: edit.shownLines)
+            if let folder = edit.folder {
+                HarnessConfigFolderLines(path: folder.path, filePaths: folder.filePaths)
+            }
             switch flow.phase {
             case .writing:
                 ProgressView()

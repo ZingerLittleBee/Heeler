@@ -50,6 +50,25 @@ final class HarnessConfigEditStore {
         save()
     }
 
+    /// What goes with the Host Helper: the OpenCode edit, whose plugin the Helper's
+    /// sources bring, and no other (ADR 0033). One the file no longer lets Heeler undo
+    /// stays listed with its own Undo, and comes back as words for the user, since a
+    /// configuration file is no reason to keep a Helper the user wants gone. A lost
+    /// connection throws, and stops the removal as any step's does.
+    func undoEditsGoingWithTheHelper(on hostID: Host.ID, over services: any HostServices) async throws -> String? {
+        var refusal: String?
+        for edit in edits(on: hostID) where edit.editID == OpenCodePluginEdit.id {
+            do {
+                try await HarnessConfigEditor(files: services).undo(edit)
+                forget(edit, on: hostID)
+            } catch let error as HarnessConfigEditError {
+                refusal = "The Host Helper is gone, but its OpenCode edit stays in \(edit.path). "
+                    + (error.errorDescription ?? "")
+            }
+        }
+        return refusal
+    }
+
     func retainHosts(_ hostIDs: Set<Host.ID>) {
         let retained = entries.filter { hostIDs.contains($0.key) }
         guard retained != entries else { return }
@@ -67,7 +86,7 @@ final class HarnessConfigEditStore {
 /// offers it or lists it. Nothing is written before `accept()` or `undo()`.
 @MainActor
 @Observable
-final class HarnessConfigEditFlow {
+final class HarnessConfigEditFlow: Identifiable {
     enum Phase: Equatable {
         /// Working out which file this offer is about, so it claims no edit yet.
         case locating
@@ -75,7 +94,7 @@ final class HarnessConfigEditFlow {
         case reading
         case review(HarnessConfigPendingChange)
         case alreadyApplied(path: String)
-        case refused(path: String, reason: String)
+        case refused(path: String, reason: String, manualInstruction: String?)
         case writing
         case failed(String)
     }
@@ -162,7 +181,8 @@ final class HarnessConfigEditFlow {
             switch try await HarnessConfigEditor(files: try await services()).propose(edit) {
             case .change(let change): phase = .review(change)
             case .alreadyApplied(let path): phase = .alreadyApplied(path: path)
-            case .refused(let path, let reason): phase = .refused(path: path, reason: reason)
+            case .refused(let path, let reason, let manualInstruction):
+                phase = .refused(path: path, reason: reason, manualInstruction: manualInstruction)
             }
         } catch {
             phase = .failed(HarnessConfigEditMessage.text(for: error))

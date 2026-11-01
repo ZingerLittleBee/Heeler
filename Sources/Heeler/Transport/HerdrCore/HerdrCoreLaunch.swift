@@ -152,16 +152,22 @@ enum HerdrCoreLaunch {
     /// on 1.x it only continues one that exists. Anything unreadable is the safe
     /// side, which starts without it.
     static func openCodeNamesNewSessions(version: String?) -> Bool {
-        guard let version else { return false }
+        guard let (major, minor) = openCodeRelease(version: version) else { return false }
+        return major > 2 || (major == 2 && minor >= 1)
+    }
+
+    /// From OpenCode's own words, `opencode v2.0.32` or `1.19.5`.
+    static func openCodeRelease(version: String?) -> (major: Int, minor: Int)? {
+        guard let version else { return nil }
         for word in version.split(whereSeparator: \.isWhitespace) {
             let number = word.drop { $0 == "v" || $0 == "V" }
             let parts = number.split(separator: ".", omittingEmptySubsequences: false)
             guard parts.count >= 2, let major = Int(parts[0]),
                 let minor = Int(parts[1].prefix(while: \.isNumber))
             else { continue }
-            return major > 2 || (major == 2 && minor >= 1)
+            return (major, minor)
         }
-        return false
+        return nil
     }
 
     /// OpenCode's own form, `ses_` with an inverted time so newer sorts first.

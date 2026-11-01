@@ -448,6 +448,78 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
+    private static func labelsEvent(sequence: Int, labels: [String: String]) -> Data {
+        (try? JSONEncoder().encode(JSONValue.object([
+            "jsonrpc": .string("2.0"), "method": .string("event"),
+            "params": .object([
+                "seq": .number(Double(sequence)), "type": .string("labels"), "terminal": .string("t1"),
+                "data": .object(["labels": .object(labels.mapValues(JSONValue.string))]),
+            ]),
+        ]))) ?? Data()
+    }
+
+    /// OpenCode 1.x reports no status, so nothing but its plugin's label can say
+    /// which conversation it is in: that label alone moves Chat, the first time and
+    /// after `/new`, and Chat reads the store as on Herdr TUI (ADR 0033).
+    @Test func thePluginsLabelBindsAnOpenCodeThatReportsNothingAndFollowsNew() async throws {
+        let fixture = try OpenCodeStoreFixture.named("pong")
+        let session = try #require(fixture.sessionID).rawValue
+        let stub = OpenCodeStoreStub(harness: try OpenCodeSQLiteHarness(fixture))
+        await stub.takeFirstPrompt()
+        let rig = Rig(
+            host: host,
+            record: Self.record(foreground: ["opencode"], name: "opencode", app: "opencode", status: nil),
+            openCodeStore: stub)
+        try await rig.start([Self.process(name: "opencode", environment: [:], argv: ["opencode"])])
+        let chat = try rig.chat(.opencode)
+        func label(_ session: String) -> [String: String] {
+            ["heeler.session": #"{"session":"\#(session)","pid":40,"start":"111"}"#]
+        }
+
+        chat.show()
+        try await rig.waitUntil("Chat to say it can't tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.opencode))
+        }
+
+        await rig.transport.deliver(Self.labelsEvent(sequence: 2, labels: label(session)))
+        try await rig.waitUntil("the conversation") { !chat.conversation.transcript.entries.isEmpty }
+
+        // After `/new`, the next conversation has no row in this store.
+        await rig.transport.deliver(Self.labelsEvent(sequence: 3, labels: label("ses_e6a000000009Abcdefghijklmn")))
+        try await rig.waitUntil("Chat to leave the conversation") {
+            chat.conversation.transcript.entries.isEmpty
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A stale label is cleared, and the clear coming back asks only once more.
+    @Test func aMismatchedLabelIsClearedAndBindsNothing() async throws {
+        let rig = Rig(
+            host: host,
+            record: Self.record(foreground: ["opencode"], name: "opencode", app: "opencode", status: nil),
+            openCodeStore: nil)
+        try await rig.start([Self.process(name: "opencode", environment: [:], argv: ["opencode"])])
+        let chat = try rig.chat(.opencode)
+
+        chat.show()
+        try await rig.waitUntil("Chat to say it can't tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.opencode))
+        }
+        await rig.transport.deliver(
+            Self.labelsEvent(
+                sequence: 2,
+                labels: ["heeler.session": #"{"session":"ses_e6a000000009Abcdefghijklmn","pid":40,"start":"999"}"#]))
+
+        for _ in 0..<500 where await rig.transport.labelWrites.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await !rig.transport.labelWrites.isEmpty)
+        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.opencode)))
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// A conversation that went missing from the store is not one still to start.
     @Test func aConversationThatLeftTheStoreIsNotStillToStart() async throws {
         let engine = ChatConversationEngine(
