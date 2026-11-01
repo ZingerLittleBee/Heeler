@@ -97,13 +97,23 @@ struct HerdrCoreVectorFile: Decodable, Sendable {
         }
     }()
 
-    static func fileData() throws -> Data {
+    /// The scrubbed capture from a native Windows core (#586).
+    static let windows: HerdrCoreVectorFile = {
+        do {
+            return try JSONDecoder().decode(
+                HerdrCoreVectorFile.self, from: fileData(named: "herdr-core-frames-windows-v1"))
+        } catch {
+            fatalError("Windows herdr-core vectors failed to load: \(error)")
+        }
+    }()
+
+    static func fileData(named name: String = "herdr-core-frames-v1") throws -> Data {
         guard
             let url = Bundle(for: BundleLocator.self)
-                .url(forResource: "herdr-core-frames-v1", withExtension: "json")
+                .url(forResource: name, withExtension: "json")
         else {
             throw CocoaError(
-                .fileNoSuchFile, userInfo: [NSFilePathErrorKey: "herdr-core-frames-v1.json"])
+                .fileNoSuchFile, userInfo: [NSFilePathErrorKey: "\(name).json"])
         }
         return try Data(contentsOf: url)
     }
