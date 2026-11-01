@@ -1247,4 +1247,41 @@ struct HerdrCoreChatPickTests {
         chat.end()
         rig.store.setHosts([])
     }
+
+    /// The way a user goes, through the accessibility actions a hosted window has: open
+    /// a candidate from the list and use it from its preview, which the same write takes
+    /// off the screen. Touch itself is the owner's check.
+    @Test func usingAConversationFromItsPreviewClosesThePicker() async throws {
+        let rig = try await grokRig()
+        let chat = try rig.chat()
+        chat.show()
+        try await rig.waitUntilCannotTell(chat)
+        let presence = ChatPickerPresence()
+        let controller = UIHostingController(
+            rootView: PickerSheet(presence: presence, chat: chat, pin: TerminalCorePin(joined: "c1")))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { window in
+            @MainActor func element(_ matches: (NSObject) -> Bool) -> NSObject? {
+                accessibleElements(in: window).first(where: matches)
+            }
+            let held = "Conversation \(Self.grokHeld.prefix(8))"
+            try await rig.waitUntil("the row") {
+                element { $0.accessibilityLabel?.hasPrefix(held) == true } != nil
+            }
+            _ = try #require(element { $0.accessibilityLabel?.hasPrefix(held) == true }).accessibilityActivate()
+            @MainActor func use() -> NSObject? { accessibleElement(labeled: "Use This Conversation", in: window) }
+            try await rig.waitUntil("the preview's button") { use() != nil }
+
+            _ = try #require(use()).accessibilityActivate()
+
+            try await rig.waitUntil("the choice") { chat.pickConfirmation == .confirmed }
+            try await rig.waitUntil("the sheet to close") { !presence.isOpen }
+            try await rig.waitUntil("the sheet to leave") { controller.presentedViewController == nil }
+        }
+        #expect(await rig.pickWrites == [Self.pickLabel(session: Self.grokHeld)])
+        chat.end()
+        rig.store.setHosts([])
+    }
 }
