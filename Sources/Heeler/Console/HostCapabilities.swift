@@ -67,10 +67,11 @@ extension HostCapabilities {
     /// and Stop once it is known to be POSIX too, because the foreground that Send
     /// checks takes another form on native Windows (ADRs 0032 and 0035). `coreKernel`
     /// is the core Host's `uname -s`: its Chat opens on Linux, whose process reads a
-    /// check of an Agent's session uses, for the one program built so far.
+    /// check of an Agent's session uses, for `coreChatPrograms`.
     init(
         serverKind: ServerKind, platform: HostPlatform? = nil,
-        desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil
+        desktopAppNaming: HerdrAppNaming? = nil, coreKernel: String? = nil,
+        coreChatPrograms: Set<ChatProgram> = confirmedCoreChatPrograms
     ) {
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
@@ -84,8 +85,13 @@ extension HostCapabilities {
             syncLayoutFromPlugin: offered, takeOver: offered,
             composerStop: offered || coreOnPosix,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
-            chatPrograms: coreChat ? [.claude] : nil)
+            chatPrograms: coreChat ? coreChatPrograms : nil)
     }
+
+    /// The programs whose Chat a Linux core Host opens. Binding works for Pi and Oh
+    /// My Pi, from recordings with no sign-in. Each joins this list only once the
+    /// owner's signed-in check of that program passes and is recorded (ADR 0034).
+    static let confirmedCoreChatPrograms: Set<ChatProgram> = [.claude]
 }
 
 extension Host {

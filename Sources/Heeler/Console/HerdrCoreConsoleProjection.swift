@@ -1423,7 +1423,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     /// One check of the Agent's process: one exec and at most one SFTP read.
-    func checkChatSession(paneID: String) async throws -> ChatSessionEvidence {
+    func checkChatSession(paneID: String, program: ChatProgram) async throws -> ChatSessionEvidence {
         // No inventory is no evidence either way: a Chat keeps what it shows and
         // the snapshot's fresh inventory asks again. A Send here says it couldn't
         // check.
@@ -1432,7 +1432,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // which conversation it was in. Its Chat says what became of it.
         guard departedAgentsByPane[paneID] == nil else { throw TransportError.cancelled }
         guard let record = terminalRecord(at: paneID) else {
-            return .unavailable(.cannotTellSession(.claude))
+            return .unavailable(.cannotTellSession(program))
         }
         let session = session
         let core = inventoryCore
@@ -1450,7 +1450,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 // The check takes a while, and this record is the core's it began on.
                 let transport = try await session.withTransport(servingCore: core) { $0 }
                 _ = try await transport.call("terminal.label", params: params, isMutation: true)
-            })
+            },
+            program: program)
         return try await binder.check(record, coreCarries: leakedEnvironmentNames)
     }
 
