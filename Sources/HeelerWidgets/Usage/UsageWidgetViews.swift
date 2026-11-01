@@ -254,7 +254,8 @@ struct UsageWidgetView: View {
 
     private func message(_ scope: UsageWidgetScope?) -> String {
         guard let scope else { return "Open Heeler to load Usage." }
-        if scope.hostID != nil, let reason = scope.excluded.first?.excludedReason {
+        if let reason = scope.excluded.first?.excludedReason,
+            scope.hostID != nil || reason == UsageWidgetSnapshot.usageOffReason {
             return reason == "Not read yet" ? "Open Heeler to load Usage." : reason
         }
         return "Open Heeler to load Usage."
