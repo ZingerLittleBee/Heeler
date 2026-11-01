@@ -1494,8 +1494,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // An Agent that left has no process to look at, and nothing it left says
         // which conversation it was in. Its Chat says what became of it.
         guard departedAgentsByPane[paneID] == nil else { throw TransportError.cancelled }
+        let isOnWindows = kernel == HerdrCoreLocator.windowsKernel
         guard let record = terminalRecord(at: paneID) else {
-            return .unavailable(.cannotTellSession(program))
+            return .unavailable(isOnWindows ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program))
         }
         let session = session
         let core = inventoryCore
@@ -1510,7 +1511,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             },
             currentLabels: {
                 await self.terminalLabels(at: paneID, on: core)
-            })
+            },
+            isOnWindows: isOnWindows)
         return try await binder.check(record, coreCarries: leakedEnvironmentNames)
     }
 
@@ -1550,7 +1552,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 try await session.withTransport { $0.hostServices }.readHostFileRange(range)
             },
             home: {
-                try await session.withTransport { $0.hostServices }.hostHomeDirectory()
+                // A native Windows Host's locator already said, and that read refuses it.
+                let transport = try await session.withTransport { $0 }
+                if let location = await transport.lastLocation(), location.isNativeWindows, let home = location.home {
+                    return RemoteFilePath.windowsForSFTP(home)
+                }
+                return try await transport.hostServices.hostHomeDirectory()
             },
             queryOpenCode: { query in
                 try await session.withTransport { $0.hostServices }.queryOpenCode(query)

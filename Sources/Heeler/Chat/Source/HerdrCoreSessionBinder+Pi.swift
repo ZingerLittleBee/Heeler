@@ -8,7 +8,6 @@ extension HerdrCoreSessionBinder {
     private static let breadcrumbLimit = 16 * 1024
 
     func checkPiFamily(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
-        let cannotTell = ChatSessionEvidence.unavailable(.cannotTellSession(program))
         guard let terminalPid = record.pid, let foreground = record.foreground?.pid else { return cannotTell }
         let root = String(foreground)
         let layout = PiSessionLayout(program: program)
@@ -20,7 +19,12 @@ extension HerdrCoreSessionBinder {
             descendantsOf: root)
         let facts = try await processes(request)
         guard case .value(let scope)? = facts[String(terminalPid)]?.variables[Self.scopeVariable], !scope.isEmpty,
-            let pid = nearestProcess(from: root, in: facts, scope: scope), let process = facts[pid],
+            let pid =
+                isOnWindows
+                ? HerdrCoreTerminalProcesses(facts: facts, root: root, scope: scope).agentOnWindows(
+                    isAgent: { $0?.name == program.rawValue }, runtimes: Self.windowsRuntimes)
+                : nearestProcess(from: root, in: facts, scope: scope),
+            let process = facts[pid],
             case .value(let start) = process.start
         else { return cannotTell }
 
@@ -30,8 +34,11 @@ extension HerdrCoreSessionBinder {
             .bound(sessionID: session, transcriptRoot: places.sessions, directory: nil)
         }
         for hint in hints {
-            if let session = hint.piSession { return bound(session) }
+            if let session = hint.piSession(onWindows: isOnWindows) { return bound(session) }
         }
+        // On Windows only the extension's label counts: Heeler's launch runs under
+        // PowerShell, and open files are not read there.
+        guard !isOnWindows else { return cannotTell }
         if program == .pi, pid == String(terminalPid), let id = record.piLaunchSession {
             return bound(id)
         }
@@ -102,9 +109,11 @@ extension HerdrCoreSessionBinder {
 extension HerdrCoreSessionHint {
     /// What an extension's label names: its file when the label gives one, which
     /// must be under the session's own name, else its id. A label whose file holds
-    /// another session's name names nothing.
-    fileprivate var piSession: String? {
-        guard let file else { return ConversationReference.canonicalUUID(session) }
+    /// another session's name names nothing. On Windows the file reads as SFTP opens it.
+    fileprivate func piSession(onWindows: Bool) -> String? {
+        guard let file = file.map({ onWindows ? RemoteFilePath.windowsForSFTP($0) : $0 }) else {
+            return ConversationReference.canonicalUUID(session)
+        }
         guard RemoteFilePath.isAcceptable(file), let name = file.split(separator: "/").last,
             name == "\(session).jsonl" || name.hasSuffix("_\(session).jsonl")
         else { return nil }

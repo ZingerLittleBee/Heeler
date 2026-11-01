@@ -345,6 +345,8 @@ actor HeelerSSHTransport: Transport {
     /// The Host's herdr endpoint launcher (ADR 0023); nil runs the `herdr` on
     /// the SSH PATH.
     private let herdrLauncher: HerdrLauncher?
+    /// A herdr-core Host's connection, whose Chat also reads on native Windows.
+    private let readsChatFilesOnWindows: Bool
     private let channelAdmission: SSHChannelAdmission
     private let environment = SharedAsyncOperation<RemoteHostEnvironment>(cachesSuccess: true)
     private let windowsBridgeCheck = SharedAsyncOperation<Void>(cachesSuccess: true)
@@ -572,6 +574,7 @@ actor HeelerSSHTransport: Transport {
         notificationConfigDirCommand =
             SSHTransportSettings.defaultNotificationConfigDirCommand
         herdrLauncher = nil
+        readsChatFilesOnWindows = false
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -593,6 +596,7 @@ actor HeelerSSHTransport: Transport {
         pluginListCommand = settings.pluginListCommand
         notificationConfigDirCommand = settings.notificationConfigDirCommand
         herdrLauncher = settings.herdrLauncher
+        readsChatFilesOnWindows = settings.serverKind == .herdrCore
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -999,7 +1003,8 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.invalidDirectoryPath(path: path)
         }
         _ = try await hostFileEnvironment()
-        try await requirePOSIXHost(feature: "Chat")
+        // A core's Chat reads Transcripts over SFTP on native Windows too (ADR 0034).
+        if !readsChatFilesOnWindows { try await requirePOSIXHost(feature: "Chat") }
         if hostFileSFTPUnavailable {
             throw TransportError.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host")
         }
