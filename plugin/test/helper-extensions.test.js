@@ -119,13 +119,14 @@ async function fakeSocket({ answers = true } = {}) {
 
 /**
  * This process's start as the app's process reader sees it, found without the
- * extension's code: `/proc/<pid>/stat` field 22 on Linux, `ps -o lstart=` on macOS.
+ * extension's code: `/proc/<pid>/stat` field 22 on Linux, `ps -o lstart=` in UTC
+ * on macOS.
  */
 function startOfThisProcess() {
   const command =
     process.platform === "linux"
       ? `sed 's/.*) //' /proc/${process.pid}/stat | cut -d' ' -f20`
-      : `LC_ALL=C /bin/ps -o lstart= -p ${process.pid}`;
+      : `LC_ALL=C TZ=UTC /bin/ps -o lstart= -p ${process.pid}`;
   return spawnSync("/bin/sh", ["-c", command], { encoding: "utf8" }).stdout.trim();
 }
 

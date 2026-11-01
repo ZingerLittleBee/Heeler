@@ -43,7 +43,7 @@
     },
     {
       "path": "extensions/heeler-session.js",
-      "sha256": "ce336db2d2d645fc64d232e3cacc223200cf8e02b803e842ec5e677543b970e8"
+      "sha256": "b2a6de7b7106d770922c950514992fa4ada29d67b605c3342e43f2bdb15a7234"
     },
     {
       "path": "extensions/opencode/index.js",
@@ -55,7 +55,7 @@
     },
     {
       "path": "extensions/opencode/tui.js",
-      "sha256": "2065849c4d6fcfa7924e64ff4f64cc53ef793d8e97e79de19a40be6268b2fb0e"
+      "sha256": "921961156445cfa80a03da3d90637c41faf37f94ad6ca3a16fbf07b794deb3fc"
     },
     {
       "path": "main.js",
