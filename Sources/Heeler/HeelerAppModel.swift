@@ -218,7 +218,8 @@ final class HeelerAppModel {
     /// went stale and asks for the next run.
     func refreshUsageInBackground() async {
         guard await scheduleUsageRefresh(), let publisher = console.usageWidgets else { return }
-        await AgentUsageBackgroundRefresh.live().run(hosts: hostStore.hosts, publisher: publisher)
+        await AgentUsageBackgroundRefresh.live().run(
+            hosts: hostStore.hosts, publisher: publisher, isUsageEnabled: { console.isUsageEnabled })
     }
 
     /// Asks for a background Usage read while Usage is on and a widget is installed,
