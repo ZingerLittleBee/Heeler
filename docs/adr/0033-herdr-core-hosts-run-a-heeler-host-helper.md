@@ -236,7 +236,7 @@ Hosts are unchanged.
   twice, more than ten seconds apart, and calls the Helper running only when
   both say `state = running` with the same pid. That caught every loop tried
   that dies at start, and can miss a Helper that stays up longer than the gap
-  before each death, which only a growing run count shows. A move of Node.js
+  before each death, which only growing counters show. A move of Node.js
   shows exit 78 and stops the run count; with someone logged in the agent came
   back alone once the path did, but with nobody logged in it was still down
   after almost five minutes, and `launchctl kickstart` blocked until the service
