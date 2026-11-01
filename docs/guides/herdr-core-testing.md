@@ -254,7 +254,30 @@ the facts they took on trust, so correct
 | Carried by the core | Use the core from [Leaked environment](#leaked-environment), then start `claude` by hand | The same reason, also pointing at the Host's details, where **Core Environment** names it |
 | Stale hint | Set the label `heeler.session` on the Terminal with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show the label's session |
 | No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
-| Off elsewhere | A Codex Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
+| Off elsewhere | A Pi Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
+
+### Codex, Grok Build and OpenCode
+
+These are the owner's checks on hc-lab, with a harness you sign in to, that decide
+whether a program joins `HerdrCoreChatRollout`. For each program that passes, add it
+there and record the versions in
+[herdr compatibility](../agents/herdr-compatibility.md), and for one that fails, record
+what differed and leave it off. The binder's tests read recordings made with a fake
+model and no account, so also correct the observation for whatever a signed-in run
+shows.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Codex without the daemon | Start Codex from New Agent, send one message, open Chat | The conversation shows, from the rollout its native process holds under its own `CODEX_HOME`. Record the process tree and each held rollout's `session_meta` |
+| Codex by default | Start plain `codex` in a Terminal, send one message, open Chat | **Codex Started Without `--no-daemon`** names `codex resume --no-daemon`, Chat reads nothing and sends nothing. Do what it says, and the conversation shows. Record the control socket's path, which came from Codex's source |
+| A second default Codex | Start a second plain `codex` on the same `CODEX_HOME`, then open its Chat | The same message, on a Terminal with no daemon under it |
+| Codex's `/new` | In an open no-daemon Chat, run `/new` and send a message | **Can't Tell the Conversation**, with nothing shown from either thread as current |
+| Grok Build | Start Grok Build from New Agent, send one message, open Chat | The conversation shows, under the `GROK_HOME` it runs with. Record its row in `active_sessions.json` beside field 22 of `/proc/<pid>/stat` |
+| Grok Build's `/new` | In an open Chat, run `/new` | **Can't Tell the Conversation**, from two rows for one process |
+| OpenCode 2.x | Start OpenCode 2.1 or later from New Agent, open Chat before any prompt, then send one from the terminal | Chat waits for the first message, then shows the conversation from the store. Record `session_part` rows and what a real provider's `data` holds |
+| OpenCode unconfirmed | Start `opencode` by hand, then OpenCode 2.0 and 1.x from New Agent, then set a stale `heeler.session` label on one | **Can't Tell the Conversation**, each time, and the stale label is gone |
+| Home folders | Start Codex and Grok Build with `CODEX_HOME` and `GROK_HOME` naming scratch folders, with other sessions in `~/.codex` and `~/.grok` | Chat reads from the scratch folders |
+| Off until passed | Before adding a program to `HerdrCoreChatRollout`, on this box and on a macOS core Host | It offers the terminal alone |
 
 ## Chat typing
 

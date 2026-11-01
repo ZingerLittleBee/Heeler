@@ -14,8 +14,10 @@ never show or send into a conversation it has guessed.
 
 - The app binds a herdr-core Agent's session itself, lazily: when Chat opens,
   before each Send, and on the Terminal's status, turn and foreground events.
-  Each check is at most one SFTP read and one exec on the Host. The Host Helper
-  takes no part. No clock asks, including a Send's echo timeout, and neither does
+  Each check is at most one SFTP read and one exec on the Host, except that a
+  Codex holding several rollouts costs one read of each one's first line, up to
+  eight, since whether there is one root takes all of them. The Host Helper takes
+  no part. No clock asks, including a Send's echo timeout, and neither does
   a Send having gone, since one check ran just before it. A leak answer that
   names a variable also asks again, since it changes what a reason says.
 - A check needs something to look at. Between a link and its snapshot nothing is
@@ -25,10 +27,11 @@ never show or send into a conversation it has guessed.
 - A check starts from the Terminal's foreground process and its descendants
   that share the Terminal's `HC_SCOPE`, so an npm or Node launcher leads to
   the real agent process. It skips Codex's shared daemon
-  (`app-server --managed-daemon`), which keeps the `HC_SCOPE` of the Terminal
-  that started it while serving every window. It reads only the variables it
-  names from a process environment, on the Host, because environments hold
-  secrets. The core keeps a Terminal's scope out of its record, so the check
+  (`app-server --managed-daemon`) and the daemon's `app-server daemon
+  pid-update-loop`, which keep the `HC_SCOPE` of the Terminal that started them
+  while the daemon serves every window. It tells them by those exact arguments,
+  and learns nothing else of any argv. It reads only the variables it names from a
+  process environment, on the Host, because environments hold secrets. The core keeps a Terminal's scope out of its record, so the check
   reads `HC_SCOPE` from the Terminal's own process, in the same exec.
 - For Claude Code the agent is the nearest of those processes that calls itself
   `claude` or a version number, past a launcher of the same name, or the
@@ -36,12 +39,17 @@ never show or send into a conversation it has guessed.
   child carrying `CLAUDE_CODE_CHILD_SESSION` that its parent does not is that
   parent's tool, not the agent. Its config dir is the same process's
   `CLAUDE_CONFIG_DIR`, or `.claude` under its `HOME`.
+- For Codex, Grok Build and OpenCode the agent is the nearest of those processes
+  named `codex`, `grok` or `opencode`, or the foreground itself with nothing under
+  it, and Grok Build's leader and OpenCode's service stay below it. Two equally near
+  bind nothing. Codex's and Grok Build's config roots follow Claude Code's rule, with
+  `CODEX_HOME` and `GROK_HOME`.
 - Evidence by program, without installing anything:
 
   | Program | Evidence |
   | --- | --- |
   | Claude Code | `<config dir>/sessions/<pid>.json`, read by name once Claude Code reaches its prompt, whose process start matches |
-  | Codex | in embedded mode only, the rollout the process holds open, one root thread by `session_meta` |
+  | Codex | in embedded mode only, the rollouts the process holds open, exactly one of them a root thread by `session_meta` |
   | Oh My Pi | Heeler's extension (ADR 0033); without it, `<agent dir>/terminal-sessions/<tty>`, confirmed by the process's own session lock or open file |
   | Grok Build | the one `active_sessions.json` row whose pid and process start match |
   | OpenCode | from 2.x, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
@@ -66,7 +74,11 @@ never show or send into a conversation it has guessed.
   The generated id is the label `heeler.launch-session`, the id alone. Nothing
   has started when it is written, so it has no pid or process start, and it stays
   apart from the extensions' `heeler.session`. The Terminal's launch argv carries
-  the same id, which is what ties the two together.
+  the same id, which is what ties the two together: OpenCode binds from the label
+  only while the foreground's own argv holds `-s` and that id, so a shell or another
+  program in the Terminal does not count. On a core a Grok Build id may be the UUIDv4
+  Heeler started it with, where Herdr TUI's reference takes only the UUIDv7 Grok
+  Build creates itself.
 - Some variables break session records or Program Status when the core leaks
   them (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY`,
   `CLAUDECODE`, `HERDR_*`, `TMUX`, `STY`, `ZELLIJ`, `CURSOR_TRACE_ID`,
@@ -112,7 +124,11 @@ never show or send into a conversation it has guessed.
   Windows process tree and creation times) and Pi and Oh My Pi (their
   extensions, which need nothing from the process table), each once tested on
   a Windows Host; Codex and OpenCode follow later. Native
-  Windows Herdr TUI Hosts stay without Chat.
+  Windows Herdr TUI Hosts stay without Chat. Codex, Grok Build and OpenCode from 2.x
+  are built for Linux from the recordings below, which never saw a signed-in
+  account. Each stays off in `HerdrCoreChatRollout` until its check with a harness
+  the owner signs in to passes, and one that fails stays off with its observation
+  saying why.
 
 This amends ADR 0024, and ADR 0025's source of the OpenCode session id, for
 herdr-core Hosts only.
@@ -132,7 +148,14 @@ herdr-core Hosts only.
 - A confirmed binding for Pi without the extension or OpenCode without the
   plugin cannot notice an in-process `/new`. Send still reaches whatever
   session the program shows, but Chat keeps showing the old one until a guard
-  catches it.
+  catches it. The same holds for an OpenCode bound from the id it was started with:
+  its argv keeps that id after `/new`.
+- After `/new`, Codex holds two root rollouts and Grok Build has two matching rows,
+  and nothing says which the screen shows, so each binds nothing and Chat says so
+  until the program is started again.
+- OpenCode has no row for its id until the first prompt, which Heeler knows the id
+  before. A core's store with no such row, on a Chat that has followed nothing yet,
+  waits for the first message rather than reading as a session gone.
 - Ending the Terminal that started Codex's shared daemon ends the daemon, and
   every other default-mode Codex on the same `CODEX_HOME` loses its backend
   while it keeps reporting its last status, such as Idle or Done.
@@ -150,8 +173,9 @@ herdr-core Hosts only.
   changes any of the evidence below, which never saw one; whether Claude Code's
   `procStart` on macOS equals the start `ps -o lstart=` prints; whether a Host
   can work out an Oh My Pi lock's name without running its code, since the hash is not
-  identified; and whether Heeler's OpenCode store query runs against either
-  schema, since only its table and column names were checked. Owner
+  identified; and whether Heeler's OpenCode store query reads what OpenCode 2.2.5
+  really writes. It runs against both recorded schemas, on rows of 2.0.32's shape
+  put there by a test, and 2.2.5's own rows and `session_part` were not read. Owner
   confirmation with a signed-in
   harness on hc-lab remains available, and is listed in #578's Owner acceptance.
 - Settled with a local fake model and no sign-in, in a throwaway Linux VM and
