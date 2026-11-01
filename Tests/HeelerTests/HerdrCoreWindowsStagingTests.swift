@@ -328,14 +328,80 @@ struct HerdrCoreWindowsStagingTests {
 
     // MARK: Who gets uploads
 
-    /// A Herdr TUI Host's offer never read its platform. On native Windows its
-    /// connection is what refuses, in `HeelerSSHTransport.stage`, with no core to ask.
-    @Test func thePlatformTurnsThemOnOnlyForACoreHost() {
+    /// A Herdr TUI Host's offer never read its platform: its refusal is the
+    /// connection's, in the two tests below.
+    @Test func aCoreHostOffersThemOnWindowsAndATUIOfferIgnoresThePlatform() {
         #expect(HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows).uploads)
         #expect(
             HostCapabilities(serverKind: .herdrTUI, platform: .nativeWindows).uploads
                 == HostCapabilities(serverKind: .herdrTUI, platform: .posix).uploads)
         #expect(!HostCapabilities(serverKind: .unconfirmed, platform: .nativeWindows).uploads)
+    }
+
+    /// The transport a Herdr TUI Host stages through, on the banner OpenSSH sends
+    /// from Windows. The connection never shook hands, so an upload that got past
+    /// the refusal would read `transferFailed`, as the next test shows.
+    @Test func aWindowsHerdrTUIConnectionRefusesImagesAndFilesBeforeLookingAtTheLink() async throws {
+        let refusal = TransportError.hostFeatureUnavailable(
+            feature: "File and image uploads is not yet supported on native Windows")
+        let upload = try UploadThroughSSH(banner: "SSH-2.0-OpenSSH_for_Windows_9.5")
+        defer { upload.cleanup() }
+
+        await #expect(throws: refusal) { try await upload.stageImage() }
+        await #expect(throws: refusal) { try await upload.stageFile() }
+
+        #expect(await upload.progress.reports == 0)
+    }
+
+    @Test func thatConnectionWithAUnixBannerIsNotRefused() async throws {
+        let upload = try UploadThroughSSH(banner: "SSH-2.0-OpenSSH_9.9")
+        defer { upload.cleanup() }
+
+        await #expect(throws: AttachmentStagingError.transferFailed) { try await upload.stageImage() }
+        await #expect(throws: AttachmentStagingError.transferFailed) { try await upload.stageFile() }
+
+        #expect(await upload.progress.reports == 0)
+    }
+}
+
+private struct UploadThroughSSH {
+    actor Progress {
+        private(set) var reports = 0
+
+        func report() {
+            reports += 1
+        }
+    }
+
+    let progress = Progress()
+    private let transport: HeelerSSHTransport
+    private let source: URL
+
+    init(banner: String) throws {
+        transport = HeelerSSHTransport(
+            connection: .neverConnectedForTesting(serverIdentification: banner),
+            socketPath: "/never/opened")
+        source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("upload-through-ssh-\(UUID().uuidString)")
+        try Data("bytes".utf8).write(to: source)
+    }
+
+    func stageImage() async throws {
+        let progress = progress
+        _ = try await transport.stageImage(
+            PreparedImage(fileURL: source, format: .jpeg, pixelWidth: 1, pixelHeight: 1, byteCount: 5)
+        ) { _ in await progress.report() }
+    }
+
+    func stageFile() async throws {
+        let progress = progress
+        _ = try await transport.stageFile(
+            PreparedFile(fileURL: source, fileExtension: "txt", byteCount: 5)
+        ) { _ in await progress.report() }
+    }
+
+    func cleanup() {
+        try? FileManager.default.removeItem(at: source)
     }
 }
 
