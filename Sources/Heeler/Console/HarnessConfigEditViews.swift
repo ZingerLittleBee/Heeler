@@ -38,20 +38,26 @@ struct HarnessConfigFolderLines: View {
     let filePaths: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(verbatim: path)
                 .font(.footnote.monospaced())
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("harness-edit.folder")
-            ForEach(filePaths, id: \.self) { @Sendable file in
-                MainActorContent {
-                    Text(verbatim: "+ \(file)")
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(filePaths, id: \.self) { @Sendable file in
+                    MainActorContent { row(file) }
                 }
             }
         }
+    }
+
+    private func row(_ file: String) -> some View {
+        (Text(verbatim: "+ ").foregroundStyle(Color.green)
+            + Text(verbatim: (file as NSString).lastPathComponent))
+            .font(.footnote.monospaced())
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Added: \(file)")
     }
 }
 
@@ -99,7 +105,11 @@ struct HarnessConfigEditOffer: View {
                     .accessibilityIdentifier("harness-edit.apply")
                 Button("Cancel", role: .cancel) { flow.cancel() }
             } header: {
-                Text(change.createsFile ? "Creates This File" : "Changes This File")
+                if change.folder == nil {
+                    Text(change.createsFile ? "Creates This File" : "Changes This File")
+                } else {
+                    Text(change.createsFile ? "Creates These Files" : "Changes These Files")
+                }
             }
         case .alreadyApplied(let path):
             Section {
