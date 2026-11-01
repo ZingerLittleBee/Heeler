@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Picks one field for a row slot and saves it at once. On a Host following a
-/// plugin every row offers herdr fields, Heeler fields, and custom `$` plugin
-/// fields; on any other Host, its fields and its Terminals' labels.
+/// Picks one field for one side of a row slot and saves it at once. On a Host
+/// following a plugin every side offers herdr fields, Heeler fields, and custom
+/// `$` plugin fields; on any other Host, its fields and its Terminals' labels.
+/// Neither offers a field already on either side of the slot, and only the
+/// right offers the Status Badge and the Changes totals.
 struct AgentListFieldsAddFieldSheet: View {
     let editor: AgentListFieldsEditor
     let destination: AgentListFieldsEditorDestination
@@ -13,18 +15,23 @@ struct AgentListFieldsAddFieldSheet: View {
     @State private var customName = ""
     @State private var labelName = ""
 
-    private var rows: [AgentRow] { editor.layout(for: destination.hostID).rows }
+    private var layout: AgentRowLayout { editor.layout(for: destination.hostID) }
+    private var rows: [AgentRow] { AgentLayoutTokensEditing.rows(destination.side, of: layout) }
     private var tokens: AgentRow { AgentLayoutTokensEditing.row(destination.rowIndex, in: rows) }
+    /// Both sides: a field sits on one side of a slot at most.
+    private var slotFields: AgentRow { AgentLayoutTokensEditing.slotFields(destination.rowIndex, of: layout) }
     private var canAddField: Bool {
         editor.syncStates[destination.hostID] != .syncing
             && AgentLayoutTokensEditing.canAddField(to: tokens, rows: rows, rowIndex: destination.rowIndex)
     }
     private var offer: AgentLayoutFieldOffer {
-        AgentLayoutFieldOffer(row: tokens, followsPlugin: followsPlugin, labelKeys: labelKeys)
+        AgentLayoutFieldOffer(
+            row: slotFields, side: destination.side, followsPlugin: followsPlugin, labelKeys: labelKeys)
     }
     private var subtitle: String {
         AgentLayoutTokensEditing.navigationSubtitle(
-            hostName: hostName, rowIndex: destination.rowIndex, followsPlugin: followsPlugin)
+            hostName: hostName, rowIndex: destination.rowIndex, side: destination.side,
+            followsPlugin: followsPlugin)
     }
 
     var body: some View {
@@ -73,12 +80,12 @@ struct AgentListFieldsAddFieldSheet: View {
                             .fontDesign(.monospaced)
                         Button("Add Custom Field") {
                             guard let token = AgentLayoutTokensEditing.customToken(
-                                from: customName, alreadyIn: tokens)
+                                from: customName, alreadyIn: slotFields)
                             else { return }
                             add(token)
                         }
                         .disabled(
-                            AgentLayoutTokensEditing.customToken(from: customName, alreadyIn: tokens) == nil
+                            AgentLayoutTokensEditing.customToken(from: customName, alreadyIn: slotFields) == nil
                                 || !canAddField)
                     } header: {
                         Text("Custom field")
@@ -88,7 +95,8 @@ struct AgentListFieldsAddFieldSheet: View {
                     Section {
                         EmptyView()
                     } footer: {
-                        Text(AgentLayoutTokensEditing.addFieldFooter(rowIndex: destination.rowIndex))
+                        Text(AgentLayoutTokensEditing.addFieldFooter(
+                            rowIndex: destination.rowIndex, side: destination.side))
                     }
                 } else {
                     Section {
@@ -101,12 +109,12 @@ struct AgentListFieldsAddFieldSheet: View {
                             .fontDesign(.monospaced)
                         Button("Add Label") {
                             guard let token = AgentLayoutTokensEditing.labelToken(
-                                from: labelName, alreadyIn: tokens)
+                                from: labelName, alreadyIn: slotFields)
                             else { return }
                             add(token)
                         }
                         .disabled(
-                            AgentLayoutTokensEditing.labelToken(from: labelName, alreadyIn: tokens) == nil
+                            AgentLayoutTokensEditing.labelToken(from: labelName, alreadyIn: slotFields) == nil
                                 || !canAddField)
                     } header: {
                         Text("Terminal labels")
@@ -174,7 +182,8 @@ struct AgentListFieldsAddFieldSheet: View {
     /// waits on the page behind the sheet; a no-op keeps the sheet open.
     private func add(_ token: AgentRowToken) {
         let added = AgentLayoutTokensEditing.add(
-            token, editor: editor, hostID: destination.hostID, rowIndex: destination.rowIndex)
+            token, editor: editor, hostID: destination.hostID, rowIndex: destination.rowIndex,
+            side: destination.side)
         if added || editor.errorMessage != nil {
             dismiss()
         }

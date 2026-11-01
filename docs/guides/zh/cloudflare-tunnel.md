@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/cloudflare-tunnel.md at 4132ebb6 -->
+<!-- Translated from docs/guides/cloudflare-tunnel.md at ed1e9e66 -->
 
 # 通过 Cloudflare Tunnel 连接 Mac
 
@@ -19,7 +19,7 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 
 - 一个已开通 Zero Trust 的 Cloudflare 账号，并因此拥有 team name。个人免费计划通常足够；如果某项功能需要更高计划，控制台会明确提示。
 - Mac 已完成[“远程登录”与 herdr 的准备](overlay-networks.md#准备-host)，并记下它的私有地址，例如 `192.168.1.10`。Heeler 连接的就是这个地址。
-- 当前版本的 Heeler 与 Host Routes 功能，以及你要用来连接手机或 iPad。
+- 支持多条路由（Host Routes）的当前版本 Heeler，以及你要用来连接的手机或 iPad。
 
 ## 1. 将 Mac 接入 Cloudflare
 
@@ -66,9 +66,9 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 
 ## 4. 在 Heeler 中添加 Host
 
-按[准备 Host](overlay-networks.md#准备-host)中的说明，在 Mac 上准备好账户、登录方式与 herdr 会话，然后按下表添加 Host：
+按[准备 Host](overlay-networks.md#准备-host) 中的说明，在 Mac 上准备好账户、登录方式与 herdr 会话，然后按以下步骤添加 Host：
 
-1. 在 **Routes** 下轻点 **Add Route**，将 **Network** 设为 **Direct**，填写第 2 步的地址与端口 `22`，**Jump Host** 留空。（**Direct** 表示由 Heeler 自己发起连接，是 VPN App 让该地址变得可达。）
+1. 打开 **Hosts** 并轻点 **Add Host**。在 **Routes** 下轻点 **Add Route**，将 **Network** 设为 **Direct**，填写第 2 步的地址与端口 `22`，**Jump Host** 留空，然后轻点 **Save**。（**Direct** 表示由 Heeler 自己发起连接，是 VPN App 让该地址变得可达。）
 2. 返回 **Add Host** 页面，填写其余字段并轻点 **Save**。
 3. 仅在显示的指纹与 Mac 上的一致时轻点 **Trust**。
 4. 如果 iOS 询问 Heeler 是否可以访问本地网络，请允许。Mac 的地址属于私有地址，缺少该权限时路由会失败。

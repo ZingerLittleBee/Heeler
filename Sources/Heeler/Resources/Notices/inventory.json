@@ -81,6 +81,14 @@
       "notice": "JetBrainsMono-OFL-1.1.txt"
     },
     {
+      "id": "LobeIcons",
+      "displayName": "Lobe Icons (Agent program marks)",
+      "version": "1.95.0",
+      "source": "https://www.npmjs.com/package/@lobehub/icons-static-svg/v/1.95.0 (https://github.com/lobehub/lobe-icons/tree/ce4861a27514b4704f748498befe682d4597fd55)",
+      "spdx": "MIT",
+      "notice": "LobeIcons-MIT.txt"
+    },
+    {
       "id": "Lucide",
       "displayName": "Lucide (Bot icon)",
       "version": "a04f228cd01185e09c188b7227b9600c08c565ec",

@@ -1,0 +1,41 @@
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Heeler ships these icons from @lobehub/icons-static-svg 1.95.0 (lobe-icons
+commit ce4861a27514b4704f748498befe682d4597fd55) as the marks of the Agent
+programs it lists:
+
+antigravity, antigravity-color, amp, amp-color, claudecode, claudecode-color,
+cline, codex, codex-color, cursor, devin, devin-color, geminicli,
+geminicli-color, githubcopilot, grok, hermesagent, kilocode, kimi, kiro,
+kiro-color, mastra, opencode, qoder, qoder-color, qwen, qwen-color
+
+Modifications: sizes and fills are fixed for the asset catalog and path data
+is rewritten with explicit separators. Codex's color mark drops its white
+backing; Gemini CLI's keeps only its prompt glyph; Kiro's is its ghost in Kiro
+purple; Kiro's, Qoder's and Qwen's color marks have dark-appearance variants;
+and Antigravity's color mark is rasterized.
+
+The program names and marks are trademarks of their respective owners. Their
+use here identifies each program and implies no endorsement.

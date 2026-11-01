@@ -650,6 +650,27 @@ struct HerdrCoreAgentsTests {
         #expect(!offer.hostFields.contains(.stateIcon))
     }
 
+    /// A core row's right side offers what only that side holds, and neither
+    /// side offers what the slot already shows on the other.
+    @Test func aCoreHostsRightSideOffersTheBadgeAndTheTotals() throws {
+        let team = try #require(AgentRowToken.terminalLabel("team"))
+        let right = AgentLayoutFieldOffer(
+            row: [.init(.directory), .init(team)], side: .trailing, followsPlugin: false, labelKeys: ["team"])
+        #expect(right.hostFields.contains(.statusBadge))
+        #expect(right.hostFields.contains(.changes))
+        #expect(!right.hostFields.contains(.directory))
+        #expect(right.labelFields.isEmpty)
+        let left = AgentLayoutFieldOffer(row: [], followsPlugin: false, labelKeys: [])
+        #expect(!left.hostFields.contains(.statusBadge))
+        #expect(!left.hostFields.contains(.changes))
+    }
+
+    @Test func aHerdrTUIHostsRightSideOffersTheBadgeAndTheTotalsAmongHeelersFields() {
+        let offer = AgentLayoutFieldOffer(row: [], side: .trailing, followsPlugin: true, labelKeys: [])
+        #expect(offer.heelerFields == AgentRowToken.heelerBuiltins + AgentRowToken.trailingOnlyBuiltins)
+        #expect(offer.hostFields.isEmpty)
+    }
+
     @Test func aHerdrTUIHostsOfferStaysAsItWas() {
         let offer = AgentLayoutFieldOffer(row: [.init(.tab)], followsPlugin: true, labelKeys: ["project"])
         #expect(offer.herdrFields == AgentRowToken.herdrBuiltins.filter { $0 != .tab })
@@ -676,11 +697,26 @@ struct HerdrCoreAgentsTests {
         #expect(AgentListFieldsCopy.rowSlots(followsPlugin: true) == AgentListFieldsCopy.rowSlots)
     }
 
+    /// The right side is a fact of every Host, and says nothing of herdr.
+    @Test func aCoreHostsRightSideSubtitleNamesTheSide() {
+        #expect(
+            AgentLayoutTokensEditing.navigationSubtitle(
+                hostName: "Studio Mac", rowIndex: 0, side: .trailing, followsPlugin: false)
+                == "Studio Mac · right side")
+    }
+
     @Test func thePreviewFillsALabelFieldSoItReadsInTheCard() throws {
         let owner = try #require(AgentRowToken.terminalLabel("team.owner"))
         let layout = AgentRowLayout(rows: [[.init(owner)]])
         let sample = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac", layout: layout)
         #expect(AgentRowRenderer.render(layout: layout, agent: sample).map { $0.map(\.text) } == [["team.owner"]])
+    }
+
+    @Test func thePreviewFillsALabelFieldOnTheRightSide() throws {
+        let owner = try #require(AgentRowToken.terminalLabel("team.owner"))
+        let layout = AgentRowLayout(rows: [[.init(.directory)]], trailing: [[.init(owner)], [], []])
+        let sample = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac", layout: layout)
+        #expect(sample.agent.tokens["team.owner"] == "team.owner")
     }
 
     /// No sample on its page talks about Sync.

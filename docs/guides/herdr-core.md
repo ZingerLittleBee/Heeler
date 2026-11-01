@@ -69,7 +69,7 @@ If the file changed after Heeler read it, Heeler writes nothing and says so. If 
 
 A row opens the Agent's detail. Its menu has Open in New Window where the device has windows, and Close.
 
-**Agent List Fields** in Settings sets a core Host's rows, starting from Heeler's own fields. It offers the labels of the Host's Terminals, and no Sync from plugin, since no plugin runs there.
+**Agent List Fields** in Settings sets a core Host's rows, starting from Heeler's own fields. It offers the labels of the Host's Terminals, and no Sync from plugin, since no plugin runs there. Each row has a right side for the status badge and Changes totals, and **Apply to All Hosts** copies a Host's fields to your other Hosts.
 
 **Pins** are per Host and survive a core restart. A Pin goes when you close the Agent from its row, or close the Tab it is in, and when its Terminal is removed. All of a Host's Pins go when its core was wiped and started new.
 

@@ -371,13 +371,6 @@ struct AgentChatSurfaceView: View {
                 }
             }
         }
-        // Below the Composer, like the terminal's, so its transparent hit
-        // region never covers the Composer's leading controls.
-        .overlay(alignment: .leading) {
-            if !showsBackButton {
-                AgentEdgeBackGesture { backToConsole() }
-            }
-        }
         // Above the staging bar, which stays next to the Composer it feeds.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             backgroundWorkStrip
@@ -427,11 +420,18 @@ struct AgentChatSurfaceView: View {
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
         .background {
             // Keyboard geometry and the status bar inset follow this view's
-            // own window, not whichever window of the app is key.
-            WindowReader { window in
-                keyboardInset.attach(to: window)
-                mountedWindow.attach(window)
-            }
+            // own window, not whichever window of the app is key. The reader
+            // also anchors the keyboard measurement to this screen's own
+            // bottom edge, which a tab bar can hold above the window's (see
+            // `TerminalKeyboardInset.contentBottomInset`).
+            WindowReader(
+                onWindow: { window in
+                    keyboardInset.attach(to: window)
+                    mountedWindow.attach(window)
+                },
+                onView: { window, view in
+                    keyboardInset.attach(to: window, contentAnchor: view)
+                })
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
@@ -942,7 +942,8 @@ struct AgentChatSurfaceView: View {
                 close: { Task { await performClose() } }))
     }
 
-    /// The edge swipe's destination, shared with the More menu's entry.
+    /// The More menu's Back to Console: the sidebar beside a detail that
+    /// stands next to its list, the list otherwise.
     private func backToConsole() {
         if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
     }

@@ -12,24 +12,31 @@ import UIKit
 /// to a reference type such as ``WindowReference`` instead.
 struct WindowReader: UIViewRepresentable {
     let onWindow: (UIWindow) -> Void
+    /// Also reports the reader's own view, for geometry that depends on where
+    /// the subtree sits in its window rather than on the window alone.
+    var onView: ((UIWindow, UIView) -> Void)? = nil
 
     func makeUIView(context: Context) -> WindowReaderView {
-        WindowReaderView(onWindow: onWindow)
+        WindowReaderView(onWindow: onWindow, onView: onView)
     }
 
     func updateUIView(_ view: WindowReaderView, context: Context) {
         view.onWindow = onWindow
+        view.onView = onView
         if let window = view.window {
             onWindow(window)
+            onView?(window, view)
         }
     }
 }
 
 final class WindowReaderView: UIView {
     var onWindow: (UIWindow) -> Void
+    var onView: ((UIWindow, UIView) -> Void)?
 
-    init(onWindow: @escaping (UIWindow) -> Void) {
+    init(onWindow: @escaping (UIWindow) -> Void, onView: ((UIWindow, UIView) -> Void)? = nil) {
         self.onWindow = onWindow
+        self.onView = onView
         super.init(frame: .zero)
         isUserInteractionEnabled = false
         isAccessibilityElement = false
@@ -44,6 +51,7 @@ final class WindowReaderView: UIView {
         super.didMoveToWindow()
         if let window {
             onWindow(window)
+            onView?(window, self)
         }
     }
 }

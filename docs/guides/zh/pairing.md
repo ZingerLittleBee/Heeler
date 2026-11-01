@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/pairing.md at 6a68aa1b -->
+<!-- Translated from docs/guides/pairing.md at ed1e9e66 -->
 
 # 扫码配对 Host
 
@@ -81,7 +81,7 @@ herdr plugin action invoke heeler.pair
 
 - Host 会以你的用户名和这台机器的地址命名。如需重命名，请从 **Hosts** 中打开它并轻点 **Edit**。
 - Heeler 使用这台设备的 Device Key（设备密钥）登录。如需配对另一台 iPhone 或 iPad，请在那台设备上重复步骤 3 和步骤 4。
-- 如果这台机器已经在 **Hosts** 中，再次配对会新增一个条目。请删除不再需要的那个。
+- 如果这台机器已经在 **Hosts** 中，再次配对会新增一个条目。在不再需要的条目上向左轻扫并轻点 **Remove** 即可移除。
 - 如需在 Agent 需要你处理或完成任务时收到提醒，请前往 **Settings > Notifications**，依次轻点 **Enable Notifications** 和 **Continue**，并在 iOS 询问时允许通知。然后为该 Host 开启 **Notifications**。
 
 ## 外出时使用

@@ -1,17 +1,19 @@
 import Foundation
 
 /// Field names. herdr sidebar.json builtins and `$custom` plugin keys, plus
-/// Heeler-only names (`host`, `status`, `directory`) that exist in the app
-/// layout, not as authored plugin fields. A herdr-core Terminal's labels are
-/// fields too, as `label:<key>`.
+/// Heeler-only names (`host`, `status`, `directory`, and the right side's
+/// `status_badge` and `changes`) that exist in the app layout, not as
+/// authored plugin fields. A herdr-core Terminal's labels are fields too, as
+/// `label:<key>`.
 ///
 /// `state_icon` still parses so herdr snapshots and older saved layouts keep
 /// decoding, but Console layouts drop it (`normalizedForConsole`) and the
-/// Field Editor never offers it: the status badge at the end of Row 1 owns it.
+/// Field Editor never offers it: the Status Badge field or the Status Ring
+/// shows the status.
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case stateIcon, stateText, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
-    case host, status, directory
+    case host, status, directory, statusBadge, changes
     case custom(String)
     case label(String)
 
@@ -37,6 +39,11 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         return .label(key)
     }
 
+    /// Heeler fields only a row's right side offers: the status capsule and
+    /// the Checkout's Changes totals draw as themselves, never as text
+    /// inside a row.
+    static let trailingOnlyBuiltins: [Self] = [.statusBadge, .changes]
+
     init?(rawValue: String) {
         switch rawValue {
         case "state_icon": self = .stateIcon
@@ -50,6 +57,8 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case "host": self = .host
         case "status": self = .status
         case "directory": self = .directory
+        case "status_badge": self = .statusBadge
+        case "changes": self = .changes
         default:
             if rawValue.hasPrefix("label:") {
                 guard let label = Self.terminalLabel(String(rawValue.dropFirst("label:".count))) else {
@@ -81,6 +90,8 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case .host: "host"
         case .status: "status"
         case .directory: "directory"
+        case .statusBadge: "status_badge"
+        case .changes: "changes"
         case .custom(let name): "$\(name)"
         case .label(let key): "label:\(key)"
         }
@@ -187,28 +198,46 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     var rowGap: Int
     var rows: [AgentRow]
     var rowsByAgent: [String: [AgentRow]]
+    /// The fields that end each Console row slot on the right, index-aligned
+    /// with the slots. Heeler's own: herdr never sends them, and Sync from
+    /// plugin keeps them. Nil leaves the right side to the list
+    /// (`AgentCardLines`), which ends the first line under the title with
+    /// the Host and the last with the Checkout's Changes totals.
+    var trailing: [AgentRow]?
 
-    init(rows: [AgentRow], rowGap: Int = 0, rowsByAgent: [String: [AgentRow]] = [:]) {
+    /// What the editor shows, and starts from, for a layout whose right
+    /// side the list places.
+    static let defaultTrailing: [AgentRow] = [[], [.init(.host)], [.init(.changes)]]
+
+    init(
+        rows: [AgentRow], rowGap: Int = 0, rowsByAgent: [String: [AgentRow]] = [:],
+        trailing: [AgentRow]? = nil
+    ) {
         self.rows = rows
         self.rowGap = rowGap
         self.rowsByAgent = rowsByAgent
+        self.trailing = trailing
     }
 
     func rows(forAgentKind kind: String) -> [AgentRow] {
         rowsByAgent[kind] ?? rows
     }
 
-    /// The Console shape: at most `maximumConsoleRows` rows, no `state_icon`
-    /// (the status badge at the end of Row 1 owns it), and no per-kind
-    /// overrides: every Agent on a Host shares the same rows, so herdr's
-    /// `rows_by_agent` is decoded but never applied. Row gap and every other
-    /// field style stay as they are.
+    /// The Console shape: at most `maximumConsoleRows` rows on each side, no
+    /// `state_icon` (the Status Badge field or the ring shows it), no right-side
+    /// field on the left (installed plugins drop a Live Activity layout
+    /// with a field they do not know), and no per-kind overrides: every
+    /// Agent on a Host shares the same rows, so herdr's `rows_by_agent` is
+    /// decoded but never applied. Row gap and every other field style stay
+    /// as they are.
     func normalizedForConsole() -> AgentRowLayout {
-        AgentRowLayout(
-            rows: rows.prefix(Self.maximumConsoleRows).map { row in
-                row.filter { $0.token != .stateIcon }
-            },
-            rowGap: rowGap)
+        func console(_ rows: [AgentRow], dropping dropped: [AgentRowToken]) -> [AgentRow] {
+            rows.prefix(Self.maximumConsoleRows).map { row in row.filter { !dropped.contains($0.token) } }
+        }
+        return AgentRowLayout(
+            rows: console(rows, dropping: [.stateIcon] + AgentRowToken.trailingOnlyBuiltins),
+            rowGap: rowGap,
+            trailing: trailing.map { console($0, dropping: [.stateIcon]) })
     }
 
     /// Import only herdr's first two rows. The third belongs to Heeler;
@@ -220,16 +249,16 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
         return imported
     }
 
-    /// Console layouts hold at most `maximumConsoleRows` rows.
+    /// Console layouts hold at most `maximumConsoleRows` rows, on each side.
     func validateForConsole() throws {
-        guard rows.count <= Self.maximumConsoleRows else {
+        guard rows.count <= Self.maximumConsoleRows, (trailing?.count ?? 0) <= Self.maximumConsoleRows else {
             throw AgentRowLayoutError.tooManyRows
         }
     }
 
     func validate() throws {
         guard (0...65535).contains(rowGap) else { throw AgentRowLayoutError.invalidRowGap }
-        for layoutRows in [rows] + Array(rowsByAgent.values) {
+        for layoutRows in [rows] + Array(rowsByAgent.values) + (trailing.map { [$0] } ?? []) {
             guard layoutRows.count <= Self.maximumRows else { throw AgentRowLayoutError.tooManyRows }
             for row in layoutRows {
                 guard row.count <= Self.maximumTokensPerRow else { throw AgentRowLayoutError.tooManyTokens }
@@ -244,6 +273,7 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
         case rowGap = "row_gap"
         case rows
         case rowsByAgent = "rows_by_agent"
+        case trailing
     }
 
     init(from decoder: any Decoder) throws {
@@ -251,6 +281,7 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
         rowGap = try container.decodeIfPresent(Int.self, forKey: .rowGap) ?? 0
         rows = try container.decodeIfPresent([AgentRow].self, forKey: .rows) ?? Self.heelerDefault.rows
         rowsByAgent = try container.decodeIfPresent([String: [AgentRow]].self, forKey: .rowsByAgent) ?? [:]
+        trailing = try container.decodeIfPresent([AgentRow].self, forKey: .trailing)
         try validate()
     }
 }
@@ -316,8 +347,10 @@ struct AgentRowLayoutSnapshot: Equatable, Sendable {
             let snapshot = try? JSONDecoder().decode(WireSnapshot.self, from: data),
             snapshot.v == 1
         else { return nil }
+        var layout = snapshot.sidebar?.agents?.layout ?? AgentRowLayout.heelerDefault
+        layout.trailing = nil // herdr has no right side.
         return Self(
-            layout: snapshot.sidebar?.agents?.layout ?? AgentRowLayout.heelerDefault,
+            layout: layout,
             agentPanelSort: snapshot.agentPanelSort ?? .spaces,
             diagnostics: snapshot.diagnostics ?? [])
     }
@@ -360,6 +393,7 @@ extension AgentRowLayout {
             case rowGap = "row_gap"
             case rows
             case rowsByAgent = "rows_by_agent"
+            case trailing
         }
 
         init(from decoder: any Decoder) throws {
@@ -383,7 +417,8 @@ extension AgentRowLayout {
                     ?? AgentRowLayout.heelerDefault.rows,
                 rowGap: try container.decodeIfPresent(Int.self, forKey: .rowGap) ?? 0,
                 rowsByAgent: try (container.decodeIfPresent([String: [[Token]]].self, forKey: .rowsByAgent) ?? [:])
-                    .mapValues(convert))
+                    .mapValues(convert),
+                trailing: try container.decodeIfPresent([[Token]].self, forKey: .trailing).map(convert))
             try layout.validate()
             self.layout = layout
         }

@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/overlay-networks.md at 93baae40 -->
+<!-- Translated from docs/guides/overlay-networks.md at ed1e9e66 -->
 
 # 通过 Overlay Network 连接 Heeler
 
@@ -109,7 +109,7 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 | 网络已连接，但 SSH 超时 | 检查路由的 Network、地址和端口；确认 Mac 未休眠且已开启“远程登录”。 |
 | SSH 登录失败 | 检查用户名、“远程登录”访问权限，以及所用的密钥或密码。 |
 | SSH 正常，但 herdr 检查失败 | 查看未通过的具体检查项；通常是该账户下未安装 herdr，或会话名称有误。 |
-| 手动关闭网络开关后又自动开启 | 有 Host 路由正在使用该网络。如需保持关闭，请修改对应路由的 **Network** 或删除该 Host。 |
+| 手动关闭网络开关后又自动开启 | 有 Host 路由正在使用该网络。如需保持关闭，请修改对应路由的 **Network** 或移除该 Host。 |
 
 最后核对于 2026-10-09（macOS）。
 

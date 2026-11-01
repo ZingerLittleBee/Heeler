@@ -22,6 +22,7 @@ struct LicenseNoticeInventoryTests {
         "Go",
         "IBMPlexMono",
         "JetBrainsMono",
+        "LobeIcons",
         "Lucide",
         "MSDisplayLink",
         "OpenSSL",
@@ -232,7 +233,7 @@ struct LicenseNoticeInventoryTests {
         let notices = try LicenseNoticeCatalog.bundledNotices()
         let byID = Dictionary(uniqueKeysWithValues: notices.map { ($0.id, $0) })
 
-        for id in ["Ghostty", "libghostty-spm", "MSDisplayLink"] {
+        for id in ["Ghostty", "libghostty-spm", "MSDisplayLink", "LobeIcons"] {
             let notice = try #require(byID[id])
             #expect(notice.license == "MIT")
             #expect(notice.text.contains("MIT License"))

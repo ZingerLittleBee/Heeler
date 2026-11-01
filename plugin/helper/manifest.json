@@ -167,7 +167,7 @@
     },
     {
       "path": "shared/usage/pricing.json",
-      "sha256": "b9f1e8b5c4bf8543385542f27e5220da5fd3c6dc5e7f5b9dd69233feb0409450"
+      "sha256": "a25a60d69d5c49119d3e4d10fc1b5aedc678881db45cc22418c1ee5b12553875"
     },
     {
       "path": "shared/usage/process-environment.js",

@@ -80,13 +80,12 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
         case agent(ConsoleAgent, of: ConsoleWorkspaceSection, standsAlone: Bool)
     }
 
-    /// The rule a row draws above itself.
+    /// The rule a row draws above itself. Agents of one checkout have none
+    /// between them, as in the other presentations.
     enum Rule: Equatable, Sendable {
         case none
         /// Between checkouts: across the card.
         case full
-        /// Between Agents of one checkout: from their text.
-        case inset
     }
 
     struct Placed: Identifiable, Equatable, Sendable {
@@ -102,9 +101,8 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
         let rule: Rule
         let isFirst: Bool
         let isLast: Bool
-
-        /// Right under a header, which needs no rule.
-        var followsHeader: Bool { !isFirst && rule == .none }
+        /// Right under a card's or checkout's header.
+        let followsHeader: Bool
     }
 
     let primary: ConsoleWorkspaceSection
@@ -121,8 +119,8 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
     var rows: [Placed] {
         var items: [(Row, Rule)] = []
         func list(_ section: ConsoleWorkspaceSection) {
-            for (index, agent) in section.agents.enumerated() {
-                items.append((.agent(agent, of: section, standsAlone: false), index == 0 ? .none : .inset))
+            for agent in section.agents {
+                items.append((.agent(agent, of: section, standsAlone: false), .none))
             }
         }
         if isRepository {
@@ -155,9 +153,14 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
                 case .checkout(let section): .checkout(section.id)
                 case .agent(let agent, _, _): .agent(agent.id)
                 }
+            let followsHeader: Bool =
+                switch index > 0 ? items[index - 1].0 : nil {
+                case .header?, .checkout?: true
+                default: false
+                }
             return Placed(
                 id: id, row: item.0, rule: item.1,
-                isFirst: index == 0, isLast: index == items.count - 1)
+                isFirst: index == 0, isLast: index == items.count - 1, followsHeader: followsHeader)
         }
     }
 

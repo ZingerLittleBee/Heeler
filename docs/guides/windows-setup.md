@@ -6,7 +6,7 @@ startup of SSH and herdr.
 ## Before you start
 
 - Windows 11 with administrator access.
-- Native herdr 0.9.3 or newer, and a Heeler build that includes [native Windows Host support (#399)](https://github.com/ZingerLittleBee/Heeler/issues/399).
+- Native herdr 0.9.3 or newer, and Heeler 0.1.13 or newer.
 - Use the same Windows account for SSH login, herdr, coding agents, and the startup task.
 - The examples use the named session `heeler-win-test`; replace it consistently if you choose another name.
 
@@ -114,7 +114,7 @@ ipconfig
 For a local account, use the username shown after the computer name in
 `whoami`. Use the IPv4 address of the active network adapter.
 
-In Heeler, open **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the address and port, then fill in the Host fields:
+In Heeler, open **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the address and port and tap **Save**, then fill in the Host fields:
 
 | Field | Value |
 | --- | --- |
@@ -123,7 +123,7 @@ In Heeler, open **Hosts > Add Host**, tap **Add Route** under **Routes** to ente
 | Port (in Route) | `22`, unless you configured a different SSH port |
 | Authentication | `Password` |
 | Password | The Windows account password, rather than its Windows Hello PIN |
-| Session name | `heeler-win-test` |
+| herdr Session | `heeler-win-test` |
 
 Before trusting the first connection, compare Heeler's SSH host key
 fingerprint with the matching public host key on Windows. For Ed25519:
@@ -233,8 +233,8 @@ after a reboot.
 ## Supported features and further checks
 
 Native Windows supports manual SSH connections, session selection, live
-Agents and Terminals, and directory browsing. Pairing, Changes, Skills,
-uploads, and notification registration are currently unavailable. Keep
+Agents and Terminals, and directory browsing. Pairing, Chat, Usage, Changes,
+Skills, uploads, and notification registration are currently unavailable. Keep
 herdr running before connecting; Heeler does not start the Windows server
 automatically.
 

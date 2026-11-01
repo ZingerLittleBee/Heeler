@@ -144,6 +144,13 @@ keeps a program's last report after that program exits, for as long as its
 Terminal runs on.
 _Avoid_: detected status, agent state
 
+**Status Badge**:
+The Agent Status in its colored capsule, a field (`status_badge`) only a Row
+Slot's right side holds. The Status Ring already shows the status, so a row
+shows the capsule only where its layout adds it. The `status` field is the
+same status as plain text.
+_Avoid_: status chip, status pill
+
 **Pane**:
 The unit of terminal real estate in a Tab. A Pane hosts either an Agent or an
 ordinary shell — a workspace's root pane starts as a shell. Used as an address
@@ -232,27 +239,49 @@ _Avoid_: dashboard, home
 **Agent Row Layout**:
 The ordered rows of fields that identify an Agent in the Console and its
 switcher. Each Herdr TUI Host follows its herdr plugin's fields until the user
-saves that Host's own layout, which may start from a Sync from plugin copy;
-Herdr TUI has no user-facing default layout. A herdr-core Host has no plugin
-and starts from Heeler's own: the terminal's title, then its directory. Fields
-only herdr's plugin supplies, such as its tokens, do not apply there, and the
+saves that Host's own layout, which may start from a Sync from plugin copy or
+from another Host's layout, applied to every Host from that Host's page; Herdr
+TUI has no user-facing default layout. A herdr-core Host has no plugin and
+starts from Heeler's own: the terminal's title, then its directory. Fields only
+herdr's plugin supplies, such as its tokens, do not apply there, and the
 Terminal's labels are offered as fields. The Console shows at most three rows, as
 three fixed Row Slots, and every Agent on a Host shares them: herdr's
 per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
-`state_icon` never appears as a field; the status badge at the end of Row 1
-owns it. Agent Status and Heeler Pin remain independent chrome; choosing
-status as a field repeats it in the row.
+`state_icon` never appears as a field; the Status Badge field or the Status
+Ring shows the status. Heeler Pin remains independent chrome; choosing
+status as a field shows it as text in the row.
 _Avoid_: card template, sidebar format
+
+**Agent Mark**:
+The mark of the program an Agent runs (its kind), which leads the Agent's row
+in the Console: the program's own logo where Heeler ships one, else the first
+letter of its name. A logo names the program, so beside it an Agent field that
+only spells out the kind leaves a row with other fields, and rows sharing a
+title get no program name after it; an initial does neither. A renamed Agent
+keeps its name.
+_Avoid_: harness icon, avatar, logo
+
+**Status Ring**:
+The ring around every Agent Mark in the Console, which is the Agent Status:
+Working's open arc turns, Done, Blocked and Error close it in their colors, and
+Idle keeps a hairline. The Status Badge and the `status` field add the status in
+words only where the Agent List Fields place them.
+_Avoid_: row style, status avatar
 
 **Row Slot**:
 One of the three fixed positions in an Agent Row Layout. On Herdr TUI, Row 1
 and Row 2 are herdr rows: they start from herdr's sidebar fields and are what
 Sync from plugin refills. On herdr-core they start from Heeler's own layout and
-also accept the Terminal's labels. Row 3 is Heeler's row, which Sync fills only when herdr
-defines a third row. Every slot accepts herdr fields and the Heeler-only
-fields herdr does not define (Host name, Agent Status as text, working
-directory). Slots are never added, moved, or deleted; an empty slot renders
-nothing.
+also accept the Terminal's labels. Row 3 is Heeler's row, which Sync keeps.
+Every slot accepts herdr fields and the Heeler-only fields herdr does not define (Host name,
+Agent Status as text, working directory). Each slot also has a right side
+that ends its line, Heeler's own, which Sync keeps and which alone can hold
+the Status Badge and the Checkout's Changes totals; a field sits on one side
+of a slot at most. Until a Host's layout chooses its right sides, the Console
+places them: the Host name ends the first line under the title, and the
+totals the last.
+Titles, the switcher, and Live Activities read only the left sides. Slots are
+never added, moved, or deleted; an empty slot renders nothing.
 _Avoid_: extra row, custom row
 
 **Pin**:
