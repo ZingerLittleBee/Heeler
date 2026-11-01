@@ -337,8 +337,15 @@ final class AgentUsageStore {
         guard try await host.hostPlatform() == .posix else {
             return Reading(state: .hostHelper(.notOnWindows), pluginVersion: nil)
         }
-        let report = try await HostHelperFiles(host: host, session: session)
-            .readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+        let report: AgentUsageReport
+        do {
+            report = try await HostHelperFiles(host: host, session: session)
+                .readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+        } catch {
+            // A core Host has no plugin to blame or update.
+            guard Self.state(for: error) == .failed(pluginFailureMessage) else { throw error }
+            return Reading(state: .failed(helperFailureMessage), pluginVersion: nil)
+        }
         return Reading(
             state: report.runtime == "missing" ? .hostHelper(.waitingForCore) : .available(report),
             pluginVersion: nil)
@@ -364,6 +371,8 @@ final class AgentUsageStore {
         "Could not read Usage. Check the Host connection and try again."
     nonisolated static let pluginFailureMessage =
         "The Heeler plugin on this Host could not report Usage. Try again, or update the plugin."
+    nonisolated static let helperFailureMessage =
+        "The Host Helper on this Host could not report Usage. Try again, or see this Host's details."
     nonisolated static let timeoutMessage =
         "The Host took too long to report Usage. Try again in a moment."
 
