@@ -133,6 +133,8 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [HostOnboardingView](../../Sources/Heeler/Hosts/HostOnboardingView.swift)
   embeds the short [AgentUsageSection](../../Sources/Heeler/Usage/AgentUsageSection.swift),
   which opens the tab scoped to that Host.
+  `ConsoleStore.setUsageEnabled(_:)` turns all of it off, reads and widgets
+  included, for Settings' switch.
   `ConsoleStore.agentUsageStore(for:)` retains an
   [AgentUsageStore](../../Sources/Heeler/Usage/AgentUsageStore.swift) per Host;
   it owns refresh polling and the device's per-Host Claude limits preference.

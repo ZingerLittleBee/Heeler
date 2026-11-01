@@ -537,7 +537,8 @@
             return ConsoleStore(
                 snapshotRetryDelay: .seconds(30),
                 pins: PinnedAgentsStore(defaults: defaults),
-                rowLayouts: AgentRowLayoutStore(defaults: defaults)
+                rowLayouts: AgentRowLayoutStore(defaults: defaults),
+                usageSettings: AgentUsageSettings(defaults: defaults)
             ) { host, subscriptions in
                 EventsSession(
                     subscriptions: subscriptions,

@@ -75,6 +75,14 @@ final class AgentUsageWidgetPublisher {
         }))
     }
 
+    /// Usage is off: every Host loses its figures and names why.
+    func publishUsageOff(hosts: [Host]) {
+        commit(UsageWidgetSnapshot(hosts: hosts.map { host in
+            UsageWidgetSnapshot.Host(
+                id: host.id, name: host.displayName, excludedReason: UsageWidgetSnapshot.usageOffReason)
+        }))
+    }
+
     private func commit(_ next: UsageWidgetSnapshot) {
         guard next != published else { return }
         published = next

@@ -34,8 +34,12 @@ struct AgentUsageBackgroundRefresh {
     }
 
     /// Reads every stale Host at once, publishing each reading as it lands,
-    /// so a task iOS expires keeps the readings that finished.
-    func run(hosts: [Host], publisher: AgentUsageWidgetPublisher) async {
+    /// so a task iOS expires keeps the readings that finished. Usage turned
+    /// off during the run ends it, so no later reading replaces the widgets'
+    /// "Usage is off" snapshot.
+    func run(
+        hosts: [Host], publisher: AgentUsageWidgetPublisher, isUsageEnabled: @MainActor () -> Bool
+    ) async {
         let stale = hosts.filter { publisher.isStale($0.id, readAt: nil) }
         let read = self.read
         var readings: [AgentUsageWidgetReading] = []
@@ -45,6 +49,10 @@ struct AgentUsageBackgroundRefresh {
                 group.addTask { (host, await read(host, claudeLimits), .now) }
             }
             for await (host, state, readAt) in group {
+                guard isUsageEnabled() else {
+                    group.cancelAll()
+                    return
+                }
                 guard let state, !Task.isCancelled else { continue }
                 readings.append(AgentUsageWidgetReading(
                     id: host.id, name: host.displayName, state: state, readAt: readAt, isConnected: true))

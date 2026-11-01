@@ -180,8 +180,10 @@ struct ConsoleView: View {
                 Label(ConsoleTab.terminals.title, systemImage: "terminal")
                     .environment(\.symbolVariants, .none)
             }
-            Tab(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis", value: ConsoleTab.usage) {
-                usageTab()
+            if console.isUsageEnabled {
+                Tab(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis", value: ConsoleTab.usage) {
+                    usageTab()
+                }
             }
             Tab(ConsoleTab.hosts.title, systemImage: "server.rack", value: ConsoleTab.hosts) {
                 hostList(
@@ -296,6 +298,7 @@ struct ConsoleView: View {
             guard let link = UsageWidgetLink.target(from: url) else { return }
             openUsage(link)
         }
+        .modifier(UsageTurnedOffReset(isEnabled: console.isUsageEnabled, reset: leaveUsage))
         // Retries answered, the Host no longer failing, drop what they saw.
         .onChange(of: hostIssuesSheetExplained) { _, explained in
             hostIssuesLastFailures = hostIssuesLastFailures.filter { explained.contains($0.key) }
@@ -378,7 +381,9 @@ struct ConsoleView: View {
                 if isUsageTabSelected { return .usage }
                 return shownListTab
             },
-            set: { tab in
+            set: { requested in
+                // Usage turned off behind a screen that opened from it.
+                let tab = requested == .usage && !console.isUsageEnabled ? shownListTab : requested
                 let leavingList = shownListTab
                 // A search field keeping first responder through the switch
                 // can leave the arriving tab blank; its query stays.
@@ -426,7 +431,7 @@ struct ConsoleView: View {
         HostListView(
             store: hosts,
             initialHostID: hostsTabRequest?.hostID,
-            usageStore: { console.agentUsageStore(for: $0) },
+            usageStore: console.isUsageEnabled ? { console.agentUsageStore(for: $0) } : nil,
             openUsage: { openUsage(for: $0) },
             showsSetupGuide: hostsTabRequest?.showsSetupGuide ?? false,
             connectionStatuses: console.hostStatuses,
@@ -466,7 +471,9 @@ struct ConsoleView: View {
     }
 
     /// The lists an iPad sidebar's title menu switches between.
-    private static let sidebarLists: [ConsoleTab] = [.agents, .terminals, .usage]
+    private var shownSidebarLists: [ConsoleTab] {
+        console.isUsageEnabled ? [.agents, .terminals, .usage] : [.agents, .terminals]
+    }
 
     /// Every Host the Usage tab can read, in catalog order.
     private var usageEntries: [AgentUsageHostEntry] {
@@ -489,7 +496,7 @@ struct ConsoleView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             SidebarListMenu(
-                                shown: .usage, lists: Self.sidebarLists,
+                                shown: .usage, lists: shownSidebarLists,
                                 isPresented: $isShowingUsageListMenu, frame: $usageListMenuTitleFrame)
                         }
                         .toolbarItemBackground(.hidden)
@@ -505,7 +512,7 @@ struct ConsoleView: View {
                                 .frame(width: 1, height: 1)
                                 .popover(isPresented: $isShowingUsageListMenu, arrowEdge: .top) {
                                     SidebarListChoices(
-                                        shown: .usage, lists: Self.sidebarLists,
+                                        shown: .usage, lists: shownSidebarLists,
                                         isPresented: $isShowingUsageListMenu,
                                         select: { selectedTab.wrappedValue = $0 })
                                 }
@@ -560,12 +567,23 @@ struct ConsoleView: View {
     /// A Usage widget's tap: the tab on the widget's scope, and for Usage
     /// Limits, that Host's limits. A Host since removed opens All Hosts.
     private func openUsage(_ link: UsageWidgetLink.Target) {
+        guard console.isUsageEnabled else { return }
         let hostID = link.hostID.flatMap { id in hosts.hosts.contains { $0.id == id } ? id : nil }
         usageScopeHostID = hostID
         isShowingHostsSheet = false
         isShowingSettingsSheet = false
         selectedTab.wrappedValue = .usage
         usageLimitsRequested = link.showsLimits && hostID != nil
+    }
+
+    /// Usage turned off, from this window or another: nothing of it stays
+    /// selected or asked for, so turning it back on opens where it first did.
+    private func leaveUsage() {
+        if isUsageTabSelected { selectedTab.wrappedValue = shownListTab }
+        usageScopeHostID = nil
+        usageShowsLimits = false
+        usageLimitsRequested = false
+        isShowingUsageListMenu = false
     }
 
     private func switchList(to tab: ConsoleTab) {
@@ -893,7 +911,7 @@ struct ConsoleView: View {
                         .frame(width: 1, height: 1)
                         .popover(isPresented: $isShowingListMenu, arrowEdge: .top) {
                             SidebarListChoices(
-                                shown: tab, lists: Self.sidebarLists,
+                                shown: tab, lists: shownSidebarLists,
                                 isPresented: $isShowingListMenu, select: switchList(to:))
                         }
                         .position(anchor)
@@ -1018,7 +1036,7 @@ struct ConsoleView: View {
         if usesSidebarNavigation {
             ToolbarItem(placement: .topBarLeading) {
                 SidebarListMenu(
-                    shown: tab, lists: Self.sidebarLists,
+                    shown: tab, lists: shownSidebarLists,
                     isPresented: $isShowingListMenu, frame: $listMenuTitleFrame)
             }
             .toolbarItemBackground(.hidden)
@@ -2693,6 +2711,17 @@ struct MissingAgentPresentation: Equatable {
 }
 
 /// A saved Chat row's swipe or context menu asks here before removing it.
+private struct UsageTurnedOffReset: ViewModifier {
+    let isEnabled: Bool
+    let reset: () -> Void
+
+    func body(content: Content) -> some View {
+        content.onChange(of: isEnabled) { _, enabled in
+            if !enabled { reset() }
+        }
+    }
+}
+
 private struct SavedChatRemovalAlert: ViewModifier {
     @Binding var pending: ConsoleAgent?
     let message: (ConsoleAgent) -> String
