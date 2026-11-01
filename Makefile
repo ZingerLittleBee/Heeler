@@ -81,6 +81,10 @@ test-ci-package: ## Run the committed-project CI SSH package lane (SIMULATOR_UDI
 	HEELER_CI_LANE=package HEELER_CI_SIMULATOR_UDID='$(or $(SIMULATOR_UDID),$(HEELER_CI_SIMULATOR_UDID))' \
 		scripts/run-ci-ios-tests.sh
 
+.PHONY: profile-ci-build
+profile-ci-build: ## Capture one cold App/test compilation without executing tests
+	python3 scripts/profile-ci-build.py
+
 .PHONY: test-ci-diagnostics test-ci-diagnostic-controls test-weak-network-proxy
 test-ci-diagnostics: ## Diagnose one scenario (HEELER_CI_DIAGNOSTIC_TARGET, optional iterations)
 	@test -n "$$HEELER_CI_DIAGNOSTIC_TARGET" || { echo "HEELER_CI_DIAGNOSTIC_TARGET is required" >&2; exit 2; }
