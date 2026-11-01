@@ -11,7 +11,7 @@ Entries reference the pull request that made the change.
 
 - Turn Usage off in Settings to hide its tab and each Host's Usage section and
   stop reading usage from your Hosts. Usage widgets clear their figures and say
-  so until you turn it back on.
+  so until you turn it back on. (#597)
 - Pull the grabber on the Composer's top edge down to hide the keyboard.
   (#594)
 - Pair a herdr that runs with its own config home, such as a per-project
