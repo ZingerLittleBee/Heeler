@@ -5,6 +5,8 @@ import Foundation
 /// reading, keeping a Host's last report while it cannot read a newer one.
 struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
     static let currentVersion = 1
+    /// What a Host's widget says while Usage is off in the app.
+    static let usageOffReason = "Usage is off in Settings."
 
     var version = Self.currentVersion
     /// In catalog order.

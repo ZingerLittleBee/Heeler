@@ -221,11 +221,11 @@ final class HeelerAppModel {
         await AgentUsageBackgroundRefresh.live().run(hosts: hostStore.hosts, publisher: publisher)
     }
 
-    /// Asks for a background Usage read while a Usage widget is installed,
+    /// Asks for a background Usage read while Usage is on and a widget is installed,
     /// and withdraws the request once none is.
     @discardableResult
     private func scheduleUsageRefresh() async -> Bool {
-        guard let publisher = console.usageWidgets, !hostStore.hosts.isEmpty,
+        guard console.isUsageEnabled, let publisher = console.usageWidgets, !hostStore.hosts.isEmpty,
             await publisher.widgetsInstalled()
         else {
             AgentUsageBackgroundRefresh.cancel()

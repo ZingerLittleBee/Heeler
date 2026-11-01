@@ -192,13 +192,87 @@ struct AgentUsageWidgetRefreshTests {
         #expect(await transport.agentUsageReads == 0)
     }
 
+    @Test func turningUsageOffClearsTheWidgetsAndStopsReadsUntilItsBackOn() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (settings, cleanup) = try Self.usageSettings()
+        defer { cleanup() }
+        let (console, transport, host) = try await Self.console(publisher: publisher, usageSettings: settings)
+        defer { console.setHosts([]) }
+        await console.resume()
+        try await Self.waitUntil("the widgets get the reading") {
+            Self.snapshot(directory)?.host(host.id)?.reports == true
+        }
+        let store = console.agentUsageStore(for: host.id)
+
+        console.setUsageEnabled(false)
+
+        #expect(!settings.isEnabled)
+        let off = try #require(Self.snapshot(directory)?.host(host.id))
+        #expect(!off.reports && off.programs.isEmpty && off.limits.isEmpty)
+        #expect(off.excludedReason == UsageWidgetSnapshot.usageOffReason)
+        #expect(store.state == .idle)
+        #expect(console.agentUsageStore(for: host.id) !== store)
+        await console.reactivate()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await transport.agentUsageReads == 1)
+
+        console.setUsageEnabled(true)
+
+        try await Self.waitUntil("the widgets read again") {
+            Self.snapshot(directory)?.host(host.id)?.reports == true
+        }
+        #expect(await transport.agentUsageReads == 2)
+    }
+
+    @Test func launchingWithUsageOffReadsNothingAndTellsTheWidgets() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (settings, cleanup) = try Self.usageSettings()
+        defer { cleanup() }
+        settings.setEnabled(false)
+        let (console, transport, host) = try await Self.console(publisher: publisher, usageSettings: settings)
+        defer { console.setHosts([]) }
+
+        await console.resume()
+        try await Self.waitUntil("the Host connects") { console.hostStatuses[host.id] == .connected }
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(await transport.agentUsageReads == 0)
+        #expect(Self.snapshot(directory)?.host(host.id)?.excludedReason == UsageWidgetSnapshot.usageOffReason)
+    }
+
+    @Test func usageIsOnUntilTurnedOffAndTheChoiceIsRemembered() throws {
+        let suite = "hm-usage-settings-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let settings = AgentUsageSettings(defaults: defaults)
+        #expect(settings.isEnabled)
+
+        settings.setEnabled(false)
+        #expect(!AgentUsageSettings(defaults: defaults).isEnabled)
+
+        settings.setEnabled(true)
+        #expect(AgentUsageSettings(defaults: defaults).isEnabled)
+    }
+
+    private static func usageSettings() throws -> (AgentUsageSettings, cleanup: () -> Void) {
+        let suite = "hm-usage-settings-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        return (AgentUsageSettings(defaults: defaults), { defaults.removePersistentDomain(forName: suite) })
+    }
+
     private static func console(
-        publisher: AgentUsageWidgetPublisher
+        publisher: AgentUsageWidgetPublisher, usageSettings: AgentUsageSettings? = nil
     ) async throws -> (ConsoleStore, ScriptedTransport, Host) {
         let transport = ScriptedTransport(snapshot: .fixture(agents: []))
         await transport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: "0.7.0")))
         await transport.setAgentUsage(.success(try AgentUsageFixture.report(refreshing: false)))
-        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10), usageWidgets: publisher) { _, subscriptions in
+        let console = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10), usageWidgets: publisher,
+            usageSettings: usageSettings ?? AgentUsageSettings()
+        ) { _, subscriptions in
             EventsSession(
                 subscriptions: subscriptions, connect: { transport },
                 reconnectPolicy: fastPolicy, keepalive: nil)
