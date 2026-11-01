@@ -136,8 +136,10 @@ never show or send into a conversation it has guessed.
 - Chat covers the six programs it reads today. On native Windows herdr-core
   Hosts it opens for Claude Code and Grok Build (session registry plus the
   Windows process tree and creation times) and Pi and Oh My Pi (their
-  extensions, which need nothing from the process table), each once tested on
-  a Windows Host; Codex and OpenCode follow later. Native
+  extensions' labels, adopted only on a pid and creation-time match), each once
+  tested on a Windows Host and listed in
+  `HostCapabilities.confirmedWindowsCoreChatPrograms`; Codex and OpenCode follow
+  later. Native
   Windows Herdr TUI Hosts stay without Chat. Codex, Grok Build and OpenCode from 2.x
   are built for Linux from the recordings below, which never saw a signed-in
   account. Each stays off in `HostCapabilities.confirmedCoreChatPrograms` until its check with a harness
@@ -261,6 +263,18 @@ herdr-core Hosts only.
 - Under PowerShell the foreground's pid is never the Agent's, so #590 binds
   through PowerShell's children, not through the foreground's pid. A session
   registry entry on Windows has not been read.
+- The rules hold on Windows in the same costs: one exec, here
+  `HostProcessReader.windowsCommand`, and at most one read, named variables only,
+  never a `.key` file. Windows names a process by its image and a program cannot
+  retitle itself, so under npm the Agent is a `node.exe` or `bun.exe`: the binder
+  takes the nearest process named for the program, else for Claude Code, Pi and
+  Oh My Pi the nearest runtime, with no following past it, and never the PowerShell.
+  A wrong pick binds nothing, because what proves the Agent is still its pid and
+  start against what the program recorded, and Grok Build gets no runtime rule since
+  it is a native binary. Under `npx` the nearest runtime is the launcher, so Chat
+  says it can't tell. Pi's launch hint and Oh My Pi's breadcrumb do not apply: the
+  launch runs under PowerShell, and open files are not read. Chat's cannot-tell there
+  is its own reason, `cannotTellSessionOnWindows`, which never offers the Helper.
 - Confirmed on macOS 27.0.1, against processes the spike started
   ([herdr compatibility](../agents/herdr-compatibility.md)): process start from
   `ps -o lstart=`, named variables from `KERN_PROCARGS2`, open files from

@@ -57,6 +57,7 @@ struct AgentChatSurfaceView: View {
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
+    @State private var windowsExtensionFlow: HerdrCoreWindowsExtensionFlow?
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
@@ -609,9 +610,13 @@ struct AgentChatSurfaceView: View {
                 reason: reason, launchNotice: chat?.launchNotice,
                 retry: { chat?.retry() },
                 showAgentTerminal: { showAgentTerminal() },
-                reviewEdit: { openCodeEditFlow = console.openCodePluginEditFlow(for: agent.id, keepingTo: session.corePin) })
+                reviewEdit: { openCodeEditFlow = console.openCodePluginEditFlow(for: agent.id, keepingTo: session.corePin) },
+                addExtension: { windowsExtensionFlow = console.windowsExtensionFlow(for: agent.id, keepingTo: session.corePin) })
             .sheet(item: $openCodeEditFlow) { flow in
                 OpenCodePluginEditSheet(flow: flow)
+            }
+            .sheet(item: $windowsExtensionFlow) { flow in
+                HerdrCoreWindowsExtensionSheet(flow: flow)
             }
         case .disconnected:
             ContentUnavailableView(

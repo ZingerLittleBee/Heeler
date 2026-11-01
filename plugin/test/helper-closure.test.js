@@ -109,7 +109,15 @@ suite("Host Helper closure", () => {
     // `executable` is a Usage Limits request's recorded program, or the zstd on the
     // recorded PATH. Naming a new program here is a decision, not a test to update.
     const started = new Set(helperModules().flatMap((path) => programsStarted(readFileSync(path, "utf8"))));
-    assert.deepEqual([...started].sort(), ['"/bin/ps"', '"security"', "executable", "runtime.claude", "runtime.node"]);
+    // `powershell.exe` is the session extension's on native Windows, pinned below.
+    assert.deepEqual([...started].sort(), [
+      '"/bin/ps"',
+      '"powershell.exe"',
+      '"security"',
+      "executable",
+      "runtime.claude",
+      "runtime.node",
+    ]);
   });
 
   test("the Helper's own process never loads an extension", () => {
@@ -121,18 +129,29 @@ suite("Host Helper closure", () => {
     }
   });
 
-  for (const [name, path] of [["session extension", SESSION_EXTENSION], ["OpenCode plugin", OPENCODE_PLUGIN]]) {
-    test(`the ${name} starts only /bin/ps, for its own process start`, () => {
+  for (const [name, path, calls] of [
+    ["session extension", SESSION_EXTENSION, 2],
+    ["OpenCode plugin", OPENCODE_PLUGIN, 1],
+  ]) {
+    test(`the ${name} starts only what reads its own process start`, () => {
       const source = readFileSync(path, "utf8");
       // The lookbehind leaves RegExp's own `.exec` out.
       const named = [...source.matchAll(/(?<![.\w$])(?:exec|execSync|execFile|execFileSync|fork|spawn|spawnSync)\b/g)];
-      assert.deepEqual(named.map((match) => match[0]), ["execFile", "execFile"], "one import and one call");
+      assert.deepEqual(named.map((match) => match[0]), Array(calls + 1).fill("execFile"), "one import and its calls");
       const imports = specifiersIn(source).filter((name) => name.replace(/^node:/, "") === "child_process");
       assert.equal(imports.length, 1);
       assert.match(source, /^import \{ execFile \} from "node:child_process";$/m);
       assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "lstart=", "-p", String\(pid\)\],/);
     });
   }
+
+  test("on Windows the session extension starts PowerShell for that read and nothing else", () => {
+    const source = readFileSync(SESSION_EXTENSION, "utf8");
+    assert.match(source, /\bexecFile\(\s*"powershell\.exe",/);
+    // The whole command, with the pid a number: it is the only thing PowerShell runs.
+    assert.match(source, /`\(Get-Process -Id \$\{Number\(pid\)\}\)\.StartTime\.ToFileTimeUtc\(\)`/);
+    assert.equal([...source.matchAll(/powershell\.exe/gi)].length, 1);
+  });
 
   test("a shared module is the plugin's own source, byte for byte", () => {
     for (const path of filesUnder(HELPER).filter((name) => name.startsWith("shared/"))) {

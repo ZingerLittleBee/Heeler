@@ -1,7 +1,8 @@
 // Heeler's extension for Pi and Oh My Pi (ADR 0033). The Host Helper copies this
-// one file into each program's extension folder, and those programs load every
-// session on the Host through it, so outside a herdr-core Terminal it does
-// nothing at all. It imports only Node built-ins, since it runs from that folder.
+// one file into each program's extension folder, or on native Windows the app
+// writes it there, and those programs load every session on the Host through it,
+// so outside a herdr-core Terminal it does nothing at all. It imports only Node
+// built-ins, since it runs from that folder.
 
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -11,6 +12,8 @@ import { connect } from "node:net";
 const SESSION_LABEL = "heeler.session";
 const SOCKET_TIMEOUT_MS = 500;
 const PS_TIMEOUT_MS = 1000;
+/** PowerShell's own start takes a few seconds on a slow machine. */
+const POWERSHELL_TIMEOUT_MS = 5000;
 /** Pi's loader resolves these names to Pi itself, its former name included. Kept apart from `import` so it resolves them at run time. */
 const PI_PACKAGES = ["@earendil-works/pi-coding-agent", "@mariozechner/pi-coding-agent"];
 /** The release that reports its own OSC 7501 (herdr compatibility). */
@@ -25,20 +28,44 @@ export function startTimeFromStat(stat) {
   return /^\d+$/.test(start ?? "") ? start : null;
 }
 
+/** A child's stdout. It never holds the process open. */
+function outputOf(start) {
+  return new Promise((done, fail) => {
+    start((error, stdout) => (error ? fail(error) : done(stdout))).unref();
+  });
+}
+
 /** What the app's process reader reads for this process, or null. */
 async function processStart(pid) {
   try {
     if (process.platform === "linux") return startTimeFromStat(await readFile(`/proc/${pid}/stat`, "utf8"));
-    if (process.platform === "win32") return null;
-    const output = await new Promise((done, fail) => {
-      const child = execFile(
+    if (process.platform === "win32") {
+      // Windows has no file to read it from. The creation FILETIME, which is what
+      // the app's read prints too (ADR 0034).
+      const output = await outputOf((finish) =>
+        execFile(
+          "powershell.exe",
+          [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            `(Get-Process -Id ${Number(pid)}).StartTime.ToFileTimeUtc()`,
+          ],
+          { timeout: POWERSHELL_TIMEOUT_MS, windowsHide: true },
+          finish,
+        ),
+      );
+      return /^\d+$/.test(output.trim()) ? output.trim() : null;
+    }
+    const output = await outputOf((finish) =>
+      execFile(
         "/bin/ps",
         ["-o", "lstart=", "-p", String(pid)],
         { timeout: PS_TIMEOUT_MS, env: { LC_ALL: "C" } },
-        (error, stdout) => (error ? fail(error) : done(stdout)),
-      );
-      child.unref();
-    });
+        finish,
+      ),
+    );
     return output.trim() || null;
   } catch {
     return null;

@@ -168,7 +168,9 @@ extension HerdrCoreSessionBinder {
     func checkGrokBuild(_ record: HerdrCoreTerminalRecord) async throws -> ChatSessionEvidence {
         guard
             let tree = try await readTerminalProcesses(of: record, values: ["HOME", Self.grokHomeVariable]),
-            let pid = tree.agent(isAgent: { $0?.name == "grok" }),
+            let pid =
+                isOnWindows
+                ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" }),
             let process = tree.facts[pid], case .value(let start) = process.start,
             let grokHome = Self.configRoot(of: process, variable: Self.grokHomeVariable, underHome: ".grok")
         else { return cannotTell }
@@ -182,12 +184,13 @@ extension HerdrCoreSessionBinder {
         guard matching.count == 1, let row = matching.first,
             let session = ConversationReference.lowercaseUUID(row.sessionID)
         else { return cannotTell }
-        return .bound(
-            sessionID: session, transcriptRoot: grokHome, directory: row.cwd.flatMap { $0.hasPrefix("/") ? $0 : nil })
+        return .bound(sessionID: session, transcriptRoot: grokHome, directory: startDirectory(row.cwd))
     }
 
     /// One row of `active_sessions.json`. `pid_start` is a JSON number, field 22
     /// of `/proc/<pid>/stat` (Grok Build 1.0.70, `host-evidence/grok/s-flag.json`).
+    /// On Windows it is taken to be the creation FILETIME, which no row has shown yet
+    /// (herdr compatibility): any other number binds nothing.
     private struct ActiveSession: Decodable {
         let sessionID: String
         let pid: Int

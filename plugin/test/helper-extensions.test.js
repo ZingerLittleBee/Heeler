@@ -5,7 +5,7 @@
 import { after, afterEach, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -153,7 +153,9 @@ suite("Heeler's Pi and Oh My Pi extension", () => {
 
   afterEach(() => {
     process.stdout.write = realWrite;
-    process.env = { ...savedEnvironment };
+    // In place: a child finds its program through the real environment's PATH.
+    for (const name of Object.keys(process.env)) delete process.env[name];
+    Object.assign(process.env, savedEnvironment);
   });
 
   suite("outside a herdr-core Terminal", () => {
@@ -550,6 +552,170 @@ suite("Heeler's Pi and Oh My Pi extension", () => {
 
     test("names the file the Helper's tree really holds", () => {
       assert.match(readFileSync(FOLDERS, "utf8"), new RegExp(`"${basename(EXTENSION).replace(".", "\\.")}"`));
+    });
+  });
+
+  suite("on native Windows", () => {
+    /** The form the core gives a Terminal there (herdr compatibility, #586). */
+    const PIPE = "\\\\.\\pipe\\herdr-core-user-session.sock";
+    /** A creation time as `ToFileTimeUtc` prints it, too long for a JavaScript number. */
+    const FILETIME = "134065234567891237";
+    const savedPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+    const savedDirectory = process.cwd();
+    let folder;
+    let asked;
+
+    /** Stands in for `powershell.exe`, and keeps the arguments it was given. */
+    function fakePowerShell(body) {
+      const path = join(folder, "powershell.exe");
+      writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' "$@" > '${asked}'\n${body}\n`, { mode: 0o755 });
+      process.env.PATH = `${folder}:${process.env.PATH}`;
+    }
+
+    beforeEach(() => {
+      folder = mkdtempSync(join(root, "win-"));
+      asked = join(folder, "asked");
+      // Outside Windows these backslashes are one file's name, under the working
+      // folder, so the value reaches `net.connect` as the core gave it.
+      process.chdir(folder);
+      Object.defineProperty(process, "platform", { value: "win32" });
+      process.env.HC_TERMINAL_ID = "t1t";
+      process.env.HC_TERMINAL_SOCKET = PIPE;
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process, "platform", savedPlatform);
+      process.chdir(savedDirectory);
+    });
+
+    /** A terminal socket at the pipe's own name. */
+    async function fakePipe({ answers = true } = {}) {
+      const lines = [];
+      const server = createServer((socket) => {
+        socket.unref();
+        let text = "";
+        socket.on("data", (chunk) => {
+          text += chunk;
+          for (let at = text.indexOf("\n"); at >= 0; at = text.indexOf("\n")) {
+            lines.push(JSON.parse(text.slice(0, at)));
+            text = text.slice(at + 1);
+            if (answers) socket.write(`${JSON.stringify({ jsonrpc: "2.0", id: lines.at(-1).id, result: {} })}\n`);
+          }
+        });
+        socket.on("close", () => {
+          closedAt = Date.now();
+        });
+        socket.on("error", () => {});
+      });
+      let closedAt = null;
+      await new Promise((done) => server.listen(PIPE, done));
+      server.unref();
+      return { lines, closedAt: () => closedAt, close: () => new Promise((done) => server.close(done)) };
+    }
+
+    async function started() {
+      const heelerSession = await loadExtension();
+      const program = fakeProgram({ sessionFile: "C:\\Users\\user\\.pi\\agent\\sessions\\s.jsonl" });
+      await heelerSession(program.api);
+      return program;
+    }
+
+    async function until(condition, ms = 3000) {
+      const deadline = Date.now() + ms;
+      while (!condition()) {
+        assert.ok(Date.now() < deadline, "what the test waited for never happened");
+        await settle(10);
+      }
+    }
+
+    test("one label line goes to the pipe, naming the process by its creation time", async () => {
+      fakePowerShell(`echo ${FILETIME}`);
+      const pipe = await fakePipe();
+      const program = await started();
+
+      await program.emit("session_start");
+      await until(() => pipe.lines.length > 0);
+      await settle();
+
+      assert.equal(pipe.lines.length, 1);
+      const [request] = pipe.lines;
+      assert.equal(request.method, "terminal.label");
+      assert.equal(request.params.terminal, "t1t");
+      const label = JSON.parse(request.params.labels["heeler.session"]);
+      assert.equal(label.session, "session-1");
+      assert.equal(label.file, "C:\\Users\\user\\.pi\\agent\\sessions\\s.jsonl");
+      assert.equal(label.pid, process.pid);
+      assert.equal(label.start, FILETIME);
+      const arguments_ = readFileSync(asked, "utf8");
+      assert.match(arguments_, new RegExp(`Get-Process -Id ${process.pid}\\b`));
+      assert.match(arguments_, /-NoProfile/);
+      await pipe.close();
+    });
+
+    test("a pipe that never answers is given up on quietly, and the session goes on at once", async () => {
+      fakePowerShell(`echo ${FILETIME}`);
+      const unhandled = [];
+      const onUnhandled = (reason) => unhandled.push(reason);
+      process.on("unhandledRejection", onUnhandled);
+      const pipe = await fakePipe({ answers: false });
+      const program = await started();
+
+      const before = Date.now();
+      await program.emit("session_start");
+      assert.ok(Date.now() - before < 100, "the program waited on the label");
+      await until(() => pipe.closedAt() !== null, 3000);
+      assert.equal(pipe.lines.length, 1);
+      assert.ok(pipe.closedAt() - before < 2500, "the extension held the pipe too long");
+
+      process.off("unhandledRejection", onUnhandled);
+      assert.deepEqual(unhandled, []);
+      await pipe.close();
+    });
+
+    test("a slow PowerShell holds up nothing but the label", async () => {
+      fakePowerShell(`sleep 1\necho ${FILETIME}`);
+      const pipe = await fakePipe();
+      const program = await started();
+
+      const before = Date.now();
+      await program.emit("session_start");
+      assert.ok(Date.now() - before < 100, "the program waited on PowerShell");
+      await until(() => pipe.lines.length === 1);
+      await pipe.close();
+    });
+
+    for (const [name, body] of [
+      ["fails", "exit 1"],
+      ["prints something else", "echo 'not a number'"],
+    ]) {
+      test(`a PowerShell that ${name} leaves the label with no start, which Chat will not adopt`, async () => {
+        fakePowerShell(body);
+        const pipe = await fakePipe();
+        const program = await started();
+
+        await program.emit("session_start");
+        await until(() => pipe.lines.length === 1);
+
+        const label = JSON.parse(pipe.lines[0].params.labels["heeler.session"]);
+        assert.equal(label.pid, process.pid);
+        assert.equal("start" in label, false);
+        await pipe.close();
+      });
+    }
+
+    test("without HC_TERMINAL_ID it does nothing, and starts nothing", async () => {
+      fakePowerShell(`echo ${FILETIME}`);
+      delete process.env.HC_TERMINAL_ID;
+      const pipe = await fakePipe();
+      const program = await started();
+
+      await program.emit("session_start");
+      await settle();
+
+      assert.deepEqual(program.registered(), []);
+      assert.deepEqual(pipe.lines, []);
+      assert.equal(existsSync(asked), false);
+      await pipe.close();
     });
   });
 

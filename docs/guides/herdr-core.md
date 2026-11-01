@@ -53,7 +53,7 @@ The Console lists the core's Agents and Terminals, each in a card named for its 
 
 **Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stage through the core, not over SFTP, one file of up to 8 MiB at a time. Heeler refuses a larger one before sending anything, and your draft stays as it was. The path the core gives goes in your draft and on the clipboard, and a program in that Terminal can read it. Nothing reaches the Agent until you [send](#send). The file is in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\`, which SYSTEM, Administrators and your account can read, and no one else. It stays after the Terminal is closed and goes only when the core removes the Terminal's record, with `terminal.rm`.
 
-[Send](#send) and [Stop](#stop) work there too, with one limit Send describes. Not offered there yet, whatever the Host reads: Chat, Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
+[Send](#send) and [Stop](#stop) work there too, with one limit Send describes. [Chat](#chat-on-windows) opens only for programs that have passed their check there, and so far none has. Not offered there yet, whatever the Host reads: Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
 
 ## Console
 
@@ -251,10 +251,31 @@ Anything else reads **Can't Tell the Conversation**, and the message points you 
 
 Heeler looks for the sessions where the Agent's own environment says: `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` for Pi, `PI_CONFIG_DIR`, `OMP_PROFILE`, `PI_PROFILE` and `PI_CODING_AGENT_DIR` for Oh My Pi. It cannot see a folder set any other way, such as Pi's `--session-dir` or `sessionDir` setting, Oh My Pi's `--profile` flag or `.env` file, or its files after `omp config init-xdg`. With the Helper, the extension names the file itself and Chat reads it. Without it, Chat stays on **Can't Tell the Conversation**, or for a Pi Heeler started, keeps waiting for a first message it cannot find.
 
+### Chat on Windows
+
+On a native Windows core Host, each program's Chat turns on only once it has passed a check on a Windows machine.
+
+| Program | Chat on a Windows core Host |
+|---------|-----------------------------|
+| Claude Code, Grok Build, Pi, Oh My Pi | Off until its check passes. None has yet, so each offers the terminal alone |
+| Codex, OpenCode | Not offered |
+
+A native Windows Herdr TUI Host offers no Chat for any Agent.
+
+Once a program's Chat is on, Heeler finds its conversation the same way: from the Agent's own process, here a child of the Terminal's PowerShell, and its creation time. Send, Stop and Blocked answers work as above, with the limit [Send](#send) describes for a Terminal that keeps a shell open.
+
+Windows has no Host Helper, so **Can't Tell the Conversation** never points you to one. Pi and Oh My Pi name their conversation through Heeler's extension, which you add from there:
+
+1. Tap **Add Heeler's Extension…**. The sheet lists each folder: `.pi\agent\extensions`, `.omp\agent\extensions` and each Oh My Pi profile's `agent\extensions` under your home folder. Those programs load what is there for every session on the machine. Nothing is written yet.
+2. Tap **Add to … Folders**. Heeler writes one file, `heeler-session.js`, into each folder, through the core.
+3. Start the Agent again, and Chat follows its conversation.
+
+Add it again for a profile you created later, or after updating Heeler. To remove it, delete `heeler-session.js` from those folders.
+
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
-- Chat opens for Claude Code on Linux, and for Codex, Grok Build, OpenCode 2.x, [Pi and Oh My Pi](#pi-and-oh-my-pi) once each has passed its check. Until then those Agents, and every Agent on a macOS or native Windows core Host, offer the terminal alone.
+- Chat opens for Claude Code on Linux, and for Codex, Grok Build, OpenCode 2.x, [Pi and Oh My Pi](#pi-and-oh-my-pi) once each has passed its check, and on native Windows as [Chat on Windows](#chat-on-windows) lists. Until then those Agents, and every Agent on a macOS core Host, offer the terminal alone.
 - Right after `/new` in Codex, before any message there, nothing on the Host has changed. Chat keeps showing the old conversation, and a Send goes to the new one. After `/new`, keep to the terminal until you have exited Codex and run `codex resume --no-daemon`.
 - After `/new` or a pick in OpenCode's list, Chat keeps showing the conversation OpenCode started with until you start OpenCode again, unless OpenCode has [Heeler's plugin](#let-chat-follow-opencode), which Chat follows. Its terminal title is what says the screen moved, so a Send sends nothing and says why. With OpenCode's `terminal.title` setting off, or while Chat's conversation has no title of its own, the title can't tell, and a Send goes to whatever conversation is on screen. Only OpenCode's home screen still holds it.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.

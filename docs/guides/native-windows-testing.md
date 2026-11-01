@@ -406,7 +406,8 @@ agent discovery and launch, and its `terminal.put` through sshd.
 2. In your desktop session, in PowerShell, not as administrator, run the command
    the Host shows. Within its retry, the Host connects by itself.
 3. The Console lists the core's Terminals and Agents, each in a card named for
-   its directory. Chat, Rename and Worktrees are not offered.
+   its directory. Rename and Worktrees are not offered, and neither is Chat until
+   a build lists a program (step 24).
 4. Open an Agent. Direct Input types into it and its output follows.
 5. Open a Shell Terminal. Rotate or resize it, run a full-screen program, and
    scroll back.
@@ -466,6 +467,50 @@ agent discovery and launch, and its `terminal.put` through sshd.
     the terminal**. If your PowerShell or PSReadLine version keeps it, or PowerShell 7
     is installed and acts otherwise, record the versions there, and ADR 0035 needs your
     decision before Send ships on Windows.
+
+These steps are for Chat ([#590](https://github.com/ZingerLittleBee/Heeler/issues/590)).
+No lane runs them either. Nothing of the Windows process read has run on a Windows
+machine: its body ran under PowerShell 7 on a Mac with its native calls stubbed, and
+its C# only compiled there. Sign in to each program yourself. Never open Claude
+Code's `.key` files.
+
+24. In a local build, put one program in
+    `HostCapabilities.confirmedWindowsCoreChatPrograms`. Codex and OpenCode are not
+    candidates, and stay off even if listed. The other programs still offer the
+    terminal alone. On a native Windows Herdr TUI Host, no Agent offers Chat.
+25. Start Claude Code from New Agent, reach its prompt, send one message and open
+    Chat. It shows that conversation. On the machine, in PowerShell, compare
+    `(Get-Process -Id <pid>).StartTime.ToFileTimeUtc()` of `claude.exe` with
+    `procStartFt` in `%USERPROFILE%\.claude\sessions\<pid>.json`. Record the field's
+    name and form. If they differ, Chat says **Can't Tell the Conversation**, with no
+    offer of the Helper.
+26. Note how long Chat takes to bind. Each check is one PowerShell exec with an
+    `Add-Type` compile, bounded at 20 seconds. Run it from an SSH session that is not
+    elevated against a core that is, and the other way round: a process Heeler cannot
+    read reads as **Can't Tell**.
+27. Repeat step 25 with an npm-installed Claude Code, where the Agent's image is
+    `node.exe`, and through `npx`. Under `npx` Chat may say it can't tell. Record the
+    tree from `Get-CimInstance Win32_Process`.
+28. Run `/clear` in the terminal. Chat follows at its next check.
+29. Start Grok Build and send a message. Chat shows it, from the one row of
+    `active_sessions.json` with that `pid` and `pid_start`. Record `pid_start`'s value
+    beside the creation time: Heeler assumes they are equal. Run `/new`: two rows
+    match, and Chat says it can't tell until Grok Build starts again.
+30. Open Chat on a Pi Agent with no extension. It says it can't tell, and offers
+    **Add Heeler's Extension…**. The sheet names the folders and has written nothing.
+    Tap Add. `heeler-session.js` is in Pi's folder, `.omp\agent\extensions` and each
+    profile's folder, and nowhere else.
+31. Start Pi again and send a message. The Terminal's `heeler.session` label appears,
+    with a `start` equal to its process's creation time, and Chat shows the
+    conversation. Record Pi's image name, whether Pi loaded the file, and how long the
+    label took, since it runs one hidden PowerShell. Repeat on Oh My Pi, with a profile.
+32. Send from Chat in a Terminal New Agent started: the message submits. Stop a working
+    turn. Answer a Blocked card. For a program whose bracketed paste does not cross the
+    pseudo console (step 16), record that Chat's Send says the same.
+33. Record each program that passed as a versioned observation in
+    `docs/agents/herdr-compatibility.md`, here, and by adding it to
+    `HostCapabilities.confirmedWindowsCoreChatPrograms`. One that fails stays off, with
+    its observation saying why.
 
 ## Scope and results
 

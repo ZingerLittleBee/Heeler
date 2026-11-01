@@ -107,6 +107,17 @@ enum RemoteFilePath {
             .contains(where: { $0 == "." || $0 == ".." })
     }
 
+    /// A native Windows drive path in the form SFTP opens there, `/C:/Users/me`,
+    /// which also passes ``isAcceptable(_:)`` (herdr compatibility). Anything else
+    /// stays as it is, so a value that is no path or a UNC path stays refused.
+    static func windowsForSFTP(_ path: String) -> String {
+        let characters = Array(path.prefix(3))
+        guard characters.count == 3, characters[0].isASCII, characters[0].isLetter, characters[1] == ":",
+            characters[2] == "\\" || characters[2] == "/"
+        else { return path }
+        return "/" + path.replacingOccurrences(of: "\\", with: "/")
+    }
+
     /// Joins path components onto an absolute directory.
     static func join(_ directory: String, _ components: String...) -> String {
         var path = directory

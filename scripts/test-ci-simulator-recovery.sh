@@ -321,7 +321,7 @@ run_shard_case() (
     run_suite() { printf 'suite %s\n' "$*" >> "$fixture_dir/events"; }
     start_password_sshd() { echo start-password >> "$fixture_dir/events"; }
     stop_privileged_sshd() { echo stop-password >> "$fixture_dir/events"; }
-    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests; }
+    run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 10 1 0 HerdrCoreTransportE2ETests; }
     run_app_fixture_suites
     case "$shard" in
         session-weak)
@@ -337,7 +337,7 @@ EXPECTED
             cat > "$fixture_dir/expected" <<'EXPECTED'
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 123 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
-suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 10 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
             ;;
@@ -348,7 +348,7 @@ suite HeelerSSHSessionE2ETests 13 1 0 HeelerSSHSessionE2ETests
 stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 134 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
-suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 10 1 0 HerdrCoreTransportE2ETests
 EXPECTED
             ;;
         ordinary)
@@ -486,7 +486,7 @@ for result in pass fail; do (
     cat > "$fixture_dir/expected" <<'EXPECTED'
 start
 config core-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
-suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
+suite HerdrCoreTransportE2ETests 10 1 0 HerdrCoreTransportE2ETests
 EXPECTED
     if [[ "$result" == pass ]]; then
         [[ "$status" == 0 && -z "$core_fixture_dir" ]] || fail 'core success retained fixture ownership'

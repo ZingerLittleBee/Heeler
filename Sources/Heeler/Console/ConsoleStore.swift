@@ -132,6 +132,7 @@ final class ConsoleStore {
     @ObservationIgnored private let coreHostMemory: HerdrCoreHostMemory
     @ObservationIgnored private let coreStopClock: BlockedCardClock
     @ObservationIgnored private let coreChatPrograms: Set<ChatProgram>
+    @ObservationIgnored private let coreWindowsChatPrograms: Set<ChatProgram>
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
     @ObservationIgnored private let connectCore: @Sendable (Host) async throws -> any HerdrCoreTransport
@@ -215,9 +216,11 @@ final class ConsoleStore {
         openCodePluginBundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
         coreSendClock: BlockedCardClock = .live,
-        coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms
+        coreChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedCoreChatPrograms,
+        coreWindowsChatPrograms: Set<ChatProgram> = HostCapabilities.confirmedWindowsCoreChatPrograms
     ) {
         self.coreChatPrograms = coreChatPrograms
+        self.coreWindowsChatPrograms = coreWindowsChatPrograms
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.coreStopClock = coreStopClock
@@ -1868,6 +1871,7 @@ final class ConsoleStore {
             desktopAppNaming: hostDesktopAppNaming[hostID],
             coreKernel: hostCoreKernels[hostID],
             coreChatPrograms: coreChatPrograms,
+            coreWindowsChatPrograms: coreWindowsChatPrograms,
             isLocatingCore: hostStatuses[hostID] == .connecting)
     }
 
@@ -1890,6 +1894,35 @@ final class ConsoleStore {
 
     /// The OpenCode edit a Chat that can't bind offers. It keeps to `corePin`, as
     /// anything a detail does: past that core there is no Agent left to do it for.
+    /// Heeler's extension on a native Windows core Host (ADR 0033). A detail keeps to
+    /// its own core: a Host that has moved on writes nothing more, even part way.
+    func windowsExtensionFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HerdrCoreWindowsExtensionFlow {
+        let hostID = agentID.hostID
+        func core(of store: ConsoleStore) throws -> HerdrCoreConsoleProjection {
+            guard !store.hasLeftCore(corePin, on: hostID) else { throw TransportError.herdrCoreTerminalGone }
+            guard let core = store.projections[hostID] as? HerdrCoreConsoleProjection else {
+                throw TransportError.cancelled
+            }
+            return core
+        }
+        return HerdrCoreWindowsExtensionFlow(
+            locate: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await core(of: self).windowsExtensionFolders()
+            },
+            write: { [weak self] folders in
+                guard let self else { throw TransportError.cancelled }
+                guard let contents = try self.openCodePluginBundle().files[HerdrCoreWindowsExtensions.bundlePath] else {
+                    throw HostHelperBundle.LoadError.unreadable(HerdrCoreWindowsExtensions.bundlePath)
+                }
+                for folder in folders {
+                    try await core(of: self).writeWindowsExtension(contents, to: folder)
+                }
+            })
+    }
+
     func openCodePluginEditFlow(
         for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
     ) -> HarnessConfigEditFlow {
@@ -1987,7 +2020,8 @@ final class ConsoleStore {
         let platform = hostPlatforms[agent.hostID]
         if let platform {
             return AgentChatAvailability.program(
-                for: agent.agent, platform: platform, hasAdapter: { chatAdapter($0) != nil })
+                for: agent.agent, platform: platform, opensOnWindows: capabilities.startsInWindowsDirectories,
+                hasAdapter: { chatAdapter($0) != nil })
         }
         guard let host = projections[agent.hostID]?.host,
             cachedChats.agents(on: host).contains(where: { $0.id == agent.id }) else { return nil }
