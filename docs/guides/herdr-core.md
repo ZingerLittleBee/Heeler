@@ -255,14 +255,14 @@ With the Host Helper running, a herdr-core Host notifies you as any other Host d
 
 Turning notifications off, or removing the Host while Heeler can reach it, with its core stopped too, removes this device's entry and its file from the Host. If you remove a Host Heeler cannot reach, the entry stays and Heeler says so: reconnect first to stop them.
 
-The switches need the Helper, so **Settings > Notifications** says what the Host's Helper needs, such as **Not Installed**, **Service Failed** or **Node.js Missing**. Fix that from the Host's page in **Hosts**. A device already registered keeps its switches there, so it can still leave. With **Linger Off**, the switches work and a note says the Helper stops about ten seconds after your last login ends, so notifications stop too. Notifications need Host Helper 0.4.0 or newer.
+The switches need the Helper, so **Settings > Notifications** says what the Host's Helper needs, such as **Not Installed**, **Service Failed** or **Node.js Missing**. Fix that from the Host's page in **Hosts**. A device already registered keeps its switches there, so it can still leave. With **Linger Off**, the switches work and a note says the Helper stops about ten seconds after your last login ends, so notifications stop too.
 
 ### Banners and Live Activity
 
 Once this device is registered with a Host's Helper, that Host's Agents join the in-app banners and the Live Activity alongside your other Hosts. A Host without the Helper, or without this device's registration, gets neither.
 
 - **Banners** come while Heeler is open, under the same switches: Blocked and Error under the Blocked switch, Error reading as Error, and Done under its own switch. Done is this device's, so an Agent you have open makes no Done banner.
-- **Live Activity** has its own switch for the Host, and needs Host Helper 0.5.0 or newer. Heeler starts the activity and writes its push token into the Helper's directory. After Heeler suspends, the Helper updates and ends it through the Push Relay. Done counts for this device only, and an Error Agent counts under Blocked, as the Live Activity has no count of its own for it.
+- **Live Activity** has its own switch for the Host. Heeler starts the activity and writes its push token into the Helper's directory. After Heeler suspends, the Helper updates and ends it through the Push Relay. Done counts for this device only, and an Error Agent counts under Blocked, as the Live Activity has no count of its own for it.
 
 While Heeler is suspended the activity names each Agent's workspace by its folder, not a desktop app's space name, and a row field for the Tab or Pane stays empty. Opening Heeler brings those back.
 
