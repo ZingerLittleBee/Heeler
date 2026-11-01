@@ -1,0 +1,185 @@
+{
+  "program": "grok",
+  "version": "grok 1.0.70 (f50904eaee6c)",
+  "core": "0.1.13",
+  "source": "Grok Build started with `-s <id>`, in its default mode and with `--leader`",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "timeline": [
+    {
+      "phase": "start",
+      "seconds": 0.0
+    },
+    {
+      "phase": "after_8s",
+      "seconds": 8.06
+    },
+    {
+      "phase": "send_first",
+      "seconds": 8.18
+    },
+    {
+      "phase": "reply_seen",
+      "seconds": 8.81
+    },
+    {
+      "phase": "start_second",
+      "seconds": 9.83
+    },
+    {
+      "phase": "new_command",
+      "seconds": 11.25
+    },
+    {
+      "phase": "send_after_new",
+      "seconds": 19.49
+    },
+    {
+      "phase": "kill_second",
+      "seconds": 22.74
+    },
+    {
+      "phase": "ctrl_c_first",
+      "seconds": 23.76
+    },
+    {
+      "phase": "start_leader",
+      "seconds": 24.83
+    },
+    {
+      "phase": "end",
+      "seconds": 36.87
+    }
+  ],
+  "appearances": [
+    {
+      "seconds": 0.42,
+      "path": "/home/user/lab/iso/grok/grok-home/active_sessions.json"
+    },
+    {
+      "seconds": 0.42,
+      "path": "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/00000000-0000-4000-8000-000000000001/chat_history.jsonl"
+    },
+    {
+      "seconds": 0.42,
+      "path": "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/00000000-0000-4000-8000-000000000001/events.jsonl"
+    },
+    {
+      "seconds": 8.46,
+      "path": "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/00000000-0000-4000-8000-000000000001/updates.jsonl"
+    },
+    {
+      "seconds": 10.19,
+      "path": "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/00000000-0000-4000-8000-000000000002/chat_history.jsonl"
+    },
+    {
+      "seconds": 10.19,
+      "path": "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/00000000-0000-4000-8000-000000000002/events.jsonl"
+    },
+    {
+      "seconds": 11.57,
+      "path": "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/01900000-0000-7000-8000-000000000003/chat_history.jsonl"
+    },
+    {
+      "seconds": 11.57,
+      "path": "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/01900000-0000-7000-8000-000000000003/events.jsonl"
+    },
+    {
+      "seconds": 19.79,
+      "path": "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/01900000-0000-7000-8000-000000000003/updates.jsonl"
+    }
+  ],
+  "pidStart": {
+    "procStatField22": "127527",
+    "clockTicksPerSecond": 100,
+    "psLstart": "Sun Nov  1 07:13:04 2026",
+    "encoding": "pid_start is a JSON number equal to field 22 of /proc/<pid>/stat, clock ticks since boot"
+  },
+  "scenes": [
+    {
+      "name": "one-terminal",
+      "processes": [
+        {
+          "pid": 5579,
+          "parent": 2630,
+          "name": "grok",
+          "start": "127527",
+          "argv": [
+            "/home/user/lab/grok-bin/grok",
+            "-s",
+            "00000000-0000-4000-8000-000000000001"
+          ],
+          "environment": {
+            "HC_SCOPE": "127527-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/grok/grok-home/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/00000000-0000-4000-8000-000000000001/events.jsonl"
+          ]
+        }
+      ],
+      "files": {
+        "/home/user/lab/iso/grok/grok-home/active_sessions.json": "[\n  {\n    \"session_id\": \"00000000-0000-4000-8000-000000000001\",\n    \"pid\": 5579,\n    \"pid_start\": 127527,\n    \"cwd\": \"/home/user/lab/iso/projects/grok\",\n    \"opened_at\": \"2026-11-01T07:13:05.059425213Z\"\n  }\n]"
+      }
+    },
+    {
+      "name": "second-terminal",
+      "files": {
+        "/home/user/lab/iso/grok/grok-home/active_sessions.json": "[\n  {\n    \"session_id\": \"00000000-0000-4000-8000-000000000001\",\n    \"pid\": 5579,\n    \"pid_start\": 127527,\n    \"cwd\": \"/home/user/lab/iso/projects/grok\",\n    \"opened_at\": \"2026-11-01T07:13:05.059425213Z\"\n  },\n  {\n    \"session_id\": \"00000000-0000-4000-8000-000000000002\",\n    \"pid\": 5735,\n    \"pid_start\": 128511,\n    \"cwd\": \"/home/user/lab/iso/projects/grok\",\n    \"opened_at\": \"2026-11-01T07:13:14.831728864Z\"\n  }\n]"
+      }
+    },
+    {
+      "name": "after-new-in-first-terminal",
+      "files": {
+        "/home/user/lab/iso/grok/grok-home/active_sessions.json": "[\n  {\n    \"session_id\": \"00000000-0000-4000-8000-000000000001\",\n    \"pid\": 5579,\n    \"pid_start\": 127527,\n    \"cwd\": \"/home/user/lab/iso/projects/grok\",\n    \"opened_at\": \"2026-11-01T07:13:05.059425213Z\"\n  },\n  {\n    \"session_id\": \"00000000-0000-4000-8000-000000000002\",\n    \"pid\": 5735,\n    \"pid_start\": 128511,\n    \"cwd\": \"/home/user/lab/iso/projects/grok\",\n    \"opened_at\": \"2026-11-01T07:13:14.831728864Z\"\n  },\n  {\n    \"session_id\": \"01900000-0000-7000-8000-000000000003\",\n    \"pid\": 5579,\n    \"pid_start\": 127527,\n    \"cwd\": \"/home/user/lab/iso/projects/grok\",\n    \"opened_at\": \"2026-11-01T07:13:16.174528212Z\"\n  }\n]"
+      }
+    },
+    {
+      "name": "leader-mode",
+      "processes": [
+        {
+          "pid": 5960,
+          "parent": 2630,
+          "name": "grok",
+          "start": "130009",
+          "argv": [
+            "/home/user/lab/grok-bin/grok",
+            "--leader",
+            "-s",
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "environment": {
+            "HC_SCOPE": "130009-00000000000000000000000000000002"
+          },
+          "files": []
+        },
+        {
+          "pid": 5990,
+          "parent": 5960,
+          "name": "grok-linux-aarc",
+          "start": "130021",
+          "argv": [
+            "/home/user/.grok/downloads/grok-linux-aarch64",
+            "agent",
+            "leader",
+            "--no-exit-on-disconnect",
+            "--relay-on-demand",
+            "--grok-ws-url",
+            "wss://code.grok.com/ws/code-agent",
+            "--grok-ws-origin",
+            "https://grok.com"
+          ],
+          "environment": {
+            "HC_SCOPE": "130009-00000000000000000000000000000002"
+          },
+          "files": [
+            "/home/user/lab/iso/grok/grok-home-leader/leader.lock",
+            "/home/user/lab/iso/grok/grok-home-leader/sessions/%2Fhome%2Fuser%2Flab%2Fiso%2Fprojects%2Fgrok/00000000-0000-4000-8000-000000000004/events.jsonl"
+          ]
+        }
+      ],
+      "files": {
+        "/home/user/lab/iso/grok/grok-home-leader/active_sessions.json": "[\n  {\n    \"session_id\": \"00000000-0000-4000-8000-000000000004\",\n    \"pid\": 5960,\n    \"pid_start\": 130009,\n    \"cwd\": \"/home/user/lab/iso/projects/grok\",\n    \"opened_at\": \"2026-11-01T07:13:30.004359884Z\"\n  }\n]"
+      }
+    }
+  ],
+  "observed": "The row exists from startup, before any prompt, with the -s id. pid is the process the Terminal runs and pid_start its field 22. `/new` adds a second row for the same pid and pid_start and keeps the first until the process ends, so two rows match. In default mode no leader process runs; with --leader the row still names the Terminal's process while a child `grok-linux-aarch64 agent leader` holds the session's events.jsonl. Rows go when the process ends."
+}

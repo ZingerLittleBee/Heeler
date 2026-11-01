@@ -1,0 +1,131 @@
+{
+  "program": "codex",
+  "version": "codex-cli 0.165.0",
+  "core": "0.1.13",
+  "source": "A Terminal running `codex --no-daemon`: at its prompt, then after its first reply",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "timeline": [
+    {
+      "phase": "start",
+      "seconds": 0.0
+    },
+    {
+      "phase": "prompt_visible",
+      "seconds": 0.38
+    },
+    {
+      "phase": "send_first",
+      "seconds": 3.4
+    },
+    {
+      "phase": "reply_seen",
+      "seconds": 3.97
+    },
+    {
+      "phase": "send_second",
+      "seconds": 5.01
+    },
+    {
+      "phase": "new_command",
+      "seconds": 9.23
+    },
+    {
+      "phase": "send_after_new",
+      "seconds": 20.46
+    },
+    {
+      "phase": "wait_60s",
+      "seconds": 29.72
+    },
+    {
+      "phase": "wait_done",
+      "seconds": 89.72
+    }
+  ],
+  "appearances": [
+    {
+      "seconds": 3.65,
+      "path": "/home/user/lab/iso/codex/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-29-06-01900000-0000-7000-8000-000000000001.jsonl"
+    }
+  ],
+  "scenes": [
+    {
+      "name": "at-prompt",
+      "processes": [
+        {
+          "pid": 12626,
+          "parent": 2630,
+          "name": "node",
+          "start": "223686",
+          "argv": [
+            "node",
+            "/home/user/lab/npm/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "223685-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 12644,
+          "parent": 12626,
+          "name": "codex",
+          "start": "223688",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "223685-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/codex/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock"
+          ]
+        }
+      ],
+      "files": {}
+    },
+    {
+      "name": "after-first-reply",
+      "processes": [
+        {
+          "pid": 12626,
+          "parent": 2630,
+          "name": "node",
+          "start": "223686",
+          "argv": [
+            "node",
+            "/home/user/lab/npm/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "223685-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 12644,
+          "parent": 12626,
+          "name": "codex",
+          "start": "223688",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "223685-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/codex/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-29-06-01900000-0000-7000-8000-000000000001.jsonl",
+            "/home/user/lab/iso/codex/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock"
+          ]
+        }
+      ],
+      "files": {
+        "/home/user/lab/iso/codex/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-29-06-01900000-0000-7000-8000-000000000001.jsonl": "{\"timestamp\":\"2026-11-01T07:29:09.915Z\",\"ordinal\":0,\"type\":\"session_meta\",\"payload\":{\"session_id\":\"01900000-0000-7000-8000-000000000001\",\"id\":\"01900000-0000-7000-8000-000000000001\",\"timestamp\":\"2026-11-01T07:29:06.479Z\",\"cwd\":\"/home/user/lab/iso/projects/codex\",\"runtime_workspace_roots\":[\"/home/user/lab/iso/projects/codex\"],\"originator\":\"codex-tui\",\"cli_version\":\"0.165.0\",\"source\":\"cli\",\"thread_source\":\"user\",\"model_provider\":\"fake\",\"base_instructions\":{\"text\":\"<scrubbed>\"},\"history_mode\":\"paginated\",\"context_window\":{\"window_id\":\"01900000-0000-7000-8000-000000000002\"},\"git\":{}}}\n"
+      }
+    }
+  ],
+  "observed": "The native child holds a thread-writer lock from the prompt on and the rollout from the first prompt on. The npm launcher holds neither. The rollout's one session_meta names the thread its file name carries, with source cli and thread_source user."
+}

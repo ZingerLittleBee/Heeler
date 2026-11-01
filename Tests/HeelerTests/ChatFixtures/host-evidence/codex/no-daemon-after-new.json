@@ -1,0 +1,34 @@
+{
+  "program": "codex",
+  "version": "codex-cli 0.165.0",
+  "core": "0.1.13",
+  "source": "`codex --no-daemon` before `/new`, and 30 seconds after a prompt in the new thread",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "scenes": [
+    {
+      "name": "before-new",
+      "agentProcess": 13033,
+      "heldByAgentProcess": [
+        "/home/user/lab/iso/codexn/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-31-15-01900000-0000-7000-8000-000000000001.jsonl",
+        "/home/user/lab/iso/codexn/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock"
+      ],
+      "rootThreadsHeld": 1
+    },
+    {
+      "name": "after-new-and-a-prompt",
+      "agentProcess": 13033,
+      "heldByAgentProcess": [
+        "/home/user/lab/iso/codexn/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-31-15-01900000-0000-7000-8000-000000000001.jsonl",
+        "/home/user/lab/iso/codexn/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-31-30-01900000-0000-7000-8000-000000000002.jsonl",
+        "/home/user/lab/iso/codexn/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock",
+        "/home/user/lab/iso/codexn/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000002.lock"
+      ],
+      "rootThreadsHeld": 2
+    }
+  ],
+  "files": {
+    "/home/user/lab/iso/codexn/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-31-15-01900000-0000-7000-8000-000000000001.jsonl": "{\"timestamp\":\"2026-11-01T07:31:19.016Z\",\"ordinal\":0,\"type\":\"session_meta\",\"payload\":{\"session_id\":\"01900000-0000-7000-8000-000000000001\",\"id\":\"01900000-0000-7000-8000-000000000001\",\"timestamp\":\"2026-11-01T07:31:15.851Z\",\"cwd\":\"/home/user/lab/iso/projects/codex\",\"runtime_workspace_roots\":[\"/home/user/lab/iso/projects/codex\"],\"originator\":\"codex-tui\",\"cli_version\":\"0.165.0\",\"source\":\"cli\",\"thread_source\":\"user\",\"model_provider\":\"fake\",\"base_instructions\":{\"text\":\"<scrubbed>\"},\"history_mode\":\"paginated\",\"context_window\":{\"window_id\":\"01900000-0000-7000-8000-000000000003\"},\"git\":{}}}\n",
+    "/home/user/lab/iso/codexn/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-31-30-01900000-0000-7000-8000-000000000002.jsonl": "{\"timestamp\":\"2026-11-01T07:31:40.138Z\",\"ordinal\":0,\"type\":\"session_meta\",\"payload\":{\"session_id\":\"01900000-0000-7000-8000-000000000002\",\"id\":\"01900000-0000-7000-8000-000000000002\",\"timestamp\":\"2026-11-01T07:31:30.873Z\",\"cwd\":\"/home/user/lab/iso/projects/codex\",\"runtime_workspace_roots\":[\"/home/user/lab/iso/projects/codex\"],\"originator\":\"codex-tui\",\"cli_version\":\"0.165.0\",\"source\":\"cli\",\"thread_source\":\"user\",\"model_provider\":\"fake\",\"base_instructions\":{\"text\":\"<scrubbed>\"},\"history_mode\":\"paginated\",\"context_window\":{\"window_id\":\"01900000-0000-7000-8000-000000000004\"},\"git\":{}}}\n"
+  },
+  "observed": "After `/new` and a prompt that landed, the process holds both rollouts open, each with one root thread, and both thread-writer locks, for the 30 seconds watched. Nothing on disk says which thread the screen shows. Right after `/new` only the old lock and rollout are held. In both runs that sent a prompt right after `/new`, it showed no turn on screen and left only the new thread's lock; the next prompt made the rollout. The cause was not determined."
+}

@@ -1,0 +1,144 @@
+{
+  "program": "pi",
+  "version": "pi 1.4.0",
+  "core": "0.1.13",
+  "source": "Pi started with `--session-id`, then `/new`, then a second Pi with no flag",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "timeline": [
+    {
+      "phase": "start_a",
+      "seconds": 0.0
+    },
+    {
+      "phase": "after_5s",
+      "seconds": 5.04
+    },
+    {
+      "phase": "send_first",
+      "seconds": 5.08
+    },
+    {
+      "phase": "reply_seen",
+      "seconds": 5.66
+    },
+    {
+      "phase": "new_a",
+      "seconds": 6.69
+    },
+    {
+      "phase": "start_b_no_flag",
+      "seconds": 16.21
+    },
+    {
+      "phase": "end",
+      "seconds": 24.06
+    }
+  ],
+  "launchId": "00000000-0000-4000-8000-000000000001",
+  "appearances": [
+    {
+      "seconds": 5.39,
+      "path": "/home/user/lab/iso/pi14/agent/sessions/--home-user-lab-iso-projects-pi--/2026-11-01T07-19-26-219Z_00000000-0000-4000-8000-000000000001.jsonl"
+    },
+    {
+      "seconds": 15.17,
+      "path": "/home/user/lab/iso/pi14/agent/sessions/--home-user-lab-iso-projects-pi--/2026-11-01T07-19-32-981Z_01900000-0000-7000-8000-000000000002.jsonl"
+    },
+    {
+      "seconds": 21.5,
+      "path": "/home/user/lab/iso/pi14/agent/sessions/--home-user-lab-iso-projects-pi--/2026-11-01T07-19-42-414Z_01900000-0000-7000-8000-000000000003.jsonl"
+    }
+  ],
+  "scenes": [
+    {
+      "name": "at-prompt",
+      "processes": [
+        {
+          "pid": 7666,
+          "parent": 2630,
+          "name": "pi",
+          "start": "165665",
+          "argv": [
+            "pi"
+          ],
+          "environment": {
+            "HC_SCOPE": "165664-00000000000000000000000000000001"
+          },
+          "files": []
+        }
+      ]
+    },
+    {
+      "name": "after-first-reply",
+      "processes": [
+        {
+          "pid": 7666,
+          "parent": 2630,
+          "name": "pi",
+          "start": "165665",
+          "argv": [
+            "pi"
+          ],
+          "environment": {
+            "HC_SCOPE": "165664-00000000000000000000000000000001"
+          },
+          "files": []
+        }
+      ]
+    }
+  ],
+  "sessionFiles": {
+    "/home/user/lab/iso/pi14/agent/sessions/--home-user-lab-iso-projects-pi--/2026-11-01T07-19-26-219Z_00000000-0000-4000-8000-000000000001.jsonl": {
+      "header": {
+        "type": "session",
+        "version": 3,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "timestamp": "2026-11-01T07:19:26.219Z",
+        "cwd": "/home/user/lab/iso/projects/pi"
+      },
+      "lineTypes": [
+        "session",
+        "model_change",
+        "thinking_level_change",
+        "message",
+        "message",
+        "message"
+      ]
+    },
+    "/home/user/lab/iso/pi14/agent/sessions/--home-user-lab-iso-projects-pi--/2026-11-01T07-19-32-981Z_01900000-0000-7000-8000-000000000002.jsonl": {
+      "header": {
+        "type": "session",
+        "version": 3,
+        "id": "01900000-0000-7000-8000-000000000002",
+        "timestamp": "2026-11-01T07:19:32.981Z",
+        "cwd": "/home/user/lab/iso/projects/pi"
+      },
+      "lineTypes": [
+        "session",
+        "model_change",
+        "thinking_level_change",
+        "message",
+        "message",
+        "message"
+      ]
+    },
+    "/home/user/lab/iso/pi14/agent/sessions/--home-user-lab-iso-projects-pi--/2026-11-01T07-19-42-414Z_01900000-0000-7000-8000-000000000003.jsonl": {
+      "header": {
+        "type": "session",
+        "version": 3,
+        "id": "01900000-0000-7000-8000-000000000003",
+        "timestamp": "2026-11-01T07:19:42.414Z",
+        "cwd": "/home/user/lab/iso/projects/pi"
+      },
+      "lineTypes": [
+        "session",
+        "model_change",
+        "thinking_level_change",
+        "message",
+        "message",
+        "message"
+      ]
+    }
+  },
+  "observed": "No session file exists at the prompt. It appears at the first prompt, before the reply (reply-held.json). Its name holds a timestamp from when the session was made and the id: the --session-id one, or a UUIDv7 for `/new` and a plain start. No file descriptor on the session file and no lock file were seen at any sample. /proc/<pid>/cmdline reads only `pi`, because the program rewrites its title, so `--session-id` is visible only in the Terminal's launch argv."
+}

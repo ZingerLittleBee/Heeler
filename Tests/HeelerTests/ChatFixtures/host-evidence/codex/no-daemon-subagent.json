@@ -1,0 +1,53 @@
+{
+  "program": "codex",
+  "version": "codex-cli 0.165.0",
+  "core": "0.1.13",
+  "source": "`codex --no-daemon` after the fake model called spawn_agent: a root thread and one subagent",
+  "method": "Live in a throwaway Lima VM (Ubuntu 24.04.4, Linux 6.8 aarch64), herdr-core 0.1.13 started by absolute path under a unique HC_SESSION. The model was a local fake on 127.0.0.1 with a dummy key, and nothing was signed in; this is not hc-lab and not a signed-in account.",
+  "scenes": [
+    {
+      "name": "root-and-subagent",
+      "processes": [
+        {
+          "pid": 12344,
+          "parent": 2630,
+          "name": "node",
+          "start": "216616",
+          "argv": [
+            "node",
+            "/home/user/lab/npm/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "216616-00000000000000000000000000000001"
+          },
+          "files": []
+        },
+        {
+          "pid": 12354,
+          "parent": 12344,
+          "name": "codex",
+          "start": "216617",
+          "argv": [
+            "/home/user/lab/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex",
+            "--no-daemon"
+          ],
+          "environment": {
+            "HC_SCOPE": "216616-00000000000000000000000000000001"
+          },
+          "files": [
+            "/home/user/lab/iso/codexs/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-27-55-01900000-0000-7000-8000-000000000001.jsonl",
+            "/home/user/lab/iso/codexs/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-28-01-01900000-0000-7000-8000-000000000002.jsonl",
+            "/home/user/lab/iso/codexs/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000001.lock",
+            "/home/user/lab/iso/codexs/codex-home/thread-writer-locks/01900000-0000-7000-8000-000000000002.lock"
+          ]
+        }
+      ],
+      "files": {
+        "/home/user/lab/iso/codexs/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-27-55-01900000-0000-7000-8000-000000000001.jsonl": "{\"timestamp\":\"2026-11-01T07:27:58.889Z\",\"ordinal\":0,\"type\":\"session_meta\",\"payload\":{\"session_id\":\"01900000-0000-7000-8000-000000000001\",\"id\":\"01900000-0000-7000-8000-000000000001\",\"timestamp\":\"2026-11-01T07:27:55.759Z\",\"cwd\":\"/home/user/lab/iso/projects/codex\",\"runtime_workspace_roots\":[\"/home/user/lab/iso/projects/codex\"],\"originator\":\"codex-tui\",\"cli_version\":\"0.165.0\",\"source\":\"cli\",\"thread_source\":\"user\",\"model_provider\":\"fake\",\"base_instructions\":{\"text\":\"<scrubbed>\"},\"history_mode\":\"paginated\",\"context_window\":{\"window_id\":\"01900000-0000-7000-8000-000000000003\"},\"git\":{}}}\n",
+        "/home/user/lab/iso/codexs/codex-home/sessions/2026/11/01/rollout-2026-11-01T07-28-01-01900000-0000-7000-8000-000000000002.jsonl": "{\"timestamp\":\"2026-11-01T07:28:01.104Z\",\"ordinal\":0,\"type\":\"session_meta\",\"payload\":{\"session_id\":\"01900000-0000-7000-8000-000000000001\",\"id\":\"01900000-0000-7000-8000-000000000002\",\"parent_thread_id\":\"01900000-0000-7000-8000-000000000001\",\"timestamp\":\"2026-11-01T07:28:01.074Z\",\"cwd\":\"/home/user/lab/iso/projects/codex\",\"runtime_workspace_roots\":[\"/home/user/lab/iso/projects/codex\"],\"originator\":\"codex-tui\",\"cli_version\":\"0.165.0\",\"source\":{\"subagent\":{\"thread_spawn\":{\"parent_thread_id\":\"01900000-0000-7000-8000-000000000001\",\"depth\":1,\"agent_path\":null,\"agent_nickname\":\"Epicurus\",\"agent_role\":null}}},\"thread_source\":\"subagent\",\"agent_nickname\":\"Epicurus\",\"model_provider\":\"fake\",\"base_instructions\":{\"text\":\"<scrubbed>\"},\"history_mode\":\"paginated\",\"multi_agent_version\":\"v1\",\"context_window\":{\"window_id\":\"01900000-0000-7000-8000-000000000004\"},\"git\":{}}}\n"
+      }
+    }
+  ],
+  "observed": "The process holds both rollouts open. The subagent's session_meta has source.subagent.thread_spawn with the root's id as parent_thread_id and thread_source subagent; the root's has source cli and thread_source user."
+}
