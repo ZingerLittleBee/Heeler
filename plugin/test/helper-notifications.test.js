@@ -5,7 +5,7 @@ import { afterEach, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";
 import { createDecipheriv } from "node:crypto";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { followCoreSession } from "../helper/core/follower.js";
@@ -24,6 +24,8 @@ const KEY_A = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
 const KEY_B = Buffer.from(Array.from({ length: 32 }, (_, i) => 255 - i));
 const TOKEN_A = "a".repeat(64);
 const TOKEN_B = "b".repeat(64);
+const KEY_C = Buffer.alloc(32, 7);
+const TOKEN_C = "c".repeat(64);
 
 const CLAUDE = { pid: 4242, name: "claude", argv: ["claude"], cwd: "/work/app" };
 const SHELL = { pid: 4243, name: "zsh", argv: ["-zsh"], cwd: "/work/app" };
@@ -40,9 +42,9 @@ async function startRelay(respond = () => ({ status: 200, body: {} })) {
   const server = createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
-    req.on("end", () => {
+    req.on("end", async () => {
       const request = { path: req.url, body: JSON.parse(raw) };
-      const { status, body } = respond(request, requests.length);
+      const { status, body } = await respond(request, requests.length);
       requests.push(request);
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
@@ -701,6 +703,101 @@ suite("one device's send that failed", () => {
   });
 });
 
+suite("a Helper killed during a send", () => {
+  /** A relay that keeps its first request unanswered until `release`, and answers the rest. */
+  async function relayHoldingTheFirstSend() {
+    let release;
+    const released = new Promise((done) => (release = done));
+    let arrive;
+    const arrived = new Promise((done) => (arrive = done));
+    let isFirst = true;
+    relay = await startRelay(async () => {
+      if (isFirst) {
+        isFirst = false;
+        arrive();
+        await released;
+      }
+      return { status: 200, body: {} };
+    });
+    writeConfig(relay.url);
+    running.push(async () => release());
+    return { arrived, release };
+  }
+
+  const memoryIn = (helper) => {
+    const path = join(helper, "state", "notify", `${SESSION}.json`);
+    return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
+  };
+
+  /** A report while the send is out, saved to disk before this returns. */
+  async function reportDuringTheSend(core) {
+    send(core, "created", "reporter", agent("reporter"));
+    status(core, "reporter", "working");
+    await waitFor(() => memoryIn(directory)?.terminals.reporter !== undefined, "the report to be saved");
+  }
+
+  /**
+   * Stops following and goes on from a copy of the Helper's directory as it stands:
+   * what a killed process leaves. The first listener's send stays held, and it can
+   * no longer change what the next one reads. Returns the directory it still writes.
+   */
+  async function killHelper() {
+    await running.pop()();
+    await running.pop()();
+    const original = directory;
+    directory = join(root, "left-behind");
+    cpSync(original, directory, { recursive: true });
+    relay = await startRelay();
+    writeConfig(relay.url);
+    logs = [];
+    return original;
+  }
+
+  /** Answers the held send and waits for its listener to save, ahead of the directory's removal. */
+  async function finishTheHeldSend(held, original, isSaved) {
+    held.release();
+    await waitFor(() => isSaved(memoryIn(original).terminals.t1), "the held send to be saved");
+  }
+
+  test("sends that Blocked after the restart", async () => {
+    const held = await relayHoldingTheFirstSend();
+    register(entry(KEY_A, TOKEN_A));
+    const core = await connected([agent("t1")]);
+    status(core, "t1", "working");
+    status(core, "t1", "blocked");
+    await held.arrived;
+    await reportDuringTheSend(core);
+
+    const original = await killHelper();
+    const again = await connected([agent("t1", { turn: 1, status: { state: "blocked", app: "claude-code" } })]);
+    await waitFor(() => sentTo(KEY_A, "t1").length === 1, "the Blocked after the restart");
+    await settled(again);
+
+    assert.equal(sentTo(KEY_A, "t1").length, 1);
+    assert.equal(open(sentTo(KEY_A, "t1")[0].envelope, KEY_A).status, "blocked");
+    await finishTheHeldSend(held, original, (terminal) => terminal.notified === "blocked");
+  });
+
+  test("sends that Done after the restart", async () => {
+    const held = await relayHoldingTheFirstSend();
+    register(entry(KEY_A, TOKEN_A));
+    const core = await connected([agent("t1")]);
+    status(core, "t1", "working");
+    finishTurn(core, "t1", 1);
+    await held.arrived;
+    await reportDuringTheSend(core);
+
+    const original = await killHelper();
+    const again = await connected([agent("t1", { turn: 1, status: { state: "done", app: "claude-code" } })]);
+    await waitFor(() => sentTo(KEY_A, "t1").length === 1, "the Done after the restart");
+    await settled(again);
+
+    assert.equal(sentTo(KEY_A, "t1").length, 1);
+    assert.equal(open(sentTo(KEY_A, "t1")[0].envelope, KEY_A).status, "done");
+    await finishTheHeldSend(held, original, (terminal) => terminal.notifiedTurn !== null);
+  });
+});
+
 suite("a device the relay says is gone", () => {
   test("leaves the registrations, with its marks", async () => {
     relay = await startRelay((request) => (request.body.token === TOKEN_A ? { status: 410, body: {} } : { status: 200, body: {} }));
@@ -720,6 +817,38 @@ suite("a device the relay says is gone", () => {
     const file = JSON.parse(readFileSync(join(directory, "notifications.json"), "utf8"));
     assert.deepEqual(file.devices.map((device) => device.token), [TOKEN_B]);
     assert.equal(existsSync(join(directory, seenMarkFileName(notificationKeyId(KEY_B)))), true);
+  });
+
+  test("and cannot be removed leaves every other device's send as it stands", async () => {
+    const failing = { on: true };
+    relay = await startRelay((request) => {
+      if (request.body.token === TOKEN_A) return { status: 410, body: {} };
+      if (failing.on && request.body.token === TOKEN_B) return { status: 500, body: {} };
+      return { status: 200, body: {} };
+    });
+    writeConfig(relay.url);
+    register(entry(KEY_A, TOKEN_A), entry(KEY_B, TOKEN_B), entry(KEY_C, TOKEN_C));
+    // The registration file's temporary name, taken: its rewrite throws.
+    const inTheWay = join(directory, `notifications.json.tmp-${process.pid}`);
+    mkdirSync(inTheWay);
+    const core = await connected([agent("t1")]);
+
+    status(core, "t1", "working");
+    status(core, "t1", "blocked");
+    await waitFor(() => logs.filter((line) => line.includes("could not")).length >= 2, "the failed send and removal", 15_000);
+    assert.equal(sentTo(KEY_C, "t1").length, 1);
+    const tries = sentTo(KEY_B, "t1").length;
+
+    rmSync(inTheWay, { recursive: true });
+    failing.on = false;
+    send(core, "foreground", "t1", CLAUDE);
+    await waitFor(() => sentTo(KEY_B, "t1").length > tries, "the retry");
+    await settled(core);
+
+    assert.equal(sentTo(KEY_B, "t1").length, tries + 1);
+    assert.equal(sentTo(KEY_C, "t1").length, 1);
+    const tokens = () => JSON.parse(readFileSync(join(directory, "notifications.json"), "utf8")).devices.map((device) => device.token);
+    await waitFor(() => !tokens().includes(TOKEN_A), "the next 410 to remove the device");
   });
 });
 

@@ -138,9 +138,14 @@ export function notificationListener({ directory, log = () => {} }) {
         say(session, `could not notify about ${JSON.stringify(address)}: ${error.message}`);
       }
     }
-    if (gone.length > 0) {
-      pruneAlertTokens(directory, new Set(gone.map((device) => device.token)));
-      for (const device of gone) removeSeenMarks(directory, notificationKeyId(device.key));
+    // Housekeeping, which says nothing of who heard this: the next 410 tries it again.
+    try {
+      if (gone.length > 0) {
+        pruneAlertTokens(directory, new Set(gone.map((device) => device.token)));
+        for (const device of gone) removeSeenMarks(directory, notificationKeyId(device.key));
+      }
+    } catch (error) {
+      say(session, `could not remove a device the relay says is gone: ${error.message}`);
     }
     return failed;
   }
@@ -151,13 +156,15 @@ export function notificationListener({ directory, log = () => {} }) {
     if (terminal === undefined || record === undefined) return;
     const agent = agentIn(record);
     // A send that failed waits for the next decision while what it said still holds.
+    // What was notified is noted only once `deliver` returns: a report during the send
+    // saves this memory, and a Helper killed there must send again after its restart.
     const isUnsent = (unsent) => (device) => unsent.includes(device.token);
     if (agent?.status !== "idle") terminal.unsentTurn = [];
     if (agent !== null && ATTENTION_STATUSES.has(agent.status)) {
       const status = agent.status;
       if (terminal.notified !== status) {
-        terminal.notified = status;
         terminal.unsentStatus = await deliver(session, address, record, agent, status, "blocked");
+        terminal.notified = status;
       } else if (terminal.unsentStatus.length > 0) {
         terminal.unsentStatus = await deliver(session, address, record, agent, status, "blocked", isUnsent(terminal.unsentStatus));
       } else {
@@ -171,8 +178,8 @@ export function notificationListener({ directory, log = () => {} }) {
         const stillDone = (device) =>
           terminal.turns.isDoneFor(readSeenMark(directory, notificationKeyId(device.key), memory.core, address));
         if (!sameMark(terminal.notifiedTurn, ended)) {
-          terminal.notifiedTurn = ended;
           terminal.unsentTurn = await deliver(session, address, record, agent, "done", "done", stillDone);
+          terminal.notifiedTurn = ended;
         } else if (terminal.unsentTurn.length > 0) {
           const unsent = isUnsent(terminal.unsentTurn);
           terminal.unsentTurn = await deliver(session, address, record, agent, "done", "done", (device) => unsent(device) && stillDone(device));
