@@ -40,10 +40,13 @@ that Heeler can read from outside the process.
   `Background` and is bootstrapped into `user/<uid>`, the only domain a plain
   SSH exec could use both with and without a desktop login. `gui/<uid>` refuses
   a bootstrap while nobody is logged in and loses its agents at logout, and
-  `user/<uid>` refuses a property list without that key. There the agent
-  outlives the SSH session and a desktop logout, and restarts when killed.
-  The evidence comes from a throwaway Tart VM of macOS 26.5, not a Mac anyone
-  uses (herdr compatibility, launchd bootstrap domains).
+  `user/<uid>` refuses a property list without that key. `[Aqua, Background]`
+  is accepted there as well, but a desktop login also loads that list from
+  `~/Library/LaunchAgents` into `gui/<uid>`, where the agent stops at logout,
+  and while `gui/<uid>` holds the label a bootstrap into `user/<uid>` fails. In
+  `user/<uid>` the agent outlives the SSH session and a desktop logout, and
+  restarts when killed. The evidence comes from a throwaway Tart VM of macOS
+  26.5, not a Mac anyone uses (herdr compatibility, launchd bootstrap domains).
 - The login Keychain is out of reach from that domain, with the desktop logged
   in and unlocked or with nobody logged in, as it is from a plain SSH exec. A
   read of Claude Code's Usage Limits there answers `keychainUnavailable`, so
@@ -192,9 +195,12 @@ Hosts are unchanged.
 - Running the Helper as a kept herdr-core Terminal. No service to register,
   but a kept Terminal comes back as a shell, not as the Helper, and it would
   show in every client's terminal list.
-- `gui/<uid>` for the LaunchAgent. It reaches the login Keychain and loads at
-  each desktop login, but it cannot be installed while nobody is logged in and
-  the Helper would stop at logout.
+- `gui/<uid>` for the LaunchAgent. In the VM it reached the login Keychain and
+  loaded at a desktop login, but it could not be installed while nobody was
+  logged in and its agent stopped at logout.
+- `[Aqua, Background]` in `user/<uid>`. In the VM it behaved as `Background` did
+  while loaded, but a desktop login then started a copy in `gui/<uid>` that
+  stops at logout and blocks a bootstrap into `user/<uid>`.
 - Asking for each extension separately. The two folders load files without
   configuration or trust prompts and are cleaned by deleting the files, so
   one listed install is enough.
@@ -215,21 +221,29 @@ Hosts are unchanged.
   check reads the unit's state, result and restart count, because a Helper
   that keeps failing at start, for example after Node.js moved, ends up
   failed for good.
-- A restart of the Mac loads nothing into `user/<uid>`, even with the property
+- The next three points are what the macOS 26.5 Tart VM did; neither macOS 27
+  nor a real Mac has been tried.
+- A restart of the VM loaded nothing into `user/<uid>`, even with the property
   list in `~/Library/LaunchAgents`: not at boot, not at the first SSH login, not
-  at a desktop login. So there, unlike under linger, the Helper is down until
-  the app next connects, finds the agent missing and bootstraps it again, and no
-  notification goes out in between.
-- launchd never settles on failed. A Helper that keeps failing reads
-  `spawn scheduled` with a last exit that is not zero, so the health check reads
-  those two together. A move of Node.js shows exit 78 and stops the run count;
-  while someone is logged in the agent comes back alone once the path does, but
-  with nobody logged in it stayed down, and `launchctl kickstart` blocked until
-  the service was booted out. So a repair uses `bootout` then `bootstrap`, in a
-  bounded exec.
-- macOS shows a notification that `node` can run in the background and lists it
-  under Login Items, with no mention of Heeler. What the list does when the user
-  turns it off has not been tried.
+  after a desktop login. If a Mac does the same, then unlike under linger the
+  Helper is down until the app next connects, finds the agent missing and
+  bootstraps it again, and no notification goes out in between.
+- launchd reported no failed state in the longest watch, about five minutes, and
+  no single read decides health. A Helper that dies at start can read
+  `state = running` for a moment. One killed by a signal, as a V8 heap limit or a
+  segfault kills it, shows the signal and no last exit at all. Both the signal
+  and a non-zero last exit stay after it recovers. So the health check reads
+  twice, more than ten seconds apart, and calls the Helper running only when
+  both say `state = running` with the same pid. That caught every loop tried
+  that dies at start, and can miss a Helper that stays up longer than the gap
+  before each death, which only a growing run count shows. A move of Node.js
+  shows exit 78 and stops the run count; with someone logged in the agent came
+  back alone once the path did, but with nobody logged in it was still down
+  after almost five minutes, and `launchctl kickstart` blocked until the service
+  was booted out. So a repair uses `bootout` then `bootstrap`, in a bounded exec.
+- The VM showed a notification that `node` can run in the background and listed
+  it under Login Items, with no mention of Heeler. What the list does when the
+  user turns it off has not been tried.
 - The Helper computes the default socket path from its own environment. A
   core started under another `XDG_STATE_HOME` keeps its `core.lock` where the
   Helper does not look and has another core id behind the same socket path,
