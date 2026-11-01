@@ -9,6 +9,10 @@ const CREATIVE = {
   header: { type: "PRODUCT_PAGE_HEADER_ASSET", tab: "Header" },
   search: { type: "APP_STORE_SEARCH_RESULTS_ASSET", tab: "Search Results" },
 };
+const TEXT_FIELDS = {
+  "whats-new": { attribute: "whatsNew", limit: 4000 },
+  promo: { attribute: "promotionalText", limit: 170 },
+};
 const HEADERS = { "content-type": "application/json", "x-csrf-itc": "[asc-ui]" };
 const BASE = `https://appstoreconnect.apple.com/apps/${ARGS.appId}/distribution/ios/version/inflight`;
 
@@ -38,7 +42,7 @@ async function findVersion() {
   const list = await api(`apps/${ARGS.appId}/appStoreVersions?limit=10&fields[appStoreVersions]=versionString,appStoreState`);
   const version = list.data.find((v) => v.attributes.versionString === ARGS.version);
   if (!version) throw new Error(`No store version ${ARGS.version}`);
-  const locales = await api(`appStoreVersions/${version.id}/appStoreVersionLocalizations?fields[appStoreVersionLocalizations]=locale,whatsNew`);
+  const locales = await api(`appStoreVersions/${version.id}/appStoreVersionLocalizations?fields[appStoreVersionLocalizations]=locale,whatsNew,promotionalText`);
   const localization = locales.data.find((l) => l.attributes.locale === ARGS.locale);
   if (!localization) throw new Error(`No ${ARGS.locale} localization; found ${locales.data.map((l) => l.attributes.locale)}`);
   return { version, localization, locales: locales.data };
@@ -73,7 +77,10 @@ async function status({ version, localization, locales }) {
   }
   console.log("\nCreative");
   for (const row of await placements(localization.id)) console.log(`  ${row.type}  ${row.state}  ${row.name}  ${row.size} bytes`);
-  for (const l of locales) console.log(`\nWhat's New (${l.attributes.locale})\n${l.attributes.whatsNew ?? "(empty)"}`);
+  for (const l of locales) {
+    console.log(`\nPromotional Text (${l.attributes.locale})\n${l.attributes.promotionalText ?? "(empty)"}`);
+    console.log(`\nWhat's New (${l.attributes.locale})\n${l.attributes.whatsNew ?? "(empty)"}`);
+  }
 }
 
 async function replaceScreenshots({ localization }) {
@@ -139,21 +146,23 @@ async function replaceCreative({ localization }) {
   throw new Error("The asset never became active");
 }
 
-async function whatsNew({ localization }) {
+async function setText({ localization }) {
+  const { attribute, limit } = TEXT_FIELDS[ARGS.action];
   const fs = process.getBuiltinModule("fs");
   const text = fs.readFileSync(ARGS.files[0].path, "utf8").trim();
-  console.log(`${ARGS.locale}, ${text.length} characters (limit 4000):\n${text}`);
+  console.log(`${attribute} (${ARGS.locale}), ${text.length} of ${limit} characters:\n${text}`);
+  if (text.length > limit) throw new Error(`${attribute} is limited to ${limit} characters`);
   if (!ARGS.apply) return console.log("Plan only; pass --apply.");
-  await write("PATCH", `appStoreVersionLocalizations/${localization.id}`, { type: "appStoreVersionLocalizations", id: localization.id, attributes: { whatsNew: text } });
-  const saved = await api(`appStoreVersionLocalizations/${localization.id}?fields[appStoreVersionLocalizations]=whatsNew`);
-  if (saved.data.attributes.whatsNew !== text) throw new Error("Saved text differs");
+  await write("PATCH", `appStoreVersionLocalizations/${localization.id}`, { type: "appStoreVersionLocalizations", id: localization.id, attributes: { [attribute]: text } });
+  const saved = await api(`appStoreVersionLocalizations/${localization.id}?fields[appStoreVersionLocalizations]=${attribute}`);
+  if (saved.data.attributes[attribute] !== text) throw new Error("Saved text differs");
   console.log("Saved.");
 }
 
 try {
   await goto(BASE, /Distribution/);
   const found = await findVersion();
-  const action = { status, screenshots: replaceScreenshots, creative: replaceCreative, "whats-new": whatsNew }[ARGS.action];
+  const action = { status, screenshots: replaceScreenshots, creative: replaceCreative, "whats-new": setText, promo: setText }[ARGS.action];
   await action(found);
 } finally {
   await task.finish({ keep: [] });

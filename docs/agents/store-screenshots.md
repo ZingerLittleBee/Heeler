@@ -79,6 +79,7 @@ python3 scripts/store-shots.py asc status --version 0.1.17
 python3 scripts/store-shots.py asc screenshots duo output/app-store/iphone-duo/exports/01-console-and-chat.png --version 0.1.17
 python3 scripts/store-shots.py asc creative header output/app-store/creative-assets/exports/product-page-header-3840x1646.png --version 0.1.17
 python3 scripts/store-shots.py asc whats-new notes.txt --version 0.1.17
+python3 scripts/store-shots.py asc promo promo.txt --version 0.1.17
 ```
 
 `screenshots` matches by file name and keeps each image's position, deleting the

@@ -390,8 +390,8 @@ def restore(udid: str) -> None:
 
 
 def asc(args: argparse.Namespace) -> None:
-    # What's New has no target, so its text file lands in the target position.
-    named = [args.target, *args.files] if args.action == "whats-new" and args.target else args.files
+    # Text fields have no target, so their file lands in the target position.
+    named = [args.target, *args.files] if args.action in ("whats-new", "promo") and args.target else args.files
     files = [str(Path(f).resolve()) for f in named]
     missing = [f for f in files if not Path(f).exists()]
     if missing:
@@ -421,8 +421,8 @@ def main() -> None:
     undo.add_argument("udid")
     commands.add_parser("down", help="stop everything and clean the home directory")
     store = commands.add_parser("asc", help="read or replace App Store Connect assets")
-    store.add_argument("action", choices=("status", "screenshots", "creative", "whats-new"))
-    store.add_argument("target", nargs="?", help="ipad, iphone or duo; header or search; the text file for whats-new")
+    store.add_argument("action", choices=("status", "screenshots", "creative", "whats-new", "promo"))
+    store.add_argument("target", nargs="?", help="ipad, iphone or duo; header or search; the text file for whats-new or promo")
     store.add_argument("files", nargs="*", help="exports")
     store.add_argument("--version", required=True, help="the store version, such as 0.1.16")
     store.add_argument("--locale", default="en-US")
