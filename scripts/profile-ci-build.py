@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +22,22 @@ def output(*command: str) -> str:
 def main() -> int:
     evidence = ROOT / ".ci/compile-profile"
     evidence.mkdir(parents=True, exist_ok=False)
+    stats = evidence / "compiler-stats"
+    stats.mkdir()
+    compiler_flags = [
+        "-stats-output-dir", str(stats),
+        "-Xfrontend", "-debug-time-function-bodies",
+        "-Xfrontend", "-debug-time-expression-type-checking",
+    ]
+    driver_help = output("xcrun", "swiftc", "-help-hidden")
+    frontend_help = output("xcrun", "swiftc", "-frontend", "-help-hidden")
+    for flag, help_text in (
+        ("-stats-output-dir", driver_help),
+        ("-debug-time-function-bodies", frontend_help),
+        ("-debug-time-expression-type-checking", frontend_help),
+    ):
+        if flag not in help_text:
+            raise RuntimeError(f"The selected Swift compiler does not advertise {flag}")
     devices = json.loads(output("xcrun", "simctl", "list", "devices", "available", "--json"))
     device = next(
         device for group in devices["devices"].values() for device in group
@@ -32,6 +49,9 @@ def main() -> int:
         "candidate_sha": output("git", "rev-parse", "HEAD"),
         "source_sha": os.environ["PROFILE_SOURCE_SHA"],
         "xcode": output("xcodebuild", "-version"),
+        "swift": output("xcrun", "swiftc", "-version"),
+        "compiler_profile_flags": compiler_flags,
+        "compiler_profile_scope": "all Swift targets; analyze HeelerTests separately",
         "sdk": output("xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"),
         "macos": output("sw_vers"),
         "logical_cpus": int(output("sysctl", "-n", "hw.logicalcpu")),
@@ -57,6 +77,8 @@ def main() -> int:
             "-resultBundlePath", str(bundle),
             "COMPILATION_CACHE_ENABLE_CACHING=NO",
             "GCC_GENERATE_DEBUGGING_SYMBOLS=NO", "COMPILER_INDEX_STORE_ENABLE=NO",
+            # Keep batching and optimization unchanged; only add diagnostics.
+            f"OTHER_SWIFT_FLAGS=$(inherited) {shlex.join(compiler_flags)}",
         ]
         (evidence / "command.json").write_text(json.dumps(command, indent=2) + "\n")
         print("Building once; compiler output is saved in build.log.", flush=True)
@@ -98,6 +120,8 @@ def main() -> int:
             "--path", str(bundle), "--id", reference, "--format", "json",
         )
         (evidence / f"activity-{index}.json").write_text(activity + "\n")
+    if result.returncode == 0 and not list(stats.glob("*HeelerTests*.json")):
+        raise RuntimeError("The build succeeded without HeelerTests compiler statistics")
     return result.returncode
 
 
