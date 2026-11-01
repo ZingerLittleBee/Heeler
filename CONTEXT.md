@@ -312,7 +312,9 @@ it, and the Composer keeps the draft and says so. While Agent Status is
 Blocked it only pastes, as on Herdr TUI. It pastes only into a terminal that
 accepts a bracketed paste, and otherwise says so. A Send with no answer has an
 unknown outcome and is never repeated. Stop there presses the Terminal's own
-stop key (ADR 0035).
+stop key. On native Windows Send pastes nothing into a Terminal whose shell can
+outlive its Agent, because its foreground would not show the Agent leaving
+(ADR 0035).
 While Agent Status is Working and the draft is blank, Send becomes Stop: the
 program's Stop keys (one Esc; in Chat, two for OpenCode, whose first Esc only
 arms its interrupt, or Ctrl+C in Grok Build, whose turns Esc doesn't stop),

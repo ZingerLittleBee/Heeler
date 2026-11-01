@@ -406,7 +406,7 @@ agent discovery and launch, and its `terminal.put` through sshd.
 2. In your desktop session, in PowerShell, not as administrator, run the command
    the Host shows. Within its retry, the Host connects by itself.
 3. The Console lists the core's Terminals and Agents, each in a card named for
-   its directory. Send, Stop, Chat, Rename and Worktrees are not offered.
+   its directory. Chat, Rename and Worktrees are not offered.
 4. Open an Agent. Direct Input types into it and its output follows.
 5. Open a Shell Terminal. Rotate or resize it, run a full-screen program, and
    scroll back.
@@ -420,7 +420,7 @@ agent discovery and launch, and its `terminal.put` through sshd.
    Worktrees stay off. Outside a repository it takes its directory's. This is the
    first run of Heeler's PowerShell checkout read through sshd.
 9. Edit the Host's Session to a name with a space. The Host reads that the name is
-   refused, and Send, Rename and Worktrees are still not offered.
+   refused, and Rename and Worktrees are still not offered.
 10. Install an agent the launch can find, with OpenCode too if you have it. New
     Agent lists what a Windows PowerShell session over SSH finds, and OpenCode's
     version reaches its launch (`-s ses_...` in the Terminal's argv on 2.1 or newer).
@@ -442,6 +442,30 @@ agent discovery and launch, and its `terminal.put` through sshd.
 15. Add a 9 MiB file. Heeler says it is over the 8 MiB limit, the draft stays, and
     no file appears in that folder. Add one of exactly 8 MiB: it lands with the same
     hash, and the Host stays connected while it crosses on a slow link.
+16. In an Agent New Agent started, type a message and tap Send. It submits within
+    about a second, and the draft empties. Whether an Agent's bracketed paste reaches
+    Heeler through the pseudo console has not been seen on any machine. If Send says
+    **not accepting a paste** at the Agent's own input, note the program and its
+    version: Send cannot work for it on this machine.
+17. Add an image and Send the draft holding its path. The Agent reads the file by
+    that path.
+18. Leave a draft in an Agent's Composer, exit the Agent with Direct Input, and tap
+    Send. Its Terminal has ended, so nothing runs anywhere, and the draft stays.
+19. From the Herdr desktop app, start an agent (its `-NoExit` form), then in Heeler
+    tap Send: the notice says the terminal **keeps a shell open**, nothing is
+    written, and the draft stays. Exit that agent and tap Send again: the same notice,
+    and PowerShell runs nothing.
+20. Start an agent by typing it in a PowerShell Terminal. It is not listed as an Agent,
+    since the foreground stays PowerShell, so it has no Composer.
+21. Tap Stop during a working turn. The turn stops, and the Agent stays listed. Stop
+    an Agent that exits at the key: it leaves the list.
+22. Bring an Agent to a question and Send: the text lands in its input unsubmitted.
+    The tools keyboard submits it.
+23. Windows PowerShell 5.1 dropped a pending paste on one Ctrl+C in the runs recorded
+    in `docs/agents/herdr-compatibility.md`, so Send says the text is **no longer in
+    the terminal**. If your PowerShell or PSReadLine version keeps it, or PowerShell 7
+    is installed and acts otherwise, record the versions there, and ADR 0035 needs your
+    decision before Send ships on Windows.
 
 ## Scope and results
 
