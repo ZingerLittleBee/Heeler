@@ -1543,6 +1543,70 @@ struct AgentCardChangesTotalsTests {
         ])
     }
 
+    /// A row left empty gives way to the next, its right side included. A
+    /// checkout's card names the directory, so a row of only that field
+    /// leaves the totals to end the line above rather than a line of their
+    /// own. A row configured empty still gets its line (above).
+    @Test func theRightSideOfARowLeftEmptyEndsTheLineAbove() {
+        let layout = AgentRowLayout(
+            rows: [[.init(.workspace)], [.init(.agent)], [.init(.directory)]],
+            trailing: AgentRowLayout.defaultTrailing)
+        let hidden = AgentCardPresentation(
+            agent: Self.agent, layout: layout, hiding: [.workspace, .host, .directory])
+        func lines(_ presentation: AgentCardPresentation, heading: Bool = true) -> AgentCardLines {
+            AgentCardLines(
+                presentation: presentation, headingTakesTitle: heading, showsHost: false, showsTotals: true)
+        }
+        #expect(lines(hidden).details == [.init(leading: hidden.rows[0], trailing: [.changes])])
+
+        // Nothing above it under the card's own title: it ends that line.
+        let alone = AgentCardPresentation(
+            agent: Self.agent, layout: AgentRowLayout(
+                rows: [[.init(.workspace)], [.init(.directory)]], trailing: [[], [.init(.changes)]]),
+            hiding: [.directory])
+        #expect(lines(alone, heading: false).title == [.changes])
+        #expect(lines(alone, heading: false).details.isEmpty)
+
+        // With its field showing, the row keeps its line.
+        let shown = AgentCardPresentation(agent: Self.agent, layout: layout, hiding: [.workspace, .host])
+        #expect(lines(shown).details.last == .init(leading: shown.rows[1], trailing: [.changes]))
+        #expect(lines(shown).details.count == 2)
+    }
+
+    /// A checkout's card, whose directory field the card already shows,
+    /// ends the Agent's line with the totals and adds no line for them.
+    @Test func aCheckoutsCardEndsTheAgentsLineWithTheTotals() async throws {
+        let store = try await Self.store(added: 115, removed: 0)
+        let layout = AgentRowLayout(
+            rows: [[.init(.workspace)], [.init(.agent)], [.init(.directory)]],
+            trailing: AgentRowLayout.defaultTrailing)
+        let card = AgentCardView(
+            agent: Self.agent, layout: layout, changes: store,
+            hiddenTokens: [.workspace, .host, .directory],
+            heading: AgentCardHeading(title: ConsoleCheckoutTitle(title: "worktree"), systemImage: "arrow.triangle.branch"),
+            showsHost: false, lead: .card)
+        let controller = UIHostingController(
+            rootView: AnyView(
+                card
+                    .environment(\.locale, Locale(identifier: "en_US"))
+                    .padding(16)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .environment(\.colorScheme, .dark)
+                    .frame(width: 402)
+                    .fixedSize(horizontal: false, vertical: true)))
+        controller.safeAreaRegions = []
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 400), rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        let root: UIView = controller.view
+        let agentLine = try #require(AccessibilityProbe.frame(labeled: "claude", in: root))
+        let totals = try #require(AccessibilityProbe.frame(
+            labeled: "Changes: 115 lines added, 0 lines removed", in: root))
+        #expect(abs(totals.midY - agentLine.midY) <= 2, "\(totals) and \(agentLine) sit on different lines")
+        #expect(agentLine.maxX <= totals.minX, "\(totals) overlaps \(agentLine)")
+    }
+
     /// An Agent field on a right side names the Agent on the card, so rows
     /// sharing a title get no program name for it.
     @Test func anAgentFieldOnTheRightNamesTheAgentOnTheCard() {

@@ -331,6 +331,9 @@ struct AgentCardPresentation: Equatable, Sendable {
     let rows: [[RenderedToken]]
     /// The row slot each of `rows` came from.
     let slots: [Int]
+    /// The row slots with fields that all show nothing here: a field the
+    /// surrounding list already shows, or one with no value.
+    let emptiedSlots: Set<Int>
     /// Each row slot's right side, or nil where the list places the Host
     /// and the totals (`AgentCardLines`).
     let trailing: [[AgentCardTrailing]]?
@@ -369,6 +372,8 @@ struct AgentCardPresentation: Equatable, Sendable {
             rows = rendered.map(\.tokens)
             slots = rendered.map(\.slot)
         }
+        let configured = layout.rows(forAgentKind: agent.agent.kind).enumerated().filter { !$0.element.isEmpty }
+        emptiedSlots = Set(configured.map(\.offset)).subtracting(slots)
         trailing = AgentRowRenderer.renderTrailing(
             layout: layout, agent: agent, hiding: hiding, omittingMarkedKind: omitsMarkedKind)
     }
@@ -427,7 +432,9 @@ enum AgentCardTrailing: Equatable, Sendable {
 
 /// A card's lines: the title's, which ends with any right side of the row
 /// slots up to the one it shows, then one line per later slot that shows
-/// anything, on either side. Under a heading, Row 1's status badge ends the
+/// anything, on either side. A row whose fields all show nothing gives way:
+/// its right side ends the line above, while a row configured empty keeps
+/// its line for its right side. Under a heading, Row 1's status badge ends the
 /// heading's line, which names the Agent as Row 1 would. A layout that
 /// leaves its right side to the list gets today's places: the Host ends the
 /// first line under the title, the totals the last, and the Host and the
@@ -470,11 +477,20 @@ struct AgentCardLines: Equatable, Sendable {
                 trailing[0] = row.filter { $0 != .statusBadge }
             }
             title += trailing.prefix(titleSlot + 1).flatMap(shown)
-            details = (titleSlot + 1..<max(titleSlot + 1, slotCount)).compactMap { slot in
+            for slot in titleSlot + 1..<max(titleSlot + 1, slotCount) {
                 let line = Line(
                     leading: leading[slot] ?? [],
                     trailing: trailing.indices.contains(slot) ? shown(trailing[slot]) : [])
-                return line.leading.isEmpty && line.trailing.isEmpty ? nil : line
+                if line.leading.isEmpty, line.trailing.isEmpty { continue }
+                guard line.leading.isEmpty, presentation.emptiedSlots.contains(slot) else {
+                    details.append(line)
+                    continue
+                }
+                if details.isEmpty {
+                    title += line.trailing
+                } else {
+                    details[details.count - 1].trailing += line.trailing
+                }
             }
         } else {
             details = (headingTakesTitle ? presentation.rows : Array(presentation.rows.dropFirst()))
