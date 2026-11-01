@@ -15,7 +15,7 @@ import { basename, join } from "node:path";
 
 import { agentIn } from "../core/agent-rule.js";
 import { normalizeSessionName } from "../core/session-name.js";
-import { AGENT_EVENTS, foldEvent, foldRecord } from "../core/turn-fold.js";
+import { AGENT_EVENTS, decisionSignature, foldEvent, foldRecord } from "../core/turn-fold.js";
 import { TurnState } from "../core/turn-state.js";
 import { strippedSidebarTitle } from "../shared/activity-rows.js";
 import { collapseKeyFor, sendAlertPush } from "../shared/delivery/push.js";
@@ -43,6 +43,8 @@ class Terminal {
   /** Tokens `notifiedTurn` has yet to reach, because their send failed. */
   unsentTurn = [];
   timer = null;
+  /** What the pending timer's wait is about. */
+  signature = null;
   deciding = Promise.resolve();
 
   toJSON() {
@@ -216,6 +218,7 @@ export function notificationListener({ directory, log = () => {} }) {
         terminal.notified = ATTENTION_STATUSES.has(status) ? status : null;
         terminal.notifiedTurn = terminal.turns.ended;
       }
+      terminal.signature = decisionSignature(record, terminal.turns);
       decideLater(session, memory, address);
     }
     remember(session, memory);
@@ -264,7 +267,10 @@ export function notificationListener({ directory, log = () => {} }) {
       }
       foldEvent(terminal.turns, event, record);
       remember(session, memory);
-      decideLater(session, memory, event.terminal);
+      const signature = decisionSignature(record, terminal.turns);
+      const isWaitingForThis = terminal.timer !== null && signature === terminal.signature;
+      terminal.signature = signature;
+      if (!isWaitingForThis) decideLater(session, memory, event.terminal);
     }),
     ended: guarded(({ session }) => {
       const memory = sessionNamed(session);

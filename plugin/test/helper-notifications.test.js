@@ -295,6 +295,21 @@ suite("a Terminal that enters Blocked, Error or Done", () => {
     assert.equal(sentTo(KEY_A, "t1").length, 0);
   });
 
+  test("reports that change nothing do not hold back a Blocked", async () => {
+    writeFileSync(join(directory, "notify.json"), JSON.stringify({ relay_url: relay.url, debounce_ms: 80, retry_delay_ms: 1 }));
+    register(entry(KEY_A, TOKEN_A));
+    const core = await connected([agent("t1")]);
+
+    status(core, "t1", "working");
+    status(core, "t1", "blocked");
+    const reports = setInterval(() => status(core, "t1", "blocked"), 5);
+    try {
+      await waitFor(() => sentTo(KEY_A, "t1").length === 1, "the Blocked through the reports", 2000);
+    } finally {
+      clearInterval(reports);
+    }
+  });
+
   test("Blocked again after moving on is a new notification, and staying Blocked is not", async () => {
     register(entry(KEY_A, TOKEN_A));
     const core = await connected([agent("t1")]);

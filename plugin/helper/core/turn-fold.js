@@ -30,3 +30,13 @@ export function foldEvent(turns, event, record) {
   }
   if (kind === null) turns.noteNoAgent();
 }
+
+/**
+ * What a debounced decision reads of a Terminal. The core sends a `status` for every
+ * report, progress and child records included, so a report that leaves this alone
+ * has nothing new to wait for and must not restart a debounce.
+ */
+export function decisionSignature(record, turns) {
+  const agent = agentIn(record);
+  return JSON.stringify([agent?.kind ?? null, agent?.status ?? null, turnCount(record), turns.ended?.turn ?? null, turns.ended?.word ?? null]);
+}

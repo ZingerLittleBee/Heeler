@@ -31,7 +31,7 @@
     },
     {
       "path": "core/turn-fold.js",
-      "sha256": "4a835f1dbef3a20782a4b1376fd8d8cd33d63ebff1f423eab1279e50acf90cf9"
+      "sha256": "1f60c309abdf2ca34468e85324b14dfcfc99d01d5f47b3397c963d578943968a"
     },
     {
       "path": "core/turn-state.js",
@@ -51,11 +51,11 @@
     },
     {
       "path": "notifications/activity.js",
-      "sha256": "d90e2e2497d7be5a794e9cdfa49cdadabc00f48fb182af1e6b9cd0d41183e7b9"
+      "sha256": "14aa112bc484ec79bbbe086ceca478387f7fd41556198b4990e3028a133e56ad"
     },
     {
       "path": "notifications/notifier.js",
-      "sha256": "bf741f26f66fad553228bf877a3591146eb8c1439eb859a06168a6779f1acbbb"
+      "sha256": "cd3736464e5a125102722b6a449bc5f3a2252ee17c4fdad728e530a232cfec0a"
     },
     {
       "path": "notifications/seen-marks.js",

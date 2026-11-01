@@ -14,7 +14,7 @@ import { basename, join } from "node:path";
 
 import { agentIn } from "../core/agent-rule.js";
 import { normalizeSessionName } from "../core/session-name.js";
-import { AGENT_EVENTS, foldEvent, foldRecord } from "../core/turn-fold.js";
+import { AGENT_EVENTS, decisionSignature, foldEvent, foldRecord } from "../core/turn-fold.js";
 import { TurnState } from "../core/turn-state.js";
 import { strippedSidebarTitle } from "../shared/activity-rows.js";
 import { buildActivityState, eligibleStatusMap, hasNewlyBlocked, sameStatusMap, shortHostName } from "../shared/activity-state.js";
@@ -68,7 +68,7 @@ export function liveActivityListener({ directory, log = () => {}, hostName = sho
   function sessionNamed(session) {
     let memory = sessions.get(session);
     if (memory !== undefined) return memory;
-    memory = { core: null, inventory: null, turns: new Map(), tokens: {}, timer: null, updating: Promise.resolve() };
+    memory = { core: null, inventory: null, turns: new Map(), signatures: new Map(), tokens: {}, timer: null, updating: Promise.resolve() };
     try {
       const file = JSON.parse(readFileSync(memoryPath(session), "utf8"));
       if (file?.v === MEMORY_VERSION && typeof file.core === "string") {
@@ -165,6 +165,7 @@ export function liveActivityListener({ directory, log = () => {}, hostName = sho
 
   function foldSnapshot(session, memory, inventory) {
     memory.inventory = inventory;
+    memory.signatures.clear();
     for (const address of memory.turns.keys()) {
       if (!inventory.has(address)) memory.turns.delete(address);
     }
@@ -175,6 +176,7 @@ export function liveActivityListener({ directory, log = () => {}, hostName = sho
         memory.turns.set(address, turns);
       }
       foldRecord(turns, record);
+      memory.signatures.set(address, decisionSignature(record, turns));
     }
     updateLater(session, memory);
   }
@@ -205,6 +207,7 @@ export function liveActivityListener({ directory, log = () => {}, hostName = sho
       memory.inventory = inventory;
       if (event.type === "removed") {
         memory.turns.delete(event.terminal);
+        memory.signatures.delete(event.terminal);
         updateLater(session, memory);
         return;
       }
@@ -217,7 +220,10 @@ export function liveActivityListener({ directory, log = () => {}, hostName = sho
         memory.turns.set(event.terminal, turns);
       }
       foldEvent(turns, event, record);
-      updateLater(session, memory);
+      const signature = decisionSignature(record, turns);
+      const isWaitingForThis = memory.timer !== null && signature === memory.signatures.get(event.terminal);
+      memory.signatures.set(event.terminal, signature);
+      if (!isWaitingForThis) updateLater(session, memory);
     }),
     ended: guarded(({ session }) => {
       const memory = sessionNamed(session);
