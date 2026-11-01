@@ -396,7 +396,8 @@ These steps are for the herdr-core Host of
 [#587](https://github.com/ZingerLittleBee/Heeler/issues/587), not the herdr
 sessions above, and need herdr-core 0.1.16 or newer from its installer. No lane
 runs them: the app's tests script the probe and the exec, so this is the first
-run of Heeler's own probe and of its `cmd /d /c` `connect` line through sshd.
+run of Heeler's own probe, its checkout read and its `cmd /d /c` `connect` line
+through sshd.
 
 1. Stop the core. On the phone, add the machine with Session left blank or a
    plain name, and confirm **herdr-core**. The Host reads
@@ -415,6 +416,12 @@ run of Heeler's own probe and of its `cmd /d /c` `connect` line through sshd.
    starts no `herdr-core` process on the machine.
 7. Start the core again in the desktop session. The Host reconnects, and Pins
    are kept.
+8. Start a Terminal with a `herdr.space` label the desktop app has not named, in a
+   subfolder of a repository. Its card takes the repository's folder name, and
+   Worktrees stay off. Outside a repository it takes its directory's. This is the
+   first run of Heeler's PowerShell checkout read through sshd.
+9. Edit the Host's Session to a name with a space. The Host reads that the name is
+   refused, and New Agent and New Terminal are still not offered.
 
 ## Scope and results
 

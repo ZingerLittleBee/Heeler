@@ -45,9 +45,9 @@ $env:HC_SESSION='work'; C:\Users\you\AppData\Local\Programs\herdr-core\herdr-cor
 
 A session name there uses letters, digits, `-`, `_` and `.`, and does not start with `-`. Leave Session blank for `default`.
 
-The Console lists the core's Agents and Terminals, each in a card named for its directory or its space. Open one for its Agent detail with Direct Input, or as a Shell Terminal, and close it from there.
+The Console lists the core's Agents and Terminals, each in a card named for its directory or its space. A space nobody named takes its repository's folder when `git` is on the PATH of an SSH session there, and its directory's otherwise. Open one for its Agent detail with Direct Input, or as a Shell Terminal, and close it from there.
 
-Not offered there yet: New Agent, New Terminal, New Workspace, images and files in the Composer, Send, Stop, Chat, Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
+Not offered there yet, whatever the Host reads: New Agent, New Terminal, New Workspace, images and files in the Composer, Send, Stop, Chat, Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
 
 ## Console
 
