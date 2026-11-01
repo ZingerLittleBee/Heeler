@@ -147,7 +147,7 @@ final class HeelerAppModel {
             pinnedPaneIDs: { [weak console] id in
                 console?.pins.pinnedPaneIDs(for: id) ?? []
             },
-            rowLayout: { [weak console] id in console?.rowLayout(for: id) })
+            rowLayout: { [weak console] id in console?.liveActivityRowLayout(for: id) })
         self.liveActivities = liveActivities
         hostRemoval = HostRemovalDependencies.app(
             console: console, notificationPreferences: notificationPreferences,

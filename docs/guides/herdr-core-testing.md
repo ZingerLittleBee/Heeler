@@ -375,7 +375,7 @@ Open **Settings**, then **Agent List Fields**, and the Host.
 | Starting rows | Open a Host you have never edited | **Heeler's fields**, Row 1 `terminal_title_stripped`, Row 2 `directory`, Row 3 empty. No **Sync from plugin**, and no word of Sync or the plugin on the page |
 | Labels | Label a Terminal on the box, then add a field to a row | The label is offered under **Terminal labels**, and the Agents tab shows its value. No `$` field and no `state_text` is offered |
 | Right side | Add a field to a row's right side | `status_badge` and `changes` are offered there and not on the left, and the sheet says **right side** with no word of herdr |
-| Apply to All Hosts | With a second Host, tap **Apply to All Hosts** on the core Host's page | The other Host's rows take these fields. A label field shows nothing on a Host whose Agents lack that label |
+| Apply to All Hosts | With a second Host, tap **Apply to All Hosts** on the core Host's page | The other Host's rows take these fields. A label field shows nothing on a Host whose Agents lack that label. A Herdr TUI Host's Live Activity keeps showing its other fields |
 | Herdr TUI beside it | Open a Herdr TUI Host | **Sync from plugin**, its copy and its fields as before |
 
 ## Pins

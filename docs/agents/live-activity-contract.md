@@ -222,7 +222,10 @@ Activity and installed plugins drop a layout with a field they do not know. Each
 A `label:<key>` token follows the app's rule for a label it offers
 (`AgentRowToken.terminalLabel`): a key of 1 to 64 UTF-8 bytes, not all whitespace,
 with no `=` and no control or format character. Any other token makes the layout
-malformed.
+malformed. The app writes `label:<key>` tokens only for a herdr-core Host. A Herdr
+TUI Host has no Terminal labels, and plugin 0.8.0 reads the token as malformed and
+omits all of that Host's `rows`, so a label field that Apply to All Hosts copied
+there stays out of its `row_layout`.
 `row_gap` and `rows_by_agent` are accepted for structural compatibility but do
 not change activity rendering. The app writes this layout and optional
 `host_name` on registration, layout edits, Host name changes, and plugin sync.

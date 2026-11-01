@@ -240,6 +240,17 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
             trailing: trailing.map { console($0, dropping: [.stateIcon]) })
     }
 
+    /// These fields with no Terminal label on any row's left side.
+    func droppingTerminalLabels() -> AgentRowLayout {
+        var kept = self
+        kept.rows = rows.map { row in
+            row.filter {
+                if case .label = $0.token { false } else { true }
+            }
+        }
+        return kept
+    }
+
     /// Import only herdr's first two rows. The third belongs to Heeler;
     /// new layouts show the directory, while sync supplies the user's row.
     func withHeelerRow(_ thirdRow: AgentRow = [.init(.directory)]) -> AgentRowLayout {

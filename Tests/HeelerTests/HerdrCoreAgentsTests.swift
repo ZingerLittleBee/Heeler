@@ -665,6 +665,41 @@ struct HerdrCoreAgentsTests {
         #expect(!left.hostFields.contains(.changes))
     }
 
+    /// Apply to All Hosts can copy a label field onto a Herdr TUI Host. Plugin
+    /// 0.8.0 reads a field it does not know as a malformed layout and drops all
+    /// of that Host's Live Activity rows, and that Host has no label to show.
+    @Test func aLabelFieldAppliedToAHerdrTUIHostStaysOutOfItsLiveActivityFields() throws {
+        let suite = "core-agents-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let layouts = AgentRowLayoutStore(defaults: defaults)
+        let tui = Host(address: "tui.example", username: "dev", serverKind: .herdrTUI)
+        let store = ConsoleStore(
+            rowLayouts: layouts,
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "never dialed") },
+                    keepalive: nil)
+            })
+        store.setHosts([host, tui])
+        defer { store.setHosts([]) }
+        let editor = AgentListFieldsEditor(
+            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in nil },
+            followsPlugin: { store.capabilities(for: $0).syncLayoutFromPlugin })
+
+        let project = AgentRowStyledToken(try #require(AgentRowToken.terminalLabel("project")))
+        let owner = AgentRowStyledToken(try #require(AgentRowToken.terminalLabel("team.owner")))
+        let fields: [AgentRow] = [[project], [.init(.directory), owner]]
+        #expect(editor.commit(host.id) { $0.rows = fields })
+        #expect(editor.applyToOtherHosts(from: host.id, among: [host.id, tui.id]) == 1)
+
+        #expect(store.liveActivityRowLayout(for: host.id).rows == fields)
+        #expect(store.liveActivityRowLayout(for: tui.id).rows == [[], [.init(.directory)]])
+        // Its row editor still shows the copy, so the field can be removed there.
+        #expect(store.rowLayout(for: tui.id).rows == fields)
+    }
+
     @Test func aHerdrTUIHostsRightSideOffersTheBadgeAndTheTotalsAmongHeelersFields() {
         let offer = AgentLayoutFieldOffer(row: [], side: .trailing, followsPlugin: true, labelKeys: [])
         #expect(offer.heelerFields == AgentRowToken.heelerBuiltins + AgentRowToken.trailingOnlyBuiltins)

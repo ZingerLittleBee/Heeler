@@ -1436,6 +1436,15 @@ final class ConsoleStore {
             followsPlugin: capabilities(for: hostID).syncLayoutFromPlugin)
     }
 
+    /// The fields this Host's Live Activity carries. Label fields are only for
+    /// a core Host, whose Helper reads them: a Herdr TUI Host has no label to
+    /// show, and plugin 0.8.0 reads a field it does not know as a malformed
+    /// layout, which costs that Host all of its Live Activity rows.
+    func liveActivityRowLayout(for hostID: Host.ID) -> AgentRowLayout {
+        let layout = rowLayout(for: hostID)
+        return coreHost(hostID) == nil ? layout.droppingTerminalLabels() : layout
+    }
+
     /// The labels on the Host's Terminals right now, offered as row fields.
     func terminalLabelKeys(on hostID: Host.ID) -> [String] {
         projections[hostID]?.terminalLabelKeys ?? []
