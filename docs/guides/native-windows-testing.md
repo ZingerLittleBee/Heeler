@@ -390,6 +390,32 @@ Expected: the Unix Host continues to use its existing direct-streamlocal API
 and PTY terminal path. Selecting the Windows Host must not change the Unix
 Host's connection behavior or mix the two Hosts' snapshots.
 
+## 9. Connect a herdr-core Host
+
+These steps are for the herdr-core Host of
+[#587](https://github.com/ZingerLittleBee/Heeler/issues/587), not the herdr
+sessions above, and need herdr-core 0.1.16 or newer from its installer. No lane
+runs them: the app's tests script the probe and the exec, so this is the first
+run of Heeler's own probe and of its `cmd /d /c` `connect` line through sshd.
+
+1. Stop the core. On the phone, add the machine with Session left blank or a
+   plain name, and confirm **herdr-core**. The Host reads
+   **herdr-core is not running** with the start command, and on the machine no
+   `herdr-core` process appears.
+2. In your desktop session, in PowerShell, not as administrator, run the command
+   the Host shows. Within its retry, the Host connects by itself.
+3. The Console lists the core's Terminals and Agents, each in a card named for
+   its directory. New Agent, New Terminal, New Workspace, Send, Stop, Chat,
+   Rename, Worktrees and the Composer's images and files are not offered.
+4. Open an Agent. Direct Input types into it and its output follows.
+5. Open a Shell Terminal. Rotate or resize it, run a full-screen program, and
+   scroll back.
+6. Stop the core with `server stop` while the Host is connected. The Host reads
+   **herdr-core is not running**, and leaving it through several reconnects
+   starts no `herdr-core` process on the machine.
+7. Start the core again in the desktop session. The Host reconnects, and Pins
+   are kept.
+
 ## Scope and results
 
 The acceptance scope is manual SSH access to existing native Windows herdr
