@@ -31,7 +31,7 @@ covers the fixture and CI.
 ## Scripted check
 
 ```bash
-make verify-core-linux-host SIM_UDID=<udid> LAB=hc-lab
+make verify-core-linux-host SIMULATOR_UDID=<udid> LAB=hc-lab
 ```
 
 It authorizes a throwaway key through `instabox port-forward`, writes the fixture's

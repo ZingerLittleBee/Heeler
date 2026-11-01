@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the herdr-core end-to-end methods and the Linux checks on a lab machine.
 
-    make verify-core-linux-host [LAB=hc-lab] [LAB_PORT=47430] SIM_UDID=<udid>
+    make verify-core-linux-host [LAB=hc-lab] [LAB_PORT=47430] SIMULATOR_UDID=<udid>
 
 An owner's check, for a box the instabox CLI is signed in to. What it does there,
 all of it undone at the end, also after a failure: authorizes a throwaway key

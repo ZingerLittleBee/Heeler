@@ -140,8 +140,9 @@ test-ci-recovery: ## Test simulator recovery with fake Xcode processes (macOS)
 	scripts/test-ci-simulator-recovery.sh
 
 # An owner's check on a real box: see docs/guides/herdr-core-testing.md.
-verify-core-linux-host: ## Run the herdr-core end-to-end methods on hc-lab (SIM_UDID=<udid> [LAB=hc-lab] [LAB_PORT=47430])
-	python3 scripts/lab/herdr-core-lab-check.py --box '$(or $(LAB),hc-lab)' --port '$(or $(LAB_PORT),47430)' --udid '$(SIM_UDID)'
+verify-core-linux-host: ## Run the herdr-core end-to-end methods on hc-lab (SIMULATOR_UDID=<udid> [LAB=hc-lab] [LAB_PORT=47430])
+	@test -n "$(SIMULATOR_UDID)" || { echo "SIMULATOR_UDID is required"; exit 1; }
+	python3 scripts/lab/herdr-core-lab-check.py --box '$(or $(LAB),hc-lab)' --port '$(or $(LAB_PORT),47430)' --udid '$(SIMULATOR_UDID)'
 
 simulator-ui: ## Inspect simulator GUI capabilities (optional SIMULATOR_UDID)
 	python3 scripts/simulator-ui.py $(if $(SIMULATOR_UDID),--udid '$(SIMULATOR_UDID)')

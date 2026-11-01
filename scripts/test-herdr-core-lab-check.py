@@ -193,6 +193,18 @@ class LabCheckTests(unittest.TestCase):
         self.assertNotIn("> /home/lab/.bashrc", everything)
         self.assertNotIn("> /home/lab/.zshrc", everything)
 
+    def test_the_make_target_stops_without_a_simulator(self):
+        def planned(*variables):
+            environment = {name: value for name, value in os.environ.items() if name != "SIMULATOR_UDID"}
+            result = subprocess.run(["make", "-n", "verify-core-linux-host", *variables], cwd=SCRIPTS.parent,
+                                    env=environment, capture_output=True, text=True, check=True)
+            return result.stdout.splitlines()
+
+        steps = planned()
+        self.assertTrue(steps[0].startswith('test -n ""'), steps)
+        self.assertIn("herdr-core-lab-check.py", steps[-1])
+        self.assertIn("--udid 'SOME-UDID'", planned("SIMULATOR_UDID=SOME-UDID")[-1])
+
     def test_each_run_gets_its_own_session(self):
         self.assertNotEqual(lab_check.unique_session(), lab_check.unique_session())
 
