@@ -197,11 +197,18 @@ confirm or refine these points with test clients, not the app.
   pipe does ([observation](../agents/herdr-compatibility.md)). `Test-Path`,
   `[IO.File]::Exists` and a `GetFiles` listing told the two states apart;
   `cmd /c if exist` and Node's `fs.existsSync` said no in both. The Windows
-  probe (#587) therefore cannot read the file as Unix does, and must name
-  `powershell.exe`, since an exec on a default server runs under `cmd.exe`.
+  probe (#587) therefore cannot read the file as Unix does.
   Over a real SSH exec with the core running, those reads and the one-line
   guard behave the same on the one machine tried, and `type` on the locked file
   exits 0 with its error on stderr, so an exit code alone says nothing there.
+  The reads from byte 1 seen to work there were PowerShell's and SFTP's. The
+  pipe check does not need PowerShell: under the exec's default `cmd.exe`,
+  `dir /b \\.\pipe\\ | findstr /x /i /c:"<name>"` exited 0 for the running
+  core's pipe and 1 for a name with no pipe, on that machine, with no stopped
+  core tried. With one trailing backslash `dir` itself fails and the pipeline
+  also exits 1, so only stderr tells a failed `dir` from a missing pipe. This
+  decision's PowerShell guard reads the name and checks it in one exec; that is
+  a choice, not a limit of `cmd.exe`.
 - Across one Windows OpenSSH exec of `connect` from a Mac, no byte changed in
   either direction ([observation](../agents/herdr-compatibility.md)): a raw
   control program returned every byte value and 8 MiB unchanged, request and
