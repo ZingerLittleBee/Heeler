@@ -49,12 +49,13 @@ jobs:
           make check-test-membership verify-ssh-artifacts
       - uses: actions/cache/restore@v4
         with:
-          path: .ci/app-compilation-cache
+          path: ${{ github.workspace }}/.ci/app-compilation-cache
           key: ${{ steps.toolchain.outputs.cache-prefix }}${{ github.sha }}
           restore-keys: |
             ${{ steps.toolchain.outputs.cache-prefix }}
       - name: Repeat the original assertions without retries
         run: |
+          set -o pipefail
           mkdir -p .ci/usage-refresh
           # Keep the committed project, the normal stable build paths, and the
           # existing accessibility/result-validation wrapper. No fixture needed.
@@ -71,6 +72,28 @@ jobs:
                 --path .ci/usage-refresh/results.xcresult --compact > ".ci/usage-refresh/$report.json"
             done
           fi
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          directory = Path('.ci/usage-refresh')
+          summary = json.loads((directory / 'summary.json').read_text())
+          assert summary['result'] == 'Passed' and summary['failedTests'] == 0, summary
+          assert summary['totalTestCount'] == 2 and summary['skippedTests'] == 0, summary
+
+          def repetitions(node):
+              found = [node] if node.get('nodeType') == 'Repetition' else []
+              for child in node.get('children', []):
+                  found.extend(repetitions(child))
+              return found
+
+          report = json.loads((directory / 'tests.json').read_text())
+          runs = [run for node in report['testNodes'] for run in repetitions(node)]
+          assert len(runs) == 2 * int(os.environ['ITERATIONS']), len(runs)
+          assert all(run['result'] == 'Passed' for run in runs), runs
+          print(f'All {len(runs)} Usage interaction repetitions passed')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

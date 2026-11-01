@@ -226,16 +226,7 @@ struct AgentUsagePageInteractionTests {
         let sleeper = ChangesManualSleeper()
         let store = AgentUsageStore(hostID: hostID,
             transports: ScriptedTransportProvider(transports: [hostID: transport]),
-            sleep: { duration in
-                print("[DEBUG-usage-refresh] sleep start \(duration)")
-                do {
-                    try await sleeper.sleep(duration)
-                    print("[DEBUG-usage-refresh] sleep fired")
-                } catch {
-                    print("[DEBUG-usage-refresh] sleep cancelled")
-                    throw error
-                }
-            })
+            sleep: { try await sleeper.sleep($0) })
         let controller = UIHostingController(rootView: AnyView(
             UsageHarness(hostID: hostID, store: store).environment(\.locale, Locale(identifier: "en_US"))))
         let window = try await makeTestWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844),
@@ -254,9 +245,11 @@ struct AgentUsagePageInteractionTests {
         try #require(await eventually(seconds: interactive ? 120 : 5) {
             ChangesViewTests.navigationControllers(in: controller).contains { $0.viewControllers.count > 1 }
         })
+        // Sending UIControl actions bypasses UIKit's transition interaction
+        // guard. Let the outgoing Host section disappear before refreshing.
+        try #require(await eventually { isNavigationSettled(controller) })
         try #require(await eventually { await transport.agentUsageReads > initialReads && !store.isLoading })
         let beforeRefresh = await transport.agentUsageReads
-        print("[DEBUG-usage-refresh] pull navigationSettled=\(isNavigationSettled(controller))")
         await transport.setAgentUsage(.success(partial))
         if interactive {
             try "page-ready".write(to: URL.documentsDirectory.appendingPathComponent("usage-interactive-stage"),
@@ -269,29 +262,17 @@ struct AgentUsagePageInteractionTests {
             await transport.agentUsageReads > beforeRefresh && store.state == .available(partial)
         })
         await transport.setAgentUsage(.success(complete))
-        // The pull ends after its read; the surfaces keep the 3-second cadence.
-        // The Host section under the page and the dashboard both restart
-        // polling, and the later one supersedes the earlier.
-        try #require(await eventually { await sleeper.durations.count >= 2 })
+        // The pull ends after its read; the visible page keeps polling.
+        // The outgoing Host section need not register another sleep.
+        try #require(await eventually { await !sleeper.durations.isEmpty && store.isLoading })
         for duration in await sleeper.durations {
             #expect(duration > .zero && duration <= AgentUsageStore.pollInterval)
         }
         #expect(await transport.agentUsageReads == beforeRefresh + 1)
-        // Let the cadence elapse for every loop, including one whose sleep
-        // registers after an earlier firing: firing once can leave the
-        // current loop asleep, which no real sleep would do.
-        let settled = await eventually(seconds: 30) {
-            await sleeper.fireAll()
-            return store.state == .available(complete) && !store.isLoading
-        }
+        await sleeper.fireAll()
+        try #require(await eventually { store.state == .available(complete) && !store.isLoading })
         let reads = await transport.agentUsageReads
-        print("[DEBUG-usage-refresh] settled=\(settled) loading=\(store.isLoading) "
-            + "partial=\(store.state == .available(partial)) complete=\(store.state == .available(complete)) "
-            + "reads=\(reads - beforeRefresh) pauses=\(await sleeper.durations.count) "
-            + "navigationSettled=\(isNavigationSettled(controller))")
-        try #require(settled)
         #expect(reads == beforeRefresh + 2)
-        try #require(await eventually { isNavigationSettled(controller) })
         try await Self.captureViewports(in: controller)
         if interactive {
             try "refresh-complete".write(to: URL.documentsDirectory.appendingPathComponent("usage-interactive-stage"),
@@ -339,16 +320,12 @@ struct AgentUsagePageInteractionTests {
                 List {
                     AgentUsageSection(hostID: hostID, hostName: "Test Host", store: store,
                         openUsage: { showsUsage = true })
-                        .onAppear { print("[DEBUG-usage-refresh] section appeared") }
-                        .onDisappear { print("[DEBUG-usage-refresh] section disappeared") }
                 }
                 .navigationTitle("Test Host")
                 .navigationDestination(isPresented: $showsUsage) {
                     AgentUsageDashboard(
                         entries: [AgentUsageHostEntry(id: hostID, name: "Test Host", store: store, isConnected: true)],
                         scopeHostID: .constant(hostID), metric: .constant(.cost))
-                        .onAppear { print("[DEBUG-usage-refresh] dashboard appeared") }
-                        .onDisappear { print("[DEBUG-usage-refresh] dashboard disappeared") }
                 }
             }
         }
