@@ -131,6 +131,13 @@ never show or send into a conversation it has guessed.
   least two seconds after the turn ends, a `/` command does not arm it, and a
   message the program put back or refused proves nothing. A program that reports
   no status never ends a turn, so its pick stays until the process changes.
+- A dropped pick leaves the screen, unlike an exact binding that goes quiet, which
+  keeps its last document readable because nothing says it was wrong. A pick was
+  only the user's word, and a drop says that word no longer holds. A check that
+  cannot see the process to hold the label against (no scope to follow, an Agent
+  that cannot be told apart, a process that cannot say where its Transcripts are)
+  drops nothing: the label stands, the conversation stays under a banner with its
+  send guard armed, and a Send is refused until a check can say.
 - Codex's shared daemon gets no binding of its own and no candidate list,
   since every daemon window's sessions look alike from outside: the
   title-prefix match rejected in

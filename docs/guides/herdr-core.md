@@ -228,6 +228,8 @@ Your choice is dropped, and Chat goes back to **Can't Tell the Conversation**, w
 - the program names a session for itself, or Chat finds exact evidence
 - a message you sent from Chat is missing from the conversation once the Agent's next turn ends
 
+Chat then stops showing that conversation. A check that can't see the Agent's process for a moment drops nothing: Chat keeps the conversation under a banner, and a Send sends nothing until a check can say.
+
 Codex on its shared background server offers no list, only `codex resume --no-daemon`. Herdr TUI Hosts name the conversation themselves and offer no list.
 
 | Chat says | What it means |

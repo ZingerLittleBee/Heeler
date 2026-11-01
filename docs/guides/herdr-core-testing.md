@@ -297,7 +297,7 @@ conversation before choosing, in light and dark, and attach them to the run's no
 | Second device | Open the same Agent's Chat on a second Simulator | It shows the same conversation. With Chat open there, confirm on the first and clear on the box: it follows both, with no Retry |
 | Process change | Quit the program and start it again in that Terminal | Chat says it cannot tell and the label is gone |
 | Session switch | On a Pi with the extension, confirm from before it wrote, then run `/new` | The session label wins and `heeler.chat` is gone |
-| Send guard | Choose the conversation on screen and Send from Chat. Switch the program to another session inside it, Send from Chat again and let that turn end | After the first Send the pick stays. Within a few seconds of the second turn's end, Chat says it cannot tell and the label is gone |
+| Send guard | Choose the conversation on screen and Send from Chat. Switch the program to another session inside it, Send from Chat again and let that turn end | After the first Send the pick stays. Within a few seconds of the second turn's end, Chat says it cannot tell in place of the conversation, with none of its messages left, and the label is gone |
 | The in-process limit | On a Pi without the extension, confirm, then run `/new` in the terminal | Chat keeps the old conversation until a Send from Chat fails the guard, as the guide says. Record that OpenCode's title refuses the Send instead |
 | Codex by default | Plain `codex` on the shared daemon | No list, only `codex resume --no-daemon` |
 | Herdr TUI | Any Chat on a Herdr TUI Host | No list, whatever it says |
