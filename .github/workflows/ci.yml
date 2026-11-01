@@ -61,7 +61,7 @@ on:
       diagnostic_target:
         description: Optional isolated feedback; never the complete coverage gate
         type: choice
-        options: [none, all, ssh-jump, staging, staging-method, weak, layout]
+        options: [none, all, ssh-jump, staging, staging-method, weak, layout, usage]
         default: none
       diagnostic_iterations:
         description: Optional 1-100 rounds; defaults to SSH 50, staging/layout 20, weak 10
@@ -109,11 +109,17 @@ permissions:
 
 jobs:
   diagnostics:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_target != '' && inputs.diagnostic_target != 'none' && inputs.diagnostic_target != 'usage' }}
     uses: ./.github/workflows/ci-diagnostics.yml
     with:
       target: ${{ inputs.diagnostic_target }}
       iterations: ${{ inputs.diagnostic_iterations }}
+
+  usage-sample:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_target == 'usage' }}
+    uses: ./.github/workflows/usage-refresh-sample.yml
+    with:
+      iterations: ${{ inputs.diagnostic_iterations || '20' }}
 
   app-tests:
     if: ${{ inputs.diagnostic_target == '' || inputs.diagnostic_target == 'none' }}

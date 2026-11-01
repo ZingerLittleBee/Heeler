@@ -1,0 +1,80 @@
+name: Usage refresh sample
+
+# Temporary, explicit diagnosis on the sampling branch; not a merge gate.
+on:
+  workflow_call:
+    inputs:
+      iterations:
+        description: Repetitions of both Usage interaction tests (1-100)
+        default: '20'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sample:
+    runs-on: macos-26
+    timeout-minutes: 70
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      HEELER_SSH_E2E_REQUIRED: '0'
+      ITERATIONS: ${{ inputs.iterations }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            .ci/source-packages
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+      - name: Resolve the existing compiler cache identity
+        id: toolchain
+        env:
+          BUILD_INPUT_HASH: ${{ hashFiles('project.yml', 'Heeler.xcodeproj/project.pbxproj', 'Heeler.xcodeproj/xcshareddata/xcschemes/Heeler.xcscheme', 'Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Packages/**/Package.swift') }}
+        run: |
+          [[ "$ITERATIONS" =~ ^([1-9][0-9]?|100)$ ]]
+          identity=$({
+            xcodebuild -version
+            xcrun --sdk iphonesimulator --show-sdk-version
+            uname -m
+            printf '%s\n' "$BUILD_INPUT_HASH" 'Debug-no-symbols-no-index-v1'
+          } | shasum -a 256 | cut -d ' ' -f 1)
+          echo "cache-prefix=ios-app-cas-v1-${RUNNER_OS}-${RUNNER_ARCH}-${identity}-" >> "$GITHUB_OUTPUT"
+          make check-test-membership verify-ssh-artifacts
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ci/app-compilation-cache
+          key: ${{ steps.toolchain.outputs.cache-prefix }}${{ github.sha }}
+          restore-keys: |
+            ${{ steps.toolchain.outputs.cache-prefix }}
+      - name: Repeat the original assertions without retries
+        run: |
+          mkdir -p .ci/usage-refresh
+          # Keep the committed project, the normal stable build paths, and the
+          # existing accessibility/result-validation wrapper. No fixture needed.
+          make -o generate test-app DERIVED="$GITHUB_WORKSPACE/.ci/app-derived" \
+            TEST_SELECTOR='HeelerTests/AgentUsagePageInteractionTests' \
+            TEST_FLAGS="-test-iterations $ITERATIONS -parallel-testing-enabled NO -collect-test-diagnostics never -clonedSourcePackagesDirPath $GITHUB_WORKSPACE/.ci/source-packages -resultBundlePath $GITHUB_WORKSPACE/.ci/usage-refresh/results.xcresult GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=YES COMPILATION_CACHE_CAS_PATH=$GITHUB_WORKSPACE/.ci/app-compilation-cache" \
+            2>&1 | tee .ci/usage-refresh/tests.log
+      - name: Export native results
+        if: always()
+        run: |
+          if [[ -d .ci/usage-refresh/results.xcresult ]]; then
+            for report in summary tests; do
+              xcrun xcresulttool get test-results "$report" \
+                --path .ci/usage-refresh/results.xcresult --compact > ".ci/usage-refresh/$report.json"
+            done
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: usage-refresh-${{ github.sha }}-${{ github.run_attempt }}
+          path: .ci/usage-refresh
+          if-no-files-found: error
+          retention-days: 7
