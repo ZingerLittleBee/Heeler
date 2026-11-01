@@ -46,6 +46,57 @@ struct GrokTranscriptLocatorTests {
         return try await locator.locate(sessionID: sessionID, directories: directories)
     }
 
+    // MARK: The Agent's own root
+
+    private static let startedID = "00000000-0000-4000-8000-000000000001"
+
+    /// On herdr-core the root is the Agent's own `GROK_HOME`, and the id may be the
+    /// UUIDv4 Heeler started it with (ADR 0034, `host-evidence/grok/s-flag.json`).
+    @Test func aGivenRootIsWhereItLooksAndTakesTheIDItWasStartedWith() async throws {
+        let files = VirtualHostFiles()
+        let grokHome = "/srv/work account"
+        let path = "\(grokHome)/sessions/\(Self.group)/\(Self.startedID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.startedID), at: path)
+
+        let found = try await GrokTranscriptLocator(files: files.hostFiles())
+            .locate(sessionID: Self.startedID, directories: [Self.cwd], configRoot: grokHome)
+
+        #expect(found == .success(path))
+    }
+
+    @Test func aGivenRootNeverFallsBackToTheHome() async throws {
+        let files = VirtualHostFiles()
+        await files.write(Self.record(sessionID: Self.sessionID), at: Self.transcriptPath())
+
+        let found = try await GrokTranscriptLocator(files: files.hostFiles())
+            .locate(sessionID: Self.sessionID, directories: [Self.cwd], configRoot: "/srv/empty")
+
+        #expect(found == .failure(.notFound(searchedAll: true)))
+    }
+
+    @Test func aGivenRootSearchesItsOwnWorktreesFirst() async throws {
+        let files = VirtualHostFiles()
+        let grokHome = "/srv/grok"
+        let worktree = try #require(GrokTranscriptLocator.groupName(forDirectory: "\(grokHome)/worktrees/a"))
+        let path = "\(grokHome)/sessions/\(worktree)/\(Self.sessionID)/updates.jsonl"
+        await files.write(Self.record(sessionID: Self.sessionID), at: path)
+        await files.write(Data(), at: "\(grokHome)/sessions/zzz/placeholder")
+
+        let found = try await GrokTranscriptLocator(files: files.hostFiles())
+            .locate(sessionID: Self.sessionID, directories: [Self.cwd], configRoot: grokHome)
+
+        #expect(found == .success(path))
+    }
+
+    /// Herdr TUI reports only UUIDv7 ids, and its behavior does not change.
+    @Test func withoutARootOnlyAUUIDv7Counts() async throws {
+        let files = VirtualHostFiles()
+        await files.write(
+            Self.record(sessionID: Self.startedID), at: Self.transcriptPath(sessionID: Self.startedID))
+
+        #expect(try await Self.locate(files, sessionID: Self.startedID) == .failure(.mismatched))
+    }
+
     // MARK: Groups
 
     @Test func findsTheSessionInThePaneDirectorysGroup() async throws {
