@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -175,6 +175,24 @@ suite("pruning", () => {
     assert.deepEqual(readRegistrations().devices, [alert]);
     assert.equal(removed.token, "c".repeat(64));
     assert.deepEqual(readdirSync(dir), ["notifications.json"]);
+  });
+
+  test("a pruned file stays private to the user, whatever the umask", () => {
+    const umask = process.umask(0o022);
+    try {
+      const entry = liveEntry();
+      for (const prune of [
+        () => pruneLiveActivityTokens(dir, new Set([entry.live_activity.token])),
+        () => pruneAlertTokens(dir, new Set([TOKEN_A])),
+      ]) {
+        writeRegistrations({ v: 1, devices: [entry] });
+        chmodSync(join(dir, "notifications.json"), 0o600);
+        prune();
+        assert.equal(statSync(join(dir, "notifications.json")).mode & 0o777, 0o600);
+      }
+    } finally {
+      process.umask(umask);
+    }
   });
 
   test("an unreadable or foreign file stays exactly as it was", () => {
