@@ -1088,15 +1088,15 @@ final class ConsoleStore {
                 paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID))
     }
 
-    /// User-facing copy for a failed `tab.close`. `TransportError` is not a
-    /// `LocalizedError`, so `localizedDescription` would read as an opaque
-    /// Foundation code; mirror the rename path's mapping instead.
     /// A close nobody answered may have happened, so it is left to the user to
     /// check, and nothing sends it again.
     static let closeUnconfirmedMessage =
         "The Host did not confirm the close. The Terminal may already have ended, "
         + "so check it before trying again."
 
+    /// User-facing copy for a failed `tab.close`. `TransportError` is not a
+    /// `LocalizedError`, so `localizedDescription` would read as an opaque
+    /// Foundation code; mirror the rename path's mapping instead.
     static func tabCloseFailureMessage(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
@@ -1576,8 +1576,6 @@ final class ConsoleStore {
         agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
     }
 
-    /// Live rows plus saved Chat entry points while a Host is unproven. The
-    /// separate `agents` property remains the only realtime inventory.
     /// What a detail column shows for this selection: an Agent on the list or
     /// a saved Chat, or a departed Agent, which no list shows.
     func detailAgent(for id: ConsoleAgent.ID) -> ConsoleAgent? {
@@ -1595,6 +1593,8 @@ final class ConsoleStore {
         return terminal.isRestarting ? .restarting : .shell
     }
 
+    /// Live rows plus saved Chat entry points while a Host is unproven. The
+    /// separate `agents` property remains the only realtime inventory.
     var chatDisplayAgents: [ConsoleAgent] {
         agents + savedChatAgents.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
             pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
@@ -1632,8 +1632,6 @@ final class ConsoleStore {
             statusSeverity: issue?.severity, isEmpty: false, inventoryNoun: "Agents")
     }
 
-    /// What the Host offers. A detail can outlive its Host's catalog entry for
-    /// a moment; its actions stay as they were and fail as not connected.
     /// A window closed, or the system disconnected it. What it shows still
     /// reads as selected, so its screens never let go of a core Terminal on
     /// their own, and one that did not would stay a viewer the Terminal sizes
@@ -1662,6 +1660,8 @@ final class ConsoleStore {
         return !capabilities(for: hostID).takeOver
     }
 
+    /// What the Host offers. A detail can outlive its Host's catalog entry for
+    /// a moment; its actions stay as they were and fail as not connected.
     func capabilities(for hostID: Host.ID) -> HostCapabilities {
         HostCapabilities(
             serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
