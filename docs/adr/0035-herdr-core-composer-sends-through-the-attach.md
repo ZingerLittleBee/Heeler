@@ -181,9 +181,10 @@ confirm or refine these points with test clients, not the app.
   keeps it from being submitted there, and Send's Ctrl+C drops it.
 - On Windows the same-pid check compares PowerShell's pid and the program in its
   arguments, which stay the same for the Terminal's life (ADR 0032). Under
-  Heeler's launch form that is enough: the Agent's exit ends PowerShell and the
-  Terminal, so the read after the paste finds it finished, nothing is submitted
-  and no shell is left to hold the text.
+  Heeler's launch form that is enough: in the runs observed, the program's end
+  also ended PowerShell and the Terminal, so the read after the paste finds it
+  finished, nothing is submitted and no shell is left to hold the text. No Agent
+  has exited normally there; Claude Code was stopped with Ctrl+C.
 - Under the desktop's `-NoExit` form the check passes after the Agent has left,
   so Enter would reach PowerShell's prompt and run the draft as a command. The
   foreground cannot show that a PowerShell took over, so "when a shell holds

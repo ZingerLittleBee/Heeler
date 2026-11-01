@@ -203,9 +203,12 @@ with test clients, not the app.
   and the launch arguments, never the child
   ([observation](../agents/herdr-compatibility.md)). Recognizing a Windows
   Agent therefore reads the program out of PowerShell's `-Command` argument
-  (#588). Under Heeler's form the Agent's exit finishes the Terminal with the
-  program's code, so its Pane closes as on Unix. Under the desktop's `-NoExit`
-  form the same exit leaves the foreground's pid, name and arguments unchanged
+  (#588). Under Heeler's form the Terminal finished when its program ended, so
+  its Pane closes as on Unix. `choice.exe` finished it with its own code, 2.
+  Claude Code stopped by two Ctrl+C keys finished it with 1, not separated from
+  PowerShell's own code, and no Agent has exited normally there. Under the
+  desktop's `-NoExit` form an Agent's exit leaves the foreground's pid, name and
+  arguments unchanged
   and sends no new foreground event, so recognition from the foreground keeps
   reading such a Terminal as that Agent until its shell exits, and "a shell in
   the foreground ends the Agent" never fires. A read of PowerShell's children
