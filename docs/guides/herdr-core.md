@@ -216,7 +216,7 @@ If the connection drops with **Worktree Details** open, the sheet goes with the 
 
 ## Chat
 
-Chat opens for a Claude Code Agent on a Linux core Host, where you can read its conversation, send to it, stop it and answer its questions.
+Chat opens for a Claude Code Agent on a Linux core Host, where you can read its conversation, send to it, stop it and answer its questions. Chat for Codex, Grok Build and OpenCode 2.x on Linux is built and turned on one program at a time, each once it has passed a check with a signed-in account. Until then, those Agents offer the terminal alone. The rows below say what to expect from each.
 
 - **Send** checks the Agent's input box and which conversation it shows, pastes the message, and submits it only if the same Agent still holds the terminal within two seconds. Otherwise nothing is submitted, the draft stays in the Composer, and a notice says whether the text may still be in the terminal. A Send the Host did not answer is never sent again, so check the terminal before sending it yourself. Its message says it **may or may not have reached the Agent**, until the conversation shows it arrived. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**.
 - **Stop** presses Esc, or on a Template's Terminal the Template's stop key.
@@ -224,11 +224,15 @@ Chat opens for a Claude Code Agent on a Linux core Host, where you can read its 
 
 Typing from Chat does not change the terminal's size for anyone viewing it.
 
-Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR` the Agent itself runs with. It checks when you open or return to Chat, before each Send, when you retry, when a reconnect or the Agent's return brings its Terminal back, and when the Agent's status, turn or foreground program changes. No timer checks in between.
+Heeler finds the conversation from the Agent's own process on the Host, with nothing to install, and never guesses from a directory or the newest file. It follows Claude Code's `/clear` and `/resume`, and reads from the `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `GROK_HOME` the Agent itself runs with. It checks when you open or return to Chat, before each Send, when you retry, when a reconnect or the Agent's return brings its Terminal back, and when the Agent's status, turn or foreground program changes. No timer checks in between.
 
 | Chat says | What it means |
 | --- | --- |
 | **Can't Tell the Conversation** | Claude Code names its conversation only once it reaches its prompt. Finish signing in or answer its question in the terminal, and Chat follows on the next status change. **Retry** checks at once |
+| **Can't Tell the Conversation**, on Codex | Codex shows its conversation with the first message, so send one in the terminal. Once a message follows `/new`, nothing says which conversation is on screen: exit Codex, run `codex resume --no-daemon` and pick the conversation |
+| **Can't Tell the Conversation**, on Grok Build | Grok Build lists its conversation while it runs. After `/new` it lists both, and Chat can't tell until you start Grok Build again |
+| **Can't Tell the Conversation**, on OpenCode | Heeler can name OpenCode's conversation only when it starts OpenCode 2.1 or later itself, from New Agent. A hand-started or older OpenCode, or a Template's, stays this way |
+| **Codex Started Without `--no-daemon`** | Codex runs on its shared background server, where one terminal's conversation looks like another's. Exit Codex, run `codex resume --no-daemon` and pick the conversation in Codex's list. New Agent starts Codex this way itself, so this comes from a Codex you started by hand or a Template |
 | **Transcript Saving Is Off** | The Agent runs with the variable Chat names, `CLAUDE_CODE_CHILD_SESSION` or `CLAUDE_CODE_SKIP_PROMPT_HISTORY`, so it keeps no conversation to read. Start it again without the variable. If the core itself carries it, the Host's **Core Environment** says how to fix that |
 | **Restarting…**, **The Agent ended** or **The Agent is gone** | The program in the Agent's Terminal was lost, exited, or gave way to a shell. Chat stays on the conversation and sends nothing, and follows the next Claude Code started at that address |
 
@@ -247,7 +251,9 @@ Heeler looks for the sessions where the Agent's own environment says: `PI_CODING
 ## Known limits
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
-- Chat opens only for Claude Code on Linux. Other programs and macOS core Hosts offer the terminal alone, and [Pi and Oh My Pi](#pi-and-oh-my-pi) join once each passes its check.
+- Chat opens for Claude Code on Linux, and for Codex, Grok Build, OpenCode 2.x, [Pi and Oh My Pi](#pi-and-oh-my-pi) once each has passed its check. Until then those Agents, and every Agent on a macOS or native Windows core Host, offer the terminal alone.
+- Right after `/new` in Codex, before any message there, nothing on the Host has changed. Chat keeps showing the old conversation, and a Send goes to the new one. After `/new`, keep to the terminal until you have exited Codex and run `codex resume --no-daemon`.
+- After `/new` or a pick in OpenCode's list, Chat keeps showing the conversation OpenCode started with until you start OpenCode again. Its terminal title is what says the screen moved, so a Send sends nothing and says why. With OpenCode's `terminal.title` setting off, or while Chat's conversation has no title of its own, the title can't tell, and a Send goes to whatever conversation is on screen. Only OpenCode's home screen still holds it.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.
 - If Heeler cannot read its saved herdr-core Hosts, the Hosts tab says so. Herdr TUI Hosts keep working and the saved data stays as it was, but no herdr-core Host can be added until it reads again.

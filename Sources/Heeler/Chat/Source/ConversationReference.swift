@@ -55,6 +55,17 @@ struct ConversationReference: Hashable, Sendable {
         return uuid.uuidString.lowercased()
     }
 
+    /// The text unchanged when it is a lowercase UUID of any version. Grok Build
+    /// keeps a session it was given with `-s` under that id as given, as Heeler
+    /// starts it on herdr-core (ADR 0034).
+    static func lowercaseUUID(_ text: String) -> String? {
+        guard
+            text.utf8.count == 36,
+            text.wholeMatch(of: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/) != nil
+        else { return nil }
+        return text
+    }
+
     /// The text unchanged when it is a lowercase UUIDv7, the only id Grok
     /// Build creates, or nil. It is never lowercased: Grok names the session
     /// folder and `sessionId` with the id as given, so another case would

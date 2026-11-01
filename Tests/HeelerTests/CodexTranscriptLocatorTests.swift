@@ -27,6 +27,33 @@ struct CodexTranscriptLocatorTests {
             .locate(threadID: thread)
     }
 
+    /// On herdr-core the root is the Agent's own `CODEX_HOME` (ADR 0034).
+    @Test func aGivenRootIsWhereItLooksAndNotTheHome() async throws {
+        let files = VirtualHostFiles()
+        let root = "/srv/work account"
+        let path = "\(root)/sessions/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(Self.meta(id: Self.thread), at: path)
+        await files.write(
+            Self.meta(id: Self.thread), at: "\(Self.sessions)/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-20"))")
+
+        let location = try await CodexTranscriptLocator(files: files.hostFiles(), now: { Self.sameDay })
+            .locate(threadID: Self.thread, configRoot: root).get()
+
+        #expect(location.segments.map(\.path) == [path])
+        #expect(await files.listings.allSatisfy { $0.directory.hasPrefix(root) })
+    }
+
+    @Test func aGivenRootNeverFallsBackToTheHome() async throws {
+        let files = VirtualHostFiles()
+        await files.write(
+            Self.meta(id: Self.thread), at: "\(Self.sessions)/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-25"))")
+
+        let found = try await CodexTranscriptLocator(files: files.hostFiles(), now: { Self.sameDay })
+            .locate(threadID: Self.thread, configRoot: "/srv/empty")
+
+        #expect(found == .failure(.notFound))
+    }
+
     @Test func findsTheRolloutUnderItsCreationDate() async throws {
         let files = VirtualHostFiles()
         let path = "\(Self.sessions)/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-25"))"

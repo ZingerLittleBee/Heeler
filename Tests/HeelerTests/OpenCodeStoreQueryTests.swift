@@ -8,6 +8,28 @@ import Testing
 /// `sqlite3` reads them (`OpenCodeSQLiteHarness`).
 @Suite("OpenCode store queries")
 struct OpenCodeStoreQueryTests {
+    // MARK: The schemas OpenCode itself made
+
+    /// `host-evidence/opencode/schema-*.sql` came from real stores of these versions
+    /// (ADR 0034), with no real provider's rows. The queries run against them, on
+    /// captured rows of OpenCode 2.0.32's shape.
+    @Test(arguments: ["2.2.5", "2.0.32"])
+    func theQueriesRunAgainstARecordedSchema(_ version: String) throws {
+        let schema = try ChatFixture.text("host-evidence/opencode/schema-\(version).sql")
+        let fixture = try OpenCodeStoreFixture.named("pong")
+        let session = try #require(fixture.sessionID)
+        let harness = try OpenCodeSQLiteHarness(fixture, schema: schema)
+
+        let tail = try harness.records(Self.tail(session))
+        #expect(tail.rows.map(\.seq) == fixture.rows.map(\.seq))
+        let cursor = try Self.cursor(after: tail)
+        #expect(try harness.response(OpenCodeQuery(session: session, kind: .poll(cursor))) == .unchanged(eventSeq: 12))
+        let other = try #require(OpenCodeSessionID("ses_e6a000000001Abcdefghijklmn"))
+        #expect(
+            try harness.response(OpenCodeQuery(session: other, kind: .tail(budget: 1024)))
+                == .sessionMissing(otherStores: []))
+    }
+
     // MARK: Tail, poll and older pages
 
     @Test func aTailReadsTheNewestRowsWithinItsBudget() throws {

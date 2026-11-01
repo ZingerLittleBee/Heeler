@@ -254,7 +254,33 @@ the facts they took on trust, so correct
 | Carried by the core | Use the core from [Leaked environment](#leaked-environment), then start `claude` by hand | The same reason, also pointing at the Host's details, where **Core Environment** names it |
 | Stale hint | Set the label `heeler.session` on the Terminal with `terminal.label`, holding another pid, then open Chat | The label is gone and Chat does not show the label's session |
 | No polling | With the Host's sshd logging exec requests, keep Chat open on an idle Agent for five minutes | No exec during that time. One status change costs one exec and one read of `sessions/<pid>.json` |
-| Off elsewhere | A Codex Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
+| Off elsewhere | A Pi Agent on this box, and a Claude Code Agent on a macOS core Host | Neither offers Chat |
+
+### Codex, Grok Build and OpenCode
+
+These are the owner's checks on hc-lab, with a harness you sign in to, that decide
+whether a program joins `HostCapabilities.confirmedCoreChatPrograms`. For each program that passes, add it
+there and record the versions in
+[herdr compatibility](../agents/herdr-compatibility.md), and for one that fails, record
+what differed and leave it off. The binder's tests read recordings made with a fake
+model and no account, so also correct the observation for whatever a signed-in run
+shows.
+
+| Check | What to do | What to check |
+| --- | --- | --- |
+| Codex without the daemon | Start Codex from New Agent, send one message, open Chat | The conversation shows, from the rollout its native process holds under its own `CODEX_HOME`. Record the process tree and each held rollout's `session_meta` |
+| Codex by default | Start plain `codex` in a Terminal, send one message, open Chat | **Codex Started Without `--no-daemon`** names `codex resume --no-daemon`, Chat reads nothing and sends nothing. Do what it says, and the conversation shows. Record the control socket's path, which came from Codex's source |
+| A second default Codex | Start a second plain `codex` on the same `CODEX_HOME`, then open its Chat | The same message, on a Terminal with no daemon under it |
+| Codex's `/new` | In an open no-daemon Chat, run `/new`, then send a message in the terminal, then another, returning to Chat after each | After `/new` alone Chat still shows the old thread, the known limit. After the first message **Can't Tell the Conversation**, with the new thread's lock held and no rollout, and a Send from Chat sends nothing. After the next, the same from two held roots. Record the held files at each step, and whether the first message still shows no turn |
+| Grok Build | Start Grok Build from New Agent, send one message, open Chat | The conversation shows, under the `GROK_HOME` it runs with. Record its row in `active_sessions.json` beside field 22 of `/proc/<pid>/stat` |
+| Grok Build's `/new` | In an open Chat, run `/new` | **Can't Tell the Conversation**, from two rows for one process |
+| OpenCode 2.x | Start OpenCode 2.1 or later from New Agent, open Chat before any prompt, then send one from the terminal | Chat waits for the first message, then shows the conversation from the store. Record `session_part` rows and what a real provider's `data` holds |
+| OpenCode's `/new` | In an open Chat on a conversation with a title, run `/new` and Send from Chat. Send a prompt in the terminal, and Send from Chat before and after the new conversation gets its title | Chat still shows the conversation it started with. Every Send sends nothing and says why, and the terminal's conversations gain no message from Chat. Record the raw title at each step, and whether a real title model leaves `OpenCode` for long |
+| OpenCode's list | Pick another conversation in OpenCode's list, Send from Chat, then pick the first one back and Send again | The first Send names the other conversation's title and sends nothing. The second lands in the conversation Chat shows. Check the conversation's title in Chat equals the one the store holds on this version, since a title that reads differently refuses every Send |
+| OpenCode's title off | Turn `terminal.title` off in OpenCode, then Send after `/new` and a prompt | The known limit: the title is empty, and the Send lands in the conversation on screen, not the one Chat shows |
+| OpenCode unconfirmed | Start `opencode` by hand, then OpenCode 2.0 and 1.x from New Agent, then set a stale `heeler.session` label on one | **Can't Tell the Conversation**, each time, and the stale label is gone |
+| Home folders | Start Codex and Grok Build with `CODEX_HOME` and `GROK_HOME` naming scratch folders, with other sessions in `~/.codex` and `~/.grok` | Chat reads from the scratch folders |
+| Off until passed | Before adding a program to `HostCapabilities.confirmedCoreChatPrograms`, on this box and on a macOS core Host | It offers the terminal alone |
 
 ## Pi and Oh My Pi Chat
 

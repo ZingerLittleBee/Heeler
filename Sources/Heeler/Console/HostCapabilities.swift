@@ -106,9 +106,11 @@ extension HostCapabilities {
             startsInWindowsDirectories: coreOnWindows)
     }
 
-    /// The programs whose Chat a Linux core Host opens. Binding works for Pi and Oh
-    /// My Pi, from recordings with no sign-in. Each joins this list only once the
-    /// owner's signed-in check of that program passes and is recorded (ADR 0034).
+    /// The programs whose Chat a Linux core Host opens. Binding works for Codex, Grok
+    /// Build, OpenCode, Pi and Oh My Pi, from recordings with no sign-in. Each joins
+    /// this list only once the owner's signed-in check of that program passes and is
+    /// recorded, and one that fails stays off with its observation saying why
+    /// (ADR 0034).
     static let confirmedCoreChatPrograms: Set<ChatProgram> = [.claude]
 }
 
