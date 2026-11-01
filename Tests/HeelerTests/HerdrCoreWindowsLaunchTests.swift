@@ -401,6 +401,145 @@ struct HerdrCoreWindowsLaunchTests {
         await fixture.finish()
     }
 
+    // MARK: Discovery
+
+    /// The profile a launch's `-Command` loads has to run here too, or the two find
+    /// different programs. The command fits `cmd.exe`'s line under the default shell.
+    @Test func discoveryRunsThroughPowerShellWithItsProfileAndFeedsTheLaunch() async throws {
+        let fixture = try await Fixture(host: host)
+        await fixture.scripted.setWindowsAgentDiscovery(
+            programs: ["cursor-agent", "opencode", "claude"], version: "opencode v2.2.2")
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(form.agentDiscoveryState == .loaded)
+        #expect(form.availableAgentKinds == [.claude, .cursor, .opencode])
+        let command = try #require(await fixture.scripted.windowsDiscoveryCommands.first)
+        #expect(command.hasPrefix("powershell.exe -NoLogo -NonInteractive -EncodedCommand "))
+        #expect(command.utf8.count < 8191)
+        let script = try ScriptedCoreHost.decodedDiscovery(command)
+        #expect(script.contains("Get-Command"))
+        #expect(script.contains("'opencode' --version"))
+        for kind in SupportedAgentKind.allCases { #expect(script.contains("'\(kind.executable)'")) }
+
+        form.selectedAgentKind = .opencode
+        await fixture.answerRun(argv: Self.launchForm("opencode"), cwd: Self.derivedDirectory)
+        await form.submit()
+
+        let line = try #require(Self.strings(await fixture.scripted.runs.last?["argv"]).last)
+        let id = try #require(line.wholeMatch(of: #/& 'opencode' '-s' '(?<id>[^']+)'; exit \$LASTEXITCODE/#)?.output.id)
+        #expect(String(id).wholeMatch(of: Self.openCodeID) != nil)
+        await fixture.finish()
+    }
+
+    /// An exec can refuse to run a program a Terminal runs (herdr compatibility), so a
+    /// version that did not come is no word on whether OpenCode is there.
+    @Test func anOpenCodeTheExecCannotRunIsStillListedAndStartsWithoutItsID() async throws {
+        let fixture = try await Fixture(host: host)
+        await fixture.scripted.setWindowsAgentDiscovery(programs: ["opencode"], version: "")
+        let form = fixture.startAgentForm()
+
+        await form.discoverAgents()
+
+        #expect(form.availableAgentKinds == [.opencode])
+        await fixture.answerRun(argv: Self.launchForm("opencode"), cwd: Self.derivedDirectory)
+        await form.submit()
+
+        #expect(
+            Self.strings(await fixture.scripted.runs.last?["argv"])
+                == ["powershell.exe", "-Command", "& 'opencode'" + Self.exit])
+        await fixture.finish()
+    }
+
+    @Test func aProfileThatPrintsDoesNotReachTheAnswer() async throws {
+        let fixture = try await Fixture(host: host)
+        await fixture.scripted.setWindowsAgentDiscovery(
+            programs: ["codex"], version: "", banner: "Loading profile...\r\nagent claude\r\n")
+
+        let kinds = try await fixture.store.availableAgentKinds(on: host.id)
+
+        #expect(kinds == [.codex])
+        await fixture.finish()
+    }
+
+    @Test func aDiscoveryCutShortSaysSo() async throws {
+        let fixture = try await Fixture(host: host)
+        await fixture.scripted.setWindowsDiscoveryAnswer(
+            GitExecResult(stdout: Data("Loading profile...\r\n".utf8), stderr: Data(), exitStatus: 0))
+
+        await #expect(throws: TransportError.self) {
+            try await fixture.store.availableAgentKinds(on: host.id)
+        }
+        await fixture.finish()
+    }
+
+    // MARK: New Workspace
+
+    @Test func newWorkspaceCreatesADesktopSpaceAtThePickedWindowsDirectoryWithNoNameField() async throws {
+        let fixture = try await Fixture(host: host)
+        await fixture.scripted.setWindowsAgentDiscovery(programs: ["codex"], version: "")
+        // Even an app that answers: Rename and a typed name stay off on Windows.
+        await fixture.scripted.setHerdrAppAnswer(
+            .success(GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 0)))
+        let form = fixture.startAgentForm()
+        await form.discoverAgents()
+        let picked = #"C:\Users\me\new project"#
+
+        form.applyBrowsedDirectory(picked)
+        #expect(form.launchTarget == .newWorkspace)
+        #expect(!form.offersWorkspaceName)
+        #expect(!form.offersWorkspaceAndTabNames)
+        #expect(!form.offersWorktree)
+        let labels = ["herdr.space": "sp0", "herdr.tab": "tb0"]
+        await fixture.answerRun(argv: Self.launchForm("codex"), cwd: picked, labels: labels)
+        await form.submit()
+
+        let params = try #require(await fixture.scripted.runs.last)
+        #expect(params["cwd"]?.stringValue == picked)
+        let sent = Self.stringFields(params["labels"])
+        #expect(sent["herdr.space"]?.wholeMatch(of: Self.spaceID) != nil)
+        #expect(sent["herdr.tab"]?.wholeMatch(of: Self.tabID) != nil)
+        #expect(await fixture.scripted.methods.contains("doc.set") == false)
+
+        let offers = fixture.store.capabilities(for: host.id)
+        #expect(!offers.renameWorkspace(id: "space-s1"))
+        #expect(!offers.namesNewWorkspaces)
+        #expect(await !fixture.scripted.log.contains("herdr-app"))
+        await fixture.finish()
+    }
+
+    @Test func newTerminalOffersNoNameFieldThereEither() async throws {
+        let fixture = try await Fixture(host: host)
+        let store = fixture.store
+        let form = NewTerminalStore(
+            hosts: [host], workspaces: { store.workspaces(for: $0) }, directory: { _, _ in nil },
+            remoteHome: { try await store.remoteHomeDirectory(on: $0) },
+            create: { _, _ in ShellTerminalIdentity(paneID: "", tabID: "", terminalID: "") },
+            awaitTerminal: { _, _ in nil },
+            offersDesktopAppNames: { store.capabilities(for: $0).namesNewWorkspaces })
+
+        #expect(!form.offersWorkspaceAndTabNames)
+        #expect(!form.offersWorkspaceName)
+        await fixture.finish()
+    }
+
+    /// Chat's home read refuses native Windows, and the probe has already said.
+    @Test func aNewWorkspaceWithNoDirectoryStartsInTheHomeTheProbeFound() async throws {
+        let fixture = try await Fixture(host: host)
+        await fixture.scripted.setWindowsAgentDiscovery(programs: ["codex"], version: "")
+        let form = fixture.startAgentForm()
+        await form.discoverAgents()
+        form.selectNewWorkspace()
+        await fixture.answerRun(argv: Self.launchForm("codex"), cwd: #"C:\Users\me"#)
+
+        await form.submit()
+
+        #expect(await fixture.scripted.runs.last?["cwd"]?.stringValue == #"C:\Users\me"#)
+        #expect(try await fixture.store.remoteHomeDirectory(on: host.id) == #"C:\Users\me"#)
+        await fixture.finish()
+    }
+
     /// A Herdr TUI Host on Windows keeps its own answers.
     @Test func aHerdrTUIHostOnWindowsStillOpensNoTerminalAtAWindowsPath() {
         let offers = HostCapabilities(serverKind: .herdrTUI, platform: .nativeWindows)

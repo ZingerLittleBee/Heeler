@@ -1501,8 +1501,11 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             queryOpenCode: nil)
     }
 
+    /// A native Windows Host's locator already said, and that read refuses it.
     func remoteHomeDirectory() async throws -> String {
-        try await session.withTransport { $0.hostServices }.hostHomeDirectory()
+        let transport = try await session.withTransport { $0 }
+        if let home = await transport.lastLocation()?.home { return home }
+        return try await transport.hostServices.hostHomeDirectory()
     }
 
     func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {

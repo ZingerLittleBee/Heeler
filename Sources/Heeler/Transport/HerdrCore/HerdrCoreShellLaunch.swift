@@ -61,6 +61,33 @@ enum HerdrCoreShellLaunch {
         return Data("\(quoted(shell)) -ic \(quoted(lines.joined(separator: "\n")))".utf8)
     }
 
+    /// The same look through Windows PowerShell, a whole command line for one
+    /// bounded exec. It loads the profile a launch's `-Command` loads, and counts every
+    /// command type, since `&` runs them all. An exec can refuse a program a Terminal
+    /// runs (herdr compatibility), so a version that does not come changes no listing.
+    /// Nothing here has run on a Windows machine.
+    static func windowsDiscoveryCommand(executables: [String], versionOf versioned: String, nonce: String) -> String {
+        let literal = PowerShellCommand.literal
+        let programs = executables.map(literal).joined(separator: ", ")
+        return PowerShellCommand.encoded(
+            """
+            \(HerdrCoreLocator.windowsPrelude)
+            say ''
+            say \(literal(beginMarker(nonce)))
+            foreach ($p in @(\(programs))) {
+                if (Get-Command $p -ErrorAction SilentlyContinue) { say ('agent ' + $p) }
+            }
+            $v = $null
+            if (Get-Command \(literal(versioned)) -ErrorAction SilentlyContinue) {
+                try { $v = @($null | & \(literal(versioned)) --version 2>$null)[0] } catch { $v = $null }
+            }
+            say ('version ' + $v)
+            say \(literal(endMarker(nonce)))
+            exit 0
+            """,
+            loadingProfile: true)
+    }
+
     /// Reads only what lies between the markers, which startup files never reach.
     static func parseDiscovery(stdout: Data, nonce: String) throws -> Discovery {
         let lines = stdout.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false)

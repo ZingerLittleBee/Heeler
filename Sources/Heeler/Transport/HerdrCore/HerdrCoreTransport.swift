@@ -234,6 +234,10 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     /// for its startup files, in one bounded exec.
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult
 
+    /// Runs a native Windows Host's agent discovery, a whole command line, in one
+    /// bounded exec with room for the user's PowerShell profile.
+    func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult
+
     /// Runs a `HerdrAppControl` script in one bounded exec, with room for the
     /// five seconds the app's control socket gives its window to answer.
     func runHerdrAppControl(_ script: Data) async throws -> GitExecResult
@@ -479,7 +483,10 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     }
 
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
-        try await connection.runAgentDiscovery(script)
+        if try await resolvedPlatform() == .nativeWindows {
+            return try await connection.runWindowsAgentDiscovery(String(decoding: script, as: UTF8.self))
+        }
+        return try await connection.runAgentDiscovery(script)
     }
 
     func runTerminal(params: JSONValue) async throws -> JSONValue {

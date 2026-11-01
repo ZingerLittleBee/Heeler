@@ -240,6 +240,10 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private var windowsCheckoutAnswer: GitExecResult?
     /// Every ask for the POSIX checkout script, which never reaches a Host here.
     private(set) var posixCheckoutAsks = 0
+    /// Every native Windows discovery's whole command line, oldest first.
+    private(set) var windowsDiscoveryCommands: [String] = []
+    private var windowsDiscovery: (programs: [String], version: String, banner: String) = ([], "", "")
+    private var windowsDiscoveryAnswer: GitExecResult?
 
     /// `shellBanner` is what the user's shell prints before it runs the script.
     init(
@@ -428,6 +432,41 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         return lines[(start + 1)..<end].map {
             String($0.dropFirst().dropLast()).replacingOccurrences(of: "''", with: "'")
         }
+    }
+
+    /// Prints what its script would: the asked-for programs this machine has, with
+    /// `version` the program's own words, or empty for one the exec could not run.
+    func runWindowsAgentDiscovery(_ command: String) async throws -> GitExecResult {
+        log.append("windows-agent-discovery")
+        windowsDiscoveryCommands.append(command)
+        if let windowsDiscoveryAnswer { return windowsDiscoveryAnswer }
+        let script = try Self.decodedDiscovery(command)
+        let marker = "__HEELER_AGENTS_BEGIN_"
+        let nonce = script.range(of: marker).map { script[$0.upperBound...].prefix { $0 != "'" } } ?? ""
+        let agents = windowsDiscovery.programs.filter { script.contains("'\($0)'") }.map { "agent \($0)" }
+        let lines =
+            ["", "\(marker)\(nonce)"] + agents
+            + ["version \(windowsDiscovery.version)", "", "__HEELER_AGENTS_END_\(nonce)"]
+        let output = windowsDiscovery.banner + lines.joined(separator: "\n") + "\n"
+        return GitExecResult(stdout: Data(output.utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    func setWindowsAgentDiscovery(programs: [String], version: String, banner: String = "") {
+        windowsDiscovery = (programs, version, banner)
+    }
+
+    func setWindowsDiscoveryAnswer(_ answer: GitExecResult?) {
+        windowsDiscoveryAnswer = answer
+    }
+
+    /// A discovery's script, which keeps the profile the locator's skips.
+    static func decodedDiscovery(_ command: String) throws -> String {
+        let prefix = "powershell.exe -NoLogo -NonInteractive -EncodedCommand "
+        guard command.hasPrefix(prefix),
+            let bytes = Data(base64Encoded: String(command.dropFirst(prefix.count))),
+            let script = String(data: bytes, encoding: .utf16LittleEndian)
+        else { throw TransportError.malformedResponse("Not a discovery command: \(command)") }
+        return script
     }
 
     func setWindowsGitRoots(_ roots: [String: String]) {
