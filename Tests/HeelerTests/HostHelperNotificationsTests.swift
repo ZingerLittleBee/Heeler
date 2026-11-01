@@ -914,6 +914,81 @@ struct HostHelperNotificationsTests {
 
     // MARK: What makes a registration read again
 
+    @Test func aStoppedCoresRetriesAreOneStatusToARegistrationRead() {
+        let first = EventsSessionStatus.reconnecting(attempt: 1, delay: .seconds(1), failure: Self.stoppedCore)
+        let later = EventsSessionStatus.reconnecting(attempt: 7, delay: .seconds(30), failure: Self.stoppedCore)
+        #expect(first.forRegistrationRead == later.forRegistrationRead)
+    }
+
+    /// Herdr TUI's offline retries read again as they always have.
+    @Test func anotherFailuresRetriesStayDistinctToARegistrationRead() {
+        let failure = TransportError.sshUnreachable(detail: "no route")
+        let first = EventsSessionStatus.reconnecting(attempt: 1, delay: .seconds(1), failure: failure)
+        let later = EventsSessionStatus.reconnecting(attempt: 2, delay: .seconds(2), failure: failure)
+        #expect(first.forRegistrationRead != later.forRegistrationRead)
+        #expect(first.forRegistrationRead == first)
+    }
+
+    @Test func aRealChangeStillReadsAgain() {
+        let stopped = EventsSessionStatus.reconnecting(attempt: 1, delay: .seconds(1), failure: Self.stoppedCore)
+        let offline = EventsSessionStatus.reconnecting(
+            attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "no route"))
+        #expect(stopped.forRegistrationRead != offline.forRegistrationRead)
+        #expect(stopped.forRegistrationRead != EventsSessionStatus.connected)
+        #expect(EventsSessionStatus.connected.forRegistrationRead == .connected)
+    }
+
+    /// Through the app's own observers: retries of one stopped core must not probe
+    /// the Helper over and over, for this Host or any other.
+    @Test func theAppDoesNotReadEveryRegistrationAgainForEachRetryOfAStoppedCore() async throws {
+        let helper = try await installedHelper()
+        let core = ScriptedCoreHost(helper: helper, channel: .refused)
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        let console = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            connectCore: { _ in core.transport() },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(
+                    connect: {
+                        attempts.withLock { $0 += 1 }
+                        throw Self.stoppedCore
+                    },
+                    reconnectPolicy: ReconnectPolicy(
+                        initialDelay: .milliseconds(5), multiplier: 1, maxDelay: .milliseconds(5)),
+                    keepalive: nil)
+            })
+        defer { console.setHosts([]) }
+        let registration = PushRegistrationStore(client: ScriptedPushRegistrationClient(), environment: .sandbox)
+        registration.deviceTokenDidArrive(Data([0x0A, 0x1B, 0x2C, 0x3D]))
+        let app = HeelerAppModel(
+            pushRegistration: registration, sceneDirectory: AgentSceneDirectory(),
+            hostStore: HostStore(volatileHosts: [host]), console: console)
+        app.start()
+        let host = host
+        try await waitUntil("the first read") {
+            switch app.notificationPreferences.states[host.id] {
+            case .idle, .unavailable: true
+            default: false
+            }
+        }
+        try await waitUntil("the session to retry") {
+            if case .reconnecting = console.hostStatuses[host.id] { return true }
+            return false
+        }
+        let probesBefore = await helper.steps.filter { $0 == .probe }.count
+        let attemptsBefore = attempts.withLock { $0 }
+
+        try await waitUntil("twenty more retries") { attempts.withLock { $0 } >= attemptsBefore + 20 }
+
+        // The move into reconnecting may be heard after the count above, once.
+        #expect(await helper.steps.filter { $0 == .probe }.count <= probesBefore + 1)
+    }
+
     @Test func aDeviceRegisteredOnAHelperThatStoppedWorkingCanStillLeave() async throws {
         let rig = try await registeredRig()
         defer { rig.console.setHosts([]) }

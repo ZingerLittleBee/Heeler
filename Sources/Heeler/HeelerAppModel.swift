@@ -289,10 +289,12 @@ final class HeelerAppModel {
         // so re-read each Host's registration file as its connection comes up
         // (and once the push token lands) instead of waiting for a Settings
         // visit that may never happen.
-        observe({ console.hostStatuses }) { [weak self] _ in
+        observe({ console.hostStatuses.mapValues(\.forRegistrationRead) }) { [weak self] _ in
             guard let self else { return }
             Task { await self.notificationPreferences.refresh() }
-            liveActivities.connectionsDidChange()
+        }
+        observe({ console.hostStatuses }) { [weak self] _ in
+            self?.liveActivities.connectionsDidChange()
         }
         observe({ console.hostsAwaitingSnapshot }) { [weak self] _ in
             self?.liveActivities.connectionsDidChange()
