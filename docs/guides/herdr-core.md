@@ -51,9 +51,9 @@ The Console lists the core's Agents and Terminals, each in a card named for its 
 
 **New Workspace** creates a space at the directory you pick, which a running desktop app can show. It has no name field: the space takes its Checkout's folder or its directory's name until the desktop app names it. Worktrees are not offered there.
 
-**Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stage through the core, not over SFTP, one file of up to 8 MiB at a time. Heeler refuses a larger one before sending anything, and your draft stays as it was. The path the core gives goes in your draft and on the clipboard, and a program in that Terminal can read it. The draft has no Send there, so paste the path into the Terminal. The file is in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\`, which SYSTEM, Administrators and your account can read, and no one else. It stays after the Terminal is closed and goes only when the core removes the Terminal's record, with `terminal.rm`.
+**Add** in the Composer, or **Add Image** and **Add File** under More in Direct Input, stage through the core, not over SFTP, one file of up to 8 MiB at a time. Heeler refuses a larger one before sending anything, and your draft stays as it was. The path the core gives goes in your draft and on the clipboard, and a program in that Terminal can read it. Nothing reaches the Agent until you [send](#send). The file is in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\`, which SYSTEM, Administrators and your account can read, and no one else. It stays after the Terminal is closed and goes only when the core removes the Terminal's record, with `terminal.rm`.
 
-Not offered there yet, whatever the Host reads: Send, Stop, Chat, Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
+[Send](#send) and [Stop](#stop) work there too, with one limit Send describes. Not offered there yet, whatever the Host reads: Chat, Rename and Worktrees. Changes and Skills read as unavailable, and the Host Helper reads **Not Available**.
 
 ## Console
 
@@ -105,7 +105,7 @@ In an Agent detail, Direct Input types into the terminal, and Changes and Skills
 
 ## Send
 
-On a macOS or Linux Host, the Composer's Send writes into the terminal you are viewing, in two steps. It pastes the draft, checks that the same Agent still holds the terminal, then presses Enter, or the submit key of the Template the Terminal came from. That takes a little over half a second, and if the terminal is not connected yet, Send opens it first.
+The Composer's Send writes into the terminal you are viewing, in two steps. It pastes the draft, checks that the same Agent still holds the terminal, then presses Enter, or the submit key of the Template the Terminal came from. That takes a little over half a second, and if the terminal is not connected yet, Send opens it first.
 
 The submit goes out within two seconds of the paste or not at all, so a slow link or an Agent that quit never turns your message into a shell command. When it does not go out, the draft stays in the Composer and a notice says what happened:
 
@@ -113,14 +113,17 @@ The submit goes out within two seconds of the paste or not at all, so a slow lin
 | --- | --- | --- |
 | **stayed in the Agent's input unsubmitted** | The Agent still holds the terminal, and the check took longer than two seconds | Finish it in the terminal, or clear it there before you send again |
 | **no longer in the terminal** | The Agent left and a shell took over. Send pressed Ctrl+C once, which made the shell drop the text unrun | Send again once the Agent is back |
-| **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and what zsh does with that is not confirmed yet | Check the terminal before you press anything there |
+| **may still be in the terminal** | The Agent left and something else holds the terminal. Under a shell Send pressed Ctrl+C once, and what zsh or PowerShell 7 does with that is not confirmed yet | Check the terminal before you press anything there |
 | **not accepting a paste** | The program has bracketed paste off, so nothing was written | Send again when it is back at its input |
+| **keeps a shell open** | On Windows, this terminal's shell stays after its Agent exits, so Send cannot tell which would get your message. Nothing was written | Type it with Direct Input |
 
 While the Agent is **Blocked**, Send only pastes. Use the tools keyboard to submit or cancel.
 
 If the Host does not answer a step, Send cannot tell what reached the program. The Composer says so, offers **Edit Draft** instead of Retry, and never sends the message again, because a paste or an Enter the core was holding can still arrive. Look at the terminal first. The next Send pastes nothing until the Host answers, then says the last message **may still be in the Agent's input**. Check the terminal and send again.
 
 Send appears once the connection has told Heeler the Host's platform, a moment after the detail opens.
+
+On a Windows Host, an Agent Heeler started runs under Windows PowerShell, and when it exits its Terminal ends, so nothing stays behind to take Enter. A Terminal that keeps a shell open after its Agent exits, as one the Herdr desktop app started does, looks the same to Heeler before and after, so Send pastes nothing there.
 
 ## Images and files
 
@@ -132,7 +135,7 @@ Add appears once the connection has told Heeler the Host's platform, a moment af
 
 While an Agent is **Working** and the draft is empty, **Stop** takes Send's place. Heeler asks the core to press the Terminal's own stop key: the stop key of the Template the Terminal came from, else Esc. It then reads whether the program still runs, so an Agent that exits at the key leaves the list without waiting for the next update. Each tap presses once, and Heeler never presses again by itself.
 
-Stop shows only while the Agent holds the terminal, never for the shell it left behind. A program that has not reported a status reads **Unknown** and has no Stop. Use the tools keyboard or Direct Input there.
+Stop shows only while the Agent holds the terminal, never for the shell it left behind. The exception is a Windows Terminal that keeps a shell open after its Agent exits: Heeler cannot see the Agent leave, so the key can reach that shell. A program that has not reported a status reads **Unknown** and has no Stop. Use the tools keyboard or Direct Input there.
 
 A Grok Build Agent's Composer keeps **Send** while it works, as on any other Host, because Esc does not stop its turns. Use the tools keyboard or Direct Input to press Ctrl+C.
 

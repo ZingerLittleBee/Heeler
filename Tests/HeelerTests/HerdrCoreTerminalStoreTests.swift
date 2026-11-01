@@ -1685,8 +1685,8 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    /// Native Windows stages through the core, and Send has its own ticket.
-    @Test func aNativeWindowsCoreAgentsComposerOffersAddAndNoSend() async throws {
+    /// Native Windows stages through the core and takes Send over its Attach.
+    @Test func aNativeWindowsCoreAgentsComposerOffersAddAndSend() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         await fixture.scripted.helper.configure { $0.platform = .nativeWindows }
         let agent = try #require(fixture.console.agents.first)
@@ -1696,7 +1696,8 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the Composer") { detail.offers("Message the Agent") }
         try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .nativeWindows }
         try await Self.until("Add") { detail.offers("Add") }
-        #expect(!detail.offers("Send"))
+        fixture.console.composerStore(for: agent).replaceDraft(with: "and the tests")
+        try await Self.until("Send") { detail.offers("Send") }
         await detail.close()
         await fixture.finish()
     }
@@ -1778,8 +1779,8 @@ struct HerdrCoreTerminalStoreTests {
         await fixture.finish()
     }
 
-    /// Stop on native Windows arrives with that platform's own Composer.
-    @Test func aNativeWindowsCoreAgentsComposerOffersNoStop() async throws {
+    /// A Working Agent on native Windows gets Stop in Send's place, as on POSIX.
+    @Test func aNativeWindowsCoreAgentsComposerOffersStop() async throws {
         let fixture = try await Fixture(terminals: [Self.agentRecord])
         await fixture.scripted.helper.configure { $0.platform = .nativeWindows }
         let agent = try #require(fixture.console.agents.first)
@@ -1788,7 +1789,7 @@ struct HerdrCoreTerminalStoreTests {
 
         try await Self.until("the platform") { fixture.console.hostPlatforms[hostID] == .nativeWindows }
         try await Self.until("the Composer") { detail.offers("Message the Agent") }
-        #expect(!detail.offers("Stop"))
+        try await Self.until("Stop") { detail.offers("Stop") }
         await detail.close()
         await fixture.finish()
     }

@@ -147,9 +147,8 @@ confirm or refine these points with test clients, not the app.
 ## Consequences
 
 - Send needs a live Attach to the Agent; Composer opens one before sending.
-- Send is offered once the connection reports a POSIX Host. Native Windows
-  turns it on separately (#589), under the limits its foreground form sets
-  below.
+- Send is offered once the connection reports the Host's platform. Native Windows
+  takes the same steps under the limits its foreground form sets below (#589).
 - Send takes at least 550 ms and one read between paste and submit, even when a
   foreground event showing the same program comes sooner. On a link slow enough
   that the check passes two seconds, counted from when the paste was handed to
@@ -188,10 +187,26 @@ confirm or refine these points with test clients, not the app.
 - Under the desktop's `-NoExit` form the check passes after the Agent has left,
   so Enter would reach PowerShell's prompt and run the draft as a command. The
   foreground cannot show that a PowerShell took over, so "when a shell holds
-  the foreground" never fires there. #589 therefore offers Send only under
-  Heeler's form until it has another check before submitting, such as a read of
-  PowerShell's children. This narrows that ticket's Ctrl+C on the `-NoExit`
-  wrapper, and it needs the owner's decision if that wrapper must have Send.
+  the foreground" never fires there. So on native Windows Send refuses before it
+  pastes, with a notice and the draft kept, unless the foreground is Heeler's exact
+  form or a first process that is no shell (a program it runs ends the Terminal with
+  it). `-NoExit`, `cmd /k` and any other shell line or option get nothing, until
+  there is another check before submitting, such as a read of PowerShell's children.
+  The button stays, because it is Stop's place too and the notice gives the reason.
+  This narrows #589's Ctrl+C on the `-NoExit` wrapper, and it needs the owner's
+  decision if that wrapper must have Send.
+- Ctrl+C on Windows still goes out when a read shows a plain PowerShell in the
+  foreground, though the records have not shown that happen under Heeler's form.
+  `powershell` says the text is gone on the strength of the observation below (5.1,
+  PSReadLine 2.0.0, one machine), and `pwsh` says it may remain, since nobody tried it.
+- Stop on Windows reads the Terminal's state as well as its foreground, which stays
+  the same to the end: a finished record takes the Agent off the list. Under `-NoExit`
+  a Working status can outlast the Agent, so Stop's key can reach the prompt, where Esc
+  or Ctrl+C runs nothing.
+- Nothing on record shows an Agent's `CSI ?2004h` reaching the viewer through the
+  pseudo console: no kept attach stream holds a program that sets it. If it does not
+  arrive, the mode gate refuses every Send on Windows, which leaves the draft and writes
+  nothing. The owner's Windows check settles this.
 - On the one Windows machine tried, across an SSH exec with an elevated token and
   an elevated core, the mode stayed off at the prompt of Windows PowerShell 5.1
   (PSReadLine 2.0.0): with the first paint kept, `CSI ?2004h` appeared nowhere in

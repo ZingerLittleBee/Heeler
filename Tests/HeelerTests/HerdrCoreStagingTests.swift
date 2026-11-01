@@ -153,12 +153,12 @@ struct HerdrCoreStagingTests {
         }
     }
 
-    /// Native Windows gets Send from its own ticket, once its foreground is
-    /// settled, so a core Host offers it only once it is known to be POSIX.
-    @Test func aCoreHostOffersSendOnceItIsKnownToBePosix() {
+    /// The foreground Send checks takes its form from the platform, so a core Host
+    /// offers it only once that is known.
+    @Test func aCoreHostOffersSendOnceItsPlatformIsKnown() {
         #expect(!HostCapabilities(serverKind: .herdrCore).composerSend)
         #expect(HostCapabilities(serverKind: .herdrCore, platform: .posix).composerSend)
-        #expect(!HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows).composerSend)
+        #expect(HostCapabilities(serverKind: .herdrCore, platform: .nativeWindows).composerSend)
     }
 
     @Test func aPlatformLeftUnknownIsAskedAgainOnTheNextConnection() async throws {

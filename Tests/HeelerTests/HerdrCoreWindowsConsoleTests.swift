@@ -216,8 +216,8 @@ struct HerdrCoreWindowsConsoleTests {
 
     // MARK: What it offers
 
-    /// New Agent, New Terminal, New Workspace and staging are on, its name field and
-    /// Rename off, and what later tickets turn on stays hidden.
+    /// New Agent, New Terminal, New Workspace, staging, Send and Stop are on, its name
+    /// field and Rename off, and what later tickets turn on stays hidden.
     private func expectWindowsOffers(_ offers: HostCapabilities, sourceLocation: SourceLocation = #_sourceLocation) {
         #expect(!offers.renameAgent, sourceLocation: sourceLocation)
         #expect(!offers.renameWorkspace(id: "space-s1"), sourceLocation: sourceLocation)
@@ -227,8 +227,8 @@ struct HerdrCoreWindowsConsoleTests {
         #expect(offers.newTerminalRequest(workspaceID: "w", cwd: #"C:\work"#) != nil, sourceLocation: sourceLocation)
         #expect(!offers.namesNewWorkspaces, sourceLocation: sourceLocation)
         #expect(offers.uploads, sourceLocation: sourceLocation)
-        #expect(!offers.composerSend, sourceLocation: sourceLocation)
-        #expect(!offers.composerStop, sourceLocation: sourceLocation)
+        #expect(offers.composerSend, sourceLocation: sourceLocation)
+        #expect(offers.composerStop, sourceLocation: sourceLocation)
         #expect(!offers.chat, sourceLocation: sourceLocation)
     }
 
