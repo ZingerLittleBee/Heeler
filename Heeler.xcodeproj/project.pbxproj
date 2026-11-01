@@ -443,6 +443,7 @@
 		75A8255D9FA3B634C315DBAE /* GridReportSettling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57EEA346C23330237A2A79EB /* GridReportSettling.swift */; };
 		75CA2DECD2258053DA17C92D /* DiffLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90A2EE01217CF818AEDED7DD /* DiffLayout.swift */; };
 		75EDA1F338F8D8B218449189 /* FileDiffSideBySideRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 368590C90A04F41084291B8C /* FileDiffSideBySideRow.swift */; };
+		766A815EDF6EBA2BCDCCF8EE /* HerdrCoreWindowsConsoleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D4F3E5E8EE189EE116551F /* HerdrCoreWindowsConsoleTests.swift */; };
 		76B9105012CFC90972589B87 /* TerminalThemePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9469465EF16322DDC174CD5E /* TerminalThemePickerView.swift */; };
 		76D19F97EA2662895D730A98 /* ConsoleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14FB8560976CE777FB5A105 /* ConsoleStore.swift */; };
 		76E539B2F1D69F169B81CAE5 /* HerdrCoreTurnEndTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4877ACD3B274890E1B1430C0 /* HerdrCoreTurnEndTests.swift */; };
@@ -1943,6 +1944,7 @@
 		F7277AF425D19B036FEB24E6 /* CodexRolloutBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutBuilder.swift; sourceTree = "<group>"; };
 		F75E8F9733C77314E6D222AC /* HeelerSSHNativeRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHNativeRuntimeTests.swift; sourceTree = "<group>"; };
 		F7C4030E0C3CCF493C11B0DE /* DiffLayoutSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffLayoutSettingsTests.swift; sourceTree = "<group>"; };
+		F7D4F3E5E8EE189EE116551F /* HerdrCoreWindowsConsoleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreWindowsConsoleTests.swift; sourceTree = "<group>"; };
 		F7E3DCBFDF3ED4A63CBC1B3C /* AgentActivityEnvelopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityEnvelopeTests.swift; sourceTree = "<group>"; };
 		F85C32E88AD6C31495BF28F5 /* ChatImagePreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatImagePreviewTests.swift; sourceTree = "<group>"; };
 		F90E77FA4275B5056D4C0808 /* HerdrCommandLineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCommandLineTests.swift; sourceTree = "<group>"; };
@@ -2267,6 +2269,7 @@
 				74B121D75551BD14F5B79A06 /* HerdrCoreTransportE2ETests.swift */,
 				4877ACD3B274890E1B1430C0 /* HerdrCoreTurnEndTests.swift */,
 				3D25F5006320DED01BF2D463 /* HerdrCoreWindowsCaptureTests.swift */,
+				F7D4F3E5E8EE189EE116551F /* HerdrCoreWindowsConsoleTests.swift */,
 				9F3D72EBEE2AA9F23F12A412 /* HerdrCoreWindowsLocatorTests.swift */,
 				8C6B9C302C533F3305AE2D26 /* HerdrCoreWindowsTransportTests.swift */,
 				493156366347AD36EC1985E8 /* HerdrCoreWireTests.swift */,
@@ -4357,6 +4360,7 @@
 				76E539B2F1D69F169B81CAE5 /* HerdrCoreTurnEndTests.swift in Sources */,
 				EA145D626FACCBCCF2E94D67 /* HerdrCoreVectorFile.swift in Sources */,
 				1ED6AE1312402FBC3FFF828C /* HerdrCoreWindowsCaptureTests.swift in Sources */,
+				766A815EDF6EBA2BCDCCF8EE /* HerdrCoreWindowsConsoleTests.swift in Sources */,
 				6B5CF453AA9EC65672CACF81 /* HerdrCoreWindowsLocatorTests.swift in Sources */,
 				5EBAAB4A2C89D0A961A636AB /* HerdrCoreWindowsTransportTests.swift in Sources */,
 				563040714D273153AAE447D3 /* HerdrCoreWireTests.swift in Sources */,

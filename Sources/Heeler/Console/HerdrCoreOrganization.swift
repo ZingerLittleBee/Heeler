@@ -298,7 +298,7 @@ enum HerdrCoreOrganization {
     }
 
     private static func label(directory: String) -> String {
-        directory.isEmpty ? "No directory" : (directory as NSString).lastPathComponent
+        directory.isEmpty ? "No directory" : folderName(directory, home: nil)
     }
 
     /// Where the desktop app looks for a Terminal's folder: what runs there
@@ -355,6 +355,6 @@ enum HerdrCoreOrganization {
     /// What runs in the Terminal now, else what it launched.
     private static func programName(_ record: HerdrCoreTerminalRecord) -> String? {
         if let foreground = record.foreground?.name, !foreground.isEmpty { return foreground }
-        return record.argv.first.map { ($0 as NSString).lastPathComponent }
+        return record.argv.first.map { folderName($0, home: nil) }
     }
 }

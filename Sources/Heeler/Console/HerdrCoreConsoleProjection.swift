@@ -229,8 +229,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             switch status {
             case .failed(let failure):
                 standingFailure = failure
-            case .connected, .reconnecting:
+            case .connected:
                 standingFailure = nil
+            case .reconnecting(_, _, let failure):
+                standingFailure = nil
+                // A stopped core has no snapshot to read this at, and what a Host
+                // offers does not wait for its core.
+                if case .herdrCoreNotRunning = failure { readKernelOnce() }
             case .connecting, .suspended, .ended:
                 break
             }
@@ -250,7 +255,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
     }
 
-    /// The locator already ran for this link, so this reads no Host.
+    /// The locator already ran on this connection, so this reads no Host.
     private func readKernelOnce() {
         guard kernel == nil else { return }
         Task { [weak self, session] in
@@ -632,6 +637,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         if !hasAskedHome {
             hasAskedHome = true
             home = try? await services.hostHomeDirectory()
+            // That read is Chat's, and it refuses native Windows; the locator knows.
+            if home == nil { home = (try? await session.withTransport { await $0.lastLocation() })?.home }
             guard !Task.isCancelled else { return }
             // The desktop app does not ask git about the home folder either.
             queuedCheckouts.removeAll { $0 == home }
