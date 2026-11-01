@@ -207,7 +207,7 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 | Chat says | What it means |
 | --- | --- |
 | **Can't Tell the Conversation** | Claude Code names its conversation only once it reaches its prompt. Finish signing in or answer its question in the terminal, and Chat follows on the next status change. **Retry** checks at once |
-| **Can't Tell the Conversation**, on Codex | Codex shows its conversation with the first message, so send one in the terminal. After `/new` it holds both conversations and nothing says which is on screen: exit Codex, run `codex resume --no-daemon` and pick the conversation |
+| **Can't Tell the Conversation**, on Codex | Codex shows its conversation with the first message, so send one in the terminal. Once a message follows `/new`, nothing says which conversation is on screen: exit Codex, run `codex resume --no-daemon` and pick the conversation |
 | **Can't Tell the Conversation**, on Grok Build | Grok Build lists its conversation while it runs. After `/new` it lists both, and Chat can't tell until you start Grok Build again |
 | **Can't Tell the Conversation**, on OpenCode | Heeler can name OpenCode's conversation only when it starts OpenCode 2.1 or later itself, from New Agent. A hand-started or older OpenCode, or a Template's, stays this way. After `/new` Chat keeps showing the conversation OpenCode started with, since nothing on the Host says it moved |
 | **Codex Started Without `--no-daemon`** | Codex runs on its shared background server, where one terminal's conversation looks like another's. Exit Codex, run `codex resume --no-daemon` and pick the conversation in Codex's list. New Agent starts Codex this way itself, so this comes from a Codex you started by hand or a Template |
@@ -218,6 +218,7 @@ Heeler finds the conversation from the Agent's own process on the Host, with not
 
 - Heeler has no Rename on a core Host yet. Use the Host or the Herdr desktop app.
 - Chat opens for Claude Code on Linux, and for Codex, Grok Build and OpenCode 2.x once each has passed its check. Other programs and macOS core Hosts offer the terminal alone.
+- Right after `/new` in Codex, before any message there, nothing on the Host has changed. Chat keeps showing the old conversation, and a Send goes to the new one. After `/new`, keep to the terminal until you have exited Codex and run `codex resume --no-daemon`.
 - Heeler cannot connect to a native Windows core Host yet: its checks read **herdr-core Hosts is not yet supported on native Windows**.
 - Terminals federated from another machine are omitted. Add that machine as a Host of its own, so its file operations reach the right computer.
 - If the connection drops while an Agent detail is open on a Terminal that lost its program or ended, the detail reads **Agent Gone** after the reconnect. A restored Terminal has its row in the Terminals tab.

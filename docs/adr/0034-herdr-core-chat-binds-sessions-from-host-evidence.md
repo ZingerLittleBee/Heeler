@@ -49,7 +49,7 @@ never show or send into a conversation it has guessed.
   | Program | Evidence |
   | --- | --- |
   | Claude Code | `<config dir>/sessions/<pid>.json`, read by name once Claude Code reaches its prompt, whose process start matches |
-  | Codex | in embedded mode only, the rollouts the process holds open, exactly one of them a root thread by `session_meta` |
+  | Codex | in embedded mode only, the rollouts the process holds open, exactly one of them a root thread by `session_meta`, and no thread-writer lock held without its thread's rollout |
   | Oh My Pi | Heeler's extension (ADR 0033); without it, `<agent dir>/terminal-sessions/<tty>`, confirmed by the process's own session lock or open file |
   | Grok Build | the one `active_sessions.json` row whose pid and process start match |
   | OpenCode | from 2.x, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
@@ -150,9 +150,19 @@ herdr-core Hosts only.
   session the program shows, but Chat keeps showing the old one until a guard
   catches it. The same holds for an OpenCode bound from the id it was started with:
   its argv keeps that id after `/new`.
-- After `/new`, Codex holds two root rollouts and Grok Build has two matching rows,
-  and nothing says which the screen shows, so each binds nothing and Chat says so
-  until the program is started again.
+- `/new` moves Codex's screen before anything on the Host says so. Until a prompt
+  there it holds only the old thread's rollout and lock, the same as before `/new`,
+  so Chat keeps showing the old conversation and a Send reaches the new one. A check
+  of what it holds cannot catch this, and rollout times, `threads.updated_at` and
+  `logs_2.sqlite` order threads by activity, which does not say what is on screen.
+- The first prompt after `/new` leaves the new thread's lock with no rollout, and
+  the next adds the rollout, so Codex holds two roots. Either binds nothing, and Chat
+  says so from its next check until the program is started again. That first prompt
+  showed no turn, so a Send's own check may be what finds it.
+- A subagent's lock before its rollout reads the same as `/new`'s. No recording
+  shows that order, and it would read as can't tell until a later check.
+- After `/new`, Grok Build has two matching rows and nothing says which the screen
+  shows, so it binds nothing and Chat says so until the program is started again.
 - OpenCode has no row for its id until the first prompt, which Heeler knows the id
   before. A core's store with no such row, on a Chat that has followed nothing yet,
   waits for the first message rather than reading as a session gone.
@@ -183,8 +193,9 @@ herdr-core Hosts only.
   says what could differ for each program;
   `Tests/HeelerTests/ChatFixtures/host-evidence`): Codex's embedded native
   process holds the rollout open from the first prompt, and its `session_meta`
-  tells a root from a subagent; after `/new` it holds two roots, so one root
-  thread binds nothing. Pi 1.4.0's file appears at the first prompt, before the
+  tells a root from a subagent; after `/new` and a prompt that landed it holds two
+  roots, so one root thread binds nothing, and the lock held without a rollout
+  before that binds nothing either. Pi 1.4.0's file appears at the first prompt, before the
   reply, Pi 0.85.1's only with the reply, and no process holds either. Oh My
   Pi's file and session lock appear together with the first reply, and the
   process opens the file later, seen in one sample with the title slot filling,

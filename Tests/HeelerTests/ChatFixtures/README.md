@@ -48,7 +48,7 @@ process rows shaped for `ScriptedProcessTable.Process`, plus the files as read.
 | Path | Source |
 | --- | --- |
 | `host-evidence/codex/no-daemon.json` | Codex CLI 0.165.0 `--no-daemon`: the process tree and held files at the prompt and after the first reply, and the rollout's `session_meta` |
-| `host-evidence/codex/no-daemon-after-new.json` | The same, before `/new` and after a prompt in the new thread: two held root rollouts |
+| `host-evidence/codex/no-daemon-after-new.json` | The same, before `/new` and after a prompt in the new thread: two held root rollouts. Its `observed` text alone says what the first prompt after `/new` leaves, the new thread's lock with no rollout, and the test that uses this says it edits the recording |
 | `host-evidence/codex/no-daemon-subagent.json` | The same, with a root and a subagent the fake model spawned |
 | `host-evidence/codex/default-daemon.json` | Plain `codex` in two Terminals on one `CODEX_HOME`: the shared daemon, the `HC_SCOPE` it carries and the rollouts it holds |
 | `host-evidence/grok/s-flag.json` | Grok Build 1.0.70 `-s`: `active_sessions.json` with one Terminal, with two, and after `/new`, `pid_start` against field 22 of `/proc/<pid>/stat`, and leader mode |
