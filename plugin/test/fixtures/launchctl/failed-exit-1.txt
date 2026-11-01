@@ -1,0 +1,69 @@
+user/501/dev.heeler.spike576 = {
+	active count = 0
+	path = /Users/<user>/Library/LaunchAgents/dev.heeler.spike576.plist
+	type = LaunchAgent
+	state = spawn scheduled
+
+	program = /opt/homebrew/bin/node
+	arguments = {
+		/opt/homebrew/bin/node
+		/Users/<user>/spike576/agent.js
+	}
+
+	working directory = /Users/<user>/spike576
+
+	stdout path = /Users/<user>/spike576/agent.out
+	stderr path = /Users/<user>/spike576/agent.err
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		OSLogRateLimit => 64
+		XPC_SERVICE_NAME => dev.heeler.spike576
+	}
+
+	domain = user/501
+	asid = 100013
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 10
+	last exit code = 1
+
+	event channels = {
+		"com.apple.launchd.helper" = {
+			port = 0xafe0f
+			active = 0
+			managed = 1
+			reset = 0
+			hide = 0
+			watching = 0
+		}
+	}
+
+	resource coalition = {
+		ID = 956
+		type = resource
+		state = active
+		active count = 1
+		name = dev.heeler.spike576
+	}
+
+	jetsam coalition = {
+		ID = 957
+		type = jetsam
+		state = active
+		active count = 1
+		name = dev.heeler.spike576
+	}
+
+	spawn type = daemon (3)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+
+	properties = keepalive | runatload | inferred program | system service | tle system
+}

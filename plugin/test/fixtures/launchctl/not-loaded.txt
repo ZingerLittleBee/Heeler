@@ -1,0 +1,2 @@
+Bad request.
+Could not find service "dev.heeler.spike576" in domain for uid: 501
