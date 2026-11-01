@@ -214,6 +214,12 @@ with test clients, not the app.
   showed the exit, and the attach stream later carried PowerShell's prompt; the
   screen and the other event types were not compared as signals. Until #588 or
   #590 adds a check, that staleness stands.
+- The same `choice.exe` runs through `connect` over one SSH exec gave the same
+  foreground and finishes, 2 under Heeler's form and the shell's `exit 5` under
+  `-NoExit`. On that machine the exec refused a program on a path through fnm's
+  `fnm_multishells` junction (`ERROR_UNTRUSTED_MOUNT_POINT`), which a Terminal of
+  the core ran, so #588's discovery cannot read an exec's miss on such a path as
+  not installed ([observation](../agents/herdr-compatibility.md)).
 - Recognizing an Agent works on the foreground's arguments, not the launch
   arguments, and needs a table from reported `app` names (`claude-code`,
   `codex`, `opencode`, `pi`, `omp`, `grok-build`) to Heeler's agent kinds.
@@ -268,6 +274,8 @@ with test clients, not the app.
   owner's check on a desktop Mac passes; New Workspace does not depend on it.
 - On Windows a Staged Image or File larger than 8 MiB is refused before it is
   sent, as the core refuses it (`invalid_params`); exactly 8 MiB is accepted.
+  Over one SSH exec a put in one 8 MiB frame arrived with the same hash and 8 MiB
+  plus one byte was refused the same way.
   The files sit at `<state>\files\<address>\<cleaned name>` under the user's
   profile, with the inherited access of SYSTEM, Administrators and the account
   ([observation](../agents/herdr-compatibility.md)). A program in the Terminal

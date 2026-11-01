@@ -181,13 +181,16 @@ herdr-core Hosts only.
   ([observation](../agents/herdr-compatibility.md)), so the extensions connect
   by that value as they do to a Unix socket (#590). Pi and Oh My Pi themselves
   have not run there.
-- Windows Transcripts are read over SFTP, the reader Unix already uses, to avoid
-  `file.read`'s 8 MiB per read, 64 MiB per file and UTF-8 limits, which were
-  read from source and not tried over SFTP. On a growing file, `file.read`'s
-  line count and last line matched a direct read, and SFTP's byte count equaled
-  the file's current size, but SFTP's content was not compared. This is
-  provisional until that comparison runs through sshd: `sftp-server.exe` ran
-  locally, on made-up files. A writer that shares nothing fails both.
+- Windows Transcripts are read over SFTP, the reader Unix already uses. Through
+  sshd from a Mac, with a program in a Terminal appending, SFTP and `file.read`
+  each returned bytes that were a prefix of the final file at every round, and
+  the final file matched Windows' own hash
+  ([observation](../agents/herdr-compatibility.md)). SFTP also read a non-UTF-8
+  file, a single 9 MiB line and a 65 MiB file unchanged, where `file.read`
+  refused each (`not_text`, `line 1 is over 8 MB`, `is over 64 MB`) and paged a
+  9 MiB file by lines. That is why SFTP stays the path. A writer that shares
+  nothing fails both. This is one machine and an elevated SSH token, on made-up
+  files: no real Agent's Transcript has been read on Windows.
 - Under PowerShell the foreground's pid is never the Agent's, so #590 binds
   through PowerShell's children, not through the foreground's pid. A session
   registry entry on Windows has not been read.

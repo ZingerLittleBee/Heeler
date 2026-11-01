@@ -199,13 +199,36 @@ confirm or refine these points with test clients, not the app.
   `cmd /c if exist` and Node's `fs.existsSync` said no in both. The Windows
   probe (#587) therefore cannot read the file as Unix does, and must name
   `powershell.exe`, since an exec on a default server runs under `cmd.exe`.
-- Over Windows' `connect`, framing, credit, a several-MiB client frame and a
-  backlog past 4 MiB all held on a local run, with the same outcomes as the
-  pipe. Request lengths covered every low byte value; reply lengths did not,
-  and the ones missing include 0x1A. Three things remain unverified and block
-  calling #587's link proven: the stream across Windows OpenSSH's exec channel,
-  whether the pipe admits an administrator's elevated SSH token, and the
-  probe's reads from an SSH exec.
+  Over a real SSH exec with the core running, those reads and the one-line
+  guard behave the same on the one machine tried, and `type` on the locked file
+  exits 0 with its error on stderr, so an exit code alone says nothing there.
+- Across one Windows OpenSSH exec of `connect` from a Mac, no byte changed in
+  either direction ([observation](../agents/herdr-compatibility.md)): a raw
+  control program returned every byte value and 8 MiB unchanged, request and
+  reply lengths each covered all 256 low byte values (0x0A, 0x0D and 0x1A among
+  them), and frames carried to and from a Terminal matched the local capture
+  and a client on the pipe. That is one machine, Windows PowerShell 5.1 and an
+  elevated SSH token. What a Terminal's program reads and prints still changes
+  past the link (0x00 in, lone bytes of 0x80 or above, a bare LF), as it did
+  locally.
+- **Unverified, and it blocks calling #587's link proven for the normal case:**
+  whether the pipe of a core started at medium integrity admits an elevated SSH
+  token. In that round the core's own token read elevated, so the only entry
+  observed is elevated client on elevated core, on a pipe labelled High. By
+  source (`pipe_security`, v0.1.16) a core that is not elevated labels its pipe
+  medium with the same account in the DACL, which should admit a High client of
+  that account, but no run shows it. Conversely, a core started elevated is
+  out of reach of a normal desktop client, by that source. Before #587 relies on
+  this, the owner starts the check's core from a window that is confirmed not
+  elevated and the connect is repeated. A stopped core has also not been read
+  through sshd.
+- A viewer granting credit for every frame can still get a repaint instead of
+  the bytes: a program writing about 6 MiB at once reached the Mac end as
+  2,196,107 bytes with gaps, and a client on the pipe got all of it. #587's
+  attach must treat that repaint as ordinary, not as a broken link. What limited
+  the viewer was not separated from the lab client.
+- A guard or probe run from the same client must not share the connection's
+  stdin: `ssh` reads it, and one run lost `hello` that way.
 - The state directory follows `XDG_STATE_HOME`. An override set only in an
   interactive shell's rc file is invisible to the probe, and a core started
   under it has another `core.id` behind the same socket path.
