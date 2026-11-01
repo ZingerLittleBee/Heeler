@@ -961,19 +961,6 @@ struct HostHelperPlatformTests {
         #expect(copy.contains("Host Helper"))
     }
 
-    @Test func aMacOSCoreHostIsOfferedNoInstallYet() async throws {
-        await host.configure { $0.kernel = "Darwin" }
-        let reading = try await installer.read()
-        #expect(reading.status == .unsupportedPlatform(.macOS))
-        #expect(reading.installAction == nil)
-        #expect(!reading.offersRemoval)
-        #expect(!reading.offersLinger)
-        await #expect(throws: HostHelperError.unsupportedPlatform) {
-            _ = try await installer.install(over: reading, bundle: HostHelperFixture.bundle())
-        }
-        #expect(await host.writes.isEmpty)
-    }
-
     @Test func aLinuxHostWithoutSystemdIsOfferedNoInstall() async throws {
         await host.configure { $0.hasSystemd = false }
         let reading = try await installer.read()

@@ -225,13 +225,17 @@ The Host Helper is Heeler's own background service on a herdr-core Host. It stan
 
 The Helper never starts a core. It connects to the core's socket directly, and while no core runs it waits and tries again, so a core you stopped stays stopped until you start it. When you do, the Helper connects on its own, without a restart.
 
-**Install on Linux.** Open the Host's detail and tap **Host Helper**. The sheet lists every file the install writes, including its systemd user unit. Tap **Install**. If the sheet could not read the list, the first tap only reads it again and writes nothing. The files go in `~/.local/share/heeler/host-helper` (or under `XDG_DATA_HOME`) and are private to your account. Heeler replaces a Helper only with a newer version, or when it is missing or damaged, and never one that a newer version of the app installed.
+**Install.** Open the Host's detail and tap **Host Helper**. The sheet lists every file the install writes, including its systemd user unit on Linux or its LaunchAgent property list on macOS. Tap **Install**. If the sheet could not read the list, the first tap only reads it again and writes nothing. The files go in `~/.local/share/heeler/host-helper` (or under `XDG_DATA_HOME`) on Linux and in `~/Library/Application Support/heeler/host-helper` on macOS, and are private to your account. Heeler replaces a Helper only with a newer version, or when it is missing or damaged, and never one that a newer version of the app installed.
 
 The install also places Heeler's extension for Pi in `~/.pi/agent/extensions` and for Oh My Pi in each profile's `agent/extensions` folder, also listed in the sheet. Those programs load it on their own, so no configuration file changes. It does nothing outside a herdr-core Terminal. Inside one it tells the Terminal which session the program is on, for Chat, and Pi releases before 1.1.0 also report their status through it. An Oh My Pi profile you add later gets its extension from **Repair** in the sheet.
 
-Without systemd linger, the Helper stops about ten seconds after your last login to the Host ends. The sheet checks it and offers **Turn On Linger**. Some Hosts ask for an administrator instead: the sheet shows the Host's reason, and an administrator can run `loginctl enable-linger <your-user>` there.
+On Linux, without systemd linger, the Helper stops about ten seconds after your last login to the Host ends. The sheet checks it and offers **Turn On Linger**. Some Hosts ask for an administrator instead: the sheet shows the Host's reason, and an administrator can run `loginctl enable-linger <your-user>` there.
 
-**Check.** The Host Helper row shows the Host's state each time you check the Host:
+On macOS there is no linger to turn on: the Helper keeps running after your SSH session and a desktop logout. It writes its log to `helper.log` in its directory. macOS may notify you that `node` can run in the background and list it under Login Items, because that is the program the Helper runs on.
+
+After a restart of the Mac the Helper may not be running until Heeler next reaches the Host, when it starts it again without asking. No notification goes out in between.
+
+**Check.** The Host Helper row shows the Host's state each time you check the Host. On macOS the row takes about eleven seconds, because one look cannot tell a Helper that runs from one that keeps dying:
 
 | Row reads | What it means |
 | --- | --- |
@@ -241,12 +245,12 @@ Without systemd linger, the Helper stops about ten seconds after your last login
 | **Damaged** | Files are missing or changed. **Repair** puts them back |
 | **Node.js Missing** | The Host has no Node.js, or one too old to run the Helper |
 | **Linger Off** | Runs only while you are logged in |
-| **Service Failed** | The service stopped and will not start again by itself, for example after Node.js moved. **Repair** sets it up with the Node.js the Host has now. A Helper a newer version of Heeler installed reads this too, and updating the app is what changes it |
+| **Service Failed** | The service stopped and will not start again by itself, or on macOS keeps failing, for example after Node.js moved. **Repair** sets it up with the Node.js the Host has now. A Helper a newer version of Heeler installed reads this too, and updating the app is what changes it |
 | **Not Available** | This platform has no Helper |
 
-Native Windows Hosts read **Not Available**, so Agent Notifications (in-app banners included), Live Activity and Usage are not available there yet. macOS Hosts also read **Not Available** in this version, with no install offered.
+Native Windows Hosts read **Not Available**, so Agent Notifications (in-app banners included), Live Activity and Usage are not available there yet.
 
-**Remove.** In the sheet, tap **Remove**. Heeler disables and stops the service, deletes the files the install recorded, the Pi and Oh My Pi extensions among them, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. The Host's banners and Live Activity stop with it. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.
+**Remove.** In the sheet, tap **Remove**. Heeler stops the service, deletes the files the install recorded, the Pi and Oh My Pi extensions among them, then the folders it created that are now empty, and finally the Helper's directory with its notification registrations and seen marks. The Host's banners and Live Activity stop with it. Removal leaves systemd linger and the Grok Build edit (`program_status` in its configuration) as they are: change those yourself if you no longer want them.
 
 ## Agent Notifications
 
@@ -285,6 +289,8 @@ To count more Claude Code sign-ins, open **Claude Code Accounts**. Heeler sugges
 | **Usage needs a newer Host Helper** | Update it from the Host's detail |
 | **The Host Helper has not reached this session's core yet** | Start the core if it is not running. Heeler keeps checking, and the Helper never starts one |
 | **Usage comes with the Host Helper, which is not available on native Windows yet** | Nothing for now |
+
+On macOS, Claude Code keeps its sign-in in the login keychain, which neither the Helper nor SSH can reach, so its Usage Limits read **need your own login on this Mac**. Token Usage still counts.
 
 Usage reaches the Helper over its own SSH connection when the Host's session has none, so these read the same whether the core is running or not. **Not connected** in the Usage tab and the widgets means SSH itself could not reach the Host.
 

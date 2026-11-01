@@ -57,11 +57,14 @@ struct HostHelperFiles: HostNotificationFiles {
     }
 
     /// One read of the Helper, without the Node.js run that finds the extension
-    /// folders: only an install's list needs those.
+    /// folders: only an install's list needs those. This is how notifications and
+    /// banners come to know a Host, so on a Mac it also loads an agent a restart
+    /// left out. It takes no second health read: a user waiting on a switch gets
+    /// what launchd says now, and Host detail is where health is settled.
     func readHostHelper() async throws -> HostHelperReading? {
         try await HostHelperInstaller(
             host: host, nonce: nonce, bundle: { throw HostHelperBundle.LoadError.missing }
-        ).read()
+        ).readLoadingAgent()
     }
 
     func replaceSeenMarks(_ contents: Data, keyID: String) async throws {

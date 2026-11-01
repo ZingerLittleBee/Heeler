@@ -4,15 +4,17 @@
 Compiles Sources/Heeler/Transport/HostHelperScript.swift with
 NodeToolchainProbe.swift and a small driver, then feeds each script to every
 POSIX shell found here (/bin/sh, dash, bash, ksh, busybox), as the bounded exec
-does. The Host is a temporary HOME with stand-ins for `systemctl`, `loginctl`
-and `node` on PATH; the stand-ins log how they were called, so a test can see
-XDG_RUNTIME_DIR arrive. Needs swiftc (agent-tools CI uses the Ubuntu image's,
-whose /bin/sh is dash); uses only Python's standard library.
+does. The Host is a temporary HOME with stand-ins for `uname`, `systemctl`,
+`loginctl`, `launchctl` and `node` on PATH; the stand-ins log how they were
+called, so a test can see XDG_RUNTIME_DIR arrive. Needs swiftc (agent-tools CI
+uses the Ubuntu image's, whose /bin/sh is dash); uses only Python's standard
+library.
 """
 
 import hashlib
 import json
 import os
+import plistlib
 import shutil
 import stat
 import subprocess
@@ -22,6 +24,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+LAUNCHCTL_FIXTURES = ROOT / "plugin/test/fixtures/launchctl"
 SOURCES = [
     ROOT / "Sources/Heeler/Transport/HostHelperScript.swift",
     ROOT / "Sources/Heeler/Transport/NodeToolchainProbe.swift",
@@ -72,6 +75,7 @@ case "prepareStaging":
 case "hashTree": step = .hashTree(root: input.path ?? "")
 case "promote": step = .promote(staging: input.staging ?? "", app: input.app ?? "")
 case "systemctl": step = .systemctl(input.arguments ?? [])
+case "launchctl": step = .launchctl(input.arguments ?? [])
 case "enableLinger": step = .enableLinger(user: input.user ?? "")
 case "removeFiles": step = .removeFiles(input.files ?? [])
 case "removeEmptyFolders": step = .removeEmptyFolders(input.folders ?? [])
@@ -103,6 +107,9 @@ case "parse-probe":
         "linger": probe.lingerOn,
         "hasSystemd": probe.hasSystemd,
         "health": probe.health.map { [$0.loadState, $0.activeState, $0.result, String($0.restarts)] } ?? [],
+        "uid": probe.uid,
+        "launchAgentFile": probe.launchAgentFilePresent,
+        "launchdPid": probe.health?.launchd?.pid ?? 0,
         "appPresent": probe.appPresent,
         "manifest": probe.manifest.map { String(decoding: $0, as: UTF8.self) } ?? "",
         "record": probe.record.map { String(decoding: $0, as: UTF8.self) } ?? "",
@@ -119,6 +126,10 @@ case "parse-extension-folders":
     print(String(decoding: data, as: UTF8.self))
 case "unit":
     print(HostHelperUnit.text(nodePath: arguments[3], mainPath: arguments[4]), terminator: "")
+case "property-list":
+    let list = try HostHelperLaunchAgent.propertyList(
+        nodePath: arguments[3], mainPath: arguments[4], logPath: arguments[5])
+    FileHandle.standardOutput.write(list)
 default:
     exit(64)
 }
@@ -154,6 +165,24 @@ fi
 if [ "$2" = enable-linger ] && [ "${FAKE_LINGER_REFUSES:-}" = 1 ]; then
     echo 'Could not enable linger: Interactive authentication required.' >&2
     exit 1
+fi
+"""
+
+# launchd's own wording and exit codes, from plugin/test/fixtures/launchctl/.
+LAUNCHCTL = """#!/bin/sh
+printf 'launchctl %s\\n' "$*" >> "$FAKE_LOG"
+if [ "$1" = print ]; then
+    if [ -z "${FAKE_LAUNCHCTL_PRINT:-}" ]; then
+        echo 'Bad request.' >&2
+        echo 'Could not find service' >&2
+        exit 113
+    fi
+    cat "$FAKE_LAUNCHCTL_PRINT"
+    exit 0
+fi
+if [ -n "${FAKE_LAUNCHCTL_REFUSES:-}" ]; then
+    echo 'Bootstrap failed: 5: Input/output error' >&2
+    exit 5
 fi
 """
 
@@ -204,8 +233,11 @@ class HelperScriptCase(unittest.TestCase):
         self.bin.mkdir()
         self.log = self.root / "calls.log"
         self.log.write_text("")
+        # These tests run on Linux and on a Mac, so the real answer cannot decide a layout.
+        self.tool("uname", '#!/bin/sh\necho "${FAKE_KERNEL:-Linux}"\n')
         self.tool("systemctl", SYSTEMCTL)
         self.tool("loginctl", LOGINCTL)
+        self.tool("launchctl", LAUNCHCTL)
         self.env = {
             "HOME": str(self.home),
             "USER": "me",
@@ -438,6 +470,94 @@ class InstallStepTests(HelperScriptCase):
         self.assertIn("WantedBy=default.target\n", text)
 
 
+class MacOSTests(HelperScriptCase):
+    """A Darwin Host: launchd instead of systemd, Application Support for the directory."""
+
+    LABEL = "dev.bybee.heeler.host-helper"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.env["FAKE_KERNEL"] = "Darwin"
+        self.support = self.home / "Library/Application Support"
+        self.helper_dir = self.support / "heeler/host-helper"
+        self.agent = self.home / f"Library/LaunchAgents/{self.LABEL}.plist"
+
+    def use_fixture(self, name: str) -> None:
+        self.env["FAKE_LAUNCHCTL_PRINT"] = str(LAUNCHCTL_FIXTURES / name)
+
+    def test_the_directory_is_under_application_support_whatever_xdg_says(self) -> None:
+        self.env["XDG_DATA_HOME"] = f"{self.root}/data"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["data"], str(self.support))
+
+    def test_asks_launchd_in_the_users_domain_and_touches_no_systemd(self) -> None:
+        self.use_fixture("running.txt")
+        probe = self.probe()
+        self.assertEqual(probe["uid"], str(os.getuid()))
+        self.assertEqual(
+            self.log.read_text().splitlines(), [f"launchctl print user/{os.getuid()}/{self.LABEL}"])
+
+    def test_reads_a_running_agent_under_every_shell(self) -> None:
+        self.use_fixture("running.txt")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                probe = self.probe(shell)
+                self.assertEqual(probe["health"], ["loaded", "running", "", "0"])
+                self.assertEqual(probe["launchdPid"], 1116)
+
+    def test_an_agent_launchd_does_not_hold_reads_as_not_loaded(self) -> None:
+        probe = self.probe()
+        self.assertEqual(probe["health"], ["not-found", "inactive", "", "0"])
+        self.assertFalse(probe["launchAgentFile"])
+
+    def test_says_when_the_property_list_is_there(self) -> None:
+        self.agent.parent.mkdir(parents=True)
+        self.agent.write_text("<plist/>")
+        self.assertTrue(self.probe()["launchAgentFile"])
+
+    def test_changes_nothing_on_the_host(self) -> None:
+        self.use_fixture("running.txt")
+        self.probe()
+        self.assertEqual(list(self.home.iterdir()), [])
+
+    def test_reads_the_manifest_and_hashes_through_a_path_with_a_space(self) -> None:
+        hashes = self.install_tree({"main.js": "one\n", "shared/a b.js": "two\n", "manifest.json": "{\"v\":1}\n"})
+        hashes.pop("manifest.json")
+        (self.helper_dir / "installed.json").write_text("{}\n")
+        probe = self.probe()
+        self.assertTrue(probe["appPresent"])
+        self.assertEqual(probe["hashes"], hashes)
+        self.assertEqual(probe["record"], "{}\n")
+
+    def test_launchctl_gets_its_words_whole_and_reports_refusal(self) -> None:
+        plist = f"{self.home}/Library/LaunchAgents/{self.LABEL}.plist"
+        result = self.run_script(step="launchctl", arguments=["bootstrap", "user/501", plist])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"launchctl bootstrap user/501 {plist}", self.log.read_text())
+        self.env["FAKE_LAUNCHCTL_REFUSES"] = "1"
+        refused = self.run_script(step="launchctl", arguments=["bootstrap", "user/501", plist])
+        self.assertEqual(refused.returncode, 5)
+        self.assertIn("Bootstrap failed: 5", refused.stderr)
+        self.assertIn(f"{NONCE} end", refused.stdout)
+
+    def test_the_property_list_is_what_the_recorded_domain_accepts(self) -> None:
+        node, main, log = "/opt/no de/<bin>/node", "/Users/a&b/app/main.js", "/Users/a&b/helper.log"
+        data = subprocess.run(
+            [str(self.binary), "property-list", '{"step":"locate"}', node, main, log],
+            capture_output=True, check=True,
+        ).stdout
+        self.assertEqual(plistlib.loads(data), {
+            "Label": self.LABEL,
+            "ProgramArguments": [node, main],
+            "KeepAlive": True,
+            "RunAtLoad": True,
+            "LimitLoadToSessionType": "Background",
+            "StandardOutPath": log,
+            "StandardErrorPath": log,
+        })
+
+
 class ExtensionFolderStepTests(HelperScriptCase):
     """The real script text through a real Node.js, which only this step runs."""
 
@@ -630,6 +750,15 @@ printf '{{}}\\n'
         self.record("#!/bin/sh\nhead -c 1100000 /dev/zero | tr '\\0' x\n")
         _, status = self.query()
         self.assertEqual(status, "unfinished")
+
+    def test_finds_the_helper_under_application_support_on_a_mac(self) -> None:
+        self.env["FAKE_KERNEL"] = "Darwin"
+        self.env["XDG_DATA_HOME"] = f"{self.root}/data"
+        self.helper_dir = self.home / "Library/Application Support/heeler/host-helper"
+        self.assertEqual(self.query(), ("helper-absent", "0"))
+        self.installed()
+        self.assertEqual(self.query(), (self.MISSING, "0"))
+        self.assertTrue((self.helper_dir / "sessions/work").is_dir())
 
     def test_the_real_helper_answers_from_a_bare_copy(self) -> None:
         node = shutil.which("node")
